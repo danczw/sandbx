@@ -39,7 +39,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           crate="$(cargo metadata --format-version 1 --no-deps \
-            | jq -r '.packages[] | select(.name == "echo-cli") | .version')"
+            | jq -r '.packages[] | select(.name == "sandbx-cli") | .version')"
           echo "tag=$tag crate=$crate"
           if [ "$tag" != "$crate" ]; then
             echo "::error::tag $tag does not match crate version $crate"
@@ -53,18 +53,18 @@ jobs:
         run: cargo test --workspace --features sandbox-integration
 
       - name: Build
-        run: cargo build --release --locked --target x86_64-unknown-linux-musl -p echo-cli
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl -p sandbx-cli
 
       - name: Package
         id: package
         run: |
-          name="echo-${GITHUB_REF_NAME}-x86_64-unknown-linux-musl"
+          name="sandbx-${GITHUB_REF_NAME}-x86_64-unknown-linux-musl"
           mkdir -p "dist/$name"
-          cp target/x86_64-unknown-linux-musl/release/echo README.md LICENSE "dist/$name/"
+          cp target/x86_64-unknown-linux-musl/release/sandbx README.md LICENSE "dist/$name/"
           # Static by construction, not by intention. If this ever reports a
           # dynamic executable, the archive would carry a hidden glibc floor
           # again and the check should stop the release.
-          file "dist/$name/echo" | grep -q "statically linked\|static-pie" \
+          file "dist/$name/sandbx" | grep -q "statically linked\|static-pie" \
             || { echo "::error::binary is not statically linked"; exit 1; }
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           # Lets anyone verify the download matches what this run produced.
