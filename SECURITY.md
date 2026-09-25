@@ -60,10 +60,15 @@ Three properties matter as much as the list:
   elsewhere is a clippy error, but a determined contributor can add raw syscalls.
 - **Approval is not enforcement.** A tool call you approve runs. sandbx bounds
   what it can reach; it does not decide whether it should run.
-- **Nothing is resource-limited.** There is no timeout, no CPU or memory bound,
-  and no limit on processes spawned. A command that never exits blocks the
-  harness until you kill it ([#22](https://github.com/danczw/sandbx/issues/22)).
-  The sandbox governs *what* a command can reach, not *how much* it can consume.
+- **Only wall-clock time is bounded.** A tool's command is killed if it outruns
+  its limit (90 seconds by default), and `sandbox-run` takes an opt-in
+  `--timeout`. Nothing else is capped: no CPU bound, no memory bound, and no
+  limit on how many processes a command spawns. The sandbox governs *what* a
+  command can reach, and now *how long* it may run, but not *how much* it can
+  consume.
+- **A running tool call cannot be interrupted.** Only its own deadline stops it;
+  there is no way to cancel one from outside
+  ([#26](https://github.com/danczw/sandbx/issues/26)).
 
 ## Known weaknesses
 
