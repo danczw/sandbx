@@ -1,0 +1,47 @@
+[package]
+name = "sandbx-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Opt-in suite that spawns real processes and asserts the kernel actually blocks
+# escapes. Excluded from the default `cargo test` run because it needs a Linux
+# kernel with Landlock ABI 5 (6.10+) available.
+sandbox-integration = []
+
+[dependencies]
+landlock = "0.4.7"
+libc = "0.2.189"
+nix = { version = "0.31.3", default-features = false, features = ["sched", "fs"] }
+seccompiler = "0.5.0"
+tracing = "0.1.44"
+
+# `unsafe_code` is forbidden here as everywhere else. The re-exec helper applies
+# restrictions in a fresh single-threaded process rather than in a pre_exec
+# closure, so every call it needs (`CommandExt::exec`, `restrict_self`) is a safe
+# function and no exemption is warranted.
+#
+# The crate does NOT inherit `[workspace.lints]`, because it must opt out of the
+# workspace-wide `disallowed_methods` ban on spawning subprocesses — this is the
+# one crate allowed to do that, and it does so behind its own API.
+[lints.rust]
+unsafe_code = "forbid"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tracing-subscriber = "0.3.23"
+
+# Test-only probe for the `Truncate` access right. `required-features` keeps it
+# out of normal builds; it is not part of the shipped surface.
+[[bin]]
+name = "sandbx-truncate-probe"
+path = "tests/support/truncate_probe.rs"
+required-features = ["sandbox-integration"]
+
+[[bin]]
+name = "sandbx-unix-probe"
+path = "tests/support/unix_probe.rs"
+required-features = ["sandbox-integration"]
