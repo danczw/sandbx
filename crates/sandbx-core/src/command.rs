@@ -37,6 +37,14 @@ pub struct SandboxedCommand {
 /// waiting costs nothing measurable.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+/// How long the pipe readers get once the command itself is gone.
+///
+/// Anything still holding a write-end by then escaped the process group kill,
+/// so waiting on it is waiting on a process that has already shown it does not
+/// cooperate. Long enough that output in flight is not lost, short enough that
+/// no command can use it to stall its caller.
+const DRAIN_GRACE: Duration = Duration::from_millis(200);
+
 impl SandboxedCommand {
     /// Prepare `program` to run under `policy`.
     pub fn new(program: impl Into<String>, policy: SandboxPolicy) -> Self {
@@ -159,10 +167,7 @@ fn run_with_deadline(
         source,
     };
 
-    // Its own process group, so the kill below reaches descendants too. Without
-    // this, a shell's backgrounded child survives, keeps the inherited pipe
-    // write-ends open, and the reader threads never see EOF — which would hang
-    // exactly the way this function exists to prevent.
+    // Its own process group, so the kill below reaches descendants too.
     #[allow(clippy::disallowed_methods)]
     let mut child = std::process::Command::new(helper)
         .args(argv)
@@ -173,14 +178,19 @@ fn run_with_deadline(
         .spawn()
         .map_err(spawn_failed)?;
 
+    // Captured now, while the child is definitely unreaped. `try_wait` reaps it
+    // on success, after which `child.id()` names a pid that may already have
+    // been recycled — a stale value to aim a signal with.
+    let group = child.id();
+
     // Both pipes must be drained concurrently. A single thread reading stdout to
     // EOF deadlocks as soon as the command fills the stderr buffer, and vice
     // versa.
-    let out_thread = drain(child.stdout.take());
-    let err_thread = drain(child.stderr.take());
+    let out = drain(child.stdout.take());
+    let err = drain(child.stderr.take());
 
     let deadline = Instant::now() + limit;
-    let status = loop {
+    let finished = loop {
         match child.try_wait().map_err(spawn_failed)? {
             Some(status) => break Some(status),
             None if Instant::now() >= deadline => break None,
@@ -188,55 +198,119 @@ fn run_with_deadline(
         }
     };
 
-    let Some(status) = status else {
-        kill_group(&child);
-        // Reap the child so it does not linger as a zombie. The group is dead,
-        // so both pipes are closed and the readers finish.
-        let _ = child.wait();
-        let _ = out_thread.join();
-        let _ = err_thread.join();
-        return Err(SandboxError::TimedOut { after: limit });
+    // On *both* paths, not just the timeout. A command is free to background
+    // work and exit well inside its deadline; whatever it left behind inherited
+    // the pipe write-ends, so without this the readers below never see EOF and
+    // the deadline — already satisfied — never rescues the call.
+    kill_group(group);
+
+    let status = match finished {
+        Some(status) => status,
+        None => {
+            // Reap the killed child rather than leaving a zombie.
+            let _ = child.wait();
+            settle(&out.0, &err.0);
+            return Err(SandboxError::TimedOut { after: limit });
+        }
     };
+
+    settle(&out.0, &err.0);
 
     Ok(std::process::Output {
         status,
-        stdout: out_thread.join().unwrap_or_default(),
-        stderr: err_thread.join().unwrap_or_default(),
+        stdout: take(&out.1),
+        stderr: take(&err.1),
     })
 }
 
-/// Read one pipe to EOF on its own thread.
+/// Give the pipe readers a bounded chance to finish, then stop waiting.
+///
+/// A process group is advisory: one `setsid` call leaves it, so `kill_group`
+/// cannot promise the pipes are closed. Waiting on them unconditionally would
+/// hand any command an easy way to block its caller forever — which is the
+/// failure this whole function exists to prevent. Bounding the wait makes the
+/// guarantee hold no matter what the command does; the cost is that output
+/// still in flight past the grace period is dropped.
+#[cfg(target_os = "linux")]
+fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<()>) {
+    let until = Instant::now() + DRAIN_GRACE;
+    while Instant::now() < until && !(readers.is_finished() && more.is_finished()) {
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// Take what a reader has collected so far.
+#[cfg(target_os = "linux")]
+fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
+    // A panicking reader poisons the lock but leaves the bytes it already read
+    // intact, and partial output beats none.
+    buffer
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+/// Read one pipe on its own thread, into a buffer the caller can take early.
 ///
 /// Separate threads rather than one: reading stdout to EOF from the same thread
 /// that must also read stderr deadlocks the moment the command fills whichever
 /// buffer is not being drained.
+///
+/// Chunked into a shared buffer rather than `read_to_end`, so that abandoning a
+/// reader still yields whatever it managed to read. `read_to_end` holds the
+/// bytes inside the thread until it returns, which is exactly when it cannot.
 #[cfg(target_os = "linux")]
-fn drain<R>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>>
+#[allow(clippy::type_complexity)]
+fn drain<R>(
+    pipe: Option<R>,
+) -> (
+    std::thread::JoinHandle<()>,
+    std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+)
 where
     R: std::io::Read + Send + 'static,
 {
-    std::thread::spawn(move || {
-        let mut buffer = Vec::new();
-        if let Some(mut pipe) = pipe {
-            let _ = std::io::Read::read_to_end(&mut pipe, &mut buffer);
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&buffer);
+
+    let handle = std::thread::spawn(move || {
+        let Some(mut pipe) = pipe else { return };
+        let mut chunk = [0u8; 8192];
+        loop {
+            match std::io::Read::read(&mut pipe, &mut chunk) {
+                Ok(0) | Err(_) => return,
+                Ok(read) => sink
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .extend_from_slice(&chunk[..read]),
+            }
         }
-        buffer
-    })
+    });
+
+    (handle, buffer)
 }
 
-/// SIGKILL the child's whole process group.
+/// SIGKILL a process group.
 ///
 /// `SIGKILL` rather than a `SIGTERM` grace period: a command that has already
 /// blown its deadline has not earned more time, and a grace period is a second
 /// knob plus a second delay.
+///
+/// Best-effort by nature. The group is advisory — a descendant that calls
+/// `setsid` is out of reach — so this reclaims well-behaved processes rather
+/// than guaranteeing none survive. A PID namespace would make it unescapable.
 #[cfg(target_os = "linux")]
-fn kill_group(child: &std::process::Child) {
+fn kill_group(group: u32) {
     use nix::sys::signal::{Signal, killpg};
     use nix::unistd::Pid;
 
     // `process_group(0)` made the child its own group leader, so its pid is the
-    // group id. A failure here means it already exited, which is fine.
-    if let Ok(pid) = i32::try_from(child.id()) {
+    // group id. The kernel keeps that number reserved while the group still has
+    // members, so it cannot name someone else's group here. An error means the
+    // group is already empty, which is the outcome being asked for.
+    if let Ok(pid) = i32::try_from(group) {
         let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
     }
 }

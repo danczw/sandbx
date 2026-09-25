@@ -62,10 +62,15 @@ Three properties matter as much as the list:
   what it can reach; it does not decide whether it should run.
 - **Only wall-clock time is bounded.** A tool's command is killed if it outruns
   its limit (90 seconds by default), and `sandbox-run` takes an opt-in
-  `--timeout`. Nothing else is capped: no CPU bound, no memory bound, and no
-  limit on how many processes a command spawns. The sandbox governs *what* a
-  command can reach, and now *how long* it may run, but not *how much* it can
-  consume.
+  `--timeout`. The call always returns by then. Nothing else is capped: no CPU
+  bound, no memory bound, and no limit on how many processes a command spawns.
+  The sandbox governs *what* a command can reach, and now *how long* it may run,
+  but not *how much* it can consume.
+- **The kill is not guaranteed to reap every descendant.** It targets the
+  command's process group, and a process group is advisory: one `setsid` call
+  leaves it ([#28](https://github.com/danczw/sandbx/issues/28)). A survivor is
+  still fully confined — Landlock, seccomp and the network namespace are
+  irreversible and inherited — so it is unreaped, not unrestricted.
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   there is no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).
