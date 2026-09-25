@@ -5,7 +5,7 @@ use crate::SandboxPolicy;
 /// A dedicated target lets one subscriber route these to durable storage while
 /// ordinary diagnostics go elsewhere, without either emitter knowing about
 /// files. Filter on this to separate the two streams.
-pub const AUDIT_TARGET: &str = "echo::audit";
+pub const AUDIT_TARGET: &str = "sandbx::audit";
 
 /// Something the sandbox did, recorded so it can be reviewed afterwards.
 ///
