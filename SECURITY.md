@@ -89,7 +89,12 @@ Three properties matter as much as the list:
 Open, and public on purpose — a sandbox that hides its gaps is worse than one
 that names them.
 
-None currently known that let a command reach outside the boundary.
+No demonstrated escape through the controls described above. One open question
+about whether those controls are complete:
+
+| issue | severity | what |
+|-------|----------|------|
+| [#30](https://github.com/danczw/sandbx/issues/30) | high, unconfirmed | seccomp filters *syscalls*, and `io_uring` performs equivalent work from a submission queue without issuing them. `io_uring_setup` is not denied, so the syscall half of the boundary — including the `AF_UNIX` rule above — may be reachable around. Not demonstrated, not ruled out. Landlock is unaffected: it hooks the LSM layer, which io_uring still traverses. |
 
 Track them with the [`security` label](https://github.com/danczw/sandbx/labels/security).
 
