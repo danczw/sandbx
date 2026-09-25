@@ -67,6 +67,18 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
+    /// A sandboxed process outran its time limit and was killed.
+    ///
+    /// Distinct from [`SpawnFailed`]: "it never finished" and "it never started"
+    /// are different facts, and collapsing them would make a wedged command look
+    /// like a broken helper.
+    ///
+    /// [`SpawnFailed`]: Self::SpawnFailed
+    TimedOut {
+        /// The limit it exceeded.
+        after: std::time::Duration,
+    },
+
     /// This kernel or platform cannot enforce a sandbox.
     ///
     /// Returned instead of running unsandboxed, so an unsupported environment
@@ -93,6 +105,9 @@ impl std::fmt::Display for SandboxError {
                     "could not resolve path {}: {source}",
                     requested.display()
                 )
+            }
+            Self::TimedOut { after } => {
+                write!(f, "command exceeded its {after:?} limit and was killed")
             }
             Self::Unsupported { detail } => {
                 write!(f, "sandboxing is not available here: {detail}")
@@ -124,6 +139,7 @@ impl std::error::Error for SandboxError {
             | Self::BadHelperArgs { .. }
             | Self::Landlock { .. }
             | Self::NetworkDenialFailed { .. }
+            | Self::TimedOut { .. }
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. } | Self::SpawnFailed { source, .. } => Some(source),
         }
