@@ -1,13 +1,13 @@
 # Security Policy
 
-echo's entire purpose is to confine what an AI agent can do. A weakness in that
+sandbx's entire purpose is to confine what an AI agent can do. A weakness in that
 boundary is not a bug in a feature — it is a bug in the product. This document
 says what the boundary currently claims, what is known to be wrong with it, and
 how to tell us about something we missed.
 
 ## Reporting a vulnerability
 
-**Use [private vulnerability reporting](https://github.com/danczw/echo/security/advisories/new).**
+**Use [private vulnerability reporting](https://github.com/danczw/sandbx/security/advisories/new).**
 Please do not open a public issue for a sandbox escape.
 
 You should get a first response within a week. This is a personal project with
@@ -28,7 +28,7 @@ new.
 Pre-1.0, there are no backports. Fixes land on `main` and ship in the next
 tagged pre-release. If you are running an alpha, run the newest one.
 
-## What echo claims to enforce
+## What sandbx claims to enforce
 
 On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 
@@ -41,25 +41,25 @@ On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 Two properties matter as much as the list:
 
 - **It fails closed.** A kernel that cannot enforce the baseline is refused. A
-  ruleset the kernel only partly applies is treated as failure. echo does not
+  ruleset the kernel only partly applies is treated as failure. sandbx does not
   degrade to unrestricted execution and then carry on.
 - **It is default-deny.** A policy grants nothing until something is added.
 
-## What echo does *not* claim
+## What sandbx does *not* claim
 
 - **Non-Linux is unsupported**, and refused rather than silently unsandboxed.
 - **The harness process itself is not sandboxed** — only the commands it runs.
-  A vulnerability in echo's own code is not contained by echo.
+  A vulnerability in sandbx's own code is not contained by sandbx.
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges, not a tool's.
 - **The boundary is enforced by convention plus tooling**, not by a capability
-  system: `unsafe` is forbidden outside `echo-sandbox` and spawning a process
+  system: `unsafe` is forbidden outside `sandbx-core` and spawning a process
   elsewhere is a clippy error, but a determined contributor can add raw syscalls.
-- **Approval is not enforcement.** A tool call you approve runs. echo bounds
+- **Approval is not enforcement.** A tool call you approve runs. sandbx bounds
   what it can reach; it does not decide whether it should run.
 - **Nothing is resource-limited.** There is no timeout, no CPU or memory bound,
   and no limit on processes spawned. A command that never exits blocks the
-  harness until you kill it ([#22](https://github.com/danczw/echo/issues/22)).
+  harness until you kill it ([#22](https://github.com/danczw/sandbx/issues/22)).
   The sandbox governs *what* a command can reach, not *how much* it can consume.
 
 ## Known weaknesses
@@ -69,10 +69,10 @@ that names them.
 
 | issue | severity | what |
 |-------|----------|------|
-| [#8](https://github.com/danczw/echo/issues/8) | high | With `--allow-network`, a command can `connect()` to a pathname AF_UNIX socket and reach a host daemon outside the cage. A network namespace isolates only *abstract* unix sockets. Reaching `$SSH_AUTH_SOCK` or the session bus is a full escape. Landlock's `ResolveUnix` would fix it but needs ABI V9 (Linux 6.15), which is not yet available in practice. |
-| [#19](https://github.com/danczw/echo/issues/19) | low | `allow_read(p)` also grants execute beneath `p`, which the name does not say. Contained, but wider than documented. |
+| [#8](https://github.com/danczw/sandbx/issues/8) | high | With `--allow-network`, a command can `connect()` to a pathname AF_UNIX socket and reach a host daemon outside the cage. A network namespace isolates only *abstract* unix sockets. Reaching `$SSH_AUTH_SOCK` or the session bus is a full escape. Landlock's `ResolveUnix` would fix it but needs ABI V9 (Linux 6.15), which is not yet available in practice. |
+| [#19](https://github.com/danczw/sandbx/issues/19) | low | `allow_read(p)` also grants execute beneath `p`, which the name does not say. Contained, but wider than documented. |
 
-Track them with the [`security` label](https://github.com/danczw/echo/labels/security).
+Track them with the [`security` label](https://github.com/danczw/sandbx/labels/security).
 
 **If you rely on `--allow-network` today, assume the filesystem boundary does
 not hold** for anything reachable through a unix socket.

@@ -1,5 +1,5 @@
 # Subprocess spawning is the primary sandbox-escape vector: a tool that shells
-# out directly bypasses every Landlock/seccomp restriction echo applies.
+# out directly bypasses every Landlock/seccomp restriction sandbx applies.
 #
 # These bans are workspace-wide. `sandbx-core` is the only crate that may call
 # them, and it does so behind `SandboxedCommand` with an explicit

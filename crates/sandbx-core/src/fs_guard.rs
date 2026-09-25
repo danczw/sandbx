@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{SandboxError, SandboxPolicy};
 
-/// Checks paths against a [`SandboxPolicy`] before echo's own code touches them.
+/// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them.
 ///
 /// This is the in-process complement to the kernel enforcement applied to child
 /// processes: tools implemented in Rust (`read`, `write`, `edit`) never spawn

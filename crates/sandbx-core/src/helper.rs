@@ -2,9 +2,9 @@ use crate::{HelperArgs, SandboxError};
 
 /// Apply a policy to *this* process, then become the requested command.
 ///
-/// Intended to run in a freshly executed helper process, never inside echo:
+/// Intended to run in a freshly executed helper process, never inside sandbx:
 /// Landlock restrictions are irreversible and inherited, so applying them here
-/// would cage echo itself.
+/// would cage sandbx itself.
 ///
 /// Because this process is fresh, it is single-threaded, and the restriction
 /// code runs in an ordinary context — no `fork`/`exec` window, so no
@@ -132,7 +132,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
 /// Block syscalls a coding tool never legitimately needs.
 ///
-/// A denylist, not an allowlist. An allowlist is the stronger shape, but echo
+/// A denylist, not an allowlist. An allowlist is the stronger shape, but sandbx
 /// runs arbitrary commands — shells, compilers, package managers — whose syscall
 /// use is unbounded, so enumerating it would break real tools constantly. This
 /// mirrors what container runtimes settle on for the same reason.

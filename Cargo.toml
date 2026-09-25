@@ -8,7 +8,7 @@ members = ["crates/*"]
 version = "0.1.0-alpha.2"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/danczw/echo"
+repository = "https://github.com/danczw/sandbx"
 # Distribution is GitHub Releases only (see context/PLAN.md). Saying so here
 # makes an accidental `cargo publish` fail, and lets internal path dependencies
 # omit a version without cargo-deny reading it as a registry wildcard.

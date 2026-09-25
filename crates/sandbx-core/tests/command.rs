@@ -3,7 +3,7 @@
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 
 /// Without an explicit helper, the command re-runs this executable with the
-/// dispatch flag — so a shipped echo needs no second binary installed.
+/// dispatch flag — so a shipped sandbx needs no second binary installed.
 #[test]
 fn defaults_to_re_executing_the_current_binary() {
     let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())

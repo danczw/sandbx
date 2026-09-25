@@ -3,12 +3,12 @@
 //! Usage: `sandbx-helper [--ro PATH]... [--rw PATH]... [--allow-network] -- PROGRAM [ARGS]...`
 //!
 //! Exists as a standalone binary so the enforcement path can be tested
-//! end-to-end. In a shipped echo, the `echo` binary re-execs itself into the
+//! end-to-end. In a shipped sandbx, the `sandbx` binary re-execs itself into the
 //! same [`sandbx_core::exec_sandboxed`] entry point rather than requiring this
 //! to be installed alongside.
 
 fn main() -> std::process::ExitCode {
-    // Goes through the same dispatch the shipped `echo` binary uses, so this
+    // Goes through the same dispatch the shipped `sandbx` binary uses, so this
     // binary and production exercise one code path rather than two.
     //
     // In helper mode this never returns — the process image is replaced. Any

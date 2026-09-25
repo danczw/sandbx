@@ -11,7 +11,7 @@ pub const HELPER_FLAG: &str = "--sandbx-core-exec";
 
 /// A command that runs under a [`SandboxPolicy`].
 ///
-/// The only sanctioned way for echo to execute anything. Rather than restricting
+/// The only sanctioned way for sandbx to execute anything. Rather than restricting
 /// a child directly — which would require unsafe work in the fragile window
 /// between `fork` and `exec` — this spawns a helper that restricts *itself* and
 /// then becomes the command.

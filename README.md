@@ -1,12 +1,12 @@
-# echo
+# sandbx
 
-[![CI](https://github.com/danczw/echo/actions/workflows/ci.yml/badge.svg)](https://github.com/danczw/echo/actions/workflows/ci.yml)
+[![CI](https://github.com/danczw/sandbx/actions/workflows/ci.yml/badge.svg)](https://github.com/danczw/sandbx/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
 
 A security-first AI coding agent harness, written in Rust.
 
-Most agent harnesses delegate isolation to an external container. echo treats
+Most agent harnesses delegate isolation to an external container. sandbx treats
 sandboxed tool execution as part of the harness itself: every command an agent
 runs goes through a Landlock + seccomp boundary, and the sandbox fails closed
 rather than degrading to unrestricted execution.
@@ -41,13 +41,13 @@ nothing readable, not even `/bin/true` reaches `main`.
 ## Install
 
 Prebuilt Linux binaries are attached to each
-[release](https://github.com/danczw/echo/releases); each archive ships with a
+[release](https://github.com/danczw/sandbx/releases); each archive ships with a
 `.sha256` beside it. They are statically linked (musl), so there is no minimum
 glibc and no runtime dependency beyond a Linux 6.10+ kernel. Or build from
 source:
 
 ```sh
-cargo install --git https://github.com/danczw/echo echo-cli
+cargo install --git https://github.com/danczw/sandbx sandbx-cli
 ```
 
 ## Development
@@ -59,8 +59,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 git config core.hooksPath .githooks                    # fmt + clippy on commit
 ```
 
-`unsafe` is forbidden in every crate, including `echo-sandbox`, and spawning a
-subprocess outside `echo-sandbox` is a clippy error — the sandbox boundary is
+`unsafe` is forbidden in every crate, including `sandbx-core`, and spawning a
+subprocess outside `sandbx-core` is a clippy error — the sandbox boundary is
 enforced by the build, not by convention alone.
 
 ## License
