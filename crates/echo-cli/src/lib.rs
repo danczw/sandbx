@@ -1,4 +1,4 @@
-//! The `echo` command line.
+//! The `sandbx` command line.
 //!
 //! Parsing and policy derivation live here rather than in `main.rs` so they can
 //! be tested without spawning anything: what a flag grants is a security
@@ -10,10 +10,10 @@ use std::path::PathBuf;
 
 use echo_sandbox::{SandboxError, SandboxPolicy, SandboxedCommand};
 
-/// The `echo` binary.
+/// The `sandbx` binary.
 #[derive(Debug, clap::Parser)]
 #[command(
-    name = "echo",
+    name = "sandbx",
     version,
     about = "A security-first AI coding agent harness"
 )]
@@ -23,7 +23,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// Subcommands of `echo`.
+/// Subcommands of `sandbx`.
 ///
 /// Only the sandbox is implemented; the agent that will use it is not built
 /// yet. Shipping this one alone makes the enforcement inspectable by hand
@@ -41,12 +41,12 @@ pub enum Command {
     /// Put the command after `--`:
     ///
     /// ```text
-    /// echo sandbox-run --allow-read /srv -- cat /srv/notes.txt
+    /// sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt
     /// ```
     SandboxRun(SandboxRun),
 }
 
-/// `echo sandbox-run [--allow-…] -- <command> [args…]`
+/// `sandbx sandbox-run [--allow-…] -- <command> [args…]`
 #[derive(Debug, clap::Args)]
 pub struct SandboxRun {
     /// Grant read access to a path. Repeatable.
@@ -63,7 +63,7 @@ pub struct SandboxRun {
 
     /// The command to run, and its arguments.
     // `last` is what keeps the separator meaningful: everything past `--` is
-    // the command's, including flags echo itself defines. A doc comment here
+    // the command's, including flags sandbx itself defines. A doc comment here
     // would reach `--help`, so this stays an ordinary comment.
     #[arg(last = true, required = true, value_name = "COMMAND")]
     command: Vec<String>,

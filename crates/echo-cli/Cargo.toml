@@ -7,13 +7,13 @@ repository.workspace = true
 publish.workspace = true
 
 # The crate is `echo-cli` to keep the workspace naming consistent, but the
-# shipped command users type is `echo`.
+# shipped command users type is `sandbx`.
 [lib]
 name = "echo_cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "echo"
+name = "sandbx"
 path = "src/main.rs"
 
 [dependencies]
