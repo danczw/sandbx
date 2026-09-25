@@ -36,6 +36,7 @@ On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 |---------|-----------|--------|
 | filesystem | Landlock, ABI 5 minimum | reads, writes, and execution by path, granted separately |
 | network | empty network namespace | IP egress, abstract unix sockets |
+| unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | syscalls | seccomp-bpf | a denylist of dangerous calls |
 
 Three properties matter as much as the list:
@@ -74,20 +75,28 @@ Three properties matter as much as the list:
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   there is no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).
+- **Unix sockets are all-or-nothing.** `--allow-unix-sockets` grants *every*
+  pathname socket the filesystem policy can reach — an ssh-agent, a docker
+  socket, the session bus — not a chosen one. seccomp compares register values
+  and the path passed to `connect` is behind a pointer it cannot follow;
+  Landlock gained a path-scoped right only in ABI V9 (Linux 6.15), which is not
+  available in practice yet. Until then, what the command can *read* is what
+  bounds which sockets exist to be dialled, so keep the filesystem policy narrow
+  when granting this.
 
 ## Known weaknesses
 
 Open, and public on purpose — a sandbox that hides its gaps is worse than one
 that names them.
 
+No demonstrated escape through the controls described above. One open question
+about whether those controls are complete:
+
 | issue | severity | what |
 |-------|----------|------|
-| [#8](https://github.com/danczw/sandbx/issues/8) | high | With `--allow-network`, a command can `connect()` to a pathname AF_UNIX socket and reach a host daemon outside the cage. A network namespace isolates only *abstract* unix sockets. Reaching `$SSH_AUTH_SOCK` or the session bus is a full escape. Landlock's `ResolveUnix` would fix it but needs ABI V9 (Linux 6.15), which is not yet available in practice. |
+| [#30](https://github.com/danczw/sandbx/issues/30) | high, unconfirmed | seccomp filters *syscalls*, and `io_uring` performs equivalent work from a submission queue without issuing them. `io_uring_setup` is not denied, so the syscall half of the boundary — including the `AF_UNIX` rule above — may be reachable around. Not demonstrated, not ruled out. Landlock is unaffected: it hooks the LSM layer, which io_uring still traverses. |
 
 Track them with the [`security` label](https://github.com/danczw/sandbx/labels/security).
-
-**If you rely on `--allow-network` today, assume the filesystem boundary does
-not hold** for anything reachable through a unix socket.
 
 ## Not vulnerabilities
 

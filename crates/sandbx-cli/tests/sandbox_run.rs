@@ -141,3 +141,28 @@ fn a_timeout_after_the_separator_is_not_ours() {
 
     assert_eq!(args.timeout(), None, "command argument set our own limit");
 }
+
+/// #8: the flags are separate axes on the command line too.
+#[test]
+fn network_does_not_imply_unix_sockets() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
+
+    assert!(policy.allows_network());
+    assert!(!policy.allows_unix_sockets());
+}
+
+#[test]
+fn unix_sockets_are_opt_in() {
+    let granted = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-unix-sockets",
+        "--",
+        "true",
+    ])
+    .policy();
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+
+    assert!(granted.allows_unix_sockets());
+    assert!(!bare.allows_unix_sockets());
+}

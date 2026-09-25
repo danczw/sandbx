@@ -27,6 +27,10 @@ fn default_policy_denies_everything() {
         !policy.allows_network(),
         "default policy must not grant network access"
     );
+    assert!(
+        !policy.allows_unix_sockets(),
+        "default policy must not grant unix-domain sockets"
+    );
 }
 
 /// A command cannot start without its interpreter, loader and shared
@@ -114,4 +118,26 @@ fn system_executables_keeps_what_was_already_granted() {
         policy.writable_paths(),
         [std::path::PathBuf::from("/srv/out")]
     );
+}
+
+/// The separation #8 is about: reaching a host daemon over a socket in the
+/// filesystem is not IP egress, so one grant must not imply the other.
+#[test]
+fn granting_network_does_not_grant_unix_sockets() {
+    let policy = SandboxPolicy::default().allow_network();
+
+    assert!(policy.allows_network());
+    assert!(
+        !policy.allows_unix_sockets(),
+        "network granted unix sockets along with it"
+    );
+}
+
+/// And the converse, so the two axes are genuinely independent.
+#[test]
+fn granting_unix_sockets_does_not_grant_network() {
+    let policy = SandboxPolicy::default().allow_unix_sockets();
+
+    assert!(policy.allows_unix_sockets());
+    assert!(!policy.allows_network(), "unix sockets granted network too");
 }
