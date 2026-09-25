@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::{HelperArgs, SandboxError, SandboxPolicy};
 
@@ -26,7 +27,15 @@ pub struct SandboxedCommand {
     args: Vec<String>,
     policy: SandboxPolicy,
     helper: Option<PathBuf>,
+    timeout: Option<Duration>,
 }
+
+/// How often the timed path checks whether the child has exited.
+///
+/// `std::process` offers no timed wait, so the deadline is enforced by polling.
+/// Short enough that a killed command is reclaimed promptly, long enough that
+/// waiting costs nothing measurable.
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 impl SandboxedCommand {
     /// Prepare `program` to run under `policy`.
@@ -36,6 +45,7 @@ impl SandboxedCommand {
             args: Vec::new(),
             policy,
             helper: None,
+            timeout: None,
         }
     }
 
@@ -67,6 +77,17 @@ impl SandboxedCommand {
         self
     }
 
+    /// Kill the command if it has not finished within `limit`.
+    ///
+    /// Unset by default, which keeps the plain blocking behaviour. Callers that
+    /// cannot afford to wait forever — anything driving an agent — should set
+    /// one; an interactive caller at a terminal already has Ctrl-C.
+    #[must_use]
+    pub fn timeout(mut self, limit: Duration) -> Self {
+        self.timeout = Some(limit);
+        self
+    }
+
     /// Build the exact command line that will be run.
     ///
     /// Exposed so tests can assert the policy survives into argv without having
@@ -87,22 +108,136 @@ impl SandboxedCommand {
     }
 
     /// Run the command to completion and collect its output.
+    ///
+    /// Blocks until the command exits, or — when [`timeout`] is set — until the
+    /// limit expires, at which point the command is killed and
+    /// [`SandboxError::TimedOut`] is returned.
+    ///
+    /// [`timeout`]: Self::timeout
     pub fn output(&self) -> Result<std::process::Output, SandboxError> {
         let (helper, argv) = self.command_line()?;
 
         crate::AuditEvent::spawned(&self.program, &self.policy).emit();
 
-        // The workspace bans `Command::new` so nothing can execute around the
-        // sandbox. This spawns the helper, which restricts itself before
-        // becoming the command — the sanctioned path, not a bypass of it.
-        #[allow(clippy::disallowed_methods)]
-        std::process::Command::new(&helper)
-            .args(&argv)
-            .output()
-            .map_err(|source| SandboxError::SpawnFailed {
-                detail: "could not start the sandbox helper",
-                source,
-            })
+        match self.timeout {
+            // Untouched from before the timeout existed: `output()` handles
+            // reading both pipes concurrently, which is the part that is easy to
+            // get wrong. Callers who set no limit get exactly what they got.
+            None => {
+                // The workspace bans `Command::new` so nothing can execute around
+                // the sandbox. This spawns the helper, which restricts itself
+                // before becoming the command — the sanctioned path, not a bypass.
+                #[allow(clippy::disallowed_methods)]
+                std::process::Command::new(&helper)
+                    .args(&argv)
+                    .output()
+                    .map_err(|source| SandboxError::SpawnFailed {
+                        detail: "could not start the sandbox helper",
+                        source,
+                    })
+            }
+            Some(limit) => run_with_deadline(&helper, &argv, limit),
+        }
+    }
+}
+
+/// Spawn the helper and wait for it, giving up after `limit`.
+///
+/// `std::process` has no timed wait, so this cannot use `output()`: it spawns,
+/// drains both pipes on their own threads, and polls for exit until the deadline.
+#[cfg(target_os = "linux")]
+fn run_with_deadline(
+    helper: &Path,
+    argv: &[String],
+    limit: Duration,
+) -> Result<std::process::Output, SandboxError> {
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+
+    let spawn_failed = |source| SandboxError::SpawnFailed {
+        detail: "could not start the sandbox helper",
+        source,
+    };
+
+    // Its own process group, so the kill below reaches descendants too. Without
+    // this, a shell's backgrounded child survives, keeps the inherited pipe
+    // write-ends open, and the reader threads never see EOF — which would hang
+    // exactly the way this function exists to prevent.
+    #[allow(clippy::disallowed_methods)]
+    let mut child = std::process::Command::new(helper)
+        .args(argv)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .spawn()
+        .map_err(spawn_failed)?;
+
+    // Both pipes must be drained concurrently. A single thread reading stdout to
+    // EOF deadlocks as soon as the command fills the stderr buffer, and vice
+    // versa.
+    let out_thread = drain(child.stdout.take());
+    let err_thread = drain(child.stderr.take());
+
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        match child.try_wait().map_err(spawn_failed)? {
+            Some(status) => break Some(status),
+            None if Instant::now() >= deadline => break None,
+            None => std::thread::sleep(POLL_INTERVAL),
+        }
+    };
+
+    let Some(status) = status else {
+        kill_group(&child);
+        // Reap the child so it does not linger as a zombie. The group is dead,
+        // so both pipes are closed and the readers finish.
+        let _ = child.wait();
+        let _ = out_thread.join();
+        let _ = err_thread.join();
+        return Err(SandboxError::TimedOut { after: limit });
+    };
+
+    Ok(std::process::Output {
+        status,
+        stdout: out_thread.join().unwrap_or_default(),
+        stderr: err_thread.join().unwrap_or_default(),
+    })
+}
+
+/// Read one pipe to EOF on its own thread.
+///
+/// Separate threads rather than one: reading stdout to EOF from the same thread
+/// that must also read stderr deadlocks the moment the command fills whichever
+/// buffer is not being drained.
+#[cfg(target_os = "linux")]
+fn drain<R>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>>
+where
+    R: std::io::Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut buffer = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = std::io::Read::read_to_end(&mut pipe, &mut buffer);
+        }
+        buffer
+    })
+}
+
+/// SIGKILL the child's whole process group.
+///
+/// `SIGKILL` rather than a `SIGTERM` grace period: a command that has already
+/// blown its deadline has not earned more time, and a grace period is a second
+/// knob plus a second delay.
+#[cfg(target_os = "linux")]
+fn kill_group(child: &std::process::Child) {
+    use nix::sys::signal::{Signal, killpg};
+    use nix::unistd::Pid;
+
+    // `process_group(0)` made the child its own group leader, so its pid is the
+    // group id. A failure here means it already exited, which is fine.
+    if let Ok(pid) = i32::try_from(child.id()) {
+        let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
     }
 }
 
