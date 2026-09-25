@@ -114,3 +114,30 @@ fn a_missing_command_is_rejected() {
     assert!(Cli::try_parse_from(["sandbx", "sandbox-run"]).is_err());
     assert!(Cli::try_parse_from(["sandbx", "sandbox-run", "--allow-network"]).is_err());
 }
+
+/// A limit has to survive parsing as the number of seconds given, not some
+/// other unit — a timeout silently read as milliseconds would kill every real
+/// command.
+#[test]
+fn timeout_parses_as_seconds() {
+    let args = sandbox_run(&["sandbx", "sandbox-run", "--timeout", "5", "--", "true"]);
+
+    assert_eq!(args.timeout(), Some(std::time::Duration::from_secs(5)));
+}
+
+/// Absent flag means no limit, matching a plain shell. A default here would
+/// start killing long interactive runs nobody asked to bound.
+#[test]
+fn without_the_flag_there_is_no_timeout() {
+    let args = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]);
+
+    assert_eq!(args.timeout(), None);
+}
+
+/// Past the separator it belongs to the command, like every other flag.
+#[test]
+fn a_timeout_after_the_separator_is_not_ours() {
+    let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--timeout", "5"]);
+
+    assert_eq!(args.timeout(), None, "command argument set our own limit");
+}

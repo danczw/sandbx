@@ -61,6 +61,13 @@ pub struct SandboxRun {
     #[arg(long = "allow-network")]
     allow_network: bool,
 
+    /// Kill the command if it runs longer than this many seconds.
+    ///
+    /// Unset means no limit, matching a plain shell. The agent sets one of its
+    /// own; at a terminal you already have Ctrl-C.
+    #[arg(long = "timeout", value_name = "SECONDS")]
+    timeout: Option<u64>,
+
     /// The command to run, and its arguments.
     // `last` is what keeps the separator meaningful: everything past `--` is
     // the command's, including flags sandbx itself defines. A doc comment here
@@ -108,11 +115,19 @@ impl SandboxRun {
         &self.command[1..]
     }
 
+    /// The time limit these flags describe, if any.
+    pub fn timeout(&self) -> Option<std::time::Duration> {
+        self.timeout.map(std::time::Duration::from_secs)
+    }
+
     /// Run it, forward its output, and report the code to exit with.
     pub fn execute(&self) -> Result<i32, SandboxError> {
-        let output = SandboxedCommand::new(self.program(), self.policy())
-            .args(self.arguments().to_vec())
-            .output()?;
+        let mut command =
+            SandboxedCommand::new(self.program(), self.policy()).args(self.arguments().to_vec());
+        if let Some(limit) = self.timeout() {
+            command = command.timeout(limit);
+        }
+        let output = command.output()?;
 
         // Forwarded verbatim. Interleaving is lost because the command is run to
         // completion rather than streamed — acceptable for a debugging tool, and
