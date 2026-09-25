@@ -15,7 +15,7 @@ repository = "https://github.com/danczw/echo"
 publish = false
 
 # Shared lint config — member crates opt in with `[lints] workspace = true`.
-# `echo-sandbox` deliberately does NOT opt in: it is the only crate allowed to
+# `sandbx-core` deliberately does NOT opt in: it is the only crate allowed to
 # contain `unsafe` code or spawn subprocesses directly.
 [workspace.lints.rust]
 unsafe_code = "forbid"

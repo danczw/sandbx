@@ -1,12 +1,12 @@
 # Subprocess spawning is the primary sandbox-escape vector: a tool that shells
 # out directly bypasses every Landlock/seccomp restriction echo applies.
 #
-# These bans are workspace-wide. `echo-sandbox` is the only crate that may call
+# These bans are workspace-wide. `sandbx-core` is the only crate that may call
 # them, and it does so behind `SandboxedCommand` with an explicit
 # `#[allow(clippy::disallowed_methods)]` and a justification at the call site.
 #
 # Enforced on every commit via the pre-commit hook (`cargo clippy -- -D warnings`).
 disallowed-methods = [
-    { path = "std::process::Command::new", reason = "spawn via echo_sandbox::SandboxedCommand so Landlock/seccomp restrictions are applied" },
-    { path = "tokio::process::Command::new", reason = "spawn via echo_sandbox::SandboxedCommand so Landlock/seccomp restrictions are applied" },
+    { path = "std::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
+    { path = "tokio::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
 ]

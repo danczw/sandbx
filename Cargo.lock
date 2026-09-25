@@ -123,54 +123,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
-name = "echo-agent"
-version = "0.1.0-alpha.2"
-
-[[package]]
-name = "echo-cli"
-version = "0.1.0-alpha.2"
-dependencies = [
- "clap",
- "echo-sandbox",
-]
-
-[[package]]
-name = "echo-providers"
-version = "0.1.0-alpha.2"
-
-[[package]]
-name = "echo-sandbox"
-version = "0.1.0-alpha.2"
-dependencies = [
- "landlock",
- "libc",
- "nix",
- "seccompiler",
- "tempfile",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "echo-session"
-version = "0.1.0-alpha.2"
-
-[[package]]
-name = "echo-tools"
-version = "0.1.0-alpha.2"
-dependencies = [
- "echo-sandbox",
- "schemars",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "echo-tui"
-version = "0.1.0-alpha.2"
-
-[[package]]
 name = "enumflags2"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -371,6 +323,54 @@ dependencies = [
  "linux-raw-sys",
  "windows-sys",
 ]
+
+[[package]]
+name = "sandbx-agent"
+version = "0.1.0-alpha.2"
+
+[[package]]
+name = "sandbx-cli"
+version = "0.1.0-alpha.2"
+dependencies = [
+ "clap",
+ "sandbx-core",
+]
+
+[[package]]
+name = "sandbx-core"
+version = "0.1.0-alpha.2"
+dependencies = [
+ "landlock",
+ "libc",
+ "nix",
+ "seccompiler",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sandbx-providers"
+version = "0.1.0-alpha.2"
+
+[[package]]
+name = "sandbx-session"
+version = "0.1.0-alpha.2"
+
+[[package]]
+name = "sandbx-tools"
+version = "0.1.0-alpha.2"
+dependencies = [
+ "sandbx-core",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "sandbx-tui"
+version = "0.1.0-alpha.2"
 
 [[package]]
 name = "schemars"
