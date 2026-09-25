@@ -51,6 +51,10 @@ pub enum AuditEvent<'a> {
         executable: usize,
         /// Whether network access was granted.
         network: bool,
+        /// Whether unix-domain sockets were granted. Recorded separately
+        /// because it is a separate capability, and a trail that folded it into
+        /// `network` would understate the reach of the spawn.
+        unix_sockets: bool,
     },
 }
 
@@ -77,6 +81,7 @@ impl<'a> AuditEvent<'a> {
             writable: policy.writable_paths().len(),
             executable: policy.executable_paths().len(),
             network: policy.allows_network(),
+            unix_sockets: policy.allows_unix_sockets(),
         }
     }
 
@@ -106,6 +111,7 @@ impl<'a> AuditEvent<'a> {
                 writable,
                 executable,
                 network,
+                unix_sockets,
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "spawned",
@@ -114,6 +120,7 @@ impl<'a> AuditEvent<'a> {
                 writable,
                 executable,
                 network,
+                unix_sockets,
             ),
         }
     }

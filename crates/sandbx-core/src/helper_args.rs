@@ -8,6 +8,8 @@ const FLAG_RW: &str = "--rw";
 const FLAG_RX: &str = "--rx";
 /// Flag permitting network access.
 const FLAG_NET: &str = "--allow-network";
+/// Flag permitting unix-domain sockets.
+const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
 
@@ -47,6 +49,9 @@ impl HelperArgs {
         if policy.allows_network() {
             out.push(FLAG_NET.to_string());
         }
+        if policy.allows_unix_sockets() {
+            out.push(FLAG_UNIX.to_string());
+        }
 
         out.push(SEPARATOR.to_string());
         out.push(program.to_string());
@@ -74,6 +79,7 @@ impl HelperArgs {
             match arg.as_str() {
                 SEPARATOR => break rest.cloned().collect(),
                 FLAG_NET => policy = policy.allow_network(),
+                FLAG_UNIX => policy = policy.allow_unix_sockets(),
                 FLAG_RO | FLAG_RW | FLAG_RX => {
                     let path = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "path flag with no path after it",

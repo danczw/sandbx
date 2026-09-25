@@ -312,6 +312,80 @@ fn truncate_on_write_grant_is_permitted() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
 }
 
+/// Reaching a host daemon over a unix socket is not IP egress, so granting
+/// network must not grant it. This is #8: `--allow-network` used to lift the
+/// unix-socket denial too, which turned "let it talk to the internet" into "let
+/// it ask systemd to run something outside the cage".
+#[test]
+fn granting_network_does_not_grant_unix_sockets() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("host.sock");
+
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let accepting = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            use std::io::Write;
+            let _ = stream.write_all(b"HOST-SIDE-SECRET");
+        }
+    });
+
+    let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
+    // Network granted, unix sockets not. The two are separate axes.
+    let policy = allow_probe(
+        runtime_paths(SandboxPolicy::default().allow_network()),
+        probe,
+    );
+    let output = run(&policy, probe, &[socket.to_str().unwrap()]);
+
+    let _ = std::os::unix::net::UnixStream::connect(&socket);
+    let _ = accepting.join();
+
+    assert!(
+        !output.status.success(),
+        "granting network also granted a unix socket to a host daemon"
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stdout).contains("HOST-SIDE-SECRET"),
+        "read from a host daemon the policy never granted"
+    );
+}
+
+/// The grant that does allow it, so the denial above is not just the sandbox
+/// refusing everything.
+#[test]
+fn an_explicit_unix_socket_grant_permits_the_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("host.sock");
+
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let accepting = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            use std::io::Write;
+            let _ = stream.write_all(b"HOST-SIDE-SECRET");
+        }
+    });
+
+    let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
+    // The socket's directory must be readable too: the grant lifts the seccomp
+    // denial, it does not bypass the filesystem policy.
+    let policy = allow_probe(
+        runtime_paths(SandboxPolicy::default().allow_unix_sockets()),
+        probe,
+    )
+    .allow_read(dir.path())
+    .allow_write(dir.path());
+    let output = run(&policy, probe, &[socket.to_str().unwrap()]);
+
+    let _ = std::os::unix::net::UnixStream::connect(&socket);
+    let _ = accepting.join();
+
+    assert!(
+        output.status.success(),
+        "an explicit grant failed to connect: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// A network namespace isolates only *abstract* unix sockets. Pathname sockets
 /// live in the filesystem and cross it freely, so denying network is not enough
 /// on its own — without a further control a command can still dial host daemons

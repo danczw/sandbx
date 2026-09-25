@@ -107,7 +107,8 @@ fn records_the_policy_shape_of_a_spawn() {
     let policy = SandboxPolicy::default()
         .allow_read("/usr")
         .allow_write("/tmp/work")
-        .allow_read_execute("/bin");
+        .allow_read_execute("/bin")
+        .allow_unix_sockets();
 
     let lines = capture(|| {
         AuditEvent::spawned("/bin/cat", &policy).emit();
@@ -118,4 +119,5 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("writable=1"), "got: {line}");
     assert!(line.contains("executable=1"), "got: {line}");
     assert!(line.contains("network=false"), "got: {line}");
+    assert!(line.contains("unix_sockets=true"), "got: {line}");
 }
