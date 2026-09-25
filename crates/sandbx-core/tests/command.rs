@@ -196,3 +196,80 @@ fn without_a_timeout_a_command_runs_to_completion() {
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "done");
 }
+
+/// The command can exit *inside* its deadline and still leave the call blocked:
+/// a backgrounded descendant inherits the pipe write-ends, so the readers never
+/// see EOF. The deadline never fires, because the direct child is already gone.
+///
+/// Granting `/dev/null` because `sh` redirects a background job's stdin from it.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn a_descendant_outliving_the_command_does_not_block_the_call() {
+    let started = std::time::Instant::now();
+
+    let output = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default()
+            .allow_system_executables()
+            .allow_read("/dev/null")
+            .allow_write("/dev/null"),
+    )
+    .arg("-c")
+    .arg("sleep 60 & echo started")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .timeout(std::time::Duration::from_secs(30))
+    .output()
+    .expect("the command itself succeeded, so this must not be an error");
+
+    let elapsed = started.elapsed();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "started");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "a descendant held the call open for {elapsed:?}"
+    );
+}
+
+/// A process group is advisory: one `setsid` call leaves it, so the group kill
+/// cannot reach the escapee and it keeps holding the pipe. The call must still
+/// return — bounding the *wait* is what makes that true regardless of what the
+/// command does.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn a_descendant_that_escapes_the_process_group_does_not_block_the_call() {
+    let started = std::time::Instant::now();
+
+    let output = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default()
+            .allow_system_executables()
+            .allow_read("/dev/null")
+            .allow_write("/dev/null"),
+    )
+    .arg("-c")
+    // Backgrounded so the shell does not wait for it, and no stdout redirect:
+    // the escapee keeps the pipe we are reading.
+    // A short sleep: this one deliberately escapes the kill, so it outlives the
+    // test and should not linger any longer than it must.
+    .arg("setsid sleep 5 & echo started")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .timeout(std::time::Duration::from_secs(30))
+    .output()
+    .expect("the command itself succeeded, so this must not be an error");
+
+    let elapsed = started.elapsed();
+
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("started"),
+        "lost output that was written before the grace expired"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "a setsid escapee held the call open for {elapsed:?}"
+    );
+}
