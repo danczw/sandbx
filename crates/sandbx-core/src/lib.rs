@@ -1,4 +1,4 @@
-//! Sandboxed execution for echo.
+//! Sandboxed execution for sandbx.
 //!
 //! Every tool an agent runs passes through this crate. It is the only place in
 //! the workspace permitted to spawn a subprocess or use `unsafe`; every other
@@ -9,8 +9,8 @@
 //! - [`FsGuard`] checks paths in-process, for tools written in Rust that never
 //!   spawn anything and so are never seen by the kernel enforcement.
 //! - Kernel enforcement (Landlock, seccomp, namespaces) restricts child
-//!   processes. echo re-execs a helper which applies the restrictions to
-//!   *itself* and then becomes the command, so echo is never caged by them.
+//!   processes. sandbx re-execs a helper which applies the restrictions to
+//!   *itself* and then becomes the command, so sandbx is never caged by them.
 //!
 //! Both are default-deny: see [`SandboxPolicy`].
 

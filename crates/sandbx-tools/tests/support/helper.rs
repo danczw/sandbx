@@ -4,7 +4,7 @@
 //! [`sandbx_core::HELPER_FLAG`], which assumes that binary calls
 //! [`sandbx_core::dispatch_helper_mode`] first. A test harness does not, so
 //! tests point at this instead — and in doing so exercise the same dispatch the
-//! shipped `echo` binary will use.
+//! shipped `sandbx` binary will use.
 
 fn main() -> std::process::ExitCode {
     // Must come first: in helper mode this never returns, and anything set up

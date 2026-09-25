@@ -39,7 +39,7 @@ fn capable_kernel_is_accepted() {
 ///
 /// `detect` builds a Landlock ruleset to see whether the kernel accepts one.
 /// Creating a ruleset allocates a kernel object but enforces nothing — only
-/// `restrict_self` applies it — so echo must still be able to read files it
+/// `restrict_self` applies it — so sandbx must still be able to read files it
 /// could read before probing.
 #[test]
 fn detect_does_not_restrict_the_current_process() {

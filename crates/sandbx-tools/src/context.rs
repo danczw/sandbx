@@ -31,7 +31,7 @@ impl ExecutionContext {
     /// current binary.
     ///
     /// The default assumes the running binary calls
-    /// `sandbx_core::dispatch_helper_mode` at startup, which the shipped `echo`
+    /// `sandbx_core::dispatch_helper_mode` at startup, which the shipped `sandbx`
     /// does and a test harness does not.
     #[must_use]
     pub fn with_helper(mut self, path: impl AsRef<std::path::Path>) -> Self {

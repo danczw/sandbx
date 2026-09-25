@@ -10,7 +10,7 @@ use crate::SandboxError;
 /// exercised at all.
 ///
 /// Only filesystem enforcement is reported. Landlock's network rules cover TCP
-/// bind/connect only, which is not how echo denies network access — that comes
+/// bind/connect only, which is not how sandbx denies network access — that comes
 /// from an empty network namespace, a separate capability.
 ///
 /// [`detect`]: KernelSupport::detect
@@ -23,7 +23,7 @@ pub struct KernelSupport {
 impl KernelSupport {
     /// Build a report directly, bypassing detection.
     ///
-    /// Exists so tests can assert what echo does on a kernel the test machine is
+    /// Exists so tests can assert what sandbx does on a kernel the test machine is
     /// not running.
     pub fn new(filesystem: bool) -> Self {
         Self { filesystem }

@@ -9,7 +9,7 @@ const FLAG_NET: &str = "--allow-network";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
 
-/// A policy plus a command, as carried between echo and the helper process.
+/// A policy plus a command, as carried between sandbx and the helper process.
 ///
 /// The helper runs in a separate process, so the policy has to cross a process
 /// boundary. argv is used rather than the environment because the environment is
@@ -52,7 +52,7 @@ impl HelperArgs {
     ///
     /// Every failure is a refusal. An unrecognised flag is an error rather than
     /// something to skip: silently ignoring it would mean running with a policy
-    /// that differs from the one echo intended, which is precisely the situation
+    /// that differs from the one sandbx intended, which is precisely the situation
     /// the sandbox exists to prevent.
     pub fn decode(argv: &[String]) -> Result<Self, SandboxError> {
         let mut policy = SandboxPolicy::default();

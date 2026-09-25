@@ -28,7 +28,7 @@ pub enum SandboxError {
     /// The helper process was given argv it could not parse.
     ///
     /// A refusal rather than a best-effort parse: running with a policy that
-    /// differs from the one echo intended is the exact failure the sandbox
+    /// differs from the one sandbx intended is the exact failure the sandbox
     /// exists to prevent.
     BadHelperArgs {
         /// What was wrong, for the operator to act on.
@@ -70,7 +70,7 @@ pub enum SandboxError {
     /// This kernel or platform cannot enforce a sandbox.
     ///
     /// Returned instead of running unsandboxed, so an unsupported environment
-    /// stops echo rather than silently removing every restriction.
+    /// stops sandbx rather than silently removing every restriction.
     Unsupported {
         /// What is missing, for the operator to act on.
         detail: &'static str,

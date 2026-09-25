@@ -10,7 +10,7 @@ yanked = "deny"
 [licenses]
 version = 2
 # Permissive licenses only. Copyleft (GPL/AGPL) would impose obligations on
-# anything linking echo; flag it rather than discover it at release time.
+# anything linking sandbx; flag it rather than discover it at release time.
 allow = [
     "MIT",
     "Apache-2.0",
