@@ -4,6 +4,8 @@ use crate::{SandboxError, SandboxPolicy};
 const FLAG_RO: &str = "--ro";
 /// Flag introducing a read-write path.
 const FLAG_RW: &str = "--rw";
+/// Flag introducing a read-and-execute path.
+const FLAG_RX: &str = "--rx";
 /// Flag permitting network access.
 const FLAG_NET: &str = "--allow-network";
 /// Everything after this is the command to run, never a helper flag.
@@ -38,6 +40,10 @@ impl HelperArgs {
             out.push(FLAG_RW.to_string());
             out.push(path.display().to_string());
         }
+        for path in policy.executable_paths() {
+            out.push(FLAG_RX.to_string());
+            out.push(path.display().to_string());
+        }
         if policy.allows_network() {
             out.push(FLAG_NET.to_string());
         }
@@ -68,14 +74,14 @@ impl HelperArgs {
             match arg.as_str() {
                 SEPARATOR => break rest.cloned().collect(),
                 FLAG_NET => policy = policy.allow_network(),
-                FLAG_RO | FLAG_RW => {
+                FLAG_RO | FLAG_RW | FLAG_RX => {
                     let path = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "path flag with no path after it",
                     })?;
-                    policy = if arg == FLAG_RO {
-                        policy.allow_read(path)
-                    } else {
-                        policy.allow_write(path)
+                    policy = match arg.as_str() {
+                        FLAG_RO => policy.allow_read(path),
+                        FLAG_RW => policy.allow_write(path),
+                        _ => policy.allow_read_execute(path),
                     };
                 }
                 _ => {

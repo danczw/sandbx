@@ -45,6 +45,10 @@ pub enum AuditEvent<'a> {
         readable: usize,
         /// How many paths were writable.
         writable: usize,
+        /// How many paths were executable. Tracked separately because execute is
+        /// a distinct capability, and a trail that folded it into `readable`
+        /// would understate what the spawn was actually granted.
+        executable: usize,
         /// Whether network access was granted.
         network: bool,
     },
@@ -71,6 +75,7 @@ impl<'a> AuditEvent<'a> {
             program,
             readable: policy.readable_paths().len(),
             writable: policy.writable_paths().len(),
+            executable: policy.executable_paths().len(),
             network: policy.allows_network(),
         }
     }
@@ -99,6 +104,7 @@ impl<'a> AuditEvent<'a> {
                 program,
                 readable,
                 writable,
+                executable,
                 network,
             } => tracing::info!(
                 target: AUDIT_TARGET,
@@ -106,6 +112,7 @@ impl<'a> AuditEvent<'a> {
                 program,
                 readable,
                 writable,
+                executable,
                 network,
             ),
         }

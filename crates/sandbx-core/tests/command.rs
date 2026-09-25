@@ -54,10 +54,7 @@ fn runs_a_command_under_the_policy() {
     std::fs::write(&file, b"visible").unwrap();
 
     let policy = SandboxPolicy::default()
-        .allow_read("/usr")
-        .allow_read("/bin")
-        .allow_read("/lib")
-        .allow_read("/lib64")
+        .allow_system_executables()
         .allow_read(dir.path());
 
     let output = SandboxedCommand::new("/bin/cat", policy)
