@@ -2,6 +2,15 @@ use sandbx_core::{FsGuard, SandboxError, SandboxPolicy};
 
 use crate::OutputLimits;
 
+/// How long a tool's command may run before it is killed.
+///
+/// Deliberately the tighter end: there is no agent caller yet to measure
+/// against, and a limit that is too short announces itself the first time real
+/// work dies, where one that is too long silently fails to catch the wedge it
+/// exists for. The known pressure point is a cold `cargo build` on a large
+/// workspace; raise this when that actually bites.
+pub const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// What a tool is allowed to touch, and the machinery for enforcing it.
 ///
 /// Built once per session from a [`SandboxPolicy`] and shared by every tool
@@ -14,6 +23,7 @@ pub struct ExecutionContext {
     policy: SandboxPolicy,
     helper: Option<std::path::PathBuf>,
     limits: OutputLimits,
+    timeout: std::time::Duration,
 }
 
 impl ExecutionContext {
@@ -24,6 +34,7 @@ impl ExecutionContext {
             policy,
             helper: None,
             limits: OutputLimits::default(),
+            timeout: DEFAULT_TIMEOUT,
         })
     }
 
@@ -46,9 +57,21 @@ impl ExecutionContext {
         self
     }
 
+    /// Bound how long a tool's command may run, instead of [`DEFAULT_TIMEOUT`].
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
     /// How much tools may return.
     pub fn limits(&self) -> &OutputLimits {
         &self.limits
+    }
+
+    /// How long a tool's command may run before it is killed.
+    pub fn timeout(&self) -> std::time::Duration {
+        self.timeout
     }
 
     /// An explicit helper, if one was set.

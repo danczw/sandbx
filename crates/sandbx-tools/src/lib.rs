@@ -14,7 +14,7 @@ mod error;
 mod limits;
 mod tools;
 
-pub use context::ExecutionContext;
+pub use context::{DEFAULT_TIMEOUT, ExecutionContext};
 pub use error::ToolError;
 pub use limits::OutputLimits;
 

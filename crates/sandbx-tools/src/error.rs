@@ -27,6 +27,20 @@ pub enum ToolError {
         /// The underlying failure.
         detail: String,
     },
+
+    /// The operation ran past its time limit and was killed.
+    ///
+    /// Separate from [`Failed`] because the agent should react differently: a
+    /// command that failed will fail again, while one that ran out of time might
+    /// succeed if narrowed or given longer.
+    ///
+    /// [`Failed`]: Self::Failed
+    TimedOut {
+        /// What was attempted.
+        subject: String,
+        /// The limit it exceeded.
+        after: std::time::Duration,
+    },
 }
 
 impl std::fmt::Display for ToolError {
@@ -37,6 +51,9 @@ impl std::fmt::Display for ToolError {
             }
             Self::BadInput { detail } => write!(f, "invalid tool arguments: {detail}"),
             Self::Failed { subject, detail } => write!(f, "{subject} failed: {detail}"),
+            Self::TimedOut { subject, after } => {
+                write!(f, "{subject} timed out after {after:?} and was killed")
+            }
         }
     }
 }
