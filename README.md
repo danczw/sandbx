@@ -19,13 +19,13 @@ rather than degrading to unrestricted execution.
 
 ## Try the sandbox
 
-The agent is not built, but the boundary it will run behind is, and `echo`
+The agent is not built, but the boundary it will run behind is, and `sandbx`
 exposes it directly so you can check the enforcement by hand:
 
 ```sh
-echo sandbox-run --allow-read /srv -- cat /srv/notes.txt   # works
-echo sandbox-run --allow-read /srv -- cat /etc/shadow      # permission denied
-echo sandbox-run -- curl https://example.com               # no network at all
+sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt   # works
+sandbx sandbox-run --allow-read /srv -- cat /etc/shadow      # permission denied
+sandbx sandbox-run -- curl https://example.com               # no network at all
 ```
 
 Everything is denied unless a flag grants it. The one exception is read access

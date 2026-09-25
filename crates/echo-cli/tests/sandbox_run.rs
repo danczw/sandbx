@@ -1,7 +1,7 @@
-//! Argument parsing for `echo sandbox-run`, and the policy it derives.
+//! Argument parsing for `sandbx sandbox-run`, and the policy it derives.
 //!
 //! The policy is the security-relevant half: a flag that silently widens it, or
-//! a command argument mistaken for one of echo's own flags, is a sandbox escape
+//! a command argument mistaken for one of sandbx's own flags, is a sandbox escape
 //! dressed as a usability bug.
 
 use clap::Parser;
@@ -17,7 +17,7 @@ fn sandbox_run(argv: &[&str]) -> echo_cli::SandboxRun {
 /// Nothing of the user's is reachable, nothing is writable, no network.
 #[test]
 fn grants_only_what_a_command_needs_to_start() {
-    let policy = sandbox_run(&["echo", "sandbox-run", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
 
     assert_eq!(
         policy.readable_paths(),
@@ -32,8 +32,15 @@ fn grants_only_what_a_command_needs_to_start() {
 
 #[test]
 fn each_allow_flag_widens_only_its_own_axis() {
-    let policy =
-        sandbox_run(&["echo", "sandbox-run", "--allow-read", "/srv", "--", "true"]).policy();
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-read",
+        "/srv",
+        "--",
+        "true",
+    ])
+    .policy();
 
     assert!(
         policy
@@ -48,7 +55,7 @@ fn each_allow_flag_widens_only_its_own_axis() {
 #[test]
 fn allow_flags_repeat_to_grant_several_paths() {
     let policy = sandbox_run(&[
-        "echo",
+        "sandbx",
         "sandbox-run",
         "--allow-read",
         "/a",
@@ -74,25 +81,25 @@ fn allow_flags_repeat_to_grant_several_paths() {
 
 #[test]
 fn network_is_opt_in() {
-    let policy = sandbox_run(&["echo", "sandbox-run", "--allow-network", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
 
     assert!(policy.allows_network());
 }
 
 #[test]
 fn the_command_keeps_its_own_arguments() {
-    let args = sandbox_run(&["echo", "sandbox-run", "--", "ls", "-la", "/srv"]);
+    let args = sandbox_run(&["sandbx", "sandbox-run", "--", "ls", "-la", "/srv"]);
 
     assert_eq!(args.program(), "ls");
     assert_eq!(args.arguments(), ["-la", "/srv"]);
 }
 
-/// The one that matters: past the separator, a flag echo also defines belongs
+/// The one that matters: past the separator, a flag sandbx also defines belongs
 /// to the sandboxed command. Swallowing it here would widen the policy from
-/// inside the string echo was asked to confine.
+/// inside the string sandbx was asked to confine.
 #[test]
-fn flags_after_the_separator_are_not_echos_flags() {
-    let args = sandbox_run(&["echo", "sandbox-run", "--", "printf", "--allow-network"]);
+fn flags_after_the_separator_are_not_our_flags() {
+    let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--allow-network"]);
 
     assert!(
         !args.policy().allows_network(),
@@ -104,6 +111,6 @@ fn flags_after_the_separator_are_not_echos_flags() {
 
 #[test]
 fn a_missing_command_is_rejected() {
-    assert!(Cli::try_parse_from(["echo", "sandbox-run"]).is_err());
-    assert!(Cli::try_parse_from(["echo", "sandbox-run", "--allow-network"]).is_err());
+    assert!(Cli::try_parse_from(["sandbx", "sandbox-run"]).is_err());
+    assert!(Cli::try_parse_from(["sandbx", "sandbox-run", "--allow-network"]).is_err());
 }
