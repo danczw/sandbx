@@ -58,8 +58,19 @@ pub struct SandboxRun {
     allow_write: Vec<PathBuf>,
 
     /// Give the command a network namespace with an interface.
+    ///
+    /// IP egress only; unix-domain sockets stay denied.
     #[arg(long = "allow-network")]
     allow_network: bool,
+
+    /// Let the command open unix-domain sockets.
+    ///
+    /// All of them, not a chosen one — the kernel cannot scope this per path
+    /// below Landlock ABI V9. That includes an ssh-agent, a docker socket or
+    /// the session bus if the filesystem policy can reach them, so what the
+    /// command can read still bounds what it can dial.
+    #[arg(long = "allow-unix-sockets")]
+    allow_unix_sockets: bool,
 
     /// Kill the command if it runs longer than this many seconds.
     ///
@@ -98,6 +109,9 @@ impl SandboxRun {
         }
         if self.allow_network {
             policy = policy.allow_network();
+        }
+        if self.allow_unix_sockets {
+            policy = policy.allow_unix_sockets();
         }
 
         policy

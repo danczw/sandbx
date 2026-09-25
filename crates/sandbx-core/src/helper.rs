@@ -196,19 +196,22 @@ fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxE
         .map(|nr| (nr, Vec::new()))
         .collect::<BTreeMap<_, _>>();
 
-    // A network namespace isolates only *abstract* unix sockets. Pathname
-    // sockets live in the filesystem, so a policy that denies network would
-    // otherwise still let a command dial host daemons — systemd's bus,
-    // docker.sock, an ssh-agent — and have them act outside the sandbox.
+    // Unix sockets are their own axis, not a sub-case of network. A netns
+    // isolates only *abstract* unix sockets; pathname sockets live in the
+    // filesystem and cross it freely, so a command that can dial systemd's bus,
+    // docker.sock or an ssh-agent can have them act outside the sandbox — which
+    // is an escape, not egress. Tying this to `allows_network` meant granting
+    // the internet also granted that (#8).
     //
-    // Landlock gained a right for this in ABI V9 (Linux 6.15), which `apply`
-    // handles best-effort. This covers the kernels below that, where no such
-    // right exists.
+    // All-or-nothing: seccomp compares register values, and the path passed to
+    // `connect` is behind a pointer it cannot follow. Landlock gained a
+    // path-scoped right in ABI V9 (Linux 6.15), which `apply` already handles
+    // best-effort; a per-socket grant can follow once that exists in practice.
     //
     // `socketpair` is deliberately left alone: it creates an anonymous pair with
     // no filesystem path, cannot reach a host daemon, and is used routinely by
     // shells. Blocking it would break real tools for no security gain.
-    if !policy.allows_network() {
+    if !policy.allows_unix_sockets() {
         let af_unix = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Dword,

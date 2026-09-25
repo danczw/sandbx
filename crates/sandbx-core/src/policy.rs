@@ -14,6 +14,7 @@ pub struct SandboxPolicy {
     writable: Vec<PathBuf>,
     executable: Vec<PathBuf>,
     network: bool,
+    unix_sockets: bool,
 }
 
 impl SandboxPolicy {
@@ -44,6 +45,17 @@ impl SandboxPolicy {
     /// Whether the process may reach the network.
     pub fn allows_network(&self) -> bool {
         self.network
+    }
+
+    /// Whether the process may open unix-domain sockets.
+    ///
+    /// Separate from [`allows_network`] because reaching a host daemon over a
+    /// socket in the filesystem is not IP egress, and a network namespace does
+    /// not contain it — it isolates only *abstract* unix sockets.
+    ///
+    /// [`allows_network`]: Self::allows_network
+    pub fn allows_unix_sockets(&self) -> bool {
+        self.unix_sockets
     }
 
     /// Grant read access to `path`.
@@ -107,9 +119,32 @@ impl SandboxPolicy {
     }
 
     /// Grant network access.
+    ///
+    /// IP egress only. Unix-domain sockets are a separate grant, because a
+    /// command that can dial `/run/user/$UID/bus` can ask systemd to start a
+    /// process outside the sandbox entirely — which is not what "let it reach
+    /// the network" is understood to mean.
     #[must_use]
     pub fn allow_network(mut self) -> Self {
         self.network = true;
+        self
+    }
+
+    /// Grant unix-domain sockets.
+    ///
+    /// **All of them**, not a chosen one. The denial is a seccomp rule on
+    /// `socket(AF_UNIX, …)`, and seccomp compares register values: the path
+    /// passed to `connect` lives behind a pointer it cannot follow. Landlock
+    /// gained a path-scoped right for this in ABI V9 (Linux 6.15), and a
+    /// per-socket grant can be added once that is available in practice.
+    ///
+    /// So this opens every pathname socket the filesystem policy can reach —
+    /// an ssh-agent, a docker socket, the session bus. Grant it deliberately,
+    /// and keep the filesystem policy narrow, because that is what still bounds
+    /// which sockets exist to be dialled.
+    #[must_use]
+    pub fn allow_unix_sockets(mut self) -> Self {
+        self.unix_sockets = true;
         self
     }
 }
