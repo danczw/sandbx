@@ -76,8 +76,13 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     const BASELINE: ABI = ABI::V5; // Linux 6.10: adds Truncate, Refer, IoctlDev
     const LATEST: ABI = ABI::V9; // Linux 6.15: adds ResolveUnix
 
-    let read_only = AccessFs::from_read(LATEST);
-    let read_write = AccessFs::from_all(LATEST);
+    // `from_read` bundles `Execute` in with `ReadFile`/`ReadDir`, and `from_all`
+    // inherits it. Granting either therefore used to hand out the right to *run*
+    // whatever the path contains, which neither `allow_read` nor `allow_write`
+    // says (#19). Execute now comes from one axis that is named for it.
+    let read_execute = AccessFs::from_read(LATEST);
+    let read_only = read_execute & !AccessFs::Execute;
+    let read_write = AccessFs::from_all(LATEST) & !AccessFs::Execute;
 
     let mut ruleset = Ruleset::default()
         // Refuse a kernel that cannot enforce the baseline, rather than running
@@ -102,6 +107,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     for (paths, rights) in [
         (policy.readable_paths(), read_only),
         (policy.writable_paths(), read_write),
+        (policy.executable_paths(), read_execute),
     ] {
         for path in paths {
             let rights = if path.is_dir() {

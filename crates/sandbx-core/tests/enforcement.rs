@@ -20,16 +20,24 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 /// Paths the helper itself needs in order to `exec` anything at all.
 ///
 /// `exec` happens *after* the restrictions are applied, so the interpreter and
-/// shared libraries must stay readable or nothing can start — including the
+/// shared libraries must stay reachable or nothing can start — including the
 /// commands these tests use to probe the sandbox.
+///
+/// The program directories need read *and* execute; `ld.so.cache` is a plain
+/// file the loader only reads, so it gets the narrower grant.
 fn runtime_paths(policy: SandboxPolicy) -> SandboxPolicy {
-    ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache"]
+    let policy = ["/usr", "/bin", "/lib", "/lib64"]
+        .iter()
+        .filter(|p| Path::new(p).exists())
+        .fold(policy, |acc, p| acc.allow_read_execute(p));
+
+    ["/etc/ld.so.cache"]
         .iter()
         .filter(|p| Path::new(p).exists())
         .fold(policy, |acc, p| acc.allow_read(p))
 }
 
-/// Grant read access to a probe binary so it can be `exec`ed.
+/// Grant execute access to a probe binary so it can be `exec`ed.
 ///
 /// Probes live under `target/`, which `runtime_paths` does not cover. Without
 /// this the probe fails to start, and a denial test would pass because nothing
@@ -38,7 +46,7 @@ fn allow_probe(policy: SandboxPolicy, probe: &str) -> SandboxPolicy {
     let dir = std::path::Path::new(probe)
         .parent()
         .expect("probe path has a parent");
-    policy.allow_read(dir)
+    policy.allow_read_execute(dir)
 }
 
 fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
@@ -368,5 +376,83 @@ fn symlinked_policy_root_resolves_consistently() {
     assert!(
         guard.check_read(&real.path().join("s.txt")).is_ok(),
         "FsGuard denies a path the kernel layer permits: the two layers disagree"
+    );
+}
+
+/// A read grant must not let the process *run* what it can read.
+///
+/// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so
+/// for a long time every read grant silently carried it. Nothing about the name
+/// `allow_read` suggests that, and a caller granting a data directory would not
+/// infer it. Regression test for #19.
+#[test]
+fn a_read_grant_does_not_make_files_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("true");
+    std::fs::copy("/bin/true", &program).unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(dir.path());
+    let output = run(&policy, program.to_str().unwrap(), &[]);
+
+    assert!(
+        !output.status.success(),
+        "a binary under an allow_read path was executed; the grant is wider than its name"
+    );
+}
+
+/// The mirror of the above. Without it, the denial test would also pass if the
+/// sandbox simply refused to execute anything at all.
+#[test]
+fn a_read_execute_grant_does_make_files_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("true");
+    std::fs::copy("/bin/true", &program).unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let output = run(&policy, program.to_str().unwrap(), &[]);
+
+    assert!(
+        output.status.success(),
+        "an explicit read+execute grant failed to run: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// The scenario #19 actually describes: write a binary, then run it. Write
+/// grants mapped to `from_all`, which also contains `Execute`, so fixing only
+/// the read side would have left this open.
+#[test]
+fn a_write_grant_does_not_make_files_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("planted");
+
+    let policy = runtime_paths(SandboxPolicy::default())
+        .allow_read(dir.path())
+        .allow_write(dir.path());
+
+    // Plant it from inside the sandbox, the way an agent would.
+    let plant = run(
+        &policy,
+        "/bin/sh",
+        &[
+            "-c",
+            &format!(
+                "cp /bin/true {} && chmod +x {}",
+                program.display(),
+                program.display()
+            ),
+        ],
+    );
+    assert!(
+        plant.status.success(),
+        "could not stage the test: {}",
+        String::from_utf8_lossy(&plant.stderr)
+    );
+
+    let output = run(&policy, program.to_str().unwrap(), &[]);
+
+    assert!(
+        !output.status.success(),
+        "a binary written into a writable path was then executed from it"
     );
 }

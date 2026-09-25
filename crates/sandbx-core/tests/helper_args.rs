@@ -22,6 +22,7 @@ fn round_trips_paths_and_network() {
         .allow_read("/usr/lib")
         .allow_read("/etc/ssl")
         .allow_write("/tmp/work")
+        .allow_read_execute("/bin")
         .allow_network();
 
     let args = HelperArgs::encode(&policy, "/bin/sh", &["-c".into(), "echo hi".into()]);

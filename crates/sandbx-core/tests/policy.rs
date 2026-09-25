@@ -20,6 +20,10 @@ fn default_policy_denies_everything() {
         "default policy must not grant write access to any path"
     );
     assert!(
+        policy.executable_paths().is_empty(),
+        "default policy must not grant execute access to any path"
+    );
+    assert!(
         !policy.allows_network(),
         "default policy must not grant network access"
     );
@@ -38,7 +42,7 @@ fn system_executables_grants_the_paths_a_command_needs_to_start() {
             continue;
         }
         assert!(
-            policy.readable_paths().contains(&path.to_path_buf()),
+            policy.executable_paths().contains(&path.to_path_buf()),
             "{expected} exists but was not granted"
         );
     }
@@ -47,15 +51,45 @@ fn system_executables_grants_the_paths_a_command_needs_to_start() {
 /// Being able to run `ls` must not imply being able to overwrite it, or reach
 /// the network. This grant is deliberately one axis wide.
 #[test]
-fn system_executables_grants_read_only() {
+fn system_executables_grants_no_write_or_network() {
     let policy = SandboxPolicy::default().allow_system_executables();
 
     assert!(
-        !policy.readable_paths().is_empty(),
+        !policy.executable_paths().is_empty(),
         "granted nothing at all"
     );
     assert!(policy.writable_paths().is_empty(), "granted write access");
     assert!(!policy.allows_network(), "granted network access");
+}
+
+/// The point of #19: `allow_read` means read, and nothing else. `from_read`
+/// bundles `Execute` at the Landlock layer, so the separation has to be made
+/// here — a read grant must never reach the executable axis.
+#[test]
+fn read_and_write_grants_do_not_confer_execute() {
+    let policy = SandboxPolicy::default()
+        .allow_read("/srv/data")
+        .allow_write("/srv/data");
+
+    assert!(
+        policy.executable_paths().is_empty(),
+        "a read or write grant leaked into the execute axis"
+    );
+}
+
+/// The one grant that does confer it, and only for the path named.
+#[test]
+fn read_execute_grants_both_axes_deliberately() {
+    let policy = SandboxPolicy::default().allow_read_execute("/opt/tool");
+
+    assert_eq!(
+        policy.executable_paths(),
+        [std::path::PathBuf::from("/opt/tool")]
+    );
+    assert!(
+        policy.readable_paths().is_empty(),
+        "read+execute is one axis; it must not also populate the read-only list"
+    );
 }
 
 /// Landlock rejects a rule for a path that does not exist, which would turn a
@@ -64,7 +98,7 @@ fn system_executables_grants_read_only() {
 fn system_executables_skips_paths_this_system_lacks() {
     let policy = SandboxPolicy::default().allow_system_executables();
 
-    for path in policy.readable_paths() {
+    for path in policy.executable_paths() {
         assert!(path.exists(), "{} does not exist here", path.display());
     }
 }
