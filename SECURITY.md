@@ -34,16 +34,19 @@ On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 
 | control | mechanism | covers |
 |---------|-----------|--------|
-| filesystem | Landlock, ABI 5 minimum | reads, writes, and execution by path |
+| filesystem | Landlock, ABI 5 minimum | reads, writes, and execution by path, granted separately |
 | network | empty network namespace | IP egress, abstract unix sockets |
 | syscalls | seccomp-bpf | a denylist of dangerous calls |
 
-Two properties matter as much as the list:
+Three properties matter as much as the list:
 
 - **It fails closed.** A kernel that cannot enforce the baseline is refused. A
   ruleset the kernel only partly applies is treated as failure. sandbx does not
   degrade to unrestricted execution and then carry on.
 - **It is default-deny.** A policy grants nothing until something is added.
+- **Grants do not widen each other.** Read access does not confer the right
+  to execute what it can see, and write access does not confer the right to
+  run what it just wrote. Execute comes only from `allow_read_execute`.
 
 ## What sandbx does *not* claim
 
@@ -70,7 +73,6 @@ that names them.
 | issue | severity | what |
 |-------|----------|------|
 | [#8](https://github.com/danczw/sandbx/issues/8) | high | With `--allow-network`, a command can `connect()` to a pathname AF_UNIX socket and reach a host daemon outside the cage. A network namespace isolates only *abstract* unix sockets. Reaching `$SSH_AUTH_SOCK` or the session bus is a full escape. Landlock's `ResolveUnix` would fix it but needs ABI V9 (Linux 6.15), which is not yet available in practice. |
-| [#19](https://github.com/danczw/sandbx/issues/19) | low | `allow_read(p)` also grants execute beneath `p`, which the name does not say. Contained, but wider than documented. |
 
 Track them with the [`security` label](https://github.com/danczw/sandbx/labels/security).
 
