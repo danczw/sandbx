@@ -99,3 +99,34 @@ fn output_is_bounded() {
     assert!(out.content.contains("truncated"), "unbounded output");
     assert!(out.content.len() < 1000, "got {} bytes", out.content.len());
 }
+
+/// A command that never finishes must not wedge the caller, and must be
+/// distinguishable from one that genuinely failed — the agent retries those
+/// differently.
+#[test]
+fn a_command_that_outruns_the_timeout_is_reported_as_such() {
+    let started = std::time::Instant::now();
+
+    let ctx = context(SandboxPolicy::default().allow_system_executables())
+        .with_timeout(std::time::Duration::from_millis(200));
+    let result = BuiltinTool::Bash.execute(json!({ "command": "sleep 30" }), &ctx);
+
+    let elapsed = started.elapsed();
+
+    assert!(
+        matches!(result, Err(ToolError::TimedOut { .. })),
+        "expected a timeout, got: {result:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "the tool call stayed blocked for {elapsed:?}"
+    );
+}
+
+/// The default exists so a caller that never thinks about it is still protected.
+#[test]
+fn the_default_timeout_is_applied_without_being_asked_for() {
+    let ctx = context(SandboxPolicy::default().allow_system_executables());
+
+    assert_eq!(ctx.timeout(), sandbx_tools::DEFAULT_TIMEOUT);
+}

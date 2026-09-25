@@ -23,14 +23,23 @@ pub struct BashInput {
 pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let mut command = SandboxedCommand::new("/bin/sh", ctx.policy().clone())
         .arg("-c")
-        .arg(&input.command);
+        .arg(&input.command)
+        .timeout(ctx.timeout());
     if let Some(helper) = ctx.helper() {
         command = command.helper(helper);
     }
 
-    let output = command.output().map_err(|error| ToolError::Failed {
-        subject: format!("run `{}`", input.command),
-        detail: error.to_string(),
+    let output = command.output().map_err(|error| {
+        let subject = format!("run `{}`", input.command);
+        // A wedge and a genuine failure call for different reactions, so they
+        // must not arrive as the same variant.
+        match error {
+            sandbx_core::SandboxError::TimedOut { after } => ToolError::TimedOut { subject, after },
+            error => ToolError::Failed {
+                subject,
+                detail: error.to_string(),
+            },
+        }
     })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
