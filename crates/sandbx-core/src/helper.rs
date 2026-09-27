@@ -183,6 +183,14 @@ fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxE
         libc::SYS_keyctl,
         // Tracing infrastructure, a known side-channel surface.
         libc::SYS_perf_event_open,
+        // io_uring runs operations from a submission queue without issuing the
+        // matching syscalls, so a ring set up here would be a route around every
+        // rule in this filter — including the `socket(AF_UNIX)` denial below.
+        // Deny the ring itself. A coding agent has no need for it, and container
+        // runtimes disable it in their default profiles for the same reason.
+        libc::SYS_io_uring_setup,
+        libc::SYS_io_uring_enter,
+        libc::SYS_io_uring_register,
         // Whole-machine effects.
         libc::SYS_reboot,
         libc::SYS_swapon,
