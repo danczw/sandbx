@@ -8,5 +8,9 @@
 # Enforced on every commit via the pre-commit hook (`cargo clippy -- -D warnings`).
 disallowed-methods = [
     { path = "std::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
-    { path = "tokio::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
+    # allow-invalid: sandbx-providers' dev-dependency on tokio omits the
+    # "process" feature, so this path does not resolve there — clippy would
+    # otherwise warn per-crate about an "invalid" entry. The ban still applies
+    # in full wherever tokio::process actually is reachable.
+    { path = "tokio::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied", allow-invalid = true },
 ]

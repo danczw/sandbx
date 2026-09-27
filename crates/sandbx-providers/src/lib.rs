@@ -8,6 +8,10 @@
 //! into the shared `ProviderError`; no vendor SDK or provider-abstraction crate
 //! sits between sandbx and the wire format.
 
+mod error;
+
+pub use error::ProviderError;
+
 /// Install the `ring` crypto provider for `rustls`, once per process.
 ///
 /// `rustls-no-provider` (the reqwest TLS feature this crate uses) deliberately
@@ -20,10 +24,16 @@
 /// `AnthropicClient` — finds a provider already installed and does nothing,
 /// which is the expected steady state, not a failure to propagate or panic on.
 ///
+/// `AnthropicClient::new` calls this automatically. It is `pub` rather than
+/// crate-private so integration tests (a separate compiled crate) can call it
+/// too: building *any* `reqwest::Client` — even one used only to manufacture a
+/// test [`reqwest::Error`], with no network call involved — panics without a
+/// provider installed first, and `tests/*.rs` cannot reach a `pub(crate)` item.
+///
 /// `allow(dead_code)`: only called from tests until `AnthropicClient::new`
 /// lands and becomes the real caller — remove the allow at that point.
 #[allow(dead_code)]
-pub(crate) fn ensure_crypto_provider_installed() {
+pub fn ensure_crypto_provider_installed() {
     static INSTALLED: std::sync::Once = std::sync::Once::new();
     INSTALLED.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
