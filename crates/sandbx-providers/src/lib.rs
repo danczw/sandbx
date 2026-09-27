@@ -8,8 +8,10 @@
 //! into the shared `ProviderError`; no vendor SDK or provider-abstraction crate
 //! sits between sandbx and the wire format.
 
+mod credentials;
 mod error;
 
+pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 
 /// Install the `ring` crypto provider for `rustls`, once per process.
