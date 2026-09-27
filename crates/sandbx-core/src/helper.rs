@@ -269,6 +269,12 @@ fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
 #[cfg(target_os = "linux")]
 fn deny_network() -> Result<(), SandboxError> {
     use nix::sched::{CloneFlags, unshare};
+    use nix::unistd::{getgid, getuid};
+
+    // Captured before the unshare: afterwards this process reads back as the
+    // overflow uid, and it is the *real* identity we want to map to itself.
+    let uid = getuid().as_raw();
+    let gid = getgid().as_raw();
 
     unshare(CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWNET).map_err(|errno| {
         SandboxError::NetworkDenialFailed {
@@ -281,7 +287,37 @@ fn deny_network() -> Result<(), SandboxError> {
                 _ => "could not create a network namespace",
             },
         }
-    })
+    })?;
+
+    map_identity_into_userns(uid, gid)
+}
+
+/// Map the real uid/gid to themselves inside the fresh user namespace.
+///
+/// Without this the namespace has no map, so the process reads back as the
+/// overflow uid (`nobody`) even though its on-host identity is unchanged — a
+/// file it writes is still owned by the real user. Tools that branch on
+/// `getuid()` see a value that does not match reality; mapping the identity to
+/// itself makes the namespace transparent without granting anything, since the
+/// process already acts as this uid on the host.
+///
+/// A failure here is fatal: the process is already in the namespace as `nobody`,
+/// and continuing would run the command with that misleading identity rather
+/// than refusing.
+#[cfg(target_os = "linux")]
+fn map_identity_into_userns(uid: u32, gid: u32) -> Result<(), SandboxError> {
+    let write = |path: &'static str, contents: String| {
+        std::fs::write(path, contents).map_err(|_| SandboxError::NetworkDenialFailed {
+            detail: "could not map the user namespace identity",
+        })
+    };
+
+    // `setgroups` must be denied before an unprivileged `gid_map` write, or the
+    // kernel rejects it. Denying it is correct anyway: this maps a single gid,
+    // so there are no supplementary groups to set.
+    write("/proc/self/setgroups", "deny".to_string())?;
+    write("/proc/self/gid_map", format!("{gid} {gid} 1"))?;
+    write("/proc/self/uid_map", format!("{uid} {uid} 1"))
 }
 
 #[cfg(not(target_os = "linux"))]

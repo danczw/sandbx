@@ -15,7 +15,7 @@ sandbox-integration = ["dep:io-uring"]
 [dependencies]
 landlock = "0.4.7"
 libc = "0.2.189"
-nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal"] }
+nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "user"] }
 seccompiler = "0.5.0"
 tracing = "0.1.44"
 # Test-only, and only when the integration feature is on: the sole safe way to
