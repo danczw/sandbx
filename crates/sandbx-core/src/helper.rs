@@ -289,7 +289,8 @@ fn deny_network() -> Result<(), SandboxError> {
         }
     })?;
 
-    map_identity_into_userns(uid, gid)
+    map_identity_into_userns(uid, gid);
+    Ok(())
 }
 
 /// Map the real uid/gid to themselves inside the fresh user namespace.
@@ -301,23 +302,30 @@ fn deny_network() -> Result<(), SandboxError> {
 /// itself makes the namespace transparent without granting anything, since the
 /// process already acts as this uid on the host.
 ///
-/// A failure here is fatal: the process is already in the namespace as `nobody`,
-/// and continuing would run the command with that misleading identity rather
-/// than refusing.
+/// Best-effort, deliberately. This is not a security control — running as the
+/// overflow `nobody` is if anything *more* restrictive, and it is what happened
+/// before this map existed. Some environments create the namespace but deny the
+/// map: AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+)
+/// leaves an unprivileged userns without `CAP_SETUID`, so the write is refused.
+/// Aborting the sandbox there would trade a truthful uid for no sandbox at all,
+/// which is the wrong way round — so a failed write leaves the process as
+/// `nobody` and the command still runs fully confined.
 #[cfg(target_os = "linux")]
-fn map_identity_into_userns(uid: u32, gid: u32) -> Result<(), SandboxError> {
-    let write = |path: &'static str, contents: String| {
-        std::fs::write(path, contents).map_err(|_| SandboxError::NetworkDenialFailed {
-            detail: "could not map the user namespace identity",
-        })
-    };
-
+fn map_identity_into_userns(uid: u32, gid: u32) {
     // `setgroups` must be denied before an unprivileged `gid_map` write, or the
     // kernel rejects it. Denying it is correct anyway: this maps a single gid,
-    // so there are no supplementary groups to set.
-    write("/proc/self/setgroups", "deny".to_string())?;
-    write("/proc/self/gid_map", format!("{gid} {gid} 1"))?;
-    write("/proc/self/uid_map", format!("{uid} {uid} 1"))
+    // so there are no supplementary groups to set. If any write fails the rest
+    // are skipped and the namespace simply stays unmapped.
+    let mapped = std::fs::write("/proc/self/setgroups", "deny")
+        .and_then(|()| std::fs::write("/proc/self/gid_map", format!("{gid} {gid} 1")))
+        .and_then(|()| std::fs::write("/proc/self/uid_map", format!("{uid} {uid} 1")));
+
+    if let Err(error) = mapped {
+        tracing::debug!(
+            target: crate::AUDIT_TARGET,
+            "could not map user namespace identity, running as nobody: {error}"
+        );
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
