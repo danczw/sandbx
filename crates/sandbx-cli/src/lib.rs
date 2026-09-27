@@ -57,6 +57,15 @@ pub struct SandboxRun {
     #[arg(long = "allow-write", value_name = "PATH")]
     allow_write: Vec<PathBuf>,
 
+    /// Let the command run programs under a path. Repeatable.
+    ///
+    /// Grants read as well, because that is what the kernel gives: running a
+    /// program needs execute on the binary and read on the libraries its loader
+    /// pulls in. The system paths every command needs to start are granted
+    /// anyway; this is for anything else, such as a binary you built.
+    #[arg(long = "allow-exec", value_name = "PATH")]
+    allow_exec: Vec<PathBuf>,
+
     /// Give the command a network namespace with an interface.
     ///
     /// IP egress only; unix-domain sockets stay denied.
@@ -106,6 +115,9 @@ impl SandboxRun {
         }
         for path in &self.allow_write {
             policy = policy.allow_write(path);
+        }
+        for path in &self.allow_exec {
+            policy = policy.allow_read_execute(path);
         }
         if self.allow_network {
             policy = policy.allow_network();

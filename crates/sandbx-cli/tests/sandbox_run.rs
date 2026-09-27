@@ -166,3 +166,65 @@ fn unix_sockets_are_opt_in() {
     assert!(granted.allows_unix_sockets());
     assert!(!bare.allows_unix_sockets());
 }
+
+/// #31: since #19 split execute out of read, this is the only way to run a
+/// binary that is not a system one — and the CLI had no flag for it, which made
+/// `sandbox-run` unable to probe the boundary against a purpose-built program.
+#[test]
+fn exec_grants_are_repeatable_and_separate_from_read() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-exec",
+        "/opt/one",
+        "--allow-exec",
+        "/opt/two",
+        "--allow-read",
+        "/srv/data",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    assert!(
+        policy
+            .executable_paths()
+            .contains(&std::path::PathBuf::from("/opt/one"))
+    );
+    assert!(
+        policy
+            .executable_paths()
+            .contains(&std::path::PathBuf::from("/opt/two"))
+    );
+    assert!(
+        !policy
+            .executable_paths()
+            .contains(&std::path::PathBuf::from("/srv/data")),
+        "a read grant reached the execute axis"
+    );
+}
+
+/// Without the flag, only the system paths every command needs are executable.
+#[test]
+fn nothing_user_supplied_is_executable_by_default() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-read",
+        "/srv",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    for path in policy.executable_paths() {
+        assert!(
+            path.starts_with("/usr")
+                || path.starts_with("/bin")
+                || path.starts_with("/lib")
+                || path.starts_with("/lib64"),
+            "{} is executable without being granted",
+            path.display()
+        );
+    }
+}
