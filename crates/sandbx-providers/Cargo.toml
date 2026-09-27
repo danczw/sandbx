@@ -7,6 +7,41 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Async HTTP with streaming bodies, for the Messages API. No default features:
+# default-tls needs system OpenSSL, and plain `rustls` defaults to the
+# aws-lc-rs crypto provider, which vendors and compiles C/assembly — the same
+# class of build dependency rejected once already (rusqlite -> redb).
+# rustls-no-provider gets rustls integration plus native cert-store loading
+# without auto-picking a provider, so we can choose one explicitly below.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2", "stream", "json", "system-proxy"] }
+# Pulled in directly, not just transitively via reqwest, specifically to
+# select the `ring` crypto provider feature instead of the default
+# aws_lc_rs — ring is essentially pure Rust, no C/cmake/nasm build step.
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+# Wraps the API key the moment it is read: no Debug impl, so logging one is a
+# compile error rather than a review nit.
+secrecy = "0.10.3"
+# The minimal crate (not the `futures` megacrate): Stream/StreamExt,
+# stream::unfold, BoxStream. Nothing here touches futures' io/sink/compat.
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+# reqwest's bytes_stream() yields bytes::Bytes directly; declared explicitly
+# rather than relying on an implicit re-export path.
+bytes = "1"
+
+[dev-dependencies]
+# Dev-only: neither AnthropicClient nor the SSE/wire parsing call a tokio API
+# directly — reqwest::Client drives itself off whatever executor the caller
+# runs. Only needed here for #[tokio::test] and to let wiremock's MockServer
+# spawn its listener. Current-thread runtime suffices.
+tokio = { version = "1.53.1", default-features = false, features = ["macros", "rt"] }
+# A local mock HTTP server so SSE-parsing and error-mapping tests exercise a
+# real HTTP round-trip with zero live network access.
+wiremock = "0.6.5"
+
+[features]
+live-anthropic-tests = []
 
 [lints]
 workspace = true

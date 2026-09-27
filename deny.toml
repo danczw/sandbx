@@ -20,6 +20,11 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Zlib",
+    # A permissive *data* license (Linux Foundation), not a code license: covers
+    # webpki-root-certs' bundled Mozilla CA root certificate data, pulled in via
+    # rustls-platform-verifier -> reqwest. No copyleft/reciprocal obligation,
+    # consistent with every other entry in this list.
+    "CDLA-Permissive-2.0",
 ]
 
 [bans]
