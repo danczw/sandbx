@@ -530,3 +530,20 @@ fn a_write_grant_does_not_make_files_executable() {
         "a binary written into a writable path was then executed from it"
     );
 }
+
+/// seccomp filters syscalls, and io_uring runs equivalent operations from a
+/// submission queue without issuing them — so a ring set up inside the sandbox
+/// sidesteps the denylist, including the `socket(AF_UNIX)` rule that #8 relies
+/// on. `io_uring_setup` must be denied so the ring cannot be created (#30).
+#[test]
+fn io_uring_setup_is_denied() {
+    let probe = env!("CARGO_BIN_EXE_sandbx-iouring-probe");
+    let policy = allow_probe(runtime_paths(SandboxPolicy::default()), probe);
+    let output = run(&policy, probe, &[]);
+
+    assert!(
+        !output.status.success(),
+        "io_uring_setup succeeded inside the sandbox: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
