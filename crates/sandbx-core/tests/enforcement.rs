@@ -547,3 +547,44 @@ fn io_uring_setup_is_denied() {
         String::from_utf8_lossy(&output.stdout)
     );
 }
+
+/// The command must see its real uid, not the overflow `nobody` that a fresh
+/// user namespace reports when no uid_map is written. It already *acts* as the
+/// real uid on the host (files it writes are owned by it), so reporting 65534
+/// is a lie that `getuid()`-based logic trips over. #35.
+///
+/// Asserted on both paths, because they take different namespace routes: network
+/// denied creates a user namespace, network allowed creates none.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn the_command_sees_its_real_uid() {
+    // std exposes no getuid, and pulling nix's `user` feature in for one test is
+    // not worth it; ask the host directly.
+    let real = String::from_utf8(
+        std::process::Command::new("/usr/bin/id")
+            .arg("-u")
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_string();
+
+    for policy in [
+        runtime_paths(SandboxPolicy::default()),
+        runtime_paths(SandboxPolicy::default().allow_network()),
+    ] {
+        let output = run(&policy, "/usr/bin/id", &["-u"]);
+        assert!(
+            output.status.success(),
+            "id did not run: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            real,
+            "sandboxed command saw the wrong uid"
+        );
+    }
+}
