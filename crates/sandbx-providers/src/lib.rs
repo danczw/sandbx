@@ -8,6 +8,7 @@
 //! into the shared `ProviderError`; no vendor SDK or provider-abstraction crate
 //! sits between sandbx and the wire format.
 
+mod anthropic;
 mod credentials;
 mod error;
 mod event;
@@ -15,10 +16,42 @@ mod request;
 mod sse;
 mod wire;
 
+pub use anthropic::AnthropicClient;
 pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 pub use event::{AgentEvent, StopReason};
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
+
+/// The LLM backends sandbx can talk to.
+#[derive(Debug, Clone)]
+pub enum Provider {
+    Anthropic(AnthropicClient),
+}
+
+impl Provider {
+    pub fn anthropic_from_env() -> Result<Self, ProviderError> {
+        Ok(Self::Anthropic(AnthropicClient::from_env()?))
+    }
+
+    /// Boxed even with a single variant today: PLAN.md already commits to
+    /// adding OpenAI "one provider at a time, against the same Provider
+    /// [enum]" — not a hypothetical. `impl Stream` in this position would need
+    /// to name one concrete type for every match arm, which breaks the moment
+    /// a second real backend lands, forcing a breaking signature change on
+    /// every caller two phases from now. Boxing now costs one `Box::pin` and
+    /// no new dependency.
+    pub async fn stream_chat(
+        &self,
+        request: MessagesRequest,
+    ) -> Result<
+        futures_util::stream::BoxStream<'static, Result<AgentEvent, ProviderError>>,
+        ProviderError,
+    > {
+        match self {
+            Self::Anthropic(client) => Ok(Box::pin(client.stream_chat(request).await?)),
+        }
+    }
+}
 
 /// Install the `ring` crypto provider for `rustls`, once per process.
 ///
@@ -37,10 +70,6 @@ pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefin
 /// too: building *any* `reqwest::Client` — even one used only to manufacture a
 /// test [`reqwest::Error`], with no network call involved — panics without a
 /// provider installed first, and `tests/*.rs` cannot reach a `pub(crate)` item.
-///
-/// `allow(dead_code)`: only called from tests until `AnthropicClient::new`
-/// lands and becomes the real caller — remove the allow at that point.
-#[allow(dead_code)]
 pub fn ensure_crypto_provider_installed() {
     static INSTALLED: std::sync::Once = std::sync::Once::new();
     INSTALLED.call_once(|| {
