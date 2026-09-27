@@ -10,11 +10,14 @@
 
 mod credentials;
 mod error;
+mod event;
 mod request;
 mod sse;
+mod wire;
 
 pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
+pub use event::{AgentEvent, StopReason};
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 
 /// Install the `ring` crypto provider for `rustls`, once per process.
