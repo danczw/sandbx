@@ -12,6 +12,7 @@ mod anthropic;
 mod credentials;
 mod error;
 mod event;
+mod mock;
 mod request;
 mod sse;
 mod wire;
@@ -20,6 +21,7 @@ pub use anthropic::AnthropicClient;
 pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 pub use event::{AgentEvent, StopReason};
+pub use mock::MockProvider;
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 
 /// The LLM backends sandbx can talk to.
