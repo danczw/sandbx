@@ -3,10 +3,6 @@
 //! Knows the SSE framing rules and nothing about what any particular API puts
 //! in `data:` — kept separate from `wire.rs` so a second SSE-based provider
 //! (OpenAI's streaming format is also SSE) could reuse this file unchanged.
-//!
-//! `allow(dead_code)`: only exercised by this module's own tests until
-//! `wire.rs` lands and becomes the real caller — remove once it does.
-#![allow(dead_code)]
 
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt};

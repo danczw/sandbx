@@ -4,10 +4,6 @@
 //! Deserializes each `data:` payload by its own `"type"` tag — the `event:`
 //! line is a redundant hint, never trusted alone, as defense against the two
 //! ever disagreeing.
-//!
-//! `allow(dead_code)`: only exercised by this module's own tests until
-//! `AnthropicClient` lands and becomes the real caller — remove once it does.
-#![allow(dead_code)]
 
 use std::collections::{HashMap, VecDeque};
 
