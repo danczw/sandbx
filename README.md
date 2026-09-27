@@ -36,6 +36,7 @@ nothing readable, not even `/bin/true` reaches `main`.
 |------|--------|
 | `--allow-read PATH`  | read access to `PATH`. Repeatable |
 | `--allow-write PATH` | write access to `PATH`. Repeatable |
+| `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
 | `--allow-network`    | a network namespace with an interface. IP egress only |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
 | `--timeout SECONDS`  | kill the command if it runs longer. Unset means no limit |
