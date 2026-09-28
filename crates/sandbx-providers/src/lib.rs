@@ -24,17 +24,36 @@ pub use event::{AgentEvent, StopReason};
 pub use mock::MockProvider;
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 
+/// The event stream a provider returns: owned, boxed, and fused.
+///
+/// Boxed for the reason [`Provider::stream_chat`] gives. `FusedStream` rather
+/// than `Stream` because the concrete stream underneath is built from
+/// `futures_util::stream::unfold`, which *panics* if polled after it returns
+/// `None` — an easy thing to do by accident in a `select!` loop that does not
+/// break on `None`. The implementations here are fused; naming it in the type
+/// keeps that guarantee from being erased by the box.
+pub type EventStream = std::pin::Pin<
+    Box<dyn futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send>,
+>;
+
 /// The LLM backends sandbx can talk to.
 #[derive(Debug, Clone)]
 pub enum Provider {
+    /// The Anthropic Messages API.
     Anthropic(AnthropicClient),
 }
 
 impl Provider {
+    /// Builds the Anthropic variant from `ANTHROPIC_API_KEY`.
+    ///
+    /// Fails with [`ProviderError::MissingCredential`] if the variable is
+    /// unset or empty; see [`AnthropicClient::from_env`].
     pub fn anthropic_from_env() -> Result<Self, ProviderError> {
         Ok(Self::Anthropic(AnthropicClient::from_env()?))
     }
 
+    /// Opens a streamed turn against whichever backend this is.
+    ///
     /// Boxed even with a single variant today: PLAN.md already commits to
     /// adding OpenAI "one provider at a time, against the same Provider
     /// [enum]" — not a hypothetical. `impl Stream` in this position would need
@@ -42,13 +61,13 @@ impl Provider {
     /// a second real backend lands, forcing a breaking signature change on
     /// every caller two phases from now. Boxing now costs one `Box::pin` and
     /// no new dependency.
+    ///
+    /// Takes the request by value; [`MessagesRequest`] is `Clone` so a caller
+    /// that may need to retry the turn can keep a copy.
     pub async fn stream_chat(
         &self,
         request: MessagesRequest,
-    ) -> Result<
-        futures_util::stream::BoxStream<'static, Result<AgentEvent, ProviderError>>,
-        ProviderError,
-    > {
+    ) -> Result<EventStream, ProviderError> {
         match self {
             Self::Anthropic(client) => Ok(Box::pin(client.stream_chat(request).await?)),
         }

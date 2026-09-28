@@ -7,13 +7,16 @@ use sandbx_providers::{
     RequestMessage, Role, StopReason,
 };
 use secrecy::SecretString;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn client_for(server: &MockServer) -> AnthropicClient {
     AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
         .unwrap()
+        // wiremock binds loopback, which `with_base_url` allows over plain
+        // http precisely so this works without a TLS mock.
         .with_base_url(server.uri())
+        .unwrap()
 }
 
 fn a_request() -> MessagesRequest {
@@ -57,6 +60,11 @@ const FULL_TURN_SSE: &str = concat!(
     "data: {\"type\":\"message_stop\"}\n\n",
 );
 
+/// Asserts the *whole* request, body included. Without a body matcher the suite
+/// would pass with `stream: true` dropped, or with `.json(&request)` swapped for
+/// a `.body(..)` that also loses `content-type` — `request_serialization.rs`
+/// only checks `serde_json::to_value` in isolation and never goes through the
+/// client.
 #[tokio::test]
 async fn sends_the_right_headers_and_body() {
     let server = MockServer::start().await;
@@ -64,6 +72,13 @@ async fn sends_the_right_headers_and_body() {
         .and(path("/v1/messages"))
         .and(header("x-api-key", "sk-ant-test"))
         .and(header("anthropic-version", "2023-06-01"))
+        .and(header("content-type", "application/json"))
+        .and(body_json(serde_json::json!({
+            "model": "claude-opus-5",
+            "max_tokens": 1000,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+            "stream": true,
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_raw(FULL_TURN_SSE, "text/event-stream"))
         .expect(1)
         .mount(&server)
@@ -74,7 +89,7 @@ async fn sends_the_right_headers_and_body() {
     let _: Vec<_> = stream.collect().await;
 
     // wiremock's `.expect(1)` (verified on drop) is the real assertion that
-    // the headers matched; reaching here without a panic confirms it.
+    // every matcher above held; reaching here without a panic confirms it.
 }
 
 #[tokio::test]
@@ -304,6 +319,127 @@ async fn provider_enum_dispatches_to_the_anthropic_client() {
     );
 }
 
+/// A redirect must not be followed: the API key rides in an `x-api-key`
+/// header, which reqwest does not scrub across hosts, so following one would
+/// hand a live key to whatever the `Location` names. The Messages API never
+/// legitimately redirects, so a 3xx is reported as an error instead.
+#[tokio::test]
+async fn a_redirect_is_not_followed() {
+    let attacker = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(FULL_TURN_SSE, "text/event-stream"))
+        .expect(0)
+        .mount(&attacker)
+        .await;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(307).insert_header("Location", attacker.uri().as_str()))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let error = match client.stream_chat(a_request()).await {
+        Ok(_) => panic!("a redirect must not be followed into a stream"),
+        Err(error) => error,
+    };
+
+    assert!(
+        matches!(
+            error,
+            ProviderError::ApiError {
+                status: Some(307),
+                ..
+            }
+        ),
+        "expected the 307 to surface as an error, got {error:?}"
+    );
+    // `attacker`'s `.expect(0)`, verified on drop, is the real assertion: the
+    // key was never replayed to it.
+}
+
+#[test]
+fn a_cleartext_base_url_is_rejected() {
+    let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
+
+    let error = match client.with_base_url("http://gateway.internal.example") {
+        Ok(_) => panic!("http:// to a non-loopback host must be rejected"),
+        Err(error) => error,
+    };
+
+    match error {
+        ProviderError::InvalidBaseUrl { base_url, .. } => {
+            assert_eq!(base_url, "http://gateway.internal.example");
+        }
+        other => panic!("expected InvalidBaseUrl, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_https_base_url_is_accepted_and_its_trailing_slash_trimmed() {
+    let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
+        .unwrap()
+        .with_base_url("https://gateway.internal.example/")
+        .expect("https:// must be accepted");
+
+    assert!(
+        format!("{client:?}").contains("https://gateway.internal.example\""),
+        "trailing slash should be trimmed: {client:?}"
+    );
+}
+
+#[test]
+fn a_non_http_base_url_scheme_is_rejected() {
+    let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
+
+    assert!(
+        client.with_base_url("file:///etc/passwd").is_err(),
+        "only https:// (or loopback http://) may carry the API key"
+    );
+}
+
+/// The endpoint is built by appending `/v1/messages`, which lands *before* a
+/// `?` or `#`. Accepting either would post to a different URL than the one the
+/// operator read back, and userinfo would put a second credential on the wire —
+/// so all three are rejected up front rather than silently mangled.
+#[test]
+fn a_base_url_with_a_query_fragment_or_credentials_is_rejected() {
+    let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
+
+    for base_url in [
+        "https://gateway.example?tenant=acme",
+        "https://gateway.example#frag",
+        "https://user:pw@gateway.example",
+    ] {
+        assert!(
+            client.clone().with_base_url(base_url).is_err(),
+            "{base_url} must be rejected: appending /v1/messages would not preserve it"
+        );
+    }
+}
+
+/// The loopback exception exists for the mock server the rest of this file uses,
+/// and has to cover every spelling of loopback — `127.0.0.1` is not the only
+/// one, and an IPv6 literal arrives from `Url::host_str` still wrapped in
+/// brackets, which do not parse as part of an address.
+#[test]
+fn every_spelling_of_a_loopback_host_is_accepted_over_cleartext() {
+    let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
+
+    for base_url in [
+        "http://127.0.0.1:8080",
+        "http://localhost:8080",
+        "http://127.0.0.2:8080",
+        "http://[::1]:8080",
+    ] {
+        assert!(
+            client.clone().with_base_url(base_url).is_ok(),
+            "{base_url} is loopback and must be allowed for a local mock server"
+        );
+    }
+}
+
 #[test]
 fn the_client_does_not_leak_the_api_key_in_debug_output() {
     let client =
@@ -315,5 +451,8 @@ fn the_client_does_not_leak_the_api_key_in_debug_output() {
         !rendered.contains("sk-ant-super-secret"),
         "the API key leaked into Debug output: {rendered}"
     );
-    assert!(rendered.contains("redacted"));
+    assert!(
+        rendered.to_lowercase().contains("redacted"),
+        "expected the key field to render as a redaction: {rendered}"
+    );
 }
