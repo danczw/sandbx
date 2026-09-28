@@ -174,10 +174,53 @@ async fn a_400_response_is_reported_with_the_vendor_envelope() {
             status,
             kind,
             message,
+            ..
         } => {
             assert_eq!(status, Some(400));
             assert_eq!(kind, "invalid_request_error");
             assert_eq!(message, "model field is required");
+        }
+        other => panic!("expected ApiError, got {other:?}"),
+    }
+}
+
+/// 529 is Anthropic's "overloaded", and the one status a caller most wants to
+/// retry. It is asserted end-to-end (not just on a hand-built error) because the
+/// classification only pays off if `map_error_response` actually produces a
+/// retryable error from a real response — and because 529 is outside the range
+/// `reqwest`'s own `status().is_server_error()` covers.
+#[tokio::test]
+async fn a_529_response_is_retryable_and_carries_its_retry_after() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(
+            ResponseTemplate::new(529)
+                .insert_header("retry-after", "3")
+                .set_body_json(serde_json::json!({
+                    "type": "error",
+                    "error": {"type": "overloaded_error", "message": "overloaded"}
+                })),
+        )
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let error = client
+        .stream_chat(a_request())
+        .await
+        .err()
+        .expect("a 529 must be reported before any stream item");
+
+    assert!(
+        error.is_retryable(),
+        "a 529 must be classified as retryable: {error:?}"
+    );
+    assert_eq!(error.retry_after(), Some(std::time::Duration::from_secs(3)));
+    match error {
+        ProviderError::ApiError { status, kind, .. } => {
+            assert_eq!(status, Some(529));
+            assert_eq!(kind, "overloaded_error");
         }
         other => panic!("expected ApiError, got {other:?}"),
     }

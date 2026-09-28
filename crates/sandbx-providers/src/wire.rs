@@ -447,6 +447,7 @@ where
                     status: None,
                     kind: error.kind,
                     message: error.message,
+                    retry_after: None,
                 }));
             }
         }

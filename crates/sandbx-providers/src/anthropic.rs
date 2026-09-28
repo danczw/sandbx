@@ -109,42 +109,33 @@ impl AnthropicClient {
 /// A 429 is split out as [`ProviderError::RateLimited`] so a caller can react
 /// to it distinctly; everything else falls back to
 /// [`ProviderError::ApiError`], parsed from the vendor's standard
-/// `{"type":"error","error":{...}}` envelope where present.
+/// `{"type":"error","error":{...}}` envelope where present. Which of *those* are
+/// worth retrying — a 529 `overloaded_error` and a 500 `api_error` are — is
+/// [`ProviderError::is_retryable`]'s job, so no status comparison is duplicated
+/// at a call site.
 async fn map_error_response(
     status: reqwest::StatusCode,
     response: reqwest::Response,
 ) -> ProviderError {
-    #[derive(serde::Deserialize)]
-    struct ErrorEnvelope {
-        error: ErrorBody,
-    }
-    #[derive(serde::Deserialize)]
-    struct ErrorBody {
-        #[serde(rename = "type")]
-        kind: String,
-        message: String,
-    }
-
-    let retry_after = status
-        .as_u16()
-        .eq(&429)
-        .then(|| {
-            response
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.parse::<u64>().ok())
-                .map(std::time::Duration::from_secs)
-        })
-        .flatten();
+    // Read for every status, not just 429: Anthropic sends `Retry-After` with a
+    // 529 too, and a backoff layer holding an `ApiError` needs it just as much.
+    // Only the integer-seconds form is parsed — the one Anthropic documents. The
+    // HTTP-date form an intermediary might use would need a date parser, and
+    // degrades to `None`, which a caller already has to handle.
+    let retry_after = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(std::time::Duration::from_secs);
 
     let body = response.text().await.unwrap_or_default();
-    let (kind, message) = match serde_json::from_str::<ErrorEnvelope>(&body) {
+    let (kind, message) = match serde_json::from_str::<wire::RawApiErrorEnvelope>(&body) {
         Ok(envelope) => (envelope.error.kind, envelope.error.message),
         Err(_) => ("unknown_error".to_string(), body),
     };
 
-    if status.as_u16() == 429 {
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         ProviderError::RateLimited {
             retry_after,
             message,
@@ -154,6 +145,7 @@ async fn map_error_response(
             status: Some(status.as_u16()),
             kind,
             message,
+            retry_after,
         }
     }
 }
