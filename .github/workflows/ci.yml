@@ -41,13 +41,18 @@ jobs:
         run: cargo fmt --all -- --check
 
       # Mirrors the pre-commit hook, so CI never disagrees with local tooling.
+      # Deliberately default features: this is the pass that sees the crates as a
+      # consumer does, so production code reaching for a test-only item behind a
+      # feature (`sandbx-providers`' MockProvider) fails here rather than at tag
+      # time in the release build.
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # Default suite only: excludes the sandbox-integration feature and any
-      # test gated on live LLM credentials.
+      # Default suite plus `mock`, whose tests are gated by `required-features`
+      # so the pass above stays honest. Still excludes the sandbox-integration
+      # feature and any test gated on live LLM credentials.
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --features sandbx-providers/mock
 
   sandbox:
     runs-on: ubuntu-latest

@@ -12,6 +12,7 @@ mod anthropic;
 mod credentials;
 mod error;
 mod event;
+#[cfg(feature = "mock")]
 mod mock;
 mod request;
 mod sse;
@@ -21,6 +22,19 @@ pub use anthropic::AnthropicClient;
 pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 pub use event::{AgentEvent, StopReason};
+/// Behind the `mock` feature so a provider that fabricates responses is not
+/// part of the shipped surface — the same reasoning as sandbx-core's
+/// `required-features` test probes.
+///
+/// The feature is *not* turned on by a self dev-dependency, which would be the
+/// convenient way to cover it with a plain `cargo test`: that edge is active for
+/// `--all-targets` and for `cargo test`, and resolver v3 unifies features per
+/// package, so `mock` would be on in the one rlib every consumer crate links
+/// against. Production code referencing `MockProvider` would then pass clippy
+/// and the whole test suite, and fail for the first time in the release build.
+/// `tests/mock_provider.rs` carries `required-features = ["mock"]` instead, so
+/// the default lint and build passes see the shipped surface with `mock` off.
+#[cfg(feature = "mock")]
 pub use mock::MockProvider;
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 
