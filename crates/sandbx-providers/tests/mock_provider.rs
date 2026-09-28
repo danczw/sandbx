@@ -16,7 +16,6 @@ fn a_request() -> MessagesRequest {
         system: None,
         messages: vec![],
         tools: vec![],
-        stream: true,
     }
 }
 

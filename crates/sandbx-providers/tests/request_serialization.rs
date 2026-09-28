@@ -20,7 +20,6 @@ fn a_minimal_request_serializes_with_no_optional_fields() {
             }],
         }],
         tools: vec![],
-        stream: true,
     };
 
     assert_eq!(
@@ -53,10 +52,14 @@ fn system_and_tools_are_included_when_present() {
                 "required": ["location"],
             }),
         }],
-        stream: true,
     };
 
     let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(
+        value["stream"],
+        json!(true),
+        "stream is a constant in the wire shape, not a caller-settable field"
+    );
     assert_eq!(value["system"], json!("Be concise."));
     assert_eq!(value["tools"][0]["name"], json!("get_weather"));
     assert_eq!(
