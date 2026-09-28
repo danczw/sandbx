@@ -34,7 +34,6 @@ async fn streams_a_real_response_from_the_anthropic_api() {
             }],
         }],
         tools: vec![],
-        stream: true,
     };
 
     let events: Vec<_> = provider

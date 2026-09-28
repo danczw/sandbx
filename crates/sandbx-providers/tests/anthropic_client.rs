@@ -28,7 +28,6 @@ fn a_request() -> MessagesRequest {
             }],
         }],
         tools: vec![],
-        stream: true,
     }
 }
 
