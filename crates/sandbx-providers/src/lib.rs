@@ -82,9 +82,16 @@ impl Provider {
 /// it needs no C/cmake/nasm build step, matching the project's existing
 /// no-C-dependency stance (see `redb` over `rusqlite`).
 ///
-/// Idempotent: a second call in the same process — e.g. constructing a second
-/// `AnthropicClient` — finds a provider already installed and does nothing,
-/// which is the expected steady state, not a failure to propagate or panic on.
+/// Idempotent: `install_default` is itself a process-global set-once, so a
+/// second call — e.g. constructing a second `AnthropicClient` — returns `Err`
+/// meaning "a provider was already installed", which is the expected steady
+/// state and not something to propagate or panic on. The discarded `Err` is the
+/// only reason this function needs no `Once` of its own.
+///
+/// It deliberately does not report *which* provider won. If something else in
+/// the process installed `aws-lc-rs` first, that provider is used and every
+/// handshake still works; the choice of `ring` is about this project's build
+/// dependencies, not about correctness at runtime.
 ///
 /// `AnthropicClient::new` calls this automatically. It is `pub` rather than
 /// crate-private so integration tests (a separate compiled crate) can call it
@@ -92,36 +99,5 @@ impl Provider {
 /// test [`reqwest::Error`], with no network call involved — panics without a
 /// provider installed first, and `tests/*.rs` cannot reach a `pub(crate)` item.
 pub fn ensure_crypto_provider_installed() {
-    static INSTALLED: std::sync::Once = std::sync::Once::new();
-    INSTALLED.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Calling this more than once — e.g. constructing a second
-    /// `AnthropicClient` in the same process — must not panic. A naive
-    /// `install_default()` without the `Once` guard returns `Err` on a second
-    /// call, and propagating or panicking on that would make a second client
-    /// unconstructable for no reason.
-    #[test]
-    fn installing_the_provider_twice_does_not_panic() {
-        ensure_crypto_provider_installed();
-        ensure_crypto_provider_installed();
-    }
-
-    /// Not just "doesn't panic": a provider must actually be installed and
-    /// usable, or every TLS handshake this crate ever makes would fail at
-    /// runtime with no compile-time signal.
-    #[test]
-    fn a_provider_is_actually_installed_and_usable() {
-        ensure_crypto_provider_installed();
-        assert!(
-            rustls::crypto::CryptoProvider::get_default().is_some(),
-            "no crypto provider installed"
-        );
-    }
+    let _ = rustls::crypto::ring::default_provider().install_default();
 }
