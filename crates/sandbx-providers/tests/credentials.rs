@@ -43,18 +43,64 @@ fn reports_a_non_utf8_value_as_missing_too() {
     assert!(matches!(error, ProviderError::MissingCredential { .. }));
 }
 
+/// A key surrounded by whitespace is what a copy-paste out of a dashboard or a
+/// `.env` file with a trailing newline actually produces. Trimming here means the
+/// failure is a clean 401 at worst, not a malformed header.
+#[test]
+fn surrounding_whitespace_is_trimmed_off_the_key() {
+    let key = sandbx_providers::resolve_api_key("SOME_VAR", |_| Ok("  sk-ant-test\n".to_string()))
+        .expect("a padded var must still resolve");
+
+    use secrecy::ExposeSecret;
+    assert_eq!(key.expose_secret(), "sk-ant-test");
+}
+
+/// `ANTHROPIC_API_KEY=` in a shell profile leaves the variable *present* and
+/// empty, which `std::env::var` reports as `Ok("")`. Treating that as resolved
+/// would send an empty `x-api-key` header and surface as a confusing 401 instead
+/// of the actionable "set ANTHROPIC_API_KEY".
+#[test]
+fn an_empty_value_is_reported_as_missing() {
+    let error = sandbx_providers::resolve_api_key("ANTHROPIC_API_KEY", |_| Ok(String::new()))
+        .expect_err("an empty var must not resolve");
+
+    match error {
+        ProviderError::MissingCredential { env_var } => assert_eq!(env_var, "ANTHROPIC_API_KEY"),
+        other => panic!("expected MissingCredential, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_whitespace_only_value_is_reported_as_missing_too() {
+    let error = sandbx_providers::resolve_api_key("ANTHROPIC_API_KEY", |_| Ok(" \t\n".to_string()))
+        .expect_err("a blank var must not resolve");
+
+    assert!(matches!(error, ProviderError::MissingCredential { .. }));
+}
+
 #[test]
 fn anthropic_api_key_names_the_right_env_var() {
     // anthropic_api_key() reads the real environment, but only to name the
     // var — it cannot be made to succeed without a real key set on this
     // machine, and must not mutate the real environment to force the failure
-    // path (env::set_var is unsafe under edition 2024). So only the case where
-    // this dev machine happens not to have one set is asserted.
-    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-        return; // a real key is set here; nothing to assert either way
+    // path (env::set_var is unsafe under edition 2024).
+    //
+    // A *usable* key set here (not merely a present-but-blank one, which
+    // resolve_api_key rejects) is the one case with nothing to assert: the call
+    // succeeds and reveals no env var name. Asking whether the var is merely
+    // `Ok` would have skipped the assertion for `ANTHROPIC_API_KEY=`, exactly
+    // the environment where the blank-rejection above matters most.
+    let a_real_key_is_set =
+        std::env::var("ANTHROPIC_API_KEY").is_ok_and(|value| !value.trim().is_empty());
+    if a_real_key_is_set {
+        assert!(
+            sandbx_providers::anthropic_api_key().is_ok(),
+            "a non-blank key in the environment must resolve"
+        );
+        return;
     }
 
-    let error = sandbx_providers::anthropic_api_key().expect_err("no key is set here");
+    let error = sandbx_providers::anthropic_api_key().expect_err("no usable key is set here");
     match error {
         ProviderError::MissingCredential { env_var } => assert_eq!(env_var, "ANTHROPIC_API_KEY"),
         other => panic!("expected MissingCredential, got {other:?}"),

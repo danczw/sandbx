@@ -10,13 +10,25 @@ use crate::ProviderError;
 /// edition 2024, and this workspace forbids `unsafe_code` everywhere,
 /// including in test binaries, so a test cannot set a real env var to drive
 /// this function even if it wanted to.
+///
+/// A variable that is set but blank is treated as absent, and surrounding
+/// whitespace is trimmed off the key. Neither is pedantry: an unpopulated CI
+/// secret or `docker run -e ANTHROPIC_API_KEY` yields `Ok("")`, which would
+/// otherwise build a client that sends an empty `x-api-key` and fails with a
+/// 401 after a network round trip; and `export ANTHROPIC_API_KEY=$(cat key)`
+/// keeps a trailing newline, which `HeaderValue` rejects much later as an
+/// opaque `Transport` error naming nothing. Both are configuration problems, so
+/// both get the one error that says what to fix.
 pub fn resolve_api_key(
     env_var: &'static str,
     lookup: impl Fn(&str) -> Result<String, std::env::VarError>,
 ) -> Result<SecretString, ProviderError> {
-    lookup(env_var)
-        .map(SecretString::from)
-        .map_err(|_| ProviderError::MissingCredential { env_var })
+    let value = lookup(env_var).map_err(|_| ProviderError::MissingCredential { env_var })?;
+    let key = value.trim();
+    if key.is_empty() {
+        return Err(ProviderError::MissingCredential { env_var });
+    }
+    Ok(SecretString::from(key.to_string()))
 }
 
 /// Resolve the Anthropic API key from `ANTHROPIC_API_KEY`.
