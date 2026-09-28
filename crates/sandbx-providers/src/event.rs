@@ -5,44 +5,92 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentEvent {
     /// An incremental chunk of assistant-visible text.
-    Text { delta: String },
+    Text {
+        /// The new text to append; not the accumulated text so far.
+        delta: String,
+    },
     /// An incremental chunk of the model's extended-thinking text.
     ///
     /// The incremental cryptographic signature Anthropic streams alongside a
-    /// thinking block (needed to replay it into a later turn) is accumulated
-    /// internally during parsing but has nowhere to go in this shape yet —
-    /// nothing threads history back into a request today. Revisit if/when
+    /// thinking block (needed to replay it into a later turn) is *discarded*,
+    /// not accumulated: nothing threads history back into a request today, so
+    /// there is nowhere for it to go in this shape. Revisit — by accumulating
+    /// it in `wire.rs` and adding a field here at the same time — if/when
     /// something does, rather than guessing the field now.
-    Thinking { delta: String },
+    Thinking {
+        /// The new thinking text to append; not the accumulated text so far.
+        delta: String,
+    },
     /// A tool call whose JSON input has fully arrived and parsed.
     ///
     /// Emitted exactly once per call, only after every fragment of its input
     /// has been accumulated and the result parses as JSON.
     ToolCallRequested {
+        /// The vendor's call ID, to echo in the `tool_result` block that
+        /// answers this call.
         id: String,
+        /// The tool the model wants to run.
         name: String,
+        /// The fully accumulated, parsed arguments.
         input: serde_json::Value,
     },
     /// Token accounting for the turn.
+    ///
+    /// Emitted at most once per turn, carrying the last figures the API
+    /// reported — Anthropic restates the counts cumulatively on every
+    /// `message_delta`, so summing several of these would double-count. A turn
+    /// that reported no counts at all emits no `Usage` event.
+    ///
+    /// Every field is optional because the API may omit any of them: `None`
+    /// means "not reported", which is deliberately distinguishable from a
+    /// reported zero.
     Usage {
-        input_tokens: u32,
-        output_tokens: u32,
+        /// Tokens in the request, excluding anything served from cache.
+        input_tokens: Option<u32>,
+        /// Tokens the model generated.
+        output_tokens: Option<u32>,
+        /// Tokens written to the prompt cache.
         cache_creation_input_tokens: Option<u32>,
+        /// Tokens read from the prompt cache.
         cache_read_input_tokens: Option<u32>,
     },
     /// The turn ended, and why.
-    Stop { reason: StopReason },
+    ///
+    /// Exactly one of these ends every turn that completed: it is emitted when
+    /// the stream's `message_stop` arrives, not when a stop reason is first
+    /// seen, so "the turn ended" has a single source of truth. A turn that
+    /// never reaches `message_stop` produces an `Err` instead — see
+    /// [`ProviderError::StreamEndedUnexpectedly`] — never silence.
+    ///
+    /// [`ProviderError::StreamEndedUnexpectedly`]: crate::ProviderError::StreamEndedUnexpectedly
+    Stop {
+        /// Why the model stopped generating.
+        reason: StopReason,
+    },
 }
 
 /// Why a turn ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopReason {
+    /// The model finished its reply of its own accord (`end_turn`).
     EndTurn,
+    /// The model wants a tool run before continuing (`tool_use`); the caller
+    /// is expected to answer with `tool_result` blocks.
     ToolUse,
+    /// The reply was cut off at `max_tokens`, mid-thought.
     MaxTokens,
+    /// A caller-supplied stop sequence was produced (`stop_sequence`).
     StopSequence,
+    /// The turn ended without the API ever reporting a reason.
+    ///
+    /// `message_delta.stop_reason` is nullable, so a stream can reach
+    /// `message_stop` with nothing having said why. Reported explicitly rather
+    /// than by omitting the [`AgentEvent::Stop`] event, which would leave a
+    /// caller unable to distinguish a finished turn from a truncated one.
+    Unspecified,
     /// Forward-compat catch-all: an unrecognized vendor string should not be a
-    /// hard parse failure, since new stop reasons ship over time.
+    /// hard parse failure, since new stop reasons ship over time. Carries the
+    /// vendor's string verbatim.
     Other(String),
 }
 

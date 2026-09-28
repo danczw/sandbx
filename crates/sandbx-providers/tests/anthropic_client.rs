@@ -105,8 +105,8 @@ async fn a_full_turn_produces_the_expected_event_sequence() {
                 input: serde_json::json!({"location": "Paris"}),
             },
             AgentEvent::Usage {
-                input_tokens: 10,
-                output_tokens: 8,
+                input_tokens: Some(10),
+                output_tokens: Some(8),
                 cache_creation_input_tokens: None,
                 cache_read_input_tokens: None,
             },
