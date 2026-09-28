@@ -40,8 +40,29 @@ tokio = { version = "1.53.1", default-features = false, features = ["macros", "r
 # real HTTP round-trip with zero live network access.
 wiremock = "0.6.5"
 
+# `MockProvider`'s tests need the `mock` feature, and it must NOT be turned on by
+# a self dev-dependency (`sandbx-providers = { path = ".", features = ["mock"] }`).
+# That edge is active under `--all-targets` and under `cargo test`, and resolver
+# v3 unifies features per package, so the single rlib every consumer links would
+# have `mock` on: production code referencing `MockProvider` would pass clippy
+# and the full test suite, then fail for the first time in the release build.
+# Declaring the target instead keeps the default lint/build passes honest, and
+# `cargo test --features sandbx-providers/mock` (what CI runs) covers it.
+[[test]]
+name = "mock_provider"
+required-features = ["mock"]
+
 [features]
+# Opt-in suite that calls the real Anthropic API. Excluded from the default
+# `cargo test` run because it needs a paid `ANTHROPIC_API_KEY` and spends money
+# per run, so it cannot work in CI without a secret — the same reason
+# sandbx-core gates `sandbox-integration`. Feature-gated rather than checked at
+# runtime so an accidental run without opting in fails to compile instead of
+# silently passing; see `tests/live_anthropic.rs`.
 live-anthropic-tests = []
+# Exposes `MockProvider`, a test double that fabricates responses. Off by
+# default: a canned-response provider has no business in a production build.
+mock = []
 
 [lints]
 workspace = true
