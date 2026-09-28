@@ -58,6 +58,8 @@ cargo install --git https://github.com/danczw/sandbx sandbx-cli
 ```sh
 cargo test --workspace                                 # default suite
 cargo test --workspace --features sandbox-integration  # needs Linux kernel ≥ 6.10
+cargo test -p sandbx-providers \
+  --features live-anthropic-tests                      # needs a paid ANTHROPIC_API_KEY
 cargo clippy --workspace --all-targets -- -D warnings
 git config core.hooksPath .githooks                    # fmt + clippy on commit
 ```
