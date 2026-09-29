@@ -40,7 +40,6 @@ fn surfaces_a_non_zero_exit() {
     assert!(format!("{err}").contains('3'), "exit code missing: {err}");
 }
 
-/// The policy must actually reach the spawned process.
 #[test]
 fn the_command_is_confined_by_the_policy() {
     let secret_dir = tempfile::tempdir().unwrap();

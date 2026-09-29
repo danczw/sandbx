@@ -43,7 +43,7 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         }
 
         // Opened through the guard so the handle, not a re-resolved path, is
-        // what gets read. Binary files fail UTF-8 validation and are skipped.
+        // what gets read. A binary file fails UTF-8 validation and is skipped.
         let Ok(mut handle) = ctx.guard().open_read(&file) else {
             continue;
         };

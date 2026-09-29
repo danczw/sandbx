@@ -87,7 +87,6 @@ fn refuses_a_missing_match() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
 }
 
-/// Editing needs both read and write; a read-only grant must not suffice.
 #[test]
 fn read_grant_alone_does_not_permit_editing() {
     let root = tempfile::tempdir().unwrap();
@@ -123,7 +122,6 @@ fn a_refused_edit_leaves_the_file_intact() {
             .allow_write(root.path()),
     );
 
-    // Ambiguous: two matches.
     assert!(
         BuiltinTool::Edit
             .execute(
@@ -134,7 +132,6 @@ fn a_refused_edit_leaves_the_file_intact() {
     );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
 
-    // Absent: no matches.
     assert!(
         BuiltinTool::Edit
             .execute(
