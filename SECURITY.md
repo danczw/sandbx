@@ -38,6 +38,7 @@ On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 | network | empty network namespace | IP egress, abstract unix sockets |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | syscalls | seccomp-bpf | a denylist of dangerous calls, including `io_uring` (which would otherwise run operations without issuing them) |
+| process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty capability set (bounding set cleared only when network is denied — see below) |
 
 Three properties matter as much as the list:
 
@@ -83,6 +84,19 @@ Three properties matter as much as the list:
   available in practice yet. Until then, what the command can *read* is what
   bounds which sockets exist to be dialled, so keep the filesystem policy narrow
   when granting this.
+- **The capability bounding set is only cleared when network is denied.**
+  Dropping it needs `CAP_SETPCAP`, which an unprivileged process holds only
+  inside a user namespace it created itself; that namespace is only created on
+  the network-denied (default) path. On the network-allowed path, the
+  effective/permitted/inheritable/ambient sets are still fully cleared, but the
+  bounding set is left as inherited from the host.
+- **The sandboxed command is not marked non-dumpable.** `PR_SET_DUMPABLE=0`
+  was investigated for #39 and found ineffective for this design: the kernel
+  resets that flag to dumpable on every `execve` of an ordinary binary, so
+  setting it in the helper only affects the helper's own process, not the
+  command it re-execs into. Core dumps are still fully suppressed via
+  `RLIMIT_CORE=0`, which does persist across exec; the ptrace-attach
+  protection `PR_SET_DUMPABLE=0` would otherwise add is not achievable here.
 
 ## Known weaknesses
 
