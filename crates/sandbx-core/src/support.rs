@@ -3,11 +3,9 @@ use crate::SandboxError;
 /// Whether the running kernel can enforce a sandbox.
 ///
 /// A [`crate::SandboxPolicy`] is a promise; this is whether the machine can keep
-/// it. Probing is separated from the decision made about it ([`detect`] versus
-/// [`new`]) so the fail-closed path is testable on a machine whose own kernel is
-/// perfectly capable — otherwise the one path that must never be wrong could
-/// only be exercised by finding an ancient kernel, and so would never be
-/// exercised at all.
+/// it. Probing ([`detect`]) is separate from constructing a report ([`new`]) so
+/// the fail-closed path stays testable on a machine whose own kernel is
+/// perfectly capable.
 ///
 /// Only filesystem enforcement is reported. Landlock's network rules cover TCP
 /// bind/connect only, which is not how sandbx denies network access — that comes

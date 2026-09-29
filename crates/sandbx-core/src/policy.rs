@@ -101,11 +101,6 @@ impl SandboxPolicy {
     /// not `/etc`, and never write access. Being able to run `ls` should not
     /// imply being able to replace it.
     ///
-    /// This is the grant execute exists for. Everything else stays on
-    /// [`allow_read`], which does not confer it.
-    ///
-    /// [`allow_read`]: Self::allow_read
-    ///
     /// Paths absent on this system are skipped — distributions disagree about
     /// `/lib64`, and Landlock rejects a rule for a path that does not exist,
     /// which would turn that disagreement into a failure to sandbox at all.

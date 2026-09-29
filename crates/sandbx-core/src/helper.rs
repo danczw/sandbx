@@ -19,9 +19,6 @@ pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, Sandb
 
     apply(&request.policy)?;
 
-    // `exec` replaces this process image, so the restrictions just applied carry
-    // into the command. It only returns on failure.
-    //
     // The workspace bans `Command::new` so nothing can spawn around the sandbox.
     // This is the one sanctioned call: `apply` has already restricted this
     // process, so the command inherits the cage rather than escaping it. The
@@ -41,7 +38,6 @@ pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, Sandb
     })
 }
 
-/// Restrict the current process according to `policy`.
 #[cfg(target_os = "linux")]
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
@@ -77,9 +73,9 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     const LATEST: ABI = ABI::V9; // Linux 6.15: adds ResolveUnix
 
     // `from_read` bundles `Execute` in with `ReadFile`/`ReadDir`, and `from_all`
-    // inherits it. Granting either therefore used to hand out the right to *run*
+    // inherits it. Granting either would otherwise hand out the right to *run*
     // whatever the path contains, which neither `allow_read` nor `allow_write`
-    // says (#19). Execute now comes from one axis that is named for it.
+    // says (#19). Execute comes from one axis, named for it.
     let read_execute = AccessFs::from_read(LATEST);
     let read_only = read_execute & !AccessFs::Execute;
     let read_write = AccessFs::from_all(LATEST) & !AccessFs::Execute;
@@ -208,8 +204,8 @@ fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxE
     // isolates only *abstract* unix sockets; pathname sockets live in the
     // filesystem and cross it freely, so a command that can dial systemd's bus,
     // docker.sock or an ssh-agent can have them act outside the sandbox — which
-    // is an escape, not egress. Tying this to `allows_network` meant granting
-    // the internet also granted that (#8).
+    // is an escape, not egress. Deliberately not tied to `allows_network`, so
+    // granting the internet does not grant this (#8).
     //
     // All-or-nothing: seccomp compares register values, and the path passed to
     // `connect` is behind a pointer it cannot follow. Landlock gained a

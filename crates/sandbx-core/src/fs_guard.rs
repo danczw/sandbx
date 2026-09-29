@@ -238,9 +238,9 @@ fn canonicalize(path: &Path) -> Result<PathBuf, SandboxError> {
 
 /// Allow `resolved` only if it sits inside one of `roots`.
 ///
-/// Compares whole path components, not string prefixes: `/work-secrets` must not
-/// match the root `/work`, which a `starts_with` on strings would allow.
-/// `Path::starts_with` is component-wise, which is exactly the needed semantics.
+/// `Path::starts_with` compares whole components, not string prefixes:
+/// `/work-secrets` must not match the root `/work`, which a string prefix would
+/// allow.
 fn permit(
     resolved: PathBuf,
     roots: &[PathBuf],

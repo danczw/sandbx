@@ -9,9 +9,6 @@
 //! to be installed alongside.
 
 fn main() -> std::process::ExitCode {
-    // Goes through the same dispatch the shipped `sandbx` binary uses, so this
-    // binary and production exercise one code path rather than two.
-    //
     // In helper mode this never returns — the process image is replaced. Any
     // return means failure, and the command must NOT be run: falling through to
     // an unrestricted execution is the exact failure the sandbox exists to
