@@ -55,7 +55,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // After, not before: `deny_network` may have just entered a fresh user
     // namespace, which grants this process the full capability set *within
     // it* — dropping capabilities earlier would be undone by that unshare.
-    harden_process_state(!policy.allows_network())?;
+    harden_process_state()?;
 
     // Installing a seccomp filter requires either CAP_SYS_ADMIN or no_new_privs.
     // Set it explicitly rather than relying on the user namespace above, which
@@ -153,23 +153,34 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 /// up, not real hardening; core dumps are already fully covered below via
 /// `RLIMIT_CORE`, which — unlike the dumpable flag — does persist across exec.
 ///
-/// `has_fresh_userns` gates the capability *bounding* set specifically:
-/// dropping it needs `CAP_SETPCAP`, which an unprivileged process holds only
-/// inside a user namespace it created itself. Today that namespace only exists
-/// when `deny_network` ran (network denied), so on the network-allowed path
-/// the bounding set is left as inherited from the host — a known, narrower
-/// guarantee documented in `SECURITY.md` rather than a silent gap.
+/// The capability *bounding* set is best-effort, and deliberately so. Dropping
+/// it needs `CAP_SETPCAP`, which an unprivileged process holds only inside a
+/// user namespace it created itself — and not even there when an LSM strips
+/// capabilities from such a namespace. AppArmor's
+/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+, and set on
+/// GitHub's runners) does exactly that: `deny_network`'s `unshare` succeeds,
+/// but `PR_CAPBSET_DROP` then returns `EPERM`. Treating that as a refusal
+/// would take the sandbox away entirely on the most common Linux desktop and
+/// CI hosts, in exchange for a bit that cannot be spent: once the four sets
+/// below are empty and `no_new_privs` is set, the kernel caps the permitted
+/// set of an `execve`d binary at the old one and refuses to raise inheritable
+/// or ambient, so a leftover bounding bit can never become privilege. So it is
+/// attempted and logged, not enforced — and `SECURITY.md` claims it as
+/// best-effort rather than as part of the boundary.
 ///
-/// Order matters within this function too: the bounding set is dropped
-/// *before* the effective set, not after. `PR_CAPBSET_DROP` itself requires
+/// Order matters within this function: the bounding set is dropped *before*
+/// the effective set, not after. `PR_CAPBSET_DROP` itself requires
 /// `CAP_SETPCAP` in the effective set — clearing effective first would remove
 /// the very right this function needs to drop the bounding set at all.
 #[cfg(target_os = "linux")]
-fn harden_process_state(has_fresh_userns: bool) -> Result<(), SandboxError> {
+fn harden_process_state() -> Result<(), SandboxError> {
     use caps::CapSet;
 
-    if has_fresh_userns {
-        caps::clear(None, CapSet::Bounding).map_err(hardening_failed)?;
+    if let Err(error) = caps::clear(None, CapSet::Bounding) {
+        tracing::debug!(
+            target: crate::AUDIT_TARGET,
+            "could not drop the capability bounding set, leaving it as inherited: {error}"
+        );
     }
 
     for set in [
