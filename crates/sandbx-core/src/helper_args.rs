@@ -23,6 +23,8 @@ pub struct HelperArgs {
     pub policy: SandboxPolicy,
     /// Program the helper should become.
     pub program: String,
+    /// Arguments for `program`, already split into words. The helper execs
+    /// directly, so nothing here is ever seen by a shell.
     pub args: Vec<String>,
 }
 

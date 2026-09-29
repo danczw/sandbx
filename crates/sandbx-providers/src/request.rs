@@ -72,6 +72,8 @@ impl Serialize for MessagesRequest {
 /// One turn in the conversation.
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestMessage {
+    /// Who produced this turn. The API rejects a conversation whose first turn
+    /// is not [`Role::User`].
     pub role: Role,
     /// Content blocks, in order.
     pub content: Vec<ContentBlock>,
@@ -83,6 +85,7 @@ pub struct RequestMessage {
 pub enum Role {
     /// The human (or, for a tool result, the harness acting on their behalf).
     User,
+    /// The model, on a turn being replayed back out of history.
     Assistant,
 }
 
@@ -90,7 +93,10 @@ pub enum Role {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
+    /// Prose, the only block kind a first user turn needs.
     Text {
+        /// Sent as given. Nothing here checks its length, so the model's context
+        /// window is what bounds it.
         text: String,
     },
     /// A tool call the model made on a previous turn, replayed back into the
@@ -100,7 +106,10 @@ pub enum ContentBlock {
         ///
         /// [`ToolResult`]: Self::ToolResult
         id: String,
+        /// The tool's name, as it stood in the model's original call.
         name: String,
+        /// The arguments the model produced, replayed verbatim rather than
+        /// re-serialized from a parsed form.
         input: serde_json::Value,
     },
     /// The outcome of running a tool call.

@@ -1,3 +1,9 @@
+//! The `sandbx` binary: helper dispatch, then the command line.
+//!
+//! Holds only what needs a real process — the argument parsing and policy
+//! derivation it drives live in the library half, where they are testable
+//! without a sandbox-capable kernel.
+
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
 

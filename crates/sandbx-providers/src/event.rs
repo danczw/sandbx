@@ -28,6 +28,8 @@ pub enum AgentEvent {
         /// The vendor's call ID, to echo in the `tool_result` block that
         /// answers this call.
         id: String,
+        /// The tool's name as the model asked for it, for the caller to match
+        /// against its own registry.
         name: String,
         /// The fully accumulated, parsed arguments.
         input: serde_json::Value,
@@ -45,6 +47,8 @@ pub enum AgentEvent {
     Usage {
         /// Tokens in the request, excluding anything served from cache.
         input_tokens: Option<u32>,
+        /// Tokens the model generated, extended thinking included — so this can
+        /// exceed the visible reply.
         output_tokens: Option<u32>,
         /// Tokens written to the prompt cache.
         cache_creation_input_tokens: Option<u32>,
@@ -59,7 +63,10 @@ pub enum AgentEvent {
     /// [`ProviderError::StreamEndedUnexpectedly`] — never silence.
     ///
     /// [`ProviderError::StreamEndedUnexpectedly`]: crate::ProviderError::StreamEndedUnexpectedly
-    Stop { reason: StopReason },
+    Stop {
+        /// Why it ended, or [`StopReason::Unspecified`] when the API never said.
+        reason: StopReason,
+    },
 }
 
 /// Why a turn ended.
