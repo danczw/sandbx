@@ -242,12 +242,45 @@ fn seccomp_filter_is_installed() {
     );
 }
 
-/// Every capability must be gone on the default (network-denied) path, and
-/// `no_new_privs` must be set — piggybacked here since it reads from the same
-/// `/proc/self/status` output and has no dedicated test of its own yet.
+/// Read a named field out of the `/proc/self/status` a sandboxed command sees.
+fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix(name))
+        .map(str::trim)
+        .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
+}
+
+/// The four sets the helper can always clear, whatever privilege it holds:
+/// shrinking them needs no capability at all.
 ///
-/// `Cap{Eff,Prm,Inh,Amb,Bnd}` are hex bitmasks; a fully dropped process reports
-/// all of them as `0000000000000000`.
+/// `Cap{Eff,Prm,Inh,Amb}` are hex bitmasks; a fully dropped process reports each
+/// as `0000000000000000`. `CapBnd` is deliberately absent — see
+/// [`the_bounding_set_is_cleared_where_the_kernel_allows_it`].
+const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
+
+/// Can this machine drop the capability bounding set at all?
+///
+/// Doing so needs `CAP_SETPCAP`, which an unprivileged process holds only inside
+/// a user namespace it created itself — and not even there when an LSM strips
+/// capabilities from such a namespace. AppArmor's
+/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+, and set on GitHub's
+/// runners) does exactly that: the `unshare` succeeds but `PR_CAPBSET_DROP`
+/// returns `EPERM`.
+///
+/// The helper treats that as a best-effort step rather than a refusal, so the
+/// assertion has to be conditional in the same way — otherwise this suite would
+/// demand a guarantee the kernel is refusing to give.
+fn bounding_set_is_droppable() -> bool {
+    std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+        .map(|value| value.trim() != "1")
+        .unwrap_or(true)
+}
+
+/// The unprivileged capability sets must be gone on the default
+/// (network-denied) path, and `no_new_privs` must be set — piggybacked here
+/// since it reads from the same `/proc/self/status` output and has no dedicated
+/// test of its own yet.
 #[test]
 fn capabilities_are_dropped() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -260,34 +293,25 @@ fn capabilities_are_dropped() {
     );
 
     let status = String::from_utf8_lossy(&output.stdout);
-    let field = |name: &str| {
-        status
-            .lines()
-            .find_map(|l| l.strip_prefix(name))
-            .map(str::trim)
-            .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
-    };
-
-    for name in ["CapInh:", "CapPrm:", "CapEff:", "CapBnd:", "CapAmb:"] {
+    for name in ALWAYS_CLEARED {
         assert_eq!(
-            field(name),
+            status_field(&status, name),
             "0000000000000000",
             "{name} was not fully dropped"
         );
     }
-    assert_eq!(field("NoNewPrivs:"), "1", "no_new_privs was not set");
+    assert_eq!(
+        status_field(&status, "NoNewPrivs:"),
+        "1",
+        "no_new_privs was not set"
+    );
 }
 
-/// The bounding set can only be dropped with `CAP_SETPCAP`, which this process
-/// holds only inside a user namespace it created itself — which only happens
-/// on the network-denied path (`deny_network`'s `unshare(CLONE_NEWUSER)`).
-///
-/// On the network-allowed path there is no such namespace, so the bounding set
-/// is left as inherited from the host rather than silently failing to drop it.
-/// The other four sets need no special capability to shrink and are always
-/// cleared. This pins that documented gap so it cannot regress unnoticed.
+/// Granting the network must not cost any of the unprivileged capability sets:
+/// they are cleared on both paths, since shrinking them needs no privilege and
+/// so does not depend on the user namespace `deny_network` creates.
 #[test]
-fn capabilities_are_dropped_except_bounding_when_network_is_allowed() {
+fn capabilities_are_dropped_when_network_is_allowed() {
     let policy = runtime_paths(SandboxPolicy::default().allow_network()).allow_read("/proc");
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
@@ -298,27 +322,41 @@ fn capabilities_are_dropped_except_bounding_when_network_is_allowed() {
     );
 
     let status = String::from_utf8_lossy(&output.stdout);
-    let field = |name: &str| {
-        status
-            .lines()
-            .find_map(|l| l.strip_prefix(name))
-            .map(str::trim)
-            .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
-    };
-
-    for name in ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"] {
+    for name in ALWAYS_CLEARED {
         assert_eq!(
-            field(name),
+            status_field(&status, name),
             "0000000000000000",
             "{name} was not dropped on the network-allowed path"
         );
     }
-    assert_ne!(
-        field("CapBnd:"),
+}
+
+/// Where the kernel permits it, the bounding set is cleared too.
+///
+/// Skipped rather than relaxed where an LSM strips capabilities from a fresh
+/// user namespace: the point is to pin the guarantee on machines that *can*
+/// offer it, not to weaken it into something that passes everywhere.
+#[test]
+fn the_bounding_set_is_cleared_where_the_kernel_allows_it() {
+    if !bounding_set_is_droppable() {
+        eprintln!("skipped: this kernel strips capabilities from an unprivileged userns");
+        return;
+    }
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
+
+    assert!(
+        output.status.success(),
+        "could not read process status: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let status = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        status_field(&status, "CapBnd:"),
         "0000000000000000",
-        "CapBnd unexpectedly dropped on the network-allowed path; if this now \
-         succeeds, update the documented gap in helper.rs and SECURITY.md \
-         instead of loosening this assertion"
+        "CapBnd was not dropped although this kernel allows it"
     );
 }
 
