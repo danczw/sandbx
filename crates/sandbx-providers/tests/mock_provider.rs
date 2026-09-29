@@ -1,10 +1,9 @@
 //! Public contract of [`MockProvider`].
 //!
-//! Deliberately kept outside the `Provider` enum — see its doc comment — so
-//! Phase 5's agent loop should be designed generic over the stream shape
+//! Deliberately kept outside the `Provider` enum — see its doc comment — so the
+//! agent loop must be generic over the stream shape
 //! (`impl Stream<Item = Result<AgentEvent, ProviderError>>`), not over
-//! `Provider`/`MockProvider` identity. These tests exercise it exactly the
-//! way such a caller would.
+//! `Provider`/`MockProvider` identity. These tests exercise it that way.
 
 use futures_util::StreamExt;
 use sandbx_providers::{AgentEvent, MessagesRequest, MockProvider, ProviderError, StopReason};
@@ -65,9 +64,9 @@ async fn an_empty_sequence_yields_no_events() {
     assert!(events.is_empty());
 }
 
-/// `with_results` is the negative-path constructor: a caller testing "what
-/// happens when the provider fails partway through a turn" needs to inject an
-/// error at a specific point, not just an all-success sequence.
+/// The negative-path constructor: a caller testing a provider that fails
+/// partway through a turn needs the error at a specific point, not merely an
+/// all-success sequence.
 #[tokio::test]
 async fn with_results_can_inject_a_terminal_error() {
     let provider = MockProvider::with_results(vec![

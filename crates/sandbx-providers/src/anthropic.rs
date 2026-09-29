@@ -7,11 +7,10 @@ use crate::{credentials, ensure_crypto_provider_installed, sse, wire};
 
 /// A hand-rolled streaming client for the Anthropic Messages API.
 ///
-/// Both traits are derived: `reqwest::Client`, `SecretString` and `String` are
-/// all `Clone`, and `SecretString`'s own `Debug` prints a redaction rather than
-/// the secret — which is the entire reason the key is wrapped in it. Deriving is
-/// what makes that safe to rely on, since a hand-written `Debug` would silently
-/// omit any field added later, while the derive picks it up.
+/// `Debug` is derived rather than hand-written: `SecretString`'s own `Debug`
+/// prints a redaction instead of the secret — the entire reason the key is
+/// wrapped in it — and the derive picks up any field added later, where a
+/// hand-written impl would silently omit it.
 #[derive(Clone, Debug)]
 pub struct AnthropicClient {
     http: reqwest::Client,
@@ -57,12 +56,11 @@ impl AnthropicClient {
     /// public method rather than a `#[cfg(test)]`-gated one, which
     /// `tests/*.rs` (a separate compiled crate) could not reach anyway.
     ///
-    /// Fallible, and returns [`ProviderError::InvalidBaseUrl`] for anything
-    /// that is not `https://`, because being a real production seam is exactly
-    /// what makes it worth checking: every request carries the API key in a
-    /// header, so a mistyped or downgraded `http://` URL here puts the key on
-    /// the wire in cleartext. `http://` to a loopback host is the one
-    /// exception, for a local mock server under test.
+    /// Returns [`ProviderError::InvalidBaseUrl`] for anything that is not
+    /// `https://`: every request carries the API key in a header, so a mistyped
+    /// or downgraded `http://` URL here puts the key on the wire in cleartext.
+    /// `http://` to a loopback host is the one exception, for a local mock
+    /// server under test.
     ///
     /// A trailing `/` is trimmed, so both `https://host` and `https://host/`
     /// produce `https://host/v1/messages` rather than a doubled slash. A path
@@ -99,8 +97,8 @@ impl AnthropicClient {
         request: MessagesRequest,
     ) -> Result<
         // `FusedStream`, not plain `Stream`: the stream is safe to poll past its
-        // end, and saying so in the signature is what lets a caller rely on it
-        // (and lets a combinator that needs fusedness accept it directly).
+        // end, and saying so in the signature is what lets a caller — or a
+        // combinator requiring fusedness — rely on that.
         //
         // `+ use<>`: the returned stream owns everything it needs (the auth
         // header is read before this point; the stream itself only holds an
@@ -193,20 +191,17 @@ fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderErr
         // silence means the connection is gone, not that the model is thinking.
         //
         // This is still not a per-turn wall-clock bound; that belongs one layer
-        // up, wrapping the consumption loop, and is not the same mechanism as
-        // sandbx-core's `SandboxedCommand::timeout` — that bounds a local
-        // CPU-bound subprocess by SIGKILLing a process group, this would bound a
-        // remote I/O-bound call by cancelling a future. Do not unify them.
+        // up, wrapping the consumption loop. Do not unify it with sandbx-core's
+        // `SandboxedCommand::timeout`: that bounds a local subprocess by
+        // SIGKILLing a process group, this would cancel a remote I/O future.
         .read_timeout(std::time::Duration::from_secs(120))
-        // The API key travels in an `x-api-key` header, and reqwest's
-        // cross-host redirect scrubbing only strips the headers it knows
-        // are credentials (`Authorization`, `Cookie`,
-        // `Proxy-Authorization`), never a custom one. So under the default
-        // policy a 3xx from the base URL would replay the key — and, for
-        // 307/308, the whole conversation body — to whatever host the
-        // `Location` names, over cleartext if it says so. The Messages API
-        // never legitimately redirects, so refusing outright costs nothing
-        // and closes that off for any future configurable base URL.
+        // The API key travels in an `x-api-key` header, and reqwest's cross-host
+        // redirect scrubbing only strips headers it knows are credentials
+        // (`Authorization`, `Cookie`, `Proxy-Authorization`), never a custom one.
+        // Under the default policy a 3xx from the base URL would replay the key —
+        // and, for 307/308, the whole conversation body — to whatever host
+        // `Location` names, in cleartext if it says so. The Messages API never
+        // legitimately redirects, so refusing outright costs nothing.
         .redirect(reqwest::redirect::Policy::none());
 
     builder = match reachability {
@@ -241,13 +236,11 @@ fn is_loopback_host(host: &str) -> bool {
 
 /// Turn a non-2xx response into the right `ProviderError` variant.
 ///
-/// A 429 is split out as [`ProviderError::RateLimited`] so a caller can react
-/// to it distinctly; everything else falls back to
+/// A 429 becomes [`ProviderError::RateLimited`]; everything else becomes
 /// [`ProviderError::ApiError`], parsed from the vendor's standard
-/// `{"type":"error","error":{...}}` envelope where present. Which of *those* are
-/// worth retrying — a 529 `overloaded_error` and a 500 `api_error` are — is
-/// [`ProviderError::is_retryable`]'s job, so no status comparison is duplicated
-/// at a call site.
+/// `{"type":"error","error":{...}}` envelope where present. Which of those are
+/// worth retrying is [`ProviderError::is_retryable`]'s job, so no status
+/// comparison is duplicated at a call site.
 async fn map_error_response(
     status: reqwest::StatusCode,
     response: reqwest::Response,

@@ -9,7 +9,7 @@
 pub enum ProviderError {
     /// No credential could be resolved for this provider.
     MissingCredential {
-        /// The environment variable that was checked and not found.
+        /// The environment variable that was checked.
         env_var: &'static str,
     },
 
@@ -38,18 +38,16 @@ pub enum ProviderError {
     Transport {
         /// What was being attempted, for the operator to act on.
         detail: String,
-        /// The underlying transport failure.
         source: reqwest::Error,
     },
 
     /// The API answered with a non-2xx status other than a rate limit, or sent
     /// an in-band SSE `error` event mid-stream.
     ///
-    /// Rate limiting is split out as [`RateLimited`] so a caller can react to
-    /// it differently (back off and retry) without string-matching `kind`. That
-    /// split alone does not say which *other* failures are worth retrying — a
-    /// 529 `overloaded_error` and a 500 `api_error` both are, a 400 is not — so
-    /// ask [`is_retryable`] rather than comparing `status` or `kind` at the call
+    /// Rate limiting is split out as [`RateLimited`] so a caller can back off
+    /// without string-matching `kind`. Which *other* failures are worth retrying
+    /// — a 529 `overloaded_error` and a 500 `api_error` are, a 400 is not — is
+    /// [`is_retryable`]'s answer, not a `status`/`kind` comparison at the call
     /// site.
     ///
     /// [`RateLimited`]: Self::RateLimited
@@ -107,14 +105,13 @@ impl ProviderError {
 
     /// Whether retrying the identical request could plausibly succeed.
     ///
-    /// The one place the retry/no-retry split named in this enum's doc comment
-    /// is actually decided, so a retry layer never has to match on `status` or
-    /// `kind` itself: a transport failure or a rate limit is retryable, a 5xx is
-    /// (Anthropic documents 500 `api_error` and 529 `overloaded_error` as such),
-    /// and a 4xx other than 429 is not. A malformed stream is a wire-format bug
-    /// no retry fixes; a truncated one might be, but the turn was already
-    /// partially delivered, so re-sending is the caller's judgement call, not a
-    /// blanket yes.
+    /// The one place the retry/no-retry split is decided, so a retry layer never
+    /// matches on `status` or `kind` itself: a transport failure or a rate limit
+    /// is retryable, a 5xx is (Anthropic documents 500 `api_error` and 529
+    /// `overloaded_error` as such), a 4xx other than 429 is not. A malformed
+    /// stream is a wire-format bug no retry fixes; a truncated one might be, but
+    /// the turn was already partially delivered, so re-sending is the caller's
+    /// judgement call.
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::Transport { .. } | Self::RateLimited { .. } => true,

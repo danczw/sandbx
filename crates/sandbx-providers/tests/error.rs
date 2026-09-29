@@ -233,8 +233,7 @@ fn retry_after_is_exposed_from_both_carrying_variants() {
     );
 }
 
-/// The only way to get a real `reqwest::Error` without a network call: ask a
-/// client to build a request against a URL it cannot parse.
+/// The only way to get a real `reqwest::Error` without a network call.
 fn reqwest_error_for_test() -> reqwest::Error {
     // Building any reqwest::Client panics without a crypto provider installed
     // first — see `ensure_crypto_provider_installed`'s doc comment.

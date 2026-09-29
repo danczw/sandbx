@@ -7,13 +7,11 @@ use crate::request::MessagesRequest;
 /// A test double that replays a canned sequence of events instead of calling
 /// a real API.
 ///
-/// Deliberately not a `Provider` variant. Production code would permanently
-/// ship a variant that must never actually run in production — a footgun —
-/// and a caller that wants "produces this stream shape" interchangeably with
-/// a real provider should write its core logic generic over the stream
+/// Deliberately not a `Provider` variant: that would permanently ship a variant
+/// which must never run in production. A caller that wants "produces this stream
+/// shape" interchangeably with a real provider should be generic over the stream
 /// itself (`impl Stream<Item = Result<AgentEvent, ProviderError>>`), not over
-/// `Provider`/`MockProvider` identity. See `stream_chat`'s doc for why its
-/// signature differs from `Provider::stream_chat`'s.
+/// `Provider`/`MockProvider` identity.
 pub struct MockProvider {
     events: Vec<Result<AgentEvent, ProviderError>>,
 }

@@ -43,9 +43,9 @@ fn reports_a_non_utf8_value_as_missing_too() {
     assert!(matches!(error, ProviderError::MissingCredential { .. }));
 }
 
-/// A key surrounded by whitespace is what a copy-paste out of a dashboard or a
-/// `.env` file with a trailing newline actually produces. Trimming here means the
-/// failure is a clean 401 at worst, not a malformed header.
+/// A copy-paste out of a dashboard, or a `.env` file with a trailing newline,
+/// produces exactly this. Trimming means the worst case is a clean 401, not a
+/// malformed header.
 #[test]
 fn surrounding_whitespace_is_trimmed_off_the_key() {
     let key = sandbx_providers::resolve_api_key("SOME_VAR", |_| Ok("  sk-ant-test\n".to_string()))
@@ -80,16 +80,13 @@ fn a_whitespace_only_value_is_reported_as_missing_too() {
 
 #[test]
 fn anthropic_api_key_names_the_right_env_var() {
-    // anthropic_api_key() reads the real environment, but only to name the
-    // var — it cannot be made to succeed without a real key set on this
-    // machine, and must not mutate the real environment to force the failure
-    // path (env::set_var is unsafe under edition 2024).
+    // anthropic_api_key() reads the real environment, and must not mutate it to
+    // force the failure path (env::set_var is unsafe under edition 2024) — so
+    // which branch runs depends on what is already set.
     //
-    // A *usable* key set here (not merely a present-but-blank one, which
-    // resolve_api_key rejects) is the one case with nothing to assert: the call
-    // succeeds and reveals no env var name. Asking whether the var is merely
-    // `Ok` would have skipped the assertion for `ANTHROPIC_API_KEY=`, exactly
-    // the environment where the blank-rejection above matters most.
+    // The probe is for a *usable* key, not merely a present one: gating on `Ok`
+    // would skip the assertion under `ANTHROPIC_API_KEY=`, exactly the
+    // environment where the blank-rejection above matters most.
     let a_real_key_is_set =
         std::env::var("ANTHROPIC_API_KEY").is_ok_and(|value| !value.trim().is_empty());
     if a_real_key_is_set {
