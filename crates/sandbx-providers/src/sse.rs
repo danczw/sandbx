@@ -18,21 +18,19 @@ pub(crate) struct RawSseEvent {
 /// Turn a byte stream into a stream of framed SSE events.
 ///
 /// `reqwest`'s `bytes_stream()` yields arbitrarily-chunked bytes with no
-/// relation to line boundaries — a `\n` can land split across two chunks, and
-/// `data:` payloads can contain multi-byte UTF-8 (emoji, non-ASCII tool
-/// arguments). Splitting on the *byte* `0x0A` is always safe even mid
-/// multi-byte sequence, because UTF-8 continuation/lead bytes never take the
-/// value `0x0A` — only a literal `\n` does. So bytes are buffered raw and only
-/// turned into a `String` once a range ends exactly at a `\n`.
+/// relation to line boundaries, and `data:` payloads can contain multi-byte
+/// UTF-8. Splitting on the *byte* `0x0A` is safe even mid multi-byte sequence,
+/// because UTF-8 continuation/lead bytes never take that value — only a literal
+/// `\n` does. So bytes are buffered raw and only turned into a `String` once a
+/// range ends exactly at a `\n`.
 pub(crate) fn tokenize(
     bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin,
 ) -> impl futures_util::stream::FusedStream<Item = Result<RawSseEvent, ProviderError>> {
     // `.fuse()`: `unfold` panics outright if polled after it returns `None`
-    // (futures-util's `Unfold::poll_next` says so in as many words), and the
-    // whole point of this being a stream is that a caller drives it however it
-    // likes — a `select!` arm that does not break on `None`, or one `.next()`
-    // too many after a `while let`. Returning a `FusedStream` makes that safe
-    // *and* visible in the signature.
+    // (futures-util's `Unfold::poll_next` says so), and callers drive this stream
+    // however they like — a `select!` arm that does not break on `None`, one
+    // `.next()` too many after a `while let`. `FusedStream` makes over-polling
+    // safe *and* visible in the signature.
     futures_util::StreamExt::fuse(futures_util::stream::unfold(
         TokenizerState {
             bytes,
@@ -47,11 +45,11 @@ pub(crate) fn tokenize(
 /// Cap on the bytes a single SSE event may occupy before it is rejected.
 ///
 /// Without one, `buf` grows unbounded whenever the stream never produces the
-/// byte the framing waits for: a gateway answering with a large non-SSE body
-/// that contains no `\n` at all, or `data:` lines that never reach the blank
-/// line ending the event. The process is OOM-killed with no diagnostic. 4 MiB
-/// is orders of magnitude above any real Anthropic frame, so the only streams
-/// this can reject are already broken ones.
+/// byte the framing waits for — a gateway answering with a large non-SSE body
+/// containing no `\n`, or `data:` lines that never reach the blank line ending
+/// the event — and the process is OOM-killed with no diagnostic. 4 MiB is orders
+/// of magnitude above any real Anthropic frame, so the only streams this can
+/// reject are already broken ones.
 const MAX_EVENT_BYTES: usize = 4 * 1024 * 1024;
 
 struct TokenizerState<S> {
@@ -193,9 +191,8 @@ fn parse_event(lines: &[String]) -> RawSseEvent {
         }
         // id:/retry:/`:`-comment lines: accepted, ignored — this crate never
         // resumes a stream via Last-Event-ID. A frame built only from those
-        // carries no payload at all, so `data` comes out empty; deciding what
-        // to do with that belongs to the layer that knows what a payload means,
-        // and `wire.rs` skips it rather than failing to parse `""`.
+        // yields an empty `data`; `wire.rs` skips it rather than failing to
+        // parse `""`.
     }
     RawSseEvent {
         event,

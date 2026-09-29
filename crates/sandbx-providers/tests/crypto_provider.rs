@@ -1,10 +1,10 @@
 //! Public contract of [`ensure_crypto_provider_installed`].
 //!
-//! Here rather than in a `#[cfg(test)] mod tests` inside `src/lib.rs`: the item
-//! is `pub`, and this crate's siblings test public surface exclusively from
-//! `tests/`. It also exercises the reason the function is `pub` at all — an
-//! integration test is a separate compiled crate, and building any
-//! `reqwest::Client` panics without a provider installed first.
+//! In `tests/` rather than a `#[cfg(test)] mod tests`: the item is `pub`, and
+//! this crate's siblings test public surface exclusively from `tests/`. It also
+//! exercises the reason the function is `pub` at all — an integration test is a
+//! separate compiled crate, and building any `reqwest::Client` panics without a
+//! provider installed first.
 
 use sandbx_providers::ensure_crypto_provider_installed;
 

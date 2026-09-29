@@ -12,13 +12,12 @@ use crate::ProviderError;
 /// this function even if it wanted to.
 ///
 /// A variable that is set but blank is treated as absent, and surrounding
-/// whitespace is trimmed off the key. Neither is pedantry: an unpopulated CI
-/// secret or `docker run -e ANTHROPIC_API_KEY` yields `Ok("")`, which would
-/// otherwise build a client that sends an empty `x-api-key` and fails with a
-/// 401 after a network round trip; and `export ANTHROPIC_API_KEY=$(cat key)`
-/// keeps a trailing newline, which `HeaderValue` rejects much later as an
-/// opaque `Transport` error naming nothing. Both are configuration problems, so
-/// both get the one error that says what to fix.
+/// whitespace is trimmed off the key. An unpopulated CI secret or `docker run -e
+/// ANTHROPIC_API_KEY` yields `Ok("")`, which would otherwise send an empty
+/// `x-api-key` and 401 after a network round trip; `export
+/// ANTHROPIC_API_KEY=$(cat key)` keeps a trailing newline, which `HeaderValue`
+/// rejects much later as an opaque `Transport` error naming nothing. Both are
+/// configuration problems, so both get the one error that says what to fix.
 pub fn resolve_api_key(
     env_var: &'static str,
     lookup: impl Fn(&str) -> Result<String, std::env::VarError>,
@@ -33,10 +32,9 @@ pub fn resolve_api_key(
 
 /// Resolve the Anthropic API key from `ANTHROPIC_API_KEY`.
 ///
-/// Only tier of credential resolution built so far — the OS-keyring and
-/// permissioned-file fallbacks PLAN.md describes are deferred to the phase
-/// that builds `sandbx auth login`/`set`, since nothing else would call them
-/// yet.
+/// Only tier of credential resolution built so far; the OS-keyring and
+/// permissioned-file fallbacks PLAN.md describes are deferred to the phase that
+/// builds `sandbx auth login`/`set`.
 pub fn anthropic_api_key() -> Result<SecretString, ProviderError> {
     resolve_api_key("ANTHROPIC_API_KEY", |key| std::env::var(key))
 }

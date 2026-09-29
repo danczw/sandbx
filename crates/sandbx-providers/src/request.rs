@@ -11,9 +11,8 @@ use serde::{Serialize, Serializer};
 ///
 /// `Clone` is part of the contract, not an incidental derive: `stream_chat`
 /// takes the request by value, so without it a caller could not retry the same
-/// turn after a [`ProviderError::RateLimited`] or [`ProviderError::Transport`]
-/// — the retry that those variants exist to invite. The whole tree below
-/// derives it for the same reason.
+/// turn after a [`ProviderError::RateLimited`] or [`ProviderError::Transport`].
+/// The whole tree below derives it for the same reason.
 ///
 /// [`ProviderError::RateLimited`]: crate::ProviderError::RateLimited
 /// [`ProviderError::Transport`]: crate::ProviderError::Transport
@@ -41,12 +40,11 @@ impl Serialize for MessagesRequest {
     /// than sent as `null`/`[]`, which the derive did via
     /// `skip_serializing_if`.
     ///
-    /// The destructuring `let` is the point of the first line, not style: a
-    /// hand-written impl reading `self.model` and friends silently drops any
-    /// field added later, and nothing — not the compiler, not clippy — would
-    /// say so. Binding every field by name means a new one fails to compile
-    /// here until it is either written to the wire or explicitly ignored, which
-    /// is the safety the derive gives for free.
+    /// The destructuring `let` is deliberate, not style: an impl reading
+    /// `self.model` and friends would silently drop any field added later, with
+    /// no compiler or clippy warning. Binding every field by name makes a new
+    /// one fail to compile here until it is written to the wire or explicitly
+    /// ignored.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let Self {
             model,
@@ -74,9 +72,8 @@ impl Serialize for MessagesRequest {
 /// One turn in the conversation.
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestMessage {
-    /// Who produced this turn.
     pub role: Role,
-    /// The turn's content blocks, in order.
+    /// Content blocks, in order.
     pub content: Vec<ContentBlock>,
 }
 
@@ -86,7 +83,6 @@ pub struct RequestMessage {
 pub enum Role {
     /// The human (or, for a tool result, the harness acting on their behalf).
     User,
-    /// The model.
     Assistant,
 }
 
@@ -94,9 +90,7 @@ pub enum Role {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    /// Plain text.
     Text {
-        /// The text itself.
         text: String,
     },
     /// A tool call the model made on a previous turn, replayed back into the
@@ -106,9 +100,7 @@ pub enum ContentBlock {
         ///
         /// [`ToolResult`]: Self::ToolResult
         id: String,
-        /// The tool that was called.
         name: String,
-        /// The arguments the model produced.
         input: serde_json::Value,
     },
     /// The outcome of running a tool call.

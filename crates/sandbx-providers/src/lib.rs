@@ -23,17 +23,14 @@ pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 pub use event::{AgentEvent, StopReason};
 /// Behind the `mock` feature so a provider that fabricates responses is not
-/// part of the shipped surface — the same reasoning as sandbx-core's
-/// `required-features` test probes.
+/// part of the shipped surface.
 ///
-/// The feature is *not* turned on by a self dev-dependency, which would be the
-/// convenient way to cover it with a plain `cargo test`: that edge is active for
-/// `--all-targets` and for `cargo test`, and resolver v3 unifies features per
-/// package, so `mock` would be on in the one rlib every consumer crate links
-/// against. Production code referencing `MockProvider` would then pass clippy
-/// and the whole test suite, and fail for the first time in the release build.
-/// `tests/mock_provider.rs` carries `required-features = ["mock"]` instead, so
-/// the default lint and build passes see the shipped surface with `mock` off.
+/// The feature is *not* turned on by a self dev-dependency — the convenient way
+/// to cover it with a plain `cargo test` — because resolver v3 unifies features
+/// per package, so `mock` would be on in the one rlib every consumer crate
+/// links against: production code referencing `MockProvider` would pass clippy
+/// and the whole test suite, then fail for the first time in the release build.
+/// `tests/mock_provider.rs` carries `required-features = ["mock"]` instead.
 #[cfg(feature = "mock")]
 pub use mock::MockProvider;
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
@@ -43,9 +40,8 @@ pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefin
 /// Boxed for the reason [`Provider::stream_chat`] gives. `FusedStream` rather
 /// than `Stream` because the concrete stream underneath is built from
 /// `futures_util::stream::unfold`, which *panics* if polled after it returns
-/// `None` — an easy thing to do by accident in a `select!` loop that does not
-/// break on `None`. The implementations here are fused; naming it in the type
-/// keeps that guarantee from being erased by the box.
+/// `None` — easy to do by accident in a `select!` loop that does not break on
+/// `None`. Naming fusedness in the type keeps the box from erasing it.
 pub type EventStream = std::pin::Pin<
     Box<dyn futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send>,
 >;
@@ -68,13 +64,10 @@ impl Provider {
 
     /// Opens a streamed turn against whichever backend this is.
     ///
-    /// Boxed even with a single variant today: PLAN.md already commits to
-    /// adding OpenAI "one provider at a time, against the same Provider
-    /// [enum]" — not a hypothetical. `impl Stream` in this position would need
-    /// to name one concrete type for every match arm, which breaks the moment
-    /// a second real backend lands, forcing a breaking signature change on
-    /// every caller two phases from now. Boxing now costs one `Box::pin` and
-    /// no new dependency.
+    /// Boxed even with a single variant today: `impl Stream` here would have to
+    /// name one concrete type for every match arm, so the second backend
+    /// (PLAN.md commits to OpenAI) would force a breaking signature change on
+    /// every caller.
     ///
     /// Takes the request by value; [`MessagesRequest`] is `Clone` so a caller
     /// that may need to retry the turn can keep a copy.
@@ -97,21 +90,17 @@ impl Provider {
 /// no-C-dependency stance (see `redb` over `rusqlite`).
 ///
 /// Idempotent: `install_default` is itself a process-global set-once, so a
-/// second call — e.g. constructing a second `AnthropicClient` — returns `Err`
-/// meaning "a provider was already installed", which is the expected steady
-/// state and not something to propagate or panic on. The discarded `Err` is the
-/// only reason this function needs no `Once` of its own.
-///
-/// It deliberately does not report *which* provider won. If something else in
-/// the process installed `aws-lc-rs` first, that provider is used and every
-/// handshake still works; the choice of `ring` is about this project's build
-/// dependencies, not about correctness at runtime.
+/// second call returns `Err` meaning "a provider was already installed" — the
+/// expected steady state, and the reason this needs no `Once` of its own. Which
+/// provider won is deliberately not reported: if something else installed
+/// `aws-lc-rs` first, handshakes still work, and the `ring` choice is about this
+/// project's build dependencies, not runtime correctness.
 ///
 /// `AnthropicClient::new` calls this automatically. It is `pub` rather than
-/// crate-private so integration tests (a separate compiled crate) can call it
-/// too: building *any* `reqwest::Client` — even one used only to manufacture a
-/// test [`reqwest::Error`], with no network call involved — panics without a
-/// provider installed first, and `tests/*.rs` cannot reach a `pub(crate)` item.
+/// crate-private so integration tests (a separate compiled crate, which cannot
+/// reach a `pub(crate)` item) can call it too: building *any* `reqwest::Client`
+/// — even one used only to manufacture a test [`reqwest::Error`], with no
+/// network call involved — panics without a provider installed first.
 pub fn ensure_crypto_provider_installed() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }

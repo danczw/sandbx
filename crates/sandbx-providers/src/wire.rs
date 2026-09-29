@@ -72,13 +72,12 @@ struct RawMessageStart {
 
 /// Token counts, as reported by `message_start` *or* `message_delta`.
 ///
-/// One type for both because the wire shape is the same, and because treating
-/// them as the same thing is the fix for a real undercount: the docs state the
-/// `message_delta` counts are *cumulative*, and a delta restates
-/// `input_tokens`/the cache counters — server-side tool use inflates the input
-/// mid-stream, by a factor of four in Anthropic's own web-search example. Taking
-/// input from `message_start` and only output from the delta silently reports
-/// the pre-inflation figure.
+/// One type for both, because the wire shape is the same and treating them
+/// alike is the fix for a real undercount: the `message_delta` counts are
+/// *cumulative* and restate `input_tokens`/the cache counters, since server-side
+/// tool use inflates the input mid-stream — by a factor of four in Anthropic's
+/// own web-search example. Taking input from `message_start` and only output
+/// from the delta silently reports the pre-inflation figure.
 ///
 /// Every field is optional so that a frame omitting one cannot end the turn, and
 /// so "not reported" stays distinguishable from a reported zero. `Option`
@@ -279,7 +278,6 @@ impl<S> WireState<S> {
     }
 }
 
-/// Turn an accumulated `tool_use` block into its event.
 fn tool_call_event(
     index: u32,
     id: String,
@@ -618,8 +616,7 @@ mod tests {
 
     /// A field-name bug here (the wire field is "thinking", matching
     /// text_delta's "text" — not "delta") would silently break every
-    /// extended-thinking stream with a deserialization error. Caught during
-    /// review before this test existed; kept here so it cannot regress.
+    /// extended-thinking stream with a deserialization error.
     #[tokio::test]
     async fn thinking_deltas_stream_immediately() {
         let out = ok_events(vec![

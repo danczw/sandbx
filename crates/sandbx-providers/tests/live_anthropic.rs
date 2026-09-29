@@ -1,18 +1,11 @@
 //! Exercises the real Anthropic API over the network.
 //!
-//! Excluded from the default `cargo test` run: it costs real money, needs a
-//! live `ANTHROPIC_API_KEY`, and is not reproducible in CI without a secret.
-//! Gated behind a Cargo feature — matching `sandbox-integration`'s pattern in
-//! sandbx-core/sandbx-tools — rather than a runtime env-var check inside the
-//! test body. The `#![cfg]` below empties the crate rather than failing to
-//! compile it, so without the feature `cargo test` reports zero tests here
-//! instead of a silently-passing no-op assertion — a missing feature is visible
-//! in the test count, not hidden behind a green check.
-//!
-//! Deliberately no CI job for this feature: it would need a paid API key as a
-//! CI secret and spend money on every push. `ci.yml`'s `test` job comment
-//! already anticipates this exclusion ("and any test gated on live LLM
-//! credentials").
+//! Excluded from the default `cargo test` run and deliberately from CI: it
+//! costs real money and needs a live `ANTHROPIC_API_KEY` as a secret. Gated
+//! behind a Cargo feature — matching `sandbox-integration`'s pattern in
+//! sandbx-core/sandbx-tools — rather than a runtime env-var check, so without
+//! the feature `cargo test` reports zero tests here instead of a
+//! silently-passing no-op hidden behind a green check.
 //!
 //! Run manually: `cargo test -p sandbx-providers --features live-anthropic-tests`
 #![cfg(feature = "live-anthropic-tests")]
@@ -27,10 +20,9 @@ async fn streams_a_real_response_from_the_anthropic_api() {
 
     let request = MessagesRequest {
         model: "claude-opus-5".to_string(),
-        // Generous on purpose. A one-word answer needs a handful of tokens, but
-        // `max_tokens` also has to cover whatever thinking the model does first:
-        // at 64 a turn can spend the whole budget before emitting any text, hit
-        // `max_tokens`, and fail `saw_text` as a flake rather than a regression.
+        // Generous on purpose: `max_tokens` also has to cover whatever thinking
+        // the model does first. At 64 a turn can spend the whole budget before
+        // emitting any text and fail `saw_text` as a flake, not a regression.
         max_tokens: 1024,
         system: None,
         messages: vec![RequestMessage {

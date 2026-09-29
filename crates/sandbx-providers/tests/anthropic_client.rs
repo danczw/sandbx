@@ -62,9 +62,8 @@ const FULL_TURN_SSE: &str = concat!(
 
 /// Asserts the *whole* request, body included. Without a body matcher the suite
 /// would pass with `stream: true` dropped, or with `.json(&request)` swapped for
-/// a `.body(..)` that also loses `content-type` — `request_serialization.rs`
-/// only checks `serde_json::to_value` in isolation and never goes through the
-/// client.
+/// a `.body(..)` that loses `content-type` — `request_serialization.rs` checks
+/// `serde_json::to_value` in isolation and never goes through the client.
 #[tokio::test]
 async fn sends_the_right_headers_and_body() {
     let server = MockServer::start().await;
@@ -199,10 +198,10 @@ async fn a_400_response_is_reported_with_the_vendor_envelope() {
     }
 }
 
-/// 529 is Anthropic's "overloaded", and the one status a caller most wants to
-/// retry. It is asserted end-to-end (not just on a hand-built error) because the
-/// classification only pays off if `map_error_response` actually produces a
-/// retryable error from a real response — and because 529 is outside the range
+/// 529 is Anthropic's "overloaded", the one status a caller most wants to retry.
+/// Asserted end-to-end rather than on a hand-built error because the
+/// classification only pays off if `map_error_response` produces a retryable
+/// error from a real response — and because 529 falls outside the range
 /// `reqwest`'s own `status().is_server_error()` covers.
 #[tokio::test]
 async fn a_529_response_is_retryable_and_carries_its_retry_after() {
@@ -276,8 +275,8 @@ async fn a_mid_stream_error_event_ends_the_stream_as_an_item() {
     }
 }
 
-/// A connection that closes before `message_stop` — everything seen was
-/// well-formed, but the turn never reached a defined end state.
+/// Everything seen was well-formed, so this is not a `MalformedEvent`: the turn
+/// simply never reached a defined end state.
 #[tokio::test]
 async fn a_connection_closed_before_message_stop_is_reported() {
     let server = MockServer::start().await;

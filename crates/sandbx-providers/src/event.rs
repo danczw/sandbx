@@ -12,11 +12,10 @@ pub enum AgentEvent {
     /// An incremental chunk of the model's extended-thinking text.
     ///
     /// The incremental cryptographic signature Anthropic streams alongside a
-    /// thinking block (needed to replay it into a later turn) is *discarded*,
-    /// not accumulated: nothing threads history back into a request today, so
-    /// there is nowhere for it to go in this shape. Revisit — by accumulating
-    /// it in `wire.rs` and adding a field here at the same time — if/when
-    /// something does, rather than guessing the field now.
+    /// thinking block (needed to replay it into a later turn) is *discarded*:
+    /// nothing threads history back into a request today, so there is nowhere
+    /// for it to go. Accumulate it in `wire.rs` and add a field here when
+    /// something does.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
@@ -29,7 +28,6 @@ pub enum AgentEvent {
         /// The vendor's call ID, to echo in the `tool_result` block that
         /// answers this call.
         id: String,
-        /// The tool the model wants to run.
         name: String,
         /// The fully accumulated, parsed arguments.
         input: serde_json::Value,
@@ -47,7 +45,6 @@ pub enum AgentEvent {
     Usage {
         /// Tokens in the request, excluding anything served from cache.
         input_tokens: Option<u32>,
-        /// Tokens the model generated.
         output_tokens: Option<u32>,
         /// Tokens written to the prompt cache.
         cache_creation_input_tokens: Option<u32>,
@@ -56,17 +53,13 @@ pub enum AgentEvent {
     },
     /// The turn ended, and why.
     ///
-    /// Exactly one of these ends every turn that completed: it is emitted when
-    /// the stream's `message_stop` arrives, not when a stop reason is first
-    /// seen, so "the turn ended" has a single source of truth. A turn that
-    /// never reaches `message_stop` produces an `Err` instead — see
+    /// Emitted when the stream's `message_stop` arrives, not when a stop reason
+    /// is first seen, so "the turn ended" has a single source of truth. A turn
+    /// that never reaches `message_stop` produces an `Err` instead — see
     /// [`ProviderError::StreamEndedUnexpectedly`] — never silence.
     ///
     /// [`ProviderError::StreamEndedUnexpectedly`]: crate::ProviderError::StreamEndedUnexpectedly
-    Stop {
-        /// Why the model stopped generating.
-        reason: StopReason,
-    },
+    Stop { reason: StopReason },
 }
 
 /// Why a turn ended.
