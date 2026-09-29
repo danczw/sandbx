@@ -42,7 +42,6 @@ fn refuses_a_path_outside_every_allowed_root() {
     assert!(!target.exists(), "wrote outside the allowed root");
 }
 
-/// A read grant must not let the tool write.
 #[test]
 fn read_grant_does_not_permit_writing() {
     let root = tempfile::tempdir().unwrap();
@@ -62,8 +61,7 @@ fn read_grant_does_not_permit_writing() {
 }
 
 /// The agent can plant symlinks in any writable root, so a symlink leaf must not
-/// become a write to wherever it points. Guards against the escape that
-/// `FsGuard` was hardened for.
+/// become a write to wherever it points.
 #[cfg(unix)]
 #[test]
 fn refuses_to_write_through_a_symlink_leaf() {

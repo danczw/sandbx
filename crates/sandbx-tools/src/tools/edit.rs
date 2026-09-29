@@ -25,10 +25,8 @@ pub struct EditInput {
 /// guess: the model believes the edit happened, so getting it wrong quietly is
 /// worse than failing.
 pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    // Both grants are required and checked separately, because the policy grants
-    // them independently — an edit on a read-only root must fail even though the
-    // read half would succeed. Reading first also means a read-only grant fails
-    // before any content is disclosed through an error message.
+    // Read first so a read-only grant fails before any content is disclosed
+    // through an error message.
     let mut source = ctx
         .guard()
         .open_read(&input.path)

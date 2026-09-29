@@ -192,7 +192,8 @@ fn read_truncates_on_a_character_boundary() {
     assert!(out.content.contains("truncated"));
 }
 
-/// A context built without limits still bounds output, or the default is a trap.
+/// The defaults must bound output at all, or they are a trap for a caller that
+/// never sets them.
 #[test]
 fn limits_apply_by_default() {
     let limits = OutputLimits::default();

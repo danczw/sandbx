@@ -26,7 +26,6 @@ fn reads_a_file_inside_an_allowed_root() {
     assert_eq!(out.content, "hello from the workspace");
 }
 
-/// The whole point: a path the policy never granted is unreadable.
 #[test]
 fn refuses_a_path_outside_every_allowed_root() {
     let allowed = tempfile::tempdir().unwrap();

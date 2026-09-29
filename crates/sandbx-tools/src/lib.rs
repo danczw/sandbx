@@ -47,9 +47,8 @@ pub enum BuiltinTool {
 impl BuiltinTool {
     /// Every tool an agent can be offered.
     ///
-    /// This is the registry. The variant set is closed and fieldless, so a
-    /// lookup structure would be a `HashMap` wrapping seven entries that a
-    /// linear scan resolves just as fast; the array is the whole thing.
+    /// This is the registry: an array, because the variant set is closed and
+    /// fieldless and a linear scan over seven entries resolves as fast as a map.
     pub const ALL: [Self; 7] = [
         Self::Read,
         Self::Write,
@@ -117,8 +116,7 @@ impl BuiltinTool {
 
 /// Turn a guard refusal into the form the model sees.
 ///
-/// Every filesystem tool needs this and they must agree on the shape, so it
-/// lives here rather than being re-derived per tool.
+/// Shared so every filesystem tool reports a refusal in the same shape.
 pub(crate) fn denied(path: &std::path::Path) -> impl Fn(sandbx_core::SandboxError) -> ToolError {
     let subject = path.display().to_string();
     move |error| ToolError::Denied {
