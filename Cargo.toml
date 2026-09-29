@@ -19,6 +19,9 @@ publish = false
 # contain `unsafe` code or spawn subprocesses directly.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+# Every public item carries a doc comment, so an undocumented one is a review
+# finding rather than something to discover from rustdoc later.
+missing_docs = "warn"
 
 [workspace.lints.clippy]
 # The actual method list lives in clippy.toml at the workspace root.
