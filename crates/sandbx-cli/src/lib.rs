@@ -10,7 +10,6 @@ use std::path::PathBuf;
 
 use sandbx_core::{SandboxError, SandboxPolicy, SandboxedCommand};
 
-/// The `sandbx` binary.
 #[derive(Debug, clap::Parser)]
 #[command(
     name = "sandbx",
@@ -23,8 +22,6 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// Subcommands of `sandbx`.
-///
 /// Only the sandbox is implemented; the agent that will use it is not built
 /// yet. Shipping this one alone makes the enforcement inspectable by hand
 /// instead of only through the test suite.
@@ -105,8 +102,8 @@ impl SandboxRun {
     /// The one unconditional grant is read access to the system binaries and
     /// libraries a command needs to start — without it this subcommand can run
     /// nothing at all, and the resulting `exec` permission error names neither
-    /// the cause nor the fix. It does not weaken what the flags are about: the
-    /// user's own files, writes and network all stay denied.
+    /// the cause nor the fix. The user's own files, writes and network all stay
+    /// denied.
     pub fn policy(&self) -> SandboxPolicy {
         let mut policy = SandboxPolicy::default().allow_system_executables();
 
@@ -129,19 +126,16 @@ impl SandboxRun {
         policy
     }
 
-    /// The program to run.
     pub fn program(&self) -> &str {
         // `required = true` on a `last` argument means clap rejects an empty
         // command before this can be reached.
         &self.command[0]
     }
 
-    /// The arguments passed to that program.
     pub fn arguments(&self) -> &[String] {
         &self.command[1..]
     }
 
-    /// The time limit these flags describe, if any.
     pub fn timeout(&self) -> Option<std::time::Duration> {
         self.timeout.map(std::time::Duration::from_secs)
     }
@@ -155,9 +149,9 @@ impl SandboxRun {
         }
         let output = command.output()?;
 
-        // Forwarded verbatim. Interleaving is lost because the command is run to
-        // completion rather than streamed — acceptable for a debugging tool, and
-        // the alternative is a streaming API no caller needs yet.
+        // Interleaving is lost because the command is run to completion rather
+        // than streamed — acceptable for a debugging tool, and the alternative
+        // is a streaming API no caller needs yet.
         let _ = std::io::stdout().write_all(&output.stdout);
         let _ = std::io::stderr().write_all(&output.stderr);
 
