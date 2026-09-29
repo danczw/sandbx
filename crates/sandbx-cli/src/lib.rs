@@ -16,6 +16,10 @@ use sandbx_core::{SandboxError, SandboxPolicy, SandboxedCommand};
     version,
     about = "A security-first AI coding agent harness"
 )]
+/// A parsed `sandbx` invocation.
+///
+/// Public so a test can parse an argv and inspect what it grants without
+/// spawning anything.
 pub struct Cli {
     /// What to do.
     #[command(subcommand)]
@@ -126,16 +130,22 @@ impl SandboxRun {
         policy
     }
 
+    /// The program to run, split off from the arguments that follow it.
+    ///
+    /// Cannot panic: `required = true` on a `last` argument means clap rejects
+    /// an empty command before this can be reached.
     pub fn program(&self) -> &str {
-        // `required = true` on a `last` argument means clap rejects an empty
-        // command before this can be reached.
         &self.command[0]
     }
 
+    /// The program's arguments, empty when it was given none.
     pub fn arguments(&self) -> &[String] {
         &self.command[1..]
     }
 
+    /// The `--timeout` seconds as a [`Duration`], or `None` for no limit.
+    ///
+    /// [`Duration`]: std::time::Duration
     pub fn timeout(&self) -> Option<std::time::Duration> {
         self.timeout.map(std::time::Duration::from_secs)
     }

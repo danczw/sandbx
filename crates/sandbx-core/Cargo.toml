@@ -34,6 +34,8 @@ io-uring = { version = "0.7.15", optional = true }
 # one crate allowed to do that, and it does so behind its own API.
 [lints.rust]
 unsafe_code = "forbid"
+# Mirrors `[workspace.lints.rust]`, which this crate cannot inherit.
+missing_docs = "warn"
 
 [dev-dependencies]
 tempfile = "3.27.0"

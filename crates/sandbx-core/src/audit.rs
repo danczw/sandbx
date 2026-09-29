@@ -21,6 +21,8 @@ pub const AUDIT_TARGET: &str = "sandbx::audit";
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
     Allowed {
+        /// Who asked: a tool's registry name, or a guard operation such as
+        /// `open_read`. A label to group records by, not a key to look up.
         tool: &'a str,
         /// What it acted on — a path, or the program being run.
         subject: &'a str,
@@ -28,7 +30,9 @@ pub enum AuditEvent<'a> {
 
     /// An operation the policy refused.
     Denied {
+        /// Who asked, in the same form as in [`Allowed`](Self::Allowed).
         tool: &'a str,
+        /// What it would have acted on, had the policy allowed it.
         subject: &'a str,
         /// Why it was refused. "Denied" alone is not actionable.
         reason: &'a str,
@@ -36,12 +40,19 @@ pub enum AuditEvent<'a> {
 
     /// A sandboxed process was started, and under what shape of policy.
     Spawned {
+        /// The program the sandbox is about to become.
         program: &'a str,
+        /// How many paths were readable, not which ones: the record summarises
+        /// the policy's shape, and inlining a long path list would bury the
+        /// spawn it accompanies.
         readable: usize,
+        /// How many paths were writable, on the same basis as `readable`.
         writable: usize,
         /// Counted separately from `readable`: execute is a distinct capability,
         /// and folding it in would understate what the spawn was granted.
         executable: usize,
+        /// Whether IP egress was granted. Says nothing about unix sockets, which
+        /// `unix_sockets` records on its own.
         network: bool,
         /// Recorded separately from `network`: it is a distinct capability, and
         /// folding it in would understate the reach of the spawn.

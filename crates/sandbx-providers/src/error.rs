@@ -38,6 +38,8 @@ pub enum ProviderError {
     Transport {
         /// What was being attempted, for the operator to act on.
         detail: String,
+        /// Kept so the cause survives `detail`: the reqwest message is what
+        /// separates a DNS failure from a TLS one from a dropped socket.
         source: reqwest::Error,
     },
 
