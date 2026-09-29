@@ -256,7 +256,7 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
 ///
 /// `Cap{Eff,Prm,Inh,Amb}` are hex bitmasks; a fully dropped process reports each
 /// as `0000000000000000`. `CapBnd` is deliberately absent — see
-/// [`the_bounding_set_is_cleared_where_the_kernel_allows_it`].
+/// [`the_bounding_set_is_cleared_or_left_exactly_as_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
 /// Can this machine drop the capability bounding set at all?
@@ -331,18 +331,19 @@ fn capabilities_are_dropped_when_network_is_allowed() {
     }
 }
 
-/// Where the kernel permits it, the bounding set is cleared too.
+/// The bounding set is cleared where the kernel permits it, and left *exactly*
+/// as inherited where it does not.
 ///
-/// Skipped rather than relaxed where an LSM strips capabilities from a fresh
-/// user namespace: the point is to pin the guarantee on machines that *can*
-/// offer it, not to weaken it into something that passes everywhere.
+/// Both branches assert, deliberately. An earlier version returned early on
+/// hosts that strip capabilities from a fresh user namespace, which meant this
+/// test reported `ok` there without checking anything — indistinguishable from a
+/// run that actually verified the guarantee, and on CI that was every run.
+/// Asserting the fallback instead pins it too: a *partial* drop is a different
+/// failure from the documented one, and `caps::clear(Bounding)` issues one
+/// `PR_CAPBSET_DROP` per capability, so a partial drop is exactly what a
+/// mid-loop `EPERM` would leave behind.
 #[test]
-fn the_bounding_set_is_cleared_where_the_kernel_allows_it() {
-    if !bounding_set_is_droppable() {
-        eprintln!("skipped: this kernel strips capabilities from an unprivileged userns");
-        return;
-    }
-
+fn the_bounding_set_is_cleared_or_left_exactly_as_inherited() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
@@ -353,10 +354,28 @@ fn the_bounding_set_is_cleared_where_the_kernel_allows_it() {
     );
 
     let status = String::from_utf8_lossy(&output.stdout);
+    let sandboxed = status_field(&status, "CapBnd:");
+
+    if bounding_set_is_droppable() {
+        assert_eq!(
+            sandboxed, "0000000000000000",
+            "CapBnd was not dropped although this kernel allows it"
+        );
+        return;
+    }
+
+    // This process is the helper's parent, so its bounding set is the one the
+    // helper inherits — the only correct value when the kernel refuses the drop.
+    let host = std::fs::read_to_string("/proc/self/status")
+        .expect("could not read this process's own status");
+
     assert_eq!(
-        status_field(&status, "CapBnd:"),
-        "0000000000000000",
-        "CapBnd was not dropped although this kernel allows it"
+        sandboxed,
+        status_field(&host, "CapBnd:"),
+        "this kernel strips capabilities from an unprivileged userns, so CapBnd \
+         should have been left exactly as inherited — a value differing from \
+         the parent's means the drop partly succeeded, which is neither the \
+         enforced guarantee nor the documented fallback"
     );
 }
 
