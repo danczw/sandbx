@@ -162,7 +162,6 @@ fn a_backgrounded_grandchild_does_not_hold_the_call_open() {
     );
 }
 
-/// The limit must not fire on ordinary work.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_within_its_timeout_still_succeeds() {
@@ -180,7 +179,6 @@ fn a_command_within_its_timeout_still_succeeds() {
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "done");
 }
 
-/// No timeout set keeps today's behaviour exactly.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn without_a_timeout_a_command_runs_to_completion() {
@@ -252,10 +250,9 @@ fn a_descendant_that_escapes_the_process_group_does_not_block_the_call() {
             .allow_write("/dev/null"),
     )
     .arg("-c")
-    // Backgrounded so the shell does not wait for it, and no stdout redirect:
-    // the escapee keeps the pipe we are reading.
-    // A short sleep: this one deliberately escapes the kill, so it outlives the
-    // test and should not linger any longer than it must.
+    // Backgrounded and with no stdout redirect, so the escapee keeps holding the
+    // pipe we are reading. The sleep is short because this one deliberately
+    // survives the kill and outlives the test.
     .arg("setsid sleep 5 & echo started")
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
     .timeout(std::time::Duration::from_secs(30))

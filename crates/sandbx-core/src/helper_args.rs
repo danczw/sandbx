@@ -6,9 +6,7 @@ const FLAG_RO: &str = "--ro";
 const FLAG_RW: &str = "--rw";
 /// Flag introducing a read-and-execute path.
 const FLAG_RX: &str = "--rx";
-/// Flag permitting network access.
 const FLAG_NET: &str = "--allow-network";
-/// Flag permitting unix-domain sockets.
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
@@ -25,7 +23,6 @@ pub struct HelperArgs {
     pub policy: SandboxPolicy,
     /// Program the helper should become.
     pub program: String,
-    /// Arguments for that program.
     pub args: Vec<String>,
 }
 

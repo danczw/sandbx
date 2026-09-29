@@ -21,7 +21,6 @@ pub const AUDIT_TARGET: &str = "sandbx::audit";
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
     Allowed {
-        /// Tool that asked.
         tool: &'a str,
         /// What it acted on — a path, or the program being run.
         subject: &'a str,
@@ -29,9 +28,7 @@ pub enum AuditEvent<'a> {
 
     /// An operation the policy refused.
     Denied {
-        /// Tool that asked.
         tool: &'a str,
-        /// What it tried to act on.
         subject: &'a str,
         /// Why it was refused. "Denied" alone is not actionable.
         reason: &'a str,
@@ -39,21 +36,15 @@ pub enum AuditEvent<'a> {
 
     /// A sandboxed process was started, and under what shape of policy.
     Spawned {
-        /// Program being run.
         program: &'a str,
-        /// How many paths were readable.
         readable: usize,
-        /// How many paths were writable.
         writable: usize,
-        /// How many paths were executable. Tracked separately because execute is
-        /// a distinct capability, and a trail that folded it into `readable`
-        /// would understate what the spawn was actually granted.
+        /// Counted separately from `readable`: execute is a distinct capability,
+        /// and folding it in would understate what the spawn was granted.
         executable: usize,
-        /// Whether network access was granted.
         network: bool,
-        /// Whether unix-domain sockets were granted. Recorded separately
-        /// because it is a separate capability, and a trail that folded it into
-        /// `network` would understate the reach of the spawn.
+        /// Recorded separately from `network`: it is a distinct capability, and
+        /// folding it in would understate the reach of the spawn.
         unix_sockets: bool,
     },
 }

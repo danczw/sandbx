@@ -2,9 +2,7 @@
 
 use sandbx_core::SandboxPolicy;
 
-/// The foundational guarantee: a policy nobody configured grants nothing.
-///
-/// Every other sandbox behaviour builds on this. If the default ever grants an
+/// Every other sandbox behaviour builds on this: if the default ever grants an
 /// access, a caller that forgets to configure the policy silently gets an
 /// unsandboxed agent.
 #[test]
@@ -34,8 +32,7 @@ fn default_policy_denies_everything() {
 }
 
 /// A command cannot start without its interpreter, loader and shared
-/// libraries, so every caller that spawns anything needs these paths. They were
-/// being re-listed per caller; one definition means one place to be wrong.
+/// libraries, so every caller that spawns anything needs these paths.
 #[test]
 fn system_executables_grants_the_paths_a_command_needs_to_start() {
     let policy = SandboxPolicy::default().allow_system_executables();
@@ -81,7 +78,6 @@ fn read_and_write_grants_do_not_confer_execute() {
     );
 }
 
-/// The one grant that does confer it, and only for the path named.
 #[test]
 fn read_execute_grants_both_axes_deliberately() {
     let policy = SandboxPolicy::default().allow_read_execute("/opt/tool");
@@ -107,7 +103,6 @@ fn system_executables_skips_paths_this_system_lacks() {
     }
 }
 
-/// It widens an existing policy rather than replacing it.
 #[test]
 fn system_executables_keeps_what_was_already_granted() {
     let policy = SandboxPolicy::default()
@@ -133,7 +128,6 @@ fn granting_network_does_not_grant_unix_sockets() {
     );
 }
 
-/// And the converse, so the two axes are genuinely independent.
 #[test]
 fn granting_unix_sockets_does_not_grant_network() {
     let policy = SandboxPolicy::default().allow_unix_sockets();

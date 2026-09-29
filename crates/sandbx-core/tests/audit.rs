@@ -84,7 +84,6 @@ fn is_emitted_at_info_not_debug() {
     });
     assert_eq!(lines.len(), 1);
 
-    // Same event, but with anything below INFO discarded.
     let sink = Captured::default();
     let subscriber = tracing_subscriber::registry()
         .with(sink.clone())

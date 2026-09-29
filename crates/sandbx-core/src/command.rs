@@ -102,8 +102,8 @@ impl SandboxedCommand {
     /// to spawn anything.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
         // Every helper speaks the same protocol: the flag, then the encoded
-        // policy. An explicit helper is still a helper — giving it a different
-        // calling convention meant two protocols and a silent mismatch when a
+        // policy. An explicit helper is still a helper — a separate calling
+        // convention would mean two protocols and a silent mismatch whenever a
         // binary implemented the other one.
         let helper = match &self.helper {
             Some(path) => path.clone(),
@@ -128,9 +128,8 @@ impl SandboxedCommand {
         crate::AuditEvent::spawned(&self.program, &self.policy).emit();
 
         match self.timeout {
-            // Untouched from before the timeout existed: `output()` handles
-            // reading both pipes concurrently, which is the part that is easy to
-            // get wrong. Callers who set no limit get exactly what they got.
+            // `output()` already reads both pipes concurrently, which is the
+            // part that is easy to get wrong.
             None => {
                 // The workspace bans `Command::new` so nothing can execute around
                 // the sandbox. This spawns the helper, which restricts itself

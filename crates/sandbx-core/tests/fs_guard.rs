@@ -10,7 +10,6 @@
 
 use sandbx_core::{FsGuard, SandboxPolicy};
 
-/// A path directly inside an allowed root is fine.
 #[test]
 fn read_inside_allowed_root_is_permitted() {
     let root = tempfile::tempdir().unwrap();
@@ -22,7 +21,6 @@ fn read_inside_allowed_root_is_permitted() {
     assert!(guard.check_read(&file).is_ok());
 }
 
-/// Nothing outside the allowed roots is readable.
 #[test]
 fn read_outside_allowed_root_is_denied() {
     let allowed = tempfile::tempdir().unwrap();
@@ -35,8 +33,6 @@ fn read_outside_allowed_root_is_denied() {
     assert!(guard.check_read(&secret).is_err());
 }
 
-/// `..` must not walk out of an allowed root.
-///
 /// A guard comparing string prefixes passes this path — it starts with the
 /// allowed root — while actually pointing outside it.
 #[test]
@@ -55,8 +51,6 @@ fn parent_traversal_cannot_escape_root() {
     );
 }
 
-/// A symlink inside an allowed root must not grant access to its target.
-///
 /// The link itself lives in an allowed directory, so only resolving it catches
 /// this.
 #[cfg(unix)]
@@ -107,7 +101,6 @@ fn write_to_new_file_outside_allowed_root_is_denied() {
     );
 }
 
-/// Read and write are granted separately: a readable root is not writable.
 #[test]
 fn read_grant_does_not_imply_write() {
     let root = tempfile::tempdir().unwrap();
@@ -123,7 +116,6 @@ fn read_grant_does_not_imply_write() {
     );
 }
 
-/// A default policy grants no filesystem access at all.
 #[test]
 fn default_policy_permits_no_path() {
     let root = tempfile::tempdir().unwrap();
@@ -244,7 +236,6 @@ fn walk_skips_non_regular_files() {
     assert_eq!(found.len(), 1, "got {found:?}");
 }
 
-/// Subdirectories are descended.
 #[test]
 fn walk_descends_real_subdirectories() {
     let root = tempfile::tempdir().unwrap();
@@ -402,7 +393,6 @@ fn open_write_creates_inside_an_allowed_root() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "written");
 }
 
-/// A read grant must not yield a writable handle.
 #[test]
 fn open_write_refuses_a_read_only_grant() {
     let root = tempfile::tempdir().unwrap();

@@ -270,7 +270,7 @@ fn truncate_on_read_only_grant_is_denied() {
     );
 }
 
-/// The same with no grant of any kind — the reviewer's demonstrated escape.
+/// The same with no grant of any kind.
 #[test]
 fn truncate_on_ungranted_path_is_denied() {
     let dir = tempfile::tempdir().unwrap();
@@ -290,7 +290,6 @@ fn truncate_on_ungranted_path_is_denied() {
     );
 }
 
-/// Truncating a path the policy grants for writing must still work.
 #[test]
 fn truncate_on_write_grant_is_permitted() {
     let dir = tempfile::tempdir().unwrap();
@@ -330,7 +329,6 @@ fn granting_network_does_not_grant_unix_sockets() {
     });
 
     let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
-    // Network granted, unix sockets not. The two are separate axes.
     let policy = allow_probe(
         runtime_paths(SandboxPolicy::default().allow_network()),
         probe,
@@ -581,7 +579,6 @@ fn the_command_sees_a_consistent_real_uid() {
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "65534".to_string());
 
-    // Reference: no user namespace on this path, so always the real uid.
     let allowed = run(
         &runtime_paths(SandboxPolicy::default().allow_network()),
         "/usr/bin/id",
