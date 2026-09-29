@@ -242,6 +242,112 @@ fn seccomp_filter_is_installed() {
     );
 }
 
+/// Every capability must be gone on the default (network-denied) path, and
+/// `no_new_privs` must be set — piggybacked here since it reads from the same
+/// `/proc/self/status` output and has no dedicated test of its own yet.
+///
+/// `Cap{Eff,Prm,Inh,Amb,Bnd}` are hex bitmasks; a fully dropped process reports
+/// all of them as `0000000000000000`.
+#[test]
+fn capabilities_are_dropped() {
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
+
+    assert!(
+        output.status.success(),
+        "could not read process status: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let status = String::from_utf8_lossy(&output.stdout);
+    let field = |name: &str| {
+        status
+            .lines()
+            .find_map(|l| l.strip_prefix(name))
+            .map(str::trim)
+            .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
+    };
+
+    for name in ["CapInh:", "CapPrm:", "CapEff:", "CapBnd:", "CapAmb:"] {
+        assert_eq!(
+            field(name),
+            "0000000000000000",
+            "{name} was not fully dropped"
+        );
+    }
+    assert_eq!(field("NoNewPrivs:"), "1", "no_new_privs was not set");
+}
+
+/// The bounding set can only be dropped with `CAP_SETPCAP`, which this process
+/// holds only inside a user namespace it created itself — which only happens
+/// on the network-denied path (`deny_network`'s `unshare(CLONE_NEWUSER)`).
+///
+/// On the network-allowed path there is no such namespace, so the bounding set
+/// is left as inherited from the host rather than silently failing to drop it.
+/// The other four sets need no special capability to shrink and are always
+/// cleared. This pins that documented gap so it cannot regress unnoticed.
+#[test]
+fn capabilities_are_dropped_except_bounding_when_network_is_allowed() {
+    let policy = runtime_paths(SandboxPolicy::default().allow_network()).allow_read("/proc");
+    let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
+
+    assert!(
+        output.status.success(),
+        "could not read process status: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let status = String::from_utf8_lossy(&output.stdout);
+    let field = |name: &str| {
+        status
+            .lines()
+            .find_map(|l| l.strip_prefix(name))
+            .map(str::trim)
+            .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
+    };
+
+    for name in ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"] {
+        assert_eq!(
+            field(name),
+            "0000000000000000",
+            "{name} was not dropped on the network-allowed path"
+        );
+    }
+    assert_ne!(
+        field("CapBnd:"),
+        "0000000000000000",
+        "CapBnd unexpectedly dropped on the network-allowed path; if this now \
+         succeeds, update the documented gap in helper.rs and SECURITY.md \
+         instead of loosening this assertion"
+    );
+}
+
+/// `RLIMIT_CORE` must be zero so a crash inside the sandboxed command cannot
+/// write a core dump to disk.
+#[test]
+fn core_dumps_are_disabled() {
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let output = run(&policy, "/bin/cat", &["/proc/self/limits"]);
+
+    assert!(
+        output.status.success(),
+        "could not read process limits: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let limits = String::from_utf8_lossy(&output.stdout);
+    let line = limits
+        .lines()
+        .find(|l| l.starts_with("Max core file size"))
+        .expect("no core file size line in /proc/self/limits");
+    let mut fields = line.split_whitespace();
+    let soft = fields.nth(4).expect("no soft limit field");
+    let hard = fields.next().expect("no hard limit field");
+
+    assert_eq!(soft, "0", "soft RLIMIT_CORE was not zero");
+    assert_eq!(hard, "0", "hard RLIMIT_CORE was not zero");
+}
+
 /// Truncation is a write. Landlock leaves *unhandled* access types unrestricted
 /// everywhere, so a ruleset that never handles `Truncate` permits zeroing any
 /// file on the machine — including one granted read-only.
