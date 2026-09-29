@@ -2,13 +2,12 @@ use clap::Parser;
 use sandbx_cli::{Cli, Command};
 
 fn main() -> std::process::ExitCode {
-    // First, before anything else runs. This same binary is what
-    // `SandboxedCommand` re-execs as its helper: in that mode the process
-    // restricts itself and becomes the target command, so it must never reach
-    // ordinary argument parsing.
+    // Must come before argument parsing: `SandboxedCommand` re-execs this same
+    // binary as its helper, and in that mode the process restricts itself and
+    // becomes the target command.
     if let Some(error) = sandbx_core::dispatch_helper_mode(std::env::args_os()) {
-        // Helper mode failed, which means the restrictions were not applied.
-        // Returning here would run the command unsandboxed.
+        // The restrictions were not applied, so continuing would run the
+        // command unsandboxed.
         eprintln!("sandbx: sandbox helper failed: {error}");
         return std::process::ExitCode::FAILURE;
     }

@@ -13,8 +13,6 @@ fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
     }
 }
 
-/// The only thing granted without a flag is what any command needs to start.
-/// Nothing of the user's is reachable, nothing is writable, no network.
 #[test]
 fn grants_only_what_a_command_needs_to_start() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
@@ -94,9 +92,8 @@ fn the_command_keeps_its_own_arguments() {
     assert_eq!(args.arguments(), ["-la", "/srv"]);
 }
 
-/// The one that matters: past the separator, a flag sandbx also defines belongs
-/// to the sandboxed command. Swallowing it here would widen the policy from
-/// inside the string sandbx was asked to confine.
+/// Swallowing a flag sandbx also defines would let the sandboxed command's own
+/// arguments widen the policy meant to confine it.
 #[test]
 fn flags_after_the_separator_are_not_our_flags() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--allow-network"]);
@@ -134,7 +131,6 @@ fn without_the_flag_there_is_no_timeout() {
     assert_eq!(args.timeout(), None);
 }
 
-/// Past the separator it belongs to the command, like every other flag.
 #[test]
 fn a_timeout_after_the_separator_is_not_ours() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--timeout", "5"]);
@@ -142,7 +138,6 @@ fn a_timeout_after_the_separator_is_not_ours() {
     assert_eq!(args.timeout(), None, "command argument set our own limit");
 }
 
-/// #8: the flags are separate axes on the command line too.
 #[test]
 fn network_does_not_imply_unix_sockets() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
@@ -167,9 +162,8 @@ fn unix_sockets_are_opt_in() {
     assert!(!bare.allows_unix_sockets());
 }
 
-/// #31: since #19 split execute out of read, this is the only way to run a
-/// binary that is not a system one — and the CLI had no flag for it, which made
-/// `sandbox-run` unable to probe the boundary against a purpose-built program.
+/// `--allow-exec` is the only way to run a binary that is not a system one, so
+/// a read grant leaking onto the execute axis would silently widen it.
 #[test]
 fn exec_grants_are_repeatable_and_separate_from_read() {
     let policy = sandbox_run(&[
@@ -204,7 +198,6 @@ fn exec_grants_are_repeatable_and_separate_from_read() {
     );
 }
 
-/// Without the flag, only the system paths every command needs are executable.
 #[test]
 fn nothing_user_supplied_is_executable_by_default() {
     let policy = sandbox_run(&[
