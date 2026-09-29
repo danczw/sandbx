@@ -137,13 +137,21 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     Ok(())
 }
 
-/// Drop capabilities, disable core dumps, and mark this process non-dumpable.
+/// Drop capabilities and disable core dumps.
 ///
 /// Landlock and seccomp bound what the sandboxed command can *do*; this bounds
-/// what a descendant that somehow survives the kill (#28), or something that
-/// attaches to this process from outside, can still reach. None of it needs
-/// privilege to apply in the general case: every one of these calls only ever
-/// removes a right this process already holds, never grants one.
+/// what a descendant that somehow survives the kill (#28) can still reach.
+/// None of it needs privilege to apply in the general case: every one of these
+/// calls only ever removes a right this process already holds, never grants
+/// one.
+///
+/// Deliberately does NOT set `PR_SET_DUMPABLE`: the kernel resets that flag to
+/// dumpable on every `execve` of an ordinary (non-setuid, no file-capability)
+/// binary — see `setup_new_exec` in `fs/exec.c` — so setting it here would
+/// only affect this process's own brief pre-exec window, not the command it
+/// is about to become. Applying it would be a claim `SECURITY.md` cannot back
+/// up, not real hardening; core dumps are already fully covered below via
+/// `RLIMIT_CORE`, which — unlike the dumpable flag — does persist across exec.
 ///
 /// `has_fresh_userns` gates the capability *bounding* set specifically:
 /// dropping it needs `CAP_SETPCAP`, which an unprivileged process holds only
@@ -172,10 +180,6 @@ fn harden_process_state(has_fresh_userns: bool) -> Result<(), SandboxError> {
     ] {
         caps::clear(None, set).map_err(hardening_failed)?;
     }
-
-    nix::sys::prctl::set_dumpable(false).map_err(|errno| SandboxError::ProcessHardening {
-        detail: format!("could not clear PR_SET_DUMPABLE: {errno}"),
-    })?;
 
     nix::sys::resource::setrlimit(nix::sys::resource::Resource::RLIMIT_CORE, 0, 0).map_err(
         |errno| SandboxError::ProcessHardening {
