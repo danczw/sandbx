@@ -59,6 +59,17 @@ pub enum SandboxError {
         detail: &'static str,
     },
 
+    /// This process could not be hardened: capabilities dropped, core dumps
+    /// disabled, or marked non-dumpable.
+    ///
+    /// A refusal: running the command with capabilities, core dumps, or
+    /// ptrace-attachability still available would widen what a descendant
+    /// process, or something tracing this one, could reach.
+    ProcessHardening {
+        /// What failed, for the operator to act on.
+        detail: String,
+    },
+
     /// A sandboxed process could not be started.
     SpawnFailed {
         /// What failed, for the operator to act on.
@@ -124,6 +135,9 @@ impl std::fmt::Display for SandboxError {
             Self::NetworkDenialFailed { detail } => {
                 write!(f, "could not deny network access: {detail}")
             }
+            Self::ProcessHardening { detail } => {
+                write!(f, "could not harden process state: {detail}")
+            }
             Self::Seccomp { detail } => {
                 write!(f, "could not install the syscall filter: {detail}")
             }
@@ -139,6 +153,7 @@ impl std::error::Error for SandboxError {
             | Self::BadHelperArgs { .. }
             | Self::Landlock { .. }
             | Self::NetworkDenialFailed { .. }
+            | Self::ProcessHardening { .. }
             | Self::TimedOut { .. }
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. } | Self::SpawnFailed { source, .. } => Some(source),
