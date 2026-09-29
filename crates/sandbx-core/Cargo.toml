@@ -43,6 +43,11 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [dev-dependencies]
+# Already a normal dependency above; repeated here because `capability_coverage`
+# asserts a property *of this crate* (that its hardcoded capability list still
+# covers the running kernel), and an integration test can only reach a
+# dependency it names itself. No new crate enters the tree.
+caps = "0.5.6"
 tempfile = "3.27.0"
 tracing-subscriber = "0.3.23"
 
