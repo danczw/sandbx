@@ -13,9 +13,14 @@ publish.workspace = true
 sandbox-integration = ["dep:io-uring"]
 
 [dependencies]
+# Safe wrapper around capset(2)/PR_CAPBSET_DROP — the only way to drop this
+# process's Linux capabilities that stays inside `unsafe_code = "forbid"`; nix
+# has no capability-set module at all, and libc only exposes the raw prctl
+# syscall.
+caps = "0.5.6"
 landlock = "0.4.7"
 libc = "0.2.189"
-nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "user"] }
+nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "user", "resource"] }
 seccompiler = "0.5.0"
 tracing = "0.1.44"
 # Test-only, and only when the integration feature is on: the sole safe way to
