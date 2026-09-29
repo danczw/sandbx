@@ -59,12 +59,11 @@ pub enum SandboxError {
         detail: &'static str,
     },
 
-    /// This process could not be hardened: capabilities dropped, core dumps
-    /// disabled, or marked non-dumpable.
+    /// This process could not be hardened: capabilities dropped or core
+    /// dumps disabled.
     ///
-    /// A refusal: running the command with capabilities, core dumps, or
-    /// ptrace-attachability still available would widen what a descendant
-    /// process, or something tracing this one, could reach.
+    /// A refusal: running the command with capabilities or core dumps still
+    /// available would widen what a descendant process could reach.
     ProcessHardening {
         /// What failed, for the operator to act on.
         detail: String,
