@@ -1,6 +1,7 @@
 //! Applies a sandbox policy to itself, then becomes the requested command.
 //!
-//! Usage: `sandbx-helper [--ro PATH]... [--rw PATH]... [--allow-network] -- PROGRAM [ARGS]...`
+//! Usage: `sandbx-helper --sandbx-core-exec [--ro PATH]... [--rw PATH]...
+//! [--rx PATH]... [--allow-network] [--allow-unix-sockets] -- PROGRAM [ARGS]...`
 //!
 //! Exists as a standalone binary so the enforcement path can be tested
 //! end-to-end. In a shipped sandbx, the `sandbx` binary re-execs itself into the
