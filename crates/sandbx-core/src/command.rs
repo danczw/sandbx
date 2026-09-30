@@ -10,6 +10,17 @@ use crate::{HelperArgs, SandboxError, SandboxPolicy};
 /// hands off to [`crate::exec_sandboxed`].
 pub const HELPER_FLAG: &str = "--sandbx-core-exec";
 
+/// Argument that marks a process as the *inner* stage of helper mode.
+///
+/// Internal protocol between the two helper stages, not a caller-facing API: the
+/// supervisor started by [`HELPER_FLAG`] re-execs this same binary with this flag
+/// once the namespaces exist, and that child is PID 1 of the new PID namespace.
+///
+/// Public only so a test can invoke the inner stage directly and assert it refuses
+/// to run without a supervisor. Reaching for it anywhere else means running a
+/// command without the namespaces it is supposed to be confined by.
+pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
+
 /// A command that runs under a [`SandboxPolicy`].
 ///
 /// The only sanctioned way for sandbx to execute anything. Rather than restricting
@@ -315,7 +326,7 @@ fn kill_group(group: u32) {
 }
 
 /// Locate this executable, for re-running it in helper mode.
-fn current_exe() -> Result<PathBuf, SandboxError> {
+pub(crate) fn current_exe() -> Result<PathBuf, SandboxError> {
     std::env::current_exe().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not locate the running executable to re-exec as the sandbox helper",
         source,
@@ -343,11 +354,18 @@ where
     // argv[0] is this program's own name.
     let rest = argv.get(1..)?;
     let (flag, helper_args) = rest.split_first()?;
-    if flag != HELPER_FLAG {
-        return None;
-    }
 
-    match crate::exec_sandboxed(helper_args) {
-        Err(error) => Some(error),
+    // Exhaustive `match` on the result in each arm rather than `?`: the entry
+    // points return `Infallible` on success, so this cannot silently gain a path
+    // that returns without either running the command or reporting why not.
+    match flag.as_str() {
+        HELPER_FLAG => match crate::helper::exec_sandboxed(helper_args) {
+            Err(error) => Some(error),
+        },
+        HELPER_INNER_FLAG => match crate::helper::exec_inner(helper_args) {
+            Err(error) => Some(error),
+        },
+        // Not a helper run at all: an ordinary invocation of the host binary.
+        _ => None,
     }
 }
