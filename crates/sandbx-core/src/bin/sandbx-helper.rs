@@ -21,14 +21,19 @@ fn main() -> std::process::ExitCode {
     // return means failure, and the command must NOT be run: falling through to
     // an unrestricted execution is the exact failure the sandbox exists to
     // prevent.
-    if let Some(error) = sandbx_core::dispatch_helper_mode(std::env::args_os()) {
-        eprintln!("sandbx-helper: {error}");
-        return std::process::ExitCode::FAILURE;
+    match sandbx_core::dispatch_helper_mode(std::env::args_os()) {
+        sandbx_core::HelperDispatch::Failed(error) => {
+            eprintln!("sandbx-helper: {error}");
+            std::process::ExitCode::FAILURE
+        }
+        // This binary has no ordinary mode, so "not helper mode" is a usage
+        // error rather than something to carry on from.
+        sandbx_core::HelperDispatch::NotHelperMode => {
+            eprintln!(
+                "sandbx-helper: expected {} as the first argument",
+                sandbx_core::HELPER_FLAG
+            );
+            std::process::ExitCode::FAILURE
+        }
     }
-
-    eprintln!(
-        "sandbx-helper: expected {} as the first argument",
-        sandbx_core::HELPER_FLAG
-    );
-    std::process::ExitCode::FAILURE
 }

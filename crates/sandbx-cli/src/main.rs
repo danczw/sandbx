@@ -8,17 +8,11 @@ use clap::Parser;
 use sandbx_cli::{Cli, Command};
 
 fn main() -> std::process::ExitCode {
-    // Must come before argument parsing: `SandboxedCommand` re-execs this same
-    // binary as its helper, and in that mode the process restricts itself and
-    // becomes the target command.
-    if let Some(error) = sandbx_core::dispatch_helper_mode(std::env::args_os()) {
-        // The restrictions were not applied, so continuing would run the
-        // command unsandboxed.
-        eprintln!("sandbx: sandbox helper failed: {error}");
-        return std::process::ExitCode::FAILURE;
-    }
-
-    match Cli::parse().command {
+    // Dispatch must come before argument parsing: `SandboxedCommand` re-execs
+    // this same binary as its helper, and in that mode the process restricts
+    // itself and becomes the target command. The wrapper owns the other half —
+    // a failed helper run ends the process rather than falling through to here.
+    sandbx_core::with_helper_dispatch(std::env::args_os(), || match Cli::parse().command {
         Command::SandboxRun(args) => match args.execute() {
             Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(1)),
             Err(error) => {
@@ -26,5 +20,5 @@ fn main() -> std::process::ExitCode {
                 std::process::ExitCode::FAILURE
             }
         },
-    }
+    })
 }

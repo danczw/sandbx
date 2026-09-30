@@ -9,11 +9,14 @@
 fn main() -> std::process::ExitCode {
     // Must come first: in helper mode this never returns, and anything set up
     // beforehand would be discarded by the exec anyway.
-    if let Some(error) = sandbx_core::dispatch_helper_mode(std::env::args_os()) {
-        eprintln!("sandbox helper: {error}");
-        return std::process::ExitCode::FAILURE;
+    match sandbx_core::dispatch_helper_mode(std::env::args_os()) {
+        sandbx_core::HelperDispatch::Failed(error) => {
+            eprintln!("sandbox helper: {error}");
+            std::process::ExitCode::FAILURE
+        }
+        sandbx_core::HelperDispatch::NotHelperMode => {
+            eprintln!("this binary only runs in sandbox helper mode");
+            std::process::ExitCode::FAILURE
+        }
     }
-
-    eprintln!("this binary only runs in sandbox helper mode");
-    std::process::ExitCode::FAILURE
 }
