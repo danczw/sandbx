@@ -48,6 +48,10 @@ missing_docs = "warn"
 # covers the running kernel), and an integration test can only reach a
 # dependency it names itself. No new crate enters the tree.
 caps = "0.5.6"
+# Same reason as `caps` above: `denylist` compares this crate's syscall list
+# against the `libc::SYS_*` constants by name, and an integration test can only
+# reach a dependency it names itself. Already a normal dependency.
+libc = "0.2.189"
 tempfile = "3.27.0"
 tracing-subscriber = "0.3.23"
 
