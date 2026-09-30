@@ -16,9 +16,16 @@ pub const HELPER_FLAG: &str = "--sandbx-core-exec";
 /// supervisor started by [`HELPER_FLAG`] re-execs this same binary with this flag
 /// once the namespaces exist, and that child is PID 1 of the new PID namespace.
 ///
-/// Public only so a test can invoke the inner stage directly and assert it refuses
-/// to run without a supervisor. Reaching for it anywhere else means running a
-/// command without the namespaces it is supposed to be confined by.
+/// Public only so a test can invoke the inner stage directly and assert what it
+/// does when its supervisor is already gone. Reaching for it anywhere else means
+/// running a command without the namespaces it is supposed to be confined by.
+///
+/// The check behind that is a *liveness* check, not an authorization one: the inner
+/// stage confirms the pid it was handed is still its parent, which tells it someone
+/// is positioned to reap it. It does not authenticate who that is, and a parent
+/// passing its own pid satisfies it. Nothing here is a trust boundary — what confines
+/// the command is the namespaces, seccomp and Landlock, all of which only ever
+/// narrow.
 pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
 
 /// A command that runs under a [`SandboxPolicy`].
