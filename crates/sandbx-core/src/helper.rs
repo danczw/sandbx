@@ -1,20 +1,139 @@
 use crate::{HelperArgs, SandboxError};
 
-/// Apply a policy to *this* process, then become the requested command.
+/// Supervise a sandboxed command: build the namespaces, then run the inner stage
+/// inside them.
+///
+/// This is stage 1 of two. It creates the kernel namespaces the command will live
+/// in, hardens the process state that is inherited across `exec`, and then re-execs
+/// this same binary once more — into [`exec_inner`], which applies the restrictions
+/// that must not touch this process and becomes the command.
+///
+/// The second re-exec exists for one reason: `unshare(CLONE_NEWPID)` does not move
+/// the caller into the new PID namespace, only its children. So the *next* process
+/// is PID 1 of it, and spawning one is what the fix for #28 needs. Doing that with
+/// `fork` would mean `unsafe` and an async-signal-safety hazard in the
+/// `fork`/`exec` window; letting `Command::spawn` do the forking keeps every call
+/// here a safe one, which is why `unsafe_code = "forbid"` still holds.
 ///
 /// Intended to run in a freshly executed helper process, never inside sandbx:
-/// Landlock restrictions are irreversible and inherited, so applying them here
-/// would cage sandbx itself.
+/// the namespaces and the capability drops are irreversible for this process, so
+/// doing them in sandbx would cage the harness itself.
 ///
-/// Because this process is fresh, it is single-threaded, and the restriction
-/// code runs in an ordinary context — no `fork`/`exec` window, so no
+/// On success this never returns: it exits with whatever the command exited with.
+/// Any return is an error, and the caller must exit non-zero rather than continue —
+/// a helper that fell through to running the command unrestricted would be the
+/// exact failure the sandbox exists to prevent.
+pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+    // Decoded for this stage's own use — it needs to know whether the policy
+    // grants network before choosing the unshare flags. What gets passed on is the
+    // argv it was given, verbatim: a re-encode here would be a second chance for
+    // the policy to drift on its way to the stage that enforces it.
+    let request = HelperArgs::decode(argv)?;
+
+    // Resolved before the namespaces exist, so a failure to find our own binary
+    // happens while nothing has been changed yet.
+    let exe = crate::command::current_exe()?;
+
+    prepare_supervisor(&request.policy)?;
+
+    // The workspace bans `Command::new` so nothing can spawn around the sandbox.
+    // This is sanctioned: what it spawns is this same binary in inner mode, which
+    // restricts itself before becoming the command.
+    let spawned = {
+        #[allow(clippy::disallowed_methods)]
+        std::process::Command::new(exe)
+            .arg(crate::HELPER_INNER_FLAG)
+            .args(argv)
+            .spawn()
+    };
+
+    let mut child = spawned.map_err(|source| SandboxError::SpawnFailed {
+        detail: "could not start the inner sandbox stage",
+        source,
+    })?;
+
+    let status = child.wait().map_err(|source| SandboxError::SpawnFailed {
+        detail: "could not wait for the sandboxed command",
+        source,
+    })?;
+
+    relay(status)
+}
+
+/// Exit the way the inner stage exited.
+///
+/// The caller reads this process's status as the command's, so anything less than
+/// a faithful relay would misreport what happened: a signalled death reported as
+/// an exit code loses the fact that it was killed, and `sandbx-cli` and the `bash`
+/// tool both branch on that distinction.
+///
+/// Re-raising rather than exiting with `128 + signal` is what makes the status
+/// genuinely *signalled* rather than merely numbered like one. It can fail to kill
+/// us — Rust's runtime sets `SIGPIPE` to `SIG_IGN`, and an ignored signal raised at
+/// oneself does nothing — so the numbered form stays as the fallback. No handlers
+/// are ever installed here, so every other disposition is still the default.
+fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, SandboxError> {
+    use std::os::unix::process::ExitStatusExt;
+
+    if let Some(code) = status.code() {
+        std::process::exit(code);
+    }
+
+    if let Some(signal) = status.signal() {
+        if let Ok(signal) = nix::sys::signal::Signal::try_from(signal) {
+            let _ = nix::sys::signal::raise(signal);
+        }
+        std::process::exit(128 + signal);
+    }
+
+    // Neither an exit code nor a signal: nothing sensible to relay, so refuse
+    // rather than invent a success.
+    std::process::exit(1)
+}
+
+/// Build the namespaces and drop what must be dropped before the `exec`.
+///
+/// Split out from [`apply`] because these two steps are the ones that have to
+/// happen in the *supervisor*, not in the stage that becomes the command:
+///
+/// - the namespaces, because `CLONE_NEWPID` only places this process's children,
+///   so unsharing here is what makes the inner stage PID 1;
+/// - the capability drops, because `PR_CAPBSET_DROP` needs `CAP_SETPCAP` in the
+///   effective set, which an unprivileged process only ever holds inside a user
+///   namespace it just created. All four sets and `RLIMIT_CORE` are inherited
+///   across `fork` and `exec`, so dropping them here still covers the command.
+#[cfg(target_os = "linux")]
+fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+    isolate(policy)?;
+
+    // After the unshare, not before: entering a fresh user namespace grants the
+    // full capability set *within it*, so dropping earlier would be undone.
+    harden_process_state()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn prepare_supervisor(_policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+    Err(SandboxError::Unsupported {
+        detail: "sandboxing is only implemented for Linux",
+    })
+}
+
+/// Apply a policy to *this* process, then become the requested command.
+///
+/// Stage 2 of two, running as the first child of [`exec_sandboxed`] and therefore
+/// as PID 1 of the PID namespace it created. Everything here is irreversible and
+/// inherited across `exec`, which is what makes the restrictions stick to the real
+/// command rather than to this process alone.
+///
+/// Because this process is fresh, it is single-threaded, and the restriction code
+/// runs in an ordinary context — no `fork`/`exec` window, so no
 /// async-signal-safety constraint and no `unsafe`.
 ///
-/// On success this never returns: the process image is replaced. Any return is
-/// an error, and the caller must exit non-zero rather than continue — a helper
-/// that fell through to running the command unrestricted would be the exact
-/// failure the sandbox exists to prevent.
-pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+/// On success this never returns: the process image is replaced. Any return is an
+/// error, and the caller must exit non-zero rather than continue — a helper that
+/// fell through to running the command unrestricted would be the exact failure the
+/// sandbox exists to prevent.
+pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
     let request = HelperArgs::decode(argv)?;
 
     apply(&request.policy)?;
@@ -45,22 +164,15 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         RulesetCreatedAttr, RulesetStatus,
     };
 
-    // Network first, while this process still has the privileges to do it:
-    // Landlock's restrict_self is irreversible, so anything needing capabilities
-    // must happen before it.
-    if !policy.allows_network() {
-        deny_network()?;
-    }
-
-    // After, not before: `deny_network` may have just entered a fresh user
-    // namespace, which grants this process the full capability set *within
-    // it* — dropping capabilities earlier would be undone by that unshare.
-    harden_process_state()?;
+    // The namespaces and the capability drops already happened, in the supervisor
+    // that spawned this process — see `prepare_supervisor`. Both are inherited, so
+    // what is left here is everything that must apply to the command itself and
+    // could not be done in a process that still had to spawn one.
 
     // Installing a seccomp filter requires either CAP_SYS_ADMIN or no_new_privs.
-    // Set it explicitly rather than relying on the user namespace above, which
-    // only exists when network is denied. It is irreversible and inherited
-    // across exec, which is what makes the filter stick to the real command.
+    // Set it explicitly: this process holds no capabilities at all, the supervisor
+    // having dropped them. It is irreversible and inherited across exec, which is
+    // what makes the filter stick to the real command.
     nix::sys::prctl::set_no_new_privs().map_err(|errno| SandboxError::Seccomp {
         detail: format!("could not set no_new_privs: {errno}"),
     })?;
@@ -362,41 +474,47 @@ fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
     }
 }
 
-/// Move this process into an empty network namespace.
+/// Put this process into fresh kernel namespaces.
 ///
-/// A fresh netns has only a (down) loopback interface and no route anywhere, so
-/// there is no network to reach rather than a filtered one. That is stronger
-/// than Landlock's network rules, which only cover TCP bind/connect and would
-/// leave UDP and raw sockets untouched.
+/// Denying network means an empty one: a fresh netns has only a (down) loopback
+/// interface and no route anywhere, so there is no network to reach rather than a
+/// filtered one. That is stronger than Landlock's network rules, which only cover
+/// TCP bind/connect and would leave UDP and raw sockets untouched.
 ///
-/// `CLONE_NEWUSER` is requested alongside `CLONE_NEWNET` because creating a
-/// network namespace otherwise needs `CAP_SYS_ADMIN`; a user namespace grants
-/// that capability *within the new namespace only*, which is what lets this work
-/// unprivileged. Some distributions restrict unprivileged user namespaces (e.g.
-/// AppArmor's `kernel.apparmor_restrict_unprivileged_userns`), and there the
-/// call fails — which surfaces as a refusal, never as a silent fallback to an
-/// unrestricted network.
+/// `CLONE_NEWUSER` is requested alongside because creating any other namespace
+/// otherwise needs `CAP_SYS_ADMIN`; a user namespace grants that capability
+/// *within the new namespaces only*, which is what lets this work unprivileged.
+/// Some distributions restrict unprivileged user namespaces (e.g. AppArmor's
+/// `kernel.apparmor_restrict_unprivileged_userns`), and there the call fails —
+/// which surfaces as a refusal, never as a silent fallback.
+///
+/// One `unshare` for all of them rather than one per namespace: the kernel applies
+/// the flags together, so there is no window in which the process holds some of the
+/// isolation and not the rest, and no second failure path to unwind.
 #[cfg(target_os = "linux")]
-fn deny_network() -> Result<(), SandboxError> {
+fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use nix::sched::{CloneFlags, unshare};
     use nix::unistd::{getgid, getuid};
+
+    let mut flags = CloneFlags::CLONE_NEWUSER;
+    if !policy.allows_network() {
+        flags |= CloneFlags::CLONE_NEWNET;
+    }
 
     // Captured before the unshare: afterwards this process reads back as the
     // overflow uid, and it is the *real* identity we want to map to itself.
     let uid = getuid().as_raw();
     let gid = getgid().as_raw();
 
-    unshare(CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWNET).map_err(|errno| {
-        SandboxError::NamespaceSetupFailed {
-            detail: match errno {
-                nix::errno::Errno::EPERM => {
-                    "kernel refused an unprivileged user namespace; unprivileged \
-                     userns may be disabled (see kernel.unprivileged_userns_clone \
-                     and kernel.apparmor_restrict_unprivileged_userns)"
-                }
-                _ => "could not create a network namespace",
-            },
-        }
+    unshare(flags).map_err(|errno| SandboxError::NamespaceSetupFailed {
+        detail: match errno {
+            nix::errno::Errno::EPERM => {
+                "kernel refused an unprivileged user namespace; unprivileged \
+                 userns may be disabled (see kernel.unprivileged_userns_clone \
+                 and kernel.apparmor_restrict_unprivileged_userns)"
+            }
+            _ => "could not create the sandbox namespaces",
+        },
     })?;
 
     map_identity_into_userns(uid, gid);
