@@ -118,6 +118,48 @@ fn prepare_supervisor(_policy: &crate::SandboxPolicy) -> Result<(), SandboxError
     })
 }
 
+/// Die when the supervisor dies (#28).
+///
+/// This process is PID 1 of a fresh PID namespace, and the kernel SIGKILLs every
+/// remaining process in a namespace whose init exits. So making this process die
+/// with its supervisor is what turns the timeout's kill from advisory into
+/// unconditional: whatever the command spawned, however it detached itself, it
+/// goes when this process goes.
+///
+/// Two independent paths reach us, deliberately. The supervisor stays in the
+/// process group sandbx kills, and so do we — but the command we are about to
+/// become may call `setsid` and leave it, which is the whole of #28. The parent
+/// death signal does not care: it fires on the supervisor's death, not on group
+/// membership, and it survives `execve` of an ordinary binary. Keeping both means
+/// neither one is a single point of failure — worth having, because the kernel
+/// clears this signal for a secure `exec` (a setuid target or one with file
+/// capabilities), where the group kill is then what still reaps us.
+///
+/// Set before anything else in this stage, so the window in which the supervisor
+/// could die unnoticed is as short as the kernel allows. The window is not closed
+/// by this alone; `confirm_supervisor` is what closes it.
+#[cfg(target_os = "linux")]
+fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
+    nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL).map_err(|errno| {
+        SandboxError::NamespaceSetupFailed {
+            detail: match errno {
+                nix::errno::Errno::EPERM => {
+                    "kernel refused a parent death signal; the sandboxed command \
+                     could outlive the call that started it"
+                }
+                _ => "could not bind the command's lifetime to its supervisor",
+            },
+        }
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
+    Err(SandboxError::Unsupported {
+        detail: "sandboxing is only implemented for Linux",
+    })
+}
+
 /// Apply a policy to *this* process, then become the requested command.
 ///
 /// Stage 2 of two, running as the first child of [`exec_sandboxed`] and therefore
@@ -135,6 +177,8 @@ fn prepare_supervisor(_policy: &crate::SandboxPolicy) -> Result<(), SandboxError
 /// sandbox exists to prevent.
 pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
     let request = HelperArgs::decode(argv)?;
+
+    bind_lifetime_to_supervisor()?;
 
     apply(&request.policy)?;
 
@@ -496,7 +540,11 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use nix::sched::{CloneFlags, unshare};
     use nix::unistd::{getgid, getuid};
 
-    let mut flags = CloneFlags::CLONE_NEWUSER;
+    // The PID namespace is unconditional: a guarantee about process lifetime that
+    // depended on a policy flag would not be a guarantee. It is also why the user
+    // namespace is now unconditional, where it used to come along only when
+    // network was denied.
+    let mut flags = CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWPID;
     if !policy.allows_network() {
         flags |= CloneFlags::CLONE_NEWNET;
     }
