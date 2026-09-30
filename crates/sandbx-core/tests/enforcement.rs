@@ -165,6 +165,40 @@ fn malformed_arguments_do_not_run_the_command() {
     );
 }
 
+/// The precondition for #28: this host lets an unprivileged process create a PID
+/// namespace, and the next child is born as PID 1 of it.
+///
+/// Asserted on its own, ahead of anything that depends on it, because the answer
+/// is a property of the *host* rather than of our code and it cannot be read off
+/// a developer machine. A box without AppArmor grants capabilities inside a fresh
+/// user namespace that Ubuntu 24.04+ and GitHub's runners strip
+/// (`kernel.apparmor_restrict_unprivileged_userns`), and #39 already learned the
+/// hard way that "it passes locally" is not evidence about namespace or
+/// capability behaviour. If this test is red on CI, the PID-namespace approach is
+/// dead before anything is built on it.
+///
+/// A probe binary rather than an in-process `unshare`: calling it here would
+/// strip the *test harness* of its own namespaces for every test that follows.
+#[test]
+fn unprivileged_pid_namespace_is_available() {
+    #[allow(clippy::disallowed_methods)]
+    let output = Command::new(env!("CARGO_BIN_EXE_sandbx-pidns-probe"))
+        .output()
+        .expect("probe should start");
+
+    assert!(
+        output.status.success(),
+        "this host cannot create an unprivileged PID namespace\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("CHILD PID 1"),
+        "the child of an unsharing process must be pid 1 of the new namespace, got: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 /// Network denial comes from an empty network namespace, not from Landlock.
 ///
 /// A fresh netns has only the loopback interface, so reading the caller's own
