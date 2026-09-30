@@ -389,9 +389,12 @@ fn capabilities_are_dropped() {
     );
 }
 
-/// Granting the network must not cost any of the unprivileged capability sets:
-/// they are cleared on both paths, since shrinking them needs no privilege and
-/// so does not depend on the user namespace `deny_network` creates.
+/// Granting the network must not cost any of the unprivileged capability sets.
+///
+/// They are cleared on both paths, since shrinking them needs no privilege. Both
+/// paths now enter a user namespace — the PID namespace of #28 requires one
+/// whatever the policy says — so what this pins is that the *conditional* part,
+/// `CLONE_NEWNET`, is the only thing the network flag changes.
 #[test]
 fn capabilities_are_dropped_when_network_is_allowed() {
     let policy = runtime_paths(SandboxPolicy::default().allow_network()).allow_read("/proc");
@@ -917,12 +920,14 @@ fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
 /// real uid on the host (files it writes are owned by it), so reporting 65534 is
 /// a lie that `getuid()`-based logic trips over. #35.
 ///
-/// The network-allowed path creates no user namespace, so it always reports the
-/// real uid — that is the reference. The network-denied path maps the identity
-/// into its namespace to match. Where the platform refuses that map (AppArmor's
-/// `restrict_unprivileged_userns`, default on Ubuntu 24.04+), the mapping is
-/// best-effort and the command runs as the overflow `nobody` instead — so the
-/// test accepts that documented fallback rather than asserting it cannot happen.
+/// Both paths create a user namespace now: the PID namespace of #28 needs one
+/// regardless of policy, so granting network no longer means skipping the
+/// unshare. Each path is therefore checked against the same two acceptable
+/// answers rather than one being used as the other's reference — the identity map
+/// is best-effort by design, and where the platform refuses it (AppArmor's
+/// `restrict_unprivileged_userns`, default on Ubuntu 24.04+ and set on GitHub's
+/// runners) the command runs as the overflow `nobody` instead. What must never
+/// happen is a third value.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn the_command_sees_a_consistent_real_uid() {
@@ -945,33 +950,22 @@ fn the_command_sees_a_consistent_real_uid() {
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "65534".to_string());
 
-    let allowed = run(
-        &runtime_paths(SandboxPolicy::default().allow_network()),
-        "/usr/bin/id",
-        &["-u"],
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&allowed.stdout).trim(),
-        real,
-        "network-allowed path (no userns) should report the real uid"
-    );
+    for (label, policy) in [
+        ("network-denied", SandboxPolicy::default()),
+        ("network-allowed", SandboxPolicy::default().allow_network()),
+    ] {
+        let output = run(&runtime_paths(policy), "/usr/bin/id", &["-u"]);
+        assert!(
+            output.status.success(),
+            "id did not run on the {label} path: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
-    // The mapped path: real uid where the platform allows the map, the overflow
-    // fallback where it does not — never some third value.
-    let denied = run(
-        &runtime_paths(SandboxPolicy::default()),
-        "/usr/bin/id",
-        &["-u"],
-    );
-    assert!(
-        denied.status.success(),
-        "id did not run: {}",
-        String::from_utf8_lossy(&denied.stderr)
-    );
-    let seen = String::from_utf8_lossy(&denied.stdout).trim().to_string();
-    assert!(
-        seen == real || seen == overflow,
-        "network-denied path reported {seen:?}, expected the real uid ({real:?}) \
-         or the overflow fallback ({overflow:?})"
-    );
+        let seen = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert!(
+            seen == real || seen == overflow,
+            "{label} path reported {seen:?}, expected the real uid ({real:?}) or \
+             the overflow fallback ({overflow:?})"
+        );
+    }
 }
