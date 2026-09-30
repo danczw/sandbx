@@ -2,11 +2,13 @@
 //!
 //! `Provider` is a closed enum, not a trait object: the set of backends sandbx
 //! ships is small and known at compile time (mirrors sandbx-tools' `BuiltinTool`),
-//! so there is no `dyn Provider` and no `async_trait` here — see `ApprovalGate`
-//! in sandbx-agent for where dyn dispatch actually earns its keep. Each variant
-//! owns its own request/response shape, SSE parsing, auth, and error mapping
-//! into the shared `ProviderError`; no vendor SDK or provider-abstraction crate
-//! sits between sandbx and the wire format.
+//! so there is no `dyn Provider` and no `async_trait` here. Runtime dispatch is
+//! reserved for the approval gate sandbx-agent will take, where the
+//! implementation genuinely is picked at runtime — an interactive prompt, an
+//! auto-approver, or a test double — rather than fixed when the binary is
+//! built. Each variant owns its own request/response shape, SSE parsing, auth,
+//! and error mapping into the shared `ProviderError`; no vendor SDK or
+//! provider-abstraction crate sits between sandbx and the wire format.
 
 mod anthropic;
 mod credentials;
@@ -66,8 +68,8 @@ impl Provider {
     ///
     /// Boxed even with a single variant today: `impl Stream` here would have to
     /// name one concrete type for every match arm, so the second backend
-    /// (PLAN.md commits to OpenAI) would force a breaking signature change on
-    /// every caller.
+    /// (OpenAI is the one planned next) would force a breaking signature change
+    /// on every caller.
     ///
     /// Takes the request by value; [`MessagesRequest`] is `Clone` so a caller
     /// that may need to retry the turn can keep a copy.
