@@ -257,6 +257,44 @@ fn a_backgrounded_descendant_dies_with_the_command() {
     );
 }
 
+/// The untimed path is covered too, not just the deadline.
+///
+/// `output()` without a timeout reads both pipes to EOF, so a descendant holding
+/// a write-end blocks the caller for as long as it lives — and here there is no
+/// deadline to rescue it and no kill, because nothing fires on this path at all.
+/// The namespace is what closes it: the command is PID 1, so everything it left
+/// behind is gone the moment it exits, and the pipes close with them.
+///
+/// Ten seconds rather than a minute, so that a regression costs a slow test
+/// instead of a hung suite.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn without_a_timeout_a_descendant_does_not_block_the_call() {
+    let started = std::time::Instant::now();
+
+    let output = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default()
+            .allow_system_executables()
+            .allow_read("/dev/null")
+            .allow_write("/dev/null"),
+    )
+    .arg("-c")
+    .arg("sleep 10 & echo started")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .output()
+    .expect("the command itself succeeded, so this must not be an error");
+
+    let elapsed = started.elapsed();
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "started");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "a descendant held the untimed call open for {elapsed:?}"
+    );
+}
+
 /// A descendant that escaped the process group dies anyway (#28).
 ///
 /// This is the bug itself. A process group is advisory — one `setsid` call leaves
