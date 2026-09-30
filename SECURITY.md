@@ -30,7 +30,8 @@ tagged pre-release. If you are running an alpha, run the newest one.
 
 ## What sandbx claims to enforce
 
-On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
+On Linux 6.10 or newer with unprivileged user namespaces available, for a command
+run through `SandboxedCommand`:
 
 | control | mechanism | covers |
 |---------|-----------|--------|
@@ -39,6 +40,8 @@ On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create` |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (the bounding set is best-effort — see below) |
+| process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` to leave its process group |
+| process signalling | PID namespace | a command cannot signal, or even name, any process outside its own namespace |
 
 Three properties matter as much as the list:
 
@@ -54,7 +57,12 @@ Three properties matter as much as the list:
 
 - **Non-Linux is unsupported**, and refused rather than silently unsandboxed.
 - **The harness process itself is not sandboxed** — only the commands it runs.
-  A vulnerability in sandbx's own code is not contained by sandbx.
+  A vulnerability in sandbx's own code is not contained by sandbx. The same is
+  true of the helper's supervisor stage: it holds no Landlock ruleset and no
+  seccomp filter, because it has to be able to spawn the stage that does. It
+  reads nothing but its own arguments, and a command cannot reach it — the
+  supervisor lives outside the PID namespace the command runs in, so it has no
+  pid there to be named or signalled.
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges, not a tool's.
 - **The boundary is enforced by convention plus tooling**, not by a capability
@@ -66,13 +74,22 @@ Three properties matter as much as the list:
   its limit (90 seconds by default), and `sandbox-run` takes an opt-in
   `--timeout`. The call always returns by then. Nothing else is capped: no CPU
   bound, no memory bound, and no limit on how many processes a command spawns.
-  The sandbox governs *what* a command can reach, and now *how long* it may run,
-  but not *how much* it can consume.
-- **The kill is not guaranteed to reap every descendant.** It targets the
-  command's process group, and a process group is advisory: one `setsid` call
-  leaves it ([#28](https://github.com/danczw/sandbx/issues/28)). A survivor is
-  still fully confined — Landlock, seccomp and the network namespace are
-  irreversible and inherited — so it is unreaped, not unrestricted.
+  The sandbox governs *what* a command can reach, and now *how long* it may run
+  and *how long anything it spawned* may run, but not *how much* it can consume.
+  A fork bomb is still unbounded while the call lasts; what is bounded is that it
+  does not outlive it.
+- **An unhandled signal aimed at the command itself is ignored.** The command is
+  PID 1 of its namespace, and the kernel discards a default-disposition signal
+  sent to a namespace's init — so `kill -TERM` at the command from inside or
+  outside does nothing unless the command installed a handler. Faults the kernel
+  raises itself, such as `SIGSEGV`, are still delivered, and sandbx's own kill is
+  unaffected because it targets the supervisor with `SIGKILL`. An operator killing
+  a sandboxed command by hand should target the supervisor, not the command.
+- **`/proc` inside the sandbox shows host PIDs.** It is not remounted for the new
+  namespace — that would need `mount(2)`, which the filter denies — so a command
+  reads `getpid() == 1` while `/proc/self/stat` reports its host pid. A program
+  that builds `/proc/<getpid()>` by hand therefore reads a different process.
+  A compatibility limitation, not a claim about the boundary.
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   there is no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).
@@ -128,3 +145,11 @@ These are documented behaviour, and reports of them will be closed as such:
 - An agent running a tool call you approved.
 - Refusal to run on a kernel older than 6.10, or on a non-Linux host. That is
   fail-closed behaviour working as intended.
+- Refusal to run where unprivileged user namespaces are disabled. The PID
+  namespace that bounds a command's descendants needs one, whatever the policy
+  says, so this is the same fail-closed behaviour rather than a lost feature.
+- A descendant surviving the call because the command both had its parent death
+  signal cleared by a secure `exec` *and* called `setsid` to leave the process
+  group. Both would have to happen together, and a survivor is still fully
+  confined — Landlock, seccomp and the namespaces are irreversible and
+  inherited — so it is unreaped, not unrestricted.
