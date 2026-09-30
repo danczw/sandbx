@@ -43,6 +43,10 @@ pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, Sandb
         #[allow(clippy::disallowed_methods)]
         std::process::Command::new(exe)
             .arg(crate::HELPER_INNER_FLAG)
+            // So the inner stage can confirm we are still here before it hands
+            // control to the command. Our own pid, in host numbering, which is
+            // what the inner stage will read back out of `/proc`.
+            .arg(std::process::id().to_string())
             .args(argv)
             .spawn()
     };
@@ -164,6 +168,62 @@ fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
     })
 }
 
+/// Refuse to run unless the supervisor is still our parent.
+///
+/// This is what closes the window [`bind_lifetime_to_supervisor`] cannot: if the
+/// supervisor died before the parent death signal was armed, nothing will ever kill
+/// this process, and the command would run to completion as PID 1 of a namespace no
+/// one is watching. Ordering is what makes the pair complete — arm first, then
+/// check. A death before the check is caught by the check; a death after it is
+/// caught by the signal that is already armed.
+///
+/// `getppid` is no use here: this process is PID 1 of a namespace whose parent lives
+/// outside it, so the kernel has no number to report and returns 0. `/proc` is still
+/// the host's procfs, though — it is not remounted, because that would need
+/// `mount(2)`, which the filter denies — so its `ppid` field names the supervisor in
+/// host numbering, which is exactly what was passed in.
+///
+/// Pid reuse cannot produce a false pass: the comparison is against the kernel's
+/// live parent link, and an orphan is reparented to init or a subreaper, neither of
+/// which can be the pid of a supervisor that just spawned us.
+///
+/// Runs before Landlock and seccomp, so it needs no grant for `/proc` and no
+/// privilege.
+#[cfg(target_os = "linux")]
+fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
+    let gone = SandboxError::NamespaceSetupFailed {
+        detail: "the supervisor process is gone; refusing to run the command \
+                 where nothing can reap it",
+    };
+
+    let unreadable = SandboxError::NamespaceSetupFailed {
+        detail: "could not read this process's parent to confirm the supervisor \
+                 is still watching it",
+    };
+
+    let stat = std::fs::read_to_string("/proc/self/stat").map_err(|_| unreadable)?;
+
+    // Field 4 of `/proc/pid/stat`, counting from 1. Split after the *last* `)`
+    // rather than on whitespace from the start: field 2 is the executable name,
+    // unquoted and free to contain spaces and parentheses of its own, so counting
+    // from the left is how this kind of parse goes wrong.
+    let parent = stat
+        .rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(1));
+
+    match parent {
+        Some(parent) if parent == expected => Ok(()),
+        _ => Err(gone),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn confirm_supervisor(_expected: &str) -> Result<(), SandboxError> {
+    Err(SandboxError::Unsupported {
+        detail: "sandboxing is only implemented for Linux",
+    })
+}
+
 /// Apply a policy to *this* process, then become the requested command.
 ///
 /// Stage 2 of two, running as the first child of [`exec_sandboxed`] and therefore
@@ -180,9 +240,19 @@ fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
 /// fell through to running the command unrestricted would be the exact failure the
 /// sandbox exists to prevent.
 pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+    // The supervisor's pid is a positional token ahead of the policy, not part of
+    // it: `HelperArgs` describes what the command may do, and this describes who is
+    // watching. Keeping them apart leaves the policy grammar and its round-trip
+    // untouched, and means a caller reaching `exec_inner` directly cannot pass a
+    // policy that smuggles one in.
+    let (supervisor, argv) = argv.split_first().ok_or(SandboxError::BadHelperArgs {
+        detail: "inner helper mode without a supervisor pid",
+    })?;
+
     let request = HelperArgs::decode(argv)?;
 
     bind_lifetime_to_supervisor()?;
+    confirm_supervisor(supervisor)?;
 
     apply(&request.policy)?;
 
