@@ -424,3 +424,46 @@ fn open_write_truncates_existing_content() {
 
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "short");
 }
+
+/// An execute grant permits reading, because that is what the axis grants.
+///
+/// [`SandboxPolicy::executable_paths`] is documented as "paths the process may
+/// read *and* execute", and `allow_read_execute` says why it hands out both: a
+/// program needs `Execute` on the binary and `ReadFile` on the libraries its
+/// loader pulls in, so execute alone would start nothing. The kernel layer
+/// matches — `AccessFs::from_read` bundles `ReadFile`/`ReadDir` with `Execute`.
+///
+/// `FsGuard` consulted only the read and write axes, so under `--allow-exec DIR`
+/// `bash` could `cat` a file that the native `read` tool refused. Regression
+/// test for #50.
+#[test]
+fn an_execute_grant_permits_reading() {
+    let root = tempfile::tempdir().unwrap();
+    let program = root.path().join("program");
+    std::fs::write(&program, b"#!/bin/sh\nexit 0\n").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read_execute(root.path())).unwrap();
+
+    assert!(
+        guard.check_read(&program).is_ok(),
+        "FsGuard denies a read the kernel layer permits: the two layers disagree"
+    );
+}
+
+/// Widening read to the execute axis must not widen write along with it.
+///
+/// The kernel grants `from_read` there and nothing more, so being able to run
+/// `ls` must still not confer the right to replace it.
+#[test]
+fn an_execute_grant_does_not_permit_writing() {
+    let root = tempfile::tempdir().unwrap();
+    let program = root.path().join("program");
+    std::fs::write(&program, b"#!/bin/sh\nexit 0\n").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read_execute(root.path())).unwrap();
+
+    assert!(
+        guard.check_write(&program).is_err(),
+        "an execute grant must not confer write"
+    );
+}

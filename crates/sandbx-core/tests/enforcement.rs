@@ -748,6 +748,36 @@ fn symlinked_policy_root_resolves_consistently() {
     );
 }
 
+/// The two layers must also agree about the *execute* axis, not just read.
+///
+/// `allow_read_execute` grants read alongside execute, and the kernel gets
+/// exactly that: `AccessFs::from_read` bundles `ReadFile`/`ReadDir` in with
+/// `Execute`. `FsGuard` consulted only the read and write axes, so under the
+/// identical policy `bash` could `cat` a file that the native `read` tool
+/// refused — one policy, two answers. Regression test for #50.
+#[test]
+fn execute_grant_reads_consistently_across_both_layers() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("data.txt");
+    std::fs::write(&file, b"exec-axis-readable").unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+
+    let output = run(&policy, "/bin/cat", &[file.to_str().unwrap()]);
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("exec-axis-readable"),
+        "kernel layer denies a read on the execute axis: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let guard = sandbx_core::FsGuard::new(&policy).unwrap();
+    assert!(
+        guard.check_read(&file).is_ok(),
+        "FsGuard denies a read the kernel layer permits: the two layers disagree \
+         on the execute axis"
+    );
+}
+
 /// A read grant must not let the process *run* what it can read.
 ///
 /// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so
