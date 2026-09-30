@@ -5,7 +5,7 @@ members = ["crates/*"]
 # Shared metadata — member crates inherit these with `field.workspace = true`,
 # so version/edition are bumped in one place instead of seven.
 [workspace.package]
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/danczw/sandbx"
