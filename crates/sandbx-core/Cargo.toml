@@ -76,3 +76,8 @@ required-features = ["sandbox-integration"]
 name = "sandbx-memfd-probe"
 path = "tests/support/memfd_probe.rs"
 required-features = ["sandbox-integration"]
+
+[[bin]]
+name = "sandbx-pidns-probe"
+path = "tests/support/pidns_probe.rs"
+required-features = ["sandbox-integration"]
