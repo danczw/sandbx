@@ -65,7 +65,13 @@ impl SandboxPolicy {
         self
     }
 
-    /// Grant write access to `path`.
+    /// Grant write access to `path`, and nothing else.
+    ///
+    /// Write alone: neither read nor execute comes with it, so a drop directory
+    /// granted here cannot be read back. The `sandbx` CLI deliberately grants
+    /// read alongside write for `--allow-write`, because that trap is rarely
+    /// what a person at a terminal wants — but the narrow form is what this
+    /// method gives, and it is what a library caller composes from.
     #[must_use]
     pub fn allow_write(mut self, path: impl AsRef<Path>) -> Self {
         self.writable.push(path.as_ref().to_path_buf());
