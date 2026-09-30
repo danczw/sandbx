@@ -55,6 +55,12 @@ const CLAIMED: &[(&str, libc::c_long)] = &[
     ("io_uring_register", libc::SYS_io_uring_register),
     // Anonymous in-memory files, which have no path for Landlock to match.
     ("memfd_create", libc::SYS_memfd_create),
+    // Handles on other processes, and fault handling that hands an attacker the
+    // pause. None of these have a safe wrapper in this crate's dependencies, so
+    // the list is the only evidence there is for them — see the module docs.
+    ("userfaultfd", libc::SYS_userfaultfd),
+    ("pidfd_open", libc::SYS_pidfd_open),
+    ("pidfd_getfd", libc::SYS_pidfd_getfd),
     // Whole-machine effects.
     ("reboot", libc::SYS_reboot),
     ("swapon", libc::SYS_swapon),
