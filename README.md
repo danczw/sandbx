@@ -12,10 +12,11 @@ runs goes through a Landlock + seccomp boundary, and the sandbox fails closed
 rather than degrading to unrestricted execution.
 
 > **Pre-alpha.** There is no agent yet — only the sandbox beneath it and the
-> tools that will run inside it. Enforced today on Linux 6.10+: filesystem
-> (Landlock), network (empty netns), dangerous syscalls (seccomp). Kernels that
-> cannot enforce are refused, never run unrestricted. Do not assume a version
-> sandboxes anything until it says so.
+> tools that will run inside it. Enforced today on Linux 6.10+ with unprivileged
+> user namespaces: filesystem (Landlock), network (empty netns), dangerous
+> syscalls (seccomp), process lifetime (PID namespace). Kernels that cannot
+> enforce are refused, never run unrestricted. Do not assume a version sandboxes
+> anything until it says so.
 
 ## Try the sandbox
 
@@ -39,15 +40,15 @@ nothing readable, not even `/bin/true` reaches `main`.
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
 | `--allow-network`    | a network namespace with an interface. IP egress only |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
-| `--timeout SECONDS`  | kill the command if it runs longer. Unset means no limit |
+| `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |
 
 ## Install
 
 Prebuilt Linux binaries are attached to each
 [release](https://github.com/danczw/sandbx/releases); each archive ships with a
 `.sha256` beside it. They are statically linked (musl), so there is no minimum
-glibc and no runtime dependency beyond a Linux 6.10+ kernel. Or build from
-source:
+glibc and no runtime dependency beyond a Linux 6.10+ kernel with unprivileged
+user namespaces enabled. Or build from source:
 
 ```sh
 cargo install --git https://github.com/danczw/sandbx sandbx-cli
@@ -66,7 +67,10 @@ git config core.hooksPath .githooks                    # fmt + clippy on commit
 
 `unsafe` is forbidden in every crate, including `sandbx-core`, and spawning a
 subprocess outside `sandbx-core` is a clippy error — the sandbox boundary is
-enforced by the build, not by convention alone.
+enforced by the build, not by convention alone. Even the PID namespace needs no
+exemption: `unshare` leaves the caller behind and places its *children* in the
+new namespace, so re-execing the helper once more is enough and there is no
+`fork` to make safe.
 
 ## License
 
