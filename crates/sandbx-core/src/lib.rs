@@ -42,7 +42,6 @@ mod fs_guard;
 mod helper;
 mod helper_args;
 mod policy;
-mod support;
 
 pub use audit::{AUDIT_TARGET, AuditEvent};
 pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, dispatch_helper_mode};
@@ -52,4 +51,3 @@ pub use helper::BLOCKED_SYSCALLS;
 pub use helper::exec_sandboxed;
 pub use helper_args::HelperArgs;
 pub use policy::SandboxPolicy;
-pub use support::KernelSupport;
