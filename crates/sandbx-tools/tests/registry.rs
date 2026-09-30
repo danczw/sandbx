@@ -68,3 +68,31 @@ fn lookup_does_not_normalise_the_name() {
     assert_eq!(BuiltinTool::from_name("Read"), None);
     assert_eq!(BuiltinTool::from_name("read "), None);
 }
+
+/// Every variant must advertise its *own* input struct.
+///
+/// `input_schema` is a seven-arm match and nothing ties an arm to its variant,
+/// so `Self::Ls => schema_for!(GrepInput)` compiles and — before this test —
+/// passed the whole suite, while the model was handed the wrong argument schema
+/// and every `ls` call failed at parse time.
+///
+/// The tie is `title`: schemars emits the struct's own name there, so asserting
+/// it against the variant name plus `Input` pins each arm to one struct. That
+/// depends on the naming convention holding; a struct renamed out of it fails
+/// here, which is the intended prompt to update both together.
+///
+/// A required-property check is not enough on its own. `ReadInput` and `LsInput`
+/// are both a lone `path`, so a transposition between those two is invisible to
+/// anything that only compares required names.
+#[test]
+fn every_tool_advertises_its_own_input_struct() {
+    for tool in BuiltinTool::ALL {
+        let expected = format!("{tool:?}Input");
+
+        assert_eq!(
+            tool.input_schema().get("title").and_then(|t| t.as_str()),
+            Some(expected.as_str()),
+            "{tool:?} advertises a schema for the wrong input struct"
+        );
+    }
+}
