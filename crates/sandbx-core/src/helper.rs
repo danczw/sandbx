@@ -273,12 +273,18 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // outside everything the filesystem layer can see. Denying the syscall is the
     // only layer that reaches it.
     //
-    // This one has a real compatibility cost, unlike the rest of this list: Go's
-    // runtime and some loaders and package managers use `memfd_create` legitimately.
-    // It is denied anyway because no caller needs it yet, so the restrictive
-    // default is the one to start from and loosen on evidence — if a common tool
-    // turns out to break, that evidence is a reason to revisit this, possibly as
-    // its own policy axis.
+    // This one has a real compatibility cost, unlike the rest of this list, though
+    // a narrower one than it first looked: the heavy users are container runtimes
+    // (runc keeps a sealed memfd copy of its own binary and re-execs it from
+    // `/proc/self/fd/<n>` as its CVE-2019-5736 self-protection), systemd and snapd.
+    // A coding tool does none of that, and running a container runtime in here is
+    // already impossible — `unshare` is denied above. An ordinary program can still
+    // call it deliberately, which is the case to watch.
+    //
+    // It is denied because no caller needs it yet, so the restrictive default is
+    // the one to start from and loosen on evidence — if a real tool turns out to
+    // break, that evidence is a reason to revisit this, possibly as its own policy
+    // axis.
     libc::SYS_memfd_create,
     // Whole-machine effects.
     libc::SYS_reboot,
