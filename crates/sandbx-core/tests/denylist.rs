@@ -1,12 +1,12 @@
 //! Does the seccomp denylist still contain what the security docs claim?
 //!
-//! `SECURITY.md` and `context/SANDBOXING.md` tell users which syscall classes a
-//! sandboxed command cannot reach. Nothing until now tied those claims to the
-//! code: `enforcement.rs` probes exactly two of the denials end to end
-//! (`io_uring_setup` and the conditional `socket(AF_UNIX)` rule), so an entry
-//! could be dropped from the list and every test would still pass while the
-//! policy went on promising it. This repo treats a security doc that overstates
-//! the sandbox as a defect in its own right, so assert the list directly.
+//! `SECURITY.md` tells users which syscall classes a sandboxed command cannot
+//! reach. Nothing until now tied that claim to the code: `enforcement.rs`
+//! probes exactly two of the denials end to end (`io_uring_setup` and the
+//! conditional `socket(AF_UNIX)` rule), so an entry could be dropped from the
+//! list and every test would still pass while the policy went on promising it.
+//! This repo treats a security doc that overstates the sandbox as a defect in
+//! its own right, so assert the list directly.
 //!
 //! This is a weaker kind of evidence than `enforcement.rs` gives, and worth
 //! being clear about: it proves the number is in the list the filter is built
@@ -82,8 +82,7 @@ fn every_claimed_syscall_is_actually_denied() {
          they are permitted inside the sandbox and the security docs now \
          overstate the boundary. Fix by restoring the entries in \
          crates/sandbx-core/src/helper.rs — or, if the removal was deliberate, \
-         drop the claim from SECURITY.md and context/SANDBOXING.md in the same \
-         change."
+         drop the claim from SECURITY.md in the same change."
     );
 }
 

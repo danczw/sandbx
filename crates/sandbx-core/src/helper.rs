@@ -448,8 +448,8 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
 /// why both layers exist rather than one.
 ///
 /// Lifted out of [`deny_dangerous_syscalls`] so a test can assert the list still
-/// contains what `SECURITY.md` and `context/SANDBOXING.md` claim it does. The
-/// filter is built from this and nothing else, so the two cannot drift.
+/// contains what `SECURITY.md` claims it does. The filter is built from this and
+/// nothing else, so the two cannot drift.
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // Inspect or modify other processes.
     libc::SYS_ptrace,

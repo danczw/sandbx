@@ -32,9 +32,11 @@ pub fn resolve_api_key(
 
 /// Resolve the Anthropic API key from `ANTHROPIC_API_KEY`.
 ///
-/// Only tier of credential resolution built so far; the OS-keyring and
-/// permissioned-file fallbacks PLAN.md describes are deferred to the phase that
-/// builds `sandbx auth login`/`set`.
+/// Only tier of credential resolution built so far. Two fallbacks are deferred
+/// to the phase that builds `sandbx auth login`/`set`: the OS keychain via the
+/// `keyring` crate, and a `0600` file at `~/.config/sandbx/credentials.toml`
+/// for hosts with no reachable keychain backend — notably WSL2, which has no
+/// D-Bus session keyring by default.
 pub fn anthropic_api_key() -> Result<SecretString, ProviderError> {
     resolve_api_key("ANTHROPIC_API_KEY", |key| std::env::var(key))
 }
