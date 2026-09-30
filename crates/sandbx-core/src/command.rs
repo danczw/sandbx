@@ -178,7 +178,6 @@ impl SandboxedCommand {
 ///
 /// `std::process` has no timed wait, so this cannot use `output()`: it spawns,
 /// drains both pipes on their own threads, and polls for exit until the deadline.
-#[cfg(target_os = "linux")]
 fn run_with_deadline(
     helper: &Path,
     argv: &[String],
@@ -256,7 +255,6 @@ fn run_with_deadline(
 /// holding, and the whole point of this function is that it holds no matter what
 /// the command does. The cost is that output still in flight past the grace period
 /// is dropped.
-#[cfg(target_os = "linux")]
 fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<()>) {
     let until = Instant::now() + DRAIN_GRACE;
     while Instant::now() < until && !(readers.is_finished() && more.is_finished()) {
@@ -265,7 +263,6 @@ fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<
 }
 
 /// Take what a reader has collected so far.
-#[cfg(target_os = "linux")]
 fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
     // A panicking reader poisons the lock but leaves the bytes it already read
     // intact, and partial output beats none.
@@ -284,7 +281,6 @@ fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
 /// Chunked into a shared buffer rather than `read_to_end`, so that abandoning a
 /// reader still yields whatever it managed to read. `read_to_end` holds the
 /// bytes inside the thread until it returns, which is exactly when it cannot.
-#[cfg(target_os = "linux")]
 #[allow(clippy::type_complexity)]
 fn drain<R>(
     pipe: Option<R>,
@@ -331,7 +327,6 @@ where
 /// the kernel SIGKILLs everything still in the namespace — `setsid` or not, since
 /// nothing can leave the namespace it was born into and `unshare`/`setns` are
 /// denied.
-#[cfg(target_os = "linux")]
 fn kill_group(group: u32) {
     use nix::sys::signal::{Signal, killpg};
     use nix::unistd::Pid;

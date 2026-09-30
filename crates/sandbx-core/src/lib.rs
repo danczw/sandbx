@@ -48,7 +48,6 @@ pub use audit::{AUDIT_TARGET, AuditEvent};
 pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, dispatch_helper_mode};
 pub use error::SandboxError;
 pub use fs_guard::FsGuard;
-#[cfg(target_os = "linux")]
 pub use helper::BLOCKED_SYSCALLS;
 pub use helper::exec_sandboxed;
 pub use helper_args::HelperArgs;
