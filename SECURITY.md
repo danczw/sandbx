@@ -49,9 +49,13 @@ Three properties matter as much as the list:
   ruleset the kernel only partly applies is treated as failure. sandbx does not
   degrade to unrestricted execution and then carry on.
 - **It is default-deny.** A policy grants nothing until something is added.
-- **Grants do not widen each other.** Read access does not confer the right
-  to execute what it can see, and write access does not confer the right to
-  run what it just wrote. Execute comes only from `allow_read_execute`.
+- **Nothing else confers execute.** Read access does not confer the right to
+  execute what it can see, and write access does not confer the right to run
+  what it just wrote. Execute comes only from `allow_read_execute` — which is
+  named for both rights because it grants both: a program needs execute on the
+  binary *and* read on the libraries its loader pulls in, so an execute-only
+  grant would start nothing. That asymmetry is deliberate and runs one way:
+  execute implies read on the same path, and no grant implies execute.
 
 ## What sandbx does *not* claim
 

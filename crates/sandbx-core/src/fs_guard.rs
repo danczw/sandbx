@@ -24,10 +24,22 @@ impl FsGuard {
     /// name a directory that has not been created yet, and a root that cannot be
     /// resolved can never match a canonical path anyway — so dropping it is the
     /// conservative choice, not a permissive one.
+    ///
+    /// The executable axis feeds `readable`, because that is what it grants:
+    /// [`SandboxPolicy::executable_paths`] is read *and* execute, and the kernel
+    /// layer grants it `AccessFs::from_read`. Leaving it out made the native
+    /// `read` tool refuse a file `bash` could `cat` under the same policy (#50).
+    /// There is no `executable` field because nothing in-process execs anything
+    /// — `bash` spawns, and the kernel governs that.
     pub fn new(policy: &SandboxPolicy) -> Result<Self, SandboxError> {
         Ok(Self {
-            readable: canonical_roots(policy.readable_paths()),
-            writable: canonical_roots(policy.writable_paths()),
+            readable: canonical_roots(
+                policy
+                    .readable_paths()
+                    .iter()
+                    .chain(policy.executable_paths()),
+            ),
+            writable: canonical_roots(policy.writable_paths().iter()),
         })
     }
 
@@ -224,8 +236,8 @@ impl FsGuard {
 }
 
 /// Resolve every root that currently exists, discarding the rest.
-fn canonical_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
-    roots.iter().filter_map(|r| canonicalize(r).ok()).collect()
+fn canonical_roots<'a>(roots: impl Iterator<Item = &'a PathBuf>) -> Vec<PathBuf> {
+    roots.filter_map(|r| canonicalize(r).ok()).collect()
 }
 
 fn canonicalize(path: &Path) -> Result<PathBuf, SandboxError> {
