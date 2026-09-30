@@ -256,6 +256,18 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_io_uring_setup,
     libc::SYS_io_uring_enter,
     libc::SYS_io_uring_register,
+    // An anonymous in-memory file has no path on any filesystem, and Landlock
+    // binds its rules to inodes and paths — so a payload staged in a memfd sits
+    // outside everything the filesystem layer can see. Denying the syscall is the
+    // only layer that reaches it.
+    //
+    // This one has a real compatibility cost, unlike the rest of this list: Go's
+    // runtime and some loaders and package managers use `memfd_create` legitimately.
+    // It is denied anyway because no caller needs it yet, so the restrictive
+    // default is the one to start from and loosen on evidence — if a common tool
+    // turns out to break, that evidence is a reason to revisit this, possibly as
+    // its own policy axis.
+    libc::SYS_memfd_create,
     // Whole-machine effects.
     libc::SYS_reboot,
     libc::SYS_swapon,
