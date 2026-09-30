@@ -294,6 +294,52 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     })
 }
 
+/// The Landlock rules [`apply`] will install, as data.
+///
+/// Split out so the whole filesystem mapping can be asserted without root, a
+/// network namespace or a Landlock-capable kernel — `apply` itself needs all
+/// three, which is why it went untested for so long (#52). The only thing this
+/// touches outside the policy is whether each path is a directory, and that is
+/// precisely what decides the narrowing below.
+///
+/// `from_read` bundles `Execute` in with `ReadFile`/`ReadDir`, and `from_all`
+/// inherits it. Granting either would otherwise hand out the right to *run*
+/// whatever the path contains, which neither `allow_read` nor `allow_write` says
+/// (#19). Execute comes from one axis, named for it.
+///
+/// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular file
+/// and the kernel rejects the whole ruleset if one is attached to it. A policy
+/// may name either, so the rights are narrowed to what the target can actually
+/// carry. Intersecting rather than substituting keeps that a restriction: a file
+/// can never end up with more than the directory case.
+fn fs_rules(
+    policy: &crate::SandboxPolicy,
+) -> Vec<(&std::path::Path, landlock::BitFlags<landlock::AccessFs>)> {
+    use landlock::{Access, AccessFs};
+
+    let read_execute = AccessFs::from_read(LATEST_ABI);
+    let read_only = read_execute & !AccessFs::Execute;
+    let read_write = AccessFs::from_all(LATEST_ABI) & !AccessFs::Execute;
+    let file_rights = AccessFs::from_file(LATEST_ABI);
+
+    let mut rules = Vec::new();
+    for (paths, rights) in [
+        (policy.readable_paths(), read_only),
+        (policy.writable_paths(), read_write),
+        (policy.executable_paths(), read_execute),
+    ] {
+        for path in paths {
+            let rights = if path.is_dir() {
+                rights
+            } else {
+                rights & file_rights
+            };
+            rules.push((path.as_path(), rights));
+        }
+    }
+    rules
+}
+
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
         Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
@@ -316,15 +362,6 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // Negotiate rather than pin: `handle_access` accumulates (`|=`), so the
     // baseline can be a hard requirement while newer rights stay best-effort.
     // Why ABI 5 is the floor is documented on `BASELINE_ABI`.
-
-    // `from_read` bundles `Execute` in with `ReadFile`/`ReadDir`, and `from_all`
-    // inherits it. Granting either would otherwise hand out the right to *run*
-    // whatever the path contains, which neither `allow_read` nor `allow_write`
-    // says (#19). Execute comes from one axis, named for it.
-    let read_execute = AccessFs::from_read(LATEST_ABI);
-    let read_only = read_execute & !AccessFs::Execute;
-    let read_write = AccessFs::from_all(LATEST_ABI) & !AccessFs::Execute;
-
     let mut ruleset = Ruleset::default()
         // Refuse a kernel that cannot enforce the baseline, rather than running
         // with a silent hole in it.
@@ -339,28 +376,12 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         .create()
         .map_err(landlock_failed)?;
 
-    // Directory-only rights (ReadDir, MakeDir, …) are invalid on a regular file
-    // and the kernel rejects the whole ruleset if one is attached to it. A
-    // policy may name either, so narrow the rights to what the target can
-    // actually carry. Intersecting rather than substituting keeps this a
-    // restriction: a file can never end up with more than the directory case.
-    let file_rights = AccessFs::from_file(LATEST_ABI);
-    for (paths, rights) in [
-        (policy.readable_paths(), read_only),
-        (policy.writable_paths(), read_write),
-        (policy.executable_paths(), read_execute),
-    ] {
-        for path in paths {
-            let rights = if path.is_dir() {
-                rights
-            } else {
-                rights & file_rights
-            };
-            let fd = PathFd::new(path).map_err(landlock_failed)?;
-            ruleset = ruleset
-                .add_rule(PathBeneath::new(fd, rights))
-                .map_err(landlock_failed)?;
-        }
+    // `fs_rules` decides what to install; this loop only opens the paths.
+    for (path, rights) in fs_rules(policy) {
+        let fd = PathFd::new(path).map_err(landlock_failed)?;
+        ruleset = ruleset
+            .add_rule(PathBeneath::new(fd, rights))
+            .map_err(landlock_failed)?;
     }
 
     let status = ruleset.restrict_self().map_err(landlock_failed)?;
@@ -540,21 +561,19 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_swapoff,
 ];
 
-/// Compile [`BLOCKED_SYSCALLS`] into a seccomp filter and install it.
+/// The seccomp denylist [`deny_dangerous_syscalls`] will install, as data.
 ///
-/// Blocked calls return `EPERM` rather than killing the process. The syscall
-/// does not execute either way; `EPERM` is what tools already expect on hardened
-/// systems, so they fail that operation instead of dying mid-run.
-fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+/// Split out for the same reason as [`fs_rules`] (#52).
+///
+/// An empty rule vector means "match this syscall unconditionally", so every
+/// listed number takes the filter's match action and everything else is allowed.
+fn blocked_syscalls(
+    policy: &crate::SandboxPolicy,
+) -> Result<std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>, SandboxError> {
     use std::collections::BTreeMap;
 
-    use seccompiler::{
-        BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
-        SeccompRule,
-    };
+    use seccompiler::{SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompRule};
 
-    // An empty rule vector means "match this syscall unconditionally", so every
-    // listed number takes `match_action` and everything else is allowed.
     let mut rules = BLOCKED_SYSCALLS
         .iter()
         .copied()
@@ -590,8 +609,19 @@ fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxE
         );
     }
 
+    Ok(rules)
+}
+
+/// Compile [`blocked_syscalls`] into a seccomp filter and install it.
+///
+/// Blocked calls return `EPERM` rather than killing the process. The syscall
+/// does not execute either way; `EPERM` is what tools already expect on hardened
+/// systems, so they fail that operation instead of dying mid-run.
+fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+    use seccompiler::{BpfProgram, SeccompAction, SeccompFilter};
+
     let filter = SeccompFilter::new(
-        rules,
+        blocked_syscalls(policy)?,
         SeccompAction::Allow,
         SeccompAction::Errno(libc::EPERM as u32),
         std::env::consts::ARCH.try_into().map_err(seccomp_failed)?,
@@ -697,5 +727,201 @@ fn landlock_failed(source: impl std::fmt::Display) -> SandboxError {
     // for whoever has to work out which path or access right it objected to.
     SandboxError::Landlock {
         detail: source.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SandboxPolicy;
+    use landlock::AccessFs;
+
+    /// Keep the returned handle bound for the whole test: dropping it deletes
+    /// the directory, and `fs_rules` would then take its regular-file branch.
+    fn tempdir() -> tempfile::TempDir {
+        tempfile::tempdir().unwrap()
+    }
+
+    /// A regular file, since files and directories take different rights.
+    fn plain_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        let file = dir.path().join("plain.txt");
+        std::fs::write(&file, b"x").unwrap();
+        file
+    }
+
+    /// The single rule produced for `path`.
+    ///
+    /// Insists on exactly one. Landlock unions the rules for a path, so a path
+    /// granted on two axes has no one answer — and silently returning whichever
+    /// axis came first would let a test assert against a rule it did not mean.
+    fn rights_for(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
+        let matches: Vec<_> = fs_rules(policy)
+            .into_iter()
+            .filter(|(p, _)| *p == path)
+            .map(|(_, rights)| rights)
+            .collect();
+
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected exactly one rule for {}, got {}",
+            path.display(),
+            matches.len()
+        );
+        matches[0]
+    }
+
+    /// Reading must never confer the right to *run* what it can see.
+    ///
+    /// `AccessFs::from_read` bundles `Execute` with `ReadFile`/`ReadDir`, so this
+    /// is a subtraction that has to happen rather than a default (#19).
+    #[test]
+    fn a_read_grant_never_carries_execute() {
+        let dir = tempdir();
+        let file = plain_file(&dir);
+        let policy = SandboxPolicy::default()
+            .allow_read(dir.path())
+            .allow_read(&file);
+
+        for path in [dir.path(), file.as_path()] {
+            let rights = rights_for(&policy, path);
+            assert!(
+                !rights.contains(AccessFs::Execute),
+                "a read grant handed out Execute on {}",
+                path.display()
+            );
+            assert!(rights.contains(AccessFs::ReadFile));
+        }
+    }
+
+    /// The execute axis is the only one that carries it.
+    #[test]
+    fn only_the_execute_axis_carries_execute() {
+        let dir = tempdir();
+        let policy = SandboxPolicy::default().allow_read_execute(dir.path());
+
+        let rights = rights_for(&policy, dir.path());
+        assert!(rights.contains(AccessFs::Execute));
+        // Read comes with it by design — see `SandboxPolicy::executable_paths`.
+        assert!(rights.contains(AccessFs::ReadFile));
+        // But not write.
+        assert!(!rights.contains(AccessFs::WriteFile));
+    }
+
+    /// Pins today's answer on the write axis, which contradicts the documented
+    /// promise in `SandboxPolicy::writable_paths` that "writable does not imply
+    /// readable". The kernel grants read here; the in-process `FsGuard` does not.
+    ///
+    /// Asserting the current behaviour deliberately: #49 is the open decision
+    /// about which layer is wrong, and whichever way it goes this test has to
+    /// change on purpose rather than a divergence slipping by unnoticed.
+    #[test]
+    fn a_write_grant_currently_also_carries_read_see_issue_49() {
+        let dir = tempdir();
+        let policy = SandboxPolicy::default().allow_write(dir.path());
+
+        let rights = rights_for(&policy, dir.path());
+        assert!(rights.contains(AccessFs::WriteFile));
+        // Writing confers no more right to *run* what it wrote than reading does.
+        assert!(!rights.contains(AccessFs::Execute));
+        assert!(
+            rights.contains(AccessFs::ReadFile),
+            "write no longer grants read at the kernel layer — #49 was resolved, \
+             so update this test, `SandboxPolicy::writable_paths` and SECURITY.md \
+             together"
+        );
+    }
+
+    /// Directory-only rights are invalid on a regular file, and the kernel
+    /// rejects the whole ruleset if one is attached to it — so a file rule must
+    /// come out narrowed.
+    #[test]
+    fn a_rule_on_a_regular_file_drops_directory_only_rights() {
+        let dir = tempdir();
+        let file = plain_file(&dir);
+        let policy = SandboxPolicy::default()
+            .allow_write(dir.path())
+            .allow_write(&file);
+
+        let on_dir = rights_for(&policy, dir.path());
+        let on_file = rights_for(&policy, &file);
+
+        assert!(
+            on_dir.contains(AccessFs::MakeDir),
+            "a directory should keep directory-only rights"
+        );
+        assert!(
+            !on_file.contains(AccessFs::MakeDir),
+            "a regular file kept a directory-only right, which invalidates the ruleset"
+        );
+        // Narrowing is an intersection, so the file can never gain anything the
+        // directory case did not already have.
+        assert!(on_dir.contains(on_file));
+    }
+
+    /// Default-deny: nothing granted means nothing installed.
+    #[test]
+    fn a_policy_with_no_paths_produces_no_rules() {
+        assert!(fs_rules(&SandboxPolicy::default()).is_empty());
+    }
+
+    /// One rule per *grant*, not per path: a path granted on two axes yields two
+    /// rules, which the kernel unions. A grant dropped here is a permission the
+    /// command silently does not get.
+    #[test]
+    fn every_grant_produces_a_rule_even_for_a_repeated_path() {
+        let dir = tempdir();
+        let file = plain_file(&dir);
+        let policy = SandboxPolicy::default()
+            .allow_read(&file)
+            .allow_write(dir.path())
+            .allow_read_execute(dir.path());
+
+        assert_eq!(fs_rules(&policy).len(), 3);
+    }
+
+    /// The filter is built from `BLOCKED_SYSCALLS` and nothing else, so the two
+    /// cannot drift.
+    #[test]
+    fn blocked_syscalls_covers_the_whole_denylist() {
+        let blocked = blocked_syscalls(&SandboxPolicy::default()).unwrap();
+
+        for nr in BLOCKED_SYSCALLS {
+            let rules = blocked
+                .get(nr)
+                .unwrap_or_else(|| panic!("{nr} missing from the filter"));
+
+            // An entry with rules is matched only for those argument values, so
+            // the syscall stays reachable for every other. A listed number must
+            // be blocked unconditionally, or the denial is narrower than the
+            // list claims.
+            assert!(
+                rules.is_empty(),
+                "{nr} is filtered conditionally, but the denylist claims it outright"
+            );
+        }
+    }
+
+    /// `socket` is blocked conditionally — on the `AF_UNIX` argument — and only
+    /// when the policy withholds unix sockets. Until now that was verifiable
+    /// only by spawning a real sandboxed process.
+    #[test]
+    fn socket_is_blocked_only_while_unix_sockets_are_withheld() {
+        let denied = blocked_syscalls(&SandboxPolicy::default()).unwrap();
+        assert!(
+            denied.contains_key(&libc::SYS_socket),
+            "socket() must be filtered when unix sockets are not granted"
+        );
+        assert_eq!(
+            denied[&libc::SYS_socket].len(),
+            1,
+            "the socket entry must be conditional, not an unconditional block"
+        );
+
+        let granted = blocked_syscalls(&SandboxPolicy::default().allow_unix_sockets()).unwrap();
+        assert!(
+            !granted.contains_key(&libc::SYS_socket),
+            "granting unix sockets must lift the socket() filter"
+        );
     }
 }
