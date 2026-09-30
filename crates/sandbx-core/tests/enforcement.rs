@@ -165,6 +165,55 @@ fn malformed_arguments_do_not_run_the_command() {
     );
 }
 
+/// The inner stage refuses to run when its supervisor is already gone (#28).
+///
+/// Between the supervisor spawning this stage and this stage arming its parent
+/// death signal there is a window — short, but real — in which the supervisor could
+/// be killed and the signal never armed. The command would then run to completion
+/// as PID 1 of a namespace nothing is watching: still fully confined, but unreaped,
+/// which is the exact weakness being closed. So the stage checks that the pid the
+/// supervisor told it to expect is still its parent, and refuses if it is not.
+///
+/// The check reads `/proc/self/stat` rather than calling `getppid`, which returns 0
+/// inside a PID namespace whose parent lives outside it. `/proc` is the host's, so
+/// its ppid field still names the supervisor in host numbering.
+///
+/// Passing pid 1 as the claimed supervisor is a value the stage can never legally
+/// have: the real supervisor is an ordinary process, and host pid 1 never spawns
+/// one of these.
+#[test]
+fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
+    let marker = tempfile::tempdir().unwrap().path().join("should-not-exist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
+        .args([
+            sandbx_core::HELPER_INNER_FLAG,
+            "1",
+            "--",
+            "/bin/touch",
+            marker.to_str().unwrap(),
+        ])
+        .output()
+        .expect("helper should start");
+
+    assert!(
+        !output.status.success(),
+        "the inner stage ran without a supervisor watching it"
+    );
+    assert!(
+        !marker.exists(),
+        "the inner stage ran the command despite having no supervisor"
+    );
+    // Named in the refusal, so this test cannot pass merely because the pid token
+    // was rejected as an unrecognised flag — which is what it would prove if the
+    // liveness check were absent.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("supervisor"),
+        "the refusal must say the supervisor is the reason, got: {stderr}"
+    );
+}
+
 /// The precondition for #28: this host lets an unprivileged process create a PID
 /// namespace, and the next child is born as PID 1 of it.
 ///
