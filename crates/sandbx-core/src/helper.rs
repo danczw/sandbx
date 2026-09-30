@@ -208,7 +208,7 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
     }
 }
 
-/// Block syscalls a coding tool never legitimately needs.
+/// Syscalls blocked for every sandboxed command, regardless of policy.
 ///
 /// A denylist, not an allowlist. An allowlist is the stronger shape, but sandbx
 /// runs arbitrary commands — shells, compilers, package managers — whose syscall
@@ -217,6 +217,52 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
 ///
 /// Landlock cannot express any of these: they are not filesystem access. That is
 /// why both layers exist rather than one.
+///
+/// Lifted out of [`deny_dangerous_syscalls`] so a test can assert the list still
+/// contains what `SECURITY.md` and `context/SANDBOXING.md` claim it does. The
+/// filter is built from this and nothing else, so the two cannot drift.
+#[cfg(target_os = "linux")]
+pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
+    // Inspect or modify other processes.
+    libc::SYS_ptrace,
+    libc::SYS_process_vm_readv,
+    libc::SYS_process_vm_writev,
+    // Reshape the filesystem out from under Landlock.
+    libc::SYS_mount,
+    libc::SYS_umount2,
+    libc::SYS_pivot_root,
+    libc::SYS_chroot,
+    // Escape or re-create namespaces, including the netns just entered.
+    libc::SYS_setns,
+    libc::SYS_unshare,
+    // Load code into the kernel.
+    libc::SYS_init_module,
+    libc::SYS_finit_module,
+    libc::SYS_delete_module,
+    libc::SYS_bpf,
+    libc::SYS_kexec_load,
+    // Kernel keyring: credentials live here.
+    libc::SYS_add_key,
+    libc::SYS_request_key,
+    libc::SYS_keyctl,
+    // Tracing infrastructure, a known side-channel surface.
+    libc::SYS_perf_event_open,
+    // io_uring runs operations from a submission queue without issuing the
+    // matching syscalls, so a ring set up here would be a route around every
+    // rule in this filter — including the `socket(AF_UNIX)` denial that
+    // `deny_dangerous_syscalls` adds on top of this list.
+    // Deny the ring itself. A coding agent has no need for it, and container
+    // runtimes disable it in their default profiles for the same reason.
+    libc::SYS_io_uring_setup,
+    libc::SYS_io_uring_enter,
+    libc::SYS_io_uring_register,
+    // Whole-machine effects.
+    libc::SYS_reboot,
+    libc::SYS_swapon,
+    libc::SYS_swapoff,
+];
+
+/// Compile [`BLOCKED_SYSCALLS`] into a seccomp filter and install it.
 ///
 /// Blocked calls return `EPERM` rather than killing the process. The syscall
 /// does not execute either way; `EPERM` is what tools already expect on hardened
@@ -230,49 +276,11 @@ fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxE
         SeccompRule,
     };
 
-    let blocked = [
-        // Inspect or modify other processes.
-        libc::SYS_ptrace,
-        libc::SYS_process_vm_readv,
-        libc::SYS_process_vm_writev,
-        // Reshape the filesystem out from under Landlock.
-        libc::SYS_mount,
-        libc::SYS_umount2,
-        libc::SYS_pivot_root,
-        libc::SYS_chroot,
-        // Escape or re-create namespaces, including the netns just entered.
-        libc::SYS_setns,
-        libc::SYS_unshare,
-        // Load code into the kernel.
-        libc::SYS_init_module,
-        libc::SYS_finit_module,
-        libc::SYS_delete_module,
-        libc::SYS_bpf,
-        libc::SYS_kexec_load,
-        // Kernel keyring: credentials live here.
-        libc::SYS_add_key,
-        libc::SYS_request_key,
-        libc::SYS_keyctl,
-        // Tracing infrastructure, a known side-channel surface.
-        libc::SYS_perf_event_open,
-        // io_uring runs operations from a submission queue without issuing the
-        // matching syscalls, so a ring set up here would be a route around every
-        // rule in this filter — including the `socket(AF_UNIX)` denial below.
-        // Deny the ring itself. A coding agent has no need for it, and container
-        // runtimes disable it in their default profiles for the same reason.
-        libc::SYS_io_uring_setup,
-        libc::SYS_io_uring_enter,
-        libc::SYS_io_uring_register,
-        // Whole-machine effects.
-        libc::SYS_reboot,
-        libc::SYS_swapon,
-        libc::SYS_swapoff,
-    ];
-
     // An empty rule vector means "match this syscall unconditionally", so every
     // listed number takes `match_action` and everything else is allowed.
-    let mut rules = blocked
-        .into_iter()
+    let mut rules = BLOCKED_SYSCALLS
+        .iter()
+        .copied()
         .map(|nr| (nr, Vec::new()))
         .collect::<BTreeMap<_, _>>();
 
