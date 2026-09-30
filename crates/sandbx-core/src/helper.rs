@@ -1,5 +1,31 @@
 use crate::{HelperArgs, SandboxError};
 
+/// The Landlock ABI [`apply`] hard-requires, and the newest one it negotiates for.
+///
+/// `SECURITY.md` claims "Landlock, ABI 5 minimum" and refusal to run on a kernel
+/// older than 6.10; this pair is the only place that floor is *enforced*. The
+/// same number is also stated in prose in `README.md`, in this crate's
+/// `Cargo.toml` and in `ci.yml`, and nothing checks those against this value —
+/// so they move in the same change.
+///
+/// ABI 5 is a floor rather than a preference. Landlock leaves any access type
+/// *not* in the handled set unrestricted everywhere, so pinning a lower ABI does
+/// not enforce less — it leaves whole categories unguarded. That is how
+/// `truncate(2)` was once permitted on any file regardless of policy. So
+/// [`BASELINE_ABI`] is attached under `CompatLevel::HardRequirement`, making an
+/// older kernel a refusal instead of a silent hole.
+///
+/// [`LATEST_ABI`] is the opposite: handled best-effort, so rights the running
+/// kernel happens to have are enforced and the rest are dropped rather than
+/// failing the whole ruleset.
+///
+/// Changing either value changes what sandbx promises, so `SECURITY.md` and the
+/// kernel floor quoted in `README.md` move in the same change.
+pub(crate) const BASELINE_ABI: landlock::ABI = landlock::ABI::V5; // Linux 6.10: Truncate, Refer, IoctlDev
+
+/// Newest ABI [`apply`] negotiates for, best-effort. See [`BASELINE_ABI`].
+pub(crate) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 6.15: ResolveUnix
+
 /// Supervise a sandboxed command: build the namespaces, then run the inner stage
 /// inside them.
 ///
@@ -270,7 +296,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
-        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
+        Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
         RulesetCreatedAttr, RulesetStatus,
     };
 
@@ -287,34 +313,28 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     deny_dangerous_syscalls(policy)?;
 
-    // Landlock leaves access types that are NOT in the handled set unrestricted
-    // *everywhere*. Pinning a low ABI therefore does not mean "enforce less"; it
-    // means whole categories go completely unguarded — which is how `truncate(2)`
-    // was permitted on any file regardless of policy.
-    //
-    // So negotiate rather than pin. `handle_access` accumulates (`|=`), so the
-    // baseline can be a hard requirement while newer rights are best-effort.
-    const BASELINE: ABI = ABI::V5; // Linux 6.10: adds Truncate, Refer, IoctlDev
-    const LATEST: ABI = ABI::V9; // Linux 6.15: adds ResolveUnix
+    // Negotiate rather than pin: `handle_access` accumulates (`|=`), so the
+    // baseline can be a hard requirement while newer rights stay best-effort.
+    // Why ABI 5 is the floor is documented on `BASELINE_ABI`.
 
     // `from_read` bundles `Execute` in with `ReadFile`/`ReadDir`, and `from_all`
     // inherits it. Granting either would otherwise hand out the right to *run*
     // whatever the path contains, which neither `allow_read` nor `allow_write`
     // says (#19). Execute comes from one axis, named for it.
-    let read_execute = AccessFs::from_read(LATEST);
+    let read_execute = AccessFs::from_read(LATEST_ABI);
     let read_only = read_execute & !AccessFs::Execute;
-    let read_write = AccessFs::from_all(LATEST) & !AccessFs::Execute;
+    let read_write = AccessFs::from_all(LATEST_ABI) & !AccessFs::Execute;
 
     let mut ruleset = Ruleset::default()
         // Refuse a kernel that cannot enforce the baseline, rather than running
         // with a silent hole in it.
         .set_compatibility(CompatLevel::HardRequirement)
-        .handle_access(AccessFs::from_all(BASELINE))
+        .handle_access(AccessFs::from_all(BASELINE_ABI))
         .map_err(landlock_failed)?
         // Anything newer is a bonus: handled where the kernel has it, dropped
         // where it does not.
         .set_compatibility(CompatLevel::BestEffort)
-        .handle_access(AccessFs::from_all(LATEST))
+        .handle_access(AccessFs::from_all(LATEST_ABI))
         .map_err(landlock_failed)?
         .create()
         .map_err(landlock_failed)?;
@@ -324,7 +344,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // policy may name either, so narrow the rights to what the target can
     // actually carry. Intersecting rather than substituting keeps this a
     // restriction: a file can never end up with more than the directory case.
-    let file_rights = AccessFs::from_file(LATEST);
+    let file_rights = AccessFs::from_file(LATEST_ABI);
     for (paths, rights) in [
         (policy.readable_paths(), read_only),
         (policy.writable_paths(), read_write),
