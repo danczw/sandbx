@@ -71,3 +71,8 @@ required-features = ["sandbox-integration"]
 name = "sandbx-iouring-probe"
 path = "tests/support/iouring_probe.rs"
 required-features = ["sandbox-integration"]
+
+[[bin]]
+name = "sandbx-memfd-probe"
+path = "tests/support/memfd_probe.rs"
+required-features = ["sandbox-integration"]

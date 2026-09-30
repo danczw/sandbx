@@ -53,6 +53,8 @@ const CLAIMED: &[(&str, libc::c_long)] = &[
     ("io_uring_setup", libc::SYS_io_uring_setup),
     ("io_uring_enter", libc::SYS_io_uring_enter),
     ("io_uring_register", libc::SYS_io_uring_register),
+    // Anonymous in-memory files, which have no path for Landlock to match.
+    ("memfd_create", libc::SYS_memfd_create),
     // Whole-machine effects.
     ("reboot", libc::SYS_reboot),
     ("swapon", libc::SYS_swapon),

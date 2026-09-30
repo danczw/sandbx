@@ -709,6 +709,24 @@ fn io_uring_setup_is_denied() {
     );
 }
 
+/// `memfd_create` returns a file descriptor backed by RAM with no path anywhere
+/// on the filesystem, so Landlock — which binds its rules to inodes and paths —
+/// has nothing to match on. That makes it the standard way to stage a payload
+/// inside a sandbox that governs the filesystem, which is why container runtimes
+/// and OpenShell's profile both deny it (#40).
+#[test]
+fn memfd_create_is_denied() {
+    let probe = env!("CARGO_BIN_EXE_sandbx-memfd-probe");
+    let policy = allow_probe(runtime_paths(SandboxPolicy::default()), probe);
+    let output = run(&policy, probe, &[]);
+
+    assert!(
+        !output.status.success(),
+        "memfd_create succeeded inside the sandbox: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 /// The command should see its real uid, not the overflow `nobody` that a fresh
 /// user namespace reports when no uid_map is written. It already *acts* as the
 /// real uid on the host (files it writes are owned by it), so reporting 65534 is
