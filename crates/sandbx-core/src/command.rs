@@ -348,16 +348,44 @@ pub(crate) fn current_exe() -> Result<PathBuf, SandboxError> {
     })
 }
 
+/// What [`dispatch_helper_mode`] decided.
+///
+/// Two outcomes, not three: becoming the command never returns, so there is no
+/// success variant to accidentally ignore. Each caller must name which of the
+/// remaining two it is handling, because the right response differs by binary —
+/// the host `sandbx` carries on parsing arguments, while a helper-only binary
+/// has nothing else to do and reports a usage error.
+#[derive(Debug)]
+#[must_use = "a helper run that failed must not fall through to running the command"]
+pub enum HelperDispatch {
+    /// Not a helper invocation: an ordinary run of the host binary.
+    ///
+    /// Also covers an argv too short to carry a flag, which is indistinguishable
+    /// from an ordinary run and equally not a reason to enforce anything.
+    NotHelperMode,
+
+    /// Helper mode ran and failed. **No unrestricted execution occurred.**
+    ///
+    /// Usually the command never started at all: applying the restrictions
+    /// happens before the `exec`, so a failure there means nothing ran. The one
+    /// exception is a failure while waiting on the inner stage — by then the
+    /// command may have run, but it ran *with* the restrictions applied, so this
+    /// never reports a command that escaped the sandbox.
+    ///
+    /// Exit non-zero either way. Falling through to run the command from here is
+    /// the exact failure the sandbox exists to prevent.
+    Failed(SandboxError),
+}
+
 /// Hand off to helper mode when this process was started with [`HELPER_FLAG`].
 ///
 /// Call first thing in `main`, before any threads start: the helper restricts
 /// itself and `exec`s, so anything set up beforehand is discarded anyway.
 ///
-/// Returns normally when this is an ordinary run. When it is a helper run it
-/// either never returns, or returns the error that stopped it — in which case
-/// the caller must exit non-zero rather than continue, since falling through
-/// would run the command unrestricted.
-pub fn dispatch_helper_mode<I>(argv: I) -> Option<SandboxError>
+/// On a helper run this either never returns or reports why not. Prefer
+/// [`with_helper_dispatch`] in a binary that has an ordinary mode too — it owns
+/// the "exit non-zero on failure" half so each `main` cannot forget it.
+pub fn dispatch_helper_mode<I>(argv: I) -> HelperDispatch
 where
     I: IntoIterator<Item = OsString>,
 {
@@ -367,20 +395,45 @@ where
         .collect();
 
     // argv[0] is this program's own name.
-    let rest = argv.get(1..)?;
-    let (flag, helper_args) = rest.split_first()?;
+    let Some((flag, helper_args)) = argv.get(1..).and_then(<[String]>::split_first) else {
+        return HelperDispatch::NotHelperMode;
+    };
 
     // Exhaustive `match` on the result in each arm rather than `?`: the entry
     // points return `Infallible` on success, so this cannot silently gain a path
     // that returns without either running the command or reporting why not.
     match flag.as_str() {
         HELPER_FLAG => match crate::helper::exec_sandboxed(helper_args) {
-            Err(error) => Some(error),
+            Err(error) => HelperDispatch::Failed(error),
         },
         HELPER_INNER_FLAG => match crate::helper::exec_inner(helper_args) {
-            Err(error) => Some(error),
+            Err(error) => HelperDispatch::Failed(error),
         },
         // Not a helper run at all: an ordinary invocation of the host binary.
-        _ => None,
+        _ => HelperDispatch::NotHelperMode,
+    }
+}
+
+/// Dispatch helper mode first, then run `ordinary_main` if this was not one.
+///
+/// For a binary with both modes — the shipped `sandbx` — because the failure
+/// half is what a hand-written `main` gets wrong: printing the error but
+/// forgetting to return non-zero falls through to the ordinary path, and a
+/// fall-through here is a command that runs unrestricted. Owning it once means
+/// no `main` can omit it.
+///
+/// It does not, and cannot, enforce being called *first*; a caller can still put
+/// work above it. What it enforces is that a failed helper run ends the process.
+pub fn with_helper_dispatch<I, F>(argv: I, ordinary_main: F) -> std::process::ExitCode
+where
+    I: IntoIterator<Item = OsString>,
+    F: FnOnce() -> std::process::ExitCode,
+{
+    match dispatch_helper_mode(argv) {
+        HelperDispatch::Failed(error) => {
+            eprintln!("sandbx: sandbox helper failed: {error}");
+            std::process::ExitCode::FAILURE
+        }
+        HelperDispatch::NotHelperMode => ordinary_main(),
     }
 }

@@ -44,7 +44,10 @@ mod helper_args;
 mod policy;
 
 pub use audit::{AUDIT_TARGET, AuditEvent};
-pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, dispatch_helper_mode};
+pub use command::{
+    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, SandboxedCommand, dispatch_helper_mode,
+    with_helper_dispatch,
+};
 pub use error::SandboxError;
 pub use fs_guard::FsGuard;
 pub use helper::BLOCKED_SYSCALLS;

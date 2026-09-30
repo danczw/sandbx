@@ -423,3 +423,38 @@ fn a_descendant_that_escapes_the_process_group_is_killed_with_it() {
         "a setsid descendant escaped the kill and outlived the tool call"
     );
 }
+
+/// An ordinary invocation is reported as such, by name.
+///
+/// This used to be `None`, which also covered "argv was too short to be a
+/// helper invocation" — and the two callers read that same `None` oppositely:
+/// `sandbx` carried on and parsed arguments, while the helper binaries treated
+/// it as a usage error. Nothing in the signature said which was right. Naming
+/// the outcome is what makes each caller's reading explicit (#57).
+///
+/// Only the non-helper paths are exercised in-process. Passing `HELPER_FLAG`
+/// here would restrict this test process and `exec`, so that path is covered by
+/// the enforcement suite, which spawns a real helper.
+#[test]
+fn an_ordinary_invocation_is_not_helper_mode() {
+    let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(std::ffi::OsString::from);
+
+    assert!(matches!(
+        sandbx_core::dispatch_helper_mode(argv),
+        sandbx_core::HelperDispatch::NotHelperMode
+    ));
+}
+
+/// Too short to carry a flag is still "not helper mode", not a silent success.
+#[test]
+fn an_argv_with_no_arguments_is_not_helper_mode() {
+    for argv in [vec![], vec![std::ffi::OsString::from("sandbx")]] {
+        assert!(
+            matches!(
+                sandbx_core::dispatch_helper_mode(argv),
+                sandbx_core::HelperDispatch::NotHelperMode
+            ),
+            "a too-short argv must be reported as an ordinary run"
+        );
+    }
+}
