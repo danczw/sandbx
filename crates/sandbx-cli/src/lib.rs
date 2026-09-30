@@ -55,6 +55,11 @@ pub struct SandboxRun {
     allow_read: Vec<PathBuf>,
 
     /// Grant write access to a path. Repeatable.
+    ///
+    /// Grants read as well, because a tool that can rewrite a tree but not read
+    /// it back is a trap rather than a safeguard. If you want a genuinely
+    /// write-only drop directory, the library keeps the two apart —
+    /// `SandboxPolicy::allow_write` grants write and nothing else.
     #[arg(long = "allow-write", value_name = "PATH")]
     allow_write: Vec<PathBuf>,
 
