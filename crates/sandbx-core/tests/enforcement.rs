@@ -714,16 +714,119 @@ fn io_uring_setup_is_denied() {
 /// has nothing to match on. That makes it the standard way to stage a payload
 /// inside a sandbox that governs the filesystem, which is why container runtimes
 /// and OpenShell's profile both deny it (#40).
+///
+/// Asserts the errno, not just the exit status: `EPERM` is what this filter
+/// returns, so any other value means the call failed for an unrelated reason and
+/// the test would have passed without proving anything.
 #[test]
 fn memfd_create_is_denied() {
     let probe = env!("CARGO_BIN_EXE_sandbx-memfd-probe");
     let policy = allow_probe(runtime_paths(SandboxPolicy::default()), probe);
     let output = run(&policy, probe, &[]);
 
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        libc::EPERM.to_string(),
+        "memfd_create should have been refused with EPERM by the seccomp filter"
+    );
+}
+
+/// Reach a syscall through perl's `syscall` builtin and return what the kernel
+/// answered: the raw errno, or `"0"` when the call succeeded.
+///
+/// This is the only way this suite can probe a syscall with no safe Rust wrapper
+/// in the dependency set. `sandbx-core` forbids `unsafe`, so a probe binary
+/// cannot issue a raw syscall, and the alternative was three new crates for
+/// test-only code — one of which drags in bindgen. Running a host interpreter as
+/// the sandboxed command is already how `the_command_sees_a_consistent_real_uid`
+/// works, so this adds no new kind of dependency.
+///
+/// `nr` comes from `libc` rather than being written out, deliberately: syscall
+/// numbers are per-architecture, and x86_64's `userfaultfd` number is aarch64's
+/// `signalfd`. A hardcoded number silently probes a different call and the
+/// assertion passes for the wrong reason.
+///
+/// `$!` is cleared first so a stale errno from perl's own startup cannot be read
+/// back as this call's result.
+fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
+    let program = format!(
+        "$! = 0; my $r = syscall({nr}, {args}); print +(defined $r && $r >= 0) ? 0 : $! + 0;"
+    );
+
+    // perl opens /dev/null on startup, so it needs that much or it never reaches
+    // the syscall at all.
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write("/dev/null");
+    let output = run(&policy, "/usr/bin/perl", &["-e", &program]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     assert!(
-        !output.status.success(),
-        "memfd_create succeeded inside the sandbox: {}",
-        String::from_utf8_lossy(&output.stdout)
+        !stdout.is_empty(),
+        "perl produced no errno — it likely never ran: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    stdout
+}
+
+/// `pidfd_open` is how a process gets a handle on another process, and the
+/// handle is what `pidfd_getfd` below needs. Denying it costs nothing a coding
+/// tool does (#40).
+#[test]
+fn pidfd_open_is_denied() {
+    assert_eq!(
+        perl_syscall_errno(libc::SYS_pidfd_open, "$$ + 0, 0"),
+        libc::EPERM.to_string(),
+        "pidfd_open should have been refused with EPERM; it succeeds outside the \
+         sandbox, so a different answer means the filter did not stop it"
+    );
+}
+
+/// The one that matters most of the pair: `pidfd_getfd` lifts an open descriptor
+/// *out* of another process — a socket, a file above the policy — which is not
+/// filesystem access, so Landlock cannot express it and denying `ptrace` does
+/// not cover it (#40).
+#[test]
+fn pidfd_getfd_is_denied() {
+    assert_eq!(
+        perl_syscall_errno(libc::SYS_pidfd_getfd, "0 + 1, 0 + 1, 0"),
+        libc::EPERM.to_string(),
+        "pidfd_getfd should have been refused with EPERM by the seccomp filter"
+    );
+}
+
+/// `userfaultfd` gets no end-to-end probe, and the reason is worth stating where
+/// someone looks for one.
+///
+/// It is denied — `BLOCKED_SYSCALLS` carries it, pinned by `tests/denylist.rs` —
+/// but an `EPERM` assertion here would be close to worthless: the kernel's own
+/// `vm.unprivileged_userfaultfd` sysctl returns `EPERM` for an unprivileged
+/// caller when it is `0`, which is the default on many hosts including this
+/// project's dev box. The assertion would pass identically with the filter
+/// removed, which is the definition of a test proving nothing.
+///
+/// So this test records the situation instead of faking evidence: where the
+/// sysctl already denies it, note that the filter is not what was observed.
+#[test]
+fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
+    let sysctl = std::fs::read_to_string("/proc/sys/vm/unprivileged_userfaultfd")
+        .map(|raw| raw.trim().to_string())
+        .unwrap_or_default();
+
+    assert!(
+        sandbx_core::BLOCKED_SYSCALLS.contains(&libc::SYS_userfaultfd),
+        "userfaultfd must stay in the denylist; nothing else covers it"
+    );
+
+    if sysctl == "0" {
+        // Documented outcome, not a skip: the kernel denies it here regardless, so
+        // there is no filter-specific observation to make on this host.
+        return;
+    }
+
+    assert_eq!(
+        perl_syscall_errno(libc::SYS_userfaultfd, "0"),
+        libc::EPERM.to_string(),
+        "on a host where unprivileged userfaultfd is permitted, the filter must \
+         be what refuses it"
     );
 }
 
