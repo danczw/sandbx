@@ -49,12 +49,16 @@ Three properties matter as much as the list:
   ruleset the kernel only partly applies is treated as failure. sandbx does not
   degrade to unrestricted execution and then carry on.
 - **It is default-deny.** A policy grants nothing until something is added.
-- **Nothing else confers execute.** Read access does not confer the right to
-  execute what it can see, and write access does not confer the right to run
-  what it just wrote. Execute comes only from `allow_read_execute` — which is
-  named for both rights because it grants both: a program needs execute on the
-  binary *and* read on the libraries its loader pulls in, so an execute-only
-  grant would start nothing. That asymmetry is deliberate and runs one way:
+- **Grants do not widen each other, with one named exception.** Read access
+  does not confer the right to execute what it can see, and write access confers
+  neither read nor execute — a write-only drop directory stays unreadable, on
+  the kernel layer and the in-process layer alike. This describes what each
+  *grant* confers: the `sandbx` CLI deliberately makes two of them for
+  `--allow-write` (see *Not vulnerabilities* below), while the library keeps the
+  axes separate. The exception is
+  `allow_read_execute`, named for both rights because it grants both: a program
+  needs execute on the binary *and* read on the libraries its loader pulls in,
+  so an execute-only grant would start nothing. That asymmetry runs one way:
   execute implies read on the same path, and no grant implies execute.
 
 ## What sandbx does *not* claim
@@ -151,6 +155,11 @@ These are documented behaviour, and reports of them will be closed as such:
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
+- A command *reading* a path you granted with `--allow-write` on the command
+  line. The `sandbx` CLI grants read alongside write, because a tool that can
+  rewrite a tree but not read it back is a trap rather than a safeguard. The
+  library keeps the two axes separate, so a genuinely write-only drop directory
+  is still expressible through `SandboxPolicy::allow_write`.
 - An agent running a tool call you approved.
 - Refusal to run on a kernel older than 6.10, or on one with Landlock disabled at
   boot. That is fail-closed behaviour working as intended.

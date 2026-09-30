@@ -319,13 +319,18 @@ fn fs_rules(
 
     let read_execute = AccessFs::from_read(LATEST_ABI);
     let read_only = read_execute & !AccessFs::Execute;
-    let read_write = AccessFs::from_all(LATEST_ABI) & !AccessFs::Execute;
+    // Subtract the whole read set, not just `Execute`. `from_all` includes
+    // `ReadFile`/`ReadDir`, so taking only `Execute` away left `allow_write`
+    // granting read at the kernel while `FsGuard` refused it — one policy,
+    // two answers, and the write-only drop directory `writable_paths`
+    // promises was readable in the child (#49).
+    let write_only = AccessFs::from_all(LATEST_ABI) & !read_execute;
     let file_rights = AccessFs::from_file(LATEST_ABI);
 
     let mut rules = Vec::new();
     for (paths, rights) in [
         (policy.readable_paths(), read_only),
-        (policy.writable_paths(), read_write),
+        (policy.writable_paths(), write_only),
         (policy.executable_paths(), read_execute),
     ] {
         for path in paths {
@@ -808,28 +813,25 @@ mod tests {
         assert!(!rights.contains(AccessFs::WriteFile));
     }
 
-    /// Pins today's answer on the write axis, which contradicts the documented
-    /// promise in `SandboxPolicy::writable_paths` that "writable does not imply
-    /// readable". The kernel grants read here; the in-process `FsGuard` does not.
+    /// A write grant carries neither read nor execute.
     ///
-    /// Asserting the current behaviour deliberately: #49 is the open decision
-    /// about which layer is wrong, and whichever way it goes this test has to
-    /// change on purpose rather than a divergence slipping by unnoticed.
+    /// `SandboxPolicy::writable_paths` promises "writable does not imply
+    /// readable", and `FsGuard` always kept that promise; the kernel layer did
+    /// not, because `from_all` includes `ReadFile`/`ReadDir` and only `Execute`
+    /// was being subtracted. Subtracting the whole read set makes a write-only
+    /// drop directory genuinely unreadable on both layers (#49).
     #[test]
-    fn a_write_grant_currently_also_carries_read_see_issue_49() {
+    fn a_write_grant_carries_neither_read_nor_execute() {
         let dir = tempdir();
         let policy = SandboxPolicy::default().allow_write(dir.path());
 
         let rights = rights_for(&policy, dir.path());
         assert!(rights.contains(AccessFs::WriteFile));
-        // Writing confers no more right to *run* what it wrote than reading does.
-        assert!(!rights.contains(AccessFs::Execute));
         assert!(
-            rights.contains(AccessFs::ReadFile),
-            "write no longer grants read at the kernel layer — #49 was resolved, \
-             so update this test, `SandboxPolicy::writable_paths` and SECURITY.md \
-             together"
+            !rights.contains(AccessFs::ReadFile) && !rights.contains(AccessFs::ReadDir),
+            "a write-only grant handed out read, so the drop directory is readable"
         );
+        assert!(!rights.contains(AccessFs::Execute));
     }
 
     /// Directory-only rights are invalid on a regular file, and the kernel

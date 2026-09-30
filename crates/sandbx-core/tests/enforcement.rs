@@ -778,6 +778,37 @@ fn execute_grant_reads_consistently_across_both_layers() {
     );
 }
 
+/// A write grant must not let the process *read* what it can write.
+///
+/// `SandboxPolicy::writable_paths` promises a write-only drop directory stays
+/// unreadable. `FsGuard` always kept that promise; the kernel did not, because
+/// `AccessFs::from_all` bundles `ReadFile`/`ReadDir` and only `Execute` was
+/// subtracted. Both layers are asserted here, on one policy, so they cannot
+/// drift apart again. Regression test for #49.
+#[test]
+fn a_write_grant_does_not_make_files_readable() {
+    let dir = tempfile::tempdir().unwrap();
+    let secret = dir.path().join("dropped.txt");
+    std::fs::write(&secret, b"WRITE-ONLY-SECRET").unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
+
+    // The kernel layer: the command may write here, but not read it back.
+    let output = run(&policy, "/bin/cat", &[secret.to_str().unwrap()]);
+    assert!(
+        !String::from_utf8_lossy(&output.stdout).contains("WRITE-ONLY-SECRET"),
+        "a write-only grant let the command read the file back"
+    );
+
+    // The in-process layer must reach the same verdict for the same policy.
+    let guard = sandbx_core::FsGuard::new(&policy).unwrap();
+    assert!(
+        guard.check_read(&secret).is_err(),
+        "FsGuard permits a read the kernel layer denies: the two layers disagree \
+         on the write axis"
+    );
+}
+
 /// A read grant must not let the process *run* what it can read.
 ///
 /// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so
@@ -917,9 +948,13 @@ fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
         "$! = 0; my $r = syscall({nr}, {args}); print +(defined $r && $r >= 0) ? 0 : $! + 0;"
     );
 
-    // perl opens /dev/null on startup, so it needs that much or it never reaches
-    // the syscall at all.
-    let policy = runtime_paths(SandboxPolicy::default()).allow_write("/dev/null");
+    // perl opens /dev/null read-write on startup, so it needs both axes or it
+    // never reaches the syscall at all. Until #49 the write grant alone was
+    // enough, because the kernel layer handed out read with it — this call site
+    // is the evidence that the divergence was load-bearing, not theoretical.
+    let policy = runtime_paths(SandboxPolicy::default())
+        .allow_read("/dev/null")
+        .allow_write("/dev/null");
     let output = run(&policy, "/usr/bin/perl", &["-e", &program]);
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();

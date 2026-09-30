@@ -221,3 +221,33 @@ fn nothing_user_supplied_is_executable_by_default() {
         );
     }
 }
+
+/// `--allow-write` grants read alongside write.
+///
+/// The library keeps the two axes separate, so a caller can build a write-only
+/// drop directory. At the command line that separation is a trap: `--allow-write
+/// ~/project` would let a tool write the tree but not `cat` it back. The CLI
+/// therefore grants both, and the narrow form stays available through the API
+/// (#49).
+#[test]
+fn allow_write_also_grants_read_at_the_command_line() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-write",
+        "/srv",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    let srv = std::path::PathBuf::from("/srv");
+    assert!(
+        policy.writable_paths().contains(&srv),
+        "--allow-write did not grant write"
+    );
+    assert!(
+        policy.readable_paths().contains(&srv),
+        "--allow-write did not grant read alongside it"
+    );
+}

@@ -114,8 +114,13 @@ impl SandboxRun {
         for path in &self.allow_read {
             policy = policy.allow_read(path);
         }
+        // Read as well as write. The library keeps the axes separate so a
+        // caller can build a write-only drop directory, but at the command line
+        // that separation is a trap: `--allow-write ~/project` would let a tool
+        // rewrite the tree and then fail to `cat` it back. The narrow form stays
+        // reachable through the API (#49).
         for path in &self.allow_write {
-            policy = policy.allow_write(path);
+            policy = policy.allow_read(path).allow_write(path);
         }
         for path in &self.allow_exec {
             policy = policy.allow_read_execute(path);
