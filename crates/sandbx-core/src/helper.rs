@@ -116,7 +116,24 @@ fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), SandboxError>
 
     // After the unshare, not before: entering a fresh user namespace grants the
     // full capability set *within it*, so dropping earlier would be undone.
-    harden_process_state()
+    harden_process_state()?;
+
+    // Here as well as in the inner stage, so that *every* `exec` this design
+    // performs is covered by it rather than only the last one.
+    //
+    // Splitting the helper in two added an `execve` — this stage into the inner
+    // one — that sits after the capability sets are cleared. Without this, what
+    // stops a capability being regained across it is that the binary being
+    // executed is our own, unprivileged and without file capabilities, plus uid 0
+    // being unmapped in the fresh user namespace. Both hold, which is why this is
+    // hardening and not a fix. But it makes the guarantee rest on properties of
+    // the binary and the uid map rather than on a flag that states it directly,
+    // and the flag costs one syscall.
+    //
+    // Deliberately not removed from the inner stage. It is irreversible and
+    // inherited, so the second call is a no-op — but the inner stage must not
+    // depend on a caller having set it, since seccomp will not install without it.
+    set_no_new_privs()
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -291,9 +308,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // Set it explicitly: this process holds no capabilities at all, the supervisor
     // having dropped them. It is irreversible and inherited across exec, which is
     // what makes the filter stick to the real command.
-    nix::sys::prctl::set_no_new_privs().map_err(|errno| SandboxError::Seccomp {
-        detail: format!("could not set no_new_privs: {errno}"),
-    })?;
+    set_no_new_privs()?;
 
     deny_dangerous_syscalls(policy)?;
 
@@ -429,6 +444,18 @@ fn harden_process_state() -> Result<(), SandboxError> {
     )?;
 
     Ok(())
+}
+
+/// Set `no_new_privs`, refusing if the kernel will not.
+///
+/// Shared by both stages. Irreversible and inherited across `exec`, and a
+/// precondition for installing a seccomp filter without `CAP_SYS_ADMIN` — so a
+/// failure here is a refusal, not something to carry on from.
+#[cfg(target_os = "linux")]
+fn set_no_new_privs() -> Result<(), SandboxError> {
+    nix::sys::prctl::set_no_new_privs().map_err(|errno| SandboxError::Seccomp {
+        detail: format!("could not set no_new_privs: {errno}"),
+    })
 }
 
 #[cfg(target_os = "linux")]
