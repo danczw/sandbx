@@ -97,10 +97,15 @@ pub enum SandboxError {
         after: std::time::Duration,
     },
 
-    /// This kernel or platform cannot enforce a sandbox.
+    /// This kernel cannot enforce a sandbox.
     ///
     /// Returned instead of running unsandboxed, so an unsupported environment
     /// stops sandbx rather than silently removing every restriction.
+    ///
+    /// A kernel, not a platform: a non-Linux target does not reach this variant,
+    /// because the crate refuses to build for one at all. What this covers is a
+    /// Linux kernel too old for the Landlock baseline, one with Landlock disabled
+    /// at boot, or one that accepted a ruleset and then enforced none of it.
     Unsupported {
         /// What is missing, for the operator to act on.
         detail: &'static str,

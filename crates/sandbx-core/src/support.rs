@@ -33,27 +33,20 @@ impl KernelSupport {
     /// kernel object but restricts nothing — only `restrict_self` applies — so
     /// this is safe to call from the parent process.
     ///
-    /// Reports unsupported on non-Linux platforms.
+    /// Reports unsupported on a kernel without usable Landlock. There is no
+    /// non-Linux case to report: the crate does not build for one.
     pub fn detect() -> Self {
-        #[cfg(target_os = "linux")]
-        {
-            use landlock::{ABI, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
+        use landlock::{ABI, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
 
-            // Must match the baseline `helper::apply` hard-requires, or this
-            // reports "supported" on a kernel where applying the policy then
-            // fails. HardRequirement makes it fail rather than downgrade.
-            let probe = Ruleset::default()
-                .set_compatibility(CompatLevel::HardRequirement)
-                .handle_access(AccessFs::from_all(ABI::V5))
-                .and_then(Ruleset::create);
+        // Must match the baseline `helper::apply` hard-requires, or this
+        // reports "supported" on a kernel where applying the policy then
+        // fails. HardRequirement makes it fail rather than downgrade.
+        let probe = Ruleset::default()
+            .set_compatibility(CompatLevel::HardRequirement)
+            .handle_access(AccessFs::from_all(ABI::V5))
+            .and_then(Ruleset::create);
 
-            Self::new(probe.is_ok())
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            Self::new(false)
-        }
+        Self::new(probe.is_ok())
     }
 
     /// Whether filesystem rules will actually be enforced.
@@ -71,12 +64,8 @@ impl KernelSupport {
             Ok(())
         } else {
             Err(SandboxError::Unsupported {
-                detail: if cfg!(target_os = "linux") {
-                    "kernel cannot enforce the required Landlock access rights \
-                     (needs Linux 6.10+ with Landlock enabled at boot)"
-                } else {
-                    "sandboxing is only implemented for Linux"
-                },
+                detail: "kernel cannot enforce the required Landlock access rights \
+                         (needs Linux 6.10+ with Landlock enabled at boot)",
             })
         }
     }

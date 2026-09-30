@@ -13,6 +13,27 @@
 //!   *itself* and then becomes the command, so sandbx is never caged by them.
 //!
 //! Both are default-deny: see [`SandboxPolicy`].
+//!
+//! Linux only, and refused at compile time rather than at runtime. Every
+//! mechanism here — Landlock, seccomp, the namespaces — is a Linux interface with
+//! no equivalent elsewhere, so there is nothing for another platform to fall back
+//! *to* except running the command unsandboxed, which is the one outcome this
+//! crate exists to prevent. Refusing to build is the strongest form that refusal
+//! can take: a binary that could run unsandboxed cannot be produced at all.
+//!
+//! This replaced a set of per-function stubs that returned
+//! [`SandboxError::Unsupported`] on other platforms. They described a build that
+//! was never produced — CI is Linux, the shipped targets are Linux — and the crate
+//! did not actually compile without them anyway, so they were five things to keep
+//! in sync in exchange for nothing.
+
+// Deliberately the whole crate, not a feature or a module: see the note above.
+#[cfg(not(target_os = "linux"))]
+compile_error!(
+    "sandbx-core sandboxes using Landlock, seccomp and Linux namespaces, and has \
+     no unsandboxed fallback — it is Linux-only by design. Build for a Linux \
+     target, or depend on it only from a Linux-gated target in your manifest."
+);
 
 mod audit;
 mod command;

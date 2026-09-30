@@ -136,13 +136,6 @@ fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), SandboxError>
     set_no_new_privs()
 }
 
-#[cfg(not(target_os = "linux"))]
-fn prepare_supervisor(_policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
-    Err(SandboxError::Unsupported {
-        detail: "sandboxing is only implemented for Linux",
-    })
-}
-
 /// Die when the supervisor dies (#28).
 ///
 /// This process is PID 1 of a fresh PID namespace, and the kernel SIGKILLs every
@@ -175,13 +168,6 @@ fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
                 _ => "could not bind the command's lifetime to its supervisor",
             },
         }
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
-    Err(SandboxError::Unsupported {
-        detail: "sandboxing is only implemented for Linux",
     })
 }
 
@@ -232,13 +218,6 @@ fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
         Some(parent) if parent == expected => Ok(()),
         _ => Err(gone),
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn confirm_supervisor(_expected: &str) -> Result<(), SandboxError> {
-    Err(SandboxError::Unsupported {
-        detail: "sandboxing is only implemented for Linux",
-    })
 }
 
 /// Apply a policy to *this* process, then become the requested command.
@@ -703,13 +682,6 @@ fn map_identity_into_userns(uid: u32, gid: u32) {
             "could not map user namespace identity, running as nobody: {error}"
         );
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn apply(_policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
-    Err(SandboxError::Unsupported {
-        detail: "sandboxing is only implemented for Linux",
-    })
 }
 
 #[cfg(target_os = "linux")]
