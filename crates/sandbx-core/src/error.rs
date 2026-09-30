@@ -50,11 +50,19 @@ pub enum SandboxError {
         detail: String,
     },
 
-    /// The network could not be taken away from the sandboxed process.
+    /// The kernel namespaces the sandbox runs the command in could not be
+    /// created.
     ///
-    /// A refusal: running with network access the policy denied is worse than
-    /// not running at all.
-    NetworkDenialFailed {
+    /// One variant for all of them because there is one `unshare` call and the
+    /// kernel answers it with one errno: the user namespace that makes the rest
+    /// possible unprivileged, the PID namespace that bounds the command's
+    /// descendants, and — when the policy denies network — the network namespace.
+    /// Splitting this would mean guessing which one the kernel objected to and
+    /// reporting the guess as a fact.
+    ///
+    /// A refusal: running with network access the policy denied, or with
+    /// descendants that outlive the call, is worse than not running at all.
+    NamespaceSetupFailed {
         /// What failed, for the operator to act on.
         detail: &'static str,
     },
@@ -131,8 +139,8 @@ impl std::fmt::Display for SandboxError {
             Self::Landlock { detail } => {
                 write!(f, "kernel refused the Landlock ruleset: {detail}")
             }
-            Self::NetworkDenialFailed { detail } => {
-                write!(f, "could not deny network access: {detail}")
+            Self::NamespaceSetupFailed { detail } => {
+                write!(f, "could not create the sandbox namespaces: {detail}")
             }
             Self::ProcessHardening { detail } => {
                 write!(f, "could not harden process state: {detail}")
@@ -151,7 +159,7 @@ impl std::error::Error for SandboxError {
             | Self::Unsupported { .. }
             | Self::BadHelperArgs { .. }
             | Self::Landlock { .. }
-            | Self::NetworkDenialFailed { .. }
+            | Self::NamespaceSetupFailed { .. }
             | Self::ProcessHardening { .. }
             | Self::TimedOut { .. }
             | Self::Seccomp { .. } => None,

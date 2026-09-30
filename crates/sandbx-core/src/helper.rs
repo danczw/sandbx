@@ -387,7 +387,7 @@ fn deny_network() -> Result<(), SandboxError> {
     let gid = getgid().as_raw();
 
     unshare(CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWNET).map_err(|errno| {
-        SandboxError::NetworkDenialFailed {
+        SandboxError::NamespaceSetupFailed {
             detail: match errno {
                 nix::errno::Errno::EPERM => {
                     "kernel refused an unprivileged user namespace; unprivileged \
