@@ -37,7 +37,7 @@ On Linux 6.10 or newer, for a command run through `SandboxedCommand`:
 | filesystem | Landlock, ABI 5 minimum | reads, writes, and execution by path, granted separately |
 | network | empty network namespace | IP egress, abstract unix sockets |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
-| syscalls | seccomp-bpf | a denylist of dangerous calls, including `io_uring` (which would otherwise run operations without issuing them) |
+| syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create` |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (the bounding set is best-effort — see below) |
 
 Three properties matter as much as the list:
@@ -94,6 +94,12 @@ Three properties matter as much as the list:
   sets empty and `no_new_privs` set, the kernel will not let an `execve`d binary
   raise a capability, so a leftover bounding bit never becomes privilege. Do not
   rely on `CapBnd` being empty; do rely on the other four.
+- **Denying `memfd_create` does not stop a descriptor being executed.** The
+  syscall is blocked because an anonymous in-memory file has no path for Landlock
+  to match on, but that is a denial of one route, not a guarantee about file
+  descriptors in general: a descriptor obtained some other way can still be run
+  via `/proc/self/fd/N` with an ordinary `execve`. What bounds that is Landlock's
+  path rules — execute comes only from `allow_read_execute` — not seccomp.
 - **The sandboxed command is not marked non-dumpable.** `PR_SET_DUMPABLE=0`
   was investigated for #39 and found ineffective for this design: the kernel
   resets that flag to dumpable on every `execve` of an ordinary binary, so
