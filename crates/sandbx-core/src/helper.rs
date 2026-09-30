@@ -110,7 +110,6 @@ fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, S
 ///   effective set, which an unprivileged process only ever holds inside a user
 ///   namespace it just created. All four sets and `RLIMIT_CORE` are inherited
 ///   across `fork` and `exec`, so dropping them here still covers the command.
-#[cfg(target_os = "linux")]
 fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     isolate(policy)?;
 
@@ -156,7 +155,6 @@ fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), SandboxError>
 /// Set before anything else in this stage, so the window in which the supervisor
 /// could die unnoticed is as short as the kernel allows. The window is not closed
 /// by this alone; `confirm_supervisor` is what closes it.
-#[cfg(target_os = "linux")]
 fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
     nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL).map_err(|errno| {
         SandboxError::NamespaceSetupFailed {
@@ -192,7 +190,6 @@ fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
 ///
 /// Runs before Landlock and seccomp, so it needs no grant for `/proc` and no
 /// privilege.
-#[cfg(target_os = "linux")]
 fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
     let gone = SandboxError::NamespaceSetupFailed {
         detail: "the supervisor process is gone; refusing to run the command \
@@ -271,7 +268,6 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     })
 }
 
-#[cfg(target_os = "linux")]
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
         ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
@@ -396,7 +392,6 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 /// the effective set, not after. `PR_CAPBSET_DROP` itself requires
 /// `CAP_SETPCAP` in the effective set — clearing effective first would remove
 /// the very right this function needs to drop the bounding set at all.
-#[cfg(target_os = "linux")]
 fn harden_process_state() -> Result<(), SandboxError> {
     use caps::CapSet;
 
@@ -430,14 +425,12 @@ fn harden_process_state() -> Result<(), SandboxError> {
 /// Shared by both stages. Irreversible and inherited across `exec`, and a
 /// precondition for installing a seccomp filter without `CAP_SYS_ADMIN` — so a
 /// failure here is a refusal, not something to carry on from.
-#[cfg(target_os = "linux")]
 fn set_no_new_privs() -> Result<(), SandboxError> {
     nix::sys::prctl::set_no_new_privs().map_err(|errno| SandboxError::Seccomp {
         detail: format!("could not set no_new_privs: {errno}"),
     })
 }
 
-#[cfg(target_os = "linux")]
 fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
     SandboxError::ProcessHardening {
         detail: source.to_string(),
@@ -457,7 +450,6 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
 /// Lifted out of [`deny_dangerous_syscalls`] so a test can assert the list still
 /// contains what `SECURITY.md` and `context/SANDBOXING.md` claim it does. The
 /// filter is built from this and nothing else, so the two cannot drift.
-#[cfg(target_os = "linux")]
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // Inspect or modify other processes.
     libc::SYS_ptrace,
@@ -533,7 +525,6 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
 /// Blocked calls return `EPERM` rather than killing the process. The syscall
 /// does not execute either way; `EPERM` is what tools already expect on hardened
 /// systems, so they fail that operation instead of dying mid-run.
-#[cfg(target_os = "linux")]
 fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use std::collections::BTreeMap;
 
@@ -591,7 +582,6 @@ fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxE
     seccompiler::apply_filter(&program).map_err(seccomp_failed)
 }
 
-#[cfg(target_os = "linux")]
 fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
     SandboxError::Seccomp {
         detail: source.to_string(),
@@ -615,7 +605,6 @@ fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
 /// One `unshare` for all of them rather than one per namespace: the kernel applies
 /// the flags together, so there is no window in which the process holds some of the
 /// isolation and not the rest, and no second failure path to unwind.
-#[cfg(target_os = "linux")]
 fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use nix::sched::{CloneFlags, unshare};
     use nix::unistd::{getgid, getuid};
@@ -666,7 +655,6 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 /// Aborting the sandbox there would trade a truthful uid for no sandbox at all,
 /// which is the wrong way round — so a failed write leaves the process as
 /// `nobody` and the command still runs fully confined.
-#[cfg(target_os = "linux")]
 fn map_identity_into_userns(uid: u32, gid: u32) {
     // `setgroups` must be denied before an unprivileged `gid_map` write, or the
     // kernel rejects it. Denying it is correct anyway: this maps a single gid,
@@ -684,7 +672,6 @@ fn map_identity_into_userns(uid: u32, gid: u32) {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn landlock_failed(source: impl std::fmt::Display) -> SandboxError {
     // Carry the kernel's own reason: "refused" without a cause is unactionable
     // for whoever has to work out which path or access right it objected to.
