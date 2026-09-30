@@ -68,10 +68,14 @@ pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, Sandb
 /// tool both branch on that distinction.
 ///
 /// Re-raising rather than exiting with `128 + signal` is what makes the status
-/// genuinely *signalled* rather than merely numbered like one. It can fail to kill
-/// us — Rust's runtime sets `SIGPIPE` to `SIG_IGN`, and an ignored signal raised at
-/// oneself does nothing — so the numbered form stays as the fallback. No handlers
-/// are ever installed here, so every other disposition is still the default.
+/// genuinely *signalled* rather than merely numbered like one. It cannot always
+/// work, because two dispositions are not ours: Rust's runtime sets `SIGPIPE` to
+/// `SIG_IGN`, and installs a `SIGSEGV`/`SIGBUS` handler to report stack overflow.
+/// Raising one of those at ourselves therefore returns instead of killing us, and
+/// the numbered form is what the caller sees — which is how a shell encodes the
+/// same fact, and what `sandbx-cli` derives from a signalled status regardless.
+/// Resetting the disposition first would make it exact, and needs `sigaction`,
+/// which is `unsafe` and so not available to this crate.
 fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, SandboxError> {
     use std::os::unix::process::ExitStatusExt;
 

@@ -195,6 +195,79 @@ fn without_a_timeout_a_command_runs_to_completion() {
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "done");
 }
 
+/// The command's exit status survives the supervisor that relays it.
+///
+/// The helper no longer *becomes* the command — it supervises a second stage that
+/// does — so the status the caller sees is one this crate reassembles rather than
+/// one the kernel handed over directly. That makes fidelity something to pin:
+/// `sandbx-cli` turns a signal into `128 + n` and the `bash` tool reports "exit
+/// {code}" versus "signal {n}", so a relay that flattened a crash into an exit code
+/// would make a killed tool look like a clean one.
+///
+/// A real fault rather than `kill -9 $$`: the command is PID 1 of its namespace, and
+/// the kernel discards an ordinary signal sent to a namespace's init from inside it.
+/// A fault the kernel raises itself is forced past that protection, which is what
+/// keeps a crashing tool reportable.
+///
+/// Either encoding is accepted, because which one arrives is not ours to choose.
+/// The relay re-raises the signal so the status is genuinely signalled, but Rust's
+/// runtime installs its own `SIGSEGV` handler to detect stack overflow, so raising
+/// that particular signal at ourselves does not kill us and the numbered form is
+/// what comes out. `128 + n` is how a shell encodes the same fact, and it is what
+/// `sandbx-cli` would have printed for a signalled status anyway. What must not
+/// happen is the crash arriving as success, as a bare `11`, or as a generic `1`.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn a_command_killed_by_a_signal_is_reported_as_signalled() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let faulting = std::path::Path::new("/usr/bin/python3");
+    if !faulting.exists() {
+        // Recorded, not skipped silently: without an interpreter to fault there is
+        // nothing on this host to observe.
+        eprintln!("no /usr/bin/python3 to fault; signal relay not observed here");
+        return;
+    }
+
+    let output = SandboxedCommand::new(
+        "/usr/bin/python3",
+        SandboxPolicy::default().allow_system_executables(),
+    )
+    .arg("-c")
+    .arg("import ctypes; ctypes.string_at(0)")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .timeout(std::time::Duration::from_secs(30))
+    .output()
+    .expect("a crashing command is still a command that ran");
+
+    let signalled = output.status.signal() == Some(libc::SIGSEGV);
+    let numbered = output.status.code() == Some(128 + libc::SIGSEGV);
+
+    assert!(
+        signalled || numbered,
+        "a crash must stay identifiable as SIGSEGV, got: {:?}",
+        output.status
+    );
+}
+
+/// An exit code survives the relay unchanged.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn a_command_exit_code_survives_the_relay() {
+    let output = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default().allow_system_executables(),
+    )
+    .arg("-c")
+    .arg("exit 42")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .timeout(std::time::Duration::from_secs(30))
+    .output()
+    .unwrap();
+
+    assert_eq!(output.status.code(), Some(42));
+}
+
 /// A descendant the command backgrounded dies with it (#28).
 ///
 /// Two things are being pinned here. The call must not block — a descendant
