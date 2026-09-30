@@ -199,6 +199,54 @@ fn unprivileged_pid_namespace_is_available() {
     );
 }
 
+/// The command runs as PID 1 of a namespace of its own (#28).
+///
+/// This is the fact everything else about process lifetime rests on: a process
+/// cannot leave the PID namespace it was born into, and `unshare`/`setns` are
+/// denied, so killing PID 1 makes the kernel reap the rest unconditionally. A
+/// process group, which is what the timeout kill used to target on its own, is
+/// advisory by comparison.
+///
+/// `$$` in `sh` is the shell's own pid as the kernel reports it to the shell, so
+/// reading it back is the command's own view of where it lives.
+#[test]
+fn the_command_is_pid_one_of_its_own_namespace() {
+    let policy = runtime_paths(SandboxPolicy::default());
+    let output = run(&policy, "/bin/sh", &["-c", "echo $$"]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "1",
+        "the command must be pid 1 of a new namespace, not a process in ours"
+    );
+}
+
+/// A PID namespace also takes away the ability to signal anything outside it.
+///
+/// Pid resolution is namespace-relative, so a pid from the host simply does not
+/// exist as far as the command is concerned. Without the namespace this succeeds:
+/// the command runs as the same uid as the caller, so it can signal every one of
+/// the caller's processes — including the harness that is testing it.
+///
+/// `kill -0` sends nothing; it asks whether the signal *could* be delivered,
+/// which is the permission question on its own.
+#[test]
+fn the_command_cannot_signal_a_process_outside_its_namespace() {
+    let policy = runtime_paths(SandboxPolicy::default());
+    let ours = std::process::id();
+    let output = run(&policy, "/bin/sh", &["-c", &format!("kill -0 {ours}")]);
+
+    assert!(
+        !output.status.success(),
+        "the command reached a process outside its namespace (pid {ours})"
+    );
+}
+
 /// Network denial comes from an empty network namespace, not from Landlock.
 ///
 /// A fresh netns has only the loopback interface, so reading the caller's own
