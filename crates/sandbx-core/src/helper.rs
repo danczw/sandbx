@@ -388,7 +388,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 /// user namespace it created itself — and not even there when an LSM strips
 /// capabilities from such a namespace. AppArmor's
 /// `restrict_unprivileged_userns` (default on Ubuntu 24.04+, and set on
-/// GitHub's runners) does exactly that: `deny_network`'s `unshare` succeeds,
+/// GitHub's runners) does exactly that: `isolate`'s `unshare` succeeds,
 /// but `PR_CAPBSET_DROP` then returns `EPERM`. Treating that as a refusal
 /// would take the sandbox away entirely on the most common Linux desktop and
 /// CI hosts, in exchange for a bit that cannot be spent: once the four sets

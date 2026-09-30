@@ -3,6 +3,14 @@
 //! Usage: `sandbx-helper --sandbx-core-exec [--ro PATH]... [--rw PATH]...
 //! [--rx PATH]... [--allow-network] [--allow-unix-sockets] -- PROGRAM [ARGS]...`
 //!
+//! Runs in two stages, both of them this same binary. The invocation above is
+//! stage one, the supervisor: it creates the namespaces and re-execs itself with
+//! `--sandbx-core-exec-inner <supervisor-pid>` followed by the same arguments.
+//! That second process is PID 1 of the new PID namespace, and it is the one that
+//! applies seccomp and Landlock and becomes the command. The inner flag is the
+//! protocol between the two, not something to invoke by hand — on its own it
+//! refuses, having no supervisor to be reaped by.
+//!
 //! Exists as a standalone binary so the enforcement path can be tested
 //! end-to-end. In a shipped sandbx, the `sandbx` binary re-execs itself into the
 //! same [`sandbx_core::exec_sandboxed`] entry point rather than requiring this

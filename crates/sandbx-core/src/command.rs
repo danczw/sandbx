@@ -28,6 +28,12 @@ pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
 /// between `fork` and `exec` — this spawns a helper that restricts *itself* and
 /// then becomes the command.
 ///
+/// The helper does that in two stages. The first creates the namespaces, including
+/// a PID namespace, and re-execs into the second, which is therefore PID 1 of it
+/// and applies the restrictions before becoming the command. So the command and
+/// everything it spawns live in a namespace that ends when the call does — see
+/// [`kill_group`].
+///
 /// By default the helper is this same executable re-run with [`HELPER_FLAG`], so
 /// no second binary has to be installed. [`helper`] overrides that.
 ///
@@ -50,10 +56,12 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// How long the pipe readers get once the command itself is gone.
 ///
-/// Anything still holding a write-end by then escaped the process group kill,
-/// so waiting on it is waiting on a process that has already shown it does not
-/// cooperate. Long enough that output in flight is not lost, short enough that
-/// no command can use it to stall its caller.
+/// The PID namespace is what normally closes the pipes: every descendant dies with
+/// the command, so there is nothing left holding a write-end. This is the floor
+/// under that — a bound on the wait rather than a promise about who is still
+/// running, so the call returns even in the cases the namespace cannot cover.
+/// Long enough that output in flight is not lost, short enough that no command can
+/// use it to stall its caller.
 const DRAIN_GRACE: Duration = Duration::from_millis(200);
 
 impl SandboxedCommand {
@@ -235,12 +243,12 @@ fn run_with_deadline(
 
 /// Give the pipe readers a bounded chance to finish, then stop waiting.
 ///
-/// A process group is advisory: one `setsid` call leaves it, so `kill_group`
-/// cannot promise the pipes are closed. Waiting on them unconditionally would
-/// hand any command an easy way to block its caller forever — which is the
-/// failure this whole function exists to prevent. Bounding the wait makes the
-/// guarantee hold no matter what the command does; the cost is that output
-/// still in flight past the grace period is dropped.
+/// The PID namespace means the writers are gone by the time this runs, so in the
+/// ordinary case both readers are already at EOF. It stays bounded anyway: waiting
+/// on a pipe unconditionally would make the call's return depend on a guarantee
+/// holding, and the whole point of this function is that it holds no matter what
+/// the command does. The cost is that output still in flight past the grace period
+/// is dropped.
 #[cfg(target_os = "linux")]
 fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<()>) {
     let until = Instant::now() + DRAIN_GRACE;
@@ -302,15 +310,20 @@ where
     (handle, buffer)
 }
 
-/// SIGKILL a process group.
+/// SIGKILL a process group, and with it the PID namespace inside it.
 ///
 /// `SIGKILL` rather than a `SIGTERM` grace period: a command that has already
 /// blown its deadline has not earned more time, and a grace period is a second
 /// knob plus a second delay.
 ///
-/// Best-effort by nature. The group is advisory — a descendant that calls
-/// `setsid` is out of reach — so this reclaims well-behaved processes rather
-/// than guaranteeing none survive. A PID namespace would make it unescapable.
+/// The group on its own would be best-effort, because it is advisory — a
+/// descendant that calls `setsid` leaves it, which was #28. What makes this
+/// unescapable is where the signal lands: the helper's supervisor stage is in this
+/// group and never leaves it, and the command runs as PID 1 of a PID namespace
+/// bound to that supervisor's lifetime. When the supervisor dies, PID 1 dies, and
+/// the kernel SIGKILLs everything still in the namespace — `setsid` or not, since
+/// nothing can leave the namespace it was born into and `unshare`/`setns` are
+/// denied.
 #[cfg(target_os = "linux")]
 fn kill_group(group: u32) {
     use nix::sys::signal::{Signal, killpg};
