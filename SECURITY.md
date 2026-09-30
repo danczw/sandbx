@@ -55,7 +55,12 @@ Three properties matter as much as the list:
 
 ## What sandbx does *not* claim
 
-- **Non-Linux is unsupported**, and refused rather than silently unsandboxed.
+- **Non-Linux is unsupported**, and refused at *compile* time rather than at
+  runtime. Landlock, seccomp and the namespaces have no equivalent on another
+  platform, so there is nothing to fall back to except running the command
+  unsandboxed — `sandbx-core` therefore does not build for a non-Linux target at
+  all. A binary that could run unsandboxed cannot be produced, which is a stronger
+  guarantee than an error returned at startup.
 - **The harness process itself is not sandboxed** — only the commands it runs.
   A vulnerability in sandbx's own code is not contained by sandbx. The same is
   true of the helper's supervisor stage: it holds no Landlock ruleset and no
@@ -143,8 +148,9 @@ These are documented behaviour, and reports of them will be closed as such:
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
 - An agent running a tool call you approved.
-- Refusal to run on a kernel older than 6.10, or on a non-Linux host. That is
-  fail-closed behaviour working as intended.
+- Refusal to run on a kernel older than 6.10, or on one with Landlock disabled at
+  boot. That is fail-closed behaviour working as intended.
+- Failure to *build* for a non-Linux target. Also intended — see above.
 - Refusal to run where unprivileged user namespaces are disabled. The PID
   namespace that bounds a command's descendants needs one, whatever the policy
   says, so this is the same fail-closed behaviour rather than a lost feature.
