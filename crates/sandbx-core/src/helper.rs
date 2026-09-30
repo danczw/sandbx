@@ -247,6 +247,18 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_keyctl,
     // Tracing infrastructure, a known side-channel surface.
     libc::SYS_perf_event_open,
+    // Handles on another process. `pidfd_getfd` takes a descriptor *out* of a
+    // process that holds one — a socket, an open file above the policy — which is
+    // not filesystem access, so Landlock cannot express it and `ptrace` being
+    // denied does not cover it. `pidfd_open` is how the handle is obtained in the
+    // first place, so both go.
+    libc::SYS_pidfd_open,
+    libc::SYS_pidfd_getfd,
+    // userfaultfd hands the faulting process control over when a page fault
+    // resolves, which turns any check-then-use in the kernel into an arbitrarily
+    // wide window. It is a recurring ingredient in kernel exploits and no coding
+    // tool needs it.
+    libc::SYS_userfaultfd,
     // io_uring runs operations from a submission queue without issuing the
     // matching syscalls, so a ring set up here would be a route around every
     // rule in this filter — including the `socket(AF_UNIX)` denial that
