@@ -11,7 +11,7 @@ const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 /// audit record all derive from them rather than restating them. Two layers
 /// restating the same semantics by hand is what produced #49 and #50, where one
 /// enforced what the other refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     /// See the path, and nothing more.
     Read,
