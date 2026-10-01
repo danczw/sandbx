@@ -21,8 +21,8 @@ pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, Too
         .check_read(&input.path)
         .map_err(|error| crate::denied(&input.path, error))?;
 
-    let entries = std::fs::read_dir(&resolved)
-        .map_err(|error| crate::failed("list", &input.path, error))?;
+    let entries =
+        std::fs::read_dir(&resolved).map_err(|error| crate::failed("list", &input.path, error))?;
 
     let mut names = Vec::new();
     for entry in entries {

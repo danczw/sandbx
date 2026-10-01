@@ -12,8 +12,7 @@ use serde_json::json;
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     // The test harness does not dispatch helper mode, so point at a binary that
     // does rather than re-executing this one.
-    ExecutionContext::new(policy)
-        .with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper"))
+    ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper"))
 }
 
 #[test]

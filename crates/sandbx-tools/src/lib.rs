@@ -159,7 +159,8 @@ pub(crate) fn read_file(
         .map_err(|error| denied(path, error))?;
 
     let mut content = String::new();
-    std::io::Read::read_to_string(&mut file, &mut content).map_err(|error| failed("read", path, error))?;
+    std::io::Read::read_to_string(&mut file, &mut content)
+        .map_err(|error| failed("read", path, error))?;
     Ok(content)
 }
 

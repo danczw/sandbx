@@ -1,7 +1,7 @@
+use crate::EventStream;
 use crate::error::ProviderError;
 use crate::event::AgentEvent;
 use crate::request::MessagesRequest;
-use crate::EventStream;
 
 /// A test double that replays a canned sequence of events instead of calling
 /// a real API.
@@ -33,7 +33,10 @@ impl MockProvider {
     /// Returns the crate's [`EventStream`] rather than a bare `impl Stream`, so
     /// the mock carries the same `FusedStream + Send` guarantees a caller gets
     /// from a real provider — that is the whole point of the alias.
-    pub async fn stream_chat(self, _request: MessagesRequest) -> Result<EventStream, ProviderError> {
+    pub async fn stream_chat(
+        self,
+        _request: MessagesRequest,
+    ) -> Result<EventStream, ProviderError> {
         use futures_util::StreamExt;
 
         Ok(Box::pin(futures_util::stream::iter(self.events).fuse()))
