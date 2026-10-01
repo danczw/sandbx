@@ -7,7 +7,7 @@ use crate::{HelperArgs, SandboxError, SandboxPolicy};
 /// Argument that marks a process as running in helper mode.
 ///
 /// The host binary checks for this before doing anything else and, when present,
-/// hands off to [`crate::exec_sandboxed`].
+/// hands off to the helper path through [`dispatch_helper_mode`].
 pub const HELPER_FLAG: &str = "--sandbx-core-exec";
 
 /// Argument that marks a process as the *inner* stage of helper mode.
