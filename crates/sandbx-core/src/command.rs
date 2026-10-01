@@ -264,8 +264,13 @@ fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<
 
 /// Take what a reader has collected so far.
 ///
-/// Moved out rather than copied: this is the last read of the buffer, and the
-/// `Arc` is dropped immediately afterwards.
+/// Moved out rather than copied: this is the only read of the buffer, and the
+/// handle on it goes out of scope on the next line.
+///
+/// A reader that outlived `settle`'s grace period still holds its own `Arc` clone
+/// and may append after this returns. Those bytes are lost either way — `settle`
+/// documents that output still in flight past the grace period is dropped — so
+/// taking rather than copying loses nothing a clone would have kept.
 fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
     // A panicking reader poisons the lock but leaves the bytes it already read
     // intact, and partial output beats none.

@@ -7,10 +7,10 @@ use crate::request::MessagesRequest;
 /// a real API.
 ///
 /// Deliberately not a `Provider` variant: that would permanently ship a variant
-/// which must never run in production. A caller that wants "produces this stream
-/// shape" interchangeably with a real provider should be generic over the stream
-/// itself (`impl Stream<Item = Result<AgentEvent, ProviderError>>`), not over
-/// `Provider`/`MockProvider` identity.
+/// which must never run in production. Interchangeability comes from the return
+/// type instead — `stream_chat` hands back the same [`EventStream`] a real
+/// provider does, so a caller takes that one concrete type and neither knows nor
+/// cares which side produced it.
 pub struct MockProvider {
     events: Vec<Result<AgentEvent, ProviderError>>,
 }

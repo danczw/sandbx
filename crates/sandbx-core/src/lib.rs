@@ -1,8 +1,10 @@
 //! Sandboxed execution for sandbx.
 //!
 //! Every tool an agent runs passes through this crate. It is the only place in
-//! the workspace permitted to spawn a subprocess or use `unsafe`; every other
-//! crate forbids both at compile time.
+//! the workspace permitted to spawn a subprocess, and even here the permission
+//! is per-call-site: four `#[allow(clippy::disallowed_methods)]` annotations,
+//! each on a line that re-execs the sandbox helper. `unsafe` is forbidden in
+//! this crate exactly as it is in every other one.
 //!
 //! Two layers, because they cover different things:
 //!

@@ -188,6 +188,37 @@ fn grep_orders_hits_by_line_number() {
     assert_eq!(lines, (1..=12).collect::<Vec<_>>(), "got:\n{}", out.content);
 }
 
+/// Hits from different files must come out in path order.
+///
+/// grep does not sort: it relies on `walk_readable` returning files already
+/// sorted, and visits lines ascending within each. Nothing else pins that
+/// contract, so dropping the sort inside `walk_readable` would silently put
+/// output in readdir order with the rest of the suite still green.
+#[test]
+fn grep_orders_hits_across_files_by_path() {
+    let root = tempfile::tempdir().unwrap();
+    // Created out of order, so passing cannot be an artefact of creation order.
+    for name in ["c.txt", "a.txt", "b.txt"] {
+        std::fs::write(root.path().join(name), "needle\n").unwrap();
+    }
+
+    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let out = BuiltinTool::Grep
+        .execute(
+            json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
+            &ctx,
+        )
+        .unwrap();
+
+    let names: Vec<&str> = out
+        .content
+        .lines()
+        .filter_map(|line| line.rsplit('/').next()?.split(':').next())
+        .collect();
+
+    assert_eq!(names, ["a.txt", "b.txt", "c.txt"], "got:\n{}", out.content);
+}
+
 /// A FIFO in the tree must not wedge the call: reading one with no writer
 /// blocks forever.
 #[cfg(unix)]
