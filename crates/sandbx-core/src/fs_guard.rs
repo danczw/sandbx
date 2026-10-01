@@ -222,6 +222,10 @@ impl FsGuard {
         let resolved = match canonicalize(path) {
             Ok(existing) => existing,
             Err(_) => {
+                let not_allowed = || SandboxError::PathNotAllowed {
+                    requested: path.to_path_buf(),
+                };
+
                 // `canonicalize` fails the same way on a nonexistent path and on
                 // a *dangling* symlink. Resolving only the parent would approve
                 // the link, and the caller's write would then follow it out of
@@ -234,19 +238,16 @@ impl FsGuard {
                         "symlink leaf may resolve outside the allowed root",
                     )
                     .emit();
-                    return Err(SandboxError::PathNotAllowed {
-                        requested: path.to_path_buf(),
-                    });
+                    return Err(not_allowed());
                 }
 
-                let parent = path.parent().ok_or_else(|| SandboxError::PathNotAllowed {
-                    requested: path.to_path_buf(),
-                })?;
-                let file_name = path
-                    .file_name()
-                    .ok_or_else(|| SandboxError::PathNotAllowed {
-                        requested: path.to_path_buf(),
-                    })?;
+                // Both halves must be present to rebuild the path, and the only
+                // inputs where they disagree are `.`/`..`-tailed — refused either
+                // way, so one failure covers both.
+                let (parent, file_name) = path
+                    .parent()
+                    .zip(path.file_name())
+                    .ok_or_else(not_allowed)?;
                 canonicalize(parent)?.join(file_name)
             }
         };
