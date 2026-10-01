@@ -503,3 +503,33 @@ fn every_axis_grants_exactly_what_the_table_says() {
         );
     }
 }
+
+/// The invariant behind an infallible constructor.
+///
+/// `FsGuard::new` returns `Self`, not a `Result`, and that holds only because
+/// every root it cannot resolve is dropped. A policy may name a directory that
+/// has not been created yet, and `canonicalize` fails identically on that and
+/// on a path it may not traverse — so dropping denies rather than permits, and
+/// there is no error left to report.
+///
+/// Nothing asserted that before: the signature says construction cannot fail,
+/// while the reason it cannot was only readable in `canonical_roots` (#56).
+#[test]
+fn a_root_that_cannot_be_resolved_is_dropped_rather_than_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let absent = root.path().join("not-created-yet");
+    let real = root.path().join("notes.txt");
+    std::fs::write(&real, b"hello").unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(&absent)
+            .allow_write(&absent),
+    );
+
+    // The dropped root grants nothing, on either axis.
+    assert!(guard.check_read(&absent.join("inside.txt")).is_err());
+    assert!(guard.check_write(&absent.join("inside.txt")).is_err());
+    // And it did not widen into a sibling that does exist.
+    assert!(guard.check_read(&real).is_err());
+}
