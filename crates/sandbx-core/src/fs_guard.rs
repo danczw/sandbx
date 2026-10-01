@@ -41,11 +41,20 @@ impl FsGuard {
         let mut writable = Vec::new();
 
         for (axis, path) in policy.granted_paths() {
-            let grants = axis.grants();
-            if grants.read {
+            // Destructured, not read field by field: a right added to `Grants`
+            // later has to be considered here rather than silently ignored, which
+            // is what let the two layers drift apart before (#50). `execute` is
+            // explicitly discarded — nothing in-process execs anything.
+            let crate::Grants {
+                read,
+                write,
+                execute: _,
+            } = axis.grants();
+
+            if read {
                 readable.push(path);
             }
-            if grants.write {
+            if write {
                 writable.push(path);
             }
         }

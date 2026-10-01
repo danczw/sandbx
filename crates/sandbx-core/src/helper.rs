@@ -318,19 +318,29 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 fn rights(axis: crate::Axis) -> landlock::BitFlags<landlock::AccessFs> {
     use landlock::{Access, AccessFs};
 
-    let read = AccessFs::from_read(LATEST_ABI) & !AccessFs::Execute;
-    let write = AccessFs::from_all(LATEST_ABI) & !AccessFs::from_read(LATEST_ABI);
+    let read_rights = AccessFs::from_read(LATEST_ABI) & !AccessFs::Execute;
+    let write_rights = AccessFs::from_all(LATEST_ABI) & !AccessFs::from_read(LATEST_ABI);
 
-    let grants = axis.grants();
+    // Destructured rather than read field by field, so that a right added to
+    // `Grants` later fails to compile *here* — at the layer that has to map it
+    // onto a kernel bit — instead of being silently dropped. A new grant
+    // dimension ignored by one layer and not the other is #49's failure mode one
+    // level up from the one this table fixed.
+    let crate::Grants {
+        read,
+        write,
+        execute,
+    } = axis.grants();
+
     let mut rights = landlock::BitFlags::EMPTY;
 
-    if grants.read {
-        rights |= read;
+    if read {
+        rights |= read_rights;
     }
-    if grants.write {
-        rights |= write;
+    if write {
+        rights |= write_rights;
     }
-    if grants.execute {
+    if execute {
         rights |= AccessFs::Execute;
     }
 
