@@ -117,8 +117,11 @@ fn blocked_syscalls(
     //
     // All-or-nothing: seccomp compares register values, and the path passed to
     // `connect` is behind a pointer it cannot follow. Landlock gained a
-    // path-scoped right in ABI V9 (Linux 7.1), which `apply` already handles
-    // best-effort; a per-socket grant can follow once that exists in practice.
+    // path-scoped right in ABI V9 (Linux 7.1), which no kernel reports in
+    // practice yet. `negotiated_abi` settles on a single ABI the kernel accepts
+    // in full, so below V9 that right is simply not in the handled set — there
+    // is nothing best-effort left to lean on. A per-socket grant can follow
+    // once V9 exists.
     //
     // `socketpair` is deliberately left alone: it creates an anonymous pair with
     // no filesystem path, cannot reach a host daemon, and is used routinely by
