@@ -182,7 +182,7 @@ impl SandboxRun {
     /// Run it, forward its output, and report the code to exit with.
     pub fn execute(&self) -> Result<i32, SandboxError> {
         let mut command =
-            SandboxedCommand::new(self.program(), self.policy()).args(self.arguments().to_vec());
+            SandboxedCommand::new(self.program(), self.policy()).args(self.arguments());
         if let Some(limit) = self.timeout() {
             command = command.timeout(limit);
         }
