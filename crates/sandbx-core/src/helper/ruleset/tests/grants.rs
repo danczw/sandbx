@@ -134,6 +134,44 @@ fn only_the_execute_axis_carries_execute() {
     assert!(!rights.contains(AccessFs::WriteFile));
 }
 
+/// The whole write set, spelled out, at the ABI the negotiation aims for.
+///
+/// `write` is defined by subtraction — `from_all` minus `from_read` — so every
+/// right a new ABI adds to the write half lands in every `--allow-write` grant
+/// with no edit here and no test failing. At `LATEST_ABI` that is already two
+/// rights beyond writing bytes: `IoctlDev` (device ioctls on a node beneath the
+/// path) and `ResolveUnix` (`connect(2)` to a pathname socket beneath it, which
+/// `SECURITY.md` discusses as seccomp's business).
+///
+/// Pinned literally rather than against `from_all(LATEST_ABI) & !from_read(..)`,
+/// which would restate the implementation and move with it. An ABI bump therefore
+/// fails here, which is the review a widened write grant should force.
+#[test]
+fn a_write_grant_confers_exactly_the_documented_set() {
+    let expected = landlock::make_bitflags!(AccessFs::{
+        WriteFile
+            | RemoveDir
+            | RemoveFile
+            | MakeChar
+            | MakeDir
+            | MakeReg
+            | MakeSock
+            | MakeFifo
+            | MakeBlock
+            | MakeSym
+            | Refer
+            | Truncate
+            | IoctlDev
+            | ResolveUnix
+    });
+
+    assert_eq!(
+        rights_for(crate::Axis::Write, true, LATEST_ABI),
+        expected,
+        "the write axis changed shape; every --allow-write grant moved with it"
+    );
+}
+
 /// A write grant carries neither read nor execute.
 ///
 /// `SandboxPolicy::writable_paths` promises "writable does not imply
