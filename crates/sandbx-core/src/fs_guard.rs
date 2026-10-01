@@ -98,7 +98,7 @@ impl FsGuard {
             .ancestors()
             .skip(1)
             .find_map(|ancestor| ancestor.canonicalize().ok())
-            .is_some_and(|existing| roots.iter().any(|root| existing.starts_with(root)));
+            .is_some_and(|existing| within(&existing, roots));
 
         let subject = requested.display().to_string();
         if grants_area {
@@ -191,9 +191,25 @@ impl FsGuard {
                 // `canonicalize` per entry. Only a symlink can leave the root,
                 // and only those are re-checked.
                 if file_type.is_symlink() {
-                    let Ok(resolved) = self.check_read(&entry.path()) else {
+                    let link = entry.path();
+                    // Resolved here rather than through `check_read`, which would
+                    // emit an `allowed` record per symlink and undo the single
+                    // decision above. A dangling link is skipped silently —
+                    // nothing to read, no decision to record — but one that
+                    // escapes the roots is still recorded, since an escape
+                    // attempt is exactly what the trail exists to show.
+                    let Ok(resolved) = link.canonicalize() else {
                         continue;
                     };
+                    if !within(&resolved, &self.readable) {
+                        crate::AuditEvent::denied(
+                            "read",
+                            &link.display().to_string(),
+                            "outside every allowed root",
+                        )
+                        .emit();
+                        continue;
+                    }
                     if resolved.is_file() {
                         files.push(resolved);
                     }
@@ -272,11 +288,17 @@ fn canonicalize(path: &Path) -> Result<PathBuf, SandboxError> {
         })
 }
 
-/// Allow `resolved` only if it sits inside one of `roots`.
+/// Whether `resolved` sits inside one of `roots`.
 ///
 /// `Path::starts_with` compares whole components, not string prefixes:
 /// `/work-secrets` must not match the root `/work`, which a string prefix would
-/// allow.
+/// allow. Audit-free, so the walk can reuse the membership rule without
+/// recording a decision per entry.
+fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| resolved.starts_with(root))
+}
+
+/// Allow `resolved` only if it sits inside one of `roots`, recording the verdict.
 fn permit(
     resolved: PathBuf,
     roots: &[PathBuf],
@@ -285,7 +307,7 @@ fn permit(
 ) -> Result<PathBuf, SandboxError> {
     let subject = requested.display().to_string();
 
-    if roots.iter().any(|root| resolved.starts_with(root)) {
+    if within(&resolved, roots) {
         crate::AuditEvent::allowed(operation, &subject).emit();
         Ok(resolved)
     } else {
