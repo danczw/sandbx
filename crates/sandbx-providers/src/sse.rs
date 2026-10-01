@@ -1,7 +1,7 @@
 //! Minimal Server-Sent Events framing over a byte stream.
 //!
 //! Knows the SSE framing rules and nothing about what any particular API puts
-//! in `data:` — kept separate from `wire.rs` so a second SSE-based provider
+//! in `data:` — kept separate from the `wire` module so a second SSE-based provider
 //! (OpenAI's streaming format is also SSE) could reuse this file unchanged.
 
 use bytes::Bytes;
@@ -185,7 +185,7 @@ fn parse_event(lines: &[String]) -> RawSseEvent {
         }
         // id:/retry:/`:`-comment lines: accepted, ignored — this crate never
         // resumes a stream via Last-Event-ID. A frame built only from those
-        // yields an empty `data`; `wire.rs` skips it rather than failing to
+        // yields an empty `data`; `wire/accumulate.rs` skips it rather than failing to
         // parse `""`.
     }
     RawSseEvent {
@@ -289,7 +289,7 @@ mod tests {
 
     /// A frame made only of ignored lines — what a CDN or proxy heartbeat looks
     /// like — is still a frame, and comes out with an empty payload rather than
-    /// being swallowed. `wire.rs` is what skips it; this pins the shape it has
+    /// being swallowed. `wire/accumulate.rs` is what skips it; this pins the shape it has
     /// to skip.
     #[tokio::test]
     async fn a_comment_only_frame_yields_an_empty_payload() {

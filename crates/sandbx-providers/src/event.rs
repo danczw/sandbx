@@ -14,7 +14,7 @@ pub enum AgentEvent {
     /// The incremental cryptographic signature Anthropic streams alongside a
     /// thinking block (needed to replay it into a later turn) is *discarded*:
     /// nothing threads history back into a request today, so there is nowhere
-    /// for it to go. Accumulate it in `wire.rs` and add a field here when
+    /// for it to go. Accumulate it in `wire/accumulate.rs` and add a field here when
     /// something does.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
