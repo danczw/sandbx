@@ -296,12 +296,10 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
 /// The Landlock rights an axis grants.
 ///
-/// Derived from [`Axis::grants`], never restated: three primitive right sets,
-/// unioned according to what the axis confers. A new axis needs no edit here —
-/// which is the point. Before this derived, the axes were a literal list of
-/// `(paths, rights)` pairs, and an axis left out of that list did not fail to
-/// compile: its paths were never iterated, no rule was installed for them, and
-/// the grant was silently absent (#51).
+/// Derived from [`Axis::grants`], so a new axis needs no edit here. Before this
+/// derived, the axes were a literal list of `(paths, rights)` pairs, and an axis
+/// left out of that list did not fail to compile: its paths were never iterated,
+/// no rule was installed for them, and the grant was silently absent (#51).
 ///
 /// The three primitives, and why each is a subtraction rather than a plain set:
 ///
@@ -323,11 +321,7 @@ fn rights(axis: crate::Axis) -> landlock::BitFlags<landlock::AccessFs> {
     let read_rights = AccessFs::from_read(LATEST_ABI) & !AccessFs::Execute;
     let write_rights = AccessFs::from_all(LATEST_ABI) & !AccessFs::from_read(LATEST_ABI);
 
-    // Destructured rather than read field by field, so that a right added to
-    // `Grants` later fails to compile *here* — at the layer that has to map it
-    // onto a kernel bit — instead of being silently dropped. A new grant
-    // dimension ignored by one layer and not the other is #49's failure mode one
-    // level up from the one this table fixed.
+    // Destructured, not read field by field — see `Grants`.
     let crate::Grants {
         read,
         write,
