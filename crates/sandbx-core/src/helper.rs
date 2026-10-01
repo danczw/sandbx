@@ -294,6 +294,49 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     })
 }
 
+/// The Landlock rights an axis grants.
+///
+/// Derived from [`Axis::grants`], never restated: three primitive right sets,
+/// unioned according to what the axis confers. A new axis needs no edit here —
+/// which is the point, because a missed arm would not fail to compile, it would
+/// simply install no rule and the grant would be silently absent (#51).
+///
+/// The three primitives, and why each is a subtraction rather than a plain set:
+///
+/// - **read** is `from_read` minus `Execute`. `from_read` bundles `Execute` in
+///   with `ReadFile`/`ReadDir`, so granting it raw would hand out the right to
+///   *run* whatever the path contains, which no axis but `ReadExecute` says (#19).
+/// - **write** is `from_all` minus the whole read set, not just `Execute`.
+///   `from_all` includes `ReadFile`/`ReadDir`, so taking only `Execute` away left
+///   a write grant conferring read at the kernel while `FsGuard` refused it —
+///   one policy, two answers, and the write-only drop directory
+///   `writable_paths` promises was readable in the child (#49).
+/// - **execute** is the single bit, which is why it can be added back on top of
+///   read without widening anything else.
+///
+/// [`Axis::grants`]: crate::Axis::grants
+fn rights(axis: crate::Axis) -> landlock::BitFlags<landlock::AccessFs> {
+    use landlock::{Access, AccessFs};
+
+    let read = AccessFs::from_read(LATEST_ABI) & !AccessFs::Execute;
+    let write = AccessFs::from_all(LATEST_ABI) & !AccessFs::from_read(LATEST_ABI);
+
+    let grants = axis.grants();
+    let mut rights = landlock::BitFlags::EMPTY;
+
+    if grants.read {
+        rights |= read;
+    }
+    if grants.write {
+        rights |= write;
+    }
+    if grants.execute {
+        rights |= AccessFs::Execute;
+    }
+
+    rights
+}
+
 /// The Landlock rules [`apply`] will install, as data.
 ///
 /// Split out so the whole filesystem mapping can be asserted without root, a
@@ -302,10 +345,8 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 /// touches outside the policy is whether each path is a directory, and that is
 /// precisely what decides the narrowing below.
 ///
-/// `from_read` bundles `Execute` in with `ReadFile`/`ReadDir`, and `from_all`
-/// inherits it. Granting either would otherwise hand out the right to *run*
-/// whatever the path contains, which neither `allow_read` nor `allow_write` says
-/// (#19). Execute comes from one axis, named for it.
+/// What each axis grants is [`rights`]'s business; this walks the grants and
+/// narrows them to what the target can carry.
 ///
 /// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular file
 /// and the kernel rejects the whole ruleset if one is attached to it. A policy
@@ -315,34 +356,22 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 fn fs_rules(
     policy: &crate::SandboxPolicy,
 ) -> Vec<(&std::path::Path, landlock::BitFlags<landlock::AccessFs>)> {
-    use landlock::{Access, AccessFs};
+    use landlock::AccessFs;
 
-    let read_execute = AccessFs::from_read(LATEST_ABI);
-    let read_only = read_execute & !AccessFs::Execute;
-    // Subtract the whole read set, not just `Execute`. `from_all` includes
-    // `ReadFile`/`ReadDir`, so taking only `Execute` away left `allow_write`
-    // granting read at the kernel while `FsGuard` refused it — one policy,
-    // two answers, and the write-only drop directory `writable_paths`
-    // promises was readable in the child (#49).
-    let write_only = AccessFs::from_all(LATEST_ABI) & !read_execute;
     let file_rights = AccessFs::from_file(LATEST_ABI);
 
-    let mut rules = Vec::new();
-    for (paths, rights) in [
-        (policy.readable_paths(), read_only),
-        (policy.writable_paths(), write_only),
-        (policy.executable_paths(), read_execute),
-    ] {
-        for path in paths {
+    policy
+        .granted_paths()
+        .map(|(axis, path)| {
+            let rights = rights(axis);
             let rights = if path.is_dir() {
                 rights
             } else {
                 rights & file_rights
             };
-            rules.push((path.as_path(), rights));
-        }
-    }
-    rules
+            (path, rights)
+        })
+        .collect()
 }
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
@@ -774,6 +803,41 @@ mod tests {
             matches.len()
         );
         matches[0]
+    }
+
+    /// Every right installed is the one the axis table says, not a second
+    /// opinion about it.
+    ///
+    /// The tests below pin the three axes that exist today by hand; this one is
+    /// stated over `Axis::ALL`, so an axis whose rights are never derived — the
+    /// failure mode of #51, where the flag round-trips perfectly while granting
+    /// nothing — fails here.
+    #[test]
+    fn rights_follow_the_axis_table() {
+        for axis in crate::Axis::ALL {
+            let grants = axis.grants();
+            let rights = rights(axis);
+
+            assert!(
+                !rights.is_empty(),
+                "{axis:?} derives no rights at all, so the grant is silently absent"
+            );
+
+            for (right, granted, name) in [
+                (AccessFs::ReadFile, grants.read, "read"),
+                (AccessFs::ReadDir, grants.read, "read"),
+                (AccessFs::WriteFile, grants.write, "write"),
+                (AccessFs::MakeDir, grants.write, "write"),
+                (AccessFs::Execute, grants.execute, "execute"),
+            ] {
+                assert_eq!(
+                    rights.contains(right),
+                    granted,
+                    "{axis:?} grants {name}={granted}, but the kernel layer \
+                     disagrees about {right:?}"
+                );
+            }
+        }
     }
 
     /// Reading must never confer the right to *run* what it can see.
