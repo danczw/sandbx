@@ -298,8 +298,10 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 ///
 /// Derived from [`Axis::grants`], never restated: three primitive right sets,
 /// unioned according to what the axis confers. A new axis needs no edit here —
-/// which is the point, because a missed arm would not fail to compile, it would
-/// simply install no rule and the grant would be silently absent (#51).
+/// which is the point. Before this derived, the axes were a literal list of
+/// `(paths, rights)` pairs, and an axis left out of that list did not fail to
+/// compile: its paths were never iterated, no rule was installed for them, and
+/// the grant was silently absent (#51).
 ///
 /// The three primitives, and why each is a subtraction rather than a plain set:
 ///

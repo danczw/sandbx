@@ -62,10 +62,13 @@ Three properties matter as much as the list:
   execute implies read on the same path, and no grant implies execute.
 
   This paragraph is encoded in one place: `Axis::grants` in
-  `sandbx-core/src/policy.rs`. The kernel layer's Landlock rights, the
-  in-process guard's roots, the helper argv and the audit record all derive from
-  it rather than restating it, so the two enforcement layers cannot disagree
-  about what an axis grants the way they did in #49 and #50.
+  `sandbx-core/src/policy.rs`. Both enforcement layers derive from it — the
+  kernel layer's Landlock rights and the in-process guard's roots — so neither
+  restates the other's semantics the way they did in #49 and #50. What each layer
+  still does by hand is map those grants onto its own mechanism (Landlock bits,
+  guard roots); that step is pinned by test, not by construction. The helper argv
+  and the audit record derive their per-axis loops from the same table, but their
+  flag spellings and record fields are necessarily hand-written.
 
 ## What sandbx does *not* claim
 
