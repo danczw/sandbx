@@ -85,6 +85,16 @@ impl<'a> AuditEvent<'a> {
     /// this site can offer, and it is what the other four axes' worth of silent
     /// drift (#51) cost.
     pub fn spawned(program: &'a str, policy: &SandboxPolicy) -> Self {
+        // Positional destructuring depends on `Axis::ALL`'s *order* as well as
+        // its length, and only the length is checked by the pattern. Reordering
+        // the table would otherwise keep compiling and keep passing, while every
+        // record from then on filed the write count under `readable` — an audit
+        // trail that misstates the policy, which is worse than one that fails.
+        const _: () = assert!(matches!(
+            Axis::ALL,
+            [Axis::Read, Axis::Write, Axis::ReadExecute]
+        ));
+
         let [readable, writable, executable] = Axis::ALL.map(|axis| policy.paths(axis).len());
 
         Self::Spawned {
