@@ -35,7 +35,7 @@ run through `SandboxedCommand`:
 
 | control | mechanism | covers |
 |---------|-----------|--------|
-| filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper.rs`, hard-required) | reads, writes, and execution by path, granted separately |
+| filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper.rs`, hard-required) | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
 | network | empty network namespace | IP egress, abstract unix sockets |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create` |
@@ -60,6 +60,12 @@ Three properties matter as much as the list:
   needs execute on the binary *and* read on the libraries its loader pulls in,
   so an execute-only grant would start nothing. That asymmetry runs one way:
   execute implies read on the same path, and no grant implies execute.
+
+  This paragraph is encoded in one place: `Axis::grants` in
+  `sandbx-core/src/policy.rs`. The kernel layer's Landlock rights, the
+  in-process guard's roots, the helper argv and the audit record all derive from
+  it rather than restating it, so the two enforcement layers cannot disagree
+  about what an axis grants the way they did in #49 and #50.
 
 ## What sandbx does *not* claim
 

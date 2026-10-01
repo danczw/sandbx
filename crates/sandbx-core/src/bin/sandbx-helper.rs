@@ -1,7 +1,10 @@
 //! Applies a sandbox policy to itself, then becomes the requested command.
 //!
-//! Usage: `sandbx-helper --sandbx-core-exec [--ro PATH]... [--rw PATH]...
-//! [--rx PATH]... [--allow-network] [--allow-unix-sockets] -- PROGRAM [ARGS]...`
+//! Usage: `sandbx-helper --sandbx-core-exec [POLICY]... -- PROGRAM [ARGS]...`,
+//! where the policy flags are whatever [`sandbx_core::HelperArgs`] encodes — one
+//! path flag per policy axis, plus `--allow-network` and `--allow-unix-sockets`.
+//! Deliberately not enumerated here: this binary does not parse them, and a list
+//! in prose is a list that drifts from the one the helper actually accepts.
 //!
 //! Runs in two stages, both of them this same binary. The invocation above is
 //! stage one, the supervisor: it creates the namespaces and re-execs itself with
