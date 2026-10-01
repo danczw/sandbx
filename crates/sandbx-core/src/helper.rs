@@ -845,6 +845,19 @@ mod tests {
         matches[0]
     }
 
+    /// Every right Landlock will enforce on `path`, across every grant naming it.
+    ///
+    /// The kernel unions the rules it holds for a path, so this — not any single
+    /// rule — is what a policy actually confers there.
+    fn union(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
+        fs_rules(policy)
+            .into_iter()
+            .filter(|(_, candidate, _)| *candidate == path)
+            .fold(landlock::BitFlags::EMPTY, |union, (_, _, rights)| {
+                union | rights
+            })
+    }
+
     /// Every right installed is the one the axis table says, not a second
     /// opinion about it.
     ///
@@ -1051,6 +1064,71 @@ mod tests {
             .allow_read_execute(dir.path());
 
         assert_eq!(fs_rules(&policy).len(), 3);
+    }
+
+    /// Grants on one path sum to exactly what they say, and never to more.
+    ///
+    /// `SECURITY.md`'s headline claim is that no grant implies execute — and the
+    /// honest form of that question is about the *union*, because Landlock unions
+    /// the rules it holds for a path, so no single rule is the answer where two
+    /// grants overlap. Read plus write on one directory is the case that matters:
+    /// it is what `sandbx --allow-write` produces, and until the seam carried the
+    /// axis the union could not be asked for at all (#52).
+    ///
+    /// Stated over the powerset of `Axis::ALL`, since a policy may grant any
+    /// combination on one path, and so a fourth axis needs no edit here. Both
+    /// sides read [`Axis::grants`], so what this pins is the *composition* — that
+    /// two grants on a path sum rather than widen — and not the table's own rows,
+    /// which `rights_follow_the_axis_table` covers.
+    ///
+    /// [`Axis::grants`]: crate::Axis::grants
+    #[test]
+    fn overlapping_grants_sum_to_what_they_say_and_no_more() {
+        let dir = tempdir();
+
+        for mask in 0..(1u32 << crate::Axis::ALL.len()) {
+            let axes: Vec<_> = crate::Axis::ALL
+                .into_iter()
+                .enumerate()
+                .filter(|(index, _)| mask & (1 << index) != 0)
+                .map(|(_, axis)| axis)
+                .collect();
+
+            let policy = axes.iter().fold(SandboxPolicy::default(), |policy, &axis| {
+                policy.grant(axis, dir.path())
+            });
+            let granted = union(&policy, dir.path());
+
+            // Destructured, not read field by field — see `Grants`.
+            let mut sum = crate::Grants {
+                read: false,
+                write: false,
+                execute: false,
+            };
+            for axis in &axes {
+                let crate::Grants {
+                    read,
+                    write,
+                    execute,
+                } = axis.grants();
+                sum.read |= read;
+                sum.write |= write;
+                sum.execute |= execute;
+            }
+
+            for (right, expected, name) in [
+                (AccessFs::ReadDir, sum.read, "read"),
+                (AccessFs::WriteFile, sum.write, "write"),
+                (AccessFs::Execute, sum.execute, "execute"),
+            ] {
+                assert_eq!(
+                    granted.contains(right),
+                    expected,
+                    "{axes:?} together confer {name}={expected}, but the kernel \
+                     layer disagrees about {right:?}"
+                );
+            }
+        }
     }
 
     /// The filter is built from `BLOCKED_SYSCALLS` and nothing else, so the two
