@@ -14,7 +14,7 @@
 //!
 //! Exists as a standalone binary so the enforcement path can be tested
 //! end-to-end. In a shipped sandbx, the `sandbx` binary re-execs itself into the
-//! same [`sandbx_core::exec_sandboxed`] entry point rather than requiring this
+//! same [`sandbx_core::dispatch_helper_mode`] entry point rather than requiring this
 //! to be installed alongside.
 
 fn main() -> std::process::ExitCode {

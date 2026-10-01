@@ -71,7 +71,7 @@ const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
 /// Any return is an error, and the caller must exit non-zero rather than continue —
 /// a helper that fell through to running the command unrestricted would be the
 /// exact failure the sandbox exists to prevent.
-pub fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
     // Decoded for this stage's own use — it needs to know whether the policy
     // grants network before choosing the unshare flags. What gets passed on is the
     // argv it was given, verbatim: a re-encode here would be a second chance for
