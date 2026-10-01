@@ -25,6 +25,32 @@ pub struct Turn<'a> {
     pub tools: &'a [BuiltinTool],
     /// The conversation so far, oldest first.
     pub history: &'a [RequestMessage],
+    /// The bounds this turn runs within.
+    pub limits: TurnLimits,
+}
+
+/// The bounds one turn runs within.
+///
+/// Every field is at the tighter end of what is plausible. There is no agent caller
+/// to measure against yet, and a bound that is too tight announces itself the first
+/// time real work dies, where one that is too loose silently fails to catch the
+/// runaway it exists for — the same reasoning `sandbx-tools`' own `DEFAULT_TIMEOUT`
+/// is set by. Raise them when that actually bites.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnLimits {
+    /// How many times the model may be asked within one turn.
+    ///
+    /// A turn re-enters once per batch of tool calls, so this bounds how far a
+    /// looping or injected-into model can drive tool execution. Reaching it is a
+    /// [`TurnError::RoundLimit`], not a quiet stop, because a turn cut off here did
+    /// not finish and a caller should not read it as if it had.
+    pub max_rounds: usize,
+}
+
+impl Default for TurnLimits {
+    fn default() -> Self {
+        Self { max_rounds: 8 }
+    }
 }
 
 /// Run one turn, accumulating its event stream into replayable messages.
@@ -89,7 +115,7 @@ where
     let definitions: Vec<ToolDefinition> = turn.tools.iter().copied().map(definition).collect();
     let mut produced: Vec<RequestMessage> = Vec::new();
 
-    loop {
+    for _ in 0..turn.limits.max_rounds {
         let mut messages = turn.history.to_vec();
         messages.extend_from_slice(&produced);
 
@@ -129,6 +155,13 @@ where
             content: results,
         });
     }
+
+    // Fallen out of the loop still wanting tools run. `produced` is dropped rather
+    // than returned: the last thing in it is a tool_result the model never got to
+    // answer, and handing a caller a turn that ends there would read as finished.
+    Err(TurnError::RoundLimit {
+        rounds: turn.limits.max_rounds,
+    })
 }
 
 /// Run every tool call in `blocks`, in the order the model asked for them, and
