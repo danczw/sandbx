@@ -1145,6 +1145,15 @@ dependencies = [
 [[package]]
 name = "sandbx-agent"
 version = "0.1.0-alpha.5"
+dependencies = [
+ "futures-util",
+ "sandbx-core",
+ "sandbx-providers",
+ "sandbx-tools",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "sandbx-cli"
