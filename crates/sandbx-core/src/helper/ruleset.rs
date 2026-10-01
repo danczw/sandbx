@@ -7,7 +7,7 @@
 
 use crate::SandboxError;
 
-/// The Landlock ABI floor [`apply`] refuses to run below, and the ceiling it
+/// The Landlock ABI floor [`apply`](super::apply) refuses to run below, and the ceiling it
 /// negotiates up to.
 ///
 /// `SECURITY.md` claims "Landlock, ABI 5 minimum" and refusal to run on a kernel
@@ -37,7 +37,7 @@ use crate::SandboxError;
 /// kernel floor quoted in `README.md` move in the same change.
 pub(crate) const BASELINE_ABI: landlock::ABI = landlock::ABI::V5; // Linux 6.10: Truncate, Refer, IoctlDev
 
-/// Newest ABI [`apply`] negotiates for. See [`BASELINE_ABI`].
+/// Newest ABI [`apply`](super::apply) negotiates for. See [`BASELINE_ABI`].
 pub(crate) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 6.15: ResolveUnix
 
 /// Every ABI [`negotiated_abi`] will settle for, newest first.
@@ -91,8 +91,8 @@ const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
 /// invalid rule — the `landlock` crate never lets the kernel see one. `PathBeneath`
 /// stats the fd and strips the dir-only bits itself (its own comment: "Linux would
 /// return EINVAL"), reporting `CompatResult::Partial`. Under `BestEffort`, which is
-/// the level [`apply`] leaves set, `add_rule` then returns `Ok` and the ruleset
-/// degrades to `RulesetStatus::PartiallyEnforced` — which [`apply`] accepts, since
+/// the level [`apply`](super::apply) leaves set, `add_rule` then returns `Ok` and the ruleset
+/// degrades to `RulesetStatus::PartiallyEnforced` — which [`apply`](super::apply) accepts, since
 /// it refuses only `NotEnforced`. Verified against landlock 0.4.7 on a live kernel:
 /// `WriteFile | MakeDir | RemoveDir` on a regular file installs silently. So
 /// dropping this intersection would not fail; it would quietly degrade every
@@ -136,7 +136,7 @@ fn rights_for(
     }
 }
 
-/// The Landlock rules [`apply`] will install, as `(axis, path, rights)`, one per
+/// The Landlock rules [`apply`](super::apply) will install, as `(axis, path, rights)`, one per
 /// grant.
 ///
 /// Split out so the whole filesystem mapping can be asserted without root, a
@@ -151,7 +151,7 @@ fn rights_for(
 /// `is_dir()` reports `false` for every error it meets, which would silently drop
 /// directory-only rights. That is latent rather than live: a path `is_dir()` could
 /// not inspect — a dangling symlink, an unsearchable parent — is also a path
-/// [`apply`]'s next line cannot open, so `PathFd::new` turns it into a refusal
+/// [`apply`](super::apply)'s next line cannot open, so `PathFd::new` turns it into a refusal
 /// before the narrowed rule reaches the kernel. Propagating it here would add a
 /// `Result` to the seam for an error the following line already catches.
 ///
@@ -160,9 +160,9 @@ fn rights_for(
 /// directory-only rights here, and a file taken for a directory loses them at
 /// `add_rule`, where `PathBeneath` strips what a file cannot hold. Neither is a
 /// refusal — the second degrades the ruleset to `PartiallyEnforced`, which
-/// [`apply`] accepts — but neither grants anything the policy did not name.
+/// [`apply`](super::apply) accepts — but neither grants anything the policy did not name.
 ///
-/// The axis rides along even though [`apply`] has no use for it. Landlock *unions*
+/// The axis rides along even though [`apply`](super::apply) has no use for it. Landlock *unions*
 /// the rules it is given for a path, so a tuple of just `(path, rights)` is not
 /// the effective right set for any path named on two axes — and `sandbx
 /// --allow-write` names one on two axes every time. Carrying the axis keeps both
@@ -199,7 +199,7 @@ pub(super) fn fs_rules(
 ///
 /// Probing with `create()` is deliberate: it builds a ruleset without applying it,
 /// so this walks the ladder in one process and nothing is restricted until
-/// [`apply`] calls `restrict_self`. The kernel's own version syscall would be
+/// [`apply`](super::apply) calls `restrict_self`. The kernel's own version syscall would be
 /// cheaper, but it is `unsafe` and `landlock` keeps its wrapper private — and a
 /// probe that asks the same question the real call will ask cannot disagree with
 /// it, which the duplicated ABI floor behind `d4676cc` is the argument for.

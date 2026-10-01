@@ -91,7 +91,7 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
 
 /// The seccomp denylist [`deny_dangerous_syscalls`] will install, as data.
 ///
-/// Split out for the same reason as [`fs_rules`] (#52).
+/// Split out for the same reason as [`fs_rules`](super::ruleset::fs_rules) (#52).
 ///
 /// An empty rule vector means "match this syscall unconditionally", so every
 /// listed number takes the filter's match action and everything else is allowed.
