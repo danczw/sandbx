@@ -1,8 +1,7 @@
-use futures_util::Stream;
-
 use crate::error::ProviderError;
 use crate::event::AgentEvent;
 use crate::request::MessagesRequest;
+use crate::EventStream;
 
 /// A test double that replays a canned sequence of events instead of calling
 /// a real API.
@@ -19,9 +18,7 @@ pub struct MockProvider {
 impl MockProvider {
     /// The common case: an all-success canned turn.
     pub fn new(events: impl IntoIterator<Item = AgentEvent>) -> Self {
-        Self {
-            events: events.into_iter().map(Ok).collect(),
-        }
+        Self::with_results(events.into_iter().map(Ok).collect())
     }
 
     /// For negative-path tests: inject an error anywhere in the sequence.
@@ -32,10 +29,13 @@ impl MockProvider {
     /// Consumes `self` — a `MockProvider` is throwaway per-test canned data,
     /// unlike `Provider::stream_chat(&self, ..)`, which is reused across many
     /// real turns from one long-lived client.
-    pub async fn stream_chat(
-        self,
-        _request: MessagesRequest,
-    ) -> Result<impl Stream<Item = Result<AgentEvent, ProviderError>>, ProviderError> {
-        Ok(futures_util::stream::iter(self.events))
+    ///
+    /// Returns the crate's [`EventStream`] rather than a bare `impl Stream`, so
+    /// the mock carries the same `FusedStream + Send` guarantees a caller gets
+    /// from a real provider — that is the whole point of the alias.
+    pub async fn stream_chat(self, _request: MessagesRequest) -> Result<EventStream, ProviderError> {
+        use futures_util::StreamExt;
+
+        Ok(Box::pin(futures_util::stream::iter(self.events).fuse()))
     }
 }
