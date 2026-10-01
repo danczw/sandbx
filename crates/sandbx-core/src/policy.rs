@@ -256,7 +256,7 @@ impl SandboxPolicy {
     /// **All of them**, not a chosen one. The denial is a seccomp rule on
     /// `socket(AF_UNIX, …)`, and seccomp compares register values: the path
     /// passed to `connect` lives behind a pointer it cannot follow. Landlock
-    /// gained a path-scoped right for this in ABI V9 (Linux 6.15), and a
+    /// gained a path-scoped right for this in ABI V9 (Linux 7.1), and a
     /// per-socket grant can be added once that is available in practice.
     ///
     /// So this opens every pathname socket the filesystem policy can reach —
