@@ -360,7 +360,8 @@ fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<land
     }
 }
 
-/// The Landlock rules [`apply`] will install, as data.
+/// The Landlock rules [`apply`] will install, as `(axis, path, rights)`, one per
+/// grant.
 ///
 /// Split out so the whole filesystem mapping can be asserted without root, a
 /// network namespace or a Landlock-capable kernel — `apply` itself needs all
@@ -382,12 +383,28 @@ fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<land
 /// directions: a directory taken for a file loses directory-only rights, which is
 /// a restriction, and a file taken for a directory makes the kernel reject the
 /// whole ruleset, which is a refusal.
+///
+/// The axis rides along even though [`apply`] has no use for it. Landlock *unions*
+/// the rules it is given for a path, so a tuple of just `(path, rights)` is not
+/// the effective right set for any path named on two axes — and `sandbx
+/// --allow-write` names one on two axes every time. Carrying the axis keeps both
+/// questions answerable: what one grant confers, and what the kernel will enforce
+/// once the overlapping grants are unioned (#52).
+///
+/// Ordered `(axis, path, ..)` after [`SandboxPolicy::granted_paths`], the pairs
+/// this is an extension of.
+///
+/// [`SandboxPolicy::granted_paths`]: crate::SandboxPolicy::granted_paths
 fn fs_rules(
     policy: &crate::SandboxPolicy,
-) -> Vec<(&std::path::Path, landlock::BitFlags<landlock::AccessFs>)> {
+) -> Vec<(
+    crate::Axis,
+    &std::path::Path,
+    landlock::BitFlags<landlock::AccessFs>,
+)> {
     policy
         .granted_paths()
-        .map(|(axis, path)| (path, rights_for(axis, path.is_dir())))
+        .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir())))
         .collect()
 }
 
@@ -427,8 +444,10 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         .create()
         .map_err(landlock_failed)?;
 
-    // `fs_rules` decides what to install; this loop only opens the paths.
-    for (path, rights) in fs_rules(policy) {
+    // `fs_rules` decides what to install; this loop only opens the paths. The
+    // axis each rule came from is for the tests that assert the mapping — the
+    // kernel is told the rights and nothing else.
+    for (_, path, rights) in fs_rules(policy) {
         let fd = PathFd::new(path).map_err(landlock_failed)?;
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))
@@ -800,22 +819,26 @@ mod tests {
         file
     }
 
-    /// The single rule produced for `path`.
+    /// The rule `axis` produced for `path`.
     ///
-    /// Insists on exactly one. Landlock unions the rules for a path, so a path
-    /// granted on two axes has no one answer — and silently returning whichever
-    /// axis came first would let a test assert against a rule it did not mean.
-    fn rule(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
+    /// Keyed by both, because a path may be granted on more than one axis and the
+    /// rules are then separate permissions. Still insists on exactly one match,
+    /// so a test cannot quietly assert against a duplicate grant it did not mean.
+    fn rule(
+        policy: &SandboxPolicy,
+        axis: crate::Axis,
+        path: &std::path::Path,
+    ) -> landlock::BitFlags<AccessFs> {
         let matches: Vec<_> = fs_rules(policy)
             .into_iter()
-            .filter(|(p, _)| *p == path)
-            .map(|(_, rights)| rights)
+            .filter(|(a, p, _)| *a == axis && *p == path)
+            .map(|(_, _, rights)| rights)
             .collect();
 
         assert_eq!(
             matches.len(),
             1,
-            "expected exactly one rule for {}, got {}",
+            "expected exactly one {axis:?} rule for {}, got {}",
             path.display(),
             matches.len()
         );
@@ -965,8 +988,8 @@ mod tests {
             .allow_write(dir.path())
             .allow_write(&file);
 
-        let on_dir = rule(&policy, dir.path());
-        let on_file = rule(&policy, &file);
+        let on_dir = rule(&policy, crate::Axis::Write, dir.path());
+        let on_file = rule(&policy, crate::Axis::Write, &file);
 
         assert!(
             on_dir.contains(AccessFs::MakeDir),
@@ -979,6 +1002,34 @@ mod tests {
         // Narrowing is an intersection, so the file can never gain anything the
         // directory case did not already have.
         assert!(on_dir.contains(on_file));
+    }
+
+    /// Two grants on one path stay two rules, each carrying its own axis's
+    /// rights and nothing of the other's.
+    ///
+    /// `sandbx --allow-write` grants read *and* write on the same path, so this
+    /// is the ordinary case rather than a contrived one. Keyed by path alone the
+    /// seam could not say which axis produced which rule, and the only honest
+    /// thing a helper could do was refuse to answer — so the two grants were not
+    /// separately assertable in exactly the case where they overlap (#52).
+    #[test]
+    fn a_path_granted_on_two_axes_keeps_one_rule_per_axis() {
+        let dir = tempdir();
+        let policy = SandboxPolicy::default()
+            .allow_read(dir.path())
+            .allow_write(dir.path());
+
+        let read = rule(&policy, crate::Axis::Read, dir.path());
+        let write = rule(&policy, crate::Axis::Write, dir.path());
+
+        assert!(
+            read.contains(AccessFs::ReadDir) && !read.contains(AccessFs::WriteFile),
+            "the read grant picked up write from the write grant on the same path"
+        );
+        assert!(
+            write.contains(AccessFs::WriteFile) && !write.contains(AccessFs::ReadDir),
+            "the write grant picked up read from the read grant on the same path"
+        );
     }
 
     /// Default-deny: nothing granted means nothing installed.
