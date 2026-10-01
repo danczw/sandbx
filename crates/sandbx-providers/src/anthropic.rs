@@ -36,11 +36,7 @@ impl AnthropicClient {
     /// [`DEFAULT_BASE_URL`]: Self::DEFAULT_BASE_URL
     /// [`ensure_crypto_provider_installed`]: crate::ensure_crypto_provider_installed
     pub fn new(api_key: SecretString) -> Result<Self, ProviderError> {
-        Ok(Self {
-            http: build_http(Reachability::PublicHttps)?,
-            api_key,
-            base_url: Self::DEFAULT_BASE_URL.to_string(),
-        })
+        Self::configured(api_key, Self::DEFAULT_BASE_URL)
     }
 
     /// Builds a client from `ANTHROPIC_API_KEY`.
@@ -71,16 +67,39 @@ impl AnthropicClient {
     ///
     /// Rebuilds the underlying HTTP client, because two of its settings depend
     /// on where it now points — see [`build_http`].
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Result<Self, ProviderError> {
+    pub fn with_base_url(self, base_url: impl Into<String>) -> Result<Self, ProviderError> {
+        Self::configured(self.api_key, base_url)
+    }
+
+    /// The one construction path: whatever the client points at is validated,
+    /// and the HTTP client is built to match where that is.
+    ///
+    /// [`new`] went through this too rather than asserting
+    /// [`Reachability::PublicHttps`] for itself — that made the https-ness of the
+    /// default URL a fact stated in a second place, free to drift from what
+    /// [`validate_base_url`] would say about it.
+    ///
+    /// [`new`]: Self::new
+    fn configured(
+        api_key: SecretString,
+        base_url: impl Into<String>,
+    ) -> Result<Self, ProviderError> {
         let base_url = base_url.into();
         let trimmed = base_url.trim_end_matches('/');
         let reachability = match validate_base_url(trimmed) {
-            Ok(reachability) => reachability,
+            // Reported untrimmed: the operator should see the URL they gave.
             Err(reason) => return Err(ProviderError::InvalidBaseUrl { base_url, reason }),
+            Ok(reachability) => reachability,
         };
-        self.http = build_http(reachability)?;
-        self.base_url = trimmed.to_string();
-        Ok(self)
+
+        Ok(Self {
+            http: build_http(reachability)?,
+            api_key,
+            // Stored trimmed, not as `Url::as_str`, which normalises
+            // `https://host` to `https://host/` and so would double the slash in
+            // the `/v1/messages` endpoint built from it.
+            base_url: trimmed.to_string(),
+        })
     }
 
     /// Opens a streamed turn against the Messages API.
