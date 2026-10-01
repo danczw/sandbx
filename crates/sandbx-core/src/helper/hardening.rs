@@ -11,7 +11,7 @@ use crate::SandboxError;
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
 ///
-/// Split out from [`apply`] because these two steps are the ones that have to
+/// Split out from [`apply`](super::apply) because these two steps are the ones that have to
 /// happen in the *supervisor*, not in the stage that becomes the command:
 ///
 /// - the namespaces, because `CLONE_NEWPID` only places this process's children,
