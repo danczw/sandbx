@@ -11,12 +11,14 @@ sandboxed tool execution as part of the harness itself: every command an agent
 runs goes through a Landlock + seccomp boundary, and the sandbox fails closed
 rather than degrading to unrestricted execution.
 
-> **Pre-alpha.** There is no agent yet — only the sandbox beneath it and the
-> tools that will run inside it. Enforced today on Linux 6.10+ with unprivileged
-> user namespaces: filesystem (Landlock), network (empty netns), dangerous
-> syscalls (seccomp), process lifetime (PID namespace). Kernels that cannot
-> enforce are refused, never run unrestricted. Do not assume a version sandboxes
-> anything until it says so.
+> **Pre-alpha.** The turn loop exists, but nothing is wired to a UI yet: there is
+> no way to talk to an agent from the command line, and no approval prompt before a
+> tool runs. What works today is the sandbox beneath it, the tools that run inside
+> it, and a library-level loop over them. Enforced today on Linux 6.10+ with
+> unprivileged user namespaces: filesystem (Landlock), network (empty netns),
+> dangerous syscalls (seccomp), process lifetime (PID namespace). Kernels that
+> cannot enforce are refused, never run unrestricted. Do not assume a version
+> sandboxes anything until it says so.
 
 ## Try the sandbox
 
