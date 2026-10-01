@@ -96,3 +96,45 @@ fn every_tool_advertises_its_own_input_struct() {
         );
     }
 }
+
+/// Every tool must carry its own model-facing prose.
+///
+/// The description is the one field the model actually steers on, and it is a
+/// seven-arm match exactly like `input_schema` — so it has the failure mode #55
+/// found there: an arm copied from its neighbour compiles, passes, and leaves
+/// the model with the wrong guide to when to reach for the tool.
+///
+/// Distinctness is what catches that. Non-empty alone would not, and neither
+/// would a length check.
+#[test]
+fn every_tool_describes_itself_distinctly() {
+    let mut seen = std::collections::BTreeMap::new();
+
+    for tool in BuiltinTool::ALL {
+        let description = tool.description();
+
+        assert!(
+            !description.trim().is_empty(),
+            "{tool:?} has no description, so the model has no guide to it"
+        );
+        // Prose, not a restatement of the name the model was already given.
+        assert_ne!(
+            description.trim(),
+            tool.name(),
+            "{tool:?} only restates its own name"
+        );
+        // These are written with `\` line continuations, which strip the newline
+        // *and* the indentation after it — so a missing space before the
+        // backslash silently joins two words, and `cargo fmt` will not say so.
+        assert!(
+            !description.contains("  ") && !description.contains('\n'),
+            "{tool:?} has broken line-continuation spacing: {description:?}"
+        );
+
+        // The point of the test: a copied arm leaves two tools claiming the
+        // same prose, and the model cannot tell them apart.
+        if let Some(other) = seen.insert(description, tool) {
+            panic!("{tool:?} and {other:?} share one description");
+        }
+    }
+}

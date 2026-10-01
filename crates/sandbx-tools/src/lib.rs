@@ -80,6 +80,43 @@ impl BuiltinTool {
         }
     }
 
+    /// What this tool does, in the words the model is shown.
+    ///
+    /// Lives here rather than in the agent because this is the string the model
+    /// steers on, and prose kept a crate away from the behaviour it describes
+    /// drifts from it (#54). The rustdoc on each `execute` stays the *why* for a
+    /// reader of the code; this is the *what* for a caller of the tool, so the
+    /// two say deliberately different things.
+    ///
+    /// Each one names the constraint that changes how the tool is called — an
+    /// absolute path, a literal rather than a pattern, a match that must be
+    /// unique — because a model that learns those from an error has already
+    /// spent a turn.
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Read => "Read a file's contents. Takes an absolute path.",
+            Self::Write => {
+                "Write a file, creating it or replacing its contents entirely. \
+                 Takes an absolute path."
+            }
+            Self::Bash => {
+                "Run a shell command. Use it for what the other tools do not \
+                 cover; prefer a dedicated tool wherever one fits."
+            }
+            Self::Edit => {
+                "Replace one exact occurrence of a string in a file. The text \
+                 must appear exactly once — an absent or ambiguous match is an \
+                 error, not a guess."
+            }
+            Self::Ls => "List a directory's entries. Directories are marked with a trailing slash.",
+            Self::Grep => {
+                "Search file contents beneath a directory for a literal string. \
+                 Not a regular expression."
+            }
+            Self::Find => "Find files beneath a directory whose name contains a substring.",
+        }
+    }
+
     /// JSON schema of this tool's arguments, derived from its input struct.
     ///
     /// Returned as `serde_json::Value` rather than `schemars::Schema`, because
