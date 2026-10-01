@@ -50,6 +50,6 @@ pub use command::{
 };
 pub use error::SandboxError;
 pub use fs_guard::FsGuard;
-pub use helper::BLOCKED_SYSCALLS;
+pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;
 pub use policy::{Axis, Grants, SandboxPolicy};

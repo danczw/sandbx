@@ -194,19 +194,6 @@ impl SandboxRun {
         let _ = std::io::stdout().write_all(&output.stdout);
         let _ = std::io::stderr().write_all(&output.stderr);
 
-        Ok(exit_code(&output.status))
+        Ok(sandbx_core::exit_code(&output.status))
     }
-}
-
-/// Translate a child's fate into an exit code, the way a shell does.
-///
-/// A command killed by the sandbox dies by signal and has no exit code of its
-/// own; reporting 0 there would say "succeeded" about a process seccomp shot.
-fn exit_code(status: &std::process::ExitStatus) -> i32 {
-    use std::os::unix::process::ExitStatusExt;
-
-    status
-        .code()
-        .or_else(|| status.signal().map(|signal| 128 + signal))
-        .unwrap_or(1)
 }
