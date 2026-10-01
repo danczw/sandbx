@@ -23,10 +23,20 @@ pub enum Axis {
 
 /// What an [`Axis`] confers, in terms no enforcement layer owns.
 ///
-/// Three booleans rather than Landlock bits or `FsGuard` buckets, because the
-/// two layers have to agree and neither one's vocabulary can express the other.
-/// Each layer maps these onto its own: `helper.rs` into `BitFlags<AccessFs>`,
-/// `fs_guard.rs` into its readable/writable roots.
+/// Three booleans rather than Landlock bits or `FsGuard` buckets. The reason is
+/// layering, not convenience: a table carrying the kernel's rights, the guard's
+/// buckets and the helper's flag spellings together — which is how this was first
+/// proposed — would pull three downstream vocabularies into the one type that has
+/// none, so `policy.rs` would depend on the `landlock` crate and on how a child
+/// process is invoked. (`AccessFs::from_read` not being a `const fn` also rules
+/// out a literal `const` table, but that is the incidental reason, and a const
+/// workaround would not make the coupling a good idea.)
+///
+/// Each layer maps these onto its own vocabulary instead: `helper.rs` into
+/// `BitFlags<AccessFs>`, `fs_guard.rs` into its readable/writable roots. **Every
+/// consumer destructures this struct rather than reading its fields**, so a right
+/// added here fails to compile at each site that has to map it — which is the
+/// irreducible residue of two mechanisms that cannot speak each other's language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grants {
     /// May see the path's contents.
