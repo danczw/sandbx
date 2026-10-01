@@ -846,9 +846,6 @@ mod tests {
     }
 
     /// Every right Landlock will enforce on `path`, across every grant naming it.
-    ///
-    /// The kernel unions the rules it holds for a path, so this — not any single
-    /// rule — is what a policy actually confers there.
     fn union(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
         fs_rules(policy)
             .into_iter()
@@ -896,11 +893,8 @@ mod tests {
     /// Every axis keeps its grant on a regular file, minus what a file cannot
     /// carry.
     ///
-    /// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular
-    /// file and the kernel rejects the whole ruleset if one is attached to it, so
-    /// a policy naming a file must come out narrowed. Stated over `Axis::ALL`
-    /// against the table, and pure: until the narrowing moved into `rights_for`
-    /// it could only be exercised by creating a real file on disk (#52).
+    /// The file column of [`rights_for`], stated over `Axis::ALL`; why a file
+    /// cannot carry the rest is documented there.
     #[test]
     fn rights_for_narrows_a_regular_file() {
         for axis in crate::Axis::ALL {
@@ -949,6 +943,15 @@ mod tests {
     ///
     /// `AccessFs::from_read` bundles `Execute` with `ReadFile`/`ReadDir`, so this
     /// is a subtraction that has to happen rather than a default (#19).
+    ///
+    /// This and the two below look like instances of
+    /// `rights_follow_the_axis_table` and are not: that one reads its expectation
+    /// out of [`Axis::grants`], so it cannot catch a change to the table's own
+    /// rows — flip `Axis::Write` to confer execute and it still passes. These
+    /// three hard-code the answer, and are the only tests that fail. Do not fold
+    /// them into the table-driven ones.
+    ///
+    /// [`Axis::grants`]: crate::Axis::grants
     #[test]
     fn a_read_grant_never_carries_execute() {
         for target_is_dir in [true, false] {
@@ -1066,24 +1069,26 @@ mod tests {
         assert_eq!(fs_rules(&policy).len(), 3);
     }
 
-    /// Grants on one path sum to exactly what they say, and never to more.
+    /// No combination of grants confers execute.
     ///
-    /// `SECURITY.md`'s headline claim is that no grant implies execute — and the
-    /// honest form of that question is about the *union*, because Landlock unions
-    /// the rules it holds for a path, so no single rule is the answer where two
-    /// grants overlap. Read plus write on one directory is the case that matters:
-    /// it is what `sandbx --allow-write` produces, and until the seam carried the
-    /// axis the union could not be asked for at all (#52).
+    /// `SECURITY.md`'s headline claim, asked in the form it actually takes:
+    /// Landlock *unions* the rules it holds for a path, so where two grants
+    /// overlap no single rule is the answer. Read plus write on one directory is
+    /// the case that matters — it is what `sandbx --allow-write` produces — and
+    /// until the seam carried the axis the union could not be asked for at all
+    /// (#52).
     ///
     /// Stated over the powerset of `Axis::ALL`, since a policy may grant any
-    /// combination on one path, and so a fourth axis needs no edit here. Both
-    /// sides read [`Axis::grants`], so what this pins is the *composition* — that
-    /// two grants on a path sum rather than widen — and not the table's own rows,
-    /// which `rights_follow_the_axis_table` covers.
+    /// combination on one path. The expectation is deliberately *not* read off
+    /// [`Axis::grants`]: naming `ReadExecute` literally is what makes this catch
+    /// a table row that starts conferring execute, where an expectation derived
+    /// from the table would move with the change and pass. A fourth axis that
+    /// confers execute therefore fails here — which is the review that
+    /// `SECURITY.md`'s claim should force, not an edit to make quietly.
     ///
     /// [`Axis::grants`]: crate::Axis::grants
     #[test]
-    fn overlapping_grants_sum_to_what_they_say_and_no_more() {
+    fn no_combination_of_grants_confers_execute() {
         let dir = tempdir();
 
         for mask in 0..(1u32 << crate::Axis::ALL.len()) {
@@ -1097,37 +1102,13 @@ mod tests {
             let policy = axes.iter().fold(SandboxPolicy::default(), |policy, &axis| {
                 policy.grant(axis, dir.path())
             });
-            let granted = union(&policy, dir.path());
 
-            // Destructured, not read field by field — see `Grants`.
-            let mut sum = crate::Grants {
-                read: false,
-                write: false,
-                execute: false,
-            };
-            for axis in &axes {
-                let crate::Grants {
-                    read,
-                    write,
-                    execute,
-                } = axis.grants();
-                sum.read |= read;
-                sum.write |= write;
-                sum.execute |= execute;
-            }
-
-            for (right, expected, name) in [
-                (AccessFs::ReadDir, sum.read, "read"),
-                (AccessFs::WriteFile, sum.write, "write"),
-                (AccessFs::Execute, sum.execute, "execute"),
-            ] {
-                assert_eq!(
-                    granted.contains(right),
-                    expected,
-                    "{axes:?} together confer {name}={expected}, but the kernel \
-                     layer disagrees about {right:?}"
-                );
-            }
+            assert_eq!(
+                union(&policy, dir.path()).contains(AccessFs::Execute),
+                axes.contains(&crate::Axis::ReadExecute),
+                "{axes:?} on one path: execute must come from ReadExecute and \
+                 nothing else"
+            );
         }
     }
 
