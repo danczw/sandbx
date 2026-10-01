@@ -142,8 +142,13 @@ impl SandboxRun {
         // separation is a trap: `--allow-write ~/project` would let a tool
         // rewrite the tree and then fail to `cat` it back. The narrow form stays
         // reachable through the API (#49).
-        for path in self.paths(Axis::Write) {
-            policy = policy.grant(Axis::Read, path);
+        // Keyed to what the axis *confers*, not to the `Write` variant: a second
+        // write-conferring axis added later would otherwise get a flag, grant
+        // write, and silently miss this affordance — the same trap on a new flag.
+        for axis in Axis::ALL.into_iter().filter(|axis| axis.grants().write) {
+            for path in self.paths(axis) {
+                policy = policy.grant(Axis::Read, path);
+            }
         }
 
         if self.allow_network {
