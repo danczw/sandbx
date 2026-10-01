@@ -42,8 +42,10 @@ pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         }
     })?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    // Borrowed, not owned: on the normal all-valid-UTF-8 path `from_utf8_lossy`
+    // hands back the bytes unchanged, and `combine` only needs a `&str`.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     if output.status.success() {
         return Ok(ToolOutput {
