@@ -130,8 +130,9 @@ enum RawContentBlockStart {
         name: String,
     },
     /// A block type this file does not model — `server_tool_use`,
-    /// `web_search_tool_result`, a `fallback` marker. Tracked as an opaque open
-    /// block so its deltas and its `content_block_stop` stay accounted for.
+    /// `web_search_tool_result`, a `fallback` marker. Parsed rather than rejected
+    /// so an unmodeled block does not fail the turn; nothing is accumulated for
+    /// it, and its deltas and `content_block_stop` are ignored in turn.
     #[serde(other)]
     Unknown,
 }
@@ -188,17 +189,16 @@ pub(crate) struct RawApiErrorEnvelope {
     pub(crate) error: RawApiErrorBody,
 }
 
-/// Per-index accumulation state for an in-flight content block.
-enum PartialBlock {
-    Text,
-    Thinking,
-    ToolUse {
-        id: String,
-        name: String,
-        partial_json: String,
-    },
-    /// An open block of a type this file does not model.
-    Unknown,
+/// Per-index accumulation state for an in-flight `tool_use` block.
+///
+/// Only `tool_use` is tracked, because it is the only block type whose deltas
+/// have to be accumulated to mean anything — text and thinking deltas are emitted
+/// as they arrive, and an unmodeled block has nothing to accumulate. An enum
+/// covering the other kinds held variants that were inserted and never read.
+struct ToolUseBlock {
+    id: String,
+    name: String,
+    partial_json: String,
 }
 
 /// Map a stream of raw SSE frames into [`AgentEvent`]s.
@@ -226,7 +226,7 @@ struct WireState<S> {
     /// Keyed by block index. A `BTreeMap`, not a `HashMap`: blocks still open
     /// when the turn ends are flushed in index order, and a randomized
     /// iteration order would make that sequence unreproducible.
-    blocks: BTreeMap<u32, PartialBlock>,
+    blocks: BTreeMap<u32, ToolUseBlock>,
     /// The turn's counts so far, each field holding the most recent value the
     /// API reported for it.
     usage: RawUsage,
@@ -265,15 +265,12 @@ impl<S> WireState<S> {
     /// was never given.
     fn flush_open_blocks(&mut self) {
         for (index, block) in std::mem::take(&mut self.blocks) {
-            if let PartialBlock::ToolUse {
-                id,
-                name,
-                partial_json,
-            } = block
-            {
-                self.pending
-                    .push_back(tool_call_event(index, id, name, &partial_json));
-            }
+            self.pending.push_back(tool_call_event(
+                index,
+                block.id,
+                block.name,
+                &block.partial_json,
+            ));
         }
     }
 }
@@ -367,17 +364,19 @@ where
                 index,
                 content_block,
             } => {
-                let block = match content_block {
-                    RawContentBlockStart::Text { .. } => PartialBlock::Text,
-                    RawContentBlockStart::Thinking { .. } => PartialBlock::Thinking,
-                    RawContentBlockStart::ToolUse { id, name } => PartialBlock::ToolUse {
-                        id,
-                        name,
-                        partial_json: String::new(),
-                    },
-                    RawContentBlockStart::Unknown => PartialBlock::Unknown,
-                };
-                state.blocks.insert(index, block);
+                // Only `tool_use` opens accumulation state; the other kinds are
+                // parsed so they do not fail the turn, and then have nothing to
+                // keep.
+                if let RawContentBlockStart::ToolUse { id, name } = content_block {
+                    state.blocks.insert(
+                        index,
+                        ToolUseBlock {
+                            id,
+                            name,
+                            partial_json: String::new(),
+                        },
+                    );
+                }
             }
             RawStreamEvent::ContentBlockDelta { index, delta } => match delta {
                 RawDelta::TextDelta { text } => {
@@ -394,26 +393,20 @@ where
                     // Discarded — see AgentEvent::Thinking's doc.
                 }
                 RawDelta::InputJsonDelta { partial_json } => {
-                    if let Some(PartialBlock::ToolUse {
-                        partial_json: buffer,
-                        ..
-                    }) = state.blocks.get_mut(&index)
-                    {
-                        buffer.push_str(&partial_json);
+                    if let Some(block) = state.blocks.get_mut(&index) {
+                        block.partial_json.push_str(&partial_json);
                     }
                 }
                 RawDelta::Unknown => {}
             },
             RawStreamEvent::ContentBlockStop { index } => {
-                if let Some(PartialBlock::ToolUse {
-                    id,
-                    name,
-                    partial_json,
-                }) = state.blocks.remove(&index)
-                {
-                    state
-                        .pending
-                        .push_back(tool_call_event(index, id, name, &partial_json));
+                if let Some(block) = state.blocks.remove(&index) {
+                    state.pending.push_back(tool_call_event(
+                        index,
+                        block.id,
+                        block.name,
+                        &block.partial_json,
+                    ));
                 }
             }
             RawStreamEvent::MessageDelta { delta, usage } => {
