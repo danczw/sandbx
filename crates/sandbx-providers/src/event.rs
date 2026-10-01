@@ -5,6 +5,12 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentEvent {
     /// An incremental chunk of assistant-visible text.
+    ///
+    /// Where one text block ends and the next begins is deliberately not recoverable:
+    /// a `content_block_stop` is only reported for a `tool_use` block, so a consumer
+    /// rebuilding content coalesces consecutive text blocks into one. That is lossless
+    /// for replay — the concatenation is identical and the API accepts a single text
+    /// block — but it is a contract, not an accident, and `run_turn` relies on it.
     Text {
         /// The new text to append; not the accumulated text so far.
         delta: String,
@@ -12,10 +18,16 @@ pub enum AgentEvent {
     /// An incremental chunk of the model's extended-thinking text.
     ///
     /// The incremental cryptographic signature Anthropic streams alongside a
-    /// thinking block (needed to replay it into a later turn) is *discarded*:
-    /// nothing threads history back into a request today, so there is nowhere
-    /// for it to go. Accumulate it in `wire/accumulate.rs` and add a field here when
-    /// something does.
+    /// thinking block (needed to replay it into a later turn) is *discarded*, and
+    /// [`ContentBlock`] has no thinking variant to put one in, so a thinking block
+    /// cannot be replayed at all. `sandbx-agent`'s `run_turn` does thread history back
+    /// into a request, and drops thinking on the way. Harmless while
+    /// [`MessagesRequest`] cannot enable extended thinking in the first place;
+    /// accumulate the signature in `wire/accumulate.rs` and add a field here when it
+    /// can. Tracked as #85.
+    ///
+    /// [`ContentBlock`]: crate::ContentBlock
+    /// [`MessagesRequest`]: crate::MessagesRequest
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
