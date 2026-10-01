@@ -1,4 +1,4 @@
-use crate::SandboxPolicy;
+use crate::{Axis, SandboxPolicy};
 
 /// `tracing` target carrying the audit trail.
 ///
@@ -76,12 +76,22 @@ impl<'a> AuditEvent<'a> {
     }
 
     /// Record a spawn, summarising the policy rather than reproducing it.
+    ///
+    /// The counts are destructured out of one pass over [`Axis::ALL`] rather than
+    /// read axis by axis, which is this site's compile-time backstop: a fourth
+    /// axis makes the array lengths disagree and the build fails here. It cannot
+    /// derive its *fields* the way the enforcement layers derive their rules —
+    /// `tracing` needs static field names — so being forced to notice is the most
+    /// this site can offer, and it is what the other four axes' worth of silent
+    /// drift (#51) cost.
     pub fn spawned(program: &'a str, policy: &SandboxPolicy) -> Self {
+        let [readable, writable, executable] = Axis::ALL.map(|axis| policy.paths(axis).len());
+
         Self::Spawned {
             program,
-            readable: policy.readable_paths().len(),
-            writable: policy.writable_paths().len(),
-            executable: policy.executable_paths().len(),
+            readable,
+            writable,
+            executable,
             network: policy.allows_network(),
             unix_sockets: policy.allows_unix_sockets(),
         }
