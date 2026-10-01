@@ -117,12 +117,46 @@ impl BuiltinTool {
 /// Turn a guard refusal into the form the model sees.
 ///
 /// Shared so every filesystem tool reports a refusal in the same shape.
-pub(crate) fn denied(path: &std::path::Path) -> impl Fn(sandbx_core::SandboxError) -> ToolError {
-    let subject = path.display().to_string();
-    move |error| ToolError::Denied {
-        subject: subject.clone(),
+pub(crate) fn denied(path: &std::path::Path, error: sandbx_core::SandboxError) -> ToolError {
+    ToolError::Denied {
+        subject: path.display().to_string(),
         reason: error.to_string(),
     }
+}
+
+/// Turn a failed filesystem operation into the form the model sees.
+///
+/// `verb` names what was attempted, so the subject reads the way the tool's own
+/// name would (`read /etc/hosts`, `list /tmp`) rather than naming the syscall.
+pub(crate) fn failed(
+    verb: &str,
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> ToolError {
+    ToolError::Failed {
+        subject: format!("{verb} {}", path.display()),
+        detail: error.to_string(),
+    }
+}
+
+/// Read a file's contents through the guard.
+///
+/// The guard check lives here, not at the call sites, so no in-process tool can
+/// read a file by forgetting it. Returns an open-handle read rather than a path:
+/// a path would be re-resolved on open, leaving a window for the leaf to be
+/// swapped for a symlink after the policy check.
+pub(crate) fn read_file(
+    path: &std::path::Path,
+    ctx: &ExecutionContext,
+) -> Result<String, ToolError> {
+    let mut file = ctx
+        .guard()
+        .open_read(path)
+        .map_err(|error| denied(path, error))?;
+
+    let mut content = String::new();
+    std::io::Read::read_to_string(&mut file, &mut content).map_err(|error| failed("read", path, error))?;
+    Ok(content)
 }
 
 /// Render a list of results, bounded, distinguishing "none" from empty output.

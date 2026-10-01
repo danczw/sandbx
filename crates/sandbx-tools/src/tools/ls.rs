@@ -19,19 +19,14 @@ pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, Too
     let resolved = ctx
         .guard()
         .check_read(&input.path)
-        .map_err(crate::denied(&input.path))?;
+        .map_err(|error| crate::denied(&input.path, error))?;
 
-    let entries = std::fs::read_dir(&resolved).map_err(|error| ToolError::Failed {
-        subject: format!("list {}", input.path.display()),
-        detail: error.to_string(),
-    })?;
+    let entries = std::fs::read_dir(&resolved)
+        .map_err(|error| crate::failed("list", &input.path, error))?;
 
     let mut names = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|error| ToolError::Failed {
-            subject: format!("list {}", input.path.display()),
-            detail: error.to_string(),
-        })?;
+        let entry = entry.map_err(|error| crate::failed("list", &input.path, error))?;
         let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
         let name = entry.file_name().to_string_lossy().into_owned();
         names.push(if is_dir { format!("{name}/") } else { name });

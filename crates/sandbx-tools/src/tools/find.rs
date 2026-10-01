@@ -18,7 +18,7 @@ pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     let files = ctx
         .guard()
         .walk_readable(&input.path)
-        .map_err(crate::denied(&input.path))?;
+        .map_err(|error| crate::denied(&input.path, error))?;
 
     // Matched against the name being reported, not the name it was reached by:
     // reporting one path while having matched a different one gives the model a
