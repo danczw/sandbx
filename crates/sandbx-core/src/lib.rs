@@ -53,4 +53,4 @@ pub use fs_guard::FsGuard;
 pub use helper::BLOCKED_SYSCALLS;
 pub use helper::exec_sandboxed;
 pub use helper_args::HelperArgs;
-pub use policy::SandboxPolicy;
+pub use policy::{Axis, Grants, SandboxPolicy};

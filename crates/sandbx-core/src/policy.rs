@@ -3,6 +3,75 @@ use std::path::{Path, PathBuf};
 /// Where a system keeps the binaries and libraries a command needs to start.
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 
+/// A kind of access a policy can grant on a path.
+///
+/// The axis *names* a grant; [`Axis::grants`] says what it confers. Those two
+/// together are the only statement of filesystem policy semantics in the
+/// workspace: the kernel layer, the in-process guard, the helper argv and the
+/// audit record all derive from them rather than restating them. Two layers
+/// restating the same semantics by hand is what produced #49 and #50, where one
+/// enforced what the other refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Axis {
+    /// See the path, and nothing more.
+    Read,
+    /// Change the path, without being able to read it back.
+    Write,
+    /// See the path *and* run what is in it. The one axis that confers execute.
+    ReadExecute,
+}
+
+/// What an [`Axis`] confers, in terms no enforcement layer owns.
+///
+/// Three booleans rather than Landlock bits or `FsGuard` buckets, because the
+/// two layers have to agree and neither one's vocabulary can express the other.
+/// Each layer maps these onto its own: `helper.rs` into `BitFlags<AccessFs>`,
+/// `fs_guard.rs` into its readable/writable roots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grants {
+    /// May see the path's contents.
+    pub read: bool,
+    /// May change the path. Does not imply `read`.
+    pub write: bool,
+    /// May execute what the path contains.
+    pub execute: bool,
+}
+
+impl Axis {
+    /// Every axis, in the order a policy and the helper argv carry them.
+    ///
+    /// A `const` array rather than an iterator trait: consumers loop over it to
+    /// derive their own tables, and two of them — the audit record's
+    /// fixed-arity destructuring, and `Axis::ALL.map(..)` — need the length at
+    /// compile time, which is what makes a forgotten axis a build failure there
+    /// rather than a silently missing grant.
+    pub const ALL: [Axis; 3] = [Axis::Read, Axis::Write, Axis::ReadExecute];
+
+    /// What this axis grants. **The table.**
+    ///
+    /// Adding an axis is adding a row here; the compiler then names every site
+    /// that cannot derive its answer from one.
+    ///
+    /// The asymmetry is deliberate and runs one way: `ReadExecute` confers read,
+    /// because a program needs execute on the binary *and* read on the libraries
+    /// its loader pulls in, so an execute-only grant would start nothing. No
+    /// grant confers execute, and write confers neither — a write-only drop
+    /// directory stays unreadable. `SECURITY.md` claims exactly this.
+    pub const fn grants(self) -> Grants {
+        let (read, write, execute) = match self {
+            Self::Read => (true, false, false),
+            Self::Write => (false, true, false),
+            Self::ReadExecute => (true, false, true),
+        };
+
+        Grants {
+            read,
+            write,
+            execute,
+        }
+    }
+}
+
 /// What a sandboxed process is allowed to do.
 ///
 /// Default-deny: a policy grants nothing until something is explicitly added.
@@ -20,7 +89,7 @@ pub struct SandboxPolicy {
 impl SandboxPolicy {
     /// Paths the process may read.
     pub fn readable_paths(&self) -> &[PathBuf] {
-        &self.readable
+        self.paths(Axis::Read)
     }
 
     /// Paths the process may write.
@@ -28,7 +97,7 @@ impl SandboxPolicy {
     /// Writable does not imply readable — the two are granted separately, so a
     /// write-only drop directory stays unreadable.
     pub fn writable_paths(&self) -> &[PathBuf] {
-        &self.writable
+        self.paths(Axis::Write)
     }
 
     /// Paths the process may read *and* execute.
@@ -39,7 +108,51 @@ impl SandboxPolicy {
     ///
     /// [`readable_paths`]: Self::readable_paths
     pub fn executable_paths(&self) -> &[PathBuf] {
-        &self.executable
+        self.paths(Axis::ReadExecute)
+    }
+
+    /// Paths granted on `axis`.
+    ///
+    /// The named accessors above are this with the axis fixed. A consumer that
+    /// has to treat every axis alike — the helper argv, the Landlock rules, the
+    /// audit counts — goes through [`Axis::ALL`] and this, so adding an axis
+    /// does not mean finding every such loop by hand.
+    pub fn paths(&self, axis: Axis) -> &[PathBuf] {
+        match axis {
+            Axis::Read => &self.readable,
+            Axis::Write => &self.writable,
+            Axis::ReadExecute => &self.executable,
+        }
+    }
+
+    /// Every grant this policy holds, as `(axis, path)` pairs.
+    ///
+    /// In [`Axis::ALL`] order, and one pair per grant rather than per path: a
+    /// path granted on two axes appears twice, because the two grants are
+    /// different permissions and a consumer that collapsed them would be
+    /// enforcing neither.
+    pub fn granted_paths(&self) -> impl Iterator<Item = (Axis, &Path)> {
+        Axis::ALL.into_iter().flat_map(move |axis| {
+            self.paths(axis)
+                .iter()
+                .map(move |path| (axis, path.as_path()))
+        })
+    }
+
+    /// Grant `axis` access to `path`.
+    ///
+    /// The one place a path enters a policy; the named `allow_*` methods are
+    /// this with the axis fixed, and they are where the documentation of what
+    /// each one means lives.
+    #[must_use]
+    pub fn grant(mut self, axis: Axis, path: impl AsRef<Path>) -> Self {
+        let paths = match axis {
+            Axis::Read => &mut self.readable,
+            Axis::Write => &mut self.writable,
+            Axis::ReadExecute => &mut self.executable,
+        };
+        paths.push(path.as_ref().to_path_buf());
+        self
     }
 
     /// Whether the process may reach the network.
@@ -60,9 +173,8 @@ impl SandboxPolicy {
 
     /// Grant read access to `path`.
     #[must_use]
-    pub fn allow_read(mut self, path: impl AsRef<Path>) -> Self {
-        self.readable.push(path.as_ref().to_path_buf());
-        self
+    pub fn allow_read(self, path: impl AsRef<Path>) -> Self {
+        self.grant(Axis::Read, path)
     }
 
     /// Grant write access to `path`, and nothing else.
@@ -73,9 +185,8 @@ impl SandboxPolicy {
     /// what a person at a terminal wants — but the narrow form is what this
     /// method gives, and it is what a library caller composes from.
     #[must_use]
-    pub fn allow_write(mut self, path: impl AsRef<Path>) -> Self {
-        self.writable.push(path.as_ref().to_path_buf());
-        self
+    pub fn allow_write(self, path: impl AsRef<Path>) -> Self {
+        self.grant(Axis::Write, path)
     }
 
     /// Grant read *and* execute access to `path`.
@@ -90,9 +201,8 @@ impl SandboxPolicy {
     ///
     /// [`allow_read`]: Self::allow_read
     #[must_use]
-    pub fn allow_read_execute(mut self, path: impl AsRef<Path>) -> Self {
-        self.executable.push(path.as_ref().to_path_buf());
-        self
+    pub fn allow_read_execute(self, path: impl AsRef<Path>) -> Self {
+        self.grant(Axis::ReadExecute, path)
     }
 
     /// Grant read and execute access to the paths a command needs to start.
