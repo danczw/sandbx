@@ -82,9 +82,12 @@ impl BuiltinTool {
 
     /// JSON schema of this tool's arguments, derived from its input struct.
     ///
-    /// Returned as `serde_json::Value` rather than `schemars::Schema`: every
-    /// caller converts it on the way to a provider request, so converting here
-    /// keeps a foreign type out of the signature.
+    /// Returned as `serde_json::Value` rather than `schemars::Schema`, because
+    /// that is the type the only destination wants: a tool definition in a
+    /// provider request carries a JSON value, so converting here keeps a foreign
+    /// type out of the signature. A caller needing `Schema`'s own API —
+    /// validation, `$ref` resolution — should take the `schema_for!` call rather
+    /// than re-parsing this.
     pub fn input_schema(&self) -> serde_json::Value {
         match self {
             Self::Read => schemars::schema_for!(tools::read::ReadInput).to_value(),
