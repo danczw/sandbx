@@ -8,7 +8,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use sandbx_core::{SandboxError, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{Axis, SandboxError, SandboxPolicy, SandboxedCommand};
 
 #[derive(Debug, clap::Parser)]
 #[command(
@@ -103,6 +103,20 @@ pub struct SandboxRun {
 }
 
 impl SandboxRun {
+    /// The paths given for `axis`, whichever flag collects them.
+    ///
+    /// One exhaustive match, so a new axis is a compile error here rather than a
+    /// flag that parses and grants nothing. The flags themselves stay separate
+    /// fields: each carries its own `--help` text, which is where a person at a
+    /// terminal learns what the axis means.
+    fn paths(&self, axis: Axis) -> &[PathBuf] {
+        match axis {
+            Axis::Read => &self.allow_read,
+            Axis::Write => &self.allow_write,
+            Axis::ReadExecute => &self.allow_exec,
+        }
+    }
+
     /// The policy these flags describe.
     ///
     /// Starts from [`SandboxPolicy::default`], which grants nothing, so an
@@ -116,20 +130,22 @@ impl SandboxRun {
     pub fn policy(&self) -> SandboxPolicy {
         let mut policy = SandboxPolicy::default().allow_system_executables();
 
-        for path in &self.allow_read {
-            policy = policy.allow_read(path);
+        for axis in Axis::ALL {
+            for path in self.paths(axis) {
+                policy = policy.grant(axis, path);
+            }
         }
-        // Read as well as write. The library keeps the axes separate so a
-        // caller can build a write-only drop directory, but at the command line
-        // that separation is a trap: `--allow-write ~/project` would let a tool
+
+        // Read as well as write, and the one place this CLI grants more than the
+        // flag's own axis. The library keeps the axes separate so a caller can
+        // build a write-only drop directory, but at the command line that
+        // separation is a trap: `--allow-write ~/project` would let a tool
         // rewrite the tree and then fail to `cat` it back. The narrow form stays
         // reachable through the API (#49).
-        for path in &self.allow_write {
-            policy = policy.allow_read(path).allow_write(path);
+        for path in self.paths(Axis::Write) {
+            policy = policy.grant(Axis::Read, path);
         }
-        for path in &self.allow_exec {
-            policy = policy.allow_read_execute(path);
-        }
+
         if self.allow_network {
             policy = policy.allow_network();
         }
