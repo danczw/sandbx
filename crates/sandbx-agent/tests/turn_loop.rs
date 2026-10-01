@@ -7,7 +7,6 @@
 //! has no `PartialEq` to compare against.
 
 use std::collections::VecDeque;
-use std::future::Future;
 
 use sandbx_agent::{Turn, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
@@ -53,21 +52,14 @@ impl Script {
         }
     }
 
-    /// Deliberately not an `async fn`: the future has to own everything it needs
-    /// so `run_turn`'s single `Fut` type does not capture the `&mut self` borrow
-    /// taken here. `+ use<>` is what states that, the same idiom
-    /// `AnthropicClient::stream_chat` uses for the same reason.
-    fn open(
-        &mut self,
-        request: MessagesRequest,
-    ) -> impl Future<Output = Result<EventStream, ProviderError>> + use<> {
+    async fn open(&mut self, request: MessagesRequest) -> Result<EventStream, ProviderError> {
         self.sent.push(request.clone());
         let events = self
             .rounds
             .pop_front()
             .or_else(|| self.forever.clone())
             .unwrap_or_default();
-        std::future::ready(Ok(canned(events)))
+        Ok(canned(events))
     }
 }
 
@@ -115,9 +107,14 @@ fn wire(messages: &[RequestMessage]) -> serde_json::Value {
 async fn text_deltas_accumulate_into_one_block() {
     let mut script = Script::new([vec![text("Hel"), text("lo"), stop(StopReason::EndTurn)]]);
 
-    let messages = run_turn(|r| script.open(r), turn(&[], &[]), &ctx(), |_| {})
-        .await
-        .unwrap();
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(),
+        |_| {},
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         wire(&messages),
@@ -144,7 +141,7 @@ async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
     let mut seen = Vec::new();
 
     let messages = run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[]),
         &ctx(),
         |event: &AgentEvent| seen.push(event.clone()),
@@ -181,7 +178,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
     let mut seen = Vec::new();
 
     run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[]),
         &ctx(),
         |event: &AgentEvent| seen.push(event.clone()),
@@ -199,9 +196,14 @@ async fn the_observer_sees_every_event_in_arrival_order() {
 async fn a_round_that_produced_nothing_appends_no_message() {
     let mut script = Script::new([vec![stop(StopReason::EndTurn)]]);
 
-    let messages = run_turn(|r| script.open(r), turn(&[], &[]), &ctx(), |_| {})
-        .await
-        .unwrap();
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(),
+        |_| {},
+    )
+    .await
+    .unwrap();
 
     assert!(messages.is_empty(), "got {:?}", wire(&messages));
 }
@@ -213,9 +215,14 @@ async fn a_round_that_produced_nothing_appends_no_message() {
 async fn a_stream_that_never_reports_a_stop_is_an_error() {
     let mut script = Script::new([vec![text("cut off")]]);
 
-    let error = run_turn(|r| script.open(r), turn(&[], &[]), &ctx(), |_| {})
-        .await
-        .expect_err("a stream with no Stop event must not succeed");
+    let error = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(),
+        |_| {},
+    )
+    .await
+    .expect_err("a stream with no Stop event must not succeed");
 
     assert!(
         matches!(error, TurnError::StreamEndedWithoutStop),
@@ -237,7 +244,7 @@ async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
 
     run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&history, &[BuiltinTool::Read]),
         &ctx(),
         |_| {},
@@ -284,7 +291,7 @@ async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
     ]);
 
     let messages = run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
@@ -342,7 +349,7 @@ async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
     ]);
 
     let messages = run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
@@ -384,7 +391,7 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
     ]);
 
     let messages = run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
@@ -427,7 +434,7 @@ async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
     ]);
 
     let messages = run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
@@ -464,7 +471,7 @@ async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
     ]);
 
     let messages = run_turn(
-        |r| script.open(r),
+        async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx(),
         |_| {},
@@ -503,7 +510,7 @@ async fn a_turn_ends_once_it_runs_out_of_rounds() {
         ..TurnLimits::default()
     };
 
-    let error = run_turn(|r| script.open(r), asking_forever, &ctx, |_| {})
+    let error = run_turn(async |r| script.open(r).await, asking_forever, &ctx, |_| {})
         .await
         .expect_err("a turn that never stops asking must not run forever");
 
@@ -550,14 +557,9 @@ async fn a_round_that_never_finishes_streaming_times_out() {
         ..TurnLimits::default()
     };
 
-    let error = run_turn(
-        |_| std::future::ready(Ok(stalled())),
-        stalling,
-        &ctx(),
-        |_| {},
-    )
-    .await
-    .expect_err("a stream that never finishes must not hold the turn open");
+    let error = run_turn(async |_| Ok(stalled()), stalling, &ctx(), |_| {})
+        .await
+        .expect_err("a stream that never finishes must not hold the turn open");
 
     assert!(
         matches!(error, TurnError::TimedOut { after } if after == std::time::Duration::from_secs(30)),
@@ -574,4 +576,27 @@ fn the_default_stream_bound_is_the_documented_one() {
         TurnLimits::default().stream_timeout,
         std::time::Duration::from_secs(300)
     );
+}
+
+/// The call shape `run_turn`'s own docs promise, compiled but never run: a real
+/// `Provider`, borrowed by a plain non-async closure. `AsyncFnMut` is satisfied here
+/// by the blanket impl for `FnMut(..) -> Future`, so if that ever stopped covering
+/// this shape the build would fail rather than leave the doc comment lying.
+///
+/// Also pins that the returned future is `Send`. That is the one thing giving up a
+/// named `Fut` type parameter could have cost: a non-`Send` future cannot be
+/// `tokio::spawn`ed, which is exactly what a TUI needs to do with a turn.
+#[allow(dead_code)]
+fn the_documented_call_shape_compiles_and_stays_spawnable(
+    provider: &'static sandbx_providers::Provider,
+    ctx: &'static ExecutionContext,
+) {
+    fn assert_send<T: Send>(_: T) {}
+
+    assert_send(run_turn(
+        |request| provider.stream_chat(request),
+        turn(&[], &[]),
+        ctx,
+        |_| {},
+    ));
 }
