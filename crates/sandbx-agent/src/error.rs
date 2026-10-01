@@ -33,6 +33,17 @@ pub enum TurnError {
         rounds: usize,
     },
 
+    /// One round outran its streaming bound and the turn was abandoned.
+    ///
+    /// Distinct from [`Provider`]: the stream was healthy, it simply did not finish
+    /// in time, so a retry of the same turn may well succeed.
+    ///
+    /// [`Provider`]: Self::Provider
+    TimedOut {
+        /// The bound it exceeded.
+        after: std::time::Duration,
+    },
+
     /// A tool's blocking task did not return a result.
     ///
     /// Reachable only if the tool panicked, since the task is awaited to
@@ -56,6 +67,9 @@ impl std::fmt::Display for TurnError {
             Self::RoundLimit { rounds } => {
                 write!(f, "still asking for tools after {rounds} rounds")
             }
+            Self::TimedOut { after } => {
+                write!(f, "a round did not finish streaming within {after:?}")
+            }
             Self::ToolPanicked { name } => write!(f, "the {name} tool panicked"),
         }
     }
@@ -65,9 +79,10 @@ impl std::error::Error for TurnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Provider(error) => Some(error),
-            Self::StreamEndedWithoutStop | Self::RoundLimit { .. } | Self::ToolPanicked { .. } => {
-                None
-            }
+            Self::StreamEndedWithoutStop
+            | Self::RoundLimit { .. }
+            | Self::TimedOut { .. }
+            | Self::ToolPanicked { .. } => None,
         }
     }
 }
