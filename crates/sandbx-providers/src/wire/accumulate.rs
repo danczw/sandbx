@@ -62,6 +62,32 @@ struct WireState<S> {
     ended: bool,
 }
 
+impl RawUsage {
+    /// Overlay a newer report: each field it actually carries wins, each field
+    /// it omits keeps the value already held.
+    ///
+    /// Here rather than next to the struct because this is the fold rule, not
+    /// part of the shape: `message_delta` restates the counts cumulatively, so
+    /// what the turn reports is the newest value seen per field and nothing
+    /// about the payload says that.
+    fn absorb(&mut self, newer: Self) {
+        self.input_tokens = newer.input_tokens.or(self.input_tokens);
+        self.output_tokens = newer.output_tokens.or(self.output_tokens);
+        self.cache_creation_input_tokens = newer
+            .cache_creation_input_tokens
+            .or(self.cache_creation_input_tokens);
+        self.cache_read_input_tokens = newer
+            .cache_read_input_tokens
+            .or(self.cache_read_input_tokens);
+    }
+
+    /// Whether the API reported any count at all. A turn that reported none
+    /// emits no [`AgentEvent::Usage`] rather than one full of zeros.
+    fn reported(&self) -> bool {
+        *self != Self::default()
+    }
+}
+
 impl<S> WireState<S> {
     /// Queue the turn's token accounting, if there was any to report.
     fn push_usage(&mut self) {

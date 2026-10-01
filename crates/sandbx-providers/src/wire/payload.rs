@@ -72,28 +72,6 @@ pub(super) struct RawUsage {
     pub(super) cache_read_input_tokens: Option<u32>,
 }
 
-impl RawUsage {
-    /// Overlay a newer report: each field it actually carries wins, each field
-    /// it omits keeps the value already held.
-    pub(super) fn absorb(&mut self, newer: Self) {
-        self.input_tokens = newer.input_tokens.or(self.input_tokens);
-        self.output_tokens = newer.output_tokens.or(self.output_tokens);
-        self.cache_creation_input_tokens = newer
-            .cache_creation_input_tokens
-            .or(self.cache_creation_input_tokens);
-        self.cache_read_input_tokens = newer
-            .cache_read_input_tokens
-            .or(self.cache_read_input_tokens);
-    }
-
-    /// Whether the API reported any count at all. A turn that reported none
-    /// emits no [`AgentEvent::Usage`](crate::event::AgentEvent::Usage) rather
-    /// than one full of zeros.
-    pub(super) fn reported(&self) -> bool {
-        *self != Self::default()
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum RawContentBlockStart {
