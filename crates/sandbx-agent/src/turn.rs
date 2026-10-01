@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use futures_util::StreamExt;
 use sandbx_providers::{
     AgentEvent, ContentBlock, EventStream, MessagesRequest, ProviderError, RequestMessage, Role,
@@ -86,6 +84,16 @@ impl Default for TurnLimits {
 /// rather than over which provider produced it, and means no trait, no `dyn` and
 /// no test double in anyone's public API.
 ///
+/// `AsyncFnMut` rather than a separate `Fut` parameter, so the future it returns
+/// stays unnamed. The one thing that costs: a *generic* wrapper around `run_turn`
+/// could not add its own `Send` bound to that future, since there is no stable way
+/// to name it. Concrete callers are unaffected — `turn_is_send` in the test suite
+/// pins that the returned future is still `Send` and so still spawnable.
+///
+/// `observe` stays a generic rather than `&mut dyn FnMut(..)` for the same reason
+/// in reverse: `dyn FnMut` is not `Send`, so taking one would make this whole future
+/// non-`Send` and unspawnable.
+///
 /// # What `observe` is for
 ///
 /// Every event is handed to `observe` before being accumulated, in arrival order.
@@ -117,15 +125,14 @@ impl Default for TurnLimits {
 /// A tool that fails does not end the turn. It comes back as a `tool_result` marked
 /// `is_error`, which is what lets the model ask for something else — see
 /// [`TurnError`] for where the line is drawn.
-pub async fn run_turn<F, Fut, O>(
+pub async fn run_turn<F, O>(
     mut open: F,
     turn: Turn<'_>,
     ctx: &ExecutionContext,
     mut observe: O,
 ) -> Result<Vec<RequestMessage>, TurnError>
 where
-    F: FnMut(MessagesRequest) -> Fut,
-    Fut: Future<Output = Result<EventStream, ProviderError>>,
+    F: AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
 {
     // Built once: the offered set does not change between rounds.
