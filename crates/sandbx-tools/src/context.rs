@@ -1,4 +1,4 @@
-use sandbx_core::{FsGuard, SandboxPolicy};
+use sandbx_core::{FsGuard, SandboxPolicy, SandboxedCommand};
 
 use crate::OutputLimits;
 
@@ -16,7 +16,13 @@ pub const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// Built once per session from a [`SandboxPolicy`] and shared by every tool
 /// call. Holds both halves of the sandbox because the built-ins split across
 /// them: native-Rust tools check paths through [`FsGuard`], while `bash` spawns
-/// through the kernel-enforced path and needs the policy itself.
+/// through the kernel-enforced path.
+///
+/// The policy is private, and reachable only as a configured
+/// [`sandboxed_command`]. That is what keeps the split honest rather than
+/// merely documented — see that method.
+///
+/// [`sandboxed_command`]: Self::sandboxed_command
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     guard: FsGuard,
@@ -74,18 +80,32 @@ impl ExecutionContext {
         self.timeout
     }
 
-    /// An explicit helper, if one was set.
-    pub fn helper(&self) -> Option<&std::path::Path> {
-        self.helper.as_deref()
-    }
-
     /// Path checks for tools that touch the filesystem in-process.
     pub fn guard(&self) -> &FsGuard {
         &self.guard
     }
 
-    /// The policy itself, for tools that spawn a sandboxed process.
-    pub fn policy(&self) -> &SandboxPolicy {
-        &self.policy
+    /// A command to spawn, with the policy, the helper and the timeout already
+    /// applied.
+    ///
+    /// The only route to the policy, and deliberately one that spends it rather
+    /// than lending it out. An accessor returning `&SandboxPolicy` let a native
+    /// filesystem tool read the path lists and open files itself, bypassing the
+    /// TOCTOU-safe handles [`FsGuard`] exists to hand back — the split was
+    /// documented but nothing enforced it (#56). A tool can now spawn, or check
+    /// paths through [`guard`]; neither hands it the lists.
+    ///
+    /// Applying the timeout and helper here rather than at each call site is the
+    /// same argument one layer down: a second spawning built-in cannot forget
+    /// what it never has to remember.
+    ///
+    /// [`guard`]: Self::guard
+    #[must_use]
+    pub fn sandboxed_command(&self, program: impl Into<String>) -> SandboxedCommand {
+        let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);
+        if let Some(helper) = &self.helper {
+            command = command.helper(helper);
+        }
+        command
     }
 }

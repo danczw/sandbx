@@ -1,7 +1,5 @@
 use serde::Deserialize;
 
-use sandbx_core::SandboxedCommand;
-
 use crate::{ExecutionContext, ToolError, ToolOutput};
 
 /// Arguments for the `bash` tool.
@@ -14,20 +12,18 @@ pub struct BashInput {
 /// Run a shell command under the sandbox.
 ///
 /// The only built-in that spawns a process, so unlike its siblings the kernel
-/// does the confining: the command runs via [`SandboxedCommand`], which applies
-/// Landlock, a network namespace and a seccomp filter before `exec`.
+/// does the confining: the command comes from
+/// [`ExecutionContext::sandboxed_command`], which applies Landlock, a network
+/// namespace and a seccomp filter before `exec`.
 ///
 /// Note the command string is passed to `sh -c` verbatim. That is not an
 /// injection hole to close — running arbitrary commands *is* the tool's purpose,
 /// and the sandbox, not argument parsing, is what bounds the damage.
 pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let mut command = SandboxedCommand::new("/bin/sh", ctx.policy().clone())
+    let command = ctx
+        .sandboxed_command("/bin/sh")
         .arg("-c")
-        .arg(&input.command)
-        .timeout(ctx.timeout());
-    if let Some(helper) = ctx.helper() {
-        command = command.helper(helper);
-    }
+        .arg(&input.command);
 
     let output = command.output().map_err(|error| {
         let subject = format!("run `{}`", input.command);
