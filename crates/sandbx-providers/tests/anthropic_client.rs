@@ -35,7 +35,7 @@ fn a_request() -> MessagesRequest {
 }
 
 /// The full happy-path SSE body a real turn produces, including a tool call
-/// split across fragments — this is the same shape `wire.rs`'s unit tests
+/// split across fragments — this is the same shape the `wire` module's unit tests
 /// exercise in-process, now proven over a real HTTP round trip.
 const FULL_TURN_SSE: &str = concat!(
     "event: message_start\n",
