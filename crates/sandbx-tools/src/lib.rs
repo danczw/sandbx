@@ -81,15 +81,19 @@ impl BuiltinTool {
     }
 
     /// JSON schema of this tool's arguments, derived from its input struct.
-    pub fn input_schema(&self) -> schemars::Schema {
+    ///
+    /// Returned as `serde_json::Value` rather than `schemars::Schema`: every
+    /// caller converts it on the way to a provider request, so converting here
+    /// keeps a foreign type out of the signature.
+    pub fn input_schema(&self) -> serde_json::Value {
         match self {
-            Self::Read => schemars::schema_for!(tools::read::ReadInput),
-            Self::Write => schemars::schema_for!(tools::write::WriteInput),
-            Self::Bash => schemars::schema_for!(tools::bash::BashInput),
-            Self::Edit => schemars::schema_for!(tools::edit::EditInput),
-            Self::Ls => schemars::schema_for!(tools::ls::LsInput),
-            Self::Grep => schemars::schema_for!(tools::grep::GrepInput),
-            Self::Find => schemars::schema_for!(tools::find::FindInput),
+            Self::Read => schemars::schema_for!(tools::read::ReadInput).to_value(),
+            Self::Write => schemars::schema_for!(tools::write::WriteInput).to_value(),
+            Self::Bash => schemars::schema_for!(tools::bash::BashInput).to_value(),
+            Self::Edit => schemars::schema_for!(tools::edit::EditInput).to_value(),
+            Self::Ls => schemars::schema_for!(tools::ls::LsInput).to_value(),
+            Self::Grep => schemars::schema_for!(tools::grep::GrepInput).to_value(),
+            Self::Find => schemars::schema_for!(tools::find::FindInput).to_value(),
         }
     }
 

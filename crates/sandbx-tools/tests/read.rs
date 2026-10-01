@@ -77,7 +77,7 @@ fn rejects_input_that_does_not_match_the_schema() {
 fn advertises_a_schema_matching_its_input() {
     assert_eq!(BuiltinTool::Read.name(), "read");
 
-    let schema = serde_json::to_value(BuiltinTool::Read.input_schema()).unwrap();
+    let schema = BuiltinTool::Read.input_schema();
     assert!(
         schema.pointer("/properties/path").is_some(),
         "schema does not describe the `path` field: {schema}"
