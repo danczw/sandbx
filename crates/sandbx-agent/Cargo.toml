@@ -37,21 +37,3 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"
 sandbx-core = { path = "../sandbx-core" }
 serde_json = "1.0.151"
 tempfile = "3.27.0"
-
-[features]
-# Forwards to `sandbx-providers/mock`, which is what `MockProvider` lives behind.
-# A dev-dependency carrying `features = ["mock"]` would be the convenient route and
-# is the wrong one: resolver v3 unifies features per package, and that edge is
-# active under `--all-targets`, so the one rlib every consumer links would have
-# `mock` on. Production code reaching for `MockProvider` would then pass clippy and
-# the whole test suite, and fail for the first time in the release build — the
-# hazard `sandbx-providers`' own manifest spells out at length.
-#
-# `required-features` may only name *this* package's features, hence a forwarding
-# feature rather than naming `sandbx-providers/mock` on the target directly. CI has
-# to enable this one too, or the suite below silently does not run.
-mock = ["sandbx-providers/mock"]
-
-[[test]]
-name = "turn_loop"
-required-features = ["mock"]

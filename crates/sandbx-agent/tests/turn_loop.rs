@@ -12,18 +12,21 @@ use std::future::Future;
 use sandbx_agent::{Turn, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
-    AgentEvent, EventStream, MessagesRequest, MockProvider, ProviderError, RequestMessage, Role,
-    StopReason,
+    AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, Role, StopReason,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 /// Scripts one canned round per call, and records what was sent.
 ///
-/// This is the seam itself. `run_turn` asks for a closure that opens a stream, so
-/// a test hands it one that pops a canned round off the front. `MockProvider`
-/// consuming `self` is exactly right here — each round gets a fresh one — which
-/// is why driving a multi-round loop needs no change to `sandbx-providers`, and
-/// why recording the requests can live in the test rather than in the double.
+/// This is the seam itself. `run_turn` asks for a closure that opens a stream, so a
+/// test hands it one that pops a canned round off the front and replays it.
+///
+/// Deliberately not built on `sandbx-providers`' `MockProvider`: that double's whole
+/// body is the `stream::iter(..).fuse()` in [`canned`] below, and reaching for it
+/// would mean a `mock` feature here, a `required-features` test target, and a CI
+/// command that has to name both — three coordinated parts, one of them a silent
+/// failure if forgotten, to borrow one line. Recording the requests has to live here
+/// either way, since `MockProvider` discards its own.
 struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
     /// Replayed once `rounds` runs dry, for the tests that need a turn which never
@@ -64,8 +67,17 @@ impl Script {
             .pop_front()
             .or_else(|| self.forever.clone())
             .unwrap_or_default();
-        MockProvider::new(events).stream_chat(request)
+        std::future::ready(Ok(canned(events)))
     }
+}
+
+/// An `EventStream` that replays `events` and then ends.
+///
+/// `fuse()` because `EventStream` promises a `FusedStream` — a caller may poll it
+/// past its end without panicking.
+fn canned(events: Vec<AgentEvent>) -> EventStream {
+    use futures_util::StreamExt;
+    Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)).fuse())
 }
 
 fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a> {
