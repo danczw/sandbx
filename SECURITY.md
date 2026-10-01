@@ -100,8 +100,13 @@ Three properties matter as much as the list:
 - **The boundary is enforced by convention plus tooling**, not by a capability
   system: `unsafe` is forbidden outside `sandbx-core` and spawning a process
   elsewhere is a clippy error, but a determined contributor can add raw syscalls.
-- **Approval is not enforcement.** A tool call you approve runs. sandbx bounds
-  what it can reach; it does not decide whether it should run.
+- **Approval is not enforcement, and there is no approval step yet.** The agent
+  loop runs every tool call the model asks for — nothing sits between the model
+  requesting one and `sandbx-tools` executing it. The sandbox is the only thing
+  between a prompt-injected tool call and your files, which is why it is
+  default-deny. A gate is planned, and it will not change this bullet: a tool call
+  you approve runs. sandbx bounds what it can reach; it does not decide whether it
+  should run.
 - **Only wall-clock time is bounded.** A tool's command is killed if it outruns
   its limit (90 seconds by default), and `sandbox-run` takes an opt-in
   `--timeout`. The call always returns by then. Nothing else is capped: no CPU
