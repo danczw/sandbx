@@ -80,7 +80,9 @@ impl HelperArgs {
         let mut policy = SandboxPolicy::default();
         let mut rest = argv.iter();
 
-        let command: Vec<String> = loop {
+        // The program is split off inside the loop, where the separator is found,
+        // rather than by collecting the tail and re-iterating it to take the head.
+        let (program, args) = loop {
             let Some(arg) = rest.next() else {
                 return Err(SandboxError::BadHelperArgs {
                     detail: "missing `--` separator before the command",
@@ -88,7 +90,12 @@ impl HelperArgs {
             };
 
             match arg.as_str() {
-                SEPARATOR => break rest.cloned().collect(),
+                SEPARATOR => {
+                    let program = rest.next().ok_or(SandboxError::BadHelperArgs {
+                        detail: "no command after `--`",
+                    })?;
+                    break (program.clone(), rest.cloned().collect());
+                }
                 FLAG_NET => policy = policy.allow_network(),
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
                 flag => {
@@ -106,15 +113,10 @@ impl HelperArgs {
             }
         };
 
-        let mut command = command.into_iter();
-        let program = command.next().ok_or(SandboxError::BadHelperArgs {
-            detail: "no command after `--`",
-        })?;
-
         Ok(Self {
             policy,
             program,
-            args: command.collect(),
+            args,
         })
     }
 }
