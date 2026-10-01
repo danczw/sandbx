@@ -536,10 +536,9 @@ fn stalled() -> EventStream {
     Box::pin(futures_util::stream::pending())
 }
 
-/// `sandbx-providers` bounds *inactivity between chunks* at 120s and says plainly
-/// that a per-turn wall-clock bound "belongs one layer up, wrapping the consumption
-/// loop". This is that layer. Without it, a server that keeps the connection warm
-/// while producing nothing useful holds a turn open indefinitely.
+/// A server that keeps the connection warm while producing nothing useful would
+/// otherwise hold a turn open indefinitely — see `TurnLimits::stream_timeout` for why
+/// the provider's own read timeout does not cover this.
 ///
 /// Paused time rather than a real sleep: the runtime auto-advances once nothing else
 /// can make progress, so this asserts the bound without waiting for it.
