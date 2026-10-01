@@ -7,6 +7,33 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+sandbx-providers = { path = "../sandbx-providers" }
+sandbx-tools = { path = "../sandbx-tools" }
+# `StreamExt::next` to drive the stream, nothing else. Not a new crate in the
+# tree: `EventStream` is already spelled in terms of `futures_util::FusedStream`,
+# so naming it here only makes visible an edge the type signature already forced.
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+# The first crate in the workspace to need tokio as a *normal* dependency, for
+# exactly two primitives: `rt` carries the blocking pool behind `spawn_blocking`
+# (the boundary this crate exists to own), and `time` carries the per-round bound
+# that `sandbx-providers` explicitly delegates upward — see the `read_timeout`
+# comment in its `anthropic.rs`, which notes that a per-turn wall-clock bound
+# "belongs one layer up, wrapping the consumption loop".
+#
+# Deliberately not `rt-multi-thread`: `spawn_blocking` needs only `rt`, and
+# choosing the runtime flavour is the binary's call, not a library's.
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Already a normal dependency above. Repeated for `macros` (`#[tokio::test]`) and
+# `test-util`, which is what lets the per-round timeout be tested with paused time
+# instead of by actually sleeping.
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "macros", "test-util"] }
+# The tests drive real tools over a temp directory rather than mocking below the
+# tool boundary, so they need a policy to scope them with.
+sandbx-core = { path = "../sandbx-core" }
+serde_json = "1.0.151"
+tempfile = "3.27.0"
