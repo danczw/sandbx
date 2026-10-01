@@ -1,4 +1,4 @@
-use sandbx_core::{FsGuard, SandboxError, SandboxPolicy};
+use sandbx_core::{FsGuard, SandboxPolicy};
 
 use crate::OutputLimits;
 
@@ -28,14 +28,14 @@ pub struct ExecutionContext {
 
 impl ExecutionContext {
     /// Resolve `policy` into a context tools can execute against.
-    pub fn new(policy: SandboxPolicy) -> Result<Self, SandboxError> {
-        Ok(Self {
-            guard: FsGuard::new(&policy)?,
+    pub fn new(policy: SandboxPolicy) -> Self {
+        Self {
+            guard: FsGuard::new(&policy),
             policy,
             helper: None,
             limits: OutputLimits::default(),
             timeout: DEFAULT_TIMEOUT,
-        })
+        }
     }
 
     /// Spawn through a specific sandbox helper instead of re-executing the

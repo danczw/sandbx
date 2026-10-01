@@ -36,7 +36,7 @@ impl FsGuard {
     /// `readable`, because reading is part of what it grants.
     ///
     /// [`Axis::grants`]: crate::Axis::grants
-    pub fn new(policy: &SandboxPolicy) -> Result<Self, SandboxError> {
+    pub fn new(policy: &SandboxPolicy) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
 
@@ -57,10 +57,10 @@ impl FsGuard {
             }
         }
 
-        Ok(Self {
+        Self {
             readable: canonical_roots(readable),
             writable: canonical_roots(writable),
-        })
+        }
     }
 
     /// Permit reading `path`, returning its resolved location.

@@ -5,7 +5,7 @@ use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
-    ExecutionContext::new(policy).unwrap()
+    ExecutionContext::new(policy)
 }
 
 fn file_with(root: &std::path::Path, body: &str) -> std::path::PathBuf {
