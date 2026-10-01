@@ -110,10 +110,18 @@ impl<S> WireState<S> {
 
     /// Queue every tool call still open when the turn ended.
     ///
-    /// Without this, a `tool_use` block whose `content_block_stop` never arrives
-    /// — a truncated turn, or a frame lost to a proxy — is dropped on the floor
-    /// while `Stop { reason: ToolUse }` still tells the caller to run a tool it
-    /// was never given.
+    /// Called from `message_stop` only, and deliberately: what it protects
+    /// against is a turn that ends *properly* with a `tool_use` block whose
+    /// `content_block_stop` went missing — a frame lost to a proxy. Without it
+    /// the call is dropped on the floor while `Stop { reason: ToolUse }` still
+    /// tells the caller to run a tool it was never given.
+    ///
+    /// The paths that end a turn without `message_stop` do not flush. They emit
+    /// an `Err` instead of a `Stop`, so there is no instruction for a missing
+    /// tool call to contradict, and the accumulated JSON of a genuinely truncated
+    /// block is incomplete — flushing it would turn one honest
+    /// [`ProviderError::StreamEndedUnexpectedly`] into a `MalformedEvent` ahead
+    /// of it.
     fn flush_open_blocks(&mut self) {
         for (index, block) in std::mem::take(&mut self.blocks) {
             self.pending.push_back(tool_call_event(
