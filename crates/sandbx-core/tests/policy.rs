@@ -7,19 +7,22 @@ use sandbx_core::SandboxPolicy;
 /// unsandboxed agent.
 #[test]
 fn default_policy_denies_everything() {
+    use sandbx_core::Axis;
+
     let policy = SandboxPolicy::default();
 
-    assert!(
-        policy.readable_paths().is_empty(),
-        "default policy must not grant read access to any path"
-    );
-    assert!(
-        policy.writable_paths().is_empty(),
-        "default policy must not grant write access to any path"
-    );
-    assert!(
-        policy.executable_paths().is_empty(),
-        "default policy must not grant execute access to any path"
+    // Over the table rather than axis by axis, so an axis added later is covered
+    // by this the day it is added.
+    for axis in Axis::ALL {
+        assert!(
+            policy.paths(axis).is_empty(),
+            "the default policy granted a path on {axis:?}"
+        );
+    }
+    assert_eq!(
+        policy.granted_paths().count(),
+        0,
+        "the default policy yielded a grant"
     );
     assert!(
         !policy.allows_network(),
@@ -138,48 +141,46 @@ fn granting_unix_sockets_does_not_grant_network() {
 
 /// The three-way claim `SECURITY.md` makes, asserted rather than restated.
 ///
-/// Read grants read and nothing else; write grants write and nothing else; the
-/// one named exception, read+execute, grants both of those and still no write.
-/// Every consumer derives its own vocabulary from this table, so this is the
-/// assertion that pins what all of them mean.
+/// One row per axis, compared whole: `assert_eq!` on `Grants` pins what an axis
+/// confers *and* what it withholds, so a right quietly added to a row fails here
+/// rather than only where some consumer happens to read that field.
 #[test]
 fn axis_grants_are_the_documented_three_way_claim() {
-    use sandbx_core::Axis;
+    use sandbx_core::{Axis, Grants};
 
-    let read = Axis::Read.grants();
-    assert!(read.read);
-    assert!(!read.write, "a read grant conferred write");
-    assert!(!read.execute, "a read grant conferred execute (#19)");
-
-    let write = Axis::Write.grants();
-    assert!(write.write);
-    assert!(!write.read, "a write grant conferred read (#49)");
-    assert!(!write.execute, "a write grant conferred execute");
-
-    let read_execute = Axis::ReadExecute.grants();
-    assert!(read_execute.execute);
-    assert!(
-        read_execute.read,
-        "read+execute must confer read: a program needs its loader's libraries"
-    );
-    assert!(!read_execute.write, "an execute grant conferred write");
-}
-
-/// Execute is the one right no other axis hands out.
-#[test]
-fn only_one_axis_confers_execute() {
-    use sandbx_core::Axis;
-
-    let conferring: Vec<_> = Axis::ALL
-        .into_iter()
-        .filter(|axis| axis.grants().execute)
-        .collect();
-
-    assert_eq!(
-        conferring,
-        [Axis::ReadExecute],
-        "execute must come from exactly one axis, named for it"
-    );
+    for (axis, expected) in [
+        // Read grants read and nothing else (#19).
+        (
+            Axis::Read,
+            Grants {
+                read: true,
+                write: false,
+                execute: false,
+            },
+        ),
+        // Write grants write and nothing else — a drop directory stays
+        // unreadable (#49).
+        (
+            Axis::Write,
+            Grants {
+                read: false,
+                write: true,
+                execute: false,
+            },
+        ),
+        // The one named exception, and the only axis that confers execute: read
+        // comes with it because a program needs its loader's libraries (#50).
+        (
+            Axis::ReadExecute,
+            Grants {
+                read: true,
+                write: false,
+                execute: true,
+            },
+        ),
+    ] {
+        assert_eq!(axis.grants(), expected, "{axis:?} grants the wrong rights");
+    }
 }
 
 /// A grant must land on the axis it was made on and on no other — otherwise one
@@ -235,21 +236,4 @@ fn granted_paths_yields_every_grant_once_in_axis_order() {
             (Axis::ReadExecute, "/c".to_string()),
         ]
     );
-}
-
-/// Default-deny, stated over the table rather than axis by axis: a new axis is
-/// covered by this the day it is added.
-#[test]
-fn the_default_policy_grants_no_path_on_any_axis() {
-    use sandbx_core::Axis;
-
-    let policy = SandboxPolicy::default();
-
-    for axis in Axis::ALL {
-        assert!(
-            policy.paths(axis).is_empty(),
-            "the default policy granted a path on {axis:?}"
-        );
-    }
-    assert_eq!(policy.granted_paths().count(), 0);
 }

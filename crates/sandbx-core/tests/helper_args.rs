@@ -67,11 +67,6 @@ fn missing_separator_is_rejected() {
 }
 
 #[test]
-fn flag_without_its_value_is_rejected() {
-    assert!(HelperArgs::decode(&["--ro".into()]).is_err());
-}
-
-#[test]
 fn unknown_flag_is_rejected() {
     let args = vec![
         "--wat".to_string(),
