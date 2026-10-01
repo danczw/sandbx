@@ -35,7 +35,7 @@ run through `SandboxedCommand`:
 
 | control | mechanism | covers |
 |---------|-----------|--------|
-| filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper.rs`, hard-required) | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
+| filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
 | network | empty network namespace | IP egress, abstract unix sockets |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create` |
@@ -48,6 +48,16 @@ Three properties matter as much as the list:
 - **It fails closed.** A kernel that cannot enforce the baseline is refused. A
   ruleset the kernel only partly applies is treated as failure. sandbx does not
   degrade to unrestricted execution and then carry on.
+
+  Both halves are load-bearing, and the second one took until #52 to become
+  true. Landlock leaves any access type *not* in the handled set unrestricted
+  everywhere, so a partly applied ruleset is a hole, not a reduced sandbox.
+  sandbx therefore asks the kernel for one ABI — the newest it will accept in
+  full, found by `negotiated_abi` walking down from `LATEST_ABI` to the ABI 5
+  floor — and `enforcement_verdict` then accepts nothing but
+  `RulesetStatus::FullyEnforced`. The earlier design asked for the newest ABI
+  *best-effort* and refused only a ruleset enforced not at all, which meant
+  every kernel older than that ABI ran `PartiallyEnforced` and was accepted.
 - **It is default-deny.** A policy grants nothing until something is added.
 - **Grants do not widen each other, with one named exception.** Read access
   does not confer the right to execute what it can see, and write access confers
