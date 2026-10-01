@@ -11,7 +11,7 @@ use sandbx_tools::{BuiltinTool, ExecutionContext, OutputLimits};
 use serde_json::json;
 
 fn context(policy: SandboxPolicy, limits: OutputLimits) -> ExecutionContext {
-    ExecutionContext::new(policy).unwrap().with_limits(limits)
+    ExecutionContext::new(policy).with_limits(limits)
 }
 
 /// A tree with `count` files, each containing one match.

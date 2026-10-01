@@ -741,7 +741,7 @@ fn symlinked_policy_root_resolves_consistently() {
 
     // The in-process guard must reach the same verdict for the resolved path,
     // rather than denying what the kernel permits.
-    let guard = sandbx_core::FsGuard::new(&policy).unwrap();
+    let guard = sandbx_core::FsGuard::new(&policy);
     assert!(
         guard.check_read(&real.path().join("s.txt")).is_ok(),
         "FsGuard denies a path the kernel layer permits: the two layers disagree"
@@ -770,7 +770,7 @@ fn execute_grant_reads_consistently_across_both_layers() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let guard = sandbx_core::FsGuard::new(&policy).unwrap();
+    let guard = sandbx_core::FsGuard::new(&policy);
     assert!(
         guard.check_read(&file).is_ok(),
         "FsGuard denies a read the kernel layer permits: the two layers disagree \
@@ -801,7 +801,7 @@ fn a_write_grant_does_not_make_files_readable() {
     );
 
     // The in-process layer must reach the same verdict for the same policy.
-    let guard = sandbx_core::FsGuard::new(&policy).unwrap();
+    let guard = sandbx_core::FsGuard::new(&policy);
     assert!(
         guard.check_read(&secret).is_err(),
         "FsGuard permits a read the kernel layer denies: the two layers disagree \
