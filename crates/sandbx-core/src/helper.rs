@@ -1,6 +1,7 @@
 use crate::{HelperArgs, SandboxError};
 
-/// The Landlock ABI [`apply`] hard-requires, and the newest one it negotiates for.
+/// The Landlock ABI floor [`apply`] refuses to run below, and the ceiling it
+/// negotiates up to.
 ///
 /// `SECURITY.md` claims "Landlock, ABI 5 minimum" and refusal to run on a kernel
 /// older than 6.10; this pair is the only place that floor is *enforced*. The
@@ -15,16 +16,37 @@ use crate::{HelperArgs, SandboxError};
 /// [`BASELINE_ABI`] is attached under `CompatLevel::HardRequirement`, making an
 /// older kernel a refusal instead of a silent hole.
 ///
-/// [`LATEST_ABI`] is the opposite: handled best-effort, so rights the running
-/// kernel happens to have are enforced and the rest are dropped rather than
-/// failing the whole ruleset.
+/// [`LATEST_ABI`] is the ceiling of the same argument, not an exception to it.
+/// It was once handled best-effort — rights the kernel happened to have enforced,
+/// the rest dropped — and that is exactly what made `SECURITY.md`'s "a ruleset
+/// the kernel only partly applies is treated as failure" untrue: asking for
+/// rights the kernel lacks makes the ruleset `PartiallyEnforced`, so on every
+/// kernel below `LATEST_ABI` *every* run was partly enforced, and refusing that
+/// would have refused nearly every host. [`negotiated_abi`] instead settles on
+/// the newest ABI the kernel will hard-require in full, so nothing is ever
+/// dropped and [`enforcement_verdict`] can refuse a partial result.
 ///
 /// Changing either value changes what sandbx promises, so `SECURITY.md` and the
 /// kernel floor quoted in `README.md` move in the same change.
 pub(crate) const BASELINE_ABI: landlock::ABI = landlock::ABI::V5; // Linux 6.10: Truncate, Refer, IoctlDev
 
-/// Newest ABI [`apply`] negotiates for, best-effort. See [`BASELINE_ABI`].
+/// Newest ABI [`apply`] negotiates for. See [`BASELINE_ABI`].
 pub(crate) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 6.15: ResolveUnix
+
+/// Every ABI [`negotiated_abi`] will settle for, newest first.
+///
+/// Spans [`LATEST_ABI`] down to [`BASELINE_ABI`] and stops there: below the
+/// baseline is a refusal, not a lower rung. Written out rather than derived
+/// because `ABI` is a closed enum with no iterator and no arithmetic — and a
+/// literal ladder is the thing an ABI bump must be forced to edit, next to the
+/// two constants that bound it.
+const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
+    LATEST_ABI,
+    landlock::ABI::V8,
+    landlock::ABI::V7,
+    landlock::ABI::V6,
+    BASELINE_ABI,
+];
 
 /// Supervise a sandboxed command: build the namespaces, then run the inner stage
 /// inside them.
@@ -339,11 +361,15 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 /// file-legal set literally rather than trusting a refusal.
 ///
 /// [`Axis::grants`]: crate::Axis::grants
-fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<landlock::AccessFs> {
+fn rights_for(
+    axis: crate::Axis,
+    target_is_dir: bool,
+    abi: landlock::ABI,
+) -> landlock::BitFlags<landlock::AccessFs> {
     use landlock::{Access, AccessFs};
 
-    let read_rights = AccessFs::from_read(LATEST_ABI) & !AccessFs::Execute;
-    let write_rights = AccessFs::from_all(LATEST_ABI) & !AccessFs::from_read(LATEST_ABI);
+    let read_rights = AccessFs::from_read(abi) & !AccessFs::Execute;
+    let write_rights = AccessFs::from_all(abi) & !AccessFs::from_read(abi);
 
     // Destructured, not read field by field — see `Grants`.
     let crate::Grants {
@@ -367,7 +393,7 @@ fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<land
     if target_is_dir {
         rights
     } else {
-        rights & AccessFs::from_file(LATEST_ABI)
+        rights & AccessFs::from_file(abi)
     }
 }
 
@@ -410,6 +436,7 @@ fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<land
 /// [`SandboxPolicy::granted_paths`]: crate::SandboxPolicy::granted_paths
 fn fs_rules(
     policy: &crate::SandboxPolicy,
+    abi: landlock::ABI,
 ) -> Vec<(
     crate::Axis,
     &std::path::Path,
@@ -417,14 +444,91 @@ fn fs_rules(
 )> {
     policy
         .granted_paths()
-        .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir())))
+        .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir(), abi)))
         .collect()
+}
+
+/// The newest ABI this kernel will hard-require, at or above [`BASELINE_ABI`].
+///
+/// Replaces the old best-effort arm, and the reason is [`enforcement_verdict`].
+/// Asking for `LATEST_ABI` best-effort meant the kernel silently dropped whatever
+/// it did not have, which made the ruleset `PartiallyEnforced` on every kernel
+/// older than the newest ABI this crate knows — a verdict that cannot be refused
+/// without refusing nearly every host. Asking only for what the kernel confirms
+/// it handles makes full enforcement the normal outcome, so partial enforcement
+/// becomes the anomaly it is documented to be.
+///
+/// Probing with `create()` is deliberate: it builds a ruleset without applying it,
+/// so this walks the ladder in one process and nothing is restricted until
+/// [`apply`] calls `restrict_self`. The kernel's own version syscall would be
+/// cheaper, but it is `unsafe` and `landlock` keeps its wrapper private — and a
+/// probe that asks the same question the real call will ask cannot disagree with
+/// it, which the duplicated ABI floor behind `d4676cc` is the argument for.
+///
+/// A kernel below [`BASELINE_ABI`] falls off the end and is refused, which is the
+/// floor that constant documents.
+fn negotiated_abi() -> Result<landlock::ABI, SandboxError> {
+    use landlock::{Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetError};
+
+    for abi in NEGOTIABLE_ABI {
+        let built = Ruleset::default()
+            .set_compatibility(CompatLevel::HardRequirement)
+            .handle_access(AccessFs::from_all(abi))
+            .and_then(|ruleset| ruleset.create());
+
+        match built {
+            Ok(_) => return Ok(abi),
+            // The one error that is an ABI verdict: under `HardRequirement`,
+            // `handle_access` refuses and names the rights this kernel does not
+            // have (`partially incompatible access-rights: .. ResolveUnix`). Only
+            // this steps down a rung.
+            Err(RulesetError::HandleAccesses(_)) => continue,
+            // Anything else says nothing about which ABI the kernel has. Stepping
+            // down on it would hand back a lower ABI than the kernel supports, and
+            // every right above it would then go unhandled — which Landlock leaves
+            // unrestricted everywhere. That is the silent hole `BASELINE_ABI`
+            // exists to prevent, so a non-verdict error is a refusal.
+            Err(error) => return Err(landlock_failed(error)),
+        }
+    }
+
+    Err(SandboxError::Unsupported {
+        detail: "kernel does not support the Landlock baseline this build \
+                 requires (ABI 5, Linux 6.10); refusing to run unconfined",
+    })
+}
+
+/// Accept only a ruleset the kernel enforces in full.
+///
+/// `SECURITY.md` promises that a partly applied ruleset is treated as failure,
+/// and a partly applied ruleset is one where Landlock left some requested access
+/// type unhandled — which leaves that type unrestricted everywhere, the same
+/// silent hole [`BASELINE_ABI`] describes. So there is nothing to accept here but
+/// full enforcement.
+///
+/// Total over `RulesetStatus` rather than a comparison against one variant: that
+/// is what the old `== NotEnforced` check was, and it let `PartiallyEnforced`
+/// through for as long as it existed. A variant added by a future landlock
+/// release now fails to compile instead of landing in an accepting arm.
+fn enforcement_verdict(status: landlock::RulesetStatus) -> Result<(), SandboxError> {
+    use landlock::RulesetStatus;
+
+    match status {
+        RulesetStatus::FullyEnforced => Ok(()),
+        RulesetStatus::PartiallyEnforced => Err(SandboxError::Unsupported {
+            detail: "kernel enforced only part of the ruleset; some access type \
+                     is unrestricted, so the sandbox would not hold",
+        }),
+        RulesetStatus::NotEnforced => Err(SandboxError::Unsupported {
+            detail: "kernel accepted the ruleset but enforced none of it",
+        }),
+    }
 }
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
         Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
-        RulesetCreatedAttr, RulesetStatus,
+        RulesetCreatedAttr,
     };
 
     // The namespaces and the capability drops already happened, in the supervisor
@@ -440,19 +544,15 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     deny_dangerous_syscalls(policy)?;
 
-    // Negotiate rather than pin: `handle_access` accumulates (`|=`), so the
-    // baseline can be a hard requirement while newer rights stay best-effort.
-    // Why ABI 5 is the floor is documented on `BASELINE_ABI`.
+    // Settle on one ABI and hard-require all of it, rather than pinning a floor
+    // and taking whatever else the kernel happens to offer. Everything handled is
+    // therefore enforced, which is what lets `enforcement_verdict` refuse a
+    // partial result instead of accepting it as routine.
+    let abi = negotiated_abi()?;
+
     let mut ruleset = Ruleset::default()
-        // Refuse a kernel that cannot enforce the baseline, rather than running
-        // with a silent hole in it.
         .set_compatibility(CompatLevel::HardRequirement)
-        .handle_access(AccessFs::from_all(BASELINE_ABI))
-        .map_err(landlock_failed)?
-        // Anything newer is a bonus: handled where the kernel has it, dropped
-        // where it does not.
-        .set_compatibility(CompatLevel::BestEffort)
-        .handle_access(AccessFs::from_all(LATEST_ABI))
+        .handle_access(AccessFs::from_all(abi))
         .map_err(landlock_failed)?
         .create()
         .map_err(landlock_failed)?;
@@ -460,7 +560,11 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // `fs_rules` decides what to install; this loop only opens the paths. The
     // axis each rule came from is for the tests that assert the mapping — the
     // kernel is told the rights and nothing else.
-    for (_, path, rights) in fs_rules(policy) {
+    //
+    // The same `abi` the ruleset handles: a rule carrying a right outside the
+    // handled set would be narrowed by `PathBeneath` and take the whole ruleset
+    // to `PartiallyEnforced`, which is now a refusal.
+    for (_, path, rights) in fs_rules(policy, abi) {
         let fd = PathFd::new(path).map_err(landlock_failed)?;
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))
@@ -469,14 +573,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     let status = ruleset.restrict_self().map_err(landlock_failed)?;
 
-    // The kernel may accept a ruleset and enforce only part of it. Partial
-    // enforcement is treated as failure: it would leave the caller believing in
-    // restrictions that are not actually in place.
-    if status.ruleset == RulesetStatus::NotEnforced {
-        return Err(SandboxError::Unsupported {
-            detail: "kernel accepted the ruleset but enforced none of it",
-        });
-    }
+    enforcement_verdict(status.ruleset)?;
 
     Ok(())
 }
@@ -842,7 +939,7 @@ mod tests {
         axis: crate::Axis,
         path: &std::path::Path,
     ) -> landlock::BitFlags<AccessFs> {
-        let matches: Vec<_> = fs_rules(policy)
+        let matches: Vec<_> = fs_rules(policy, LATEST_ABI)
             .into_iter()
             .filter(|(a, p, _)| *a == axis && *p == path)
             .map(|(_, _, rights)| rights)
@@ -867,7 +964,7 @@ mod tests {
     /// below, which name one path one way; the gap is a reason not to read this as
     /// the kernel's own answer for an arbitrary policy.
     fn union(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
-        fs_rules(policy)
+        fs_rules(policy, LATEST_ABI)
             .into_iter()
             .filter(|(_, candidate, _)| *candidate == path)
             .fold(landlock::BitFlags::EMPTY, |union, (_, _, rights)| {
@@ -886,7 +983,7 @@ mod tests {
     fn rights_follow_the_axis_table() {
         for axis in crate::Axis::ALL {
             let grants = axis.grants();
-            let rights = rights_for(axis, true);
+            let rights = rights_for(axis, true, LATEST_ABI);
 
             assert!(
                 !rights.is_empty(),
@@ -919,8 +1016,8 @@ mod tests {
     fn rights_for_narrows_a_regular_file() {
         for axis in crate::Axis::ALL {
             let grants = axis.grants();
-            let on_dir = rights_for(axis, true);
-            let on_file = rights_for(axis, false);
+            let on_dir = rights_for(axis, true, LATEST_ABI);
+            let on_file = rights_for(axis, false, LATEST_ABI);
 
             // Narrowing is an intersection, so a file can never end up with
             // more than the directory case.
@@ -985,7 +1082,7 @@ mod tests {
     #[test]
     fn a_read_grant_never_carries_execute() {
         for target_is_dir in [true, false] {
-            let rights = rights_for(crate::Axis::Read, target_is_dir);
+            let rights = rights_for(crate::Axis::Read, target_is_dir, LATEST_ABI);
             assert!(
                 !rights.contains(AccessFs::Execute),
                 "a read grant handed out Execute (target_is_dir={target_is_dir})"
@@ -997,7 +1094,7 @@ mod tests {
     /// The execute axis is the only one that carries it.
     #[test]
     fn only_the_execute_axis_carries_execute() {
-        let rights = rights_for(crate::Axis::ReadExecute, true);
+        let rights = rights_for(crate::Axis::ReadExecute, true, LATEST_ABI);
         assert!(rights.contains(AccessFs::Execute));
         // Read comes with it by design — see `SandboxPolicy::executable_paths`.
         assert!(rights.contains(AccessFs::ReadFile));
@@ -1014,7 +1111,7 @@ mod tests {
     /// drop directory genuinely unreadable on both layers (#49).
     #[test]
     fn a_write_grant_carries_neither_read_nor_execute() {
-        let rights = rights_for(crate::Axis::Write, true);
+        let rights = rights_for(crate::Axis::Write, true, LATEST_ABI);
         assert!(rights.contains(AccessFs::WriteFile));
         assert!(
             !rights.contains(AccessFs::ReadFile) && !rights.contains(AccessFs::ReadDir),
@@ -1081,7 +1178,7 @@ mod tests {
     /// Default-deny: nothing granted means nothing installed.
     #[test]
     fn a_policy_with_no_paths_produces_no_rules() {
-        assert!(fs_rules(&SandboxPolicy::default()).is_empty());
+        assert!(fs_rules(&SandboxPolicy::default(), LATEST_ABI).is_empty());
     }
 
     /// One rule per *grant*, not per path: a path granted on two axes yields two
@@ -1096,7 +1193,7 @@ mod tests {
             .allow_write(dir.path())
             .allow_read_execute(dir.path());
 
-        assert_eq!(fs_rules(&policy).len(), 3);
+        assert_eq!(fs_rules(&policy, LATEST_ABI).len(), 3);
     }
 
     /// No combination of grants confers execute.
@@ -1138,6 +1235,58 @@ mod tests {
                 axes.contains(&crate::Axis::ReadExecute),
                 "{axes:?} on one path: execute must come from ReadExecute and \
                  nothing else"
+            );
+        }
+    }
+
+    /// The negotiable ladder spans exactly the two documented constants.
+    ///
+    /// Its ends are [`LATEST_ABI`] and [`BASELINE_ABI`] by construction. What
+    /// construction cannot pin is the order and the rungs between them: `ABI` is
+    /// a closed enum with no iterator and no arithmetic, so the interior is
+    /// hand-written, and `negotiated_abi` takes the first rung that works and
+    /// calls it the highest the kernel has. Out of order, that is simply wrong —
+    /// it would settle for a lower ABI than available and leave the rights above
+    /// it unrequested, which is the silent hole `BASELINE_ABI`'s doc describes.
+    /// A gap would skip an ABI the kernel could have enforced in full.
+    #[test]
+    fn the_abi_ladder_descends_without_gaps() {
+        for pair in NEGOTIABLE_ABI.windows(2) {
+            assert_eq!(
+                pair[0] as i32 - 1,
+                pair[1] as i32,
+                "{:?} and {:?} are out of order or have a gap between them",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+
+    /// Only a fully enforced ruleset is accepted.
+    ///
+    /// `SECURITY.md` claims "a ruleset the kernel only partly applies is treated
+    /// as failure", and until now that was false: the check was
+    /// `== NotEnforced`, so `PartiallyEnforced` passed. That was not a corner
+    /// case — `apply` asked for `LATEST_ABI` best-effort, so on every kernel
+    /// below the newest ABI this crate knows, *every* run was partly enforced and
+    /// accepted. Partial enforcement means Landlock left some requested access
+    /// type unhandled, and an unhandled access type is unrestricted everywhere —
+    /// the same silent hole `BASELINE_ABI`'s doc describes for a pinned-low ABI.
+    ///
+    /// Total over the enum rather than a comparison, so a status added by a future
+    /// landlock release fails to compile here instead of falling through to the
+    /// accepting arm.
+    #[test]
+    fn only_full_enforcement_is_accepted() {
+        use landlock::RulesetStatus;
+
+        assert!(enforcement_verdict(RulesetStatus::FullyEnforced).is_ok());
+
+        for status in [RulesetStatus::PartiallyEnforced, RulesetStatus::NotEnforced] {
+            let named = format!("{status:?}");
+            assert!(
+                enforcement_verdict(status).is_err(),
+                "{named} was accepted, so the sandbox runs with a hole in it"
             );
         }
     }
