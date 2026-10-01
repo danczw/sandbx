@@ -321,11 +321,22 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 /// - **execute** is the single bit, which is why it can be added back on top of
 ///   read without widening anything else.
 ///
-/// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular file
-/// and the kernel rejects the whole ruleset if one is attached to it. A policy may
-/// name either, so the rights are narrowed to what the target can actually carry.
-/// Intersecting rather than substituting keeps that a restriction: a file can
-/// never end up with more than the directory case.
+/// Directory-only rights (`ReadDir`, `MakeDir`, `Refer`, …) are invalid on a
+/// regular file, so a policy naming one must have its rights narrowed to what the
+/// target can carry. Intersecting rather than substituting keeps that a
+/// restriction: a file can never end up with more than the directory case.
+///
+/// What makes the narrowing load-bearing is *not* that the kernel refuses an
+/// invalid rule — the `landlock` crate never lets the kernel see one. `PathBeneath`
+/// stats the fd and strips the dir-only bits itself (its own comment: "Linux would
+/// return EINVAL"), reporting `CompatResult::Partial`. Under `BestEffort`, which is
+/// the level [`apply`] leaves set, `add_rule` then returns `Ok` and the ruleset
+/// degrades to `RulesetStatus::PartiallyEnforced` — which [`apply`] accepts, since
+/// it refuses only `NotEnforced`. Verified against landlock 0.4.7 on a live kernel:
+/// `WriteFile | MakeDir | RemoveDir` on a regular file installs silently. So
+/// dropping this intersection would not fail; it would quietly degrade every
+/// regular-file rule, which is why `rights_for_narrows_a_regular_file` pins the
+/// file-legal set literally rather than trusting a refusal.
 ///
 /// [`Axis::grants`]: crate::Axis::grants
 fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<landlock::AccessFs> {
@@ -379,10 +390,12 @@ fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<land
 /// before the narrowed rule reaches the kernel. Propagating it here would add a
 /// `Result` to the seam for an error the following line already catches.
 ///
-/// A path that changes kind between the probe and the open fails safe in both
-/// directions: a directory taken for a file loses directory-only rights, which is
-/// a restriction, and a file taken for a directory makes the kernel reject the
-/// whole ruleset, which is a refusal.
+/// A path that changes kind between the probe and the open narrows in both
+/// directions rather than widening: a directory taken for a file loses
+/// directory-only rights here, and a file taken for a directory loses them at
+/// `add_rule`, where `PathBeneath` strips what a file cannot hold. Neither is a
+/// refusal — the second degrades the ruleset to `PartiallyEnforced`, which
+/// [`apply`] accepts — but neither grants anything the policy did not name.
 ///
 /// The axis rides along even though [`apply`] has no use for it. Landlock *unions*
 /// the rules it is given for a path, so a tuple of just `(path, rights)` is not
@@ -845,7 +858,14 @@ mod tests {
         matches[0]
     }
 
-    /// Every right Landlock will enforce on `path`, across every grant naming it.
+    /// Every right the rules name for this exact path, unioned the way Landlock
+    /// unions them.
+    ///
+    /// Matches on the path as spelled, where the kernel merges per inode — so two
+    /// grants reaching one inode by different spellings (`/usr/bin` and
+    /// `/usr/bin/`) are unioned there and counted apart here. Fine for the tests
+    /// below, which name one path one way; the gap is a reason not to read this as
+    /// the kernel's own answer for an arbitrary policy.
     fn union(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
         fs_rules(policy)
             .into_iter()
@@ -916,13 +936,21 @@ mod tests {
                 "{axis:?} on a file derives no rights at all"
             );
 
-            for right in [AccessFs::ReadDir, AccessFs::MakeDir] {
-                assert!(
-                    !on_file.contains(right),
-                    "{axis:?} kept {right:?} on a regular file, which invalidates \
-                     the whole ruleset"
-                );
-            }
+            // The whole file-legal set, spelled out. Checking a sample of
+            // dir-only rights would miss the other nine, and deriving the
+            // expectation from `from_file(LATEST_ABI)` would restate the
+            // implementation — an ABI bump that moved a right between the two
+            // sets would pass either way. Written literally, it breaks and
+            // forces the review `BASELINE_ABI`'s doc asks for in prose.
+            let file_legal = landlock::make_bitflags!(AccessFs::{
+                ReadFile | WriteFile | Execute | Truncate | IoctlDev | ResolveUnix
+            });
+            assert!(
+                (on_file & !file_legal).is_empty(),
+                "{axis:?} kept {:?} on a regular file; `PathBeneath` would strip \
+                 it and silently degrade the ruleset to PartiallyEnforced",
+                on_file & !file_legal
+            );
 
             for (right, granted, name) in [
                 (AccessFs::ReadFile, grants.read, "read"),
@@ -948,8 +976,10 @@ mod tests {
     /// `rights_follow_the_axis_table` and are not: that one reads its expectation
     /// out of [`Axis::grants`], so it cannot catch a change to the table's own
     /// rows — flip `Axis::Write` to confer execute and it still passes. These
-    /// three hard-code the answer, and are the only tests that fail. Do not fold
-    /// them into the table-driven ones.
+    /// three hard-code the answer instead, which is what makes them fail, and
+    /// `no_combination_of_grants_confers_execute` hard-codes it for the unioned
+    /// case. Together they are the whole of that coverage; do not fold them into
+    /// the table-driven ones.
     ///
     /// [`Axis::grants`]: crate::Axis::grants
     #[test]
