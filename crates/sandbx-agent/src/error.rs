@@ -23,6 +23,18 @@ pub enum TurnError {
     /// rather than treated as a finished turn, which would leave a caller unable
     /// to tell a complete turn from a truncated one.
     StreamEndedWithoutStop,
+
+    /// A tool's blocking task did not return a result.
+    ///
+    /// Reachable only if the tool panicked, since the task is awaited to
+    /// completion and the runtime outlives it. No built-in does, and
+    /// `BuiltinTool` is a closed enum, so no test can inject one that would —
+    /// this exists so that a panic surfaces as a typed failure instead of taking
+    /// the harness down with it.
+    ToolPanicked {
+        /// The tool that was running.
+        name: String,
+    },
 }
 
 impl std::fmt::Display for TurnError {
@@ -32,6 +44,7 @@ impl std::fmt::Display for TurnError {
             Self::StreamEndedWithoutStop => {
                 write!(f, "the turn's event stream ended without a stop event")
             }
+            Self::ToolPanicked { name } => write!(f, "the {name} tool panicked"),
         }
     }
 }
@@ -40,7 +53,7 @@ impl std::error::Error for TurnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Provider(error) => Some(error),
-            Self::StreamEndedWithoutStop => None,
+            Self::StreamEndedWithoutStop | Self::ToolPanicked { .. } => None,
         }
     }
 }
