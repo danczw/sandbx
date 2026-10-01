@@ -25,20 +25,10 @@ pub struct EditInput {
 /// guess: the model believes the edit happened, so getting it wrong quietly is
 /// worse than failing.
 pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    // Read first so a read-only grant fails before any content is disclosed
-    // through an error message.
-    let mut source = ctx
-        .guard()
-        .open_read(&input.path)
-        .map_err(crate::denied(&input.path))?;
-
-    let mut content = String::new();
-    std::io::Read::read_to_string(&mut source, &mut content).map_err(|error| {
-        ToolError::Failed {
-            subject: format!("read {}", input.path.display()),
-            detail: error.to_string(),
-        }
-    })?;
+    // Read first — through [`crate::read_file`], which is where the read half of
+    // the policy check lives — so a read-only grant fails before any content is
+    // disclosed through an error message.
+    let content = crate::read_file(&input.path, ctx)?;
 
     let occurrences = content.matches(&input.old).count();
     if occurrences != 1 {
@@ -57,14 +47,10 @@ pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     let mut target = ctx
         .guard()
         .open_write(&input.path)
-        .map_err(crate::denied(&input.path))?;
+        .map_err(|error| crate::denied(&input.path, error))?;
 
-    std::io::Write::write_all(&mut target, updated.as_bytes()).map_err(|error| {
-        ToolError::Failed {
-            subject: format!("write {}", input.path.display()),
-            detail: error.to_string(),
-        }
-    })?;
+    std::io::Write::write_all(&mut target, updated.as_bytes())
+        .map_err(|error| crate::failed("write", &input.path, error))?;
 
     Ok(ToolOutput {
         content: format!("edited {}", input.path.display()),

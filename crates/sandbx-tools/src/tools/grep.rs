@@ -31,7 +31,7 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     let files = ctx
         .guard()
         .walk_readable(&input.path)
-        .map_err(crate::denied(&input.path))?;
+        .map_err(|error| crate::denied(&input.path, error))?;
 
     let mut hits = Vec::new();
 

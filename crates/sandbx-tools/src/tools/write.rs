@@ -22,14 +22,10 @@ pub fn execute(input: WriteInput, ctx: &ExecutionContext) -> Result<ToolOutput, 
     let mut file = ctx
         .guard()
         .open_write(&input.path)
-        .map_err(crate::denied(&input.path))?;
+        .map_err(|error| crate::denied(&input.path, error))?;
 
-    std::io::Write::write_all(&mut file, input.content.as_bytes()).map_err(|error| {
-        ToolError::Failed {
-            subject: format!("write {}", input.path.display()),
-            detail: error.to_string(),
-        }
-    })?;
+    std::io::Write::write_all(&mut file, input.content.as_bytes())
+        .map_err(|error| crate::failed("write", &input.path, error))?;
 
     Ok(ToolOutput {
         content: format!(
