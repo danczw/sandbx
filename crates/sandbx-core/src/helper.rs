@@ -294,7 +294,14 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     })
 }
 
-/// The Landlock rights an axis grants.
+/// The Landlock rights an axis grants on a target, narrowed to what that target
+/// can carry.
+///
+/// Pure and total: three axes times a file or a directory is six answers, every
+/// one of them assertable with no privilege and no filesystem. The narrowing used
+/// to sit in [`fs_rules`] next to the `is_dir()` that drives it, which fused the
+/// decision to a probe and so made the file case reachable only by creating a
+/// real file on disk (#52).
 ///
 /// Derived from [`Axis::grants`], so a new axis needs no edit here. Before this
 /// derived, the axes were a literal list of `(paths, rights)` pairs, and an axis
@@ -314,8 +321,14 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 /// - **execute** is the single bit, which is why it can be added back on top of
 ///   read without widening anything else.
 ///
+/// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular file
+/// and the kernel rejects the whole ruleset if one is attached to it. A policy may
+/// name either, so the rights are narrowed to what the target can actually carry.
+/// Intersecting rather than substituting keeps that a restriction: a file can
+/// never end up with more than the directory case.
+///
 /// [`Axis::grants`]: crate::Axis::grants
-fn rights(axis: crate::Axis) -> landlock::BitFlags<landlock::AccessFs> {
+fn rights_for(axis: crate::Axis, target_is_dir: bool) -> landlock::BitFlags<landlock::AccessFs> {
     use landlock::{Access, AccessFs};
 
     let read_rights = AccessFs::from_read(LATEST_ABI) & !AccessFs::Execute;
@@ -340,7 +353,11 @@ fn rights(axis: crate::Axis) -> landlock::BitFlags<landlock::AccessFs> {
         rights |= AccessFs::Execute;
     }
 
-    rights
+    if target_is_dir {
+        rights
+    } else {
+        rights & AccessFs::from_file(LATEST_ABI)
+    }
 }
 
 /// The Landlock rules [`apply`] will install, as data.
@@ -351,32 +368,26 @@ fn rights(axis: crate::Axis) -> landlock::BitFlags<landlock::AccessFs> {
 /// touches outside the policy is whether each path is a directory, and that is
 /// precisely what decides the narrowing below.
 ///
-/// What each axis grants is [`rights`]'s business; this walks the grants and
-/// narrows them to what the target can carry.
+/// What a grant confers is [`rights_for`]'s business; all this adds is the one
+/// probe that decision needs — whether the target is a directory.
 ///
-/// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular file
-/// and the kernel rejects the whole ruleset if one is attached to it. A policy
-/// may name either, so the rights are narrowed to what the target can actually
-/// carry. Intersecting rather than substituting keeps that a restriction: a file
-/// can never end up with more than the directory case.
+/// `is_dir()` reports `false` for every error it meets, which would silently drop
+/// directory-only rights. That is latent rather than live: a path `is_dir()` could
+/// not inspect — a dangling symlink, an unsearchable parent — is also a path
+/// [`apply`]'s next line cannot open, so `PathFd::new` turns it into a refusal
+/// before the narrowed rule reaches the kernel. Propagating it here would add a
+/// `Result` to the seam for an error the following line already catches.
+///
+/// A path that changes kind between the probe and the open fails safe in both
+/// directions: a directory taken for a file loses directory-only rights, which is
+/// a restriction, and a file taken for a directory makes the kernel reject the
+/// whole ruleset, which is a refusal.
 fn fs_rules(
     policy: &crate::SandboxPolicy,
 ) -> Vec<(&std::path::Path, landlock::BitFlags<landlock::AccessFs>)> {
-    use landlock::AccessFs;
-
-    let file_rights = AccessFs::from_file(LATEST_ABI);
-
     policy
         .granted_paths()
-        .map(|(axis, path)| {
-            let rights = rights(axis);
-            let rights = if path.is_dir() {
-                rights
-            } else {
-                rights & file_rights
-            };
-            (path, rights)
-        })
+        .map(|(axis, path)| (path, rights_for(axis, path.is_dir())))
         .collect()
 }
 
@@ -794,7 +805,7 @@ mod tests {
     /// Insists on exactly one. Landlock unions the rules for a path, so a path
     /// granted on two axes has no one answer — and silently returning whichever
     /// axis came first would let a test assert against a rule it did not mean.
-    fn rights_for(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
+    fn rule(policy: &SandboxPolicy, path: &std::path::Path) -> landlock::BitFlags<AccessFs> {
         let matches: Vec<_> = fs_rules(policy)
             .into_iter()
             .filter(|(p, _)| *p == path)
@@ -822,7 +833,7 @@ mod tests {
     fn rights_follow_the_axis_table() {
         for axis in crate::Axis::ALL {
             let grants = axis.grants();
-            let rights = rights(axis);
+            let rights = rights_for(axis, true);
 
             assert!(
                 !rights.is_empty(),
@@ -846,24 +857,69 @@ mod tests {
         }
     }
 
+    /// Every axis keeps its grant on a regular file, minus what a file cannot
+    /// carry.
+    ///
+    /// Directory-only rights (`ReadDir`, `MakeDir`, …) are invalid on a regular
+    /// file and the kernel rejects the whole ruleset if one is attached to it, so
+    /// a policy naming a file must come out narrowed. Stated over `Axis::ALL`
+    /// against the table, and pure: until the narrowing moved into `rights_for`
+    /// it could only be exercised by creating a real file on disk (#52).
+    #[test]
+    fn rights_for_narrows_a_regular_file() {
+        for axis in crate::Axis::ALL {
+            let grants = axis.grants();
+            let on_dir = rights_for(axis, true);
+            let on_file = rights_for(axis, false);
+
+            // Narrowing is an intersection, so a file can never end up with
+            // more than the directory case.
+            assert!(
+                on_dir.contains(on_file),
+                "{axis:?} on a file gained a right the directory case did not have"
+            );
+
+            // But it must not narrow to nothing: a grant that installs an empty
+            // right set is a permission silently absent.
+            assert!(
+                !on_file.is_empty(),
+                "{axis:?} on a file derives no rights at all"
+            );
+
+            for right in [AccessFs::ReadDir, AccessFs::MakeDir] {
+                assert!(
+                    !on_file.contains(right),
+                    "{axis:?} kept {right:?} on a regular file, which invalidates \
+                     the whole ruleset"
+                );
+            }
+
+            for (right, granted, name) in [
+                (AccessFs::ReadFile, grants.read, "read"),
+                (AccessFs::WriteFile, grants.write, "write"),
+                (AccessFs::Execute, grants.execute, "execute"),
+            ] {
+                assert_eq!(
+                    on_file.contains(right),
+                    granted,
+                    "{axis:?} grants {name}={granted}, but the file case disagrees \
+                     about {right:?}"
+                );
+            }
+        }
+    }
+
     /// Reading must never confer the right to *run* what it can see.
     ///
     /// `AccessFs::from_read` bundles `Execute` with `ReadFile`/`ReadDir`, so this
     /// is a subtraction that has to happen rather than a default (#19).
     #[test]
     fn a_read_grant_never_carries_execute() {
-        let dir = tempdir();
-        let file = plain_file(&dir);
-        let policy = SandboxPolicy::default()
-            .allow_read(dir.path())
-            .allow_read(&file);
-
-        for path in [dir.path(), file.as_path()] {
-            let rights = rights_for(&policy, path);
+        for target_is_dir in [true, false] {
+            let rights = rights_for(crate::Axis::Read, target_is_dir);
             assert!(
                 !rights.contains(AccessFs::Execute),
-                "a read grant handed out Execute on {}",
-                path.display()
+                "a read grant handed out Execute (target_is_dir={target_is_dir})"
             );
             assert!(rights.contains(AccessFs::ReadFile));
         }
@@ -872,10 +928,7 @@ mod tests {
     /// The execute axis is the only one that carries it.
     #[test]
     fn only_the_execute_axis_carries_execute() {
-        let dir = tempdir();
-        let policy = SandboxPolicy::default().allow_read_execute(dir.path());
-
-        let rights = rights_for(&policy, dir.path());
+        let rights = rights_for(crate::Axis::ReadExecute, true);
         assert!(rights.contains(AccessFs::Execute));
         // Read comes with it by design — see `SandboxPolicy::executable_paths`.
         assert!(rights.contains(AccessFs::ReadFile));
@@ -892,10 +945,7 @@ mod tests {
     /// drop directory genuinely unreadable on both layers (#49).
     #[test]
     fn a_write_grant_carries_neither_read_nor_execute() {
-        let dir = tempdir();
-        let policy = SandboxPolicy::default().allow_write(dir.path());
-
-        let rights = rights_for(&policy, dir.path());
+        let rights = rights_for(crate::Axis::Write, true);
         assert!(rights.contains(AccessFs::WriteFile));
         assert!(
             !rights.contains(AccessFs::ReadFile) && !rights.contains(AccessFs::ReadDir),
@@ -915,8 +965,8 @@ mod tests {
             .allow_write(dir.path())
             .allow_write(&file);
 
-        let on_dir = rights_for(&policy, dir.path());
-        let on_file = rights_for(&policy, &file);
+        let on_dir = rule(&policy, dir.path());
+        let on_file = rule(&policy, &file);
 
         assert!(
             on_dir.contains(AccessFs::MakeDir),
