@@ -77,25 +77,24 @@ impl<'a> AuditEvent<'a> {
 
     /// Record a spawn, summarising the policy rather than reproducing it.
     ///
-    /// The counts are destructured out of one pass over [`Axis::ALL`] rather than
-    /// read axis by axis, which is this site's compile-time backstop: a fourth
-    /// axis makes the array lengths disagree and the build fails here. It cannot
-    /// derive its *fields* the way the enforcement layers derive their rules —
-    /// `tracing` needs static field names — so being forced to notice is the most
-    /// this site can offer, and it is what the other four axes' worth of silent
-    /// drift (#51) cost.
+    /// This record cannot derive its *fields* the way the enforcement layers
+    /// derive their rules — `tracing` needs static field names — so what it does
+    /// instead is refuse to compile when an axis is added, which is the one thing
+    /// it can offer and what its silent drift (#51) cost. The mechanism is the
+    /// exhaustive match, the same one the other non-derivable site uses
+    /// (`SandboxRun::paths`): each field names the axis it counts, so nothing here
+    /// depends on the table's order.
     pub fn spawned(program: &'a str, policy: &SandboxPolicy) -> Self {
-        // Positional destructuring depends on `Axis::ALL`'s *order* as well as
-        // its length, and only the length is checked by the pattern. Reordering
-        // the table would otherwise keep compiling and keep passing, while every
-        // record from then on filed the write count under `readable` — an audit
-        // trail that misstates the policy, which is worse than one that fails.
-        const _: () = assert!(matches!(
-            Axis::ALL,
-            [Axis::Read, Axis::Write, Axis::ReadExecute]
-        ));
+        let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
-        let [readable, writable, executable] = Axis::ALL.map(|axis| policy.paths(axis).len());
+        for axis in Axis::ALL {
+            let count = policy.paths(axis).len();
+            match axis {
+                Axis::Read => readable = count,
+                Axis::Write => writable = count,
+                Axis::ReadExecute => executable = count,
+            }
+        }
 
         Self::Spawned {
             program,
