@@ -1,15 +1,35 @@
-use crate::{SandboxError, SandboxPolicy};
+use crate::{Axis, SandboxError, SandboxPolicy};
 
-/// Flag introducing a read-only path.
-const FLAG_RO: &str = "--ro";
-/// Flag introducing a read-write path.
-const FLAG_RW: &str = "--rw";
-/// Flag introducing a read-and-execute path.
-const FLAG_RX: &str = "--rx";
 const FLAG_NET: &str = "--allow-network";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
+
+/// The flag that introduces a path granted on `axis`.
+///
+/// The wire format lives here rather than in [`Axis`] itself — the policy type
+/// has no business knowing how the helper is invoked — but it is one exhaustive
+/// match, so a new axis is a compile error here and nowhere else: [`encode`] and
+/// [`decode`] both go through it.
+///
+/// [`encode`]: HelperArgs::encode
+/// [`decode`]: HelperArgs::decode
+const fn path_flag(axis: Axis) -> &'static str {
+    match axis {
+        Axis::Read => "--ro",
+        Axis::Write => "--rw",
+        Axis::ReadExecute => "--rx",
+    }
+}
+
+/// The axis `flag` introduces, if it is a path flag at all.
+///
+/// A lookup over the table rather than a second list of spellings. This is what
+/// makes [`path_flag`] the only place an axis names itself on the wire: a flag
+/// `encode` can emit is one `decode` accepts, by construction.
+fn axis_for(flag: &str) -> Option<Axis> {
+    Axis::ALL.into_iter().find(|axis| path_flag(*axis) == flag)
+}
 
 /// A policy plus a command, as carried between sandbx and the helper process.
 ///
@@ -33,16 +53,8 @@ impl HelperArgs {
     pub fn encode(policy: &SandboxPolicy, program: &str, args: &[String]) -> Vec<String> {
         let mut out = Vec::new();
 
-        for path in policy.readable_paths() {
-            out.push(FLAG_RO.to_string());
-            out.push(path.display().to_string());
-        }
-        for path in policy.writable_paths() {
-            out.push(FLAG_RW.to_string());
-            out.push(path.display().to_string());
-        }
-        for path in policy.executable_paths() {
-            out.push(FLAG_RX.to_string());
+        for (axis, path) in policy.granted_paths() {
+            out.push(path_flag(axis).to_string());
             out.push(path.display().to_string());
         }
         if policy.allows_network() {
@@ -79,20 +91,17 @@ impl HelperArgs {
                 SEPARATOR => break rest.cloned().collect(),
                 FLAG_NET => policy = policy.allow_network(),
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
-                FLAG_RO | FLAG_RW | FLAG_RX => {
+                flag => {
+                    // One lookup, then one grant: the axis carries which one it
+                    // is, so there is no second match here deciding it again —
+                    // which is where the two could have disagreed.
+                    let axis = axis_for(flag).ok_or(SandboxError::BadHelperArgs {
+                        detail: "unrecognised helper flag",
+                    })?;
                     let path = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "path flag with no path after it",
                     })?;
-                    policy = match arg.as_str() {
-                        FLAG_RO => policy.allow_read(path),
-                        FLAG_RW => policy.allow_write(path),
-                        _ => policy.allow_read_execute(path),
-                    };
-                }
-                _ => {
-                    return Err(SandboxError::BadHelperArgs {
-                        detail: "unrecognised helper flag",
-                    });
+                    policy = policy.grant(axis, path);
                 }
             }
         };
