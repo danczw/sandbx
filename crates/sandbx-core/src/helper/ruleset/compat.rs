@@ -39,7 +39,7 @@ use crate::SandboxError;
 pub(super) const BASELINE_ABI: landlock::ABI = landlock::ABI::V5; // Linux 6.10: Truncate, Refer, IoctlDev
 
 /// Newest ABI [`apply`](crate::helper::apply) negotiates for. See [`BASELINE_ABI`].
-pub(super) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 6.15: ResolveUnix
+pub(super) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 7.1: ResolveUnix
 
 /// Every ABI [`negotiated_abi`] will settle for, newest first.
 ///

@@ -37,17 +37,20 @@
 /// target can carry. Intersecting rather than substituting keeps that a
 /// restriction: a file can never end up with more than the directory case.
 ///
-/// What makes the narrowing load-bearing is *not* that the kernel refuses an
-/// invalid rule — the `landlock` crate never lets the kernel see one. `PathBeneath`
-/// stats the fd and strips the dir-only bits itself (its own comment: "Linux would
-/// return EINVAL"), reporting `CompatResult::Partial`. Under `BestEffort`, which is
-/// the level [`apply`](crate::helper::apply) leaves set, `add_rule` then returns `Ok` and the ruleset
-/// degrades to `RulesetStatus::PartiallyEnforced` — which [`apply`](crate::helper::apply) accepts, since
-/// it refuses only `NotEnforced`. Verified against landlock 0.4.7 on a live kernel:
-/// `WriteFile | MakeDir | RemoveDir` on a regular file installs silently. So
-/// dropping this intersection would not fail; it would quietly degrade every
-/// regular-file rule, which is why `rights_for_narrows_a_regular_file` pins the
-/// file-legal set literally rather than trusting a refusal.
+/// The kernel never sees an invalid rule: `PathBeneath` stats the fd and strips
+/// the dir-only bits itself (its own comment: "Linux would return EINVAL"),
+/// reporting `CompatResult::Partial`. What that costs depends on the compatibility
+/// level, and [`apply`](crate::helper::apply) sets `HardRequirement`, under which a
+/// `Partial` is returned as an error — so a dir-only right left on a regular file
+/// makes `add_rule` fail and the whole run a refusal. Dropping this intersection
+/// would therefore not degrade quietly; it would refuse to sandbox any policy that
+/// names a regular file, which `--allow-read ./config.toml` does.
+///
+/// A refusal is still not what `rights_for_narrows_a_regular_file` asserts against.
+/// It pins the file-legal set literally because the narrowing belongs *here*,
+/// where it is decidable without a kernel or a real file, and because an ABI bump
+/// that moves a right between the file and directory sets should fail in review
+/// rather than at the first run on the new kernel.
 ///
 /// [`Axis::grants`]: crate::Axis::grants
 pub(super) fn rights_for(
@@ -108,9 +111,10 @@ pub(super) fn rights_for(
 /// A path that changes kind between the probe and the open narrows in both
 /// directions rather than widening: a directory taken for a file loses
 /// directory-only rights here, and a file taken for a directory loses them at
-/// `add_rule`, where `PathBeneath` strips what a file cannot hold. Neither is a
-/// refusal — the second degrades the ruleset to `PartiallyEnforced`, which
-/// [`apply`](crate::helper::apply) accepts — but neither grants anything the policy did not name.
+/// `add_rule`, where `PathBeneath` strips what a file cannot hold and, under the
+/// `HardRequirement` [`apply`](crate::helper::apply) sets, reports that as an error —
+/// so the second case is a refusal to run, not a quiet degradation. Neither grants
+/// anything the policy did not name, which is the property that matters here.
 ///
 /// The axis rides along even though [`apply`](crate::helper::apply) has no use for it. Landlock *unions*
 /// the rules it is given for a path, so a tuple of just `(path, rights)` is not

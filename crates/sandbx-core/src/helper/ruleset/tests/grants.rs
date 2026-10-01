@@ -75,8 +75,9 @@ fn rights_for_narrows_a_regular_file() {
         });
         assert!(
             (on_file & !file_legal).is_empty(),
-            "{axis:?} kept {:?} on a regular file; `PathBeneath` would strip \
-             it and silently degrade the ruleset to PartiallyEnforced",
+            "{axis:?} kept {:?} on a regular file; `PathBeneath` would strip it \
+             and, under the HardRequirement `apply` sets, fail `add_rule` — so \
+             the whole run is refused",
             on_file & !file_legal
         );
 

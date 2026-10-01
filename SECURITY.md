@@ -129,7 +129,7 @@ Three properties matter as much as the list:
   pathname socket the filesystem policy can reach — an ssh-agent, a docker
   socket, the session bus — not a chosen one. seccomp compares register values
   and the path passed to `connect` is behind a pointer it cannot follow;
-  Landlock gained a path-scoped right only in ABI V9 (Linux 6.15), which is not
+  Landlock gained a path-scoped right only in ABI V9 (Linux 7.1), which is not
   available in practice yet. Until then, what the command can *read* is what
   bounds which sockets exist to be dialled, so keep the filesystem policy narrow
   when granting this.
