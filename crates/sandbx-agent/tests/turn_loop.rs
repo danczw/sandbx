@@ -28,9 +28,6 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 /// either way, since `MockProvider` discards its own.
 struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
-    /// Replayed once `rounds` runs dry, for the tests that need a turn which never
-    /// stops asking for tools.
-    forever: Option<Vec<AgentEvent>>,
     sent: Vec<MessagesRequest>,
 }
 
@@ -38,27 +35,19 @@ impl Script {
     fn new(rounds: impl IntoIterator<Item = Vec<AgentEvent>>) -> Self {
         Self {
             rounds: rounds.into_iter().collect(),
-            forever: None,
-            sent: Vec::new(),
-        }
-    }
-
-    /// The same round, over and over, however many times it is asked for.
-    fn looping(round: Vec<AgentEvent>) -> Self {
-        Self {
-            rounds: VecDeque::new(),
-            forever: Some(round),
             sent: Vec::new(),
         }
     }
 
     async fn open(&mut self, request: MessagesRequest) -> Result<EventStream, ProviderError> {
         self.sent.push(request.clone());
+        // Not `unwrap_or_default`: an empty round surfaces as
+        // `StreamEndedWithoutStop`, so a test that miscounted rounds would fail with a
+        // misleading cause instead of naming the script.
         let events = self
             .rounds
             .pop_front()
-            .or_else(|| self.forever.clone())
-            .unwrap_or_default();
+            .expect("the script was asked for more rounds than it holds");
         Ok(canned(events))
     }
 }
@@ -83,9 +72,9 @@ fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a>
     }
 }
 
-/// A context granting nothing, for the tests that never run a tool.
-fn ctx() -> ExecutionContext {
-    ExecutionContext::new(SandboxPolicy::default())
+/// Same shape the `sandbx-tools` suites use, so all eight call sites share it.
+fn ctx(policy: SandboxPolicy) -> ExecutionContext {
+    ExecutionContext::new(policy)
 }
 
 fn text(delta: &str) -> AgentEvent {
@@ -98,9 +87,27 @@ fn stop(reason: StopReason) -> AgentEvent {
     AgentEvent::Stop { reason }
 }
 
+/// The id every scripted call uses. Each round in this suite makes exactly one call,
+/// so threading a distinct id through every site would add noise and prove nothing.
+const CALL_ID: &str = "call_1";
+
+fn call(name: &str, input: serde_json::Value) -> AgentEvent {
+    AgentEvent::ToolCallRequested {
+        id: CALL_ID.to_string(),
+        name: name.to_string(),
+        input,
+    }
+}
+
 /// The rebuilt history in the only form `ContentBlock` can be compared in.
 fn wire(messages: &[RequestMessage]) -> serde_json::Value {
     serde_json::to_value(messages).unwrap()
+}
+
+/// The single `tool_result` block a scripted call produced. The asserts stay at each
+/// call site so a failure still points at the test that cares.
+fn tool_error(messages: &[RequestMessage]) -> serde_json::Value {
+    wire(messages)[1]["content"][0].clone()
 }
 
 #[tokio::test]
@@ -110,7 +117,7 @@ async fn text_deltas_accumulate_into_one_block() {
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |_| {},
     )
     .await
@@ -143,7 +150,7 @@ async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |event: &AgentEvent| seen.push(event.clone()),
     )
     .await
@@ -180,7 +187,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
     run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |event: &AgentEvent| seen.push(event.clone()),
     )
     .await
@@ -199,7 +206,7 @@ async fn a_round_that_produced_nothing_appends_no_message() {
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |_| {},
     )
     .await
@@ -218,7 +225,7 @@ async fn a_stream_that_never_reports_a_stop_is_an_error() {
     let error = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |_| {},
     )
     .await
@@ -246,7 +253,7 @@ async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
     run_turn(
         async |r| script.open(r).await,
         turn(&history, &[BuiltinTool::Read]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |_| {},
     )
     .await
@@ -275,16 +282,12 @@ async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
     let input = serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" });
-    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
 
     let mut script = Script::new([
         vec![
             text("Writing it now."),
-            AgentEvent::ToolCallRequested {
-                id: "call_1".to_string(),
-                name: "write".to_string(),
-                input: input.clone(),
-            },
+            call("write", input.clone()),
             stop(StopReason::ToolUse),
         ],
         vec![text("Done."), stop(StopReason::EndTurn)],
@@ -334,15 +337,14 @@ async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
 #[tokio::test]
 async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
 
     let mut script = Script::new([
         vec![
-            AgentEvent::ToolCallRequested {
-                id: "call_1".to_string(),
-                name: "ls".to_string(),
-                input: serde_json::json!({ "path": root.path().to_str().unwrap() }),
-            },
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
             stop(StopReason::Unspecified),
         ],
         vec![text("listed"), stop(StopReason::EndTurn)],
@@ -370,18 +372,14 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let outside = elsewhere.path().join("escape.txt");
-    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_write(allowed.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(allowed.path()));
 
     let mut script = Script::new([
         vec![
-            AgentEvent::ToolCallRequested {
-                id: "call_1".to_string(),
-                name: "write".to_string(),
-                input: serde_json::json!({
-                    "path": outside.to_str().unwrap(),
-                    "content": "nope",
-                }),
-            },
+            call(
+                "write",
+                serde_json::json!({ "path": outside.to_str().unwrap(), "content": "nope", }),
+            ),
             stop(StopReason::ToolUse),
         ],
         vec![
@@ -401,7 +399,7 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
 
     assert!(!outside.exists(), "the write must not have happened");
 
-    let result = &wire(&messages)[1]["content"][0];
+    let result = tool_error(&messages);
     assert_eq!(result["is_error"], true);
     assert!(
         result["content"]
@@ -418,16 +416,15 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
 #[tokio::test]
 async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
 
     let mut script = Script::new([
         vec![
-            AgentEvent::ToolCallRequested {
-                id: "call_1".to_string(),
-                name: "write".to_string(),
-                // `content` is required, and absent.
-                input: serde_json::json!({ "path": root.path().join("x").to_str().unwrap() }),
-            },
+            // `content` is required, and absent.
+            call(
+                "write",
+                serde_json::json!({ "path": root.path().join("x").to_str().unwrap() }),
+            ),
             stop(StopReason::ToolUse),
         ],
         vec![text("Retrying properly."), stop(StopReason::EndTurn)],
@@ -442,7 +439,7 @@ async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
     .await
     .unwrap();
 
-    let result = &wire(&messages)[1]["content"][0];
+    let result = tool_error(&messages);
     assert_eq!(result["is_error"], true);
     assert!(
         result["content"]
@@ -459,27 +456,20 @@ async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
 #[tokio::test]
 async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
     let mut script = Script::new([
-        vec![
-            AgentEvent::ToolCallRequested {
-                id: "call_1".to_string(),
-                name: "rm".to_string(),
-                input: serde_json::json!({}),
-            },
-            stop(StopReason::ToolUse),
-        ],
+        vec![call("rm", serde_json::json!({})), stop(StopReason::ToolUse)],
         vec![text("Using a real tool."), stop(StopReason::EndTurn)],
     ]);
 
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
-        &ctx(),
+        &ctx(SandboxPolicy::default()),
         |_| {},
     )
     .await
     .unwrap();
 
-    let result = &wire(&messages)[1]["content"][0];
+    let result = tool_error(&messages);
     assert_eq!(result["is_error"], true);
     assert!(
         result["content"].as_str().unwrap().contains("rm"),
@@ -494,15 +484,19 @@ async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
 #[tokio::test]
 async fn a_turn_ends_once_it_runs_out_of_rounds() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_read(root.path()));
-    let mut script = Script::looping(vec![
-        AgentEvent::ToolCallRequested {
-            id: "call_1".to_string(),
-            name: "ls".to_string(),
-            input: serde_json::json!({ "path": root.path().to_str().unwrap() }),
-        },
-        stop(StopReason::ToolUse),
-    ]);
+    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    // Exactly as many rounds as the cap allows: `run_turn` can never ask for more, so
+    // an endless supply would only hide the dependency this test is about.
+    let mut script = Script::new(std::iter::repeat_n(
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        3,
+    ));
 
     let mut asking_forever = turn(&[], &[BuiltinTool::Ls]);
     asking_forever.limits = TurnLimits {
@@ -557,9 +551,14 @@ async fn a_round_that_never_finishes_streaming_times_out() {
         ..TurnLimits::default()
     };
 
-    let error = run_turn(async |_| Ok(stalled()), stalling, &ctx(), |_| {})
-        .await
-        .expect_err("a stream that never finishes must not hold the turn open");
+    let error = run_turn(
+        async |_| Ok(stalled()),
+        stalling,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .expect_err("a stream that never finishes must not hold the turn open");
 
     assert!(
         matches!(error, TurnError::TimedOut { after } if after == std::time::Duration::from_secs(30)),
