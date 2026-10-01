@@ -16,4 +16,4 @@ mod error;
 mod turn;
 
 pub use error::TurnError;
-pub use turn::{Turn, run_turn};
+pub use turn::{Turn, TurnLimits, run_turn};

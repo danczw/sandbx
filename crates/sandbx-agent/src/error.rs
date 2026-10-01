@@ -24,6 +24,15 @@ pub enum TurnError {
     /// to tell a complete turn from a truncated one.
     StreamEndedWithoutStop,
 
+    /// The model was still asking for tools when the turn ran out of rounds.
+    ///
+    /// Not a quiet stop: a turn cut off here did not finish, and the partial
+    /// transcript is discarded rather than handed back looking complete.
+    RoundLimit {
+        /// The cap that was reached.
+        rounds: usize,
+    },
+
     /// A tool's blocking task did not return a result.
     ///
     /// Reachable only if the tool panicked, since the task is awaited to
@@ -44,6 +53,9 @@ impl std::fmt::Display for TurnError {
             Self::StreamEndedWithoutStop => {
                 write!(f, "the turn's event stream ended without a stop event")
             }
+            Self::RoundLimit { rounds } => {
+                write!(f, "still asking for tools after {rounds} rounds")
+            }
             Self::ToolPanicked { name } => write!(f, "the {name} tool panicked"),
         }
     }
@@ -53,7 +65,9 @@ impl std::error::Error for TurnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Provider(error) => Some(error),
-            Self::StreamEndedWithoutStop | Self::ToolPanicked { .. } => None,
+            Self::StreamEndedWithoutStop | Self::RoundLimit { .. } | Self::ToolPanicked { .. } => {
+                None
+            }
         }
     }
 }

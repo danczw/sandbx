@@ -9,7 +9,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 
-use sandbx_agent::{Turn, TurnError, run_turn};
+use sandbx_agent::{Turn, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, MessagesRequest, MockProvider, ProviderError, RequestMessage, Role,
@@ -26,6 +26,9 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 /// why recording the requests can live in the test rather than in the double.
 struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
+    /// Replayed once `rounds` runs dry, for the tests that need a turn which never
+    /// stops asking for tools.
+    forever: Option<Vec<AgentEvent>>,
     sent: Vec<MessagesRequest>,
 }
 
@@ -33,6 +36,16 @@ impl Script {
     fn new(rounds: impl IntoIterator<Item = Vec<AgentEvent>>) -> Self {
         Self {
             rounds: rounds.into_iter().collect(),
+            forever: None,
+            sent: Vec::new(),
+        }
+    }
+
+    /// The same round, over and over, however many times it is asked for.
+    fn looping(round: Vec<AgentEvent>) -> Self {
+        Self {
+            rounds: VecDeque::new(),
+            forever: Some(round),
             sent: Vec::new(),
         }
     }
@@ -46,7 +59,11 @@ impl Script {
         request: MessagesRequest,
     ) -> impl Future<Output = Result<EventStream, ProviderError>> + use<> {
         self.sent.push(request.clone());
-        let events = self.rounds.pop_front().unwrap_or_default();
+        let events = self
+            .rounds
+            .pop_front()
+            .or_else(|| self.forever.clone())
+            .unwrap_or_default();
         MockProvider::new(events).stream_chat(request)
     }
 }
@@ -58,6 +75,7 @@ fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a>
         system: None,
         tools,
         history,
+        limits: TurnLimits::default(),
     }
 }
 
@@ -449,4 +467,47 @@ async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
         "got {result:?}"
     );
     assert_eq!(messages.len(), 3, "the turn should have carried on");
+}
+
+/// A model that keeps asking for tools — looping on its own, or steered into it by
+/// injected content — would otherwise drive tool execution without bound. The cap is
+/// what makes a turn's total cost derivable instead of open-ended.
+#[tokio::test]
+async fn a_turn_ends_once_it_runs_out_of_rounds() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_read(root.path()));
+    let mut script = Script::looping(vec![
+        AgentEvent::ToolCallRequested {
+            id: "call_1".to_string(),
+            name: "ls".to_string(),
+            input: serde_json::json!({ "path": root.path().to_str().unwrap() }),
+        },
+        stop(StopReason::ToolUse),
+    ]);
+
+    let mut asking_forever = turn(&[], &[BuiltinTool::Ls]);
+    asking_forever.limits = TurnLimits { max_rounds: 3 };
+
+    let error = run_turn(|r| script.open(r), asking_forever, &ctx, |_| {})
+        .await
+        .expect_err("a turn that never stops asking must not run forever");
+
+    assert!(
+        matches!(error, TurnError::RoundLimit { rounds: 3 }),
+        "got {error:?}"
+    );
+    assert_eq!(
+        script.sent.len(),
+        3,
+        "it should have asked exactly three times"
+    );
+}
+
+/// Pinned literally rather than read off the type, because the value is the claim:
+/// with no caller measured yet, the default is deliberately at the tighter end, so a
+/// limit that is too low announces itself where one that is too high silently fails
+/// to catch the runaway it exists for.
+#[test]
+fn the_default_round_cap_is_the_documented_one() {
+    assert_eq!(TurnLimits::default().max_rounds, 8);
 }
