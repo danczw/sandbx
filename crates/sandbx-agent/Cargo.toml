@@ -15,10 +15,8 @@ sandbx-tools = { path = "../sandbx-tools" }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 # The first crate in the workspace to need tokio as a *normal* dependency, for
 # exactly two primitives: `rt` carries the blocking pool behind `spawn_blocking`
-# (the boundary this crate exists to own), and `time` carries the per-round bound
-# that `sandbx-providers` explicitly delegates upward — see the `read_timeout`
-# comment in its `anthropic.rs`, which notes that a per-turn wall-clock bound
-# "belongs one layer up, wrapping the consumption loop".
+# (the boundary this crate exists to own), and `time` carries the per-round bound —
+# see `TurnLimits::stream_timeout` for why that bound belongs here.
 #
 # Deliberately not `rt-multi-thread`: `spawn_blocking` needs only `rt`, and
 # choosing the runtime flavour is the binary's call, not a library's.

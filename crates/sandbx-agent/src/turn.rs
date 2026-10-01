@@ -61,20 +61,13 @@ impl Default for TurnLimits {
     fn default() -> Self {
         Self {
             max_rounds: 8,
-            // The pressure point is a long extended-thinking generation; raise it
-            // when that actually bites.
+            // The pressure point is a long extended-thinking generation.
             stream_timeout: std::time::Duration::from_secs(300),
         }
     }
 }
 
 /// Run one turn, accumulating its event stream into replayable messages.
-///
-/// # What this owns
-///
-/// `AgentEvent::Text` carries an increment, never the accumulated total, and
-/// nothing in `sandbx-providers` concatenates it. Doing that here is the point:
-/// otherwise the agent loop, a TUI and an eval harness each rebuild it.
 ///
 /// # The seam
 ///
@@ -223,9 +216,11 @@ async fn answer_calls(
             continue;
         };
 
-        // Cloned into the closure because `spawn_blocking` needs `'static`.
-        // `ExecutionContext` is a handful of path lists, so this is cheap, and it
-        // keeps an `Arc` out of this crate's public signature.
+        // Cloned into the closure because `spawn_blocking` needs `'static`, and one
+        // clone per call because the closure consumes it. An `Arc` would avoid the
+        // copies without changing the signature — it is simply not worth it: copying
+        // a few path lists is a fraction of the thread handoff on the next line.
+        // Revisit if `ExecutionContext` ever holds something costly to copy.
         let input = input.clone();
         let context = ctx.clone();
         let outcome = tokio::task::spawn_blocking(move || tool.execute(input, &context))

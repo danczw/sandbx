@@ -46,11 +46,12 @@ pub enum TurnError {
 
     /// A tool's blocking task did not return a result.
     ///
-    /// Reachable only if the tool panicked, since the task is awaited to
-    /// completion and the runtime outlives it. No built-in does, and
-    /// `BuiltinTool` is a closed enum, so no test can inject one that would —
-    /// this exists so that a panic surfaces as a typed failure instead of taking
-    /// the harness down with it.
+    /// Almost always means the tool panicked; a runtime shut down while the task was
+    /// in flight produces the same thing, which a UI exit path can reach. No built-in
+    /// panics, and `BuiltinTool` is a closed enum, so no test can inject one that
+    /// would — this exists so a panic surfaces as a typed failure naming the tool,
+    /// rather than taking the harness down or being resumed into whichever task owns
+    /// the turn.
     ToolPanicked {
         /// The tool that was running.
         name: String,
