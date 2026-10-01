@@ -367,15 +367,28 @@ where
                 // Only `tool_use` opens accumulation state; the other kinds are
                 // parsed so they do not fail the turn, and then have nothing to
                 // keep.
-                if let RawContentBlockStart::ToolUse { id, name } = content_block {
-                    state.blocks.insert(
-                        index,
-                        ToolUseBlock {
-                            id,
-                            name,
-                            partial_json: String::new(),
-                        },
-                    );
+                //
+                // A non-tool start still *clears* the index. Leaving a previous
+                // entry there would let a stream that reuses an index without
+                // closing it — `tool_use` at 0, then `text` at 0 — accumulate the
+                // text block's deltas into the abandoned tool call and emit a
+                // `ToolCallRequested` the model never asked for, which the agent
+                // loop would then run. Opening a block ends whatever was open at
+                // that index, whichever kind either one is.
+                match content_block {
+                    RawContentBlockStart::ToolUse { id, name } => {
+                        state.blocks.insert(
+                            index,
+                            ToolUseBlock {
+                                id,
+                                name,
+                                partial_json: String::new(),
+                            },
+                        );
+                    }
+                    _ => {
+                        state.blocks.remove(&index);
+                    }
                 }
             }
             RawStreamEvent::ContentBlockDelta { index, delta } => match delta {
@@ -807,6 +820,29 @@ mod tests {
             })
         );
         assert_eq!(out.last(), Some(&stop(StopReason::ToolUse)));
+    }
+
+    /// Reusing an index without closing it must not let the new block's deltas
+    /// land in the abandoned tool call: the resulting `ToolCallRequested` would
+    /// name a tool the model never asked for, and the agent loop would run it.
+    /// Only reachable on a malformed stream — which is exactly the case where a
+    /// fabricated tool call matters.
+    #[tokio::test]
+    async fn a_block_opened_over_an_unclosed_tool_use_discards_it() {
+        let out = events(vec![
+            raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_A","name":"bash"}}"#),
+            raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#),
+            raw(r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"rm -rf /\"}"}}"#),
+            raw(r#"{"type":"content_block_stop","index":0}"#),
+            raw(r#"{"type":"message_stop"}"#),
+        ])
+        .await;
+
+        assert!(
+            !out.iter()
+                .any(|event| matches!(event, Ok(AgentEvent::ToolCallRequested { .. }))),
+            "a tool call was fabricated from a text block's deltas: {out:?}"
+        );
     }
 
     #[tokio::test]
