@@ -251,3 +251,37 @@ fn allow_write_also_grants_read_at_the_command_line() {
         "--allow-write did not grant read alongside it"
     );
 }
+
+/// Every path flag lands on its own axis, stated over the axis table rather than
+/// flag by flag.
+///
+/// The CLI's one deliberate widening is asserted here too: `--allow-write` grants
+/// read alongside write (#49), which is a command-line affordance and not a
+/// property of the library's write axis. Everything else is one axis wide.
+#[test]
+fn every_path_flag_grants_its_own_axis_and_nothing_else() {
+    use sandbx_core::Axis;
+
+    let granted = std::path::PathBuf::from("/srv/subject");
+
+    for (flag, axis) in [
+        ("--allow-read", Axis::Read),
+        ("--allow-write", Axis::Write),
+        ("--allow-exec", Axis::ReadExecute),
+    ] {
+        let policy =
+            sandbox_run(&["sandbx", "sandbox-run", flag, "/srv/subject", "--", "true"]).policy();
+
+        for other in Axis::ALL {
+            // `--allow-write` deliberately also grants read; nothing else widens.
+            let expected = other == axis || (axis == Axis::Write && other == Axis::Read);
+
+            assert_eq!(
+                policy.paths(other).contains(&granted),
+                expected,
+                "{flag} granted {:?} on {other:?}",
+                granted.display()
+            );
+        }
+    }
+}
