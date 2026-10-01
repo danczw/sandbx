@@ -184,7 +184,9 @@ These are documented behaviour, and reports of them will be closed as such:
   rewrite a tree but not read it back is a trap rather than a safeguard. The
   library keeps the two axes separate, so a genuinely write-only drop directory
   is still expressible through `SandboxPolicy::allow_write`.
-- An agent running a tool call you approved.
+- An agent running a tool call — one you approved, or, as things stand, any one the
+  model asked for, since nothing gates them yet (see *Approval is not enforcement*
+  above). What bounds it is the sandbox, not the asking.
 - Refusal to run on a kernel older than 6.10, or on one with Landlock disabled at
   boot. That is fail-closed behaviour working as intended.
 - Failure to *build* for a non-Linux target. Also intended — see above.
