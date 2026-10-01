@@ -131,20 +131,36 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, SandboxError> {
     use std::os::unix::process::ExitStatusExt;
 
-    if let Some(code) = status.code() {
-        std::process::exit(code);
+    // Re-raised before the numbered form, so a signalled status stays signalled.
+    // When the raise returns anyway — the `SIGPIPE`/`SIGSEGV` cases above — the
+    // fallback below encodes it the way a shell would.
+    if status.code().is_none()
+        && let Some(signal) = status.signal()
+        && let Ok(signal) = nix::sys::signal::Signal::try_from(signal)
+    {
+        let _ = nix::sys::signal::raise(signal);
     }
 
-    if let Some(signal) = status.signal() {
-        if let Ok(signal) = nix::sys::signal::Signal::try_from(signal) {
-            let _ = nix::sys::signal::raise(signal);
-        }
-        std::process::exit(128 + signal);
-    }
+    std::process::exit(exit_code(&status))
+}
 
-    // Neither an exit code nor a signal: nothing sensible to relay, so refuse
-    // rather than invent a success.
-    std::process::exit(1)
+/// Translate a child's fate into an exit code, the way a shell does.
+///
+/// A command killed by the sandbox dies by signal and has no exit code of its
+/// own; reporting 0 there would say "succeeded" about a process seccomp shot. A
+/// status that is neither is refused with 1 rather than given an invented
+/// success.
+///
+/// Lives here, beside the helper that relays a status by exiting with it, so the
+/// encoding exists once: `sandbx-cli` reports the same number for the same child
+/// without deriving it a second time.
+pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+
+    status
+        .code()
+        .or_else(|| status.signal().map(|signal| 128 + signal))
+        .unwrap_or(1)
 }
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
