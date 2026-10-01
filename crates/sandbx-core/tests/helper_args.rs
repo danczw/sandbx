@@ -129,9 +129,19 @@ fn a_path_flag_without_its_path_is_rejected_on_every_axis() {
         );
         let flag = emitted[0].clone();
 
+        // The *reason* matters, not just that it failed: this argv is missing the
+        // `--` separator too, so `is_err()` alone is satisfied by either refusal
+        // and would still pass if the pathless-flag check were removed.
+        let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+            .expect_err("{flag} was accepted with no path after it");
+
         assert!(
-            HelperArgs::decode(std::slice::from_ref(&flag)).is_err(),
-            "{flag} was accepted with no path and no separator after it"
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("path flag with no path")
+            ),
+            "{flag} was refused for the wrong reason: {refusal:?}"
         );
     }
 }
