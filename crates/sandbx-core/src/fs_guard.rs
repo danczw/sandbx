@@ -258,7 +258,7 @@ impl FsGuard {
 }
 
 /// Resolve every root that currently exists, discarding the rest.
-fn canonical_roots(roots: Vec<&Path>) -> Vec<PathBuf> {
+fn canonical_roots<'a>(roots: impl IntoIterator<Item = &'a Path>) -> Vec<PathBuf> {
     roots
         .into_iter()
         .filter_map(|root| canonicalize(root).ok())
