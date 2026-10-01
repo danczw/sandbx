@@ -118,6 +118,17 @@ where
             return Some((oversized(), ended(state)));
         }
 
+        // The stream ended on an earlier turn and its unterminated tail, if there
+        // was one, has since been decoded by the scan above. Returning here rather
+        // than polling again matters: `state.bytes` has already yielded `None`.
+        if state.done {
+            if lines.is_empty() {
+                return None; // clean EOF between events
+            }
+            // Trailing event with no final blank line before EOF.
+            return Some((Ok(parse_event(&lines)), state));
+        }
+
         match state.bytes.next().await {
             Some(Ok(chunk)) => state.buf.extend_from_slice(&chunk),
             Some(Err(source)) => {
@@ -132,34 +143,17 @@ where
             None => {
                 state.done = true;
                 // Whatever sits after the last `\n` is a final line the sender
-                // never terminated — the loop above can only produce a line
-                // that ends at a newline, so without this it is silently
-                // dropped. That payload is commonly the `message_stop` frame,
-                // i.e. the difference between a clean turn and a truncated one.
+                // never terminated — the scan above only yields a line that ends
+                // at a newline, so without this it is silently dropped. That
+                // payload is commonly the `message_stop` frame, i.e. the
+                // difference between a clean turn and a truncated one.
+                //
+                // Terminated here rather than decoded separately, so the one scan
+                // handles it: a second copy of the UTF-8 decode, the CR trim and
+                // the cap check is a second place for them to drift, and they had.
                 if !state.buf.is_empty() {
-                    let rest = std::mem::take(&mut state.buf);
-                    match String::from_utf8(rest) {
-                        Ok(line) => {
-                            let line = line.trim_end_matches('\r');
-                            if !line.is_empty() {
-                                lines.push(line.to_string());
-                            }
-                        }
-                        Err(source) => {
-                            return Some((
-                                Err(ProviderError::MalformedEvent {
-                                    detail: format!("non-UTF-8 SSE line: {source}"),
-                                }),
-                                state,
-                            ));
-                        }
-                    }
+                    state.buf.push(b'\n');
                 }
-                if lines.is_empty() {
-                    return None; // clean EOF between events
-                }
-                // Trailing event with no final blank line before EOF.
-                return Some((Ok(parse_event(&lines)), state));
             }
         }
     }
