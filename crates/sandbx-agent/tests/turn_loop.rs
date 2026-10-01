@@ -10,11 +10,12 @@ use std::collections::VecDeque;
 use std::future::Future;
 
 use sandbx_agent::{Turn, TurnError, run_turn};
+use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, MessagesRequest, MockProvider, ProviderError, RequestMessage, Role,
     StopReason,
 };
-use sandbx_tools::BuiltinTool;
+use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 /// Scripts one canned round per call, and records what was sent.
 ///
@@ -60,6 +61,11 @@ fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a>
     }
 }
 
+/// A context granting nothing, for the tests that never run a tool.
+fn ctx() -> ExecutionContext {
+    ExecutionContext::new(SandboxPolicy::default())
+}
+
 fn text(delta: &str) -> AgentEvent {
     AgentEvent::Text {
         delta: delta.to_string(),
@@ -79,7 +85,7 @@ fn wire(messages: &[RequestMessage]) -> serde_json::Value {
 async fn text_deltas_accumulate_into_one_block() {
     let mut script = Script::new([vec![text("Hel"), text("lo"), stop(StopReason::EndTurn)]]);
 
-    let messages = run_turn(|r| script.open(r), turn(&[], &[]), |_| {})
+    let messages = run_turn(|r| script.open(r), turn(&[], &[]), &ctx(), |_| {})
         .await
         .unwrap();
 
@@ -110,6 +116,7 @@ async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
     let messages = run_turn(
         |r| script.open(r),
         turn(&[], &[]),
+        &ctx(),
         |event: &AgentEvent| seen.push(event.clone()),
     )
     .await
@@ -146,6 +153,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
     run_turn(
         |r| script.open(r),
         turn(&[], &[]),
+        &ctx(),
         |event: &AgentEvent| seen.push(event.clone()),
     )
     .await
@@ -161,7 +169,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
 async fn a_round_that_produced_nothing_appends_no_message() {
     let mut script = Script::new([vec![stop(StopReason::EndTurn)]]);
 
-    let messages = run_turn(|r| script.open(r), turn(&[], &[]), |_| {})
+    let messages = run_turn(|r| script.open(r), turn(&[], &[]), &ctx(), |_| {})
         .await
         .unwrap();
 
@@ -175,7 +183,7 @@ async fn a_round_that_produced_nothing_appends_no_message() {
 async fn a_stream_that_never_reports_a_stop_is_an_error() {
     let mut script = Script::new([vec![text("cut off")]]);
 
-    let error = run_turn(|r| script.open(r), turn(&[], &[]), |_| {})
+    let error = run_turn(|r| script.open(r), turn(&[], &[]), &ctx(), |_| {})
         .await
         .expect_err("a stream with no Stop event must not succeed");
 
@@ -201,6 +209,7 @@ async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
     run_turn(
         |r| script.open(r),
         turn(&history, &[BuiltinTool::Read]),
+        &ctx(),
         |_| {},
     )
     .await
@@ -219,4 +228,225 @@ async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
         sent["tools"][0]["input_schema"],
         BuiltinTool::Read.input_schema()
     );
+}
+
+/// The whole point of the loop, end to end: assistant text, a tool call, the tool
+/// actually running under a policy, its result threaded back, and a second round
+/// that sees all of it. No network and no API key anywhere in it.
+#[tokio::test]
+async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("note.txt");
+    let input = serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" });
+    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            text("Writing it now."),
+            AgentEvent::ToolCallRequested {
+                id: "call_1".to_string(),
+                name: "write".to_string(),
+                input: input.clone(),
+            },
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("Done."), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        |r| script.open(r),
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx,
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
+
+    assert_eq!(
+        wire(&messages),
+        serde_json::json!([
+            {
+                "role": "assistant",
+                "content": [
+                    { "type": "text", "text": "Writing it now." },
+                    { "type": "tool_use", "id": "call_1", "name": "write", "input": input },
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call_1",
+                    "content": format!("wrote 7 bytes to {}", file.display()),
+                }],
+            },
+            { "role": "assistant", "content": [{ "type": "text", "text": "Done." }] },
+        ])
+    );
+
+    // The second round has to carry the first one, or the model answers blind.
+    let second = serde_json::to_value(&script.sent[1]).unwrap();
+    assert_eq!(second["messages"], wire(&messages[..2]));
+}
+
+/// `message_delta.stop_reason` is nullable, so a round can reach `message_stop`
+/// carrying tool calls *and* `StopReason::Unspecified`. Keying re-entry off the stop
+/// reason instead of off the calls themselves would silently drop them.
+#[tokio::test]
+async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_read(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            AgentEvent::ToolCallRequested {
+                id: "call_1".to_string(),
+                name: "ls".to_string(),
+                input: serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            },
+            stop(StopReason::Unspecified),
+        ],
+        vec![text("listed"), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        |r| script.open(r),
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx,
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(messages.len(), 3, "got {:?}", wire(&messages));
+    assert_eq!(script.sent.len(), 2, "the turn should have re-entered");
+}
+
+/// A refusal is not a turn-ending failure: the model is told it was refused and
+/// gets to ask for something in scope. `context/TOOLS.md` is explicit that the
+/// three `ToolError` variants exist because the model reacts to them differently,
+/// which only works if they reach it.
+#[tokio::test]
+async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
+    let allowed = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let outside = elsewhere.path().join("escape.txt");
+    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_write(allowed.path()));
+
+    let mut script = Script::new([
+        vec![
+            AgentEvent::ToolCallRequested {
+                id: "call_1".to_string(),
+                name: "write".to_string(),
+                input: serde_json::json!({
+                    "path": outside.to_str().unwrap(),
+                    "content": "nope",
+                }),
+            },
+            stop(StopReason::ToolUse),
+        ],
+        vec![
+            text("I will stay inside the root."),
+            stop(StopReason::EndTurn),
+        ],
+    ]);
+
+    let messages = run_turn(
+        |r| script.open(r),
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx,
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert!(!outside.exists(), "the write must not have happened");
+
+    let result = &wire(&messages)[1]["content"][0];
+    assert_eq!(result["is_error"], true);
+    assert!(
+        result["content"]
+            .as_str()
+            .unwrap()
+            .contains("refused by the sandbox policy"),
+        "got {result:?}"
+    );
+    assert_eq!(messages.len(), 3, "the turn should have carried on");
+}
+
+/// Arguments that do not match the schema are the model's mistake to fix, so it is
+/// told what was wrong rather than having the turn end under it.
+#[tokio::test]
+async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ExecutionContext::new(SandboxPolicy::default().allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            AgentEvent::ToolCallRequested {
+                id: "call_1".to_string(),
+                name: "write".to_string(),
+                // `content` is required, and absent.
+                input: serde_json::json!({ "path": root.path().join("x").to_str().unwrap() }),
+            },
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("Retrying properly."), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        |r| script.open(r),
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx,
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    let result = &wire(&messages)[1]["content"][0];
+    assert_eq!(result["is_error"], true);
+    assert!(
+        result["content"]
+            .as_str()
+            .unwrap()
+            .contains("invalid tool arguments"),
+        "got {result:?}"
+    );
+}
+
+/// `BuiltinTool::from_name` is exact-match on purpose, so a name that does not
+/// resolve is a prompt or schema bug. The model is the one that can correct it, so
+/// it is told — and nothing runs in the meantime.
+#[tokio::test]
+async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
+    let mut script = Script::new([
+        vec![
+            AgentEvent::ToolCallRequested {
+                id: "call_1".to_string(),
+                name: "rm".to_string(),
+                input: serde_json::json!({}),
+            },
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("Using a real tool."), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        |r| script.open(r),
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx(),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    let result = &wire(&messages)[1]["content"][0];
+    assert_eq!(result["is_error"], true);
+    assert!(
+        result["content"].as_str().unwrap().contains("rm"),
+        "got {result:?}"
+    );
+    assert_eq!(messages.len(), 3, "the turn should have carried on");
 }
