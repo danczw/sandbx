@@ -1,7 +1,7 @@
 //! What one axis confers, over `Axis::ALL` and over both target kinds. No
 //! filesystem and no policy involved — [`rights_for`](super::rights_for) is pure.
 
-use super::{AccessFs, LATEST_ABI, rights_for};
+use super::{AccessFs, BASELINE_ABI, LATEST_ABI, rights_for};
 
 /// Every right installed is the one the axis table says, not a second
 /// opinion about it.
@@ -134,42 +134,75 @@ fn only_the_execute_axis_carries_execute() {
     assert!(!rights.contains(AccessFs::WriteFile));
 }
 
-/// The whole write set, spelled out, at the ABI the negotiation aims for.
+/// Each axis's whole right set on a directory, spelled out at both ends of the
+/// negotiable range.
 ///
-/// `write` is defined by subtraction — `from_all` minus `from_read` — so every
-/// right a new ABI adds to the write half lands in every `--allow-write` grant
-/// with no edit here and no test failing. At `LATEST_ABI` that is already two
+/// Every other assertion here names rights one at a time, and only the five
+/// [`Axis::grants`](crate::Axis::grants) has a word for. `AccessFs` has
+/// seventeen variants, so twelve were pinned by nothing: a right that drifted
+/// into a grant it does not belong in would land there with the suite green.
+///
+/// `write` is the sharpest case, because it is defined by subtraction —
+/// `from_all` minus `from_read` — so every right a new ABI adds to the write
+/// half joins every `--allow-write` grant. At `LATEST_ABI` that is already two
 /// rights beyond writing bytes: `IoctlDev` (device ioctls on a node beneath the
 /// path) and `ResolveUnix` (`connect(2)` to a pathname socket beneath it, which
 /// `SECURITY.md` discusses as seccomp's business).
 ///
-/// Pinned literally rather than against `from_all(LATEST_ABI) & !from_read(..)`,
-/// which would restate the implementation and move with it. An ABI bump therefore
-/// fails here, which is the review a widened write grant should force.
+/// That is the `d4676cc` class, which has happened once already: pinning
+/// `ABI::V1` left `truncate(2)` unguarded on every file regardless of policy,
+/// and raising the floor took a hand-edit in two files with nothing to catch a
+/// miss (#78).
+///
+/// Spelled out rather than derived from `from_all`/`from_read`, which would
+/// restate the implementation and move with the bump it is meant to catch. Both
+/// ends are pinned because both are claims — [`BASELINE_ABI`] is what sandbx
+/// refuses to run below, [`LATEST_ABI`] the ceiling it negotiates up to — and
+/// in one test rather than one per end, so an intentional bump has exactly one
+/// place to edit.
 #[test]
-fn a_write_grant_confers_exactly_the_documented_set() {
-    let expected = landlock::make_bitflags!(AccessFs::{
-        WriteFile
-            | RemoveDir
-            | RemoveFile
-            | MakeChar
-            | MakeDir
-            | MakeReg
-            | MakeSock
-            | MakeFifo
-            | MakeBlock
-            | MakeSym
-            | Refer
-            | Truncate
-            | IoctlDev
-            | ResolveUnix
-    });
+fn each_axis_confers_exactly_the_documented_set() {
+    // Only the write axis differs across the range: `ResolveUnix` arrives in
+    // V9, and it is a write-side right.
+    let expected = [
+        (
+            crate::Axis::Read,
+            landlock::make_bitflags!(AccessFs::{ReadFile | ReadDir}),
+            landlock::make_bitflags!(AccessFs::{ReadFile | ReadDir}),
+        ),
+        (
+            crate::Axis::Write,
+            landlock::make_bitflags!(AccessFs::{
+                WriteFile | RemoveDir | RemoveFile | MakeChar | MakeDir | MakeReg | MakeSock
+                | MakeFifo | MakeBlock | MakeSym | Refer | Truncate | IoctlDev
+            }),
+            landlock::make_bitflags!(AccessFs::{
+                WriteFile | RemoveDir | RemoveFile | MakeChar | MakeDir | MakeReg | MakeSock
+                | MakeFifo | MakeBlock | MakeSym | Refer | Truncate | IoctlDev | ResolveUnix
+            }),
+        ),
+        (
+            crate::Axis::ReadExecute,
+            landlock::make_bitflags!(AccessFs::{Execute | ReadFile | ReadDir}),
+            landlock::make_bitflags!(AccessFs::{Execute | ReadFile | ReadDir}),
+        ),
+    ];
 
-    assert_eq!(
-        rights_for(crate::Axis::Write, true, LATEST_ABI),
-        expected,
-        "the write axis changed shape; every --allow-write grant moved with it"
-    );
+    // Every axis has a row, so a new one cannot be added without one.
+    assert_eq!(expected.len(), crate::Axis::ALL.len());
+
+    for (axis, at_baseline, at_latest) in expected {
+        assert_eq!(
+            rights_for(axis, true, BASELINE_ABI),
+            at_baseline,
+            "{axis:?} changed shape at the ABI floor; every grant on it moved too"
+        );
+        assert_eq!(
+            rights_for(axis, true, LATEST_ABI),
+            at_latest,
+            "{axis:?} changed shape at the ABI ceiling; every grant on it moved too"
+        );
+    }
 }
 
 /// A write grant carries neither read nor execute.

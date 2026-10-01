@@ -13,5 +13,5 @@ mod rules;
 use crate::SandboxPolicy;
 use landlock::AccessFs;
 
-use super::compat::{LATEST_ABI, NEGOTIABLE_ABI, enforcement_verdict};
+use super::compat::{BASELINE_ABI, LATEST_ABI, NEGOTIABLE_ABI, enforcement_verdict};
 use super::rights::{fs_rules, rights_for};
