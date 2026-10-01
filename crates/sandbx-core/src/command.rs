@@ -263,13 +263,17 @@ fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<
 }
 
 /// Take what a reader has collected so far.
+///
+/// Moved out rather than copied: this is the last read of the buffer, and the
+/// `Arc` is dropped immediately afterwards.
 fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
     // A panicking reader poisons the lock but leaves the bytes it already read
     // intact, and partial output beats none.
-    buffer
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
+    std::mem::take(
+        &mut *buffer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
 }
 
 /// Read one pipe on its own thread, into a buffer the caller can take early.
