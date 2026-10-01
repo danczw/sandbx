@@ -30,8 +30,11 @@ impl AnthropicClient {
     ///
     /// Installs the `ring` crypto provider first (see
     /// [`ensure_crypto_provider_installed`]), since building a
-    /// `reqwest::Client` without one panics. Fails only if reqwest cannot
-    /// construct its client at all — no network access happens here.
+    /// `reqwest::Client` without one panics. No network access happens here, so
+    /// the only failures are local: reqwest declining to build its client, or
+    /// [`DEFAULT_BASE_URL`] failing [`validate_base_url`] — which cannot happen
+    /// for the value shipped here, and is reported rather than asserted away so
+    /// that the two can never disagree.
     ///
     /// [`DEFAULT_BASE_URL`]: Self::DEFAULT_BASE_URL
     /// [`ensure_crypto_provider_installed`]: crate::ensure_crypto_provider_installed
