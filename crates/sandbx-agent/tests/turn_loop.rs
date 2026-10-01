@@ -486,7 +486,10 @@ async fn a_turn_ends_once_it_runs_out_of_rounds() {
     ]);
 
     let mut asking_forever = turn(&[], &[BuiltinTool::Ls]);
-    asking_forever.limits = TurnLimits { max_rounds: 3 };
+    asking_forever.limits = TurnLimits {
+        max_rounds: 3,
+        ..TurnLimits::default()
+    };
 
     let error = run_turn(|r| script.open(r), asking_forever, &ctx, |_| {})
         .await
@@ -510,4 +513,53 @@ async fn a_turn_ends_once_it_runs_out_of_rounds() {
 #[test]
 fn the_default_round_cap_is_the_documented_one() {
     assert_eq!(TurnLimits::default().max_rounds, 8);
+}
+
+/// A stream that opens and then goes quiet forever.
+///
+/// `EventStream` is a `FusedStream`, which `stream::pending` satisfies — it never
+/// yields and never claims to be terminated.
+fn stalled() -> EventStream {
+    Box::pin(futures_util::stream::pending())
+}
+
+/// `sandbx-providers` bounds *inactivity between chunks* at 120s and says plainly
+/// that a per-turn wall-clock bound "belongs one layer up, wrapping the consumption
+/// loop". This is that layer. Without it, a server that keeps the connection warm
+/// while producing nothing useful holds a turn open indefinitely.
+///
+/// Paused time rather than a real sleep: the runtime auto-advances once nothing else
+/// can make progress, so this asserts the bound without waiting for it.
+#[tokio::test(start_paused = true)]
+async fn a_round_that_never_finishes_streaming_times_out() {
+    let mut stalling = turn(&[], &[]);
+    stalling.limits = TurnLimits {
+        stream_timeout: std::time::Duration::from_secs(30),
+        ..TurnLimits::default()
+    };
+
+    let error = run_turn(
+        |_| std::future::ready(Ok(stalled())),
+        stalling,
+        &ctx(),
+        |_| {},
+    )
+    .await
+    .expect_err("a stream that never finishes must not hold the turn open");
+
+    assert!(
+        matches!(error, TurnError::TimedOut { after } if after == std::time::Duration::from_secs(30)),
+        "got {error:?}"
+    );
+}
+
+/// Pinned literally, like the round cap: the number is the claim. It bounds one
+/// round's whole generation, which is strictly tighter than the 120s *per-chunk*
+/// read timeout underneath it, and does not replace it.
+#[test]
+fn the_default_stream_bound_is_the_documented_one() {
+    assert_eq!(
+        TurnLimits::default().stream_timeout,
+        std::time::Duration::from_secs(300)
+    );
 }

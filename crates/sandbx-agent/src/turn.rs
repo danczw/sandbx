@@ -45,11 +45,28 @@ pub struct TurnLimits {
     /// [`TurnError::RoundLimit`], not a quiet stop, because a turn cut off here did
     /// not finish and a caller should not read it as if it had.
     pub max_rounds: usize,
+
+    /// How long one round may spend streaming before the turn is abandoned.
+    ///
+    /// Bounds the *consumption* of one round, which is the bound
+    /// `sandbx-providers` explicitly leaves to a caller: its own read timeout
+    /// bounds inactivity between chunks and resets on every one, so a connection
+    /// that stays warm while producing nothing useful is not bounded by it.
+    ///
+    /// This does not bound a tool call — `ExecutionContext::timeout` does that
+    /// already. The two compose: a turn costs at most
+    /// `max_rounds * (stream_timeout + calls * tool timeout)`.
+    pub stream_timeout: std::time::Duration,
 }
 
 impl Default for TurnLimits {
     fn default() -> Self {
-        Self { max_rounds: 8 }
+        Self {
+            max_rounds: 8,
+            // The pressure point is a long extended-thinking generation; raise it
+            // when that actually bites.
+            stream_timeout: std::time::Duration::from_secs(300),
+        }
     }
 }
 
@@ -128,7 +145,17 @@ where
         };
 
         let mut stream = open(request).await.map_err(TurnError::Provider)?;
-        let blocks = accumulate(&mut stream, &mut observe).await?;
+
+        // Only the consumption is wrapped. Opening the stream is the provider's own
+        // request, already bounded by its connect and read timeouts.
+        let blocks = tokio::time::timeout(
+            turn.limits.stream_timeout,
+            accumulate(&mut stream, &mut observe),
+        )
+        .await
+        .map_err(|_| TurnError::TimedOut {
+            after: turn.limits.stream_timeout,
+        })??;
 
         // An empty content array is rejected by the API, so a round that produced
         // nothing appends nothing — a message with no blocks would invalidate every
