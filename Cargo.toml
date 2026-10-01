@@ -16,9 +16,9 @@ repository = "https://github.com/danczw/sandbx"
 # wildcard.
 publish = false
 
-# Shared lint config — member crates opt in with `[lints] workspace = true`.
-# `sandbx-core` deliberately does NOT opt in: it is the only crate allowed to
-# contain `unsafe` code or spawn subprocesses directly.
+# Shared lint config — every member crate opts in with `[lints] workspace = true`,
+# `sandbx-core` included. It is the only crate allowed to spawn subprocesses, but
+# it exempts the four sites that do rather than the whole crate.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 # Every public item carries a doc comment, so an undocumented one is a review
