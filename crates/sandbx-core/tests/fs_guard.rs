@@ -467,3 +467,39 @@ fn an_execute_grant_does_not_permit_writing() {
         "an execute grant must not confer write"
     );
 }
+
+/// The in-process layer must grant exactly what the axis table says, for every
+/// axis — including one added after this test was written.
+///
+/// #50 was this property broken on one axis: `FsGuard::new` consulted the read
+/// and write lists and never looked at the execute axis, so `bash` could `cat` a
+/// file the native `read` tool refused under the same policy. The pairs below
+/// pin today's three axes by hand; this is the same claim stated over
+/// [`Axis::ALL`], so the next axis cannot slip through the way that one did.
+#[test]
+fn every_axis_grants_exactly_what_the_table_says() {
+    use sandbx_core::Axis;
+
+    for axis in Axis::ALL {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("subject");
+        std::fs::write(&file, b"x").unwrap();
+
+        let grants = axis.grants();
+        let guard = FsGuard::new(&SandboxPolicy::default().grant(axis, root.path())).unwrap();
+
+        assert_eq!(
+            guard.check_read(&file).is_ok(),
+            grants.read,
+            "{axis:?} grants read={}, but FsGuard disagrees: the two enforcement \
+             layers are back to enforcing different policies",
+            grants.read
+        );
+        assert_eq!(
+            guard.check_write(&file).is_ok(),
+            grants.write,
+            "{axis:?} grants write={}, but FsGuard disagrees",
+            grants.write
+        );
+    }
+}

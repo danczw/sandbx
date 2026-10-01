@@ -25,21 +25,34 @@ impl FsGuard {
     /// resolved can never match a canonical path anyway — so dropping it is the
     /// conservative choice, not a permissive one.
     ///
-    /// The executable axis feeds `readable`, because that is what it grants:
-    /// [`SandboxPolicy::executable_paths`] is read *and* execute, and the kernel
-    /// layer grants it `AccessFs::from_read`. Leaving it out made the native
-    /// `read` tool refuse a file `bash` could `cat` under the same policy (#50).
-    /// There is no `executable` field because nothing in-process execs anything
-    /// — `bash` spawns, and the kernel governs that.
+    /// Which axis feeds which list is not decided here: every grant is sorted by
+    /// what [`Axis::grants`] says it confers. That is what keeps this layer and
+    /// the kernel layer enforcing one policy — chaining the axes by hand is how
+    /// the execute axis came to be missing from `readable`, so that the native
+    /// `read` tool refused a file `bash` could `cat` under the same policy (#50).
+    ///
+    /// There is no `executable` list because nothing in-process execs anything —
+    /// `bash` spawns, and the kernel governs that. The execute axis still feeds
+    /// `readable`, because reading is part of what it grants.
+    ///
+    /// [`Axis::grants`]: crate::Axis::grants
     pub fn new(policy: &SandboxPolicy) -> Result<Self, SandboxError> {
+        let mut readable = Vec::new();
+        let mut writable = Vec::new();
+
+        for (axis, path) in policy.granted_paths() {
+            let grants = axis.grants();
+            if grants.read {
+                readable.push(path);
+            }
+            if grants.write {
+                writable.push(path);
+            }
+        }
+
         Ok(Self {
-            readable: canonical_roots(
-                policy
-                    .readable_paths()
-                    .iter()
-                    .chain(policy.executable_paths()),
-            ),
-            writable: canonical_roots(policy.writable_paths().iter()),
+            readable: canonical_roots(readable),
+            writable: canonical_roots(writable),
         })
     }
 
@@ -236,8 +249,11 @@ impl FsGuard {
 }
 
 /// Resolve every root that currently exists, discarding the rest.
-fn canonical_roots<'a>(roots: impl Iterator<Item = &'a PathBuf>) -> Vec<PathBuf> {
-    roots.filter_map(|r| canonicalize(r).ok()).collect()
+fn canonical_roots(roots: Vec<&Path>) -> Vec<PathBuf> {
+    roots
+        .into_iter()
+        .filter_map(|root| canonicalize(root).ok())
+        .collect()
 }
 
 fn canonicalize(path: &Path) -> Result<PathBuf, SandboxError> {
