@@ -35,6 +35,10 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
 
     let mut hits = Vec::new();
 
+    // Already ordered, so nothing is sorted afterwards: `walk_readable` returns
+    // files sorted and lines are visited ascending within each file. Sorting the
+    // rendered lines instead would be wrong anyway — it orders line numbers
+    // lexicographically, putting `:10` before `:2`.
     for file in files {
         // Checked before opening rather than after: `read_to_string` would read
         // the whole file before failing UTF-8 validation on a binary.
@@ -42,31 +46,23 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
             continue;
         }
 
-        // Opened through the guard so the handle, not a re-resolved path, is
+        // Read through the guard, so the handle rather than a re-resolved path is
         // what gets read. A binary file fails UTF-8 validation and is skipped.
-        let Ok(mut handle) = ctx.guard().open_read(&file) else {
+        let Ok(content) = crate::read_file(&file, ctx) else {
             continue;
         };
-        let mut content = String::new();
-        if std::io::Read::read_to_string(&mut handle, &mut content).is_err() {
-            continue;
-        }
 
         for (number, line) in content.lines().enumerate() {
             if line.contains(&input.pattern) {
-                hits.push((file.clone(), number + 1, line.trim().to_string()));
+                hits.push(format!(
+                    "{}:{}: {}",
+                    file.display(),
+                    number + 1,
+                    line.trim()
+                ));
             }
         }
     }
 
-    // Sort on the parts, not on the rendered line: sorting formatted strings
-    // orders line numbers lexicographically, putting `:10` before `:2`.
-    hits.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
-
-    Ok(crate::listing(
-        hits.into_iter()
-            .map(|(path, line, text)| format!("{}:{}: {}", path.display(), line, text))
-            .collect(),
-        ctx,
-    ))
+    Ok(crate::listing(hits, ctx))
 }
