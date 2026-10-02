@@ -130,7 +130,7 @@ async fn text_deltas_accumulate_into_one_block() {
 /// block, so it cannot be replayed into a later request — but a TUI still has to see
 /// it to render extended thinking.
 #[tokio::test]
-async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
+async fn thinking_reaches_the_observer_not_the_replay() {
     let thinking = AgentEvent::Thinking {
         delta: "weighing it up".to_string(),
     };
@@ -232,7 +232,7 @@ async fn a_stream_that_never_reports_a_stop_is_an_error() {
 }
 
 #[tokio::test]
-async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
+async fn a_definition_per_offered_tool_reaches_the_request() {
     let history = vec![RequestMessage {
         role: Role::User,
         content: vec![sandbx_providers::ContentBlock::Text {
@@ -268,7 +268,7 @@ async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
 /// The loop end to end: assistant text, a tool call running under a policy, its
 /// result threaded back, and a second round that sees all of it.
 #[tokio::test]
-async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
+async fn a_tool_result_is_fed_into_the_next_round() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
     let input = serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" });
@@ -326,7 +326,7 @@ async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
 /// carrying tool calls *and* `StopReason::Unspecified`. Keying re-entry off the
 /// reason rather than the calls would silently drop them.
 #[tokio::test]
-async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
+async fn a_tool_call_runs_without_a_stop_reason() {
     let root = tempfile::tempdir().unwrap();
     let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
 
@@ -359,7 +359,7 @@ async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
 /// something in scope. The three `ToolError` variants only differ to the model if
 /// they reach it; see `context/guide-tools.md`.
 #[tokio::test]
-async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
+async fn a_refused_tool_call_is_an_error_to_the_model() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let outside = elsewhere.path().join("escape.txt");
@@ -406,7 +406,7 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
 /// Arguments that do not match the schema are the model's mistake to fix, so the
 /// turn does not end under it.
 #[tokio::test]
-async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
+async fn bad_tool_arguments_are_reported_as_an_error() {
     let root = tempfile::tempdir().unwrap();
     let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
 
@@ -446,7 +446,7 @@ async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
 /// `BuiltinTool::from_name` is exact-match on purpose, so a name that does not
 /// resolve is a prompt or schema bug the model is the one to correct. Nothing runs.
 #[tokio::test]
-async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
+async fn an_unknown_tool_name_does_not_end_the_turn() {
     let mut script = Script::new([
         vec![call("rm", serde_json::json!({})), stop(StopReason::ToolUse)],
         vec![text("Using a real tool."), stop(StopReason::EndTurn)],
@@ -568,7 +568,7 @@ fn the_default_stream_bound_is_the_documented_one() {
 /// through the blanket impl for `FnMut(..) -> Future`. Also pins that the returned
 /// future is `Send` — the one thing giving up a named `Fut` parameter could have cost.
 #[allow(dead_code)]
-fn the_documented_call_shape_compiles_and_stays_spawnable(
+fn documented_call_shape_stays_spawnable(
     client: &'static sandbx_providers::AnthropicClient,
     ctx: &'static ExecutionContext,
 ) {
@@ -587,7 +587,7 @@ fn the_documented_call_shape_compiles_and_stays_spawnable(
 /// success breaks the *next* request, where the caller's own user message makes two
 /// consecutive user turns.
 #[tokio::test]
-async fn a_turn_that_ends_on_an_empty_round_mid_tool_use_is_an_error() {
+async fn an_empty_round_mid_tool_use_is_an_error() {
     let root = tempfile::tempdir().unwrap();
     let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
     let mut script = Script::new([
@@ -672,7 +672,7 @@ fn the_default_limits_leave_compaction_off() {
 /// The feedback loop the whole feature hangs on: without the counts leaving the turn
 /// there is nothing for a policy to read.
 #[tokio::test]
-async fn the_outcome_carries_the_last_usage_the_round_reported() {
+async fn the_outcome_carries_the_last_reported_usage() {
     let mut script = Script::new([vec![text("hi"), measured(4_000), stop(StopReason::EndTurn)]]);
 
     let outcome = run_turn(
@@ -700,7 +700,7 @@ async fn the_outcome_carries_the_last_usage_the_round_reported() {
 /// `None` has to stay distinguishable from a reported zero, or a caller cannot tell
 /// whether to keep the figure it already had or believe a new one.
 #[tokio::test]
-async fn a_round_that_reported_no_usage_leaves_the_outcome_usage_empty() {
+async fn a_round_with_no_usage_leaves_the_outcome_empty() {
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
 
     let outcome = run_turn(
@@ -717,7 +717,7 @@ async fn a_round_that_reported_no_usage_leaves_the_outcome_usage_empty() {
 }
 
 /// Guessing would compact a conversation that may be two messages long. Only the first
-/// round: see [`a_first_turn_compacts_from_the_round_after_it_measures_itself`].
+/// round: see [`a_first_turn_compacts_after_it_measures_itself`].
 #[tokio::test]
 async fn compaction_cannot_fire_on_a_turns_first_round() {
     let history = conversation();
@@ -747,7 +747,7 @@ async fn compaction_cannot_fire_on_a_turns_first_round() {
 /// round. The cut moves exactly once, `None` to `Some`, narrowing the cached prefix
 /// mid-turn rather than sending the whole history for all eight rounds.
 #[tokio::test]
-async fn a_first_turn_compacts_from_the_round_after_it_measures_itself() {
+async fn a_first_turn_compacts_after_it_measures_itself() {
     let history = conversation();
     let mut script = Script::new([
         vec![
@@ -849,7 +849,7 @@ async fn a_turn_over_budget_sends_only_the_recent_messages() {
 /// history back, and sends more than the turn that triggered. Two real turns, because the
 /// failure lives entirely in the hand-off: either one in isolation looks correct.
 #[tokio::test]
-async fn the_turn_after_a_compaction_does_not_put_the_history_back() {
+async fn the_turn_after_a_compaction_keeps_the_cut() {
     let policy = Compaction {
         budget_tokens: 100,
         keep_recent: 2,
@@ -916,7 +916,7 @@ async fn the_turn_after_a_compaction_does_not_put_the_history_back() {
 /// A conversation that has grown back over budget since the last cut has to be cut
 /// deeper, or it is bounded exactly once and then never again.
 #[tokio::test]
-async fn a_turn_still_over_budget_deepens_the_previous_turns_cut() {
+async fn a_turn_still_over_budget_deepens_the_cut() {
     let mut history = conversation();
     history.extend([
         said("five"),
@@ -954,7 +954,7 @@ async fn a_turn_still_over_budget_deepens_the_previous_turns_cut() {
 /// Compaction narrows the request, not `TurnOutcome::messages`: a caller appends those
 /// to its stored history, so a loss there would be permanent and compound every turn.
 #[tokio::test]
-async fn compaction_does_not_shorten_the_returned_transcript() {
+async fn compaction_never_shortens_the_transcript() {
     let history = conversation();
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
     let mut turn = turn(&history, &[]);
@@ -989,7 +989,7 @@ async fn compaction_does_not_shorten_the_returned_transcript() {
 /// The API rejects a conversation that does not open on a user turn, and index 1 of this
 /// history is the assistant's.
 #[tokio::test]
-async fn the_request_still_opens_with_a_user_message_after_compaction() {
+async fn a_compacted_request_opens_with_a_user_message() {
     let history = conversation();
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
     let mut turn = turn(&history, &[]);
@@ -1023,7 +1023,7 @@ async fn the_request_still_opens_with_a_user_message_after_compaction() {
 /// An orphaned `tool_result` — one whose `tool_use` was withheld — is rejected outright,
 /// and in a tool-heavy transcript most indices are one.
 #[tokio::test]
-async fn compaction_never_withholds_a_tool_result_from_the_call_it_answers() {
+async fn compaction_keeps_a_tool_result_with_its_call() {
     let history = vec![
         said("first"),
         RequestMessage {
@@ -1078,7 +1078,7 @@ async fn compaction_never_withholds_a_tool_result_from_the_call_it_answers() {
 /// Rung 3 of the fallback ladder: cutting anyway would turn a request that *might* be
 /// too long into one the API is certain to reject.
 #[tokio::test]
-async fn an_unbreakable_history_is_sent_oversized_rather_than_cut_invalid() {
+async fn an_unbreakable_history_is_sent_oversized() {
     let mut history = vec![said("only prose turn")];
     for id in ["a", "b", "c"] {
         history.push(RequestMessage {
@@ -1127,7 +1127,7 @@ async fn an_unbreakable_history_is_sent_oversized_rather_than_cut_invalid() {
 /// invalidate it on every round of every turn — and would show the model history it had
 /// already been denied.
 #[tokio::test]
-async fn a_cut_chosen_in_one_round_is_reused_by_every_later_round() {
+async fn a_cut_is_reused_by_every_later_round() {
     let root = tempfile::tempdir().unwrap();
     let history = conversation();
     let mut script = Script::new([
@@ -1171,7 +1171,7 @@ async fn a_cut_chosen_in_one_round_is_reused_by_every_later_round() {
 /// comes back *under* budget; round two must not put the dropped history back, which
 /// would rewrite the cached prefix and re-show what the model had already lost.
 #[tokio::test]
-async fn usage_falling_back_under_budget_mid_turn_does_not_put_the_history_back() {
+async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
     let root = tempfile::tempdir().unwrap();
     let history = conversation();
     let mut script = Script::new([
@@ -1217,7 +1217,7 @@ async fn usage_falling_back_under_budget_mid_turn_does_not_put_the_history_back(
 /// tool result the model is waiting on would be API-valid and useless — the turn would
 /// loop until it ran out of rounds.
 #[tokio::test]
-async fn a_keep_recent_smaller_than_the_turns_own_output_still_sends_that_output() {
+async fn a_keep_recent_under_the_turns_output_sends_it() {
     let root = tempfile::tempdir().unwrap();
     let history = conversation();
     let mut script = Script::new([
@@ -1263,7 +1263,7 @@ async fn a_keep_recent_smaller_than_the_turns_own_output_still_sends_that_output
 /// The degenerate configuration, given defined behaviour rather than rejected at
 /// construction: `Compaction` has public fields and no constructor to validate in.
 #[tokio::test]
-async fn a_budget_of_zero_compacts_every_turn_that_reported_any_tokens() {
+async fn a_budget_of_zero_compacts_every_measured_turn() {
     let history = conversation();
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
     let mut turn = turn(&history, &[]);
@@ -1293,7 +1293,7 @@ async fn a_budget_of_zero_compacts_every_turn_that_reported_any_tokens() {
 /// unchanged with it on. The coupling runs the other way: withholding history is one of
 /// the things that can confuse a model into an empty round.
 #[tokio::test]
-async fn a_compacted_turn_that_ends_mid_tool_use_is_still_an_error() {
+async fn a_compacted_turn_ending_mid_tool_use_is_an_error() {
     let root = tempfile::tempdir().unwrap();
     let history = conversation();
     let mut script = Script::new([
