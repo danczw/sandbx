@@ -364,9 +364,9 @@ fn open(
 /// The files a walk returned, and whether it stopped before the tree ended.
 ///
 /// The flag is a bool rather than a count of what was skipped: the walk stops
-/// at the cap, so it never learns how much tree was left. `OutputLimits`
-/// reports "200 of 4000" because it trims a list it already holds — the
-/// difference is the point of capping the work instead of the answer.
+/// at the cap, so it never learns how much tree was left. A cap that trims a
+/// list it already holds can say "200 of 4000" — being unable to is the cost of
+/// bounding the work instead of the answer, and worth it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadableWalk {
     /// Readable regular files beneath the root, sorted.

@@ -87,7 +87,7 @@ fn granted_paths_are_reachable() {
 #[test]
 fn output_is_bounded() {
     let ctx = context(SandboxPolicy::default().allow_system_executables())
-        .with_limits(sandbx_tools::OutputLimits::default().with_max_bytes(200));
+        .with_limits(sandbx_tools::ToolLimits::default().with_max_bytes(200));
 
     let out = BuiltinTool::Bash
         .execute(json!({ "command": "seq 1 100000" }), &ctx)

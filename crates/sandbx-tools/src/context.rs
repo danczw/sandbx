@@ -1,6 +1,6 @@
 use sandbx_core::{FsGuard, SandboxPolicy, SandboxedCommand};
 
-use crate::OutputLimits;
+use crate::ToolLimits;
 
 /// How long a tool's command may run before it is killed.
 ///
@@ -28,7 +28,7 @@ pub struct ExecutionContext {
     guard: FsGuard,
     policy: SandboxPolicy,
     helper: Option<std::path::PathBuf>,
-    limits: OutputLimits,
+    limits: ToolLimits,
     timeout: std::time::Duration,
 }
 
@@ -39,7 +39,7 @@ impl ExecutionContext {
             guard: FsGuard::new(&policy),
             policy,
             helper: None,
-            limits: OutputLimits::default(),
+            limits: ToolLimits::default(),
             timeout: DEFAULT_TIMEOUT,
         }
     }
@@ -58,7 +58,7 @@ impl ExecutionContext {
 
     /// Bound tool output differently from the defaults.
     #[must_use]
-    pub fn with_limits(mut self, limits: OutputLimits) -> Self {
+    pub fn with_limits(mut self, limits: ToolLimits) -> Self {
         self.limits = limits;
         self
     }
@@ -71,7 +71,7 @@ impl ExecutionContext {
     }
 
     /// How much tools may return.
-    pub fn limits(&self) -> &OutputLimits {
+    pub fn limits(&self) -> &ToolLimits {
         &self.limits
     }
 
