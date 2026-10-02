@@ -88,8 +88,9 @@ impl Default for TurnLimits {
 /// `AsyncFnMut` rather than a separate `Fut` parameter, so the future it returns
 /// stays unnamed. The one thing that costs: a *generic* wrapper around `run_turn`
 /// could not add its own `Send` bound to that future, since there is no stable way
-/// to name it. Concrete callers are unaffected — `turn_is_send` in the test suite
-/// pins that the returned future is still `Send` and so still spawnable.
+/// to name it. Concrete callers are unaffected — the test suite's
+/// `the_documented_call_shape_compiles_and_stays_spawnable` pins that the returned
+/// future is still `Send` and so still spawnable.
 ///
 /// `observe` stays a generic rather than `&mut dyn FnMut(..)` for the same reason
 /// in reverse: `dyn FnMut` is not `Send`, so taking one would make this whole future
