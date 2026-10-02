@@ -1083,3 +1083,103 @@ fn the_command_sees_a_consistent_real_uid() {
         );
     }
 }
+
+/// #98's reproducer, inverted.
+///
+/// A variable the harness holds does not travel through the filesystem — it is
+/// handed over by `fork`/`exec` before Landlock or seccomp have any say — so no
+/// path policy can express "not this" about it. Before the fix, the whole
+/// environment arrived and the suite could not see it.
+///
+/// `CARGO_MANIFEST_DIR` rather than a variable this test plants: `std::env::set_var`
+/// is `unsafe` on the 2024 edition and `unsafe` is forbidden workspace-wide, so
+/// the test cannot mutate its own environment. Cargo sets this one for us, which
+/// is as good — it is in the parent's environment and in no policy below.
+///
+/// Note this goes through `run`, which spawns the helper *without* clearing
+/// anything first. So what is under test is the helper stages doing it on their
+/// own, which is the case a library consumer invoking the helper directly gets.
+#[test]
+fn a_variable_the_policy_omits_does_not_reach_the_command() {
+    let policy = runtime_paths(SandboxPolicy::default());
+
+    let output = run(&policy, "/usr/bin/env", &[]);
+
+    assert!(
+        output.status.success(),
+        "env did not run: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let seen = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !seen.contains("CARGO_MANIFEST_DIR"),
+        "a variable no policy granted reached the command: {seen}"
+    );
+}
+
+/// Baseline for the test above: with the variable granted it does arrive.
+///
+/// Without this, the denial would pass even if the environment were dropped
+/// wholesale and the allowlist did nothing — which is a different bug, not a fix.
+#[test]
+fn a_granted_variable_reaches_the_command_with_its_value() {
+    let expected = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets this for a test");
+    let policy = runtime_paths(SandboxPolicy::default()).allow_env("CARGO_MANIFEST_DIR");
+
+    let output = run(&policy, "/usr/bin/env", &[]);
+
+    assert!(
+        output.status.success(),
+        "env did not run: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let seen = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        seen.contains(&format!("CARGO_MANIFEST_DIR={expected}")),
+        "a granted variable did not arrive with its value: {seen}"
+    );
+}
+
+/// Nothing *but* what was granted. The allowlist is the whole statement, so a
+/// second variable arriving alongside the one asked for would mean the clear is
+/// filtering rather than clearing.
+#[test]
+fn granting_one_variable_passes_only_that_one() {
+    let policy = runtime_paths(SandboxPolicy::default()).allow_env("CARGO_MANIFEST_DIR");
+
+    let output = run(&policy, "/usr/bin/env", &[]);
+
+    let seen = String::from_utf8_lossy(&output.stdout);
+    let names: Vec<&str> = seen
+        .lines()
+        .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+        .collect();
+
+    assert_eq!(
+        names,
+        ["CARGO_MANIFEST_DIR"],
+        "the command's environment was not exactly the allowlist: {seen}"
+    );
+}
+
+/// A name the harness does not hold is absent, not present and empty.
+///
+/// The distinction is load-bearing for a command that branches on whether a
+/// variable is *set* — a blank value would read as "configured, to nothing".
+#[test]
+fn granting_a_variable_the_harness_lacks_passes_nothing() {
+    let policy = runtime_paths(SandboxPolicy::default()).allow_env("SANDBX_DEFINITELY_NOT_SET_98");
+
+    let output = run(&policy, "/usr/bin/env", &[]);
+
+    assert!(
+        output.status.success(),
+        "env did not run: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "",
+        "an unset name produced an entry"
+    );
+}
