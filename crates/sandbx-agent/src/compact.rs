@@ -225,7 +225,7 @@ mod tests {
     /// Pins the search *direction*: scanning backward from the target would keep more
     /// than `keep_recent` and fail to get under budget.
     #[test]
-    fn the_cut_lands_on_the_first_user_message_at_or_after_the_target() {
+    fn cut_lands_on_first_user_message_from_target() {
         let history = vec![
             user_text("one"),
             user_text("two"),
@@ -239,7 +239,7 @@ mod tests {
     /// An orphaned `tool_result` is a hard API rejection, and in a tool-heavy transcript
     /// most indices are one.
     #[test]
-    fn a_cut_onto_a_tool_result_is_refused_and_the_next_boundary_is_taken() {
+    fn cut_onto_a_tool_result_takes_the_next_boundary() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
 
@@ -259,7 +259,7 @@ mod tests {
 
     /// Rung 2: no legal cut is deep enough, so shed less than asked rather than nothing.
     #[test]
-    fn a_tail_that_is_one_unbroken_tool_chain_falls_back_to_an_earlier_boundary() {
+    fn an_unbroken_tail_falls_back_to_an_earlier_cut() {
         let mut history = vec![user_text("first"), assistant_call("a"), user_result("a")];
         history.push(user_text("second"));
         for id in ["b", "c", "d"] {
@@ -275,7 +275,7 @@ mod tests {
     /// Rung 3: declines rather than cutting anyway, erroring, or looping — an invalid
     /// request fails where an oversized one might not.
     #[test]
-    fn a_history_whose_only_boundary_is_its_first_message_is_left_uncompacted() {
+    fn a_history_with_only_a_first_boundary_is_left_whole() {
         let mut history = vec![user_text("first")];
         for id in ["a", "b", "c"] {
             history.push(assistant_call(id));
@@ -288,7 +288,7 @@ mod tests {
     /// The target lands on 0, and without the guard on that the forward scan cuts at the
     /// first boundary it finds.
     #[test]
-    fn a_keep_recent_larger_than_the_conversation_withholds_nothing() {
+    fn keep_recent_past_the_history_withholds_nothing() {
         let history = vec![user_text("one"), user_text("two")];
 
         assert_eq!(plan_cut(&history, 0, Some(2), 0), None);
@@ -299,7 +299,7 @@ mod tests {
     /// Defined behaviour rather than rejected at construction: `Compaction` has public
     /// fields and no constructor to validate in.
     #[test]
-    fn a_keep_recent_of_zero_cuts_to_the_newest_boundary_rather_than_emptying_it() {
+    fn keep_recent_of_zero_cuts_to_the_newest_boundary() {
         let history = vec![
             user_text("one"),
             user_text("two"),
@@ -345,7 +345,7 @@ mod tests {
     /// Growing the turn's own output only deepens the cut into history, never reaches
     /// past it.
     #[test]
-    fn the_current_turns_own_messages_are_never_candidates() {
+    fn the_current_turns_messages_are_never_candidates() {
         let history = vec![
             user_text("one"),
             user_text("two"),
@@ -380,7 +380,7 @@ mod tests {
     /// The predicate is "contains no `ToolResult`", not "is not solely a `ToolResult`":
     /// cutting onto a mixed message orphans the `tool_use` in the one before.
     #[test]
-    fn a_user_message_mixing_prose_and_a_tool_result_is_not_a_boundary() {
+    fn prose_mixed_with_a_tool_result_is_not_a_boundary() {
         let mixed = RequestMessage {
             role: Role::User,
             content: vec![
@@ -414,7 +414,7 @@ mod tests {
     /// Monotonicity is what lets `run_turn` freeze the cut for the whole turn; without
     /// it the request's cached prefix would be rebuilt backwards each round.
     #[test]
-    fn a_growing_conversation_never_proposes_a_shallower_cut() {
+    fn a_growing_conversation_never_cuts_shallower() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
         history.extend(exchange("c", "third"));
@@ -432,7 +432,7 @@ mod tests {
     /// of the *compacted* request, so the next turn reads under budget and without a
     /// floor would put the whole, now-longer history back.
     #[test]
-    fn a_turn_within_budget_still_holds_what_the_previous_turn_withheld() {
+    fn a_turn_in_budget_holds_the_previous_cut() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
         history.extend(exchange("c", "third"));
@@ -445,7 +445,7 @@ mod tests {
     /// Honouring it would undo a cut the previous turn paid for and re-show the model
     /// history it had lost.
     #[test]
-    fn a_keep_recent_that_asks_for_a_shallower_cut_than_the_floor_is_overruled() {
+    fn the_floor_overrules_a_shallower_keep_recent() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
         history.extend(exchange("c", "third"));
@@ -470,7 +470,7 @@ mod tests {
     /// Covers a floor landing mid-exchange; one carried in from a history that was only
     /// appended to is legal already.
     #[test]
-    fn a_floor_that_is_not_itself_a_legal_boundary_is_snapped_forward() {
+    fn an_illegal_floor_is_snapped_forward() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
 
@@ -484,7 +484,7 @@ mod tests {
     /// A caller that rewrote history rather than appending to it. Clamping rather than
     /// slicing keeps this a declined compaction instead of a panic in `run_turn`.
     #[test]
-    fn a_floor_beyond_the_history_is_clamped_rather_than_indexed() {
+    fn a_floor_beyond_the_history_is_clamped() {
         let history = exchange("a", "first");
 
         assert_eq!(plan_cut(&history, 0, None, 99), None);
@@ -494,7 +494,7 @@ mod tests {
     /// Compaction on but never yet triggered: no floor, nothing to hold, and the
     /// within-budget path must not invent a cut.
     #[test]
-    fn a_turn_within_budget_with_no_floor_withholds_nothing() {
+    fn a_turn_in_budget_with_no_floor_withholds_nothing() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
 
@@ -504,7 +504,7 @@ mod tests {
     /// Guessing would compact a conversation that may be two messages long. Only the
     /// round, not the turn: `run_turn` feeds each round's own report back in.
     #[test]
-    fn over_budget_is_false_when_nothing_has_been_observed() {
+    fn over_budget_is_false_before_any_observation() {
         assert!(!over_budget(None, 0));
         assert!(!over_budget(None, 100));
     }
@@ -539,7 +539,7 @@ mod tests {
     /// Three saturated counters overflow a `u32`, which panics in a debug build, and
     /// these figures come off the wire.
     #[test]
-    fn over_budget_does_not_overflow_on_three_saturated_counters() {
+    fn over_budget_never_overflows_saturated_counters() {
         let saturated = usage(Some(u32::MAX), Some(u32::MAX), Some(u32::MAX));
 
         assert_eq!(saturated.prompt_tokens(), 3 * u64::from(u32::MAX));

@@ -20,7 +20,7 @@ is parameterised by what a request becomes, not by who produced it: no trait, no
 `AsyncFnMut` rather than a separate `Fut` parameter, so the returned future stays
 unnamed. The cost: a *generic* wrapper around `run_turn` cannot add its own `Send`
 bound, since there is no stable way to name that future. Concrete callers are
-unaffected — `the_documented_call_shape_compiles_and_stays_spawnable` pins that
+unaffected — `documented_call_shape_stays_spawnable` pins that
 the future is still `Send`.
 
 `observe` stays generic for the mirror reason: `dyn FnMut` is not `Send`, so
