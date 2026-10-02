@@ -95,10 +95,13 @@ fn every_tool_is_named_after_its_variant() {
 
 /// Every variant must advertise its *own* input struct.
 ///
-/// `input_schema` is a seven-arm match and nothing ties an arm to its variant,
-/// so `Self::Ls => schema_for!(GrepInput)` compiles and — before this test —
+/// `input_schema` was a seven-arm match with nothing tying an arm to its variant,
+/// so `Self::Ls => schema_for!(GrepInput)` compiled and — before this test —
 /// passed the whole suite, while the model was handed the wrong argument schema
-/// and every `ls` call failed at parse time.
+/// and every `ls` call failed at parse time (#55). Each tool's schema now comes
+/// from its own module, which narrows what is left to catch to a module naming a
+/// neighbour's input struct, or a transposed `spec` arm. Neither is ruled out by
+/// the compiler, so this stays.
 ///
 /// The tie is `title`: schemars emits the struct's own name there, so asserting
 /// it against the variant name plus `Input` pins each arm to one struct. That
@@ -123,13 +126,16 @@ fn every_tool_advertises_its_own_input_struct() {
 
 /// Every tool must carry its own model-facing prose.
 ///
-/// The description is the one field the model actually steers on, and it is a
-/// seven-arm match exactly like `input_schema` — so it has the failure mode #55
-/// found there: an arm copied from its neighbour compiles, passes, and leaves
-/// the model with the wrong guide to when to reach for the tool.
+/// The description is the one field the model actually steers on, and it is the
+/// one of the four nothing can tie to its variant: no content heuristic relates
+/// "List a directory's entries" to `ls` — the obvious one, that a description
+/// names its own tool, is false for `bash`, `edit`, `ls` and `grep`. So a
+/// deliberate swap of two descriptions stays writable, and living in the tool's
+/// own module beside the `execute` whose rustdoc contradicts it is the whole
+/// mitigation.
 ///
-/// Distinctness is what catches that. Non-empty alone would not, and neither
-/// would a length check.
+/// Distinctness is what catches the copied-from-a-neighbour case. Non-empty alone
+/// would not, and neither would a length check.
 #[test]
 fn every_tool_describes_itself_distinctly() {
     let mut seen = std::collections::BTreeMap::new();

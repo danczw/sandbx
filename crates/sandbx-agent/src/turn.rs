@@ -333,9 +333,11 @@ fn flush(text: &mut String, blocks: &mut Vec<ContentBlock>) {
 
 /// Bridge a built-in into the shape a provider request wants.
 ///
-/// Three field copies, not the seven-arm match #54 predicted this crate would
-/// grow: `name`, `description` and `input_schema` all live in `sandbx-tools`,
-/// beside the behaviour they describe, so nothing here restates them.
+/// Three field copies and no table of its own: `name`, `description` and
+/// `input_schema` are one `SPEC` per tool in `sandbx-tools`, beside the behaviour
+/// they describe. So nothing here restates them — the seven-arm match #54
+/// predicted this crate would grow — and nothing here can read them out of step
+/// with each other either (#88).
 fn definition(tool: BuiltinTool) -> ToolDefinition {
     ToolDefinition {
         name: tool.name().to_string(),
