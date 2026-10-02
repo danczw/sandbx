@@ -39,7 +39,7 @@ pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
 /// a PID namespace, and re-execs into the second, which is therefore PID 1 of it
 /// and applies the restrictions before becoming the command. So the command and
 /// everything it spawns live in a namespace that ends when the call does — see
-/// [`kill_group`].
+/// `kill_group`.
 ///
 /// By default the helper is this same executable re-run with [`HELPER_FLAG`], so
 /// no second binary has to be installed. [`helper`] overrides that.

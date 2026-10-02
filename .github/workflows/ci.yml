@@ -54,6 +54,31 @@ jobs:
       - name: Test
         run: cargo test --workspace --features sandbx-providers/mock
 
+      # Intra-doc links are load-bearing here: the `context/guide-*.md` files
+      # explain the design, and the doc comments carry the detail those guides
+      # point at. A link that silently stops resolving takes a reader to nothing.
+      # Nothing caught that until now, and four had already rotted — all four
+      # from a `pub` item naming something private, which is the failure mode a
+      # visibility change introduces without touching the comment.
+      #
+      # `--document-private-items`, so the internal links are checked too. Most
+      # of this tree is `pub(crate)`/`pub(super)`, so the public-only pass sees a
+      # minority of the comments and would miss the majority of the rot.
+      #
+      # `--all-features`, unlike the Clippy pass above, which is deliberately
+      # default-features to see the crates as a consumer does. The reasoning does
+      # not carry over: a feature-gated item's doc links are either checked here
+      # or nowhere, and there is no release-build equivalent to catch them later.
+      #
+      # `-D warnings` via RUSTDOCFLAGS rather than a `[lints]` entry: this turns
+      # rustdoc's own lints (`broken_intra_doc_links`, `private_intra_doc_links`)
+      # into errors for the whole workspace at once, and keeps the gate next to
+      # the command that runs it.
+      - name: Doc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --document-private-items --all-features
+
   sandbox:
     runs-on: ubuntu-latest
     steps:

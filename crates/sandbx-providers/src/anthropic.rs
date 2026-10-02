@@ -32,7 +32,7 @@ impl AnthropicClient {
     /// [`ensure_crypto_provider_installed`]), since building a
     /// `reqwest::Client` without one panics. No network access happens here, so
     /// the only failures are local: reqwest declining to build its client, or
-    /// [`DEFAULT_BASE_URL`] failing [`validate_base_url`] — which cannot happen
+    /// [`DEFAULT_BASE_URL`] failing `validate_base_url` — which cannot happen
     /// for the value shipped here, and is reported rather than asserted away so
     /// that the two can never disagree.
     ///
@@ -69,7 +69,7 @@ impl AnthropicClient {
     /// such a URL would silently post somewhere other than where it reads.
     ///
     /// Rebuilds the underlying HTTP client, because two of its settings depend
-    /// on where it now points — see [`build_http`].
+    /// on where it now points — see `build_http`.
     pub fn with_base_url(self, base_url: impl Into<String>) -> Result<Self, ProviderError> {
         Self::configured(self.api_key, base_url)
     }
