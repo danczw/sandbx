@@ -107,14 +107,20 @@ Three properties matter as much as the list:
   default-deny. A gate is planned, and it will not change this bullet: a tool call
   you approve runs. sandbx bounds what it can reach; it does not decide whether it
   should run.
-- **Only wall-clock time is bounded.** A tool's command is killed if it outruns
-  its limit (90 seconds by default), and `sandbox-run` takes an opt-in
-  `--timeout`. The call always returns by then. Nothing else is capped: no CPU
-  bound, no memory bound, and no limit on how many processes a command spawns.
-  The sandbox governs *what* a command can reach, and now *how long* it may run
-  and *how long anything it spawned* may run, but not *how much* it can consume.
-  A fork bomb is still unbounded while the call lasts; what is bounded is that it
-  does not outlive it.
+- **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
+  killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
+  an opt-in `--timeout`; that call always returns by then. The other six tools run
+  in-process and are not timed at all. `grep` and `find` are bounded by *work*
+  instead — a cap on the files a walk visits and on the bytes a search reads,
+  after which the result says it stopped early — and `read`, `write`, `edit` and
+  `ls` are bounded only by the single file or directory they touch. None of that
+  is a time bound: one read on a stalled filesystem can hang indefinitely, and no
+  deadline anywhere cuts it short, because tools run on a blocking thread that
+  cannot be cancelled. Nothing else is capped either: no CPU bound, no memory
+  bound, and no limit on how many processes a command spawns. The sandbox governs
+  *what* a command can reach, and *how long* a spawned one may run, but not *how
+  much* it can consume. A fork bomb is still unbounded while the call lasts; what
+  is bounded is that it does not outlive it.
 - **An unhandled signal aimed at the command itself is ignored.** The command is
   PID 1 of its namespace, and the kernel discards a default-disposition signal
   sent to a namespace's init — so `kill -TERM` at the command from inside or

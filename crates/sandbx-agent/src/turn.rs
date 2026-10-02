@@ -51,9 +51,17 @@ pub struct TurnLimits {
     /// bounds inactivity between chunks and resets on every one, so a connection
     /// that stays warm while producing nothing useful is not bounded by it.
     ///
-    /// This does not bound a tool call — `ExecutionContext::timeout` does that
-    /// already. The two compose: a turn costs at most
-    /// `max_rounds * (stream_timeout + calls * tool timeout)`.
+    /// This does not bound a tool call, and nothing bounds one in wall-clock
+    /// terms. `ExecutionContext::timeout` is applied where the sandbox spawns a
+    /// process, so it covers `bash` and none of the six in-process tools; those
+    /// are bounded by *work* instead — `ToolLimits` caps the files a search
+    /// walks and the bytes it reads, so a broad `grep` terminates, but a single
+    /// read on a stalled filesystem still does not.
+    ///
+    /// So a turn has no total time bound to state. An outer deadline would
+    /// bound when a caller stops waiting, not when the tool stops working:
+    /// tools run on `spawn_blocking`, which cannot be cancelled, so the work
+    /// continues after the future is dropped. Cancellation is #26.
     pub stream_timeout: std::time::Duration,
 }
 

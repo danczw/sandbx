@@ -56,7 +56,7 @@ impl ExecutionContext {
         self
     }
 
-    /// Bound tool output differently from the defaults.
+    /// Bound what tools may do and return differently from the defaults.
     #[must_use]
     pub fn with_limits(mut self, limits: ToolLimits) -> Self {
         self.limits = limits;
@@ -70,7 +70,7 @@ impl ExecutionContext {
         self
     }
 
-    /// How much tools may return.
+    /// How much tools may do, and how much they may return.
     pub fn limits(&self) -> &ToolLimits {
         &self.limits
     }
