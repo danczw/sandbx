@@ -2,6 +2,8 @@ use crate::{Axis, SandboxError, SandboxPolicy};
 
 const FLAG_NET: &str = "--allow-network";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
+/// Introduces the *name* of a variable the command may inherit. Never a value.
+const FLAG_ENV: &str = "--env";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
 
@@ -34,9 +36,17 @@ fn axis_for(flag: &str) -> Option<Axis> {
 /// A policy plus a command, as carried between sandbx and the helper process.
 ///
 /// The helper runs in a separate process, so the policy has to cross a process
-/// boundary. argv is used rather than the environment because the environment is
-/// inherited by the sandboxed command itself, where policy details have no
-/// business being.
+/// boundary, and it crosses as argv.
+///
+/// Not because argv is private — it is the opposite: the command can read its
+/// own `/proc/self/cmdline`, so everything here is visible to the process being
+/// confined. What follows from that is the rule the environment axis obeys:
+/// **this carries variable names, never values.** A value put here would be
+/// handed to the very command the allowlist exists to keep it from.
+///
+/// The environment is not used as the channel instead, because it is what the
+/// policy now governs — carrying policy details in the thing being filtered
+/// would mean the filter either leaks them or eats them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperArgs {
     /// Restrictions the helper must apply to itself.
@@ -62,6 +72,10 @@ impl HelperArgs {
         }
         if policy.allows_unix_sockets() {
             out.push(FLAG_UNIX.to_string());
+        }
+        for name in policy.allowed_env() {
+            out.push(FLAG_ENV.to_string());
+            out.push(name.clone());
         }
 
         out.push(SEPARATOR.to_string());
@@ -98,6 +112,22 @@ impl HelperArgs {
                 }
                 FLAG_NET => policy = policy.allow_network(),
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
+                FLAG_ENV => {
+                    let name = rest.next().ok_or(SandboxError::BadHelperArgs {
+                        detail: "env flag with no variable name after it",
+                    })?;
+                    // `allow_env` would silently skip this, which is right for a
+                    // caller composing a policy but wrong here: a name that
+                    // cannot be encoded did not come from `encode`, so the argv
+                    // was built by something speaking a different protocol, and
+                    // this file refuses rather than guesses.
+                    if name.contains('=') {
+                        return Err(SandboxError::BadHelperArgs {
+                            detail: "env variable name containing `=`",
+                        });
+                    }
+                    policy = policy.allow_env(name);
+                }
                 flag => {
                     // One lookup, then one grant: the axis carries which one it
                     // is, so there is no second match here deciding it again —

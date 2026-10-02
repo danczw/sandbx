@@ -30,6 +30,22 @@ fn carries_the_policy_into_the_command_line() {
     assert_eq!(&argv[argv.len() - 3..], &["/bin/sh", "-c", "true"]);
 }
 
+/// The environment allowlist is part of the policy, so it has to reach the
+/// helper the same way the paths do — the clearing happens in a process the
+/// helper spawns, which only knows what argv told it.
+#[test]
+fn carries_the_env_allowlist_into_the_command_line() {
+    let (_, argv) = SandboxedCommand::new(
+        "/bin/true",
+        SandboxPolicy::default().allow_env("GIT_AUTHOR_NAME"),
+    )
+    .helper("/nonexistent/helper")
+    .command_line()
+    .unwrap();
+
+    assert!(argv.windows(2).any(|w| w == ["--env", "GIT_AUTHOR_NAME"]));
+}
+
 /// Every helper is invoked the same way, explicit or not. Two calling
 /// conventions meant a binary could implement the wrong one and fail only at
 /// runtime.

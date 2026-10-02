@@ -32,6 +32,10 @@ fn default_policy_denies_everything() {
         !policy.allows_unix_sockets(),
         "default policy must not grant unix-domain sockets"
     );
+    assert!(
+        policy.allowed_env().is_empty(),
+        "default policy must not pass any environment variable through"
+    );
 }
 
 /// A command cannot start without its interpreter, loader and shared
@@ -137,6 +141,116 @@ fn granting_unix_sockets_does_not_grant_network() {
 
     assert!(policy.allows_unix_sockets());
     assert!(!policy.allows_network(), "unix sockets granted network too");
+}
+
+/// The environment is its own axis, on the same basis: a path grant says nothing
+/// about what the command may read out of its own `environ`, and vice versa. #98
+/// was the inverse of this holding — an axis that did not exist at all.
+#[test]
+fn granting_a_variable_widens_nothing_else() {
+    use sandbx_core::Axis;
+
+    let policy = SandboxPolicy::default().allow_env("CI");
+
+    assert_eq!(policy.allowed_env(), ["CI"]);
+    for axis in Axis::ALL {
+        assert!(
+            policy.paths(axis).is_empty(),
+            "an env grant granted a path on {axis:?}"
+        );
+    }
+    assert!(!policy.allows_network(), "an env grant granted network");
+    assert!(
+        !policy.allows_unix_sockets(),
+        "an env grant granted unix sockets"
+    );
+}
+
+/// And the other direction: the path axes are what #98's reproducer showed could
+/// not express "not this" about a variable, so they must not express "this"
+/// either.
+#[test]
+fn granting_a_path_passes_no_variable() {
+    let policy = SandboxPolicy::default()
+        .allow_read("/srv")
+        .allow_system_executables();
+
+    assert!(
+        policy.allowed_env().is_empty(),
+        "a path grant passed a variable through"
+    );
+}
+
+/// Names only, in the order given, with no implicit additions: a policy that
+/// quietly carried more than it was asked for would be one a reader of
+/// `--allow-env` could not predict.
+#[test]
+fn allow_env_adds_only_that_name() {
+    let policy = SandboxPolicy::default()
+        .allow_env("FOO")
+        .allow_env("BAR".to_string());
+
+    assert_eq!(policy.allowed_env(), ["FOO", "BAR"]);
+}
+
+/// The set `allow_standard_env` claims to grant, asserted rather than restated.
+///
+/// Compared whole and in order, so a name added to the constant has to be added
+/// here too — the CLI's `--help` text names these seven, and this is what keeps
+/// that text from drifting into a lie.
+#[test]
+fn standard_env_is_the_documented_startup_set() {
+    let policy = SandboxPolicy::default().allow_standard_env();
+
+    assert_eq!(
+        policy.allowed_env(),
+        ["PATH", "HOME", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ"]
+    );
+}
+
+/// `PATH` above all, so it is pinned separately from the whole-set comparison
+/// above. Without it a bare program name falls back to the C library's own search
+/// path (`/bin:/usr/bin` on glibc), so `cat` still starts and anything installed
+/// elsewhere does not — a failure that looks like the sandbox misbehaving rather
+/// than like a missing grant, which is what this exists to prevent.
+#[test]
+fn standard_env_carries_path() {
+    assert!(
+        SandboxPolicy::default()
+            .allow_standard_env()
+            .allowed_env()
+            .iter()
+            .any(|name| name == "PATH")
+    );
+}
+
+/// A name that cannot be expressed is dropped rather than carried, the same way
+/// `allow_system_executables` drops a path this system lacks.
+///
+/// `=` would make the wire format ambiguous and `NUL` cannot cross `exec` at
+/// all. Dropping at the gate is what keeps `HelperArgs` round-tripping: nothing
+/// `encode` can emit is something `decode` refuses.
+#[test]
+fn allow_env_skips_a_name_it_could_not_encode() {
+    for bad in ["FOO=bar", "FOO\0BAR", "=", "\0"] {
+        let policy = SandboxPolicy::default().allow_env(bad);
+
+        assert!(
+            policy.allowed_env().is_empty(),
+            "{bad:?} was accepted as a variable name"
+        );
+    }
+}
+
+/// The skip is narrow: a name next to a rejected one still lands.
+#[test]
+fn skipping_an_unencodable_name_keeps_the_rest() {
+    let policy = SandboxPolicy::default()
+        .allow_env("BEFORE")
+        .allow_env("BAD=value")
+        .allow_env("AFTER");
+
+    assert_eq!(policy.allowed_env(), ["BEFORE", "AFTER"]);
 }
 
 /// The three-way claim `SECURITY.md` makes, asserted rather than restated.
