@@ -80,9 +80,9 @@ goes into the next `Turn::withheld`, where it is the *floor* for the next cut: t
 may withhold more, never less. Without that the mechanism bounds nothing, and the bug is
 not obvious from one turn:
 
-| | request sent | measured | next turn reads |
+| | request sent | measured | this turn reads |
 |---|---|---|---|
-| turn N | cut, ~30k | 30k | — |
+| turn N | cut, ~30k | 30k | ~150k — over budget |
 | turn N+1, usage only | **whole history, ~160k** | 160k | 30k — under budget |
 | turn N+1, with the floor | cut held, ~45k | 45k | 30k — under budget |
 
