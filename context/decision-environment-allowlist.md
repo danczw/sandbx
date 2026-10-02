@@ -1,7 +1,8 @@
 # The environment allowlist
 
 Why a sandboxed command starts with an empty environment, and why clearing it is
-repeated at four spawn sites instead of asserted at one. The mechanism is in
+repeated at four spawn sites rather than asserted at one — with the inner stage
+asserting as well, so the repetition is checkable. The mechanism is in
 `guide-sandboxing.md`; this is what the choices were between.
 
 ## What #98 actually was
@@ -62,13 +63,30 @@ the supervisor's re-exec into stage 2, and stage 2's `.exec()` into the real
 program. All four call `env::restrict`.
 
 The alternative was to clear once at the top and have the inner stages *assert*
-their environment already matched. Rejected because the helper is a public entry
-point: any binary calling `with_helper_dispatch` becomes a helper when handed
-`HELPER_FLAG`, and the enforcement suite invokes the helper binary directly with
-nothing above it to have cleared anything. An assertion there turns a direct invocation into a refusal; applying
-the filter makes it correct instead. `restrict` is idempotent — after the first
-clear the environment already *is* the allowlist — so the repetition costs
-nothing, and nothing in a later stage depends on an earlier one having run.
+their environment already matched. Rejected **for stage 1**, because the helper is
+a public entry point: any binary calling `with_helper_dispatch` becomes a helper
+when handed `HELPER_FLAG`, and the enforcement suite invokes the helper binary
+directly with nothing above it to have cleared anything. An assertion there turns
+a direct invocation into a refusal; applying the filter makes it correct instead.
+`restrict` is idempotent — after the first clear the environment already *is* the
+allowlist — so the repetition costs nothing.
+
+Stage 2 is the exception, and both halves are kept there: it asserts *and* then
+filters. The filter is what the command actually relies on; the assertion is what
+makes the stage-1 clear falsifiable. Without it the two stages mask each other —
+either `restrict` call could be deleted and the other would cover for it, leaving
+the command's `environ` byte-identical and no test able to tell. So a later stage
+*does* now depend on an earlier one having run, deliberately and in one direction
+only: stage 2 is reachable only through stage 1, which is why the asymmetry with
+the paragraph above is sound rather than inconsistent.
+
+What that buys is bounded, and worth stating plainly. Only the stage-1 clear is
+pinned by it. The two `command.rs` sites are upstream of a stage that re-narrows,
+and stage 2's own `.exec()` hands over an environment stage 1 already narrowed, so
+all three remain deletable with a green suite. Collapsing the four sites into a
+single `Command` factory — one place carrying the `clippy::disallowed_methods`
+allow, narrowing by construction — would subsume the whole class and is the real
+fix; this is the cheap part of it.
 
 The first three are not ceremony either. A helper process lives for milliseconds,
 but `/proc/<pid>/environ` is readable for all of them, and the whole point is that
