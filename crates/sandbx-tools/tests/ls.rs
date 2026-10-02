@@ -19,8 +19,8 @@ fn lists_entries_of_an_allowed_directory() {
         .execute(json!({ "path": root.path().to_str().unwrap() }), &ctx)
         .unwrap();
 
-    assert!(out.content.contains("a.txt"), "got: {}", out.content);
-    assert!(out.content.contains("sub"), "got: {}", out.content);
+    assert!(out.content().contains("a.txt"), "got: {}", out.content());
+    assert!(out.content().contains("sub"), "got: {}", out.content());
 }
 
 /// Directories are marked, or the model cannot tell what it can descend into.
@@ -36,9 +36,9 @@ fn distinguishes_directories_from_files() {
         .unwrap();
 
     assert!(
-        out.content.contains("sub/"),
+        out.content().contains("sub/"),
         "directory unmarked: {}",
-        out.content
+        out.content()
     );
 }
 

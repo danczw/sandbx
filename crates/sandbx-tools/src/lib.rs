@@ -19,11 +19,46 @@ pub use error::ToolError;
 pub use limits::OutputLimits;
 
 /// What a tool produced, as the model will see it.
+///
+/// The field is private so that [`ToolOutput::new`] is the only way in, which
+/// is what makes an empty result unrepresentable. The Messages API rejects a
+/// `tool_result` whose text content is empty, so a tool handing back `""` does
+/// not produce an empty turn — it ends the turn with a provider error and the
+/// transcript goes with it. A silent success (`touch`, `mkdir -p`, `true`) and
+/// an empty file are both ordinary, so that floor belongs here rather than in
+/// each tool's memory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolOutput {
-    /// Text handed back to the model.
-    pub content: String,
+    content: String,
 }
+
+impl ToolOutput {
+    /// Wrap text for the model, reporting an empty result instead of sending it.
+    pub fn new(content: impl Into<String>) -> Self {
+        let content = content.into();
+        if content.trim().is_empty() {
+            return Self {
+                content: EMPTY_OUTPUT.to_string(),
+            };
+        }
+
+        Self { content }
+    }
+
+    /// Text handed back to the model. Never empty.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Take the text, for a caller that owns the result anyway — the agent moves
+    /// it straight into a `tool_result` block.
+    pub fn into_content(self) -> String {
+        self.content
+    }
+}
+
+/// Stands in for a tool that succeeded without printing anything.
+const EMPTY_OUTPUT: &str = "(no output)";
 
 /// The tools an agent may call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,14 +242,10 @@ pub(crate) fn read_file(
 /// Render a list of results, bounded, distinguishing "none" from empty output.
 pub(crate) fn listing(lines: Vec<String>, ctx: &ExecutionContext) -> ToolOutput {
     if lines.is_empty() {
-        return ToolOutput {
-            content: "no matches".to_string(),
-        };
+        return ToolOutput::new("no matches");
     }
 
-    ToolOutput {
-        content: ctx.limits().take_entries(lines).join("\n"),
-    }
+    ToolOutput::new(ctx.limits().take_entries(lines).join("\n"))
 }
 
 /// Parse tool arguments, reporting a schema mismatch rather than a panic.

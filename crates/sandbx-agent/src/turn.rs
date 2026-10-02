@@ -232,7 +232,7 @@ async fn answer_calls(
         results.push(match outcome {
             Ok(output) => ContentBlock::ToolResult {
                 tool_use_id: id.clone(),
-                content: output.content,
+                content: output.into_content(),
                 is_error: None,
             },
             Err(error) => refused(id, error.to_string()),

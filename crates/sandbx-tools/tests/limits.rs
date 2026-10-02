@@ -38,8 +38,12 @@ fn grep_caps_the_number_of_hits() {
         )
         .unwrap();
 
-    let hits = out.content.lines().filter(|l| l.contains("needle")).count();
-    assert_eq!(hits, 10, "cap not applied:\n{}", out.content);
+    let hits = out
+        .content()
+        .lines()
+        .filter(|l| l.contains("needle"))
+        .count();
+    assert_eq!(hits, 10, "cap not applied:\n{}", out.content());
 }
 
 /// Truncation must be visible, or the model treats a partial list as complete.
@@ -59,9 +63,9 @@ fn grep_says_when_it_truncated() {
         .unwrap();
 
     assert!(
-        out.content.contains("truncated"),
+        out.content().contains("truncated"),
         "no truncation marker:\n{}",
-        out.content
+        out.content()
     );
 }
 
@@ -82,9 +86,9 @@ fn grep_does_not_mark_a_complete_result() {
         .unwrap();
 
     assert!(
-        !out.content.contains("truncated"),
+        !out.content().contains("truncated"),
         "marked a complete result:\n{}",
-        out.content
+        out.content()
     );
 }
 
@@ -104,10 +108,14 @@ fn find_caps_and_marks() {
         .unwrap();
 
     assert_eq!(
-        out.content.lines().filter(|l| l.contains(".txt")).count(),
+        out.content().lines().filter(|l| l.contains(".txt")).count(),
         5
     );
-    assert!(out.content.contains("truncated"), "got:\n{}", out.content);
+    assert!(
+        out.content().contains("truncated"),
+        "got:\n{}",
+        out.content()
+    );
 }
 
 #[test]
@@ -123,10 +131,14 @@ fn ls_caps_and_marks() {
         .unwrap();
 
     assert_eq!(
-        out.content.lines().filter(|l| l.contains(".txt")).count(),
+        out.content().lines().filter(|l| l.contains(".txt")).count(),
         7
     );
-    assert!(out.content.contains("truncated"), "got:\n{}", out.content);
+    assert!(
+        out.content().contains("truncated"),
+        "got:\n{}",
+        out.content()
+    );
 }
 
 /// `read` is capped by bytes rather than entries — one file, arbitrarily long.
@@ -145,11 +157,15 @@ fn read_caps_by_bytes_and_marks() {
         .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
         .unwrap();
 
-    assert!(out.content.contains("truncated"), "got:\n{}", out.content);
     assert!(
-        out.content.len() < 500,
+        out.content().contains("truncated"),
+        "got:\n{}",
+        out.content()
+    );
+    assert!(
+        out.content().len() < 500,
         "content not truncated: {} bytes",
-        out.content.len()
+        out.content().len()
     );
 }
 
@@ -168,7 +184,7 @@ fn read_does_not_mark_a_file_that_fits() {
         .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
         .unwrap();
 
-    assert_eq!(out.content, "short");
+    assert_eq!(out.content(), "short");
 }
 
 /// Truncating mid-character must not produce invalid UTF-8 or panic.
@@ -188,8 +204,8 @@ fn read_truncates_on_a_character_boundary() {
         .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
         .unwrap();
 
-    assert!(out.content.contains('日'));
-    assert!(out.content.contains("truncated"));
+    assert!(out.content().contains('日'));
+    assert!(out.content().contains("truncated"));
 }
 
 /// The defaults must bound output at all, or they are a trap for a caller that

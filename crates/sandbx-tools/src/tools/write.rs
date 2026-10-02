@@ -27,11 +27,9 @@ pub fn execute(input: WriteInput, ctx: &ExecutionContext) -> Result<ToolOutput, 
     std::io::Write::write_all(&mut file, input.content.as_bytes())
         .map_err(|error| crate::failed("write", &input.path, error))?;
 
-    Ok(ToolOutput {
-        content: format!(
-            "wrote {} bytes to {}",
-            input.content.len(),
-            input.path.display()
-        ),
-    })
+    Ok(ToolOutput::new(format!(
+        "wrote {} bytes to {}",
+        input.content.len(),
+        input.path.display()
+    )))
 }
