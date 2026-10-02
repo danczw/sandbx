@@ -16,7 +16,7 @@ mod tools;
 
 pub use context::{DEFAULT_TIMEOUT, ExecutionContext};
 pub use error::ToolError;
-pub use limits::OutputLimits;
+pub use limits::ToolLimits;
 
 /// What a tool produced, as the model will see it.
 ///

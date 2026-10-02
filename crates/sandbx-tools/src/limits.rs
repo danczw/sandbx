@@ -1,4 +1,4 @@
-/// How much a tool may return.
+/// How much a tool may do, and how much it may return.
 ///
 /// Output goes straight into the model's context, so an uncapped result can
 /// evict the conversation that explains what the agent was doing — and the
@@ -8,12 +8,12 @@
 /// Defaults are deliberately generous enough that ordinary work never notices
 /// them, and small enough that one broad search cannot swamp a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OutputLimits {
+pub struct ToolLimits {
     max_entries: usize,
     max_bytes: usize,
 }
 
-impl Default for OutputLimits {
+impl Default for ToolLimits {
     fn default() -> Self {
         Self {
             // Enough to see a real pattern of matches; far short of a whole tree.
@@ -24,7 +24,7 @@ impl Default for OutputLimits {
     }
 }
 
-impl OutputLimits {
+impl ToolLimits {
     /// Cap on the number of result lines a listing tool may return.
     pub fn max_entries(&self) -> usize {
         self.max_entries

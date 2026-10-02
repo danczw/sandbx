@@ -7,10 +7,10 @@
 //! draws conclusions from it.
 
 use sandbx_core::SandboxPolicy;
-use sandbx_tools::{BuiltinTool, ExecutionContext, OutputLimits};
+use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
 use serde_json::json;
 
-fn context(policy: SandboxPolicy, limits: OutputLimits) -> ExecutionContext {
+fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
     ExecutionContext::new(policy).with_limits(limits)
 }
 
@@ -28,7 +28,7 @@ fn grep_caps_the_number_of_hits() {
     let root = tree_with_matches(50);
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_entries(10),
+        ToolLimits::default().with_max_entries(10),
     );
 
     let out = BuiltinTool::Grep
@@ -52,7 +52,7 @@ fn grep_says_when_it_truncated() {
     let root = tree_with_matches(50);
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_entries(10),
+        ToolLimits::default().with_max_entries(10),
     );
 
     let out = BuiltinTool::Grep
@@ -75,7 +75,7 @@ fn grep_does_not_mark_a_complete_result() {
     let root = tree_with_matches(3);
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_entries(10),
+        ToolLimits::default().with_max_entries(10),
     );
 
     let out = BuiltinTool::Grep
@@ -97,7 +97,7 @@ fn find_caps_and_marks() {
     let root = tree_with_matches(50);
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_entries(5),
+        ToolLimits::default().with_max_entries(5),
     );
 
     let out = BuiltinTool::Find
@@ -123,7 +123,7 @@ fn ls_caps_and_marks() {
     let root = tree_with_matches(50);
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_entries(7),
+        ToolLimits::default().with_max_entries(7),
     );
 
     let out = BuiltinTool::Ls
@@ -150,7 +150,7 @@ fn read_caps_by_bytes_and_marks() {
 
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_bytes(100),
+        ToolLimits::default().with_max_bytes(100),
     );
 
     let out = BuiltinTool::Read
@@ -177,7 +177,7 @@ fn read_does_not_mark_a_file_that_fits() {
 
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_bytes(100),
+        ToolLimits::default().with_max_bytes(100),
     );
 
     let out = BuiltinTool::Read
@@ -197,7 +197,7 @@ fn read_truncates_on_a_character_boundary() {
 
     let ctx = context(
         SandboxPolicy::default().allow_read(root.path()),
-        OutputLimits::default().with_max_bytes(100),
+        ToolLimits::default().with_max_bytes(100),
     );
 
     let out = BuiltinTool::Read
@@ -212,7 +212,7 @@ fn read_truncates_on_a_character_boundary() {
 /// never sets them.
 #[test]
 fn limits_apply_by_default() {
-    let limits = OutputLimits::default();
+    let limits = ToolLimits::default();
     assert!(limits.max_entries() > 0);
     assert!(limits.max_bytes() > 0);
 }
