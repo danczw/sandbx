@@ -98,8 +98,9 @@ Three properties matter as much as the list:
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges, not a tool's.
 - **The boundary is enforced by convention plus tooling**, not by a capability
-  system: `unsafe` is forbidden outside `sandbx-core` and spawning a process
-  elsewhere is a clippy error, but a determined contributor can add raw syscalls.
+  system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
+  spawning a process outside it is a clippy error — but a determined contributor
+  can add raw syscalls.
 - **Approval is not enforcement, and there is no approval step yet.** The agent
   loop runs every tool call the model asks for — nothing sits between the model
   requesting one and `sandbx-tools` executing it. The sandbox is the only thing
@@ -149,8 +150,10 @@ Three properties matter as much as the list:
   inside a user namespace it created itself — and not even there when an LSM
   strips capabilities from such a namespace. AppArmor's
   `restrict_unprivileged_userns` (default on Ubuntu 24.04+) does that, so on
-  those hosts the bounding set is left as inherited. sandbx logs it and carries
-  on rather than refusing, because the bit cannot be spent: with the other four
+  those hosts the bounding set is left as inherited. sandbx records it on the
+  audit trail as a `degraded` decision — at `INFO`, so it is not something you
+  have to have opted into seeing — and carries on rather than refusing, because
+  the bit cannot be spent: with the other four
   sets empty and `no_new_privs` set, the kernel will not let an `execve`d binary
   raise a capability, so a leftover bounding bit never becomes privilege. Do not
   rely on `CapBnd` being empty; do rely on the other four.
