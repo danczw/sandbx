@@ -23,9 +23,14 @@ pub(crate) struct RawSseEvent {
 /// because UTF-8 continuation/lead bytes never take that value — only a literal
 /// `\n` does. So bytes are buffered raw and only turned into a `String` once a
 /// range ends exactly at a `\n`.
+///
+/// `Send` is stated rather than left to leak out of the opaque type: the crate's
+/// `EventStream` requires it, and without it here a non-`Send` field added to the
+/// state below would break at the coercion in `AnthropicClient::stream_chat`
+/// instead of at the field.
 pub(crate) fn tokenize(
-    bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin,
-) -> impl futures_util::stream::FusedStream<Item = Result<RawSseEvent, ProviderError>> {
+    bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin + Send,
+) -> impl futures_util::stream::FusedStream<Item = Result<RawSseEvent, ProviderError>> + Send {
     // `.fuse()`: `unfold` panics outright if polled after it returns `None`
     // (futures-util's `Unfold::poll_next` says so), and callers drive this stream
     // however they like — a `select!` arm that does not break on `None`, one

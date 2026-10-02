@@ -27,9 +27,12 @@ struct ToolUseBlock {
 }
 
 /// Map a stream of raw SSE frames into [`AgentEvent`]s.
+///
+/// `Send` is stated rather than left to leak out of the opaque type, for the
+/// reason `sse::tokenize` gives.
 pub(crate) fn event_stream(
-    raw: impl Stream<Item = Result<RawSseEvent, ProviderError>>,
-) -> impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> {
+    raw: impl Stream<Item = Result<RawSseEvent, ProviderError>> + Send,
+) -> impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send {
     // `.fuse()` for the same reason as `sse::tokenize` — `unfold` panics if
     // polled once past its end, and this stream is handed to callers who drive
     // it however they like.
