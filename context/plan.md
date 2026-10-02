@@ -76,7 +76,7 @@ a release per security fix.
 | #41 | no design for credentials in sandboxed tool calls |
 | #26 | tool calls cannot be cancelled or run in parallel |
 | #59, #85 | provider wire shape leaks through a neutral name; thinking blocks unreplayable |
-| #87, #88, #91 | untested discrimination paths and dead public surface |
+| #87, #91 | untested discrimination paths and dead public surface |
 
 ## Credentials
 
