@@ -166,7 +166,17 @@ impl FsGuard {
     ///
     /// Entries are returned sorted, since `read_dir` order is
     /// filesystem-dependent.
-    pub fn walk_readable(&self, root: &Path) -> Result<Vec<PathBuf>, SandboxError> {
+    ///
+    /// `max_files` bounds the walk itself, not the result: it stops as soon as a
+    /// file would be the `max_files + 1`th, so a caller's cost is bounded in
+    /// time and in memory. Trimming afterwards would bound neither, since the
+    /// whole tree would already have been visited and held. The returned
+    /// [`ReadableWalk`] says whether anything was left behind.
+    pub fn walk_readable(
+        &self,
+        root: &Path,
+        max_files: usize,
+    ) -> Result<ReadableWalk, SandboxError> {
         // One check for the root, which also records one audit decision for the
         // walk. Checking every entry would emit thousands of "agent read this"
         // records for files never opened, corrupting the trail it feeds.
@@ -174,8 +184,13 @@ impl FsGuard {
 
         let mut files = Vec::new();
         let mut stack = vec![root];
+        // Set only when a file is left behind, which is why the cap is checked
+        // where a file enters the result rather than once per directory:
+        // directories do not count toward it, and a tree that exactly fits has
+        // nothing left to report.
+        let mut truncated = false;
 
-        while let Some(dir) = stack.pop() {
+        'walk: while let Some(dir) = stack.pop() {
             // An unreadable subdirectory is skipped, not fatal.
             let Ok(entries) = std::fs::read_dir(&dir) else {
                 continue;
@@ -211,6 +226,10 @@ impl FsGuard {
                         continue;
                     }
                     if resolved.is_file() {
+                        if files.len() == max_files {
+                            truncated = true;
+                            break 'walk;
+                        }
                         files.push(resolved);
                     }
                     continue;
@@ -220,13 +239,17 @@ impl FsGuard {
                 if file_type.is_dir() {
                     stack.push(path);
                 } else if file_type.is_file() {
+                    if files.len() == max_files {
+                        truncated = true;
+                        break 'walk;
+                    }
                     files.push(path);
                 }
             }
         }
 
         files.sort();
-        Ok(files)
+        Ok(ReadableWalk { files, truncated })
     }
 
     /// Permit writing `path`, returning its resolved location.
@@ -336,4 +359,18 @@ fn open(
             requested: requested.to_path_buf(),
             source,
         })
+}
+
+/// The files a walk returned, and whether it stopped before the tree ended.
+///
+/// The flag is a bool rather than a count of what was skipped: the walk stops
+/// at the cap, so it never learns how much tree was left. `OutputLimits`
+/// reports "200 of 4000" because it trims a list it already holds — the
+/// difference is the point of capping the work instead of the answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadableWalk {
+    /// Readable regular files beneath the root, sorted.
+    pub files: Vec<PathBuf>,
+    /// Whether the cap stopped the walk with tree left unvisited.
+    pub truncated: bool,
 }

@@ -184,7 +184,7 @@ fn walk_does_not_follow_a_symlink_to_a_file_outside_the_root() {
     std::fs::write(root.path().join("ours.txt"), b"ours").unwrap();
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
-    let found = guard.walk_readable(root.path()).unwrap();
+    let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert!(
         !found.iter().any(|p| p == &secret),
@@ -204,7 +204,7 @@ fn walk_includes_a_symlink_to_a_file_inside_the_root() {
     std::os::unix::fs::symlink(&real, root.path().join("alias.txt")).unwrap();
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
-    let found = guard.walk_readable(root.path()).unwrap();
+    let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert!(
         found.contains(&real.canonicalize().unwrap()),
@@ -227,7 +227,7 @@ fn walk_skips_non_regular_files() {
     assert!(status.success());
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
-    let found = guard.walk_readable(root.path()).unwrap();
+    let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert!(
         !found.iter().any(|p| p == &fifo),
@@ -243,7 +243,7 @@ fn walk_descends_real_subdirectories() {
     std::fs::write(root.path().join("sub/deep.txt"), b"d").unwrap();
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
-    let found = guard.walk_readable(root.path()).unwrap();
+    let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert_eq!(found.len(), 1, "got {found:?}");
     assert!(found[0].ends_with("deep.txt"));
@@ -255,7 +255,7 @@ fn walk_refuses_a_root_outside_the_policy() {
     let elsewhere = tempfile::tempdir().unwrap();
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
-    assert!(guard.walk_readable(elsewhere.path()).is_err());
+    assert!(guard.walk_readable(elsewhere.path(), usize::MAX).is_err());
 }
 
 /// Refusals must not reveal whether a path outside the policy exists.
@@ -532,4 +532,54 @@ fn a_root_that_cannot_be_resolved_is_dropped_rather_than_refused() {
     assert!(guard.check_write(&absent.join("inside.txt")).is_err());
     // And it did not widen into a sibling that does exist.
     assert!(guard.check_read(&real).is_err());
+}
+
+/// The walk collects every readable path into memory before a caller reads a
+/// byte, so an unbounded tree is unbounded time *and* unbounded memory. The cap
+/// stops the walk rather than trimming the result afterwards, which is the
+/// difference between bounding the work and bounding the answer.
+#[test]
+fn walk_stops_at_the_file_cap() {
+    let root = tempfile::tempdir().unwrap();
+    for n in 0..20 {
+        std::fs::write(root.path().join(format!("f{n}.txt")), b"x").unwrap();
+    }
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let walk = guard.walk_readable(root.path(), 5).unwrap();
+
+    assert_eq!(walk.files.len(), 5, "cap not applied");
+    assert!(walk.truncated, "cap applied without reporting it");
+}
+
+/// A tree that fits is not reported as cut off: the flag is what a tool turns
+/// into "there may be more", and a false one teaches the model to distrust it.
+#[test]
+fn walk_under_the_cap_is_not_truncated() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("a.txt"), b"a").unwrap();
+    std::fs::write(root.path().join("b.txt"), b"b").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let walk = guard.walk_readable(root.path(), 10).unwrap();
+
+    assert_eq!(walk.files.len(), 2);
+    assert!(!walk.truncated);
+}
+
+/// A tree of exactly the cap's size is not cut off either. Inferring truncation
+/// from `files.len() == max` would report this one as partial, which is why the
+/// walk carries the flag rather than letting the caller deduce it.
+#[test]
+fn walk_of_exactly_the_cap_is_not_truncated() {
+    let root = tempfile::tempdir().unwrap();
+    for n in 0..4 {
+        std::fs::write(root.path().join(format!("f{n}.txt")), b"x").unwrap();
+    }
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let walk = guard.walk_readable(root.path(), 4).unwrap();
+
+    assert_eq!(walk.files.len(), 4);
+    assert!(!walk.truncated, "a tree that exactly fits is not partial");
 }
