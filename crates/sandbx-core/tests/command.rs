@@ -2,8 +2,8 @@
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 
-/// Without an explicit helper, the command re-runs this executable with the
-/// dispatch flag — so a shipped sandbx needs no second binary installed.
+/// Re-running this executable with the dispatch flag is what lets a shipped sandbx
+/// need no second binary installed.
 #[test]
 fn defaults_to_re_executing_the_current_binary() {
     let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
@@ -14,14 +14,10 @@ fn defaults_to_re_executing_the_current_binary() {
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
 }
 
-/// The audit channel is opt-in, and `SandboxedCommand` is what opts in: it always
-/// hands the helper a pipe to report degraded hardening on, so it must always say
-/// so (#95). Without the flag the helper writes nothing and a weakened sandbox goes
-/// unrecorded; with it but no pipe, it would write audit records into whatever fd 0
-/// happened to be.
-///
-/// Positional, and ahead of the policy: `HelperArgs::decode` refuses a flag it does
-/// not recognise, so `exec_sandboxed` has to split this one off before decoding.
+/// Without the flag the helper writes nothing and a weakened sandbox goes
+/// unrecorded; with it but no pipe, it would write records into whatever fd 0 is.
+/// Positional and ahead of the policy: `HelperArgs::decode` refuses a flag it does
+/// not recognise, so `exec_sandboxed` splits this one off before decoding.
 #[test]
 fn asks_the_helper_to_report_degradations_on_the_channel() {
     let (_, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
@@ -36,9 +32,8 @@ fn asks_the_helper_to_report_degradations_on_the_channel() {
     );
 }
 
-/// The policy must reach the helper intact: a grant lost here is a permission
-/// the tool silently does not get, and one invented here is one it should not
-/// have had.
+/// A grant lost here is a permission the tool silently does not get; one invented
+/// is one it should not have had.
 #[test]
 fn carries_the_policy_into_the_command_line() {
     let (_, argv) = SandboxedCommand::new("/bin/sh", SandboxPolicy::default().allow_read("/usr"))
@@ -52,9 +47,8 @@ fn carries_the_policy_into_the_command_line() {
     assert_eq!(&argv[argv.len() - 3..], &["/bin/sh", "-c", "true"]);
 }
 
-/// The environment allowlist is part of the policy, so it has to reach the
-/// helper the same way the paths do — the clearing happens in a process the
-/// helper spawns, which only knows what argv told it.
+/// The clearing happens in a process the helper spawns, which knows only what argv
+/// told it.
 #[test]
 fn carries_the_env_allowlist_into_the_command_line() {
     let (_, argv) = SandboxedCommand::new(
@@ -68,9 +62,8 @@ fn carries_the_env_allowlist_into_the_command_line() {
     assert!(argv.windows(2).any(|w| w == ["--env", "GIT_AUTHOR_NAME"]));
 }
 
-/// Every helper is invoked the same way, explicit or not. Two calling
-/// conventions meant a binary could implement the wrong one and fail only at
-/// runtime.
+/// One calling convention for every helper: two would let a binary implement the
+/// wrong one and fail only at runtime.
 #[test]
 fn explicit_helper_still_takes_the_dispatch_flag() {
     let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
@@ -82,8 +75,8 @@ fn explicit_helper_still_takes_the_dispatch_flag() {
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
 }
 
-/// End-to-end through the real helper: the policy is enforced by the kernel,
-/// not merely encoded.
+/// End-to-end through the real helper: the policy is enforced by the kernel, not
+/// merely encoded.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn runs_a_command_under_the_policy() {
@@ -109,7 +102,6 @@ fn runs_a_command_under_the_policy() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "visible");
 }
 
-/// A path the policy never granted stays unreadable through this API too.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn refuses_a_path_the_policy_omits() {
@@ -133,12 +125,9 @@ fn refuses_a_path_the_policy_omits() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("secret"));
 }
 
-/// The point of #22: a command that never finishes must not block the caller
-/// forever. `std::process::Command::output()` reads both pipes to EOF and then
-/// waits, so a hung command wedges the harness with no way to reclaim it.
-///
-/// The elapsed-time assertion is the real guarantee — returning the right error
-/// eventually would be no better than hanging.
+/// `std::process::Command::output()` reads both pipes to EOF and then waits, so a
+/// hung command wedges the caller with no way to reclaim it. The elapsed-time
+/// assertion is the real guarantee: the right error, eventually, is still a hang.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_that_outruns_its_timeout_is_killed() {
@@ -166,13 +155,12 @@ fn a_command_that_outruns_its_timeout_is_killed() {
     );
 }
 
-/// Grandchildren inherit the pipes. Killing only the direct child would leave
-/// them open, so the reader threads would never see EOF and the call would hang
-/// anyway — the bug this is meant to fix, one level down.
+/// Grandchildren inherit the pipes, so killing only the direct child leaves the
+/// reader threads waiting on an EOF that never comes.
 ///
-/// A pipeline rather than `cmd &`: backgrounding in `sh` redirects the job's
-/// stdin from `/dev/null`, which the policy does not grant, so the shell would
-/// bail out before forking anything.
+/// A pipeline rather than `cmd &`: backgrounding in `sh` redirects the job's stdin
+/// from `/dev/null`, which this policy does not grant, so the shell would bail out
+/// before forking anything.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_backgrounded_grandchild_does_not_hold_the_call_open() {
@@ -233,27 +221,16 @@ fn without_a_timeout_a_command_runs_to_completion() {
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "done");
 }
 
-/// The command's exit status survives the supervisor that relays it.
-///
-/// The helper no longer *becomes* the command — it supervises a second stage that
-/// does — so the status the caller sees is one this crate reassembles rather than
-/// one the kernel handed over directly. That makes fidelity something to pin:
-/// `sandbx-cli` turns a signal into `128 + n` and the `bash` tool reports "exit
-/// {code}" versus "signal {n}", so a relay that flattened a crash into an exit code
+/// The helper supervises the command rather than becoming it, so the status the
+/// caller sees is reassembled here; a relay that flattened a crash into an exit code
 /// would make a killed tool look like a clean one.
 ///
 /// A real fault rather than `kill -9 $$`: the command is PID 1 of its namespace, and
 /// the kernel discards an ordinary signal sent to a namespace's init from inside it.
-/// A fault the kernel raises itself is forced past that protection, which is what
-/// keeps a crashing tool reportable.
 ///
-/// Either encoding is accepted, because which one arrives is not ours to choose.
-/// The relay re-raises the signal so the status is genuinely signalled, but Rust's
-/// runtime installs its own `SIGSEGV` handler to detect stack overflow, so raising
-/// that particular signal at ourselves does not kill us and the numbered form is
-/// what comes out. `128 + n` is how a shell encodes the same fact, and it is what
-/// `sandbx-cli` would have printed for a signalled status anyway. What must not
-/// happen is the crash arriving as success, as a bare `11`, or as a generic `1`.
+/// Either encoding is accepted. The relay re-raises the signal, but Rust's runtime
+/// installs its own `SIGSEGV` handler to detect stack overflow, so raising that
+/// signal at ourselves does not kill us and the `128 + n` form comes out instead.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_killed_by_a_signal_is_reported_as_signalled() {
@@ -261,8 +238,8 @@ fn a_command_killed_by_a_signal_is_reported_as_signalled() {
 
     let faulting = std::path::Path::new("/usr/bin/python3");
     if !faulting.exists() {
-        // Recorded, not skipped silently: without an interpreter to fault there is
-        // nothing on this host to observe.
+        // Recorded rather than skipped silently: without an interpreter to fault
+        // there is nothing on this host to observe.
         eprintln!("no /usr/bin/python3 to fault; signal relay not observed here");
         return;
     }
@@ -288,7 +265,6 @@ fn a_command_killed_by_a_signal_is_reported_as_signalled() {
     );
 }
 
-/// An exit code survives the relay unchanged.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_exit_code_survives_the_relay() {
@@ -306,20 +282,13 @@ fn a_command_exit_code_survives_the_relay() {
     assert_eq!(output.status.code(), Some(42));
 }
 
-/// A descendant the command backgrounded dies with it (#28).
+/// Two claims: a descendant inherits the pipe write-ends, so it must not keep the
+/// call blocked, and it must not outlive the command — which holds because the
+/// command is PID 1 of its own namespace and the kernel tears that down on exit.
 ///
-/// Two things are being pinned here. The call must not block — a descendant
-/// inherits the pipe write-ends, so before the deadline was bounded the readers
-/// never saw EOF and a command that exited well inside its limit could still
-/// wedge the caller. And the descendant must not survive: the command is PID 1
-/// of its own namespace, so the kernel tears the namespace down when it exits.
-///
-/// The canary is what proves the second part, and it cannot race. Writing it
-/// requires the descendant to still be alive two seconds after the command
-/// returned, so the file existing can only mean it survived; there is no way for
-/// the assertion to fail against a sandbox that did reap it.
-///
-/// Granting `/dev/null` because `sh` redirects a background job's stdin from it.
+/// The canary cannot race: writing it needs the descendant alive two seconds after
+/// the command returned, so the file existing can only mean it survived. `/dev/null`
+/// is granted because `sh` redirects a background job's stdin from it.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_backgrounded_descendant_dies_with_the_command() {
@@ -368,16 +337,12 @@ fn a_backgrounded_descendant_dies_with_the_command() {
     );
 }
 
-/// The untimed path is covered too, not just the deadline.
+/// `output()` without a timeout reads both pipes to EOF, and no deadline or kill
+/// fires on this path. The namespace is what closes them: the command is PID 1, so
+/// everything it left behind goes the moment it exits.
 ///
-/// `output()` without a timeout reads both pipes to EOF, so a descendant holding
-/// a write-end blocks the caller for as long as it lives — and here there is no
-/// deadline to rescue it and no kill, because nothing fires on this path at all.
-/// The namespace is what closes it: the command is PID 1, so everything it left
-/// behind is gone the moment it exits, and the pipes close with them.
-///
-/// Ten seconds rather than a minute, so that a regression costs a slow test
-/// instead of a hung suite.
+/// Ten seconds rather than a minute, so a regression costs a slow test instead of a
+/// hung suite.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn without_a_timeout_a_descendant_does_not_block_the_call() {
@@ -406,20 +371,13 @@ fn without_a_timeout_a_descendant_does_not_block_the_call() {
     );
 }
 
-/// A descendant that escaped the process group dies anyway (#28).
+/// A process group is advisory — one `setsid` leaves it — so the timeout's group
+/// kill cannot promise the escapee is gone. A PID namespace is not: nothing leaves
+/// the one it was born into, `unshare` and `setns` are denied, and killing PID 1
+/// makes the kernel SIGKILL whatever is left inside.
 ///
-/// This is the bug itself. A process group is advisory — one `setsid` call leaves
-/// it — so the timeout's group kill could never promise the escapee was gone, and
-/// the shipped binary left a `sleep` running in its own session after the call
-/// returned. A PID namespace is not advisory: nothing can leave the one it was
-/// born into, `unshare` and `setns` are denied, and killing PID 1 makes the kernel
-/// SIGKILL whatever is left inside.
-///
-/// The `setsid` is the whole point of the test, so it must stay. The canary proves
-/// death without racing: only a survivor can write it. The escapee also keeps
-/// holding the pipe (no stdout redirect), so the older guarantee — that the call
-/// returns regardless, which bounding the drain wait is what makes true — is still
-/// asserted alongside.
+/// The `setsid` is the point of the test. The escapee also keeps holding the pipe
+/// (no stdout redirect), so the call returning at all is asserted alongside.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_descendant_that_escapes_the_process_group_is_killed_with_it() {
@@ -462,17 +420,9 @@ fn a_descendant_that_escapes_the_process_group_is_killed_with_it() {
     );
 }
 
-/// An ordinary invocation is reported as such, by name.
-///
-/// This used to be `None`, which also covered "argv was too short to be a
-/// helper invocation" — and the two callers read that same `None` oppositely:
-/// `sandbx` carried on and parsed arguments, while the helper binaries treated
-/// it as a usage error. Nothing in the signature said which was right. Naming
-/// the outcome is what makes each caller's reading explicit (#57).
-///
-/// Only the non-helper paths are exercised in-process. Passing `HELPER_FLAG`
-/// here would restrict this test process and `exec`, so that path is covered by
-/// the enforcement suite, which spawns a real helper.
+/// Only the non-helper paths are exercised in-process: passing `HELPER_FLAG` here
+/// would restrict this test process and `exec`, so the enforcement suite covers
+/// that path with a real helper.
 #[test]
 fn an_ordinary_invocation_is_not_helper_mode() {
     let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(std::ffi::OsString::from);
@@ -483,7 +433,6 @@ fn an_ordinary_invocation_is_not_helper_mode() {
     ));
 }
 
-/// Too short to carry a flag is still "not helper mode", not a silent success.
 #[test]
 fn an_argv_with_no_arguments_is_not_helper_mode() {
     for argv in [vec![], vec![std::ffi::OsString::from("sandbx")]] {

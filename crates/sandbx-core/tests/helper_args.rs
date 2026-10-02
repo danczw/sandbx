@@ -1,8 +1,8 @@
 //! The policy has to survive the trip to the helper process as argv.
 //!
-//! Round-tripping is a security property, not a convenience: a path silently
-//! dropped in encoding becomes a permission the helper never grants, and a path
-//! wrongly *added* becomes one it grants by mistake.
+//! Round-tripping is a security property: a path dropped in encoding becomes a
+//! permission the helper never grants, and one wrongly added becomes one it grants
+//! by mistake.
 
 use sandbx_core::{HelperArgs, SandboxPolicy};
 
@@ -34,8 +34,8 @@ fn round_trips_paths_and_network() {
     assert_eq!(decoded.args, vec!["-c".to_string(), "echo hi".to_string()]);
 }
 
-/// The separator matters: everything after `--` is the sandboxed command, so a
-/// tool argument that looks like a helper flag must not be read as one.
+/// Everything after `--` is the sandboxed command, so a tool argument that looks
+/// like a helper flag must not be read as one.
 #[test]
 fn command_arguments_are_not_parsed_as_helper_flags() {
     let policy = SandboxPolicy::default().allow_read("/usr");
@@ -84,12 +84,8 @@ fn empty_command_is_rejected() {
     assert!(HelperArgs::decode(&["--".into()]).is_err());
 }
 
-/// Every axis must survive the trip, including one added later.
-///
-/// The three-axis case above names its flags by hand; this one walks
-/// [`Axis::ALL`], so an axis that `encode` emits and `decode` refuses — or
-/// quietly files under the wrong axis — fails here without anyone remembering to
-/// extend the test.
+/// Walks [`Axis::ALL`] rather than naming flags by hand, so an axis `encode`
+/// emits and `decode` refuses fails here without anyone extending the test.
 #[test]
 fn round_trips_a_grant_on_every_axis() {
     use sandbx_core::Axis;
@@ -108,10 +104,8 @@ fn round_trips_a_grant_on_every_axis() {
     }
 }
 
-/// A path flag with nothing after it is a refusal on every axis, not just `--ro`.
-///
-/// Derived from the table the same way, so the flag spellings are not restated
-/// here either — a flag `encode` emits is a flag `decode` must police.
+/// Derived from the table too, so the flag spellings are not restated: a flag
+/// `encode` emits is a flag `decode` must police.
 #[test]
 fn a_path_flag_without_its_path_is_rejected_on_every_axis() {
     use sandbx_core::Axis;
@@ -124,9 +118,8 @@ fn a_path_flag_without_its_path_is_rejected_on_every_axis() {
         );
         let flag = emitted[0].clone();
 
-        // The *reason* matters, not just that it failed: this argv is missing the
-        // `--` separator too, so `is_err()` alone is satisfied by either refusal
-        // and would still pass if the pathless-flag check were removed.
+        // Matched on the reason: this argv also lacks the `--` separator, so
+        // `is_err()` alone would pass with the pathless-flag check removed.
         let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
             .expect_err("{flag} was accepted with no path after it");
 
@@ -141,10 +134,6 @@ fn a_path_flag_without_its_path_is_rejected_on_every_axis() {
     }
 }
 
-/// The environment allowlist crosses the seam like the rest of the policy, and
-/// for the same reason: a name dropped in encoding is a variable the command
-/// silently does not get, and one invented is a variable it should never have
-/// seen.
 #[test]
 fn round_trips_an_env_allowlist() {
     let policy = SandboxPolicy::default()
@@ -157,14 +146,14 @@ fn round_trips_an_env_allowlist() {
     assert_eq!(decoded.policy, policy);
 }
 
-/// Names, never values. argv is readable by the sandboxed command through its
-/// own `/proc/self/cmdline`, so a value here would be handed to exactly the
-/// process the allowlist exists to keep it from.
+/// argv is readable by the sandboxed command through its own
+/// `/proc/self/cmdline`, so a value here reaches the process the allowlist exists
+/// to keep it from.
 #[test]
 fn the_wire_carries_the_name_and_not_the_value() {
     let args = HelperArgs::encode(
-        // `CARGO_MANIFEST_DIR` is set in this process by cargo, so the encoder
-        // had a value available to leak had it been inclined to.
+        // Cargo sets `CARGO_MANIFEST_DIR` in this process, so the encoder had a
+        // value available to leak.
         &SandboxPolicy::default().allow_env("CARGO_MANIFEST_DIR"),
         "/bin/true",
         &[],
@@ -181,9 +170,7 @@ fn the_wire_carries_the_name_and_not_the_value() {
     );
 }
 
-/// An env flag with nothing after it is a refusal, for the reason a pathless
-/// path flag is: carrying on would mean running under a policy that differs from
-/// the one sandbx intended.
+/// Carrying on would mean running under a policy other than the intended one.
 #[test]
 fn an_env_flag_without_a_name_is_rejected() {
     let emitted = HelperArgs::encode(
@@ -193,8 +180,8 @@ fn an_env_flag_without_a_name_is_rejected() {
     );
     let flag = emitted[0].clone();
 
-    // The reason, not just the failure: this argv also lacks the `--`
-    // separator, so `is_err()` alone would pass with the check removed.
+    // Matched on the reason: this argv also lacks the `--` separator, so
+    // `is_err()` alone would pass with the check removed.
     let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
         .expect_err("the env flag was accepted with no name after it");
 
@@ -208,10 +195,8 @@ fn an_env_flag_without_a_name_is_rejected() {
     );
 }
 
-/// `allow_env` *skips* a name it could not encode, which is right for a caller
-/// composing a policy. Here it is a refusal instead: such a name cannot have
-/// come from `encode`, so the argv was built by something speaking a different
-/// protocol, and this seam refuses rather than guesses.
+/// `allow_env` skips such a name; this seam refuses it, because a name `encode`
+/// cannot emit means the argv was built by something speaking another protocol.
 #[test]
 fn an_env_name_with_an_equals_sign_is_rejected() {
     let args = vec![

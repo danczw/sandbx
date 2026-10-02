@@ -1,23 +1,12 @@
 //! Does the seccomp denylist still contain what the security docs claim?
 //!
-//! `SECURITY.md` tells users which syscall classes a sandboxed command cannot
-//! reach. Nothing until now tied that claim to the code: `enforcement.rs`
-//! probes exactly two of the denials end to end (`io_uring_setup` and the
-//! conditional `socket(AF_UNIX)` rule), so an entry could be dropped from the
-//! list and every test would still pass while the policy went on promising it.
-//! This repo treats a security doc that overstates the sandbox as a defect in
-//! its own right, so assert the list directly.
-//!
-//! This is a weaker kind of evidence than `enforcement.rs` gives, and worth
-//! being clear about: it proves the number is in the list the filter is built
-//! from, not that the kernel refused the call. It is the same trade
-//! `capability_coverage.rs` makes, and it is what is available for syscalls with
-//! no safe wrapper in this crate's dependencies — `sandbx-core` forbids
-//! `unsafe`, so a probe cannot simply issue the raw syscall.
-//!
-//! Deliberately *not* behind `sandbox-integration`: it spawns nothing and needs
-//! no Landlock, so it runs everywhere, including hosts where the enforcement
-//! suite cannot run at all.
+//! `enforcement.rs` probes only two of the denials end to end, so an entry could
+//! leave the list with every test still passing while `SECURITY.md` went on
+//! promising it. Weaker evidence than a probe: it proves the number is in the list
+//! the filter is built from, not that the kernel refused the call — which is all
+//! that is available for syscalls with no safe wrapper in the dependency set, since
+//! `sandbx-core` forbids `unsafe`. Not behind `sandbox-integration`: it spawns
+//! nothing, so it runs where the enforcement suite cannot.
 #![cfg(target_os = "linux")]
 
 use sandbx_core::BLOCKED_SYSCALLS;
@@ -56,8 +45,7 @@ const CLAIMED: &[(&str, libc::c_long)] = &[
     // Anonymous in-memory files, which have no path for Landlock to match.
     ("memfd_create", libc::SYS_memfd_create),
     // Handles on other processes, and fault handling that hands an attacker the
-    // pause. None of these have a safe wrapper in this crate's dependencies, so
-    // the list is the only evidence there is for them — see the module docs.
+    // pause. No safe wrapper here, so the list is their only evidence.
     ("userfaultfd", libc::SYS_userfaultfd),
     ("pidfd_open", libc::SYS_pidfd_open),
     ("pidfd_getfd", libc::SYS_pidfd_getfd),
@@ -87,10 +75,8 @@ fn every_claimed_syscall_is_actually_denied() {
     );
 }
 
-/// A duplicate is otherwise invisible: `deny_dangerous_syscalls` collects the
-/// list into a `BTreeMap`, which silently keeps one entry per syscall number. A
-/// repeated name is harmless at runtime but means the list has been edited
-/// carelessly, which is not what this list should tolerate.
+/// A duplicate is otherwise invisible: `deny_dangerous_syscalls` collects the list
+/// into a `BTreeMap`, which keeps one entry per syscall number.
 #[test]
 fn the_denylist_has_no_duplicate_entries() {
     let mut seen = BLOCKED_SYSCALLS.to_vec();

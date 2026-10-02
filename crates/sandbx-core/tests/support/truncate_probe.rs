@@ -1,12 +1,9 @@
-//! Calls `truncate(2)` on a path and reports whether the kernel allowed it.
+//! Calls `truncate(2)` on a path and reports whether the kernel allowed it;
+//! test-only (`required-features = ["sandbox-integration"]`).
 //!
-//! Test-only (`required-features = ["sandbox-integration"]`), so it is never
-//! part of a normal build.
-//!
-//! A dedicated probe rather than a shell one-liner because `: > file` and
-//! `truncate(1)` both go through `open(O_TRUNC)`/`ftruncate`, which Landlock's
-//! `WriteFile` right already covers. Only `truncate(2)` on a *path* exercises
-//! the `Truncate` right, which is the access this probe exists to test.
+//! Not a shell one-liner: `: > file` and `truncate(1)` go through
+//! `open(O_TRUNC)`/`ftruncate`, which Landlock's `WriteFile` right already
+//! covers. Only `truncate(2)` on a path exercises the `Truncate` right.
 
 fn main() -> std::process::ExitCode {
     let Some(path) = std::env::args().nth(1) else {

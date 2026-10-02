@@ -1,8 +1,8 @@
 //! Public contract of audit emission.
 //!
-//! The audit trail answers "what did the agent do to my machine". It is a
-//! product feature, not debug output, so these assert the events are emitted at
-//! a level that is on by default and carry enough to reconstruct a decision.
+//! The trail answers "what did the agent do to my machine", so it is a product
+//! feature rather than debug output: events must be emitted at a level that is on
+//! by default and carry enough to reconstruct a decision.
 
 use std::sync::{Arc, Mutex};
 
@@ -62,8 +62,6 @@ fn records_an_allowed_execution() {
     assert!(line.contains("subject=/bin/ls"), "got: {line}");
 }
 
-/// A refusal is the most important thing the trail records, and it must say
-/// *why* — "denied" alone is not actionable.
 #[test]
 fn records_a_refusal_with_its_reason() {
     let lines = capture(|| {
@@ -75,8 +73,8 @@ fn records_a_refusal_with_its_reason() {
     assert!(line.contains("outside every allowed root"), "got: {line}");
 }
 
-/// Audit must not be filtered out at the default verbosity. If it only appears
-/// under RUST_LOG=debug it is off for everyone who did not opt in.
+/// Audit that only appears under `RUST_LOG=debug` is off for everyone who did
+/// not opt in.
 #[test]
 fn is_emitted_at_info_not_debug() {
     let lines = capture(|| {
@@ -99,8 +97,6 @@ fn is_emitted_at_info_not_debug() {
     );
 }
 
-/// Policy summaries are recorded, not the policy object — a grant list is
-/// metadata, and keeping it short keeps the trail readable.
 #[test]
 fn records_the_policy_shape_of_a_spawn() {
     let policy = SandboxPolicy::default()
@@ -124,9 +120,8 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("env=2"), "got: {line}");
 }
 
-/// The count, and not the names. A variable name is not itself a secret, but the
-/// record is one edit away from carrying values beside them, and that edit should
-/// have to argue with this test.
+/// A name on the trail is one edit away from the value beside it; the count is
+/// enough.
 #[test]
 fn records_how_many_variables_a_spawn_passed_not_which() {
     let policy = SandboxPolicy::default().allow_env("AWS_SECRET_ACCESS_KEY");
@@ -140,11 +135,8 @@ fn records_how_many_variables_a_spawn_passed_not_which() {
     assert!(!line.contains("AWS_SECRET_ACCESS_KEY"), "got: {line}");
 }
 
-/// A hardening step that did not take effect is part of what the sandbox did,
-/// so it belongs in the trail next to the decisions — not in debug output. The
-/// two sites that record one (the capability bounding set and the userns
-/// identity map) used a raw `debug!` on the audit target, which is off under the
-/// default filter: a step could go missing and the record of it reach nobody.
+/// A hardening step that did not take effect is part of what the sandbox did, so
+/// it belongs on the trail beside the decisions.
 #[test]
 fn records_a_degraded_hardening_step() {
     let lines = capture(|| {
@@ -165,8 +157,8 @@ fn records_a_degraded_hardening_step() {
     assert!(line.contains("running as nobody"), "got: {line}");
 }
 
-/// The regression this variant exists to prevent. A degradation recorded below
-/// the default level is a weaker sandbox with no trace of why.
+/// A degradation recorded below the default level is a weaker sandbox with no
+/// trace of why.
 #[test]
 fn a_degradation_is_emitted_at_info_not_debug() {
     let sink = Captured::default();
