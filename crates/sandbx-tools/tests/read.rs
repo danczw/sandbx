@@ -83,3 +83,23 @@ fn advertises_a_schema_matching_its_input() {
         "schema does not describe the `path` field: {schema}"
     );
 }
+
+/// An empty file still has to come back as something the model can read. The
+/// Messages API rejects a `tool_result` whose text content is empty, so a tool
+/// that returns `""` does not produce an empty turn — it kills the turn.
+#[test]
+fn reports_an_empty_file_rather_than_returning_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("empty.txt");
+    std::fs::write(&file, b"").unwrap();
+
+    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let out = BuiltinTool::Read
+        .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
+        .unwrap();
+
+    assert!(
+        !out.content.trim().is_empty(),
+        "empty file returned empty content"
+    );
+}
