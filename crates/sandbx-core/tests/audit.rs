@@ -120,3 +120,48 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("network=false"), "got: {line}");
     assert!(line.contains("unix_sockets=true"), "got: {line}");
 }
+
+/// A hardening step that did not take effect leaves the sandbox weaker than the
+/// policy asked for, so it belongs in the trail next to the decisions — not in
+/// debug output. The two sites that record one (the capability bounding set and
+/// the userns identity map) used a raw `debug!` on the audit target, which is
+/// off under the default filter: the sandbox could silently weaken and the
+/// record of it would reach nobody.
+#[test]
+fn records_a_degraded_hardening_step() {
+    let lines = capture(|| {
+        AuditEvent::degraded(
+            "userns_identity_map",
+            "permission denied, running as nobody",
+        )
+        .emit();
+    });
+
+    assert_eq!(lines.len(), 1, "expected exactly one audit event");
+    let line = &lines[0];
+    assert!(line.contains("decision=degraded"), "got: {line}");
+    assert!(
+        line.contains("mechanism=userns_identity_map"),
+        "got: {line}"
+    );
+    assert!(line.contains("running as nobody"), "got: {line}");
+}
+
+/// The regression this variant exists to prevent. A degradation recorded below
+/// the default level is a weaker sandbox with no trace of why.
+#[test]
+fn a_degradation_is_emitted_at_info_not_debug() {
+    let sink = Captured::default();
+    let subscriber = tracing_subscriber::registry()
+        .with(sink.clone())
+        .with(tracing::level_filters::LevelFilter::INFO);
+    with_default(subscriber, || {
+        AuditEvent::degraded("capability_bounding_set", "operation not permitted").emit();
+    });
+
+    assert_eq!(
+        sink.lines().len(),
+        1,
+        "degradation was filtered out at INFO; a weakened sandbox must not be a debug-level event"
+    );
+}
