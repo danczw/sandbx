@@ -41,14 +41,44 @@ rather than going silently uncounted (#51).
 **Denials always carry a reason.** `Denied.reason` is non-optional; "denied"
 alone is not actionable.
 
+## The sink
+
+`sandbx-cli/src/logging.rs` — the one subscriber the binary installs (#89).
+`subscriber(writer)` builds it; `init()` pins stderr and goes global.
+
+```
+registry()
+  .with(fmt::layer().with_writer(stderr).with_ansi(false))
+  .with(Targets::new().with_target(AUDIT_TARGET, INFO))
+```
+
+**Stderr, not stdout** — `SandboxRun::execute` forwards the sandboxed command's
+stdout verbatim, so a record there would corrupt a pipeline. The timestamp comes
+from the formatter's default `SystemTime`, which is why no event field carries
+one.
+
+**Always on, no flag.** The audit trail is not opt-in diagnostics; a configurable
+logging surface is worth designing once logging has a second consumer.
+
+**The filter is both halves.** The target half keeps `sandbx-core`'s own `debug!`
+out, so making the trail visible does not make the internals visible. The `INFO`
+bound keeps anything that merely borrowed the target out of the record.
+
+`init()` returns its error rather than panicking: a run that goes unrecorded
+still beats a run that does not happen. Installed *inside* the
+`with_helper_dispatch` closure — above it, the helper would write sandbx's own
+records into the output of the command being sandboxed. That placement is also
+why `Degraded` still reaches nobody; see below.
+
 ## What is not built
 
 | Missing | Consequence |
 |---|---|
-| any subscriber in `sandbx-cli` | **audit events are emitted and discarded.** `tracing-subscriber` is a dev-dependency of `sandbx-core`; the binary installs nothing (#89) |
+| a subscriber in the **helper** | **`Degraded` is emitted and discarded.** Both emitters sit in `helper/hardening.rs`, which runs in the re-exec'd child; `logging::init` is inside the `with_helper_dispatch` closure and so never runs there. Moving `Degraded` to `INFO` bought nothing yet |
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone. Zero emission sites in tools, agent, providers, tui, session |
-| timestamps, session ids | no field carries either. A timestamp would come from a subscriber formatter; there is no session concept in the workspace |
+| session ids | no field carries one; there is no session concept in the workspace |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`, no XDG path resolution anywhere in `crates/` |
+| a terminal record | `Spawned` is emitted *before* the exec, so it appears for a command that then fails to start, and a `--timeout` kill records nothing. The record describes the policy, not the outcome |
 
 Libraries emit and never choose a sink — no emission site touches a file or a
 terminal. That part of the design holds; it is the sink that is absent.

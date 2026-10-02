@@ -5,6 +5,10 @@ use crate::{Axis, SandboxPolicy};
 /// A dedicated target lets one subscriber route these to durable storage while
 /// ordinary diagnostics go elsewhere, without either emitter knowing about
 /// files. Filter on this to separate the two streams.
+///
+/// The `sandbx` binary installs one that admits this target at `INFO` and drops
+/// everything else, writing to stderr; see the `logging` module in `sandbx-cli`.
+/// Named in prose rather than linked because the dependency runs the other way.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
 
 /// Something the sandbox did, recorded so it can be reviewed afterwards.
@@ -135,6 +139,12 @@ impl<'a> AuditEvent<'a> {
     }
 
     /// Emit this event on the audit target.
+    ///
+    /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]:
+    /// `tracing` drops an event with no subscriber installed, silently and at
+    /// every level. A library cannot install one without deciding for whoever
+    /// embeds it, so the binary does — and for a while nothing did, which is what
+    /// #89 cost. Anything embedding this crate owes itself the same subscriber.
     pub fn emit(&self) {
         match self {
             Self::Allowed { tool, subject } => tracing::info!(
