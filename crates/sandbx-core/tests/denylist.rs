@@ -1,12 +1,12 @@
 //! Does the seccomp denylist still contain what the security docs claim?
 //!
-//! `enforcement.rs` probes only two of the denials end to end, so an entry could
-//! leave the list with every test still passing while `SECURITY.md` went on
-//! promising it. Weaker evidence than a probe: it proves the number is in the list
-//! the filter is built from, not that the kernel refused the call — which is all
-//! that is available for syscalls with no safe wrapper in the dependency set, since
-//! `sandbx-core` forbids `unsafe`. Not behind `sandbox-integration`: it spawns
-//! nothing, so it runs where the enforcement suite cannot.
+//! `enforcement.rs` probes only two denials end to end, so an entry could leave the
+//! list with every test still passing while `SECURITY.md` went on promising it.
+//! Weaker evidence than a probe — the number is in the list the filter is built
+//! from, not refused by the kernel — and all that is available for syscalls with no
+//! safe wrapper, since `sandbx-core` forbids `unsafe`. Not behind
+//! `sandbox-integration`: it spawns nothing, so it runs where the enforcement suite
+//! cannot.
 #![cfg(target_os = "linux")]
 
 use sandbx_core::BLOCKED_SYSCALLS;
@@ -44,8 +44,7 @@ const CLAIMED: &[(&str, libc::c_long)] = &[
     ("io_uring_register", libc::SYS_io_uring_register),
     // Anonymous in-memory files, which have no path for Landlock to match.
     ("memfd_create", libc::SYS_memfd_create),
-    // Handles on other processes, and fault handling that hands an attacker the
-    // pause. No safe wrapper here, so the list is their only evidence.
+    // Handles on other processes, and fault handling that hands an attacker the pause.
     ("userfaultfd", libc::SYS_userfaultfd),
     ("pidfd_open", libc::SYS_pidfd_open),
     ("pidfd_getfd", libc::SYS_pidfd_getfd),

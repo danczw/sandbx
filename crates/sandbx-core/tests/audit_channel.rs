@@ -2,14 +2,11 @@
 //!
 //! Both hardening steps run in the re-exec'd helper, which installs no `tracing`
 //! subscriber, so a `Degraded` record crosses as bytes on a pipe in the helper's
-//! stdin slot and the parent emits it. That puts two properties on the critical
-//! path which a wire round-trip cannot check: the sandboxed command must not reach
-//! that pipe, and its own output must stay byte-exact.
-//!
-//! Whether a run degrades at all is the host's answer — a box without AppArmor's
-//! `restrict_unprivileged_userns` drops the bounding set cleanly, Ubuntu 24.04+ and
-//! GitHub's runners refuse it with `EPERM` — so nothing below asserts the *absence*
-//! of a `degraded` record. Making a host degrade on demand is #94.
+//! stdin slot and the parent emits it. Hence two properties a wire round-trip
+//! cannot check: the sandboxed command must not reach that pipe, and its own
+//! output must stay byte-exact. Whether a run degrades at all is the host's
+//! answer, so nothing below asserts the *absence* of a `degraded` record; making
+//! a host degrade on demand is #94.
 //!
 //! Gated whole-file: every test spawns a real helper, so with the feature off
 //! `-D warnings` would reject the capture harness as dead code.
@@ -24,7 +21,7 @@ use tracing_subscriber::layer::SubscriberExt;
 /// Collects audit events so a test can assert on what was recorded.
 ///
 /// Repeated from `audit.rs` rather than shared: cargo gives each `tests/*.rs` its
-/// own binary, so a `tests/support` module would be compiled into both.
+/// own binary.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
 
@@ -80,16 +77,14 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<
 }
 
 /// Without the first helper stage replacing its stdin with `null`, the sandboxed
-/// command inherits a writable descriptor onto sandbx's own audit trail: the pipe
-/// arrives in the stdin slot because that is the only descriptor std can pass a
-/// child without `unsafe`.
+/// command inherits a writable descriptor onto sandbx's own audit trail.
 ///
-/// The forged *detail* is the discriminator, not the mechanism name — a host that
-/// refuses `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation on
-/// this very run. `printf` with the tab as an escape the shell expands: a literal
-/// tab is an `IFS` character, so the shell would split the word, and the rejoined
-/// line would be rejected for having no separator while the sandbox had in fact
-/// let it through.
+/// The forged *detail* is the discriminator, not the mechanism name: a host
+/// refusing `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation
+/// on this very run. The tab must stay a `printf` escape — a literal tab is an
+/// `IFS` character, so the shell would split the word and the rejoined line would
+/// be rejected for having no separator while the sandbox had in fact let it
+/// through.
 #[test]
 fn the_sandboxed_command_cannot_write_the_audit_channel() {
     let (output, lines) = sandboxed(
@@ -132,11 +127,10 @@ fn the_commands_own_output_carries_no_audit_records() {
     );
 }
 
-/// Shape, not count: how many records a clean run produces is the host's answer, so
-/// requiring a number would test the kernel underneath. A blank mechanism is what
-/// an empty channel decoding to a record looks like, a repeated one what a re-sent
-/// short write looks like, and a second spawn record what `record_degradations`
-/// re-emitting on both the timeout and the ordinary path looks like.
+/// Shape, not count: how many records a clean run produces is the host's answer.
+/// A blank mechanism is what an empty channel decoding to a record looks like, a
+/// repeated one a re-sent short write, and a second spawn record
+/// `record_degradations` re-emitting on both the timeout and the ordinary path.
 #[test]
 fn every_record_on_the_trail_names_a_real_mechanism_at_most_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
