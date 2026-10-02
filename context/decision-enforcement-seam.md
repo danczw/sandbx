@@ -54,14 +54,37 @@ a failed helper run cannot fall through to unrestricted execution.
 ```
 rights_for(axis: Axis, target_is_dir: bool, abi: landlock::ABI) -> BitFlags<AccessFs>
 fs_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> [(Axis, &Path, BitFlags<AccessFs>)]
+                                                                      helper/ruleset/rights.rs
+handled_access(abi: landlock::ABI) -> BitFlags<AccessFs>
+kernel_probe(abi: landlock::ABI) -> Result<(), RulesetError>
+negotiated_abi_from(probe: impl FnMut(ABI) -> Result<(), RulesetError>) -> Result<ABI, _>
+negotiated_abi() -> Result<ABI, _>
+enforcement_verdict(status: RulesetStatus) -> Result<(), _>
+                                                                      helper/ruleset/compat.rs
+Requested { handled: BitFlags<AccessFs>, rules: [(Axis, &Path, BitFlags<AccessFs>)] }
+requested_at(policy: &SandboxPolicy, abi: landlock::ABI) -> Requested<'_>
+requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
+                                                                      helper/ruleset/mod.rs
 ```
 
-Both live in `helper/ruleset/rights.rs`. ABI negotiation and the verdict live in
-`helper/ruleset/compat.rs`; the syscall list in `helper/seccomp.rs`; `apply` in
-`helper/mod.rs`.
+The syscall list is in `helper/seccomp.rs`; `apply` in `helper/mod.rs`.
 
 `abi` is a **parameter**, not ambient — that is what makes the mapping
-kernel-independent and testable at both ends of the range.
+kernel-independent and testable at both ends of the range. The stronger form
+since #87: a parameter to `requested_at`, and **`apply` holds no ABI binding at
+all.** `requested` negotiates internally and returns the handled set and the
+rules together, so the two cannot be derived from different ABIs. Previously they
+were two expressions in `apply` with a comment between them saying they must
+match — and because `AccessFs::from_all` is constant across V5..V8, a divergence
+there was unobservable in any kernel-free test. Structure, not coverage, is what
+retires it; `fs_rules` narrowed to `pub(super)` so `apply` cannot reach past the
+join.
+
+`negotiated_abi_from` takes the probe for the same reason `fs_rules` takes the
+policy: the decision worth asserting is not the ladder walk but which errors are
+an *ABI verdict* (step down a rung) and which are not (refuse). `RulesetError` was
+named in exactly one place in the workspace and no test constructed one, so the
+refusing arm was not merely untested but unreachable (#87).
 
 `apply` ignores the axis (`for (_, path, rights)`): the kernel is told the rights
 and nothing else. The axis rides along only so tests can assert the mapping.
@@ -94,14 +117,33 @@ move together.
 | `rights_for` / `fs_rules` | ✓ | |
 | `FsGuard::new` buckets | ✓ | |
 | `encode` / `decode` | ✓ | |
+| `requested_at` | ✓ (it is `handled_access` + `fs_rules`) | |
 | `each_axis_confers_exactly_the_documented_set` | | ✓ `make_bitflags!`, both ABI ends |
 | `rights_for_narrows_a_regular_file` | | ✓ `file_legal` spelled out |
+| the three `negotiated_abi_from` tests | | ✓ error chains built by hand; which variant steps down is spelled out |
+| `the_handled_set_and_the_rules_come_from_one_abi` | ✓ — see below | ✓ `ResolveUnix` named |
 | audit counts | | ✓ exhaustive `match` |
 | `SandboxRun::paths` | | ✓ exhaustive `match` |
 
 The hard-coded rows are the ones that would fail if `Axis::Write` were flipped to
 `execute: true`. The two exhaustive matches are what make a *new* axis a build
 failure — not the length of `Axis::ALL`, which nothing needs at compile time.
+
+**The ABI-agreement row is derived, against this table's own thesis, and that is
+a limit rather than an oversight.** Its union check is a *theorem*: `rights_for`'s
+three subtractions partition `from_all`, and landlock's own invariant test asserts
+`from_read | from_write == from_all`, so the union equals the handled set at every
+ABI — including one the code got wrong. No hard-coded expectation is available to
+replace it, because pinning `handled` literally would make a third site spelling
+out the same sixteen-or-seventeen rights, against the "one place to edit" argument
+that `each_axis_confers_exactly_the_documented_set` rests on. So the test carries
+two assertions that are *not* derived and do the real work: that the handled set
+differs between `BASELINE_ABI` and `LATEST_ABI` — the only thing that catches a
+`requested_at` ignoring its `abi`, or both halves pinned to one rung — and that
+`ResolveUnix` is the bit on which they differ, named so a floor bump past V9 fails
+here loudly instead of turning the inequality into a tautology. `from_all` is
+constant across V5..V8, so that one bit is the entire kernel-free discriminating
+power available in the negotiable range.
 
 ## #52's five items
 

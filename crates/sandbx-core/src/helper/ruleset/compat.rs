@@ -56,6 +56,54 @@ pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
     BASELINE_ABI,
 ];
 
+/// Every right the kernel is asked to *handle* at `abi`, in one spelling.
+///
+/// Both halves of the negotiation need this set and they must be the same set:
+/// [`kernel_probe`] asks the kernel whether it will hard-require it, and
+/// [`requested_at`](super::requested_at) hands it to
+/// [`apply`](crate::helper::apply) to install. It used to be written twice —
+/// `AccessFs::from_all(abi)`, once here and once in `apply` — and had they
+/// drifted, the probe would have settled on an ABI by answering a question that
+/// is not the one `apply` goes on to ask, so a right `apply` requested could be
+/// outside what the kernel ever confirmed (#87).
+///
+/// `from_all` and not an enumeration: a right a future ABI adds lands in the
+/// handled set automatically and is therefore *denied* unless some axis confers
+/// it, rather than being left unhandled — and Landlock leaves an unhandled
+/// access type unrestricted everywhere.
+pub(super) fn handled_access(abi: landlock::ABI) -> landlock::BitFlags<landlock::AccessFs> {
+    use landlock::Access;
+
+    landlock::AccessFs::from_all(abi)
+}
+
+/// Ask the kernel whether it will hard-require the whole of `abi`.
+///
+/// The real rung test behind [`negotiated_abi`], and the only part of the
+/// negotiation that needs a kernel.
+///
+/// Probing with `create()` is deliberate: it builds a ruleset without applying it,
+/// so the ladder walks in one process and nothing is restricted until
+/// [`apply`](crate::helper::apply) calls `restrict_self`. The kernel's own version syscall would be
+/// cheaper, but it is `unsafe` and `landlock` keeps its wrapper private — and a
+/// probe that asks the same question the real call will ask cannot disagree with
+/// it, which the duplicated ABI floor behind `d4676cc` is the argument for.
+/// [`handled_access`] is what keeps that "same question" true by construction.
+///
+/// The built ruleset is discarded: what is wanted is the verdict, and the one
+/// [`apply`](crate::helper::apply) installs is built from the negotiated ABI
+/// afterwards. The error is returned unwrapped — classifying it is
+/// [`negotiated_abi_from`]'s decision, and that is the decision worth asserting.
+fn kernel_probe(abi: landlock::ABI) -> Result<(), landlock::RulesetError> {
+    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr};
+
+    Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .handle_access(handled_access(abi))
+        .and_then(|ruleset| ruleset.create())
+        .map(|_| ())
+}
+
 /// The newest ABI this kernel will hard-require, at or above [`BASELINE_ABI`].
 ///
 /// Replaces the old best-effort arm, and the reason is [`enforcement_verdict`].
@@ -65,27 +113,46 @@ pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
 /// without refusing nearly every host. Asking only for what the kernel confirms
 /// it handles makes full enforcement the normal outcome, so partial enforcement
 /// becomes the anomaly it is documented to be.
+pub(super) fn negotiated_abi() -> Result<landlock::ABI, SandboxError> {
+    negotiated_abi_from(kernel_probe)
+}
+
+/// Walk [`NEGOTIABLE_ABI`] with `probe` and settle on the first rung it accepts.
 ///
-/// Probing with `create()` is deliberate: it builds a ruleset without applying it,
-/// so this walks the ladder in one process and nothing is restricted until
-/// [`apply`](crate::helper::apply) calls `restrict_self`. The kernel's own version syscall would be
-/// cheaper, but it is `unsafe` and `landlock` keeps its wrapper private — and a
-/// probe that asks the same question the real call will ask cannot disagree with
-/// it, which the duplicated ABI floor behind `d4676cc` is the argument for.
+/// Split from the kernel it used to probe directly, because the decision below is
+/// not the walk — it is which errors are an *ABI verdict* and which are not, and
+/// that decision was unreachable without a Landlock-capable host. The same
+/// argument [`rights_for`](super::rights::rights_for) and
+/// [`blocked_syscalls`](crate::helper::seccomp) were extracted on, and the same
+/// one again for `compiled_filter`, where inverting a filter's polarity left
+/// every ungated test green (#91). Here the equivalent mutation is one arm of the
+/// match below: a non-verdict error stepping down instead of refusing left both
+/// suites at zero failures and both CI jobs green (#87).
+///
+/// What makes that mutation a security bug and not a style question: stepping
+/// down hands back a lower ABI than the kernel actually supports, every right
+/// above it then goes unhandled, and Landlock leaves an unhandled access type
+/// unrestricted *everywhere*. It is the silent hole [`BASELINE_ABI`] exists to
+/// prevent, arrived at from above instead of below.
+///
+/// `FnMut` rather than `Fn` for the tests' sake alone — it lets a probe record
+/// which rungs it was asked about by pushing into a local `Vec`, with no interior
+/// mutability. Nothing here wants a stateful probe, and [`kernel_probe`] is a
+/// `fn` item, so production is unaffected.
 ///
 /// A kernel below [`BASELINE_ABI`] falls off the end and is refused, which is the
-/// floor that constant documents.
-pub(in crate::helper) fn negotiated_abi() -> Result<landlock::ABI, SandboxError> {
-    use landlock::{Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetError};
+/// floor that constant documents. That refusal is deliberately a *different*
+/// error from the one above: `Unsupported` names the floor, `Landlock` carries
+/// the kernel's own reason. Collapsing them would report "ABI 5, Linux 6.10" for
+/// a cause that has nothing to do with the baseline.
+pub(super) fn negotiated_abi_from(
+    mut probe: impl FnMut(landlock::ABI) -> Result<(), landlock::RulesetError>,
+) -> Result<landlock::ABI, SandboxError> {
+    use landlock::RulesetError;
 
     for abi in NEGOTIABLE_ABI {
-        let built = Ruleset::default()
-            .set_compatibility(CompatLevel::HardRequirement)
-            .handle_access(AccessFs::from_all(abi))
-            .and_then(|ruleset| ruleset.create());
-
-        match built {
-            Ok(_) => return Ok(abi),
+        match probe(abi) {
+            Ok(()) => return Ok(abi),
             // The one error that is an ABI verdict: under `HardRequirement`,
             // `handle_access` refuses and names the rights this kernel does not
             // have (`partially incompatible access-rights: .. ResolveUnix`). Only
