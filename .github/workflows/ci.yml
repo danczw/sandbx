@@ -111,8 +111,11 @@ jobs:
           echo "floor=$floor"
 
       # @master, not @stable, because `with: toolchain` needs a ref that takes an
-      # argument. Not a weaker pin: this action ships no version tags, so @stable
-      # is a mutable branch too.
+      # argument. Not a weaker pin than the three jobs above: every ref this
+      # action publishes is mutable. Its version refs (`stable`, `1.88.0`) are
+      # branches, and its sole tag, `v1`, is a moving major that currently points
+      # at master anyway. Pinning all four jobs to a full SHA is the only real
+      # improvement here, and it is a change of its own.
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.floor.outputs.floor }}
