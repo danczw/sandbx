@@ -97,7 +97,7 @@ fn output_is_bounded() {
 }
 
 #[test]
-fn a_command_that_outruns_the_timeout_is_reported_as_such() {
+fn a_command_that_outruns_the_timeout_says_so() {
     let started = std::time::Instant::now();
 
     let ctx = context(SandboxPolicy::default().allow_system_executables())
@@ -119,7 +119,7 @@ fn a_command_that_outruns_the_timeout_is_reported_as_such() {
 /// The Messages API rejects an empty `tool_result`, so a silent success — `touch`,
 /// `mkdir -p`, `true` — would otherwise kill the turn.
 #[test]
-fn reports_a_silent_success_rather_than_returning_nothing() {
+fn a_silent_success_is_reported_not_empty() {
     let ctx = context(SandboxPolicy::default().allow_system_executables());
     let out = BuiltinTool::Bash
         .execute(json!({ "command": "true" }), &ctx)

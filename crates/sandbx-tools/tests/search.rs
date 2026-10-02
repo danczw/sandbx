@@ -259,7 +259,7 @@ fn grep_does_not_block_on_a_fifo() {
 /// check removed.
 #[cfg(unix)]
 #[test]
-fn grep_does_not_follow_a_symlink_to_a_file_outside_the_root() {
+fn grep_does_not_follow_a_file_symlink_out_of_root() {
     let root = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     std::fs::write(elsewhere.path().join("secret.txt"), "SECRET-NEEDLE\n").unwrap();
