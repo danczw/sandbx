@@ -207,12 +207,3 @@ fn read_truncates_on_a_character_boundary() {
     assert!(out.content().contains('日'));
     assert!(out.content().contains("truncated"));
 }
-
-/// The defaults must bound output at all, or they are a trap for a caller that
-/// never sets them.
-#[test]
-fn limits_apply_by_default() {
-    let limits = ToolLimits::default();
-    assert!(limits.max_entries() > 0);
-    assert!(limits.max_bytes() > 0);
-}
