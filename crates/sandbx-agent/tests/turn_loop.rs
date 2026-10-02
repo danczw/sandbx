@@ -583,12 +583,12 @@ fn the_default_stream_bound_is_the_documented_one() {
 /// stopped covering this shape the build would fail rather than leave the doc
 /// comment lying.
 ///
-/// That the closure can stay non-async is the client's doing: its `stream_chat`
-/// returns `EventStream` directly, so there is nothing left here to box.
+/// The closure can stay non-async because `stream_chat` returns `EventStream`
+/// directly, so there is nothing left here to box.
 ///
-/// Also pins that the returned future is `Send`. That is the one thing giving up a
-/// named `Fut` type parameter could have cost: a non-`Send` future cannot be
-/// `tokio::spawn`ed, which is exactly what a TUI needs to do with a turn.
+/// Also pins that the returned future is `Send` — the one thing giving up a named
+/// `Fut` type parameter could have cost. See `sandbx-providers`' `EventStream` for
+/// why that matters.
 #[allow(dead_code)]
 fn the_documented_call_shape_compiles_and_stays_spawnable(
     client: &'static sandbx_providers::AnthropicClient,
