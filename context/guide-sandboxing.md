@@ -159,24 +159,28 @@ independently of `allows_network`; `socketpair` is left alone.
 
 ### Three filters, three actions
 
-The list above is one of three stacked filters, because a seccompiler filter
-carries a single match action and two rules need a different one. The kernel
-takes the most severe verdict across all of them, so install order means
-nothing and a later filter cannot loosen an earlier one.
+The list above is one of three stacked filters on x86\_64 — two elsewhere, the
+x32 gate being x86\_64-only — because a seccompiler filter carries a single match
+action and two rules need a different one. The kernel takes the most severe
+verdict across all of them, so install order means nothing and a later filter
+cannot loosen an earlier one.
 
 | Filter | Action | Why not `EPERM` |
 |---|---|---|
 | the 28 entries, `socket(AF_UNIX)`, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
 | `clone3` | `ENOSYS` | glibc 2.34+ calls it from `pthread_create` and falls back to `clone` only on `ENOSYS`; `EPERM` breaks every threaded program instead of routing it onto the filtered `clone` |
-| any `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
+| any non-negative `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
 
 `clone` closes what denying `unshare` alone did not: the same namespaces are
 reachable through its flags argument (#118). One rule per flag, because rules
 for a syscall are OR'd while conditions inside a rule are AND'd — a single
 `MaskedEq` over the union would fire only when every flag was set. `Dword`, so
 the comparison ignores a high half the kernel also ignores. `CLONE_NEWTIME` is
-absent: it collides with `clone`'s exit-signal byte and the kernel refuses it
-for this syscall, and the two calls that do accept it are denied outright.
+absent because `clone` cannot honour it: `0x80` falls inside `CSIGNAL`, and
+`SYSCALL_DEFINE5(clone)` takes `lower_32_bits(flags) & ~CSIGNAL`, so the bit is
+dropped and no time namespace is created — the call succeeds rather than failing,
+so do not read a refusal into it. `unshare` and `clone3` do honour the flag, and
+both are denied outright.
 
 x32 is denied as an ABI rather than enumerated (#117). It reports
 `AUDIT_ARCH_X86_64`, so it passes the architecture gate, and its numbers are the
@@ -185,6 +189,14 @@ and `process_vm_writev`, which sit at *different* x32 numbers again. A mask over
 `nr` covers the list as it grows; a list of x32 numbers would not. It is
 hand-assembled classic BPF because seccompiler's conditions address syscall
 arguments, and `nr` is reachable only as a filter key.
+
+The mask alone is not enough: `syscall(-1)` is `0xffff_ffff`, which carries bit
+30, and killing it would turn an `ENOSYS` every kernel returns into death by
+signal. The gate excludes a set sign bit first — `do_syscall_64` special-cases
+`nr == -1`, and x32 dispatch is `nr - BIT < X32_NR_syscalls`, so nothing
+negative is x32. A positive number past the end of the x32 table is still
+killed: matching the table exactly would mean pinning its size in sandbx, and
+only an x32 caller reaches for those numbers.
 
 ## Namespaces and process state
 
