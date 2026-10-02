@@ -24,8 +24,13 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 **`INFO`, not `DEBUG`** — at `DEBUG` the trail would be absent for everyone who
 did not opt in, which is exactly when a record matters. `tests/audit.rs` pins
 this, and it is the one property to defend: the two `Degraded` sites previously
-used a raw `tracing::debug!` on the audit target, so a sandbox could silently
-weaken and the record of it reached nobody.
+used a raw `tracing::debug!` on the audit target, so a hardening step could go
+missing and the record of it reached nobody.
+
+What a missing step costs depends on which one it was, so `mechanism` carries
+that rather than `Degraded` implying a single answer. A bounding set left as
+inherited is a weaker sandbox; an unmapped identity costs only uid fidelity and
+is, if anything, more restrictive.
 
 **Metadata only, never output.** That a tool read a file is a different
 proposition from storing what the file contained; output is where secrets live.
