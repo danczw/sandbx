@@ -139,7 +139,7 @@ else. Three rungs of evidence, strongest first:
 | Rung | Where | Covers |
 |---|---|---|
 | a real kernel refuses the call | `tests/enforcement.rs` | 4 of the 28 — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` rule, which is not a list entry |
-| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp.rs` | all 28, and what the `AF_UNIX` rule compares against |
+| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp.rs` | all 28, plus what the `AF_UNIX`, `clone`-flag and x32 rules compare against |
 | the documented set matches the list | `tests/denylist.rs` | all 28 |
 
 The middle rung is a test-only classic-BPF interpreter run over a synthetic
@@ -156,6 +156,35 @@ verdict (#99).
 `EPERM`, not kill — a denied syscall should look like a permission error to the
 program, not a crash. `socket(AF_UNIX)` is gated on `allows_unix_sockets()`,
 independently of `allows_network`; `socketpair` is left alone.
+
+### Three filters, three actions
+
+The list above is one of three stacked filters, because a seccompiler filter
+carries a single match action and two rules need a different one. The kernel
+takes the most severe verdict across all of them, so install order means
+nothing and a later filter cannot loosen an earlier one.
+
+| Filter | Action | Why not `EPERM` |
+|---|---|---|
+| the 28 entries, `socket(AF_UNIX)`, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
+| `clone3` | `ENOSYS` | glibc 2.34+ calls it from `pthread_create` and falls back to `clone` only on `ENOSYS`; `EPERM` breaks every threaded program instead of routing it onto the filtered `clone` |
+| any `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
+
+`clone` closes what denying `unshare` alone did not: the same namespaces are
+reachable through its flags argument (#118). One rule per flag, because rules
+for a syscall are OR'd while conditions inside a rule are AND'd — a single
+`MaskedEq` over the union would fire only when every flag was set. `Dword`, so
+the comparison ignores a high half the kernel also ignores. `CLONE_NEWTIME` is
+absent: it collides with `clone`'s exit-signal byte and the kernel refuses it
+for this syscall, and the two calls that do accept it are denied outright.
+
+x32 is denied as an ABI rather than enumerated (#117). It reports
+`AUDIT_ARCH_X86_64`, so it passes the architecture gate, and its numbers are the
+native ones with bit 30 set — except `ptrace`, `kexec_load`, `process_vm_readv`
+and `process_vm_writev`, which sit at *different* x32 numbers again. A mask over
+`nr` covers the list as it grows; a list of x32 numbers would not. It is
+hand-assembled classic BPF because seccompiler's conditions address syscall
+arguments, and `nr` is reachable only as a filter key.
 
 ## Namespaces and process state
 
