@@ -62,11 +62,30 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// stays a prefix as the turn goes round again, and a turn can never be made to re-ask
 /// for a tool whose result it withheld from itself.
 ///
-/// Three rungs, because an over-budget turn that cannot be compacted still has to run:
+/// # Why `floor`, and why the cut only ever deepens
 ///
-/// 1. the shallowest legal cut at or after the target — honours `keep_recent`;
-/// 2. failing that, the deepest legal cut *before* the target. This is the long
-///    unbroken tool chain: nothing legal is deep enough, so shed less than asked
+/// `floor` is what the previous turn withheld, and the returned cut is never shallower
+/// than it. Without that the whole mechanism oscillates and bounds nothing: the figure
+/// a caller measures is the cost of the *already compacted* request, so the turn after
+/// a successful compaction reads comfortably under budget, puts the whole history back,
+/// and sends more than the turn that just triggered. Compaction would fire on alternate
+/// turns while the uncompacted leg grew without limit.
+///
+/// Appending to a history does not move the indices of its prefix, so a cut that was
+/// legal last turn still names the same message this turn — which is what makes
+/// carrying it forward meaningful rather than approximate.
+///
+/// # The target, and the three rungs
+///
+/// `keep_recent` is `None` when the last measured prompt was *within* budget: hold the
+/// floor and deepen no further. `Some` asks for the cut the cap implies, but never
+/// shallower than the floor.
+///
+/// Then, because an over-budget turn that cannot be compacted still has to run:
+///
+/// 1. the shallowest legal cut at or after the target;
+/// 2. failing that, the deepest legal cut between the floor and the target. This is the
+///    long unbroken tool chain: nothing legal is deep enough, so shed less than asked
 ///    rather than nothing, and let the next turn re-measure;
 /// 3. failing that, `None` — the request goes out uncompacted.
 ///
@@ -77,29 +96,45 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// the infinite loop. The provider's own context-length error stays the real backstop,
 /// which is the honest limit of compaction this naive: it sheds whole exchanges, so a
 /// single enormous exchange cannot be shed at all.
+///
+/// Reaching rung 3 with a non-zero `floor` means a caller threaded back a count its
+/// history no longer supports — history was rewritten, not just appended to. Honouring
+/// the floor is impossible then, so it is dropped rather than forced, and the request
+/// goes out whole: too large is recoverable where invalid is not.
 pub(crate) fn plan_cut(
     history: &[RequestMessage],
     produced: usize,
-    keep_recent: usize,
+    keep_recent: Option<usize>,
+    floor: usize,
 ) -> Option<usize> {
-    let total = history.len() + produced;
-
-    // Nothing to shed. Needed before the subtraction below, which would otherwise
-    // saturate to a target of 0 and go on to cut at the first boundary it found —
-    // compacting a conversation the configuration asked to keep whole.
-    if total <= keep_recent {
-        return None;
-    }
-
-    // The scan stops short of `history.len()`: cutting there would open the request on
+    // The scans stop short of `history.len()`: cutting there would open the request on
     // `produced[0]`, which `run_turn` always pushes as an assistant message, or on
     // nothing at all when the turn has produced nothing yet.
     let ceiling = history.len();
-    let target = (total - keep_recent).min(ceiling);
+    let floor = floor.min(ceiling);
+
+    let target = match keep_recent {
+        // The saturating subtraction is what makes a `keep_recent` larger than the
+        // conversation land on 0 and withhold nothing, rather than wrapping.
+        Some(keep) => (history.len() + produced)
+            .saturating_sub(keep)
+            .min(ceiling)
+            .max(floor),
+        None => floor,
+    };
+
+    // Nothing held and nothing to shed.
+    if target == 0 {
+        return None;
+    }
 
     (target..ceiling)
         .find(|&cut| opens_a_request(history, cut))
-        .or_else(|| (1..target).rev().find(|&cut| opens_a_request(history, cut)))
+        .or_else(|| {
+            (floor.max(1)..target)
+                .rev()
+                .find(|&cut| opens_a_request(history, cut))
+        })
 }
 
 /// Whether `history[cut..]` followed by the turn's own messages is still a conversation
@@ -213,7 +248,7 @@ mod tests {
             user_text("four"),
         ];
 
-        assert_eq!(plan_cut(&history, 0, 2), Some(2));
+        assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(2));
     }
 
     /// The central property. An orphaned `tool_result` is a hard API rejection, and in
@@ -226,7 +261,7 @@ mod tests {
 
         // Index 2 is the `tool_result` answering `a`; the next legal boundary is the
         // prose turn that opens the second exchange.
-        assert_eq!(plan_cut(&history, 0, 6), Some(4));
+        assert_eq!(plan_cut(&history, 0, Some(6), 0), Some(4));
     }
 
     /// The API rejects a conversation that does not open on a user turn, and a cut onto
@@ -236,7 +271,7 @@ mod tests {
         let history = exchange("a", "first");
 
         // Indices 1 and 3 are assistant turns, 2 is a tool result: nothing is legal.
-        assert_eq!(plan_cut(&history, 0, 1), None);
+        assert_eq!(plan_cut(&history, 0, Some(1), 0), None);
     }
 
     /// Rung 2 of the ladder. The recent tail is one unbroken chain, so no legal cut is
@@ -253,7 +288,7 @@ mod tests {
 
         // Target is 8, but index 3 is the deepest legal boundary anywhere.
         assert_eq!(history.len(), 10);
-        assert_eq!(plan_cut(&history, 0, 2), Some(3));
+        assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
     }
 
     /// Rung 3. Proves the no-legal-cut case declines rather than cutting anyway,
@@ -266,19 +301,19 @@ mod tests {
             history.push(user_result(id));
         }
 
-        assert_eq!(plan_cut(&history, 0, 1), None);
+        assert_eq!(plan_cut(&history, 0, Some(1), 0), None);
     }
 
-    /// Guards the saturating-subtraction trap. Without the early return the target
-    /// lands on 0 and the forward scan cuts at the first boundary it finds, compacting
-    /// a conversation the configuration said to keep whole.
+    /// Guards the saturating-subtraction trap. The target lands on 0, and without the
+    /// guard on that the forward scan cuts at the first boundary it finds, compacting a
+    /// conversation the configuration said to keep whole.
     #[test]
     fn a_keep_recent_larger_than_the_conversation_withholds_nothing() {
         let history = vec![user_text("one"), user_text("two")];
 
-        assert_eq!(plan_cut(&history, 0, 2), None);
-        assert_eq!(plan_cut(&history, 0, 99), None);
-        assert_eq!(plan_cut(&history, 1, 3), None);
+        assert_eq!(plan_cut(&history, 0, Some(2), 0), None);
+        assert_eq!(plan_cut(&history, 0, Some(99), 0), None);
+        assert_eq!(plan_cut(&history, 1, Some(3), 0), None);
     }
 
     /// The degenerate configuration, given defined behaviour rather than rejected at
@@ -295,7 +330,7 @@ mod tests {
 
         // Not 4: the scan stops short of `history.len()`, so the request keeps at least
         // the last history message.
-        assert_eq!(plan_cut(&history, 0, 0), Some(3));
+        assert_eq!(plan_cut(&history, 0, Some(0), 0), Some(3));
     }
 
     /// The invariant behind "the request is never empty and never opens on the
@@ -314,13 +349,15 @@ mod tests {
 
         for history in shapes {
             for produced in 0..4 {
-                for keep_recent in 0..4 {
-                    if let Some(cut) = plan_cut(&history, produced, keep_recent) {
-                        assert!(
-                            cut < history.len(),
-                            "withheld all {} of {history:?} at keep_recent {keep_recent}",
-                            history.len()
-                        );
+                for floor in 0..4 {
+                    for keep_recent in [None, Some(0), Some(1), Some(2), Some(3)] {
+                        if let Some(cut) = plan_cut(&history, produced, keep_recent, floor) {
+                            assert!(
+                                cut < history.len(),
+                                "withheld all {} of {history:?} at {keep_recent:?}/floor {floor}",
+                                history.len()
+                            );
+                        }
                     }
                 }
             }
@@ -339,7 +376,7 @@ mod tests {
         ];
 
         for produced in 0..7 {
-            let cut = plan_cut(&history, produced, 2);
+            let cut = plan_cut(&history, produced, Some(2), 0);
             assert!(
                 cut.is_none_or(|cut| cut < history.len()),
                 "produced {produced} gave {cut:?}"
@@ -359,7 +396,7 @@ mod tests {
         ];
 
         // The target is 2, which is the empty message; 3 is the next legal boundary.
-        assert_eq!(plan_cut(&history, 0, 2), Some(3));
+        assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
     }
 
     /// The predicate is "contains no `ToolResult`", not "is not solely a `ToolResult`".
@@ -387,15 +424,15 @@ mod tests {
             user_text("four"),
         ];
 
-        assert_eq!(plan_cut(&history, 0, 2), Some(3));
+        assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
     }
 
     /// All the weight is in the turn's own output, which compaction cannot touch. The
     /// answer is `None` rather than a panic on an empty range.
     #[test]
     fn an_empty_history_is_left_uncompacted() {
-        assert_eq!(plan_cut(&[], 0, 0), None);
-        assert_eq!(plan_cut(&[], 6, 2), None);
+        assert_eq!(plan_cut(&[], 0, Some(0), 0), None);
+        assert_eq!(plan_cut(&[], 6, Some(2), 0), None);
     }
 
     /// Monotonicity, which is what lets `run_turn` freeze the cut for the whole turn: a
@@ -409,11 +446,88 @@ mod tests {
 
         let mut deepest = 0;
         for produced in 0..8 {
-            if let Some(cut) = plan_cut(&history, produced, 3) {
+            if let Some(cut) = plan_cut(&history, produced, Some(3), 0) {
                 assert!(cut >= deepest, "produced {produced} went back to {cut}");
                 deepest = cut;
             }
         }
+    }
+
+    /// The fix for the oscillation that made the first version of this bound nothing.
+    /// The figure a caller measures after a compaction is the cost of the *compacted*
+    /// request, so the next turn reads under budget — and without a floor it would put
+    /// the whole, now-longer history back and send more than the turn that triggered.
+    #[test]
+    fn a_turn_within_budget_still_holds_what_the_previous_turn_withheld() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+        history.extend(exchange("c", "third"));
+
+        // `None` is the within-budget case: nothing asks to deepen, so the floor is the
+        // whole answer.
+        assert_eq!(plan_cut(&history, 0, None, 4), Some(4));
+    }
+
+    /// The same floor, now with a `keep_recent` that on its own would cut shallower.
+    /// Honouring it would undo a cut the previous turn already paid for and re-show the
+    /// model history it had lost.
+    #[test]
+    fn a_keep_recent_that_asks_for_a_shallower_cut_than_the_floor_is_overruled() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+        history.extend(exchange("c", "third"));
+
+        // 12 messages, keep 10 ⇒ target 2 on its own. The floor wins.
+        assert_eq!(history.len(), 12);
+        assert_eq!(plan_cut(&history, 0, Some(10), 0), Some(4));
+        assert_eq!(plan_cut(&history, 0, Some(10), 8), Some(8));
+    }
+
+    /// The floor is a floor, not a ceiling: a conversation that has grown back over
+    /// budget since the last cut has to be cut deeper, or it is bounded only once.
+    #[test]
+    fn a_floor_does_not_stop_the_cut_from_deepening() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+        history.extend(exchange("c", "third"));
+
+        assert_eq!(plan_cut(&history, 0, Some(3), 4), Some(8));
+    }
+
+    /// The floor is snapped forward to a legal boundary, never honoured literally. A
+    /// cut carried in from a turn whose history has since been *appended* to is still
+    /// legal, but this also covers the index landing mid-exchange.
+    #[test]
+    fn a_floor_that_is_not_itself_a_legal_boundary_is_snapped_forward() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+
+        // Index 5 is an assistant turn and 6 a tool result; 4 is the prose boundary, so
+        // a floor of 5 can only be met by the next one up — of which there is none, and
+        // the request goes out whole rather than invalid.
+        assert_eq!(plan_cut(&history, 0, None, 4), Some(4));
+        assert_eq!(plan_cut(&history, 0, None, 5), None);
+    }
+
+    /// A floor past the end of the history it is meant to index — a caller that
+    /// rewrote history rather than appending to it. Clamping rather than slicing is what
+    /// keeps this a declined compaction instead of a panic in `run_turn`.
+    #[test]
+    fn a_floor_beyond_the_history_is_clamped_rather_than_indexed() {
+        let history = exchange("a", "first");
+
+        assert_eq!(plan_cut(&history, 0, None, 99), None);
+        assert_eq!(plan_cut(&[], 0, None, 99), None);
+    }
+
+    /// With compaction on but never yet triggered there is no floor and nothing to
+    /// hold, and the within-budget path must not invent a cut.
+    #[test]
+    fn a_turn_within_budget_with_no_floor_withholds_nothing() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+
+        assert_eq!(plan_cut(&history, 0, None, 0), None);
     }
 
     /// A conversation's first turn has no measurement, and guessing would compact one

@@ -31,7 +31,7 @@ taking one would make the whole future non-`Send`.
 ```
 ┌─ round (max_rounds = 8) ────────────────────────────────────┐
 │  request = history[cut..] ++ produced                       │
-│    cut: set on the first over-budget round, then frozen     │
+│    cut: ≥ last turn's, set once this turn, then frozen      │
 │  open(request)                     ◄── per-round timeout    │
 │  consume stream ──► flush text before ToolUse, keep Usage   │
 │  no ToolUse blocks?  ──► return TurnOutcome                 │
@@ -48,7 +48,8 @@ thrown away. `Thinking` is observed and lost: no `ContentBlock` can carry it and
 signature needed to replay it is discarded upstream (#85). `Usage` is observed **and
 kept** — the latest round's prompt counters come back as `TurnOutcome::usage`, which
 a caller threads into the next turn's `Turn::observed` with
-`observed = outcome.usage.or(observed)`. That is the loop compaction runs on.
+`observed = outcome.usage.or(observed)`. That is half of the loop compaction runs on;
+`withheld = outcome.withheld` is the other half, and neither works alone.
 
 ## The three traps
 
@@ -73,6 +74,26 @@ the API omits the cache fields entirely when no cache was involved, and reading 
 "unknown" would switch compaction off for every uncached request. No measurement at all
 means no compaction, so it can never fire on a conversation's first turn.
 
+**Both halves have to be threaded back, not just the usage.** `TurnOutcome::withheld`
+goes into the next `Turn::withheld`, where it is the *floor* for the next cut: this turn
+may withhold more, never less. Without that the mechanism bounds nothing, and the bug is
+not obvious from one turn:
+
+| | request sent | measured | next turn reads |
+|---|---|---|---|
+| turn N | cut, ~30k | 30k | — |
+| turn N+1, usage only | **whole history, ~160k** | 160k | 30k — under budget |
+| turn N+1, with the floor | cut held, ~45k | 45k | 30k — under budget |
+
+`usage` measures the request that was *already* compacted, so the turn after a successful
+compaction reads comfortably under budget and puts the whole, now-longer history back —
+sending more than the turn that triggered. Compaction fires on alternate turns while the
+uncompacted leg grows without limit, which is the failure the whole feature exists to
+prevent. Carrying the count forward is safe only because a caller *appends* to history:
+appending does not move the indices of a prefix, so last turn's count still names the same
+messages. A caller that rewrites history instead is absorbed by dropping the floor rather
+than cutting blind.
+
 **The cut points are not arbitrary.** Dropping a prefix can only break the conversation
 at its new front, so the whole question is three conditions on what becomes the first
 message: it must be a `Role::User` turn, carry no `ToolResult` block (its `ToolUse` is in
@@ -87,8 +108,12 @@ When nothing legal is deep enough, three rungs:
 | | |
 |---|---|
 | a legal cut at or after the target | take it; `keep_recent` honoured |
-| none that deep, one shallower | take the deepest earlier one — shed less than asked rather than nothing |
+| none that deep, one shallower | take the deepest one still at or above the floor — shed less than asked rather than nothing |
 | none at all | **send it uncompacted** |
+
+The target is `max(total - keep_recent, floor)`, so a `keep_recent` asking for a
+shallower cut than the floor is overruled rather than honoured. Within budget there is no
+target at all and the floor is the whole answer.
 
 The last rung is deliberate. Erroring would turn an opt-in optimisation into a
 turn-killer, and cutting anyway converts a request that *might* be too long into one the
@@ -105,9 +130,10 @@ Three properties that are easier to state than to infer:
 - **It never reaches `produced`.** The planner is handed the count of the turn's own
   messages, not the messages, so no cut can withhold the tool result the model is waiting
   on. `TurnOutcome::withheld` reports what the last request left out.
-- **The cut is frozen** once set, for the whole turn. Re-deciding per round would let it
-  move as the measurement crossed the budget — invalidating the request's cached prefix
-  every round and re-showing the model history it had already lost.
+- **The cut never moves backwards.** Within a turn it is set at most once and then
+  frozen; across turns the previous cut is the floor. Either way round, re-deciding
+  shallower would invalidate the request's cached prefix and re-show the model history it
+  had already lost.
 
 `EndedMidToolUse` is unaffected: it reads `produced`, which compaction cannot reach. The
 coupling runs the other way — withholding history is one of the things that can confuse a
@@ -130,8 +156,8 @@ lets the model try something else. An unknown tool name likewise —
 | `StreamEndedWithoutStop` | — |
 | `ToolPanicked { name }` | — |
 
-A discarding variant discards the turn's `usage` with it, so a caller's `observed` keeps
-the figure from the last request that actually completed.
+A discarding variant discards the turn's `usage` and `withheld` with it, so a caller's
+`observed` and `withheld` both keep what the last request that actually completed set.
 
 ## What bounds what
 
