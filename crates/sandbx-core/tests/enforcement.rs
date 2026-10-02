@@ -402,9 +402,19 @@ const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 /// strips capabilities from one. AppArmor's `restrict_unprivileged_userns` (default on
 /// Ubuntu 24.04+ and GitHub's runners) lets the `unshare` succeed but makes
 /// `PR_CAPBSET_DROP` return `EPERM`, so the helper treats the drop as best-effort and
-/// this assertion is conditional in step.
+/// this assertion is conditional in step. Repeated in `audit_channel.rs`, because cargo
+/// gives each `tests/*.rs` its own binary; keep the two copies identical.
 fn bounding_set_is_droppable() -> bool {
-    std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+    use std::os::unix::fs::MetadataExt;
+
+    // The restriction covers *unprivileged* userns only, so a run as root holds
+    // `CAP_SETPCAP` in the new namespace whatever the sysctl says. Off `/proc/self`'s
+    // owner because `libc::geteuid` is `unsafe` and this crate forbids that.
+    let root = std::fs::metadata("/proc/self")
+        .map(|proc_self| proc_self.uid() == 0)
+        .unwrap_or(false);
+
+    root || std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
         .map(|value| value.trim() != "1")
         .unwrap_or(true)
 }
