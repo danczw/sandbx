@@ -52,7 +52,5 @@ pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     std::io::Write::write_all(&mut target, updated.as_bytes())
         .map_err(|error| crate::failed("write", &input.path, error))?;
 
-    Ok(ToolOutput {
-        content: format!("edited {}", input.path.display()),
-    })
+    Ok(ToolOutput::new(format!("edited {}", input.path.display())))
 }

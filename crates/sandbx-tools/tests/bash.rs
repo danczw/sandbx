@@ -22,7 +22,7 @@ fn runs_a_command_and_returns_its_output() {
         .execute(json!({ "command": "echo hello" }), &ctx)
         .unwrap();
 
-    assert!(out.content.contains("hello"), "got: {}", out.content);
+    assert!(out.content().contains("hello"), "got: {}", out.content());
 }
 
 /// A non-zero exit is reported, not swallowed — the model needs to know the
@@ -52,7 +52,7 @@ fn the_command_is_confined_by_the_policy() {
     );
 
     let rendered = match &result {
-        Ok(out) => out.content.clone(),
+        Ok(out) => out.content().to_string(),
         Err(error) => error.to_string(),
     };
     assert!(
@@ -80,7 +80,7 @@ fn granted_paths_are_reachable() {
         )
         .unwrap();
 
-    assert!(out.content.contains("VISIBLE"), "got: {}", out.content);
+    assert!(out.content().contains("VISIBLE"), "got: {}", out.content());
 }
 
 /// `bash` output is bounded too: the command chooses how much it prints.
@@ -93,8 +93,12 @@ fn output_is_bounded() {
         .execute(json!({ "command": "seq 1 100000" }), &ctx)
         .unwrap();
 
-    assert!(out.content.contains("truncated"), "unbounded output");
-    assert!(out.content.len() < 1000, "got {} bytes", out.content.len());
+    assert!(out.content().contains("truncated"), "unbounded output");
+    assert!(
+        out.content().len() < 1000,
+        "got {} bytes",
+        out.content().len()
+    );
 }
 
 /// A command that never finishes must not wedge the caller, and must be
@@ -139,7 +143,7 @@ fn reports_a_silent_success_rather_than_returning_nothing() {
         .unwrap();
 
     assert!(
-        !out.content.trim().is_empty(),
+        !out.content().trim().is_empty(),
         "silent success returned empty content"
     );
 }

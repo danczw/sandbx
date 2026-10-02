@@ -31,14 +31,14 @@ fn grep_finds_matching_lines_with_locations() {
         .unwrap();
 
     assert!(
-        out.content.contains("a.rs:2"),
+        out.content().contains("a.rs:2"),
         "no location: {}",
-        out.content
+        out.content()
     );
     assert!(
-        out.content.contains("fn beta()"),
+        out.content().contains("fn beta()"),
         "no line: {}",
-        out.content
+        out.content()
     );
 }
 
@@ -56,7 +56,7 @@ fn grep_searches_subdirectories() {
         )
         .unwrap();
 
-    assert!(out.content.contains("deep.txt"), "got: {}", out.content);
+    assert!(out.content().contains("deep.txt"), "got: {}", out.content());
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn grep_reports_no_matches_rather_than_failing() {
         )
         .unwrap();
 
-    assert_eq!(out.content, "no matches");
+    assert_eq!(out.content(), "no matches");
 }
 
 /// A symlink in a searched directory must not leak the contents of its target.
@@ -93,9 +93,9 @@ fn grep_does_not_follow_a_symlink_out_of_the_root() {
         .unwrap();
 
     assert!(
-        !out.content.contains("SECRET-NEEDLE"),
+        !out.content().contains("SECRET-NEEDLE"),
         "grep followed a symlink outside the allowed root: {}",
-        out.content
+        out.content()
     );
 }
 
@@ -130,8 +130,16 @@ fn find_matches_file_names() {
         )
         .unwrap();
 
-    assert!(out.content.contains("target.rs"), "got: {}", out.content);
-    assert!(!out.content.contains("other.txt"), "got: {}", out.content);
+    assert!(
+        out.content().contains("target.rs"),
+        "got: {}",
+        out.content()
+    );
+    assert!(
+        !out.content().contains("other.txt"),
+        "got: {}",
+        out.content()
+    );
 }
 
 /// The same symlink guarantee for `find`: names outside the root stay hidden.
@@ -152,9 +160,9 @@ fn find_does_not_follow_a_symlink_out_of_the_root() {
         .unwrap();
 
     assert!(
-        !out.content.contains("secret-name"),
+        !out.content().contains("secret-name"),
         "find followed a symlink outside the allowed root: {}",
-        out.content
+        out.content()
     );
 }
 
@@ -177,7 +185,7 @@ fn grep_orders_hits_by_line_number() {
         .unwrap();
 
     let lines: Vec<usize> = out
-        .content
+        .content()
         .lines()
         .filter_map(|l| {
             l.rsplit_once(':')
@@ -185,7 +193,12 @@ fn grep_orders_hits_by_line_number() {
         })
         .collect();
 
-    assert_eq!(lines, (1..=12).collect::<Vec<_>>(), "got:\n{}", out.content);
+    assert_eq!(
+        lines,
+        (1..=12).collect::<Vec<_>>(),
+        "got:\n{}",
+        out.content()
+    );
 }
 
 /// Hits from different files must come out in path order.
@@ -211,12 +224,17 @@ fn grep_orders_hits_across_files_by_path() {
         .unwrap();
 
     let names: Vec<&str> = out
-        .content
+        .content()
         .lines()
         .filter_map(|line| line.rsplit('/').next()?.split(':').next())
         .collect();
 
-    assert_eq!(names, ["a.txt", "b.txt", "c.txt"], "got:\n{}", out.content);
+    assert_eq!(
+        names,
+        ["a.txt", "b.txt", "c.txt"],
+        "got:\n{}",
+        out.content()
+    );
 }
 
 /// A FIFO in the tree must not wedge the call: reading one with no writer
@@ -240,7 +258,7 @@ fn grep_does_not_block_on_a_fifo() {
         )
         .unwrap();
 
-    assert!(out.content.contains("real.txt"), "got: {}", out.content);
+    assert!(out.content().contains("real.txt"), "got: {}", out.content());
 }
 
 /// A symlink to a *file* outside the root is the case that actually exercises
@@ -267,8 +285,8 @@ fn grep_does_not_follow_a_symlink_to_a_file_outside_the_root() {
         .unwrap();
 
     assert!(
-        !out.content.contains("SECRET-NEEDLE"),
+        !out.content().contains("SECRET-NEEDLE"),
         "grep followed a symlink to a file outside the root: {}",
-        out.content
+        out.content()
     );
 }

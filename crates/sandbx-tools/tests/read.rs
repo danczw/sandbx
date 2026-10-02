@@ -23,7 +23,7 @@ fn reads_a_file_inside_an_allowed_root() {
         .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
         .unwrap();
 
-    assert_eq!(out.content, "hello from the workspace");
+    assert_eq!(out.content(), "hello from the workspace");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn reports_an_empty_file_rather_than_returning_nothing() {
         .unwrap();
 
     assert!(
-        !out.content.trim().is_empty(),
+        !out.content().trim().is_empty(),
         "empty file returned empty content"
     );
 }

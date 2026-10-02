@@ -44,12 +44,12 @@ pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     if output.status.success() {
-        return Ok(ToolOutput {
-            // The largest unbounded source of all: the command chooses how much
-            // it prints, and `cat` on a large file would otherwise return every
-            // byte of it.
-            content: ctx.limits().take_bytes(combine(&stdout, &stderr)),
-        });
+        // The largest unbounded source of all: the command chooses how much it
+        // prints, and `cat` on a large file would otherwise return every byte of
+        // it.
+        return Ok(ToolOutput::new(
+            ctx.limits().take_bytes(combine(&stdout, &stderr)),
+        ));
     }
 
     // Surface the exit code rather than swallowing it: a command that failed
