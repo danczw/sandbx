@@ -1,27 +1,14 @@
-# Subprocess spawning is the primary sandbox-escape vector: a tool that shells
-# out directly bypasses every Landlock/seccomp restriction sandbx applies.
-#
-# These bans are workspace-wide. `sandbx-core` is the only crate that may call
-# them, and it does so at exactly one site: `spawn::command`, which carries the
-# single `#[allow(clippy::disallowed_methods)]` and narrows the environment as it
-# builds the `Command`. Every other spawn in the crate goes through it, so the ban
-# is also what keeps a new one from inheriting the harness's environment.
-#
-# Enforced on every commit via the pre-commit hook (`cargo clippy -- -D warnings`).
+# A direct spawn bypasses every Landlock/seccomp restriction sandbx applies.
+# Banned workspace-wide; `sandbx-core::spawn::command` carries the single
+# `#[allow(clippy::disallowed_methods)]` and narrows the environment as it builds
+# the `Command`, so the ban is also what keeps a new spawn from inheriting the
+# harness's environment. Enforced by the pre-commit hook.
 disallowed-methods = [
     { path = "std::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
-    # Pre-emptive: tokio is already a normal (transitive) dependency via
-    # reqwest -> hyper-util, and a dev-dependency of sandbx-providers, but nothing
-    # anywhere enables its "process" feature — so `tokio::process` exists in no
-    # compilation unit and this path resolves nowhere. clippy validates
-    # disallowed-methods paths per-crate and would warn everywhere, hence
-    # allow-invalid — which, being per-entry, also means a typo in *this* line
-    # would be silent. It is scoped to the inert entry for that reason: the
-    # load-bearing std::process entry above carries no such flag and is still
-    # validated on every crate.
-    #
-    # Remove allow-invalid as soon as anything enables tokio's "process" feature,
-    # which makes the path resolvable and the entry self-checking again. Until
-    # then this line documents the intent; the ban that bites is the one above.
+    # Inert: nothing enables tokio's "process" feature, so this path resolves
+    # nowhere and clippy would warn on every crate without allow-invalid. That
+    # flag is per-entry, so a typo in *this* line is silent — hence it is scoped
+    # here and not to the std::process entry, which stays self-checking. Drop
+    # allow-invalid as soon as anything enables the feature.
     { path = "tokio::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied", allow-invalid = true },
 ]

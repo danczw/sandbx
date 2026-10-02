@@ -2,49 +2,32 @@
 resolver = "3"
 members = ["crates/*"]
 
-# Shared metadata — member crates inherit these with `field.workspace = true`,
-# so version/edition are bumped in one place instead of seven.
+# Member crates inherit these with `field.workspace = true`.
 [workspace.package]
 version = "0.1.0-alpha.5"
 edition = "2024"
-# The oldest toolchain this builds on, and the reason cargo refuses before it
-# compiles rather than leaving a stranger to read an E0658 inside sandbx-core.
-# Two independent things set it at 1.88: the let-chain in `helper`, the only one
-# in the tree (edition 2024 stabilised them there), and the `icu_*` crates that
-# arrive via reqwest -> url -> idna, which declare 1.88 themselves. Lowering it
-# means deleting a let-chain *and* pinning those back.
+# Set at 1.88 by two independent things: the let-chain in `helper`, and the
+# `icu_*` crates reached via reqwest -> url -> idna. Lowering it means deleting
+# the let-chain *and* pinning those back. Inert unless inherited, so all seven
+# crates carry `rust-version.workspace = true` and CI fails unless they agree.
 #
-# A `[workspace.package]` entry is inert unless a member inherits it, so all
-# seven carry `rust-version.workspace = true`. The CI job reads the inherited
-# value back and fails unless all seven agree on one, which catches a crate that
-# inherits nothing — not one that hardcodes the same number by hand. That one
-# surfaces the next time this line moves, which is late but not silent.
-#
-# Resolver 3 reads this too, and this is the first field that gives its
-# MSRV-aware resolution anything to compare against: `cargo update` now prefers
-# versions a 1.88 toolchain can build, and holds a dependency back rather than
-# cross the floor, saying so as `(available: vX, requires Rust Y)` — a line that
-# is easy to miss when the held-back version is the one that fixes an advisory.
-# Security wins and the floor moves in the same commit:
+# Resolver 3 reads this and holds a dependency back rather than cross the floor,
+# saying so as `(available: vX, requires Rust Y)`. To take a security update that
+# needs a newer toolchain, move the floor in the same commit:
 # `cargo update -p <crate> --precise <ver> --ignore-rust-version`, then edit this
 # line. Never `--ignore-rust-version` in CI; that makes the floor cosmetic.
 rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/danczw/sandbx"
-# Distribution is GitHub Releases only, never crates.io: internal crates use
-# path dependencies, which resolve at compile time with no registry involved.
-# Saying so here makes an accidental `cargo publish` fail, and lets those path
-# dependencies omit a version without cargo-deny reading it as a registry
-# wildcard.
+# GitHub Releases only, never crates.io. Makes an accidental `cargo publish`
+# fail, and lets path dependencies omit a version without cargo-deny reading it
+# as a registry wildcard.
 publish = false
 
-# Shared lint config — every member crate opts in with `[lints] workspace = true`,
-# `sandbx-core` included. It is the only crate allowed to spawn subprocesses, but
-# it exempts the four sites that do rather than the whole crate.
+# Every member crate opts in with `[lints] workspace = true`, `sandbx-core`
+# included: it exempts the four sites that spawn, not the whole crate.
 [workspace.lints.rust]
 unsafe_code = "forbid"
-# Every public item carries a doc comment, so an undocumented one is a review
-# finding rather than something to discover from rustdoc later.
 missing_docs = "warn"
 
 [workspace.lints.clippy]
