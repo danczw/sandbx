@@ -45,8 +45,10 @@ pub struct Compaction {
 
 /// Whether the last measured prompt was over budget.
 ///
-/// A `None` measurement never fires. The first turn of a conversation has no figure to
-/// go on, and guessing would compact a conversation that may be two messages long.
+/// A `None` measurement never fires: a turn's first round has no figure to go on, and
+/// guessing would compact a conversation that may be two messages long. That bounds the
+/// *round*, not the turn — `run_turn` feeds each round's own report back in, so a turn
+/// that started with nothing still compacts once it has measured itself.
 pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> bool {
     observed.is_some_and(|usage| usage.prompt_tokens() > u64::from(budget_tokens))
 }
@@ -530,8 +532,9 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, None, 0), None);
     }
 
-    /// A conversation's first turn has no measurement, and guessing would compact one
-    /// that may be two messages long.
+    /// A turn's first round has no measurement, and guessing would compact a
+    /// conversation that may be two messages long. Only the round: `run_turn` feeds each
+    /// round's own report back in, so this does not keep a whole turn uncompacted.
     #[test]
     fn over_budget_is_false_when_nothing_has_been_observed() {
         assert!(!over_budget(None, 0));

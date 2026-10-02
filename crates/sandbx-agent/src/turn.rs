@@ -28,15 +28,18 @@ pub struct Turn<'a> {
 
     /// What the *previous* turn's request cost, as the provider measured it.
     ///
-    /// Carried in rather than rediscovered because compaction has nothing else to go
-    /// on: the first round of a turn has to build its request before any figure for it
-    /// exists, and that first round is precisely the one whose history has grown too
-    /// large. A turn given `None` cannot compact at all, so threading
-    /// [`TurnOutcome::usage`] back here — `observed = outcome.usage.or(observed)` — is
-    /// half of what makes [`TurnLimits::compaction`] do anything across a conversation.
-    /// [`withheld`] is the other half, and neither works alone.
+    /// Carried in rather than rediscovered because a turn's *first round* has to build
+    /// its request before any figure for it exists, and that first round is precisely
+    /// the one whose history has grown too large. So threading [`TurnOutcome::usage`]
+    /// back here — `observed = outcome.usage.or(observed)` — is half of what makes
+    /// [`TurnLimits::compaction`] do anything across a conversation. [`withheld`] is the
+    /// other half, and neither works alone.
     ///
     /// `None` on a conversation's first turn, where there is genuinely nothing to know.
+    /// It bounds only that turn's first round, not the whole turn: a turn given `None`
+    /// still compacts from the round after it measures itself over budget, on its own
+    /// figure. What `None` rules out is *guessing* on a conversation that may be two
+    /// messages long.
     ///
     /// [`withheld`]: Self::withheld
     pub observed: Option<PromptUsage>,
@@ -262,13 +265,22 @@ impl Default for TurnLimits {
 /// after a compaction it measures the compacted request — see [`Turn::withheld`] for the
 /// oscillation that results.
 ///
-/// Three properties that are easier to state here than to infer. The cut never moves
-/// backwards: **within** a turn it is decided at most once and then frozen, and **across**
-/// turns the previous cut is the floor for the next. Re-deciding either way would show
-/// the model history it had already lost and rewrite the request's cached prefix. The cut
-/// can never reach the messages *this* turn produced, because `compact::plan_cut` is
-/// handed their count rather than the messages — so a turn cannot withhold from itself
-/// the tool result it is waiting on. And it is a view: nothing here mutates
+/// Three properties that are easier to state here than to infer. **The cut only ever
+/// deepens.** Within a turn it goes `None` to `Some` at most once and is then fixed —
+/// never `Some` to a different `Some`, however the measurement moves after that. Across
+/// turns the previous cut is the floor for the next. So the model is never re-shown
+/// history it had lost, and the request's cached prefix is never rebuilt backwards.
+///
+/// The one `None`-to-`Some` move does narrow that prefix mid-turn, on the round after a
+/// turn first measures itself over budget. That is the only in-turn bound there is:
+/// `produced` grows the request as the turn goes round, and the alternative is a turn
+/// that watches itself blow through the budget and keeps sending the whole history for
+/// every remaining round.
+///
+/// The cut can never reach the messages *this* turn produced, because
+/// `compact::plan_cut` is handed their count rather than the messages — so a turn cannot
+/// withhold from itself the tool result it is waiting on. And it is a view: nothing here
+/// mutates
 /// [`Turn::history`] or narrows [`TurnOutcome::messages`].
 ///
 /// Where it cannot help: it sheds whole exchanges, because those are the only legal cut
@@ -331,9 +343,11 @@ where
     // `observed`: a caller has to be able to tell "reported nothing" from "reported what
     // you already knew".
     let mut usage: Option<PromptUsage> = None;
-    // Decided at most once, then frozen — see the docs above. The state sequence is some
-    // number of `None`s followed by one fixed `Some`, so there is no path on which the
-    // cut moves.
+    // The `cut.is_none()` guard below is what makes this monotone: the state sequence is
+    // some number of `None`s followed by one fixed `Some`. A plan that comes back `None`
+    // is not a decision, so the next round asks again — which is how a turn with nothing
+    // threaded in still reacts to its own first measurement. Once a cut lands it is
+    // final for the turn.
     let mut cut: Option<usize> = None;
 
     for _ in 0..turn.limits.max_rounds {
