@@ -134,9 +134,24 @@ does. It does not degrade quietly; there is no quiet left to degrade into.
 ## Syscall denylist
 
 28 entries in `BLOCKED_SYSCALLS`; the filter is built from that list and nothing
-else. 4 have real-kernel probes in `tests/enforcement.rs` (`io_uring_setup`,
-`memfd_create`, `pidfd_open`, `pidfd_getfd`); the other 24 rest on the list plus
-`tests/denylist.rs`, which asserts the documented set against it.
+else. Three rungs of evidence, strongest first:
+
+| Rung | Where | Covers |
+|---|---|---|
+| a real kernel refuses the call | `tests/enforcement.rs` | 4 — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd`, plus the three `socket(AF_UNIX)` paths |
+| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp.rs` | all 28, and what the `AF_UNIX` rule compares against |
+| the documented set matches the list | `tests/denylist.rs` | all 28 |
+
+The middle rung is a test-only classic-BPF interpreter run over a synthetic
+`seccomp_data`, which is why it can cover every entry without spawning anything.
+What it establishes is what sandbx *asked the kernel for*. It is not what the
+kernel does: the effective action is the most severe across every installed
+filter, so a program returning `ALLOW` is not a syscall that runs, and nothing
+here proves the kernel loads the program at all. That stays `enforcement.rs`'s
+job. It replaced two tests that read the program's instruction *layout* — the
+coupling to seccompiler's codegen is relocated into `eval`, not removed, and
+`eval` panics by name on an opcode it does not implement rather than guessing a
+verdict (#99).
 
 `EPERM`, not kill — a denied syscall should look like a permission error to the
 program, not a crash. `socket(AF_UNIX)` is gated on `allows_unix_sockets()`,
