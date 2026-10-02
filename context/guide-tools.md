@@ -21,23 +21,41 @@ The seven built-ins, and the shape of the layer around them.
 ```rust
 pub enum BuiltinTool { Read, Write, Edit, Ls, Grep, Find, Bash }  // fieldless, Copy
 pub const ALL: [Self; 7] = [..];                                   // this is the registry
+struct ToolSpec { name, description, schema, run }                 // one per tool, in its module
 ```
 
 No `Tool` trait, no `ToolRegistry` type, no `dyn`. The set is closed at compile
 time and nothing picks a tool at runtime that is not in it, so the flexibility a
 trait object buys would be unused. `from_name` is exact-match —
-`from_name("Read")` is `None`.
+`from_name("Read")` is `None`. `ToolSpec` is two `&'static str`s and two fn
+pointers reached only through an exhaustive match on that closed enum: a table,
+not a vtable with an open set behind it.
 
-`name`, `description` and `input_schema` are three parallel seven-arm matches.
-Two tests pin arm-to-variant correspondence:
+`name`, `description`, `input_schema` and the executor are **one `SPEC` per
+tool**, in the tool's own module beside its input struct and its `execute`.
+`BuiltinTool` reaches them through a single match, so a transposed arm relabels a
+variant consistently instead of handing the model one tool's name with another's
+schema (#54, #55, #88). Folding the executor in also puts the parse behind a
+type: each module's `run` parses into that module's own input struct, so a
+filesystem path that skips the parse is unwritable.
 
-- `tests/registry.rs` pins each `input_schema` arm to its own struct via
-  schemars' `title`. This guards a real bug (#55): `Self::Ls => schema_for!(GrepInput)`
-  compiled and passed.
-- descriptions are pinned non-empty and mutually distinct.
+Three tests in `tests/registry.rs` pin what co-location cannot:
+
+- `every_tool_is_named_after_its_variant` — `name()` is `{variant:?}` lowercased.
+  A symmetric swap of two names stays unique and still round-trips through
+  `from_name`; that is how #88 went unnoticed through a whole green suite.
+- `every_tool_advertises_its_own_input_struct` — each tool's schema names its own
+  module's struct, via schemars' `title`. Guards a real bug (#55):
+  `Self::Ls => schema_for!(GrepInput)` compiled and passed.
+- `every_tool_describes_itself_distinctly` — descriptions non-empty and mutually
+  distinct. A deliberate swap of two descriptions is the one transposition
+  nothing catches: no content heuristic relates "List a directory's entries" to
+  `ls`, and the obvious one — a description names its own tool — is false for
+  `bash`, `edit`, `ls` and `grep`. Co-location is the whole mitigation.
 
 Schemas are derived via `schema_for!`, never hand-written, and returned as
-`serde_json::Value`.
+`serde_json::Value`. The schema is a fn pointer rather than a value in the `SPEC`
+because `schema_for!` allocates and so cannot be a `const`.
 
 ## Paths: handles, not resolved paths
 

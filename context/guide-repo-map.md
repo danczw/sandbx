@@ -64,11 +64,11 @@ the four sites that spawn, not the whole crate.
 ## `sandbx-tools`
 
 ```
-src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput
+src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolSpec, ToolOutput
    context.rs     ExecutionContext — policy is PRIVATE (#56)
    limits.rs      ToolLimits
    error.rs       ToolError: Denied | BadInput | Failed | TimedOut
-   tools/         bash, edit, find, grep, ls, read, write
+   tools/         bash, edit, find, grep, ls, read, write — each with its SPEC
 tests/            per-tool, plus registry, limits, scan_limits, spawn
 ```
 
