@@ -113,18 +113,38 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
 
     let stat = std::fs::read_to_string("/proc/self/stat").map_err(|_| unreadable)?;
 
-    // Field 4 of `/proc/pid/stat`, counting from 1. Split after the *last* `)`
-    // rather than on whitespace from the start: field 2 is the executable name,
-    // unquoted and free to contain spaces and parentheses of its own, so counting
-    // from the left is how this kind of parse goes wrong.
-    let parent = stat
-        .rsplit_once(')')
-        .and_then(|(_, rest)| rest.split_whitespace().nth(1));
-
-    match parent {
+    match ppid_from_stat(&stat) {
         Some(parent) if parent == expected => Ok(()),
         _ => Err(gone),
     }
+}
+
+/// The parent pid out of a `/proc/pid/stat` line, or `None` if the line has none
+/// to report.
+///
+/// Split out for the same reason as [`fs_rules`](super::ruleset::fs_rules) (#52):
+/// the parse is the part that can be wrong while the syscalls around it are
+/// right, and separated it can be checked against an adversarial name without a
+/// supervisor, a namespace or a second process (#91).
+///
+/// Field 4, counting from 1. Split after the *last* `)` rather than on whitespace
+/// from the start: field 2 is the executable name, unquoted and free to contain
+/// spaces and parentheses of its own — the kernel escapes control characters
+/// there but not those — so counting from the left is how this kind of parse goes
+/// wrong. Counting from the right is exact rather than merely safer, because
+/// every field after the name is numeric and so holds no `)` of its own, making
+/// the line's last one necessarily the name's.
+///
+/// A `&str` and not a parsed integer: [`confirm_supervisor`] compares against the
+/// token its caller passed on the command line, and parsing both sides would
+/// widen the comparison so that `0123` starts matching `123`.
+///
+/// `None` rather than a guess for a line this does not recognise.
+/// [`confirm_supervisor`] turns that into a refusal to run, which is the side to
+/// fail on.
+fn ppid_from_stat(stat: &str) -> Option<&str> {
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(1))
 }
 
 /// Drop capabilities and disable core dumps.
