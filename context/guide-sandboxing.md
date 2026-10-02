@@ -156,7 +156,7 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
 
 - **No resource bounds on spawned processes.** A fork bomb runs unbounded for the
   length of the call; cgroups are not in place. Tool *work* is bounded — see
-  `bounding-tool-work.md` — but that is a different axis.
+  `decision-bounding-tool-work.md` — but that is a different axis.
 - **The bounding set may be left as inherited.** It cannot be spent (the other
   four sets are empty and `no_new_privs` is set), so a leftover bit never becomes
   privilege. Do not rely on `CapBnd` being empty.

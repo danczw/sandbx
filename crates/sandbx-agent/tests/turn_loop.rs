@@ -365,7 +365,7 @@ async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
 }
 
 /// A refusal is not a turn-ending failure: the model is told it was refused and
-/// gets to ask for something in scope. `context/TOOLS.md` is explicit that the
+/// gets to ask for something in scope. `context/guide-tools.md` is explicit that the
 /// three `ToolError` variants exist because the model reacts to them differently,
 /// which only works if they reach it.
 #[tokio::test]

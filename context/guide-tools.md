@@ -86,7 +86,7 @@ all — they are bounded by *work*:
 | `max_bytes_scanned` | input | 64 MiB | bytes read, **across** the whole search |
 | `MAX_FILE_BYTES` | input | 2 MiB | per file in `grep`; hardcoded, not a knob |
 
-See `bounding-tool-work.md` for why input bounds and output bounds are different
+See `decision-bounding-tool-work.md` for why input bounds and output bounds are different
 things, and for the one path still uncapped (`read`/`edit` allocate a whole file
 before `max_bytes` trims what is returned).
 
