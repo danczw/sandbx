@@ -8,13 +8,12 @@ use crate::SandboxError;
 
 /// Syscalls blocked for every sandboxed command, regardless of policy.
 ///
-/// A denylist, not an allowlist. An allowlist is the stronger shape, but sandbx runs
-/// arbitrary commands — shells, compilers, package managers — whose syscall use is
-/// unbounded, so enumerating it would break real tools constantly. Landlock can
-/// express none of these: they are not filesystem access.
+/// A denylist: sandbx runs arbitrary commands — shells, compilers, package managers —
+/// whose syscall use is unbounded, so the stronger allowlist shape would break real tools
+/// constantly. Landlock can express none of these; they are not filesystem access.
 ///
-/// The filter is built from this and nothing else, so a test can assert the list
-/// still contains what `SECURITY.md` claims and the two cannot drift.
+/// The filter is built from this and nothing else, so a test can assert the list still
+/// contains what `SECURITY.md` claims.
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // Inspect or modify other processes.
     libc::SYS_ptrace,
@@ -40,10 +39,10 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_keyctl,
     // Tracing infrastructure, a known side-channel surface.
     libc::SYS_perf_event_open,
-    // Handles on another process. `pidfd_getfd` takes a descriptor *out* of a process
-    // that holds one — a socket, an open file above the policy — which is not
-    // filesystem access, so Landlock cannot express it and denying `ptrace` does not
-    // cover it. `pidfd_open` is how the handle is obtained.
+    // Handles on another process. `pidfd_getfd` takes a descriptor *out* of a process that
+    // holds one — a socket, an open file above the policy — which is not filesystem
+    // access, so Landlock cannot express it and denying `ptrace` does not cover it.
+    // `pidfd_open` is how the handle is obtained.
     libc::SYS_pidfd_open,
     libc::SYS_pidfd_getfd,
     // userfaultfd hands the faulting process control over when a page fault resolves,
@@ -56,17 +55,15 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_io_uring_setup,
     libc::SYS_io_uring_enter,
     libc::SYS_io_uring_register,
-    // An anonymous in-memory file has no path on any filesystem, and Landlock binds
-    // its rules to inodes and paths, so a payload staged in a memfd sits outside
-    // everything the filesystem layer can see.
+    // An anonymous in-memory file has no path on any filesystem, and Landlock binds its
+    // rules to inodes and paths, so a payload staged in a memfd sits outside everything
+    // the filesystem layer can see.
     //
-    // This one has a real compatibility cost, unlike the rest of the list, but a
-    // narrow one: the heavy users are container runtimes (runc re-execs a sealed
-    // memfd copy of itself as its CVE-2019-5736 self-protection), systemd and snapd.
-    // A coding tool does none of that, and running a container runtime in here is
-    // already impossible since `unshare` is denied above. An ordinary program calling
-    // it deliberately is the case to watch, and real breakage is reason to revisit
-    // this — possibly as its own policy axis.
+    // The one entry with a real compatibility cost, but a narrow one: the heavy users are
+    // container runtimes (runc re-execs a sealed memfd copy of itself as its
+    // CVE-2019-5736 self-protection), systemd and snapd — and running a container runtime
+    // in here is already impossible, `unshare` being denied above. An ordinary program
+    // calling it deliberately is the case to watch.
     libc::SYS_memfd_create,
     // Whole-machine effects.
     libc::SYS_reboot,
@@ -92,21 +89,20 @@ fn blocked_syscalls(
         .map(|nr| (nr, Vec::new()))
         .collect::<BTreeMap<_, _>>();
 
-    // Unix sockets are their own axis, not a sub-case of network. A netns isolates
-    // only *abstract* unix sockets; pathname sockets live in the filesystem and cross
-    // it freely, so a command that can dial systemd's bus, docker.sock or an
-    // ssh-agent can have them act outside the sandbox — an escape, not egress. Not
-    // tied to `allows_network`, so granting the internet does not grant this.
+    // Unix sockets are their own axis, not a sub-case of network. A netns isolates only
+    // *abstract* unix sockets; pathname sockets live in the filesystem and cross it
+    // freely, so a command that can dial systemd's bus, docker.sock or an ssh-agent can
+    // have them act outside the sandbox — an escape, not egress. Not tied to
+    // `allows_network`, so granting the internet does not grant this.
     //
-    // All-or-nothing: seccomp compares register values, and the path passed to
-    // `connect` is behind a pointer it cannot follow. Landlock gained a path-scoped
-    // right in ABI V9 (Linux 7.1), which no kernel reports in practice yet, and
-    // `negotiated_abi` settles on a single ABI the kernel accepts in full — so below
-    // V9 that right is simply not in the handled set and there is nothing
-    // best-effort to lean on. A per-socket grant can follow once V9 exists.
+    // All-or-nothing: seccomp compares register values, and the path passed to `connect`
+    // is behind a pointer it cannot follow. Landlock gained a path-scoped right in ABI V9
+    // (Linux 7.1), which no kernel reports in practice yet, and `negotiated_abi` settles
+    // on a single ABI the kernel accepts in full — so below V9 that right is not in the
+    // handled set at all. A per-socket grant can follow once V9 exists.
     //
-    // `socketpair` is deliberately left alone: an anonymous pair with no filesystem
-    // path cannot reach a host daemon, and shells use it routinely.
+    // `socketpair` is left alone: an anonymous pair with no filesystem path cannot reach
+    // a host daemon, and shells use it routinely.
     if !policy.allows_unix_sockets() {
         let af_unix = SeccompCondition::new(
             0,
@@ -127,18 +123,17 @@ fn blocked_syscalls(
 /// Compile [`blocked_syscalls`] into the BPF program [`deny_dangerous_syscalls`]
 /// installs.
 ///
-/// Split out to make the filter's *polarity* assertable without a kernel: the two
-/// actions below are positional and of the same type, so the compiler cannot tell
-/// them apart, and swapping them yields a filter that allows the denylist and
-/// `EPERM`s everything else. Hence the named bindings.
+/// Split out to make the filter's *polarity* assertable without a kernel: the two actions
+/// below are positional and of the same type, so swapping them yields a filter that
+/// allows the denylist and `EPERM`s everything else. Hence the named bindings.
 ///
-/// `mod tests` keeps a twin of this function with the two actions swapped, which is
-/// what proves those tests would notice. It only mutates the real path as long as this
-/// body does nothing but call `SeccompFilter::new` — if that changes, change the twin.
+/// `mod tests` keeps a twin of this function with the two actions swapped, which is what
+/// proves those tests would notice. It only mutates the real path as long as this body
+/// does nothing but call `SeccompFilter::new` — if that changes, change the twin.
 ///
-/// Blocked calls return `EPERM` rather than killing the process. The syscall does not
-/// execute either way, and `EPERM` is what tools already expect on hardened systems,
-/// so they fail that operation instead of dying mid-run.
+/// Blocked calls return `EPERM` rather than killing the process: the syscall does not
+/// execute either way, and `EPERM` is what tools already expect on hardened systems, so
+/// they fail that operation instead of dying mid-run.
 fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProgram, SandboxError> {
     use seccompiler::{SeccompAction, SeccompFilter};
 
@@ -174,10 +169,9 @@ mod tests {
     use super::*;
     use crate::SandboxPolicy;
 
-    // The three verdicts this filter can produce, taken from `libc` rather than from
-    // `u32::from(SeccompAction::…)`: the latter leaves expected and actual sharing a
-    // source, so a change to seccompiler's conversion would move both. These are
-    // kernel ABI and cannot move with the thing under test.
+    // The three verdicts this filter can produce, taken from `libc` and not from
+    // `u32::from(SeccompAction::…)`, which would leave expected and actual sharing a
+    // source. These are kernel ABI and cannot move with the thing under test.
     const ALLOW: u32 = libc::SECCOMP_RET_ALLOW;
     const EPERM: u32 = libc::SECCOMP_RET_ERRNO | libc::EPERM as u32;
     const KILL: u32 = libc::SECCOMP_RET_KILL_PROCESS;
@@ -185,10 +179,10 @@ mod tests {
     // The classic-BPF opcodes `compiled_filter`'s program is built from, composed from
     // `libc`'s field constants rather than written as folded literals.
     //
-    // `BPF_LD`, `BPF_W`, `BPF_K` and `BPF_JA` are all `0x00`, so composing cannot
-    // catch a dropped zero-valued term. What it does catch is a *wrong* term —
-    // `BPF_LDX` is `0x01`, `BPF_X` is `0x08` — which produces a value no instruction
-    // matches, so `eval` hits its panic arm loudly instead of mis-evaluating.
+    // `BPF_LD`, `BPF_W`, `BPF_K` and `BPF_JA` are all `0x00`, so composing cannot catch a
+    // dropped zero-valued term. It does catch a *wrong* term — `BPF_LDX` is `0x01`,
+    // `BPF_X` is `0x08` — which produces a value no instruction matches, so `eval` hits
+    // its panic arm loudly instead of mis-evaluating.
     //
     // This set is closed only as long as seccompiler's codegen is; see `eval`.
     const LD_W_ABS: u16 = (libc::BPF_LD | libc::BPF_W | libc::BPF_ABS) as u16;
@@ -204,13 +198,13 @@ mod tests {
 
     // `AUDIT_ARCH_*` for the architecture the test runs on: the `EM_*` machine number
     // from `linux/elf-em.h`, or'd with `__AUDIT_ARCH_64BIT` and `__AUDIT_ARCH_LE` from
-    // `linux/audit.h`.
+    // `linux/audit.h`. Transcribed because `libc` does not export these and seccompiler
+    // keeps its own copies private (`backend/bpf.rs`).
     //
-    // Transcribed because `libc` does not export these and seccompiler keeps its own
-    // copies private (`backend/bpf.rs`). The transcription cannot pass silently: the
-    // filter's first act is to compare `seccomp_data.arch` and kill on a mismatch, so
-    // a wrong value turns every verdict below into a loud failure rather than a false
-    // pass, and `the_filter_gates_on_the_arch_this_test_models` names the drift.
+    // The transcription cannot pass silently: the filter's first act is to compare
+    // `seccomp_data.arch` and kill on a mismatch, so a wrong value turns every verdict
+    // below into a loud failure, and `the_filter_gates_on_the_arch_this_test_models`
+    // names the drift.
     #[cfg(target_arch = "x86_64")]
     const AUDIT_ARCH: u32 = 62 | 0x8000_0000 | 0x4000_0000;
     #[cfg(target_arch = "aarch64")]
@@ -244,24 +238,22 @@ mod tests {
     ///
     /// 64 bytes: `nr` at 0, `arch` at 4, `instruction_pointer` at 8, `args[6]` at 16
     /// (`seccompiler/backend/bpf.rs`). Each argument's *least* significant half sits at
-    /// the lower offset, so word `4 + 2 * i` is `args[i]`'s low word and `5 + 2 * i`
-    /// its high word.
+    /// the lower offset, so word `4 + 2 * i` is `args[i]`'s low word and `5 + 2 * i` its
+    /// high word.
     ///
-    /// Little-endian, and worth pinning why, because it is the claim a reader is most
-    /// likely to "fix" wrongly: in *socket* classic BPF an absolute word load is a
-    /// big-endian packet read, but in *seccomp* it is not.
-    /// `seccomp_check_filter()` rewrites every `BPF_LD | BPF_W | BPF_ABS` to
-    /// `BPF_LDX | BPF_MEM | BPF_W` before the program runs, making it a plain
-    /// native-endian field read out of the struct. A `[u32; 16]` is therefore the right
-    /// model — and only because every architecture seccompiler supports is
-    /// little-endian.
+    /// Little-endian, and worth pinning, because it is the claim a reader is most likely
+    /// to "fix" wrongly: in *socket* classic BPF an absolute word load is a big-endian
+    /// packet read, but in *seccomp* it is not. `seccomp_check_filter()` rewrites every
+    /// `BPF_LD | BPF_W | BPF_ABS` to `BPF_LDX | BPF_MEM | BPF_W` before the program runs,
+    /// making it a plain native-endian field read out of the struct. A `[u32; 16]` is
+    /// therefore the right model — and only because every architecture seccompiler
+    /// supports is little-endian.
     fn seccomp_data(nr: libc::c_long, args: [u64; 6]) -> [u32; 16] {
         let mut data = [0u32; 16];
 
-        // Not `u32::try_from(nr).unwrap()`: `nr` is a signed `int`, every comparison
-        // the filter makes against it is `jeq` and so sign-agnostic, and a negative
-        // number is a legal thing for a process to pass (`syscall(-1)`). The cast keeps
-        // that case expressible.
+        // Not `u32::try_from(nr).unwrap()`: `nr` is a signed `int`, every comparison the
+        // filter makes against it is `jeq` and so sign-agnostic, and `syscall(-1)` is a
+        // legal thing for a process to pass.
         data[0] = nr as u32;
         data[1] = AUDIT_ARCH;
         // `instruction_pointer` stays zero; no rule sandbx builds looks at it.
@@ -282,18 +274,18 @@ mod tests {
     ///
     /// The codegen coupling is relocated here, not eliminated: the opcode set above is
     /// closed only as long as seccompiler's codegen is. What keeps that honest is the
-    /// panic at the bottom — an unimplemented opcode must never produce a verdict,
-    /// because a mis-evaluation returning `ALLOW` would be worse than the layout
-    /// coupling it replaces.
+    /// panic at the bottom — an unimplemented opcode must never produce a verdict, because
+    /// a mis-evaluation returning `ALLOW` would be worse than the layout coupling it
+    /// replaces.
     ///
     /// Takes `BpfProgramRef` rather than `&BpfProgram`, which is a `&Vec` and trips
     /// `clippy::ptr_arg`; it is also what `apply_filter` takes.
     ///
     /// This loop cannot spin, so it carries no guard: every arm derives its target as
-    /// `pc + 1 + <unsigned offset>`, so `pc` strictly increases and the `get` at the
-    /// top panics by name once it reaches `program.len()`. An arm that *could* jump
-    /// backwards would have to subtract — which is where to put a check if a future
-    /// opcode needs one.
+    /// `pc + 1 + <unsigned offset>`, so `pc` strictly increases and the `get` at the top
+    /// panics by name once it reaches `program.len()`. An arm that *could* jump backwards
+    /// would have to subtract — which is where to put a check if a future opcode needs
+    /// one.
     fn eval(program: seccompiler::BpfProgramRef<'_>, data: &[u32; 16]) -> u32 {
         let mut acc = 0u32;
         let mut pc = 0usize;
@@ -307,17 +299,15 @@ mod tests {
             });
             let next = pc + 1;
 
-            // Compared with `==`, not matched. In a pattern, an uppercase path that
-            // fails to resolve to a constant becomes a fresh binding rather than an
-            // error: the first arm would swallow every opcode, every verdict here
-            // would be garbage, and the only signal would be `unreachable_patterns` —
-            // a warning. `==` makes that a type error.
+            // Compared with `==`, not matched: in a pattern, an uppercase path that fails
+            // to resolve to a constant becomes a fresh binding rather than an error, so
+            // the first arm would swallow every opcode and the only signal would be
+            // `unreachable_patterns` — a warning. `==` makes that a type error.
             let target = if insn.code == LD_W_ABS {
                 let offset = usize::try_from(insn.k)
                     .unwrap_or_else(|_| panic!("load offset {} does not fit a usize", insn.k));
-                // The kernel's own install-time checks, restated:
                 // `seccomp_check_filter()` refuses a filter whose absolute load is
-                // unaligned or outside `struct seccomp_data`.
+                // unaligned or outside `struct seccomp_data`; restated here.
                 assert_eq!(
                     offset % 4,
                     0,
@@ -340,8 +330,8 @@ mod tests {
             } else if insn.code == JEQ_K {
                 next + usize::from(if acc == insn.k { insn.jt } else { insn.jf })
             } else if insn.code == JGT_K {
-                // Unsigned, as classic BPF specifies. Both sides are `u32`, so this is
-                // the comparison the kernel makes.
+                // Unsigned, as classic BPF specifies; both sides are `u32`, so this is the
+                // comparison the kernel makes.
                 next + usize::from(if acc > insn.k { insn.jt } else { insn.jf })
             } else if insn.code == JGE_K {
                 next + usize::from(if acc >= insn.k { insn.jt } else { insn.jf })
@@ -369,9 +359,9 @@ mod tests {
 
     /// The verdict for `nr` called with `args`.
     ///
-    /// Every test goes through this rather than touching a word index, because
-    /// `data[4]` is `args[0]`'s low half while `data[5]` is its high half and `data[6]`
-    /// is `args[1]` — an off-by-one would silently assert about the wrong field.
+    /// Every test goes through this rather than touching a word index, because `data[4]`
+    /// is `args[0]`'s low half while `data[5]` is its high half and `data[6]` is `args[1]`
+    /// — an off-by-one would silently assert about the wrong field.
     fn verdict_with_args(
         program: seccompiler::BpfProgramRef<'_>,
         nr: libc::c_long,
@@ -393,8 +383,8 @@ mod tests {
 
     /// The verdict for `socket(domain, 0, 0)`.
     ///
-    /// `domain` is wider than the `int` the kernel reads, so a test can put something
-    /// in the half the comparison must ignore.
+    /// `domain` is wider than the `int` the kernel reads, so a test can put something in
+    /// the half the comparison must ignore.
     fn socket_verdict(program: seccompiler::BpfProgramRef<'_>, domain: u64) -> u32 {
         verdict_with_args(program, libc::SYS_socket, [domain, 0, 0, 0, 0, 0])
     }
@@ -408,9 +398,8 @@ mod tests {
                 .get(nr)
                 .unwrap_or_else(|| panic!("{nr} missing from the filter"));
 
-            // An entry with rules is matched only for those argument values, so the
-            // syscall stays reachable for every other. A listed number must be blocked
-            // unconditionally, or the denial is narrower than the list claims.
+            // An entry with rules matches only those argument values, leaving the syscall
+            // reachable for every other — narrower than the list claims.
             assert!(
                 rules.is_empty(),
                 "{nr} is filtered conditionally, but the denylist claims it outright"
@@ -438,20 +427,19 @@ mod tests {
         );
     }
 
-    /// [`eval`] is itself untested code whose failure mode is the silent pass, so
-    /// these cases cover the classic mis-implementations over hand-written programs
-    /// rather than the compiled filter.
+    /// [`eval`] is itself untested code whose failure mode is the silent pass, so these
+    /// cases cover the classic mis-implementations over hand-written programs rather than
+    /// the compiled filter.
     ///
-    /// `ALU|AND`, `JGT` and `JGE` are unreachable from [`compiled_filter`] today:
-    /// sandbx builds only `Dword`/`Eq` rules, which compile to loads and `jeq`. They
-    /// are implemented anyway, because the alternative is three arms that panic on a
-    /// program seccompiler can legitimately emit — and covered here so they are not
-    /// untested code waiting for the first rule that reaches them.
+    /// `ALU|AND`, `JGT` and `JGE` are unreachable from [`compiled_filter`] today: sandbx
+    /// builds only `Dword`/`Eq` rules, which compile to loads and `jeq`. They are
+    /// implemented anyway, because the alternative is three arms that panic on a program
+    /// seccompiler can legitimately emit.
     #[test]
     fn eval_implements_the_opcodes_seccompiler_can_emit() {
-        // Every program loads word 0, `nr`, so the case's `nr` is the value the
-        // comparison sees. `jt`, `jf` and `JA`'s `k` are offsets from the *following*
-        // instruction, so 1 skips exactly one.
+        // Every program loads word 0, `nr`, so the case's `nr` is what the comparison
+        // sees. `jt`, `jf` and `JA`'s `k` are offsets from the *following* instruction,
+        // so 1 skips exactly one.
         let cases: &[(&str, Vec<seccompiler::sock_filter>, libc::c_long, u32)] = &[
             (
                 "jgt is strict, so an equal value does not take the greater branch",
@@ -538,15 +526,11 @@ mod tests {
         }
     }
 
-    /// An opcode the interpreter does not implement must stop the test, never produce
-    /// a verdict: a mis-evaluation returning `ALLOW` would be worse than the layout
-    /// coupling [`eval`] replaces.
-    ///
-    /// `expected` is not optional. Without it the test also passes on the off-the-end
-    /// panic, on the alignment assertion, or on an `unwrap` elsewhere in the body —
-    /// any of which would leave the panic arm itself unexercised. The opcode is one
-    /// seccompiler could plausibly grow into (`BPF_LDX | BPF_MEM | BPF_W`, a
-    /// scratch-memory load) rather than a value no BPF dialect uses.
+    /// `expected` is not optional: without it the test also passes on the off-the-end
+    /// panic, on the alignment assertion, or on an `unwrap` elsewhere in the body — any of
+    /// which would leave the panic arm itself unexercised. The opcode is one seccompiler
+    /// could plausibly grow into (`BPF_LDX | BPF_MEM | BPF_W`, a scratch-memory load)
+    /// rather than a value no BPF dialect uses.
     #[test]
     #[should_panic(expected = "does not implement")]
     fn eval_refuses_an_opcode_it_does_not_implement() {
@@ -558,20 +542,18 @@ mod tests {
         );
     }
 
-    /// Nothing else here would notice if [`seccomp_data`] misplaced a field: every
-    /// other test passes all-zero arguments or a value in `args[0]` alone, and the
-    /// array starts zeroed — so the stride `4 + 2 * i` could map arguments 1 through 5
-    /// onto each other's words and all of them would still pass.
+    /// Nothing else here would notice if [`seccomp_data`] misplaced a field: every other
+    /// test passes all-zero arguments or a value in `args[0]` alone, and the array starts
+    /// zeroed — so the stride `4 + 2 * i` could map arguments 1 through 5 onto each
+    /// other's words with all of them still passing.
     ///
-    /// That matters for the next rule rather than today's: sandbx gates only on
-    /// `socket`'s argument 0, but `clone`'s flags, `socket`'s `type` and an `ioctl`
-    /// request all sit above index zero (#118), and a rule on one of those would be
-    /// evaluated against the wrong word — silently reporting a verdict the kernel would
-    /// not produce.
+    /// That matters for the next rule rather than today's: sandbx gates only on `socket`'s
+    /// argument 0, but `clone`'s flags, `socket`'s `type` and an `ioctl` request all sit
+    /// above index zero (#118), and a rule on one of those would be evaluated against the
+    /// wrong word.
     ///
-    /// Each half is checked separately, with distinct values, because an argument
-    /// written as one 64-bit store to the right *pair* in the wrong order would
-    /// otherwise pass.
+    /// Each half is checked separately, with distinct values, because an argument written
+    /// as one 64-bit store to the right *pair* in the wrong order would otherwise pass.
     #[test]
     fn seccomp_data_puts_each_field_where_the_kernel_does() {
         let args = std::array::from_fn::<u64, 6, _>(|i| {
@@ -580,8 +562,8 @@ mod tests {
         });
         let data = seccomp_data(libc::SYS_socket, args);
 
-        // Byte offsets into `struct seccomp_data`, read off its definition rather than
-        // off `seccomp_data`'s own arithmetic: `nr` @0, `arch` @4, the 64-bit
+        // Byte offsets read off `struct seccomp_data`'s definition rather than off
+        // `seccomp_data`'s own arithmetic: `nr` @0, `arch` @4, the 64-bit
         // `instruction_pointer` @8, `args[6]` @16.
         let mut fields = vec![
             ("nr".to_owned(), 0, libc::SYS_socket as u32),
@@ -595,10 +577,9 @@ mod tests {
         }
 
         for (field, offset, expected) in fields {
-            // `eval` has no way to return the accumulator — classic BPF's
-            // `BPF_RET | BPF_A` is not an opcode seccompiler emits — so the comparison
-            // is the program: load the field, and return `ALLOW` only if it holds what
-            // it should.
+            // `eval` has no way to return the accumulator — `BPF_RET | BPF_A` is not an
+            // opcode seccompiler emits — so the comparison is the program: load the
+            // field, return `ALLOW` only if it holds what it should.
             let program = [
                 insn(LD_W_ABS, 0, 0, u32::try_from(offset).unwrap()),
                 insn(JEQ_K, 0, 1, expected),
@@ -616,12 +597,12 @@ mod tests {
         }
     }
 
-    /// This is a denylist, so a syscall the filter does not name has to be allowed.
-    /// Swap the two actions in [`compiled_filter`] and this becomes `EPERM` — a
-    /// sandbox that refuses every syscall and permits the dangerous ones.
+    /// This is a denylist, so a syscall the filter does not name has to be allowed. Swap
+    /// the two actions in [`compiled_filter`] and this becomes `EPERM` — a sandbox that
+    /// refuses every syscall and permits the dangerous ones.
     ///
-    /// Evaluated rather than read off the program's last instruction, which is where
-    /// seccompiler happens to emit the mismatch action but is not ABI.
+    /// Evaluated rather than read off the program's last instruction, where seccompiler
+    /// happens to emit the mismatch action but is not required to.
     #[test]
     fn a_syscall_the_filter_does_not_name_is_allowed() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -634,14 +615,13 @@ mod tests {
         );
     }
 
-    /// The other half of the polarity. Needed alongside the fallthrough because either
-    /// alone admits one of the two broken filters — allowing everywhere is as wrong as
-    /// refusing everywhere, and only the pair rules both out.
+    /// The other half of the polarity, needed alongside the fallthrough because either
+    /// alone admits one of the two broken filters.
     ///
     /// What the kernel then does with the program is out of reach here: its effective
-    /// action is the most severe across *every* installed filter, so "the program
-    /// returns `ALLOW`" is not "the syscall runs". The `sandbox-integration` suite
-    /// establishes that; this pins what sandbx asked for.
+    /// action is the most severe across *every* installed filter, so "the program returns
+    /// `ALLOW`" is not "the syscall runs". The `sandbox-integration` suite establishes
+    /// that; this pins what sandbx asked for.
     #[test]
     fn every_denylisted_syscall_is_refused_with_eperm() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -679,12 +659,11 @@ mod tests {
         );
     }
 
-    /// `socket`'s `domain` is an `int`, so the kernel truncates it and a 64-bit
-    /// comparison would look at register bits the kernel discards. That makes a
-    /// `Dword`-to-`Qword` change a real bypass: `socket(0x1_0000_0001, …)` has the
-    /// kernel see `AF_UNIX` while a `Qword` filter sees a non-zero high half, finds no
-    /// match, and allows it. The test above leaves the high half zero and so passes
-    /// against either width.
+    /// `socket`'s `domain` is an `int`, so the kernel truncates it and a 64-bit comparison
+    /// would look at register bits the kernel discards. That makes a `Dword`-to-`Qword`
+    /// change a real bypass: `socket(0x1_0000_0001, …)` has the kernel see `AF_UNIX` while
+    /// a `Qword` filter sees a non-zero high half, finds no match, and allows it. The test
+    /// above leaves the high half zero and so passes against either width.
     #[test]
     fn the_af_unix_comparison_ignores_the_high_half_of_the_domain_argument() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -698,9 +677,8 @@ mod tests {
         );
     }
 
-    /// Granting unix sockets must lift the `socket` rule and nothing else. The second
-    /// assertion is the one worth having: a grant that also widened the denylist would
-    /// otherwise be invisible here.
+    /// The second assertion is the one worth having: a grant that also widened the
+    /// denylist would otherwise be invisible here.
     #[test]
     fn granting_unix_sockets_lifts_only_the_socket_rule() {
         let program = compiled_filter(&SandboxPolicy::default().allow_unix_sockets()).unwrap();
@@ -719,15 +697,13 @@ mod tests {
 
     /// A process reporting a different architecture is killed, not refused.
     ///
-    /// Syscall numbers are per-architecture, so a filter built for one cannot say
-    /// anything safe about calls arriving from another; `seccomp_data.arch` is how the
-    /// kernel tells, and seccompiler gates every filter on it before the first
-    /// comparison. The consequence is worth naming: an i386 binary on x86_64, or
-    /// AArch32 on aarch64, dies rather than seeing `EPERM`, unlike every other denial
-    /// in this file.
+    /// Syscall numbers are per-architecture, so a filter built for one cannot say anything
+    /// safe about calls arriving from another; `seccomp_data.arch` is how the kernel
+    /// tells, and seccompiler gates every filter on it before the first comparison. So an
+    /// i386 binary on x86_64, or AArch32 on aarch64, dies rather than seeing `EPERM`,
+    /// unlike every other denial in this file.
     ///
-    /// Uses a *blocked* number, so the test shows the gate short-circuits the chain
-    /// rather than merely that an unlisted syscall dies.
+    /// Uses a *blocked* number, so the test shows the gate short-circuits the chain.
     #[test]
     fn a_syscall_from_another_architecture_is_killed() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -743,14 +719,14 @@ mod tests {
     /// `compiled_filter` with its two actions swapped, built from the same
     /// `blocked_syscalls` data.
     ///
-    /// A twin, not the real path: if `compiled_filter` ever does more than call
+    /// A twin, not the real path: if `compiled_filter` does more than call
     /// `SeccompFilter::new`, this stops being a mutation of it. Change both.
     fn inverted_filter(policy: &crate::SandboxPolicy) -> seccompiler::BpfProgram {
         use seccompiler::{SeccompAction, SeccompFilter};
 
         let filter = SeccompFilter::new(
             blocked_syscalls(policy).unwrap(),
-            // Swapped. In `compiled_filter` the first is `Allow` and the second
+            // Swapped: in `compiled_filter` the first is `Allow`, the second
             // `Errno(EPERM)`.
             SeccompAction::Errno(libc::EPERM as u32),
             SeccompAction::Allow,
@@ -763,14 +739,14 @@ mod tests {
 
     /// Would the tests above notice if the filter pointed the other way?
     ///
-    /// Proves the assertions above have mutation-killing power. It is not evidence
-    /// about production polarity: if [`compiled_filter`] were inverted this test would
-    /// still pass and the ones above would fail, because this one asserts about
+    /// Proves the assertions above have mutation-killing power, and says nothing about
+    /// production polarity: if [`compiled_filter`] were inverted this test would still
+    /// pass and the ones above would fail, because this one asserts about
     /// [`inverted_filter`], a copy.
     ///
     /// Three verdicts, because the inversion has three distinguishable effects: the
-    /// denylist opens, the fallthrough closes, and the conditional rule inverts along
-    /// with the unconditional ones.
+    /// denylist opens, the fallthrough closes, and the conditional rule inverts with the
+    /// unconditional ones.
     #[test]
     fn inverting_the_filters_two_actions_inverts_every_verdict() {
         let program = inverted_filter(&SandboxPolicy::default());
@@ -799,19 +775,18 @@ mod tests {
     ///
     /// Evaluation covers only the paths its data takes, and a wrong jump offset passes
     /// unnoticed. These checks close the rest, and every one is `bpf_check_classic()`
-    /// restated rather than anything about seccompiler's codegen — including the
-    /// last-instruction check, which the kernel genuinely requires.
+    /// restated rather than anything about seccompiler's codegen — the last-instruction
+    /// check included.
     #[test]
     fn the_program_is_one_the_kernel_would_accept() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
         let len = program.len();
 
-        // `bpf_check_classic` refuses `flen == 0 || flen > BPF_MAXINSNS`, so 4096 is
-        // the largest filter the kernel loads, not the first one it refuses.
-        // seccompiler's own `BPF_MAX_LEN` guard is stricter — it errors at `>=` 4096 —
-        // so a program can only fail this assertion by being empty. Stated as the
-        // kernel's bound anyway, because that is the one a reader chasing a real
-        // `FilterTooLarge` needs to have right.
+        // `bpf_check_classic` refuses `flen == 0 || flen > BPF_MAXINSNS`, so 4096 is the
+        // largest filter the kernel loads. seccompiler's own `BPF_MAX_LEN` guard is
+        // stricter (it errors at `>=` 4096), so a program can only fail this by being
+        // empty — stated as the kernel's bound anyway, for whoever chases a real
+        // `FilterTooLarge`.
         assert!(
             (1..=4096).contains(&len),
             "a filter the kernel would load holds 1 to 4096 instructions, this one \
@@ -870,13 +845,13 @@ mod tests {
         );
     }
 
-    /// A diagnostic, not evidence about the filter. `AUDIT_ARCH` above is transcribed
-    /// from `linux/audit.h`, and if it ever stops matching seccompiler's
-    /// `TargetArch::get_audit_value` then most tests in this file fail as "expected
-    /// ALLOW, got 0x80000000" and name nothing. This localizes that failure.
+    /// A diagnostic, not evidence about the filter. `AUDIT_ARCH` above is transcribed from
+    /// `linux/audit.h`, and if it stops matching seccompiler's
+    /// `TargetArch::get_audit_value` then most tests in this file fail as "expected ALLOW,
+    /// got 0x80000000" and name nothing. This localizes that failure.
     ///
-    /// Deliberately positionless: that the gate is the program's *first* instruction
-    /// is seccompiler's codegen, not ABI.
+    /// Positionless: that the gate is the program's *first* instruction is seccompiler's
+    /// codegen, not ABI.
     #[test]
     fn the_filter_gates_on_the_arch_this_test_models() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();

@@ -23,23 +23,22 @@ use crate::{HelperArgs, SandboxError};
 /// Argument telling the first stage that its stdin is the audit channel.
 ///
 /// Opt-in, and not implied by [`HELPER_FLAG`](crate::HELPER_FLAG): without it a
-/// hand-invoked helper would write audit records into whatever fd 0 happens to be —
-/// a terminal is writable, so they would appear as the command's own output, and a
-/// read-only pipe gives `EBADF`. Without it a degradation goes unrecorded, which is
-/// the honest outcome when there is nowhere to record it.
+/// hand-invoked helper would write audit records into whatever fd 0 happens to be — a
+/// terminal is writable, so they would appear as the command's own output, and a
+/// read-only pipe gives `EBADF`. A degradation then goes unrecorded, which is the honest
+/// outcome when there is nowhere to record it.
 pub(crate) const AUDIT_STDIN_FLAG: &str = "--sandbx-audit-stdin";
 
 /// Write what degraded to the parent, on the pipe it put in our stdin slot.
 ///
-/// Every failure is swallowed: this reports that the sandbox is *weaker* than
-/// advertised, and a channel that cannot be written is a lost record rather than a
-/// reason to refuse a command the parent has already been told is running.
+/// Every failure is swallowed: this reports that the sandbox is *weaker* than advertised,
+/// and a channel that cannot be written is a lost record rather than a reason to refuse a
+/// command the parent has already been told is running.
 ///
-/// The write end arrives in the stdin slot because it is the only descriptor std can
-/// hand a child without `unsafe`, which this crate forbids. `try_clone_to_owned` is
-/// what turns the inherited fd into something writable — `Stdin` is a reader, but
-/// the descriptor was opened for writing. See
-/// `context/decision-helper-audit-channel.md`.
+/// The write end arrives in the stdin slot because it is the only descriptor std can hand
+/// a child without `unsafe`, which this crate forbids. `try_clone_to_owned` turns the
+/// inherited fd into something writable — `Stdin` is a reader, but the descriptor was
+/// opened for writing. See `context/decision-helper-audit-channel.md`.
 fn report_degradations(degraded: &[(Degradation, String)]) {
     use std::io::Write;
     use std::os::fd::AsFd;
@@ -64,20 +63,20 @@ fn report_degradations(degraded: &[(Degradation, String)]) {
 /// Stage 1 of two. Creates the namespaces, hardens the process state inherited
 /// across `exec`, then re-execs this same binary into [`exec_inner`].
 ///
-/// The second re-exec exists for one reason: `unshare(CLONE_NEWPID)` does not move
-/// the caller into the new PID namespace, only its children, so the *next* process
-/// is PID 1 of it. Letting `Command::spawn` do that forking keeps every call here
-/// safe — `fork` would mean `unsafe` and an async-signal-safety hazard in the
-/// `fork`/`exec` window — which is why `unsafe_code = "forbid"` still holds.
+/// The second re-exec exists for one reason: `unshare(CLONE_NEWPID)` does not move the
+/// caller into the new PID namespace, only its children, so the *next* process is PID 1
+/// of it. Letting `Command::spawn` do that forking keeps every call here safe — `fork`
+/// would mean `unsafe` and an async-signal-safety hazard in the `fork`/`exec` window — so
+/// `unsafe_code = "forbid"` still holds.
 ///
 /// Intended to run in a freshly executed helper process, never inside sandbx: the
-/// namespaces and the capability drops are irreversible for this process, so doing
-/// them in sandbx would cage the harness itself.
+/// namespaces and the capability drops are irreversible for this process, so doing them
+/// in sandbx would cage the harness itself.
 ///
-/// On success this never returns: it exits with whatever the command exited with.
-/// Any return is an error, and the caller must exit non-zero rather than continue —
-/// a helper that fell through to running the command unrestricted would be the exact
-/// failure the sandbox exists to prevent.
+/// On success this never returns: it exits with whatever the command exited with. Any
+/// return is an error, and the caller must exit non-zero rather than continue — a helper
+/// that fell through to running the command unrestricted would be the exact failure the
+/// sandbox exists to prevent.
 pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
     // Split off before `decode`, which refuses a flag it does not recognise. Not
     // part of the policy grammar, for the same reason the supervisor pid is not (see
@@ -88,9 +87,9 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
     };
 
     // Decoded for this stage's own use: it needs to know whether the policy grants
-    // network before choosing the unshare flags. What gets passed on is the argv it
-    // was given, verbatim — a re-encode here would be a second chance for the policy
-    // to drift on its way to the stage that enforces it.
+    // network before choosing the unshare flags. The argv it was given is passed on
+    // verbatim — a re-encode would be a second chance for the policy to drift on its way
+    // to the stage that enforces it.
     let request = HelperArgs::decode(argv)?;
 
     // Resolved before the namespaces exist, so a failure to find our own binary
@@ -106,10 +105,10 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         report_degradations(&degraded);
     }
 
-    // This same binary in inner mode, which restricts itself before becoming the
-    // command. `spawn::command` narrows its environment as it builds it: ordinarily
-    // a no-op, since sandbx already narrowed ours, and load-bearing for the helper
-    // invoked directly, which has no sandbx above it to have done that.
+    // This same binary in inner mode, which restricts itself before becoming the command.
+    // `spawn::command` narrows its environment as it builds it: ordinarily a no-op, since
+    // sandbx already narrowed ours, and load-bearing for the helper invoked directly,
+    // which has no sandbx above it to have done that.
     let mut inner = crate::spawn::command(exe, &request.policy);
     inner
         .arg(crate::HELPER_INNER_FLAG)
@@ -118,17 +117,15 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         .arg(std::process::id().to_string())
         .args(argv);
 
-    // The security half of the audit channel, not a tidy-up. Our stdin is the write
-    // end of a pipe the parent reads audit records from; the stage below becomes the
-    // sandboxed command, which must not inherit a descriptor it could write forged
-    // records into — or hold open, leaving the parent waiting on an EOF that never
-    // comes. Pinned by `the_sandboxed_command_cannot_write_the_audit_channel`, which
-    // without this sees a `degraded` record the command invented.
+    // The security half of the audit channel, not a tidy-up. Our stdin is the write end
+    // of a pipe the parent reads audit records from; the stage below becomes the sandboxed
+    // command, which must not inherit a descriptor it could write forged records into —
+    // or hold open, leaving the parent waiting on an EOF that never comes. Pinned by
+    // `the_sandboxed_command_cannot_write_the_audit_channel`.
     //
-    // Conditional on the same flag as the write, because the flag is what says fd 0
-    // *is* a channel. Without it nothing was written there, so stdin stays inherited
-    // — which is what a hand-invoked `sandbx-helper` needs for a command that reads
-    // its own input.
+    // Conditional on the same flag as the write, because the flag is what says fd 0 *is* a
+    // channel. Without it nothing was written there, so stdin stays inherited — which a
+    // hand-invoked `sandbx-helper` needs for a command that reads its own input.
     if audit_on_stdin {
         inner.stdin(std::process::Stdio::null());
     }
@@ -149,22 +146,22 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 /// Exit the way the inner stage exited.
 ///
 /// The caller reads this process's status as the command's, and `sandbx-cli` and the
-/// `bash` tool both branch on signalled-versus-exited, so anything less than a
-/// faithful relay misreports what happened.
+/// `bash` tool both branch on signalled-versus-exited, so anything less than a faithful
+/// relay misreports what happened.
 ///
-/// Re-raising rather than exiting with `128 + signal` is what makes the status
-/// genuinely *signalled* rather than merely numbered like one. It cannot always
-/// work, because two dispositions are not ours: Rust's runtime sets `SIGPIPE` to
-/// `SIG_IGN`, and handles `SIGSEGV`/`SIGBUS` to report stack overflow. Raising one of
-/// those at ourselves returns instead of killing us, and the caller sees the numbered
-/// form — which is how a shell encodes the same fact. Resetting the disposition first
-/// would make it exact, and needs `sigaction`, which is `unsafe`.
+/// Re-raising rather than exiting with `128 + signal` is what makes the status genuinely
+/// *signalled* rather than merely numbered like one. It cannot always work, because two
+/// dispositions are not ours: Rust's runtime sets `SIGPIPE` to `SIG_IGN`, and handles
+/// `SIGSEGV`/`SIGBUS` to report stack overflow. Raising one of those at ourselves returns
+/// instead of killing us, and the caller sees the numbered form — which is how a shell
+/// encodes the same fact. Resetting the disposition first would need `sigaction`, which
+/// is `unsafe`.
 fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, SandboxError> {
     use std::os::unix::process::ExitStatusExt;
 
-    // Re-raised before the numbered form, so a signalled status stays signalled.
-    // When the raise returns anyway — the `SIGPIPE`/`SIGSEGV` cases above — the
-    // fallback below encodes it the way a shell would.
+    // Re-raised before the numbered form, so a signalled status stays signalled. When the
+    // raise returns anyway — the `SIGPIPE`/`SIGSEGV` cases above — the fallback below
+    // encodes it the way a shell would.
     if status.code().is_none()
         && let Some(signal) = status.signal()
         && let Ok(signal) = nix::sys::signal::Signal::try_from(signal)
@@ -177,12 +174,12 @@ fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, S
 
 /// Translate a child's fate into an exit code, the way a shell does.
 ///
-/// A command the sandbox killed dies by signal and has no exit code of its own;
-/// reporting 0 there would say "succeeded" about a process seccomp shot. A status
-/// that is neither is refused with 1 rather than given an invented success.
+/// A command the sandbox killed dies by signal and has no exit code of its own; reporting
+/// 0 there would say "succeeded" about a process seccomp shot. A status that is neither is
+/// refused with 1 rather than given an invented success.
 ///
-/// Lives beside the helper that relays a status by exiting with it, so the encoding
-/// exists once: `sandbx-cli` reports the same number without deriving it again.
+/// Lives beside the helper that relays a status by exiting with it, so the encoding exists
+/// once: `sandbx-cli` reports the same number without deriving it again.
 pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
 
@@ -194,21 +191,21 @@ pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
 
 /// Apply a policy to *this* process, then become the requested command.
 ///
-/// Stage 2 of two, the first child of [`exec_sandboxed`] and therefore PID 1 of the
-/// PID namespace it created. Everything here is irreversible and inherited across
-/// `exec`, which is what makes the restrictions stick to the real command rather
-/// than to this process alone. This process is fresh and so single-threaded: no
-/// `fork`/`exec` window, hence no async-signal-safety constraint and no `unsafe`.
+/// Stage 2 of two, the first child of [`exec_sandboxed`] and therefore PID 1 of the PID
+/// namespace it created. Everything here is irreversible and inherited across `exec`,
+/// which is what makes the restrictions stick to the real command rather than to this
+/// process alone. This process is fresh and so single-threaded: no `fork`/`exec` window,
+/// hence no async-signal-safety constraint and no `unsafe`.
 ///
-/// On success this never returns: the process image is replaced. Any return is an
-/// error, and the caller must exit non-zero rather than continue — a helper that
-/// fell through to running the command unrestricted would be the exact failure the
-/// sandbox exists to prevent.
+/// On success this never returns: the process image is replaced. Any return is an error,
+/// and the caller must exit non-zero rather than continue — a helper that fell through to
+/// running the command unrestricted would be the exact failure the sandbox exists to
+/// prevent.
 pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
-    // A positional token ahead of the policy, not part of it: `HelperArgs` describes
-    // what the command may do, this describes who is watching. Keeping them apart
-    // leaves the policy grammar and its round-trip untouched, and means a caller
-    // reaching `exec_inner` directly cannot pass a policy that smuggles one in.
+    // A positional token ahead of the policy, not part of it: `HelperArgs` describes what
+    // the command may do, this describes who is watching. Keeping them apart leaves the
+    // policy grammar and its round-trip untouched, and means a caller reaching
+    // `exec_inner` directly cannot pass a policy that smuggles one in.
     let (supervisor, argv) = argv.split_first().ok_or(SandboxError::BadHelperArgs {
         detail: "inner helper mode without a supervisor pid",
     })?;
@@ -218,21 +215,20 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     bind_lifetime_to_supervisor()?;
     confirm_supervisor(supervisor)?;
 
-    // A check, not a re-narrowing. `spawn::command` is the only thing in the crate
-    // that builds a `Command` and it narrows by construction, so there is nothing
-    // here left to clear; what is worth establishing is whether the stage above
-    // really went through it. Clearing again would answer that with silence — the
-    // command's `environ` would come out identical either way.
+    // A check, not a re-narrowing. `spawn::command` is the only thing in the crate that
+    // builds a `Command` and it narrows by construction, so there is nothing left here to
+    // clear; what is worth establishing is whether the stage above really went through it.
+    // Clearing again would answer that with silence — the command's `environ` would come
+    // out identical either way.
     //
-    // Deliberately not folded into `confirm_supervisor`, which is a liveness check
-    // and explicitly not a trust boundary (see `HELPER_INNER_FLAG`): a caller
-    // invoking the inner stage directly arrives with a full environment and is
-    // refused here rather than narrowed.
+    // Not folded into `confirm_supervisor`, which is a liveness check and explicitly not a
+    // trust boundary (see `HELPER_INNER_FLAG`): a caller invoking the inner stage directly
+    // arrives with a full environment and is refused here rather than narrowed.
     //
-    // A returned error and not an `assert!`: `dispatch_helper_mode` is exhaustive so
-    // that a helper run cannot end without either running the command or reporting
-    // why not, and a panic leaves through neither. The message names no variable, for
-    // the reason `records_how_many_variables_a_spawn_passed_not_which` gives.
+    // A returned error and not an `assert!`: `dispatch_helper_mode` is exhaustive so that a
+    // helper run cannot end without either running the command or reporting why not, and a
+    // panic leaves through neither. The message names no variable, for the reason
+    // `records_how_many_variables_a_spawn_passed_not_which` gives.
     let allowed_env = request.policy.allowed_env();
     if std::env::vars_os()
         .any(|(name, _)| !allowed_env.iter().any(|allowed| name == allowed.as_str()))
@@ -247,14 +243,12 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     apply(&request.policy)?;
 
     // After `apply`, so the command inherits the cage rather than escaping it: this
-    // process is already restricted, and `exec` keeps every one of those
-    // restrictions.
+    // process is already restricted, and `exec` keeps every one of those restrictions.
     //
     // The load-bearing spawn — where the real command is born, so `spawn::command`
-    // narrowing its environment here is what decides what the command can read out
-    // of its own `environ`. Nothing here depends on the earlier stages having
-    // narrowed the same environment; the check above is what reports a stage that
-    // stopped.
+    // narrowing its environment here is what decides what the command can read out of its
+    // own `environ`. Nothing here depends on the earlier stages having narrowed the same
+    // environment; the check above is what reports a stage that stopped.
     let error = {
         use std::os::unix::process::CommandExt;
         let mut command = crate::spawn::command(&request.program, &request.policy);
@@ -274,25 +268,24 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
     };
 
-    // The namespaces and the capability drops already happened in the supervisor
-    // that spawned this process — see `prepare_supervisor` — and both are inherited.
-    // What is left here is everything that must apply to the command itself and
-    // could not be done in a process that still had to spawn one.
+    // The namespaces and the capability drops already happened in the supervisor that
+    // spawned this process — see `prepare_supervisor` — and both are inherited. What is
+    // left here is everything that must apply to the command itself and could not be done
+    // in a process that still had to spawn one.
 
-    // Installing a seccomp filter requires either CAP_SYS_ADMIN or no_new_privs, and
-    // this process holds no capabilities at all, the supervisor having dropped them.
-    // Irreversible and inherited across exec, which is what makes the filter stick to
-    // the real command.
+    // Installing a seccomp filter requires either CAP_SYS_ADMIN or no_new_privs, and this
+    // process holds no capabilities at all, the supervisor having dropped them.
+    // Irreversible and inherited across exec, which makes the filter stick to the command.
     set_no_new_privs()?;
 
     deny_dangerous_syscalls(policy)?;
 
     // Settles on one ABI and hard-requires all of it, rather than pinning a floor and
-    // taking whatever else the kernel happens to offer. Everything handled is
-    // therefore enforced, which is what lets `enforcement_verdict` refuse a partial
-    // result. The negotiation happens inside `requested`, so no ABI is in scope here
-    // and the handled set cannot be derived from a different one than the rules.
-    // Destructured for the reason `Requested` gives.
+    // taking whatever else the kernel offers. Everything handled is therefore enforced,
+    // which is what lets `enforcement_verdict` refuse a partial result. The negotiation
+    // happens inside `requested`, so no ABI is in scope here and the handled set cannot
+    // be derived from a different one than the rules. Destructured for the reason
+    // `Requested` gives.
     let Requested { handled, rules } = requested(policy)?;
 
     let mut ruleset = Ruleset::default()
@@ -302,9 +295,9 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         .create()
         .map_err(landlock_failed)?;
 
-    // `Requested` decides what to install; this loop only opens the paths. The axis
-    // each rule came from is for the tests that assert the mapping — the kernel is
-    // told the rights and nothing else.
+    // `Requested` decides what to install; this loop only opens the paths. The axis is
+    // for the tests that assert the mapping — the kernel is told the rights and nothing
+    // else.
     for (_, path, rights) in rules {
         let fd = PathFd::new(path).map_err(landlock_failed)?;
         ruleset = ruleset
@@ -323,9 +316,9 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 mod tests {
     use super::*;
 
-    /// A `wait(2)` status as the kernel encodes one for a process that exited of its
-    /// own accord with `code`. `ExitStatus::from_raw` takes exactly that encoding and
-    /// is safe, so the three shapes below need no spawned process.
+    /// A `wait(2)` status as the kernel encodes one for a process that exited of its own
+    /// accord with `code`. `ExitStatus::from_raw` takes exactly that encoding and is safe,
+    /// so the shapes below need no spawned process.
     fn exited(code: i32) -> std::process::ExitStatus {
         use std::os::unix::process::ExitStatusExt;
 
@@ -333,7 +326,7 @@ mod tests {
     }
 
     /// The same, for a process killed by `signal`. The signal number occupies the low
-    /// seven bits, which is why an exit code occupies the byte above them.
+    /// seven bits, which is why an exit code sits in the byte above them.
     fn killed_by(signal: i32) -> std::process::ExitStatus {
         use std::os::unix::process::ExitStatusExt;
 
@@ -362,10 +355,10 @@ mod tests {
         }
     }
 
-    /// A stop is the only status that is neither an exit nor a death, so it is the
-    /// only way to reach that arm. The premise is asserted first: if a future libc or
-    /// std decodes this encoding differently, the test says so instead of quietly
-    /// re-testing the signal arm above.
+    /// A stop is the only status that is neither an exit nor a death, so the only way to
+    /// reach that arm. The premise is asserted first: if a future libc or std decodes this
+    /// encoding differently, the test says so instead of quietly re-testing the signal arm
+    /// above.
     #[test]
     fn a_status_that_is_neither_an_exit_nor_a_death_reports_failure() {
         use std::os::unix::process::ExitStatusExt;
