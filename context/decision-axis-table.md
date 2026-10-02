@@ -53,10 +53,13 @@ the path axes, where a new consumer that ignores `Axis::ALL` grants nothing
 instead.
 
 What stands in for the compiler is `tests/enforcement.rs`, which runs
-`/usr/bin/env` through the real helper and reads its stdout, so a stage that stops
-clearing is a test failure rather than a quiet regression. That covers the stages
-that exist; it cannot cover a stage nobody has written yet. See
-`decision-environment-allowlist.md`.
+`/usr/bin/env` through the real helper and reads its stdout, plus the assertion in
+`exec_inner` that refuses an environment stage 1 should already have narrowed — so
+a stage that stops clearing is a test failure rather than a quiet regression. That
+covers the stages that exist, and only the one the assertion sits above: the two
+`command.rs` sites are still unobservable, because a later stage re-narrows and the
+command's `environ` comes out identical either way. It cannot cover a stage nobody
+has written yet. See `decision-environment-allowlist.md`.
 
 ## Why the rights are subtractions
 

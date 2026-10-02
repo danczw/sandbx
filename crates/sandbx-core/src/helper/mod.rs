@@ -176,18 +176,21 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     bind_lifetime_to_supervisor()?;
     confirm_supervisor(supervisor)?;
 
-    // Stage 1 already narrowed what we inherited, so this holds on every path that
-    // can reach here — `confirm_supervisor` above is what rules out the ones that
-    // cannot. It is an assertion and not a no-op because both stages call
-    // `env::restrict`: without it either call could be deleted and the other would
-    // cover for it, leaving the command's `environ` identical and no test able to
-    // tell (#98).
+    // Stage 1 narrowed this process's environment before spawning it, so on every
+    // supported path there is nothing here outside the allowlist. Deliberately not
+    // claimed as something `confirm_supervisor` enforces: that is a liveness check
+    // and explicitly not a trust boundary (see `HELPER_INNER_FLAG`), so a caller
+    // invoking the inner stage directly can still arrive with a full environment
+    // and will be refused rather than narrowed.
+    //
+    // An assertion and not a second `restrict` because both stages narrow the same
+    // environment: either call could be deleted and the other would cover for it,
+    // leaving the command's `environ` identical and no test able to tell. This is
+    // what makes the stage-1 clear a thing that can fail (#98).
+    let allowed_env = request.policy.allowed_env();
     assert!(
-        std::env::vars_os().all(|(name, _)| request
-            .policy
-            .allowed_env()
-            .iter()
-            .any(|allowed| std::ffi::OsStr::new(allowed) == name.as_os_str())),
+        std::env::vars_os()
+            .all(|(name, _)| allowed_env.iter().any(|allowed| name == allowed.as_str())),
         "the inner stage inherited a variable the policy does not name; \
          an earlier stage did not narrow the environment"
     );
