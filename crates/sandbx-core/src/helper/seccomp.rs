@@ -851,7 +851,7 @@ mod tests {
     /// Per flag rather than over the union: the rules are OR'd, so a filter that only
     /// fired when every flag was set would pass a union-only test.
     #[test]
-    fn clone_cannot_create_a_namespace_unshare_is_denied_for() {
+    fn clone_cannot_reach_a_namespace_unshare_cannot() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
 
         for flag in NAMESPACE_CLONE_FLAGS {
@@ -915,7 +915,7 @@ mod tests {
     /// `ENOSYS`. `EPERM` here would break every threaded program rather than routing it
     /// onto the filtered `clone`, so the errno is load-bearing, not cosmetic.
     #[test]
-    fn clone3_is_refused_with_enosys_so_callers_fall_back_to_clone() {
+    fn clone3_answers_enosys_so_callers_fall_back() {
         let program = clone3_filter().unwrap();
 
         assert_eq!(
@@ -991,7 +991,7 @@ mod tests {
     /// signed `int` for exactly this reason.
     #[cfg(target_arch = "x86_64")]
     #[test]
-    fn the_x32_gate_does_not_kill_a_negative_syscall_number() {
+    fn the_x32_gate_never_kills_a_negative_number() {
         let program = x32_gate();
 
         for nr in [-1, -2, libc::c_long::from(i32::MIN)] {
@@ -1009,7 +1009,7 @@ mod tests {
     /// both, and a shared constant would couple a syscall number to a clone flag.
     #[cfg(target_arch = "x86_64")]
     #[test]
-    fn the_x32_bit_and_clone_newnet_are_unrelated_despite_sharing_a_value() {
+    fn the_x32_bit_and_clone_newnet_only_share_a_value() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
 
         assert_eq!(
