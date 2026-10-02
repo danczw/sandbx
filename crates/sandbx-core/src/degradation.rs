@@ -1,11 +1,10 @@
 //! The channel a best-effort hardening step reports itself on, and its wire format.
 //!
-//! The helper's first stage installs no `tracing` subscriber and must not — its stderr is
-//! a pipe the parent replays verbatim, and the stage below becomes the sandboxed command.
-//! So the helper names what degraded, this module renders bytes, and the *parent* turns
-//! them back into audit events. What a degradation means is decided here, never by
-//! whatever wrote the line. See `context/decision-helper-audit-channel.md` for why the
-//! bytes travel in the stdin slot.
+//! The helper's first stage installs no `tracing` subscriber and must not — its stderr is a
+//! pipe the parent replays verbatim, and the stage below becomes the sandboxed command. So
+//! the helper names what degraded, this module renders bytes, and the *parent* turns them
+//! back into audit events; what a degradation means is decided here, never by whatever wrote
+//! the line. See `context/decision-helper-audit-channel.md` for the stdin slot.
 
 use std::fmt::Write as _;
 
@@ -13,30 +12,28 @@ use std::fmt::Write as _;
 ///
 /// A tab, because `detail` is prose built around `: ` and errno text. [`encode`] caps the
 /// detail rather than escaping it: a detail comes from an errno in this crate, never from
-/// input, so the cap is a bound and not a sanitiser.
+/// input, so the cap is a bound rather than a sanitiser.
 const SEPARATOR: char = '\t';
 
 /// How much of a detail crosses.
 ///
-/// The whole channel must fit a pipe buffer with nobody reading the other end — the
-/// parent reads only once the helper has been waited on, so a stage 1 that blocked writing
-/// here would deadlock the run it is reporting on. Two records of this length are three
-/// orders of magnitude inside the 64 KiB a Linux pipe holds by default.
+/// The whole channel must fit a pipe buffer with nobody reading the other end — the parent
+/// reads only once the helper has been waited on, so a stage 1 blocked writing here would
+/// deadlock the run it is reporting on. Two records of this length sit three orders of
+/// magnitude inside the 64 KiB a Linux pipe holds by default.
 const DETAIL_LIMIT: usize = 256;
 
 /// How many records [`decode`] will accept from one channel.
 ///
-/// Each step reports at most once, so anything beyond this did not come from [`encode`],
-/// and refusing the excess keeps a malformed channel from growing the audit trail without
-/// bound. Not a trust boundary: by the time the sandboxed command exists the write end is
-/// already gone (see `helper::exec_sandboxed`).
+/// Each step reports at most once, so anything beyond this did not come from [`encode`], and
+/// refusing the excess keeps a malformed channel from growing the trail without bound. Not a
+/// trust boundary: by the time the command exists the write end is gone.
 const RECORD_LIMIT: usize = Degradation::ALL.len();
 
 /// A best-effort hardening step that did not take effect.
 ///
-/// A closed set rather than a string: the parent turns these back into audit records, and
-/// a label it accepted on trust would let whatever wrote the channel choose what the trail
-/// says a mechanism was called.
+/// A closed set rather than a string: the parent turns these back into audit records, and a
+/// label it accepted on trust would let whatever wrote the channel name the mechanism.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Degradation {
     /// `PR_CAPBSET_DROP` was refused, so the capability bounding set is left as
@@ -49,16 +46,14 @@ pub(crate) enum Degradation {
 }
 
 impl Degradation {
-    /// Every step that can report on this channel.
-    ///
-    /// Drives [`from_label`](Self::from_label) and [`RECORD_LIMIT`], so a new variant is
-    /// decodable and accounted for by being added here.
+    /// Every step that can report on this channel; drives
+    /// [`from_label`](Self::from_label) and [`RECORD_LIMIT`].
     pub(crate) const ALL: [Self; 2] = [Self::CapabilityBoundingSet, Self::UsernsIdentityMap];
 
     /// The stable name this step carries on the wire and in the audit trail.
     ///
     /// The one place a mechanism is spelled, and a trail is filtered by these strings, so
-    /// they are a compatibility surface rather than an implementation detail.
+    /// they are a compatibility surface.
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::CapabilityBoundingSet => "capability_bounding_set",
@@ -68,7 +63,7 @@ impl Degradation {
 
     /// The step `label` names, if it names one at all.
     ///
-    /// A lookup over [`ALL`](Self::ALL) rather than a second `match`: a label
+    /// A lookup over [`ALL`](Self::ALL) rather than a second `match`, so a label
     /// [`label`](Self::label) can emit is one this accepts by construction.
     fn from_label(label: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|step| step.label() == label)
@@ -80,8 +75,7 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
     let mut out = String::new();
 
     for (step, detail) in records {
-        // Truncated on a character boundary, so the line stays UTF-8 for a decoder that
-        // reads it back as `str`.
+        // Truncated on a character boundary, so the line stays UTF-8 for a `str` decoder.
         let detail: String = detail
             .chars()
             .filter(|c| *c != '\n' && *c != SEPARATOR)
@@ -96,9 +90,9 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
 
 /// Parse what the helper wrote back into steps and their details.
 ///
-/// Skips an unrecognised line rather than failing the run: this is the reporting path for
+/// Skips an unrecognised line rather than failing the run, this being the reporting path for
 /// a sandbox that already carried on. What it must not do is pass an unvalidated mechanism
-/// name through to the trail, hence [`Degradation::from_label`].
+/// name to the trail, hence [`Degradation::from_label`].
 pub(crate) fn decode(channel: &str) -> Vec<(Degradation, &str)> {
     channel
         .lines()
@@ -171,8 +165,6 @@ mod tests {
         );
     }
 
-    /// Stage 1 writes into a pipe nobody drains until the helper is waited on, so the cap
-    /// is what keeps the report from deadlocking the run.
     #[test]
     fn a_long_detail_is_capped_rather_than_written_whole() {
         let encoded = encode(&[(Degradation::UsernsIdentityMap, "x".repeat(10_000))]);
@@ -192,8 +184,6 @@ mod tests {
         );
     }
 
-    /// A newline would split one record into two and a tab would move the mechanism/detail
-    /// boundary, putting a `degraded` decision on the trail that no step reported.
     #[test]
     fn a_detail_cannot_forge_a_record_boundary() {
         let encoded = encode(&[(
@@ -231,8 +221,6 @@ mod tests {
         );
     }
 
-    /// The label is what a trail is filtered by, so two steps sharing one would make a
-    /// record ambiguous and `from_label` would resolve it to whichever came first in `ALL`.
     #[test]
     fn no_two_steps_share_a_label() {
         for step in Degradation::ALL {

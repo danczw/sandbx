@@ -1,33 +1,28 @@
 use std::path::{Path, PathBuf};
 
-/// Where a system keeps the binaries and libraries a command needs to start.
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 
-/// The environment variables a command conventionally needs in order to start.
 const STANDARD_ENV_NAMES: [&str; 7] = ["PATH", "HOME", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ"];
 
 /// A kind of access a policy can grant on a path.
 ///
-/// The axis names a grant and [`Axis::grants`] says what it confers; together they are
-/// the only statement of filesystem policy semantics in the workspace. The kernel
-/// layer, the in-process guard, the helper argv and the audit record all derive from
-/// them rather than restating them.
+/// With [`Axis::grants`], the only statement of filesystem policy semantics in the
+/// workspace: the kernel layer, the guard, the helper argv and the audit record all derive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     /// See the path, and nothing more.
     Read,
     /// Change the path, without being able to read it back.
     Write,
-    /// See the path *and* run what is in it. The one axis that confers execute.
+    /// See the path *and* run what is in it; the one axis that confers execute.
     ReadExecute,
 }
 
 /// What an [`Axis`] confers, in terms no enforcement layer owns.
 ///
-/// Booleans rather than Landlock bits or `FsGuard` buckets, so this module depends
-/// neither on the `landlock` crate nor on how a child is invoked. Every consumer
-/// destructures it rather than reading its fields, so a right added here fails to
-/// compile at each site that has to map it.
+/// Booleans rather than Landlock bits or `FsGuard` buckets, so this module depends neither
+/// on the `landlock` crate nor on how a child is invoked. Consumers destructure it, so a
+/// right added here fails to compile at each site that maps it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grants {
     /// May see the path's contents.
@@ -40,17 +35,14 @@ pub struct Grants {
 
 impl Axis {
     /// Every axis, in the order a policy and the helper argv carry them.
-    ///
-    /// What makes a forgotten axis a build failure is not this array but the exhaustive
-    /// `match` each site unable to derive its answer pairs with the loop.
     pub const ALL: [Axis; 3] = [Axis::Read, Axis::Write, Axis::ReadExecute];
 
     /// What this axis grants; adding an axis is adding a row here.
     ///
-    /// The asymmetry runs one way. `ReadExecute` confers read, because a program needs
-    /// execute on the binary *and* read on the libraries its loader pulls in. No grant
-    /// confers execute, and write confers neither — a write-only drop directory stays
-    /// unreadable. `SECURITY.md` claims exactly this.
+    /// The asymmetry runs one way and nothing but this table enforces it: `ReadExecute`
+    /// confers read, a program needing execute on the binary *and* read on the libraries its
+    /// loader pulls in; no other grant confers execute, and write confers neither, so a
+    /// write-only drop directory stays unreadable. `SECURITY.md` claims this.
     pub const fn grants(self) -> Grants {
         let (read, write, execute) = match self {
             Self::Read => (true, false, false),
@@ -77,8 +69,7 @@ pub struct SandboxPolicy {
     executable: Vec<PathBuf>,
     network: bool,
     unix_sockets: bool,
-    /// Variable *names*, never values: the value is read from the harness's own
-    /// environment when the command is spawned.
+    /// Variable *names*, never values; the value is read at spawn time from the harness.
     env: Vec<String>,
 }
 
@@ -98,11 +89,8 @@ impl SandboxPolicy {
         self.paths(Axis::ReadExecute)
     }
 
-    /// Paths granted on `axis`.
-    ///
-    /// The named accessors are this with the axis fixed. A consumer that has to treat
-    /// every axis alike goes through [`Axis::ALL`] and this, so adding an axis does not
-    /// mean finding every such loop by hand.
+    /// Paths granted on `axis`; the named accessors are this with the axis fixed, and a
+    /// consumer that must treat every axis alike pairs it with [`Axis::ALL`].
     pub fn paths(&self, axis: Axis) -> &[PathBuf] {
         match axis {
             Axis::Read => &self.readable,
@@ -113,8 +101,7 @@ impl SandboxPolicy {
 
     /// Every grant this policy holds, as `(axis, path)` pairs, in [`Axis::ALL`] order.
     ///
-    /// One pair per grant, not per path: a path granted on two axes appears twice,
-    /// because a consumer that collapsed them would enforce neither.
+    /// One pair per grant, not per path: a path granted on two axes appears twice.
     pub fn granted_paths(&self) -> impl Iterator<Item = (Axis, &Path)> {
         Axis::ALL.into_iter().flat_map(move |axis| {
             self.paths(axis)
@@ -142,27 +129,23 @@ impl SandboxPolicy {
 
     /// Whether the process may open unix-domain sockets.
     ///
-    /// Separate from [`allows_network`](Self::allows_network): a socket in the
-    /// filesystem is not IP egress, and a network namespace isolates only *abstract*
-    /// unix sockets.
+    /// Separate from [`allows_network`](Self::allows_network): a socket in the filesystem is
+    /// not IP egress, and a network namespace isolates only *abstract* unix sockets.
     pub fn allows_unix_sockets(&self) -> bool {
         self.unix_sockets
     }
 
-    /// Environment variable names the process may inherit; anything unlisted is dropped
-    /// before the command starts.
+    /// Environment variable names the process may inherit; anything unlisted is dropped.
     pub fn allowed_env(&self) -> &[String] {
         &self.env
     }
 
     /// Let the process inherit the variable called `name`.
     ///
-    /// The value is read from the harness's own environment at spawn time, so a name
-    /// unset there contributes nothing rather than an empty value. An empty name, or one
-    /// containing `=` or a NUL, is skipped rather than refused later, so nothing
-    /// `HelperArgs::encode` emits is something `decode` rejects; `sandbx`'s own
-    /// `--allow-env` refuses them instead, because a person at a terminal needs telling.
-    /// Names are not deduplicated, matching the path grants.
+    /// An empty name, or one containing `=` or a NUL, is skipped rather than refused, so
+    /// nothing `HelperArgs::encode` emits is something `decode` rejects; `sandbx`'s own
+    /// `--allow-env` refuses them instead. The value is read from the harness at spawn time,
+    /// so a name unset there contributes nothing rather than an empty value.
     #[must_use]
     pub fn allow_env(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
@@ -174,13 +157,11 @@ impl SandboxPolicy {
 
     /// Let the process inherit the variables a command needs in order to start.
     ///
-    /// With an empty allowlist there is no `PATH`, and a program named without a leading
-    /// `/` is looked up in whatever fallback resolves it — `confstr(_CS_PATH)` under
-    /// glibc's `execvp`, the shell's wider compiled-in default under a shell — so `cat`
-    /// starts and `~/.cargo/bin/x` does not, naming neither cause nor fix. Narrow by
-    /// design: nothing here conventionally carries a credential, and anything else is
-    /// named through [`allow_env`](Self::allow_env). The default stays empty because a
-    /// caller passing absolute program paths needs none of it.
+    /// With an empty allowlist there is no `PATH`, and a program named without a leading `/`
+    /// is looked up in whatever fallback resolves it — `confstr(_CS_PATH)` under glibc's
+    /// `execvp`, the shell's wider compiled-in default under a shell — so `cat` starts and
+    /// `~/.cargo/bin/x` does not, naming neither cause nor fix. Nothing here conventionally
+    /// carries a credential; anything else goes through [`allow_env`](Self::allow_env).
     #[must_use]
     pub fn allow_standard_env(self) -> Self {
         STANDARD_ENV_NAMES
@@ -197,9 +178,8 @@ impl SandboxPolicy {
 
     /// Grant write access to `path`, and nothing else.
     ///
-    /// Neither read nor execute comes with it, so a drop directory granted here cannot
-    /// be read back. The `sandbx` CLI grants read alongside write for `--allow-write`;
-    /// this narrow form is what a library caller composes from.
+    /// Neither read nor execute comes with it, so a drop directory granted here cannot be
+    /// read back; the `sandbx` CLI grants read alongside write for `--allow-write`.
     #[must_use]
     pub fn allow_write(self, path: impl AsRef<Path>) -> Self {
         self.grant(Axis::Write, path)
@@ -207,10 +187,8 @@ impl SandboxPolicy {
 
     /// Grant read *and* execute access to `path`.
     ///
-    /// The only grant that confers execute, and it confers read too because running a
-    /// program needs `Execute` on the binary and `ReadFile` on the libraries its loader
-    /// pulls in. A directory granted here can run anything that appears in it later, so
-    /// prefer [`allow_read`](Self::allow_read) where the process only needs to see.
+    /// The only grant that confers execute, and it confers read too (see [`Axis::grants`]).
+    /// A directory granted here can run anything that appears in it later.
     #[must_use]
     pub fn allow_read_execute(self, path: impl AsRef<Path>) -> Self {
         self.grant(Axis::ReadExecute, path)
@@ -219,11 +197,10 @@ impl SandboxPolicy {
     /// Grant read and execute access to the paths a command needs to start.
     ///
     /// Nothing runs without its loader and shared libraries: with a bare policy even
-    /// `/bin/true` dies before `main`, as a permission error on `exec` naming no cause.
-    /// System binaries and libraries only — not `/etc`, never write. Paths absent on
-    /// this system are skipped, because distributions disagree about `/lib64` and
-    /// Landlock rejects a rule for a path that does not exist, which would turn that
-    /// disagreement into a failure to sandbox at all.
+    /// `/bin/true` dies before `main`. System binaries and libraries only — not `/etc`,
+    /// never write. A path absent on this system is skipped, because distributions
+    /// disagree about `/lib64` and Landlock rejects a rule for a path that does not exist,
+    /// which would turn that disagreement into a failure to sandbox at all.
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS

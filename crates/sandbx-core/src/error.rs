@@ -12,8 +12,8 @@ pub enum SandboxError {
         requested: PathBuf,
     },
 
-    /// The path could not be resolved, so it cannot be proven to be inside an allowed
-    /// root. A refusal rather than a pass: this is what a traversal attempt looks like.
+    /// The path could not be resolved, so cannot be proven to be inside an allowed root —
+    /// which is also what a traversal attempt looks like.
     Unresolvable {
         /// The path as the caller supplied it.
         requested: PathBuf,
@@ -21,9 +21,8 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// The helper process was given argv it could not parse. A refusal rather than a
-    /// best-effort parse: running with a policy that differs from the one sandbx intended
-    /// is the failure the sandbox exists to prevent.
+    /// The helper process was given argv it could not parse. Not parsed best-effort: a
+    /// policy other than the one sandbx intended is the failure the sandbox prevents.
     BadHelperArgs {
         /// What was wrong, for the operator to act on.
         detail: &'static str,
@@ -35,8 +34,8 @@ pub enum SandboxError {
         detail: String,
     },
 
-    /// The syscall filter could not be installed. A refusal: without it, a sandboxed tool
-    /// could reach syscalls Landlock cannot express.
+    /// The syscall filter could not be installed; without it a sandboxed tool could reach
+    /// syscalls Landlock cannot express.
     Seccomp {
         /// What failed, for the operator to act on.
         detail: String,
@@ -46,9 +45,7 @@ pub enum SandboxError {
     ///
     /// One variant for all of them — user, PID, and, when the policy denies network, the
     /// network namespace — because there is one `unshare` call and the kernel answers it
-    /// with one errno; splitting it would mean reporting a guess as a fact. A refusal:
-    /// running with network access the policy denied, or with descendants that outlive the
-    /// call, is worse than not running at all.
+    /// with one errno; splitting it would mean reporting a guess as a fact.
     NamespaceSetupFailed {
         /// What failed, for the operator to act on.
         detail: &'static str,
@@ -58,9 +55,8 @@ pub enum SandboxError {
     /// capabilities not dropped, core dumps not disabled, or an environment an earlier
     /// stage should have narrowed and did not.
     ///
-    /// All three are inherited across `exec`, which is why they are one fact about this
-    /// process rather than three failures, and a refusal: any of them still available
-    /// would widen what a descendant could reach.
+    /// All three are inherited across `exec`, hence one fact about this process rather than
+    /// three failures.
     ProcessHardening {
         /// What failed, for the operator to act on.
         detail: String,
@@ -76,8 +72,8 @@ pub enum SandboxError {
 
     /// A sandboxed process outran its time limit and was killed.
     ///
-    /// Distinct from [`SpawnFailed`](Self::SpawnFailed): collapsing "never finished" into
-    /// "never started" would make a wedged command look like a broken helper.
+    /// Distinct from [`SpawnFailed`](Self::SpawnFailed), which would make a wedged command
+    /// look like a broken helper.
     TimedOut {
         /// The limit it exceeded.
         after: std::time::Duration,
@@ -85,10 +81,9 @@ pub enum SandboxError {
 
     /// This kernel cannot enforce a sandbox.
     ///
-    /// Returned instead of running unsandboxed. A kernel, not a platform: a non-Linux
-    /// target never reaches this, the crate refusing to build for one. What it covers is a
-    /// kernel too old for the Landlock baseline, one with Landlock disabled at boot, or one
-    /// that accepted a ruleset and enforced none of it.
+    /// Returned instead of running unsandboxed. A kernel, not a platform — a non-Linux
+    /// target never reaches this, the crate refusing to build for one — so: too old for the
+    /// Landlock baseline, Landlock disabled at boot, or a ruleset accepted and not enforced.
     Unsupported {
         /// What is missing, for the operator to act on.
         detail: &'static str,

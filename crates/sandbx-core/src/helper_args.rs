@@ -9,9 +9,9 @@ const SEPARATOR: &str = "--";
 
 /// The flag that introduces a path granted on `axis`.
 ///
-/// The wire format lives here rather than in [`Axis`], the policy type having no business
-/// knowing how the helper is invoked, but it is one exhaustive match that both `encode`
-/// and `decode` go through, so a new axis is a compile error here and nowhere else.
+/// Here rather than on [`Axis`], the policy type having no business knowing how the helper
+/// is invoked; one exhaustive match for both `encode` and `decode`, so a new axis is a
+/// compile error here and nowhere else.
 const fn path_flag(axis: Axis) -> &'static str {
     match axis {
         Axis::Read => "--ro",
@@ -22,28 +22,26 @@ const fn path_flag(axis: Axis) -> &'static str {
 
 /// The axis `flag` introduces, if it is a path flag at all.
 ///
-/// A lookup over the table rather than a second list of spellings, which makes
-/// [`path_flag`] the only place an axis names itself on the wire: a flag `encode` can emit
-/// is one `decode` accepts, by construction.
+/// A lookup over [`path_flag`] rather than a second list of spellings, so a flag `encode`
+/// can emit is one `decode` accepts, by construction.
 fn axis_for(flag: &str) -> Option<Axis> {
     Axis::ALL.into_iter().find(|axis| path_flag(*axis) == flag)
 }
 
 /// A policy plus a command, as carried between sandbx and the helper process.
 ///
-/// The policy crosses a process boundary as argv, which is not private: the command can
-/// read its own `/proc/self/cmdline`, so everything here is visible to the process being
-/// confined. Hence the rule the environment axis obeys — this carries variable names,
-/// never values. The environment cannot be the channel instead, being what the policy now
-/// governs: the filter would either leak the policy or eat it.
+/// Argv is not private: the command reads its own `/proc/self/cmdline`, so everything here
+/// is visible to the process being confined — hence the rule the environment axis obeys,
+/// that this carries variable names and never values. The environment cannot be the channel
+/// instead, being what the policy now governs: the filter would leak it or eat it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperArgs {
     /// Restrictions the helper must apply to itself.
     pub policy: SandboxPolicy,
     /// Program the helper should become.
     pub program: String,
-    /// Arguments for `program`, already split into words. The helper execs directly, so
-    /// nothing here is ever seen by a shell.
+    /// Arguments for `program`, already split into words; the helper execs directly, so no
+    /// shell ever sees these.
     pub args: Vec<String>,
 }
 
@@ -75,14 +73,14 @@ impl HelperArgs {
 
     /// Parse helper argv back into a policy and command.
     ///
-    /// Every failure is a refusal. An unrecognised flag is an error rather than something
-    /// to skip: ignoring it would mean running with a policy sandbx did not intend.
+    /// Every failure is a refusal: skipping an unrecognised flag would mean running with a
+    /// policy sandbx did not intend.
     pub fn decode(argv: &[String]) -> Result<Self, SandboxError> {
         let mut policy = SandboxPolicy::default();
         let mut rest = argv.iter();
 
-        // The program is split off inside the loop, where the separator is found,
-        // rather than by collecting the tail and re-iterating it to take the head.
+        // Split off where the separator is found, rather than by collecting the tail and
+        // re-iterating it to take the head.
         let (program, args) = loop {
             let Some(arg) = rest.next() else {
                 return Err(SandboxError::BadHelperArgs {
@@ -103,9 +101,9 @@ impl HelperArgs {
                     let name = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "env flag with no variable name after it",
                     })?;
-                    // `allow_env` would silently skip this, which is right for a caller
-                    // composing a policy but wrong here: a name that cannot be encoded did
-                    // not come from `encode`, so the argv speaks a different protocol.
+                    // `allow_env` would skip this, right for a caller composing a policy
+                    // but wrong here: a name `encode` could not have emitted means the
+                    // argv speaks a different protocol.
                     if name.contains('=') {
                         return Err(SandboxError::BadHelperArgs {
                             detail: "env variable name containing `=`",
@@ -114,8 +112,8 @@ impl HelperArgs {
                     policy = policy.allow_env(name);
                 }
                 flag => {
-                    // One lookup, then one grant: the axis carries which one it is, so
-                    // there is no second match here deciding it again.
+                    // One lookup, then one grant: the axis carries which one it is, so no
+                    // second match here decides it again.
                     let axis = axis_for(flag).ok_or(SandboxError::BadHelperArgs {
                         detail: "unrecognised helper flag",
                     })?;
