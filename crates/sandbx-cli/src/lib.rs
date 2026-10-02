@@ -1,8 +1,7 @@
 //! The `sandbx` command line.
 //!
-//! Parsing and policy derivation live here rather than in `main.rs` so they can be
-//! tested without spawning anything: what a flag grants is a security question, and a
-//! unit test should answer it on a machine with no sandbox-capable kernel at all.
+//! Parsing and policy derivation live here, not in `main.rs`, so a unit test can answer
+//! what a flag grants on a machine with no sandbox-capable kernel.
 
 pub mod logging;
 
@@ -107,21 +106,18 @@ pub struct SandboxRun {
     timeout: Option<u64>,
 
     /// The command to run, and its arguments.
-    // `last` is what keeps the separator meaningful: everything past `--` is the
-    // command's, including flags sandbx itself defines. Not a doc comment, which
-    // would reach `--help`.
+    // `last` keeps the separator meaningful: everything past `--` is the command's,
+    // including flags sandbx defines. Not a `///`, which would reach `--help`.
     #[arg(last = true, required = true, value_name = "COMMAND")]
     command: Vec<String>,
 }
 
 /// Accept a name `--allow-env` can actually pass, and refuse anything else.
 ///
-/// `SandboxPolicy::allow_env` *skips* a name it cannot encode, which is right for a
-/// caller composing a policy in code and wrong here: `--allow-env TOKEN=secret` would
-/// exit 0 having passed nothing, leaving the person who typed it believing the secret
-/// crossed. So the CLI refuses loudly where the library skips quietly, and says what
-/// to write instead. `=` gets a tailored message, being the mistake an `export` habit
-/// produces rather than a typo.
+/// `SandboxPolicy::allow_env` *skips* a name it cannot encode, which here would exit 0
+/// having passed nothing, leaving whoever typed `--allow-env TOKEN=secret` believing the
+/// secret crossed. So the CLI refuses loudly where the library skips quietly, and says
+/// what to write instead.
 fn variable_name(value: &str) -> Result<String, String> {
     if let Some((name, _)) = value.split_once('=') {
         return Err(format!(
@@ -143,8 +139,7 @@ impl SandboxRun {
     /// The paths given for `axis`, whichever flag collects them.
     ///
     /// One exhaustive match, so a new axis is a compile error here rather than a flag
-    /// that parses and grants nothing. The flags stay separate fields because each
-    /// carries its own `--help` text.
+    /// that parses and grants nothing.
     fn paths(&self, axis: Axis) -> &[PathBuf] {
         match axis {
             Axis::Read => &self.allow_read,
@@ -156,14 +151,10 @@ impl SandboxRun {
     /// The policy these flags describe.
     ///
     /// Starts from [`SandboxPolicy::default`], which grants nothing, so an unmentioned
-    /// axis stays denied.
-    ///
-    /// Two unconditional grants on top, because without them this subcommand can run
-    /// nothing at all and the resulting error names neither cause nor fix: read access
-    /// to the system binaries and libraries, and the startup environment — `PATH`
-    /// above all, since without it a program named without a leading `/` reaches only
-    /// the C library's fallback (`/bin:/usr/bin` on glibc). The user's own files,
-    /// writes, network and every other variable stay denied.
+    /// axis stays denied. Two unconditional grants on top, without which this subcommand
+    /// can run nothing: read on the system binaries and libraries, and the startup
+    /// environment — `PATH` above all, since without it a program named without a
+    /// leading `/` reaches only the C library's fallback (`/bin:/usr/bin` on glibc).
     pub fn policy(&self) -> SandboxPolicy {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()
@@ -173,11 +164,9 @@ impl SandboxRun {
             for path in self.paths(axis) {
                 policy = policy.grant(axis, path);
 
-                // The one place this CLI grants more than the flag's own axis. The
-                // library keeps the axes separate so a caller can build a write-only
-                // drop directory; at the command line that is a trap, since
-                // `--allow-write ~/project` would let a tool rewrite the tree and then
-                // fail to `cat` it back. Keyed to what the axis *confers*, not to the
+                // The one place this CLI grants more than the flag's own axis: the
+                // library keeps write and read apart, but a tree a tool can rewrite and
+                // not `cat` back is a trap. Keyed to what the axis *confers*, not to the
                 // `Write` variant, so a second write-conferring axis inherits it.
                 if axis.grants().write {
                     policy = policy.grant(Axis::Read, path);
@@ -201,8 +190,8 @@ impl SandboxRun {
 
     /// The program to run, split off from the arguments that follow it.
     ///
-    /// Cannot panic: `required = true` on a `last` argument means clap rejects
-    /// an empty command before this can be reached.
+    /// Cannot panic: `required = true` on a `last` argument means clap rejects an empty
+    /// command first.
     pub fn program(&self) -> &str {
         &self.command[0]
     }
@@ -228,8 +217,8 @@ impl SandboxRun {
         }
         let output = command.output()?;
 
-        // Interleaving is lost: the command runs to completion rather than streaming,
-        // which no caller needs yet.
+        // Interleaving is lost: `output()` runs the command to completion rather than
+        // streaming.
         let _ = std::io::stdout().write_all(&output.stdout);
         let _ = std::io::stderr().write_all(&output.stderr);
 
