@@ -8,7 +8,7 @@ use sandbx_providers::{ContentBlock, MessagesRequest, RequestMessage, Role, Tool
 use serde_json::json;
 
 #[test]
-fn a_minimal_request_serializes_with_no_optional_fields() {
+fn a_minimal_request_omits_every_optional_field() {
     let request = MessagesRequest {
         model: "claude-opus-5".to_string(),
         max_tokens: 16_000,

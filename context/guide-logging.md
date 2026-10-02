@@ -112,7 +112,7 @@ terminal. That part of the design holds; it is the sink that is absent.
 > at all. `Display` is not implemented, so `{}` is a compile error.
 >
 > So the no-leak guarantee rests on a **runtime test**
-> (`the_client_does_not_leak_the_api_key_in_debug_output`), not on the compiler.
+> (`debug_output_does_not_leak_the_api_key`), not on the compiler.
 > Do not assume `{:?}` is checked for you.
 
 The derive is deliberate over a hand-written impl: it picks up any field added
