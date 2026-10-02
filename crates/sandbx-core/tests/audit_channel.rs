@@ -4,9 +4,9 @@
 //! subscriber, so a `Degraded` record crosses as bytes on a pipe in the helper's
 //! stdin slot and the parent emits it. Hence two properties a wire round-trip
 //! cannot check: the sandboxed command must not reach that pipe, and its own
-//! output must stay byte-exact. Whether a run degrades at all is the host's
-//! answer, so nothing below asserts the *absence* of a `degraded` record; making
-//! a host degrade on demand is #94.
+//! output must stay byte-exact. Whether a run degrades is the host's answer, so
+//! only the one test holding the host's answer in a predicate asserts a record is
+//! present or absent.
 //!
 //! Gated whole-file: every test spawns a real helper, so with the feature off
 //! `-D warnings` would reject the capture harness as dead code.
@@ -74,6 +74,63 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<
         result.expect("the sandboxed command should have run"),
         lines,
     )
+}
+
+/// Can this machine drop the capability bounding set at all? Repeated from
+/// `enforcement.rs`, which documents the LSM behaviour behind it, because cargo
+/// gives each `tests/*.rs` its own binary. Keep the two copies identical.
+fn bounding_set_is_droppable() -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    // The restriction covers *unprivileged* userns only, so a run as root holds
+    // `CAP_SETPCAP` in the new namespace whatever the sysctl says. Off `/proc/self`'s
+    // owner because `libc::geteuid` is `unsafe` and this crate forbids that.
+    let root = std::fs::metadata("/proc/self")
+        .map(|proc_self| proc_self.uid() == 0)
+        .unwrap_or(false);
+
+    root || std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+        .map(|value| value.trim() != "1")
+        .unwrap_or(true)
+}
+
+/// The condition and not merely the call: a host whose LSM strips `CAP_SETPCAP`
+/// from a fresh user namespace refuses `PR_CAPBSET_DROP` for real, which is the
+/// case `SECURITY.md` promises a `degraded` record for.
+///
+/// Both branches assert, because returning early on one would report `ok` without
+/// checking anything — the argument
+/// `the_bounding_set_is_cleared_or_left_exactly_as_inherited` makes about the same
+/// two hosts.
+#[test]
+fn the_bounding_set_reports_degraded_exactly_when_the_kernel_refuses_the_drop() {
+    let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
+
+    // Without this the droppable branch passes on a run that never happened: a command
+    // the sandbox refused records no degradation either.
+    assert!(
+        output.status.success(),
+        "the probe command did not run, so the trail says nothing about the drop: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let recorded = lines.iter().any(|line| {
+        line.contains("decision=degraded") && line.contains("mechanism=capability_bounding_set")
+    });
+
+    if bounding_set_is_droppable() {
+        assert!(
+            !recorded,
+            "this kernel permits the drop, so nothing should have reported it as \
+             degraded: {lines:?}"
+        );
+    } else {
+        assert!(
+            recorded,
+            "this kernel refuses PR_CAPBSET_DROP, so the bounding set is left as \
+             inherited and the trail must say so: {lines:?}"
+        );
+    }
 }
 
 /// Without the first helper stage replacing its stdin with `null`, the sandboxed
