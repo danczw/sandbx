@@ -3,24 +3,16 @@ use crate::{Axis, SandboxPolicy};
 /// `tracing` target carrying the audit trail.
 ///
 /// A dedicated target lets one subscriber route these to durable storage while
-/// ordinary diagnostics go elsewhere, without either emitter knowing about
-/// files. Filter on this to separate the two streams.
-///
-/// The `sandbx` binary installs one that admits this target at `INFO` and drops
-/// everything else, writing to stderr; see the `logging` module in `sandbx-cli`.
-/// Named in prose rather than linked because the dependency runs the other way.
+/// ordinary diagnostics go elsewhere. The `sandbx` binary installs one that admits
+/// this target at `INFO` and drops everything else; see the `logging` module in
+/// `sandbx-cli`, named in prose because the dependency runs the other way.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
 
 /// Something the sandbox did, recorded so it can be reviewed afterwards.
 ///
-/// This is a product feature rather than debug output: it answers "what did the
-/// agent do to my machine". Emitted at `INFO` so it survives the default filter
-/// — at `DEBUG` it would be absent for everyone who did not opt in, which is
-/// exactly when a record matters.
-///
-/// Deliberately records *metadata only*, never a command's output. That a tool
-/// read a file is a different proposition from storing what the file contained;
-/// output is where secrets live.
+/// A product feature rather than debug output, so it is emitted at `INFO` and survives
+/// the default filter. Records *metadata only*, never a command's output: that a tool
+/// read a file is a different proposition from storing what the file contained.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
@@ -42,24 +34,19 @@ pub enum AuditEvent<'a> {
         reason: &'a str,
     },
 
-    /// A best-effort hardening step did not take effect, and the sandbox
-    /// carried on without it.
+    /// A best-effort hardening step did not take effect, and the sandbox carried on
+    /// without it.
     ///
-    /// Distinct from [`Denied`](Self::Denied): nothing the agent asked for was
-    /// refused.
-    ///
-    /// What the failure costs depends on the step, so `mechanism` carries that
-    /// rather than this variant implying one answer: a bounding set left as
-    /// inherited is a weaker sandbox, while an unmapped identity costs only uid
-    /// fidelity and is, if anything, more restrictive.
-    ///
-    /// Recorded at `INFO` either way. These steps fail on whole classes of host
-    /// (AppArmor's `restrict_unprivileged_userns`) rather than intermittently,
-    /// so the run where it matters is not the run where someone thought to raise
-    /// the log level.
+    /// Distinct from [`Denied`](Self::Denied): nothing the agent asked for was refused.
+    /// What the failure costs depends on the step, so `mechanism` carries that rather
+    /// than this variant implying one answer — a bounding set left as inherited is a
+    /// weaker sandbox, while an unmapped identity costs only uid fidelity. Recorded at
+    /// `INFO` either way: these steps fail on whole classes of host (AppArmor's
+    /// `restrict_unprivileged_userns`) rather than intermittently, so the run where it
+    /// matters is not the run where someone raised the log level.
     Degraded {
-        /// Which step did not take effect, as a stable label rather than prose,
-        /// so a trail can be filtered by it.
+        /// Which step did not take effect, as a stable label so a trail can be
+        /// filtered by it.
         mechanism: &'a str,
         /// Why it did not, and what holds instead.
         detail: &'a str,
@@ -69,33 +56,26 @@ pub enum AuditEvent<'a> {
     Spawned {
         /// The program the sandbox is about to become.
         program: &'a str,
-        /// How many paths were readable, not which ones: the record summarises
-        /// the policy's shape, and inlining a long path list would bury the
-        /// spawn it accompanies.
+        /// How many paths were readable, not which ones: inlining a long path list
+        /// would bury the spawn it accompanies.
         readable: usize,
-        /// How many paths were writable, on the same basis as `readable`.
+        /// How many paths were writable.
         writable: usize,
-        /// Counted separately from `readable`: execute is a distinct capability,
+        /// Counted separately from `readable`, because execute is a distinct capability
         /// and folding it in would understate what the spawn was granted.
         executable: usize,
-        /// Whether IP egress was granted. Says nothing about unix sockets, which
-        /// `unix_sockets` records on its own.
+        /// Whether IP egress was granted. Says nothing about unix sockets.
         network: bool,
-        /// Recorded separately from `network`: it is a distinct capability, and
-        /// folding it in would understate the reach of the spawn.
+        /// Recorded separately from `network`, being a distinct capability.
         unix_sockets: bool,
-        /// How long the environment allowlist is, not what is in it: the same
-        /// basis as the path counts. A name is not a secret, but a value
-        /// routinely is, and a record that listed names would invite the next
-        /// change to list values beside them.
+        /// How long the environment allowlist is, not what is in it: a name is not a
+        /// secret, but a record listing names would invite the next change to list
+        /// values beside them.
         ///
-        /// The allowlist's length, deliberately, and not the number of variables
-        /// that end up crossing — a name the harness does not hold is passed as
-        /// nothing at all, so the two differ (a default `sandbx sandbox-run`
-        /// records `env=7` on a host where `TZ` and the `LC_*` pair are unset,
-        /// and the command sees four). Like `readable`, this records what the
-        /// policy granted rather than what the command went on to use: the record
-        /// is written before the spawn, and what it is for is the decision.
+        /// Its length, not the number of variables that end up crossing — a name the
+        /// harness does not hold is passed as nothing at all, so a default
+        /// `sandbx sandbox-run` records `env=7` where `TZ` and the `LC_*` pair are
+        /// unset and the command sees four.
         env: usize,
     },
 }
@@ -122,13 +102,10 @@ impl<'a> AuditEvent<'a> {
 
     /// Record a spawn, summarising the policy rather than reproducing it.
     ///
-    /// This record cannot derive its *fields* the way the enforcement layers
-    /// derive their rules — `tracing` needs static field names — so what it does
-    /// instead is refuse to compile when an axis is added, which is the one thing
-    /// it can offer and what its silent drift (#51) cost. The mechanism is the
-    /// exhaustive match, the same one the other non-derivable site uses
-    /// (`SandboxRun::paths`): each field names the axis it counts, so nothing here
-    /// depends on the table's order.
+    /// This record cannot derive its *fields* the way the enforcement layers derive their
+    /// rules, because `tracing` needs static field names. Instead the exhaustive match
+    /// makes an added axis a compile error, and each field names the axis it counts, so
+    /// nothing here depends on the table's order.
     pub fn spawned(program: &'a str, policy: &SandboxPolicy) -> Self {
         let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
@@ -154,17 +131,14 @@ impl<'a> AuditEvent<'a> {
 
     /// Emit this event on the audit target.
     ///
-    /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]:
-    /// `tracing` drops an event with no subscriber installed, silently and at
-    /// every level. A library cannot install one without deciding for whoever
-    /// embeds it, so the binary does — and for a while nothing did, which is what
-    /// #89 cost. Anything embedding this crate owes itself the same subscriber.
+    /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]: `tracing`
+    /// drops an event with no subscriber, silently and at every level. A library cannot
+    /// install one without deciding for whoever embeds it, so anything embedding this
+    /// crate owes itself the same subscriber the `sandbx` binary installs.
     ///
-    /// Which is why the re-exec'd helper does not call this at all. That process
-    /// installs no subscriber and must not — its stderr is the sandboxed command's
-    /// own — so the hardening steps that run there name what degraded and let the
-    /// parent emit it, over the channel `degradation.rs` describes (#95). A call
-    /// to this from inside helper mode records nothing.
+    /// Which is why the re-exec'd helper never calls this: it installs no subscriber and
+    /// must not, its stderr being the sandboxed command's own, so the steps that run
+    /// there name what degraded over the channel `degradation.rs` describes.
     pub fn emit(&self) {
         match self {
             Self::Allowed { tool, subject } => tracing::info!(

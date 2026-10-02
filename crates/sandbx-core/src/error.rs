@@ -2,9 +2,8 @@ use std::path::PathBuf;
 
 /// Why a sandbox operation was refused.
 ///
-/// Every variant is a refusal. There is deliberately no "allowed with warning"
-/// case: a caller that believes it is sandboxed and is not is worse off than
-/// one that gets an error.
+/// Every variant is a refusal; there is no "allowed with warning" case, because a caller
+/// that believes it is sandboxed and is not is worse off than one that gets an error.
 #[derive(Debug)]
 pub enum SandboxError {
     /// The path is not inside any root the policy allows.
@@ -13,11 +12,8 @@ pub enum SandboxError {
         requested: PathBuf,
     },
 
-    /// The path could not be resolved to a real location, so it cannot be
-    /// proven to be inside an allowed root.
-    ///
-    /// Treated as a refusal rather than a pass: an unresolvable path is exactly
-    /// what a traversal attempt looks like.
+    /// The path could not be resolved, so it cannot be proven to be inside an allowed
+    /// root. A refusal rather than a pass: this is what a traversal attempt looks like.
     Unresolvable {
         /// The path as the caller supplied it.
         requested: PathBuf,
@@ -25,11 +21,9 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// The helper process was given argv it could not parse.
-    ///
-    /// A refusal rather than a best-effort parse: running with a policy that
-    /// differs from the one sandbx intended is the exact failure the sandbox
-    /// exists to prevent.
+    /// The helper process was given argv it could not parse. A refusal rather than a
+    /// best-effort parse: running with a policy that differs from the one sandbx intended
+    /// is the failure the sandbox exists to prevent.
     BadHelperArgs {
         /// What was wrong, for the operator to act on.
         detail: &'static str,
@@ -41,40 +35,32 @@ pub enum SandboxError {
         detail: String,
     },
 
-    /// The syscall filter could not be installed.
-    ///
-    /// A refusal: without it, a sandboxed tool could reach syscalls Landlock
-    /// cannot express.
+    /// The syscall filter could not be installed. A refusal: without it, a sandboxed tool
+    /// could reach syscalls Landlock cannot express.
     Seccomp {
         /// What failed, for the operator to act on.
         detail: String,
     },
 
-    /// The kernel namespaces the sandbox runs the command in could not be
-    /// created.
+    /// The kernel namespaces the sandbox runs the command in could not be created.
     ///
-    /// One variant for all of them because there is one `unshare` call and the
-    /// kernel answers it with one errno: the user namespace that makes the rest
-    /// possible unprivileged, the PID namespace that bounds the command's
-    /// descendants, and — when the policy denies network — the network namespace.
-    /// Splitting this would mean guessing which one the kernel objected to and
-    /// reporting the guess as a fact.
-    ///
-    /// A refusal: running with network access the policy denied, or with
-    /// descendants that outlive the call, is worse than not running at all.
+    /// One variant for all of them — user, PID, and, when the policy denies network, the
+    /// network namespace — because there is one `unshare` call and the kernel answers it
+    /// with one errno; splitting it would mean reporting a guess as a fact. A refusal:
+    /// running with network access the policy denied, or with descendants that outlive the
+    /// call, is worse than not running at all.
     NamespaceSetupFailed {
         /// What failed, for the operator to act on.
         detail: &'static str,
     },
 
     /// This process is not in the state a sandboxed command may be born into:
-    /// capabilities not dropped, core dumps not disabled, or an environment an
-    /// earlier stage should have narrowed and did not.
+    /// capabilities not dropped, core dumps not disabled, or an environment an earlier
+    /// stage should have narrowed and did not.
     ///
-    /// A refusal: running the command with capabilities, core dumps, or a variable
-    /// the policy never named still available would widen what a descendant
-    /// process could reach. All three are inherited across `exec`, which is why
-    /// they are one fact about this process rather than three unrelated failures.
+    /// All three are inherited across `exec`, which is why they are one fact about this
+    /// process rather than three failures, and a refusal: any of them still available
+    /// would widen what a descendant could reach.
     ProcessHardening {
         /// What failed, for the operator to act on.
         detail: String,
@@ -90,11 +76,8 @@ pub enum SandboxError {
 
     /// A sandboxed process outran its time limit and was killed.
     ///
-    /// Distinct from [`SpawnFailed`]: "it never finished" and "it never started"
-    /// are different facts, and collapsing them would make a wedged command look
-    /// like a broken helper.
-    ///
-    /// [`SpawnFailed`]: Self::SpawnFailed
+    /// Distinct from [`SpawnFailed`](Self::SpawnFailed): collapsing "never finished" into
+    /// "never started" would make a wedged command look like a broken helper.
     TimedOut {
         /// The limit it exceeded.
         after: std::time::Duration,
@@ -102,13 +85,10 @@ pub enum SandboxError {
 
     /// This kernel cannot enforce a sandbox.
     ///
-    /// Returned instead of running unsandboxed, so an unsupported environment
-    /// stops sandbx rather than silently removing every restriction.
-    ///
-    /// A kernel, not a platform: a non-Linux target does not reach this variant,
-    /// because the crate refuses to build for one at all. What this covers is a
-    /// Linux kernel too old for the Landlock baseline, one with Landlock disabled
-    /// at boot, or one that accepted a ruleset and then enforced none of it.
+    /// Returned instead of running unsandboxed. A kernel, not a platform: a non-Linux
+    /// target never reaches this, the crate refusing to build for one. What it covers is a
+    /// kernel too old for the Landlock baseline, one with Landlock disabled at boot, or one
+    /// that accepted a ruleset and enforced none of it.
     Unsupported {
         /// What is missing, for the operator to act on.
         detail: &'static str,

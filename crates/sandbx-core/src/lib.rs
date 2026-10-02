@@ -1,36 +1,21 @@
 //! Sandboxed execution for sandbx.
 //!
-//! Every tool an agent runs passes through this crate. It is the only place in
-//! the workspace permitted to spawn a subprocess, and even here the permission
-//! sits at a single site: one `#[allow(clippy::disallowed_methods)]`, in
-//! `spawn::command`, which builds every `Command` the crate ever runs and narrows
-//! its environment as it does. `unsafe` is forbidden in this crate exactly as it
-//! is in every other one.
+//! The only place in the workspace permitted to spawn a subprocess, and the permission
+//! sits at a single `#[allow(clippy::disallowed_methods)]` in `spawn::command`, which
+//! builds every `Command` the crate runs and narrows its environment as it does.
 //!
-//! Two layers, because they cover different things:
+//! Two layers, both default-deny (see [`SandboxPolicy`]):
 //!
-//! - [`FsGuard`] checks paths in-process, for tools written in Rust that never
-//!   spawn anything and so are never seen by the kernel enforcement.
-//! - Kernel enforcement (Landlock, seccomp, namespaces) restricts child
-//!   processes. sandbx re-execs a helper which applies the restrictions to
-//!   *itself* and then becomes the command, so sandbx is never caged by them.
+//! - [`FsGuard`] checks paths in-process, for tools written in Rust that never spawn
+//!   anything and so are never seen by the kernel enforcement.
+//! - Kernel enforcement (Landlock, seccomp, namespaces) restricts child processes. sandbx
+//!   re-execs a helper which applies the restrictions to *itself* and then becomes the
+//!   command, so sandbx is never caged by them.
 //!
-//! Both are default-deny: see [`SandboxPolicy`].
-//!
-//! Linux only, and refused at compile time rather than at runtime. Every
-//! mechanism here — Landlock, seccomp, the namespaces — is a Linux interface with
-//! no equivalent elsewhere, so there is nothing for another platform to fall back
-//! *to* except running the command unsandboxed, which is the one outcome this
-//! crate exists to prevent. Refusing to build is the strongest form that refusal
-//! can take: a binary that could run unsandboxed cannot be produced at all.
-//!
-//! This replaced a set of per-function stubs that returned
-//! [`SandboxError::Unsupported`] on other platforms. They described a build that
-//! was never produced — CI is Linux, the shipped targets are Linux — and the crate
-//! did not actually compile without them anyway, so they were five things to keep
-//! in sync in exchange for nothing.
+//! Linux only, refused at compile time: every mechanism here is a Linux interface with no
+//! equivalent elsewhere, so another platform could only fall back to running the command
+//! unsandboxed — the one outcome this crate exists to prevent.
 
-// Deliberately the whole crate, not a feature or a module: see the note above.
 #[cfg(not(target_os = "linux"))]
 compile_error!(
     "sandbx-core sandboxes using Landlock, seccomp and Linux namespaces, and has \
