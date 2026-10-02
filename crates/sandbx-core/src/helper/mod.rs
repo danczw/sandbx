@@ -61,28 +61,21 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 
     prepare_supervisor(&request.policy)?;
 
-    // The workspace bans `Command::new` so nothing can spawn around the sandbox.
-    // This is sanctioned: what it spawns is this same binary in inner mode, which
-    // restricts itself before becoming the command.
-    let spawned = {
-        #[allow(clippy::disallowed_methods)]
-        let mut inner = std::process::Command::new(exe);
-        inner
-            .arg(crate::HELPER_INNER_FLAG)
-            // So the inner stage can confirm we are still here before it hands
-            // control to the command. Our own pid, in host numbering, which is
-            // what the inner stage will read back out of `/proc`.
-            .arg(std::process::id().to_string())
-            .args(argv);
-        // Ordinarily a no-op: sandbx already narrowed our own environment to the
-        // allowlist, so there is nothing left to drop. It is here for the helper
-        // invoked directly, which has no sandbx above it to have done that.
-        crate::env::restrict(&mut inner, &request.policy);
+    // What this spawns is this same binary in inner mode, which restricts itself
+    // before becoming the command. `spawn::command` narrows its environment as it
+    // builds it: ordinarily a no-op, since sandbx already narrowed our own before
+    // spawning us and there is nothing left to drop — it is load-bearing for the
+    // helper invoked directly, which has no sandbx above it to have done that.
+    let mut inner = crate::spawn::command(exe, &request.policy);
+    inner
+        .arg(crate::HELPER_INNER_FLAG)
+        // So the inner stage can confirm we are still here before it hands control
+        // to the command. Our own pid, in host numbering, which is what the inner
+        // stage will read back out of `/proc`.
+        .arg(std::process::id().to_string())
+        .args(argv);
 
-        inner.spawn()
-    };
-
-    let mut child = spawned.map_err(|source| SandboxError::SpawnFailed {
+    let mut child = inner.spawn().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not start the inner sandbox stage",
         source,
     })?;
@@ -183,10 +176,12 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     // `HELPER_INNER_FLAG`), so a caller invoking the inner stage directly can
     // arrive with a full environment and is refused here rather than narrowed.
     //
-    // A check and not a second `restrict` because both stages narrow the same
-    // environment: either call could be deleted and the other would cover for it,
-    // leaving the command's `environ` identical and no test able to tell. This is
-    // what makes the stage-1 clear a thing that can fail (#98).
+    // A check and not a re-narrowing. `spawn::command` is the only thing in the
+    // crate that builds a `Command`, and it narrows by construction (#98), so there
+    // is nothing here left to clear — what is worth establishing instead is whether
+    // the stage above really went through it. Clearing again would answer that with
+    // silence: the command's `environ` would come out identical either way, and no
+    // test could tell.
     //
     // A returned error and not an `assert!`: `dispatch_helper_mode` is exhaustive
     // so that a helper run cannot end without either running the command or
@@ -207,23 +202,20 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
     apply(&request.policy)?;
 
-    // The workspace bans `Command::new` so nothing can spawn around the sandbox.
-    // This is the one sanctioned call: `apply` has already restricted this
-    // process, so the command inherits the cage rather than escaping it. The
-    // allow is per-call-site, not crate-wide, so any other use still fails the
-    // lint.
+    // After `apply`, so the command inherits the cage rather than escaping it: this
+    // process is already restricted, and `exec` keeps every one of those
+    // restrictions.
+    //
+    // The load-bearing spawn — where the real command is born, so `spawn::command`
+    // narrowing its environment here is what decides what the command can read out
+    // of its own `environ`. The earlier stages having narrowed the same environment
+    // makes that a no-op on the ordinary path, which is the point: nothing here
+    // depends on them having done it, and the check above is what reports a stage
+    // that stopped.
     let error = {
         use std::os::unix::process::CommandExt;
-        #[allow(clippy::disallowed_methods)]
-        let mut command = std::process::Command::new(&request.program);
+        let mut command = crate::spawn::command(&request.program, &request.policy);
         command.args(&request.args);
-        // The load-bearing one: this is where the real command is born, so this
-        // is the call that decides what it can read out of its own `environ`.
-        // The earlier stages narrowing the same environment makes this a no-op
-        // on the ordinary path, which is the point — nothing here depends on
-        // them having done it. What the check above adds is that a stage which
-        // stopped doing it is reported rather than silently covered for.
-        crate::env::restrict(&mut command, &request.policy);
 
         command.exec()
     };

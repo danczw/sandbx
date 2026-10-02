@@ -157,16 +157,13 @@ impl SandboxedCommand {
             // `output()` already reads both pipes concurrently, which is the
             // part that is easy to get wrong.
             None => {
-                // The workspace bans `Command::new` so nothing can execute around
-                // the sandbox. This spawns the helper, which restricts itself
-                // before becoming the command — the sanctioned path, not a bypass.
-                #[allow(clippy::disallowed_methods)]
-                let mut helper = std::process::Command::new(&helper);
+                // Built by `spawn::command`, which is the only thing in the
+                // workspace allowed to construct one — and which narrows the
+                // environment as it does, so a secret the harness holds never
+                // enters even this intermediate helper process, whose
+                // `/proc/<pid>/environ` is readable for as long as it lives.
+                let mut helper = crate::spawn::command(&helper, &self.policy);
                 helper.args(&argv);
-                // Here rather than only at the final exec, so a secret the
-                // harness holds never enters a helper process's environment
-                // either — `/proc/<pid>/environ` is readable for the duration.
-                crate::env::restrict(&mut helper, &self.policy);
 
                 helper.output().map_err(|source| SandboxError::SpawnFailed {
                     detail: "could not start the sandbox helper",
@@ -196,18 +193,15 @@ fn run_with_deadline(
         source,
     };
 
-    // Its own process group, so the kill below reaches descendants too.
-    #[allow(clippy::disallowed_methods)]
-    let mut command = std::process::Command::new(helper);
+    // Its own process group, so the kill below reaches descendants too. Narrowed
+    // on the way in for the same reason as the untimed path, by the same factory.
+    let mut command = crate::spawn::command(helper, policy);
     command
         .args(argv)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
-    // Same reason as on the untimed path: the helper processes do not need the
-    // harness's environment any more than the command does.
-    crate::env::restrict(&mut command, policy);
 
     let mut child = command.spawn().map_err(spawn_failed)?;
 

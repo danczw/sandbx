@@ -37,7 +37,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    command.rs        SandboxedCommand, HelperDispatch, the kill chain
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx, --env
    audit.rs          AuditEvent, AUDIT_TARGET
-   env.rs            env::restrict — env_clear + the policy's name allowlist
+   spawn.rs          spawn::command — the one Command::new; env_clear + allowlist
    error.rs
    bin/sandbx-helper.rs
    helper/
