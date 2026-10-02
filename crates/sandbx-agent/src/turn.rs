@@ -117,6 +117,14 @@ impl Default for TurnLimits {
 /// a TUI's input handling included. So every call goes through `spawn_blocking`,
 /// and this is the only place that has to know it.
 ///
+/// What that costs: `spawn_blocking` cannot be cancelled. Dropping this future
+/// drops the `JoinHandle` while the blocking task runs to completion, so a turn
+/// abandoned mid-tool — a TUI cancel, a losing `select!` branch, an outer
+/// deadline — still applies the `write`, or lets the `bash` command run out its
+/// timeout, after the caller has stopped waiting. The transcript that would have
+/// named the call goes with the dropped future; the audit trail is where that
+/// side effect is still recorded. Cancellation is #26.
+///
 /// # When the turn re-enters
 ///
 /// On the *presence* of tool calls, never on `StopReason::ToolUse`. A stop reason is
