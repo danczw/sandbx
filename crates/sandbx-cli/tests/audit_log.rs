@@ -80,7 +80,8 @@ fn a_spawn_records_the_policy_shape() {
     let policy = SandboxPolicy::default()
         .allow_read("/srv")
         .allow_write("/tmp/out")
-        .allow_unix_sockets();
+        .allow_unix_sockets()
+        .allow_standard_env();
 
     let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
 
@@ -90,6 +91,7 @@ fn a_spawn_records_the_policy_shape() {
     assert!(output.contains("writable=1"), "{output}");
     assert!(output.contains("network=false"), "{output}");
     assert!(output.contains("unix_sockets=true"), "{output}");
+    assert!(output.contains("env=7"), "{output}");
 }
 
 /// A weakened sandbox has to clear the filter, since that is the record nobody

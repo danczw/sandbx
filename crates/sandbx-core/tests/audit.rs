@@ -107,7 +107,9 @@ fn records_the_policy_shape_of_a_spawn() {
         .allow_read("/usr")
         .allow_write("/tmp/work")
         .allow_read_execute("/bin")
-        .allow_unix_sockets();
+        .allow_unix_sockets()
+        .allow_env("PATH")
+        .allow_env("HOME");
 
     let lines = capture(|| {
         AuditEvent::spawned("/bin/cat", &policy).emit();
@@ -119,6 +121,23 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("executable=1"), "got: {line}");
     assert!(line.contains("network=false"), "got: {line}");
     assert!(line.contains("unix_sockets=true"), "got: {line}");
+    assert!(line.contains("env=2"), "got: {line}");
+}
+
+/// The count, and not the names. A variable name is not itself a secret, but the
+/// record is one edit away from carrying values beside them, and that edit should
+/// have to argue with this test.
+#[test]
+fn records_how_many_variables_a_spawn_passed_not_which() {
+    let policy = SandboxPolicy::default().allow_env("AWS_SECRET_ACCESS_KEY");
+
+    let lines = capture(|| {
+        AuditEvent::spawned("/bin/cat", &policy).emit();
+    });
+
+    let line = &lines[0];
+    assert!(line.contains("env=1"), "got: {line}");
+    assert!(!line.contains("AWS_SECRET_ACCESS_KEY"), "got: {line}");
 }
 
 /// A hardening step that did not take effect is part of what the sandbox did,
