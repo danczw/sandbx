@@ -39,6 +39,7 @@ compile_error!(
 
 mod audit;
 mod command;
+mod env;
 mod error;
 mod fs_guard;
 mod helper;

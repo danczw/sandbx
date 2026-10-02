@@ -66,14 +66,20 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
     // restricts itself before becoming the command.
     let spawned = {
         #[allow(clippy::disallowed_methods)]
-        std::process::Command::new(exe)
+        let mut inner = std::process::Command::new(exe);
+        inner
             .arg(crate::HELPER_INNER_FLAG)
             // So the inner stage can confirm we are still here before it hands
             // control to the command. Our own pid, in host numbering, which is
             // what the inner stage will read back out of `/proc`.
             .arg(std::process::id().to_string())
-            .args(argv)
-            .spawn()
+            .args(argv);
+        // Ordinarily a no-op: sandbx already narrowed our own environment to the
+        // allowlist, so there is nothing left to drop. It is here for the helper
+        // invoked directly, which has no sandbx above it to have done that.
+        crate::env::restrict(&mut inner, &request.policy);
+
+        inner.spawn()
     };
 
     let mut child = spawned.map_err(|source| SandboxError::SpawnFailed {
@@ -180,9 +186,16 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     let error = {
         use std::os::unix::process::CommandExt;
         #[allow(clippy::disallowed_methods)]
-        std::process::Command::new(&request.program)
-            .args(&request.args)
-            .exec()
+        let mut command = std::process::Command::new(&request.program);
+        command.args(&request.args);
+        // The load-bearing one: this is where the real command is born, so this
+        // is the call that decides what it can read out of its own `environ`.
+        // The earlier stages narrowing the same environment makes this a no-op
+        // on the ordinary path, which is the point — nothing here depends on
+        // them having done it.
+        crate::env::restrict(&mut command, &request.policy);
+
+        command.exec()
     };
 
     Err(SandboxError::SpawnFailed {
