@@ -18,6 +18,11 @@ fn main() -> std::process::ExitCode {
         // stderr verbatim — a subscriber installed above would write sandbx's own
         // records into the output of the command being sandboxed. Warn and carry
         // on: an unrecorded run still beats no run.
+        //
+        // So helper mode has no subscriber by construction, and the hardening steps
+        // that run there do not emit: they report what degraded back to this process
+        // over a pipe, and `SandboxedCommand` turns it into audit events against
+        // this subscriber once the command has been waited on (#95).
         if let Err(error) = sandbx_cli::logging::init() {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }

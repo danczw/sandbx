@@ -135,7 +135,13 @@ impl SandboxedCommand {
             Some(path) => path.clone(),
             None => current_exe()?,
         };
-        let mut argv = vec![HELPER_FLAG.to_string()];
+        // Ahead of the policy, where `exec_sandboxed` splits it off before
+        // decoding: it says where to report a degradation, not what the command may
+        // do. Unconditional because both spawn paths below always set the pipe up.
+        let mut argv = vec![
+            HELPER_FLAG.to_string(),
+            crate::helper::AUDIT_STDIN_FLAG.to_string(),
+        ];
 
         argv.extend(HelperArgs::encode(&self.policy, &self.program, &self.args));
         Ok((helper, argv))
@@ -157,21 +163,75 @@ impl SandboxedCommand {
             // `output()` already reads both pipes concurrently, which is the
             // part that is easy to get wrong.
             None => {
+                let (audit, write_end) = audit_channel()?;
+
                 // Built by `spawn::command`, which is the only thing in the
                 // workspace allowed to construct one — and which narrows the
                 // environment as it does, so a secret the harness holds never
                 // enters even this intermediate helper process, whose
                 // `/proc/<pid>/environ` is readable for as long as it lives.
                 let mut helper = crate::spawn::command(&helper, &self.policy);
-                helper.args(&argv);
+                helper
+                    .args(&argv)
+                    .stdin(std::process::Stdio::from(write_end));
 
-                helper.output().map_err(|source| SandboxError::SpawnFailed {
+                let output = helper.output().map_err(|source| SandboxError::SpawnFailed {
                     detail: "could not start the sandbox helper",
                     source,
-                })
+                });
+
+                // Dropped before the channel is read, and that ordering is what
+                // makes the read terminate: the `Command` still owns this process's
+                // copy of the write end, so until it goes the pipe has a writer and
+                // never reaches EOF.
+                drop(helper);
+                record_degradations(audit);
+
+                output
             }
             Some(limit) => run_with_deadline(&helper, &argv, &self.policy, limit),
         }
+    }
+}
+
+/// A pipe for the helper to report degraded hardening on.
+///
+/// The read end stays here and the write end becomes the helper's stdin — the one
+/// descriptor std can hand a child without `unsafe`, which this crate forbids.
+/// The first helper stage replaces it with `null` before spawning anything, so the
+/// sandboxed command never has a handle on it; see `helper::exec_sandboxed`.
+///
+/// Claiming the stdin slot is a real cost: it forecloses giving the sandboxed
+/// command a stdin of its own without moving this channel elsewhere. Both paths
+/// here passed `null` before, so nothing a caller could observe has changed.
+fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), SandboxError> {
+    std::io::pipe().map_err(|source| SandboxError::SpawnFailed {
+        detail: "could not open a channel for the sandbox helper's audit records",
+        source,
+    })
+}
+
+/// Read what the helper reported and put it on the audit trail.
+///
+/// Emitted here rather than in the helper because this is the process with a
+/// subscriber: the helper installs none, and cannot without writing sandbx's
+/// records into the sandboxed command's own output (#95).
+///
+/// Reads to EOF with the helper already waited on, so nothing is draining the pipe
+/// while the helper writes. That is safe only because the records are bounded —
+/// one per best-effort step, with a capped detail — which `degradation::encode`
+/// owns and pins; a channel that could outgrow the pipe buffer would deadlock the
+/// run it is reporting on. A read failure costs the record and nothing else.
+fn record_degradations(mut audit: std::io::PipeReader) {
+    use std::io::Read;
+
+    let mut records = String::new();
+    if audit.read_to_string(&mut records).is_err() {
+        return;
+    }
+
+    for (step, detail) in crate::degradation::decode(&records) {
+        crate::AuditEvent::degraded(step.label(), detail).emit();
     }
 }
 
@@ -193,17 +253,24 @@ fn run_with_deadline(
         source,
     };
 
+    let (audit, write_end) = audit_channel()?;
+
     // Its own process group, so the kill below reaches descendants too. Narrowed
     // on the way in for the same reason as the untimed path, by the same factory.
     let mut command = crate::spawn::command(helper, policy);
     command
         .args(argv)
-        .stdin(Stdio::null())
+        .stdin(Stdio::from(write_end))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
 
     let mut child = command.spawn().map_err(spawn_failed)?;
+
+    // Dropped as soon as the child has it, for the reason the untimed path gives:
+    // this process's copy of the write end is what would keep the channel from
+    // ever reaching EOF.
+    drop(command);
 
     // Captured now, while the child is definitely unreaped. `try_wait` reaps it
     // on success, after which `child.id()` names a pid that may already have
@@ -237,11 +304,16 @@ fn run_with_deadline(
             // Reap the killed child rather than leaving a zombie.
             let _ = child.wait();
             settle(&out.0, &err.0);
+            // Recorded even though the run is being refused: the hardening
+            // degraded before the command started, so it is true of the attempt
+            // regardless of how the attempt ended.
+            record_degradations(audit);
             return Err(SandboxError::TimedOut { after: limit });
         }
     };
 
     settle(&out.0, &err.0);
+    record_degradations(audit);
 
     Ok(std::process::Output {
         status,

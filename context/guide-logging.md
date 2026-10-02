@@ -23,9 +23,10 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 
 **`INFO`, not `DEBUG`** — at `DEBUG` the trail would be absent for everyone who
 did not opt in, which is exactly when a record matters. `tests/audit.rs` pins
-this, and it is the one property to defend: the two `Degraded` sites previously
-used a raw `tracing::debug!` on the audit target, so a hardening step could go
-missing and the record of it reached nobody.
+this, and it is the one property to defend: the two `Degraded` sites once used a
+raw `tracing::debug!` on the audit target, so a hardening step could go missing
+below the default filter. The level was the first half of the fix; getting the
+record out of the helper at all was the second (see below).
 
 What a missing step costs depends on which one it was, so `mechanism` carries
 that rather than `Degraded` implying a single answer. A bounding set left as
@@ -67,14 +68,33 @@ bound keeps anything that merely borrowed the target out of the record.
 `init()` returns its error rather than panicking: a run that goes unrecorded
 still beats a run that does not happen. Installed *inside* the
 `with_helper_dispatch` closure — above it, the helper would write sandbx's own
-records into the output of the command being sandboxed. That placement is also
-why `Degraded` still reaches nobody; see below.
+records into the output of the command being sandboxed.
+
+## The helper's degradations cross a channel
+
+That placement leaves the helper with no subscriber at all, and both best-effort
+hardening steps run there. Emitting `Degraded` in the helper recorded nothing,
+whatever the level (#95).
+
+So the helper does not emit. `helper/hardening.rs` *returns* what degraded,
+stage 1 renders it as `label<TAB>detail` lines (`core/src/degradation.rs`) and
+writes them to the pipe sandbx put in its **stdin** slot, and sandbx decodes the
+bytes and emits the audit events itself. One subscriber in the process tree, one
+timestamp source, and the command's own stdout and stderr stay byte-exact.
+
+The stdin slot because fds 0/1/2 are the only descriptors `std` can hand a child
+without `unsafe`, which the workspace forbids — and 1/2 are the command's output.
+Stage 1 sets the inner stage's stdin to `Stdio::null()`, so the sandboxed command
+has no handle on the channel; `decode` also accepts only a closed set of mechanism
+labels, so nothing can name a mechanism sandbx did not define. Two costs are
+accepted: the slot is claimed (no interactive stdin for a sandboxed command later),
+and sandbx reads after waiting, so a `degraded` record is timestamped after
+`spawned`. See `decision-helper-audit-channel.md`.
 
 ## What is not built
 
 | Missing | Consequence |
 |---|---|
-| a subscriber in the **helper** | **`Degraded` is emitted and discarded.** Both emitters sit in `helper/hardening.rs`, which runs in the re-exec'd child; `logging::init` is inside the `with_helper_dispatch` closure and so never runs there. Moving `Degraded` to `INFO` bought nothing yet |
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone. Zero emission sites in tools, agent, providers, tui, session |
 | session ids | no field carries one; there is no session concept in the workspace |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`, no XDG path resolution anywhere in `crates/` |
