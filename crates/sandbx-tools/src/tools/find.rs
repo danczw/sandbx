@@ -17,8 +17,9 @@ pub struct FindInput {
 pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let files = ctx
         .guard()
-        .walk_readable(&input.path)
-        .map_err(|error| crate::denied(&input.path, error))?;
+        .walk_readable(&input.path, usize::MAX)
+        .map_err(|error| crate::denied(&input.path, error))?
+        .files;
 
     // Matched against the name being reported, not the name it was reached by:
     // reporting one path while having matched a different one gives the model a

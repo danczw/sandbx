@@ -30,8 +30,9 @@ pub struct GrepInput {
 pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let files = ctx
         .guard()
-        .walk_readable(&input.path)
-        .map_err(|error| crate::denied(&input.path, error))?;
+        .walk_readable(&input.path, usize::MAX)
+        .map_err(|error| crate::denied(&input.path, error))?
+        .files;
 
     let mut hits = Vec::new();
 
