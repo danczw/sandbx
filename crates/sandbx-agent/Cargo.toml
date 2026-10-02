@@ -19,7 +19,9 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # see `TurnLimits::stream_timeout` for why that bound belongs here.
 #
 # Deliberately not `rt-multi-thread`: `spawn_blocking` needs only `rt`, and
-# choosing the runtime flavour is the binary's call, not a library's.
+# choosing the runtime flavour is the binary's call, not a library's. The time
+# *driver* is not equally free to choose: a runtime built without it panics on the
+# first round — see `run_turn`'s "What the runtime must provide".
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 
 [lints]

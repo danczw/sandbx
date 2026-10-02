@@ -125,6 +125,16 @@ impl Default for TurnLimits {
 /// named the call goes with the dropped future; the audit trail is where that
 /// side effect is still recorded. Cancellation is #26.
 ///
+/// # What the runtime must provide
+///
+/// A tokio runtime with the **time driver enabled**. The per-round bound is
+/// `tokio::time::timeout`, which panics with "there is no timer running" when the
+/// runtime has no timer — on the first round, before any work is done.
+/// `#[tokio::main]` and `Builder::new_*().enable_all()` enable it;
+/// `Builder::new_current_thread().enable_io().build()` does not. The *flavour* is
+/// still the binary's call, as `Cargo.toml` says: `spawn_blocking` needs only
+/// `rt`, never `rt-multi-thread`.
+///
 /// # When the turn re-enters
 ///
 /// On the *presence* of tool calls, never on `StopReason::ToolUse`. A stop reason is
