@@ -36,16 +36,6 @@ impl Default for ToolLimits {
 }
 
 impl ToolLimits {
-    /// Cap on the number of result lines a listing tool may return.
-    pub fn max_entries(&self) -> usize {
-        self.max_entries
-    }
-
-    /// Cap on the bytes a content tool may return.
-    pub fn max_bytes(&self) -> usize {
-        self.max_bytes
-    }
-
     /// Set the entry cap.
     #[must_use]
     pub fn with_max_entries(mut self, entries: usize) -> Self {
