@@ -360,8 +360,7 @@ mod tests {
         assert_eq!(
             ppid_from_stat(&stat),
             Some("1234"),
-            "a space in the executable name shifted the parse; got {:?}",
-            ppid_from_stat(&stat)
+            "a space in the executable name shifted the parse: {stat:?}"
         );
     }
 
@@ -375,8 +374,7 @@ mod tests {
         assert_eq!(
             ppid_from_stat(&stat),
             Some("1234"),
-            "a parenthesis in the executable name truncated the parse; got {:?}",
-            ppid_from_stat(&stat)
+            "a parenthesis in the executable name truncated the parse: {stat:?}"
         );
     }
 
@@ -399,8 +397,7 @@ mod tests {
         assert_eq!(
             ppid_from_stat(&stat),
             Some("1234"),
-            "a name shaped like the fields after it was read as one; got {:?}",
-            ppid_from_stat(&stat)
+            "a name shaped like the fields after it was read as one: {stat:?}"
         );
     }
 

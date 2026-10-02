@@ -42,7 +42,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    helper/
       mod.rs         apply() — sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
-      seccomp.rs     BLOCKED_SYSCALLS (28), compiled_filter
+      seccomp.rs     BLOCKED_SYSCALLS (28), blocked_syscalls, compiled_filter
       ruleset/
          compat.rs   ABI negotiation, enforcement_verdict
          rights.rs   rights_for, fs_rules
@@ -55,7 +55,7 @@ tests/support/       5 [[bin]] probes, required-features = ["sandbox-integration
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
 `HelperDispatch`, `SandboxError`, `FsGuard`, `ReadableWalk`, `BLOCKED_SYSCALLS`,
-`HelperArgs`, `Axis`, `Grants`, `SandboxPolicy`.
+`exit_code`, `HelperArgs`, `Axis`, `Grants`, `SandboxPolicy`.
 
 Four per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` —
 the four sites that spawn, not the whole crate.

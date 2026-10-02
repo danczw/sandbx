@@ -275,8 +275,7 @@ mod tests {
             assert_eq!(
                 exit_code(&exited(code)),
                 code,
-                "an exit code must survive the translation unchanged, got {}",
-                exit_code(&exited(code))
+                "an exit code must survive the translation unchanged"
             );
         }
     }
@@ -291,9 +290,7 @@ mod tests {
             assert_eq!(
                 exit_code(&killed_by(signal)),
                 128 + signal,
-                "a command killed by {signal} must report {}, got {}",
-                128 + signal,
-                exit_code(&killed_by(signal))
+                "a command killed by {signal} must report 128 + the signal"
             );
         }
     }
@@ -321,8 +318,7 @@ mod tests {
         assert_eq!(
             exit_code(&stopped),
             1,
-            "a status with no verdict of its own must report failure, got {}",
-            exit_code(&stopped)
+            "a status with no verdict of its own must report failure: {stopped:?}"
         );
     }
 }
