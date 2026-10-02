@@ -91,6 +91,9 @@ user namespaces enabled. Or build from source:
 cargo install --git https://github.com/danczw/sandbx sandbx-cli
 ```
 
+The `sandbx-cli` argument is required — this is a virtual workspace, so the bare
+form errors.
+
 ## Development
 
 ```sh
