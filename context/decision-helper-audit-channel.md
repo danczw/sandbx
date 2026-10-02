@@ -93,18 +93,45 @@ and the forged line was rejected for having no separator rather than for being
 unreachable. The test would have passed against a sandbox that could write the
 channel. The tab is now written as a `printf` escape.
 
+It is gated on `--sandbx-audit-stdin`, the same flag as the write, because the flag
+is what says fd 0 is a channel at all. Without it nothing was written there and
+there is nothing to protect, so stdin stays inherited — a hand-invoked
+`sandbx-helper` running a command that reads its own input keeps working, which an
+unconditional `null` quietly took away.
+
 **Defence in depth behind that line.** `decode` accepts only labels in
 `Degradation::ALL`, so nothing can name a mechanism sandbx did not define; the
 record count is capped at the number of steps that exist; and `encode` strips the
 separator characters from a detail so one record cannot forge a second.
 
+## What this is not
+
+Not a boundary in the sense Landlock is. Stage 1 holds the write end on its own
+fd 0 for its whole lifetime, and `/proc` is the host's procfs un-remounted —
+`confirm_supervisor` depends on reading it. So a policy granting write access over
+`/proc` would expose the channel as `/proc/<stage1-pid>/fd/0`, same uid, no ptrace
+barrier. The closed label set still bounds the *mechanism*, but `detail` is free
+text, so such a policy buys a forged detail on a real mechanism name.
+
+Left as a documented limit rather than closed, and the alternative was weighed:
+`nix::unistd::dup2_stdin` could point stage 1's fd 0 at `/dev/null` once the
+records are written, which would shut the window. It was not added, because it and
+the `Stdio::null()` above would mask each other — with both in place neither one's
+removal makes `the_sandboxed_command_cannot_write_the_audit_channel` fail, and the
+guard that matters would stop being the guard that is tested. One barrier on the
+path untrusted code actually takes, demonstrably load-bearing, beats two that each
+look optional. A policy granting `/proc` write hands the command worse than this
+anyway; `SECURITY.md` says not to.
+
 ## Accepted costs
 
-**The stdin slot is claimed.** A sandboxed command cannot later be given
-interactive stdin without moving this channel. Nothing regresses today: both spawn
-paths already passed `Stdio::null()`. If interactive stdin is ever wanted, the
-channel needs a different carrier — most likely a Unix socketpair, which would mean
-either `unsafe` or a dependency that encapsulates it.
+**The stdin slot is claimed.** A sandboxed command run through `SandboxedCommand`
+cannot later be given interactive stdin without moving this channel. Nothing
+regresses today: both spawn paths already passed `Stdio::null()`, and the
+hand-invoked helper keeps its inherited fd 0 because the `null` is gated on the
+flag. If interactive stdin is ever wanted here, the channel needs a different
+carrier — most likely a Unix socketpair, which would mean either `unsafe` or a
+dependency that encapsulates it.
 
 **`degraded` is timestamped after `spawned`.** sandbx reads the channel only once
 the helper has been waited on, so the record lands after the command's own
