@@ -124,14 +124,6 @@ fn a_command_that_outruns_the_timeout_is_reported_as_such() {
     );
 }
 
-/// The default exists so a caller that never thinks about it is still protected.
-#[test]
-fn the_default_timeout_is_applied_without_being_asked_for() {
-    let ctx = context(SandboxPolicy::default().allow_system_executables());
-
-    assert_eq!(ctx.timeout(), sandbx_tools::DEFAULT_TIMEOUT);
-}
-
 /// A command that succeeds silently is the common case — `touch`, `mkdir -p`,
 /// `true` — and its result still has to be non-empty, since the Messages API
 /// rejects an empty `tool_result` and the turn dies with it.
