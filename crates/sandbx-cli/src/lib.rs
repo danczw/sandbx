@@ -14,7 +14,11 @@ use sandbx_core::{Axis, SandboxError, SandboxPolicy, SandboxedCommand};
 #[command(
     name = "sandbx",
     version,
-    about = "A security-first AI coding agent harness"
+    about = "A security-first AI coding agent harness",
+    // Without this, clap derives the long help from the doc comment below and
+    // prints its second paragraph — a note about test visibility — to anyone
+    // running `sandbx --help`. `None` falls back to `about` for both forms.
+    long_about = None
 )]
 /// A parsed `sandbx` invocation.
 ///
