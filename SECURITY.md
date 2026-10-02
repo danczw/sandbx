@@ -179,19 +179,21 @@ Three properties matter as much as the list:
   `restrict_unprivileged_userns` (default on Ubuntu 24.04+) does that, so on
   those hosts the bounding set is left as inherited. sandbx records it on the
   audit trail as a `degraded` decision — at `INFO`, so it is not something you
-  have to have opted into seeing. The drop is attempted in the sandbox helper,
-  which runs as its own process and installs no log subscriber, so the record
-  crosses back to sandbx on a dedicated one-way channel and is emitted there. The
-  command inherits no descriptor onto that channel, and the mechanism name on a
-  record is drawn from a closed set rather than from the bytes, so a command cannot
-  invent a mechanism. The channel is not a boundary the way Landlock is, though:
-  the write end lives on the helper's own fd 0 for the helper's lifetime, so a
-  policy granting write access over `/proc` would expose it as
+  have to have opted into seeing — and carries on rather than refusing, because
+  the bit cannot be spent: with the other four sets empty and `no_new_privs` set,
+  the kernel will not let an `execve`d binary raise a capability, so a leftover
+  bounding bit never becomes privilege. Do not rely on `CapBnd` being empty; do
+  rely on the other four.
+
+  That record takes a detour worth knowing about. The drop is attempted in the
+  sandbox helper, which runs as its own process and installs no log subscriber, so
+  the record crosses back to sandbx on a dedicated one-way channel and is emitted
+  there. The command inherits no descriptor onto that channel, and the mechanism
+  name on a record is drawn from a closed set rather than from the bytes, so a
+  command cannot invent a mechanism. The channel is not a boundary the way Landlock
+  is, though: the write end lives on the helper's own fd 0 for the helper's
+  lifetime, so a policy granting write access over `/proc` would expose it as
   `/proc/<helper-pid>/fd/0`. Do not grant one.
-  sandbx then carries on rather than refusing, because the bit cannot be spent:
-  with the other four sets empty and `no_new_privs` set, the kernel will not let
-  an `execve`d binary raise a capability, so a leftover bounding bit never becomes
-  privilege. Do not rely on `CapBnd` being empty; do rely on the other four.
 - **Denying `memfd_create` does not stop a descriptor being executed.** The
   syscall is blocked because an anonymous in-memory file has no path for Landlock
   to match on, but that is a denial of one route, not a guarantee about file
