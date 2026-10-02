@@ -7,8 +7,8 @@ use crate::{SandboxError, SandboxPolicy};
 /// The in-process complement to the kernel enforcement applied to child processes: tools
 /// implemented in Rust (`read`, `write`, `edit`) never spawn anything, so Landlock never
 /// sees them. Roots are canonicalized once at construction and every checked path before
-/// comparison, so neither `..` nor a symlink can present a path that merely *looks* like
-/// it is inside an allowed root.
+/// comparison, so neither `..` nor a symlink can present a path that merely *looks* inside
+/// an allowed root.
 #[derive(Debug, Clone)]
 pub struct FsGuard {
     readable: Vec<PathBuf>,
@@ -18,14 +18,11 @@ pub struct FsGuard {
 impl FsGuard {
     /// Resolve `policy`'s roots into a guard.
     ///
-    /// Roots that do not exist are dropped rather than rejected: a root that cannot be
-    /// resolved can never match a canonical path, so dropping it is conservative.
-    ///
-    /// Which axis feeds which list is not decided here — every grant is sorted by what
-    /// [`Axis::grants`](crate::Axis::grants) says it confers, which is what keeps this
-    /// layer and the kernel layer enforcing one policy. There is no `executable` list
-    /// because nothing in-process execs anything, but the execute axis still feeds
-    /// `readable`, because reading is part of what it grants.
+    /// A root that does not exist is dropped rather than rejected: unresolvable, it can
+    /// never match a canonical path, so dropping it is conservative. Which axis feeds which
+    /// list is [`Axis::grants`](crate::Axis::grants)'s to say, which is what keeps this
+    /// layer and the kernel layer enforcing one policy. No `executable` list, nothing
+    /// in-process execing anything — but the execute axis still feeds `readable`.
     pub fn new(policy: &SandboxPolicy) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
@@ -56,9 +53,8 @@ impl FsGuard {
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         match canonicalize(path) {
             Ok(resolved) => permit(resolved, &self.readable, path, "read"),
-            // Why a path failed to resolve is information: ENOENT, EACCES and "resolves
-            // but out of bounds" are distinguishable, and a caller that can probe
-            // arbitrary paths reads them back as a map of the host.
+            // Why a path failed to resolve is information: a caller that can probe
+            // arbitrary paths reads ENOENT against EACCES back as a map of the host.
             Err(unresolved) => {
                 Err(self.conceal_unless_granted(path, unresolved, &self.readable, "read"))
             }
@@ -67,10 +63,9 @@ impl FsGuard {
 
     /// Report why a path could not be resolved, but only inside a granted area.
     ///
-    /// Resolution failed, so the nearest ancestor that *does* resolve decides. If that
-    /// ancestor sits in an allowed root the caller was already entitled to know what is
-    /// in there, so "no such file" is honest. Anywhere else, the refusal is
-    /// indistinguishable from any other.
+    /// The nearest ancestor that *does* resolve decides: inside an allowed root the caller
+    /// was already entitled to know what is in there, so "no such file" is honest.
+    /// Anywhere else the refusal is indistinguishable from any other.
     fn conceal_unless_granted(
         &self,
         requested: &Path,
@@ -98,12 +93,11 @@ impl FsGuard {
 
     /// Open `path` for reading, refusing anything the policy does not allow.
     ///
-    /// Prefer this to [`check_read`](FsGuard::check_read) wherever the caller will open
-    /// the file anyway: returning a path means the caller re-resolves it, and between the
-    /// check and that open the leaf can be swapped for a symlink pointing outside the
-    /// roots. `O_NOFOLLOW` makes the open fail (`ELOOP`) if it was, but guards the
-    /// *final* component only — a parent directory swapped mid-open would need full
-    /// `openat`-chain resolution to defeat, which this does not attempt.
+    /// Prefer this to [`check_read`](FsGuard::check_read) wherever the caller will open the
+    /// file anyway: returning a path means re-resolving it, and in between the leaf can be
+    /// swapped for a symlink pointing outside the roots. `O_NOFOLLOW` fails the open
+    /// (`ELOOP`) if it was, but guards the *final* component only; a parent swapped mid-open
+    /// would need full `openat`-chain resolution to defeat.
     pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
         let resolved = self.check_read(path)?;
         open(std::fs::OpenOptions::new().read(true), &resolved, path)
@@ -111,8 +105,8 @@ impl FsGuard {
 
     /// Open `path` for writing, creating or truncating it.
     ///
-    /// Same reasoning as [`open_read`](FsGuard::open_read): the handle removes the window
-    /// between the policy check and the open.
+    /// The handle removes the window between the policy check and the open, as in
+    /// [`open_read`](FsGuard::open_read).
     pub fn open_write(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
         let resolved = self.check_write(path)?;
         open(
@@ -127,32 +121,29 @@ impl FsGuard {
 
     /// Every regular file beneath `root` that this guard permits reading.
     ///
-    /// Here rather than in each tool because the confinement rule is the guard's to
-    /// define: a symlink inside a readable directory can point anywhere, and a tool that
-    /// forgets that is a silent escape. So symlinks are never followed into — a symlinked
-    /// directory is not descended, which also makes the walk cycle-safe, and a symlinked
-    /// file is included only if it resolves inside an allowed root.
+    /// Here rather than in each tool because the confinement rule is the guard's to define:
+    /// a symlink inside a readable directory can point anywhere. So a symlinked directory
+    /// is never descended, which also makes the walk cycle-safe, and a symlinked file is
+    /// included only if it resolves inside an allowed root. Only regular files; a FIFO with
+    /// no writer would block forever. Sorted, `read_dir` order being filesystem-dependent.
     ///
-    /// Only regular files; a FIFO with no writer would block forever and wedge the
-    /// caller. Sorted, since `read_dir` order is filesystem-dependent.
-    ///
-    /// `max_files` bounds the walk, not the result: it stops as soon as a file would be
-    /// the `max_files + 1`th, so cost is bounded in time and memory where trimming
-    /// afterwards would bound neither. [`ReadableWalk`] says whether anything was left.
+    /// `max_files` bounds the walk, not the result: it stops as soon as a file would be the
+    /// `max_files + 1`th, where trimming afterwards would bound neither time nor memory.
+    /// [`ReadableWalk`] says whether anything was left.
     pub fn walk_readable(
         &self,
         root: &Path,
         max_files: usize,
     ) -> Result<ReadableWalk, SandboxError> {
-        // One check for the root, and so one audit decision for the walk. Checking every
-        // entry would emit thousands of "agent read this" records for files never opened,
-        // corrupting the trail it feeds.
+        // One check for the root, and so one audit decision for the walk: checking every
+        // entry would put thousands of "agent read this" records on the trail for files
+        // never opened.
         let root = self.check_read(root)?;
 
         let mut files = Vec::new();
         let mut stack = vec![root];
-        // Checked where a file enters the result, not once per directory: directories do
-        // not count toward the cap, and a tree that exactly fits has nothing to report.
+        // Set where a file enters the result, so directories do not count toward the cap
+        // and a tree that exactly fits reports nothing.
         let mut truncated = false;
 
         'walk: while let Some(dir) = stack.pop() {
@@ -167,14 +158,13 @@ impl FsGuard {
                 };
 
                 // `dir` is canonical and `read_dir` never yields `.` or `..`, so a
-                // non-symlink child is canonical too — no `canonicalize` per entry. Only
-                // a symlink can leave the root, and only those are re-checked.
+                // non-symlink child is canonical too — hence no `canonicalize` per entry,
+                // and only a symlink can leave the root.
                 if file_type.is_symlink() {
                     let link = entry.path();
-                    // Resolved here rather than through `check_read`, which would emit an
-                    // `allowed` record per symlink and undo the single decision above. A
-                    // dangling link is skipped silently — nothing to read — but one that
-                    // escapes the roots is recorded, since that is what the trail is for.
+                    // Not through `check_read`, which would emit an `allowed` record per
+                    // symlink and undo the single decision above. A dangling link is
+                    // nothing to read; one escaping the roots is what the trail is for.
                     let Ok(resolved) = link.canonicalize() else {
                         continue;
                     };
@@ -216,8 +206,8 @@ impl FsGuard {
 
     /// Permit writing `path`, returning its resolved location.
     ///
-    /// Unlike reads, the target need not exist — writes create files. Only the parent is
-    /// resolved, with the filename appended to it, so `..` is still collapsed first.
+    /// The target need not exist, writes creating files; only the parent is resolved, with
+    /// the filename appended, so `..` is still collapsed first.
     pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         let resolved = match canonicalize(path) {
             Ok(existing) => existing,
@@ -227,8 +217,8 @@ impl FsGuard {
                 };
 
                 // `canonicalize` fails the same way on a nonexistent path and on a
-                // *dangling* symlink. Resolving only the parent would approve the link,
-                // and the caller's write would then follow it out of the root.
+                // *dangling* symlink, and resolving only the parent would approve the
+                // link, whose write then follows it out of the root.
                 if path.symlink_metadata().is_ok_and(|m| m.is_symlink()) {
                     crate::AuditEvent::denied(
                         "write",
@@ -239,8 +229,8 @@ impl FsGuard {
                     return Err(not_allowed());
                 }
 
-                // The only inputs where the two halves disagree are `.`/`..`-tailed,
-                // refused either way, so one failure covers both.
+                // The only inputs where the halves disagree are `.`/`..`-tailed, refused
+                // either way, so one failure covers both.
                 let (parent, file_name) = path
                     .parent()
                     .zip(path.file_name())
@@ -271,9 +261,9 @@ fn canonicalize(path: &Path) -> Result<PathBuf, SandboxError> {
 
 /// Whether `resolved` sits inside one of `roots`.
 ///
-/// `Path::starts_with` compares whole components, not string prefixes: `/work-secrets`
-/// must not match the root `/work`. Audit-free, so the walk can reuse the membership
-/// rule without recording a decision per entry.
+/// `Path::starts_with` compares whole components, not string prefixes: `/work-secrets` must
+/// not match the root `/work`. Audit-free, so the walk can reuse the rule without recording
+/// a decision per entry.
 fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| resolved.starts_with(root))
 }
@@ -298,10 +288,8 @@ fn permit(
     }
 }
 
-/// Open an already-approved path without following a symlink at the leaf.
-///
-/// The path was canonical when checked, so if the final component is a symlink *now*, it
-/// was swapped in afterwards.
+/// Open an already-approved path without following a symlink at the leaf, which — the path
+/// having been canonical when checked — was swapped in after the check.
 fn open(
     options: &mut std::fs::OpenOptions,
     resolved: &Path,
@@ -320,8 +308,8 @@ fn open(
 
 /// The files a walk returned, and whether it stopped before the tree ended.
 ///
-/// A bool rather than a count: the walk stops at the cap, so it never learns how much
-/// tree was left. That is the cost of bounding the work instead of the answer.
+/// A bool rather than a count: the walk stops at the cap, so it never learns how much tree
+/// was left.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadableWalk {
     /// Readable regular files beneath the root, sorted.

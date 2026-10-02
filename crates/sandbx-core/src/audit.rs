@@ -2,23 +2,20 @@ use crate::{Axis, SandboxPolicy};
 
 /// `tracing` target carrying the audit trail.
 ///
-/// A dedicated target lets one subscriber route these to durable storage while
-/// ordinary diagnostics go elsewhere. The `sandbx` binary installs one that admits
-/// this target at `INFO` and drops everything else; see the `logging` module in
-/// `sandbx-cli`, named in prose because the dependency runs the other way.
+/// A dedicated target lets one subscriber route these to durable storage while ordinary
+/// diagnostics go elsewhere; `sandbx-cli`'s `logging` module installs one that admits this
+/// target at `INFO` and drops everything else.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
 
 /// Something the sandbox did, recorded so it can be reviewed afterwards.
 ///
-/// A product feature rather than debug output, so it is emitted at `INFO` and survives
-/// the default filter. Records *metadata only*, never a command's output: that a tool
-/// read a file is a different proposition from storing what the file contained.
+/// Emitted at `INFO`, so it survives the default filter. *Metadata only*, never a command's
+/// output: that a tool read a file is a different proposition from what the file contained.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
     Allowed {
-        /// Who asked: a tool's registry name, or a guard operation such as
-        /// `open_read`. A label to group records by, not a key to look up.
+        /// Who asked: a tool's registry name, or a guard operation such as `open_read`.
         tool: &'a str,
         /// What it acted on — a path, or the program being run.
         subject: &'a str,
@@ -30,23 +27,19 @@ pub enum AuditEvent<'a> {
         tool: &'a str,
         /// What it would have acted on, had the policy allowed it.
         subject: &'a str,
-        /// Why it was refused. "Denied" alone is not actionable.
+        /// Why it was refused; "denied" alone is not actionable.
         reason: &'a str,
     },
 
-    /// A best-effort hardening step did not take effect, and the sandbox carried on
-    /// without it.
+    /// A best-effort hardening step did not take effect, and the sandbox carried on.
     ///
-    /// Distinct from [`Denied`](Self::Denied): nothing the agent asked for was refused.
-    /// What the failure costs depends on the step, so `mechanism` carries that rather
-    /// than this variant implying one answer — a bounding set left as inherited is a
-    /// weaker sandbox, while an unmapped identity costs only uid fidelity. Recorded at
-    /// `INFO` either way: these steps fail on whole classes of host (AppArmor's
-    /// `restrict_unprivileged_userns`) rather than intermittently, so the run where it
-    /// matters is not the run where someone raised the log level.
+    /// Not a [`Denied`](Self::Denied): nothing the agent asked for was refused. What the
+    /// failure costs depends on the step, so `mechanism` carries that — a bounding set left
+    /// as inherited is a weaker sandbox, an unmapped identity costs only uid fidelity. At
+    /// `INFO` either way, these steps failing on whole classes of host (AppArmor's
+    /// `restrict_unprivileged_userns`) rather than intermittently.
     Degraded {
-        /// Which step did not take effect, as a stable label so a trail can be
-        /// filtered by it.
+        /// Which step did not take effect, as a stable label a trail can be filtered by.
         mechanism: &'a str,
         /// Why it did not, and what holds instead.
         detail: &'a str,
@@ -56,26 +49,19 @@ pub enum AuditEvent<'a> {
     Spawned {
         /// The program the sandbox is about to become.
         program: &'a str,
-        /// How many paths were readable, not which ones: inlining a long path list
-        /// would bury the spawn it accompanies.
+        /// How many paths were readable, not which ones.
         readable: usize,
         /// How many paths were writable.
         writable: usize,
-        /// Counted separately from `readable`, because execute is a distinct capability
-        /// and folding it in would understate what the spawn was granted.
+        /// How many paths were read-executable, counted apart from `readable`.
         executable: usize,
-        /// Whether IP egress was granted. Says nothing about unix sockets.
+        /// Whether IP egress was granted; says nothing about unix sockets.
         network: bool,
-        /// Recorded separately from `network`, being a distinct capability.
+        /// Whether unix-domain sockets were granted.
         unix_sockets: bool,
-        /// How long the environment allowlist is, not what is in it: a name is not a
-        /// secret, but a record listing names would invite the next change to list
-        /// values beside them.
-        ///
-        /// Its length, not the number of variables that end up crossing — a name the
-        /// harness does not hold is passed as nothing at all, so a default
-        /// `sandbx sandbox-run` records `env=7` where `TZ` and the `LC_*` pair are
-        /// unset and the command sees four.
+        /// How long the environment allowlist is, never the names in it — a record listing
+        /// names would invite the next change to list values beside them. Its length, not
+        /// the number that cross: a name the harness does not hold is passed as nothing.
         env: usize,
     },
 }
@@ -102,10 +88,9 @@ impl<'a> AuditEvent<'a> {
 
     /// Record a spawn, summarising the policy rather than reproducing it.
     ///
-    /// This record cannot derive its *fields* the way the enforcement layers derive their
-    /// rules, because `tracing` needs static field names. Instead the exhaustive match
-    /// makes an added axis a compile error, and each field names the axis it counts, so
-    /// nothing here depends on the table's order.
+    /// `tracing` needs static field names, so these cannot be derived from [`Axis::ALL`] the
+    /// way the enforcement layers derive their rules; the exhaustive match is what makes an
+    /// added axis a compile error.
     pub fn spawned(program: &'a str, policy: &SandboxPolicy) -> Self {
         let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
@@ -131,14 +116,11 @@ impl<'a> AuditEvent<'a> {
 
     /// Emit this event on the audit target.
     ///
-    /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]: `tracing`
-    /// drops an event with no subscriber, silently and at every level. A library cannot
-    /// install one without deciding for whoever embeds it, so anything embedding this
-    /// crate owes itself the same subscriber the `sandbx` binary installs.
-    ///
-    /// Which is why the re-exec'd helper never calls this: it installs no subscriber and
-    /// must not, its stderr being the sandboxed command's own, so the steps that run
-    /// there name what degraded over the channel `degradation.rs` describes.
+    /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]: `tracing` drops
+    /// an event with no subscriber, silently and at every level, and a library cannot
+    /// install one without deciding for whoever embeds it. Which is why the re-exec'd helper
+    /// never calls this — its stderr is the sandboxed command's own — and names what
+    /// degraded over the channel `degradation.rs` describes instead.
     pub fn emit(&self) {
         match self {
             Self::Allowed { tool, subject } => tracing::info!(
