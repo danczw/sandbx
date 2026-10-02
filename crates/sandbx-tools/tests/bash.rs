@@ -127,3 +127,19 @@ fn the_default_timeout_is_applied_without_being_asked_for() {
 
     assert_eq!(ctx.timeout(), sandbx_tools::DEFAULT_TIMEOUT);
 }
+
+/// A command that succeeds silently is the common case — `touch`, `mkdir -p`,
+/// `true` — and its result still has to be non-empty, since the Messages API
+/// rejects an empty `tool_result` and the turn dies with it.
+#[test]
+fn reports_a_silent_success_rather_than_returning_nothing() {
+    let ctx = context(SandboxPolicy::default().allow_system_executables());
+    let out = BuiltinTool::Bash
+        .execute(json!({ "command": "true" }), &ctx)
+        .unwrap();
+
+    assert!(
+        !out.content.trim().is_empty(),
+        "silent success returned empty content"
+    );
+}
