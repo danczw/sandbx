@@ -63,7 +63,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          rights.rs   rights_for, fs_rules
          tests/      unit tests: compat, grants, rules
 tests/               audit, capability_coverage, command, denylist,
-                     enforcement (38 real-kernel tests), fs_guard,
+                     enforcement (39 real-kernel tests), fs_guard,
                      helper_args, policy
 tests/support/       5 [[bin]] probes, required-features = ["sandbox-integration"]
 ```
