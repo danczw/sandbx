@@ -1,8 +1,8 @@
 //! Public contract of the Messages API request body.
 //!
-//! Exact wire shape matters here, not just "does it parse": a wrong tag name
-//! or an extra field the API doesn't expect fails the real request, and
-//! nothing in a type system catches that — only asserting the actual JSON does.
+//! Exact wire shape matters, not just "does it parse": a wrong tag name or an extra
+//! field the API does not expect fails the real request, and no type system catches
+//! that.
 
 use sandbx_providers::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 use serde_json::json;
@@ -86,9 +86,7 @@ fn roles_serialize_lowercase() {
     );
 }
 
-/// Matches the exact tool_use/tool_result shape the API round-trips in a
-/// multi-turn tool call — a wrong tag here breaks every agentic conversation,
-/// not just the first turn.
+/// The exact tool_use/tool_result shape the API round-trips in a multi-turn tool call.
 #[test]
 fn content_blocks_tag_by_type() {
     let text = ContentBlock::Text {

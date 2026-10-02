@@ -6,14 +6,11 @@ use crate::request::MessagesRequest;
 /// A test double that replays a canned sequence of events instead of calling
 /// a real API.
 ///
-/// Interchangeable with a real client through the return type alone:
-/// `stream_chat` hands back the same [`EventStream`] an [`AnthropicClient`] does.
-///
-/// Deliberately *not* a variant of a shared enum over the backends: a variant is
-/// part of the shipped surface permanently, where the `mock` feature can hide a
-/// whole module.
-///
-/// [`AnthropicClient`]: crate::AnthropicClient
+/// Interchangeable with a real client through the return type alone: `stream_chat`
+/// hands back the same [`EventStream`] an
+/// [`AnthropicClient`](crate::AnthropicClient) does. Not a variant of a shared enum
+/// over the backends, which would be part of the shipped surface permanently where
+/// the `mock` feature can hide a whole module.
 pub struct MockProvider {
     events: Vec<Result<AgentEvent, ProviderError>>,
 }
@@ -29,15 +26,10 @@ impl MockProvider {
         Self { events }
     }
 
-    /// Consumes `self` — a `MockProvider` is throwaway per-test canned data,
-    /// unlike [`AnthropicClient::stream_chat`], which takes `&self` because one
-    /// long-lived client serves many real turns.
-    ///
-    /// Returns the crate's [`EventStream`] rather than a bare `impl Stream`, so
-    /// the mock carries the same `FusedStream + Send` guarantees a caller gets
-    /// from the real client — that is the whole point of the alias.
-    ///
-    /// [`AnthropicClient::stream_chat`]: crate::AnthropicClient::stream_chat
+    /// Replays the canned sequence, consuming `self` — throwaway per-test data,
+    /// unlike [`AnthropicClient::stream_chat`](crate::AnthropicClient::stream_chat),
+    /// which takes `&self`. Returns the crate's [`EventStream`] so the mock carries
+    /// the same `FusedStream + Send` guarantees as the real client.
     pub async fn stream_chat(
         self,
         _request: MessagesRequest,

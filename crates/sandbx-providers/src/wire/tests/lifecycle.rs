@@ -14,9 +14,8 @@ async fn message_stop_ends_the_stream_with_a_stop_event() {
     );
 }
 
-/// `stop_reason` is nullable on the wire. The turn still ended, and the
-/// caller still has to be able to tell that apart from a truncated stream —
-/// so a `Stop` is emitted either way.
+/// `stop_reason` is nullable on the wire, and a truncated stream must still be
+/// distinguishable, so a `Stop` is emitted either way.
 #[tokio::test]
 async fn a_null_stop_reason_still_ends_the_turn_with_a_stop() {
     let out = ok_events(vec![
@@ -39,9 +38,8 @@ async fn a_null_stop_reason_still_ends_the_turn_with_a_stop() {
     );
 }
 
-/// A stop reason arriving before `message_stop` is held, not emitted: the
-/// stream ending is what ends the turn, so a connection that drops between
-/// the two is still reported as truncated rather than as a clean finish.
+/// A stop reason arriving before `message_stop` is held, not emitted: a connection
+/// dropping between the two is a truncated turn, not a clean finish.
 #[tokio::test]
 async fn a_stop_reason_without_message_stop_is_still_a_truncated_turn() {
     let out = events(vec![raw(
@@ -89,17 +87,14 @@ async fn an_in_band_error_event_ends_the_stream() {
     }
 }
 
-/// `unfold` panics outright if polled after it returns `None`, and this
-/// stream is handed to callers who may poll it once more — a `select!` arm
-/// that does not break on `None`, a stray `.next()` after a `while let`.
-/// Being fused is part of the contract, not an implementation detail.
+/// `unfold` panics if polled after it returns `None`, and callers may over-poll, so
+/// fusedness is part of the contract.
 #[tokio::test]
 async fn the_stream_is_fused_and_survives_being_over_polled() {
     use futures_util::StreamExt;
 
-    // Boxed only to poll it by hand: the stream holds the async body of
-    // `next_agent_event` and so is not `Unpin`, which `.collect()` (taking
-    // `self`) hides from every other test here but `.next()` does not.
+    // Boxed to poll it by hand: the stream holds the async body of
+    // `next_agent_event` and so is not `Unpin`, which `.next()` requires.
     let mut stream = Box::pin(event_stream(futures_util::stream::iter(vec![raw(
         r#"{"type":"message_stop"}"#,
     )])));
