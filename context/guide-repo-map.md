@@ -78,7 +78,7 @@ Public surface: `ExecutionContext`, `ToolError`, `ToolLimits`, `ToolOutput`,
 ## `sandbx-providers`
 
 ```
-src/lib.rs        Provider (closed enum), EventStream (boxed FusedStream)
+src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    anthropic.rs   AnthropicClient
    credentials.rs resolve_api_key, SecretString
    event.rs       AgentEvent, StopReason
@@ -92,8 +92,9 @@ tests/            anthropic_client, credentials, crypto_provider, error,
                   request_serialization
 ```
 
-No vendor SDK. `Provider` is a closed enum, not a trait object — though #90
-notes it is a one-adapter seam and `EventStream` is the real one.
+No vendor SDK, and no trait or enum over the backends: the seam is the
+`EventStream` return type, which every client's `stream_chat` hands back. #90
+deleted the one-variant `Provider` enum that used to sit in front of it.
 
 ## `sandbx-agent`
 

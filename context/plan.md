@@ -47,9 +47,10 @@ not reachable from the shipped binary.
 
 - **No `genai`, no `rig-core`** — hand-rolled `reqwest` + `rustls`. (An old
   diagram said "wraps genai"; the decision not to was the one that held.)
-- **The agent does not drive `Provider::stream_chat`.** The seam is a closure over
-  `EventStream`. #90 asked for this to be settled *before* the loop was written;
-  it was written first and the issue is still open.
+- **There is no provider object to drive.** The seam is a closure over
+  `EventStream`. #90 asked for this to be settled *before* the loop was written; it
+  was written first, and the `Provider` enum it bypassed has since been deleted —
+  `AnthropicClient::stream_chat` now returns the alias itself.
 - **`unsafe_code = "forbid"` workspace-wide**, `sandbx-core` included — the planned
   `deny`-plus-exemption for core was never needed. Zero `unsafe` in the workspace.
 - **Clippy exemption is four call sites**, each with a justification, not a
@@ -70,7 +71,6 @@ a release per security fix.
 
 | # | |
 |---|---|
-| #90 | `Provider` is a one-adapter seam; `EventStream` is the real one |
 | #89 | audit trail discarded — no crate installs a subscriber |
 | #42 | network is on/off only |
 | #41 | no design for credentials in sandboxed tool calls |
