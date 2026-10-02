@@ -262,10 +262,23 @@ mod tests {
         );
     }
 
+    /// `BPF_JMP | BPF_JEQ | BPF_K` — compare the loaded word against an
+    /// immediate. Internal to seccompiler like [`RET`], so also spelled out.
+    const JEQ: u16 = 0x15;
+
     /// The other half of the polarity: a syscall the filter *does* name gets
-    /// `EPERM`. Asserted alongside the fallthrough because either one alone
-    /// admits one of the two broken filters — allowing everywhere is as wrong as
+    /// `EPERM`. Needed alongside the fallthrough because either one alone admits
+    /// one of the two broken filters — allowing everywhere is as wrong as
     /// refusing everywhere, and only the pair rules both out (#91).
+    ///
+    /// Asserted at the one position that distinguishes the two actions. A plain
+    /// "`EPERM` appears somewhere" would not: seccompiler ends *every* syscall
+    /// chain with the mismatch action as well as the program, so swapping the two
+    /// scatters `EPERM` through a filter that blocks nothing. The match action is
+    /// the first `RET` after a syscall's comparison, the chain for an
+    /// unconditional entry being `jeq nr` / two jumps / `RET match` / `RET
+    /// mismatch`. Scanning forward to that first `RET` rather than indexing a
+    /// fixed offset keeps this off the exact shape of the jumps between them.
     ///
     /// What the kernel then does with the program is not in reach here; that is
     /// what the `sandbox-integration` suite spawns a process to establish. This
@@ -275,13 +288,26 @@ mod tests {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
         let eperm = u32::from(seccompiler::SeccompAction::Errno(libc::EPERM as u32));
 
-        assert!(
-            program
-                .iter()
-                .any(|insn| insn.code == RET && insn.k == eperm),
-            "nothing in the compiled filter returns EPERM, so nothing on the \
-             denylist is actually blocked ({} instructions)",
-            program.len()
+        // `ptrace` stands for the unconditional entries: it is on the denylist
+        // with no rules, so its chain takes the match action outright. The arch
+        // check and the `AF_UNIX` comparison both compare other values, so this
+        // matches one instruction.
+        let nr = u32::try_from(libc::SYS_ptrace).unwrap();
+        let compared = program
+            .iter()
+            .position(|insn| insn.code == JEQ && insn.k == nr)
+            .unwrap_or_else(|| panic!("the filter never compares against ptrace ({nr})"));
+
+        let on_match = program[compared..]
+            .iter()
+            .find(|insn| insn.code == RET)
+            .expect("a syscall chain ends in a return");
+
+        assert_eq!(
+            on_match.k, eperm,
+            "ptrace matches and then returns {:#x} instead of EPERM, so the \
+             denylist is not what the filter refuses: {on_match:?}",
+            on_match.k
         );
     }
 }
