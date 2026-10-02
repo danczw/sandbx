@@ -121,7 +121,7 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
     // of a pipe the parent reads audit records from; the stage below becomes the sandboxed
     // command, which must not inherit a descriptor it could write forged records into —
     // or hold open, leaving the parent waiting on an EOF that never comes. Pinned by
-    // `the_sandboxed_command_cannot_write_the_audit_channel`.
+    // `the_command_cannot_write_the_audit_channel`.
     //
     // Conditional on the same flag as the write, because the flag is what says fd 0 *is* a
     // channel. Without it nothing was written there, so stdin stays inherited — which a
@@ -228,7 +228,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     // A returned error and not an `assert!`: `dispatch_helper_mode` is exhaustive so that a
     // helper run cannot end without either running the command or reporting why not, and a
     // panic leaves through neither. The message names no variable, for the reason
-    // `records_how_many_variables_a_spawn_passed_not_which` gives.
+    // `records_how_many_variables_passed_not_which` gives.
     let allowed_env = request.policy.allowed_env();
     if std::env::vars_os()
         .any(|(name, _)| !allowed_env.iter().any(|allowed| name == allowed.as_str()))
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn a_signalled_death_is_reported_as_128_plus_the_signal() {
+    fn a_signalled_death_reports_128_plus_the_signal() {
         for signal in [libc::SIGKILL, libc::SIGSEGV, libc::SIGPIPE] {
             assert_eq!(
                 exit_code(&killed_by(signal)),
@@ -360,7 +360,7 @@ mod tests {
     /// encoding differently, the test says so instead of quietly re-testing the signal arm
     /// above.
     #[test]
-    fn a_status_that_is_neither_an_exit_nor_a_death_reports_failure() {
+    fn a_status_that_is_neither_exit_nor_death_fails() {
         use std::os::unix::process::ExitStatusExt;
 
         // 0x7f in the low byte is `WSTOPPED`; the signal that stopped it sits above,

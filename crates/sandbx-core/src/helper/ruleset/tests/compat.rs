@@ -31,7 +31,7 @@ fn an_abi_verdict(abi: landlock::ABI) -> landlock::RulesetError {
 ///
 /// Still an ABI verdict, so still steppable: landlock reports `Incompatible` rather than
 /// `PartiallyCompatible` when the supported set is empty, which makes this the realistic
-/// error for the host [`a_kernel_below_the_baseline_is_refused_as_unsupported`] models.
+/// error for the host [`a_kernel_below_the_baseline_is_unsupported`] models.
 fn no_abi_at_all(abi: landlock::ABI) -> landlock::RulesetError {
     use landlock::{
         Access, AccessError, AccessFs, CompatError, HandleAccessError, HandleAccessesError,
@@ -147,7 +147,7 @@ fn an_abi_verdict_steps_down_exactly_one_rung() {
 /// 6.10" for a cause unrelated to the floor. `SandboxError` carries no `PartialEq`, so
 /// `matches!` is the tool. The recorded walk is a second, independent witness.
 #[test]
-fn a_non_verdict_error_refuses_rather_than_stepping_down() {
+fn a_non_verdict_error_refuses_without_stepping_down() {
     let top = NEGOTIABLE_ABI[0];
 
     let mut asked = Vec::new();
@@ -179,10 +179,10 @@ fn a_non_verdict_error_refuses_rather_than_stepping_down() {
 /// The floor `BASELINE_ABI` documents: every rung is an ABI verdict, the walk exhausts
 /// the ladder, and what comes back names the baseline this build requires.
 ///
-/// This refusal and [`a_non_verdict_error_refuses_rather_than_stepping_down`]'s must stay
+/// This refusal and [`a_non_verdict_error_refuses_without_stepping_down`]'s must stay
 /// distinguishable: "this kernel is too old" versus "the kernel objected, here is why".
 #[test]
-fn a_kernel_below_the_baseline_is_refused_as_unsupported() {
+fn a_kernel_below_the_baseline_is_unsupported() {
     let mut asked = Vec::new();
     let outcome = negotiated_abi_from(|abi| {
         asked.push(abi);

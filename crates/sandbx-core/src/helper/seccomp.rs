@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn socket_is_blocked_only_while_unix_sockets_are_withheld() {
+    fn socket_is_blocked_only_while_unix_is_withheld() {
         let denied = blocked_syscalls(&SandboxPolicy::default()).unwrap();
         assert!(
             denied.contains_key(&libc::SYS_socket),
@@ -642,7 +642,7 @@ mod tests {
     }
 
     #[test]
-    fn socket_is_refused_for_af_unix_and_allowed_for_af_inet() {
+    fn socket_refuses_af_unix_and_allows_af_inet() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
 
         assert_eq!(
@@ -665,7 +665,7 @@ mod tests {
     /// a `Qword` filter sees a non-zero high half, finds no match, and allows it. The test
     /// above leaves the high half zero and so passes against either width.
     #[test]
-    fn the_af_unix_comparison_ignores_the_high_half_of_the_domain_argument() {
+    fn the_af_unix_test_ignores_the_domains_high_half() {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
         let noise = 0xdead_beef_0000_0000 | libc::AF_UNIX as u64;
 
@@ -748,7 +748,7 @@ mod tests {
     /// denylist opens, the fallthrough closes, and the conditional rule inverts with the
     /// unconditional ones.
     #[test]
-    fn inverting_the_filters_two_actions_inverts_every_verdict() {
+    fn inverting_the_two_actions_inverts_every_verdict() {
         let program = inverted_filter(&SandboxPolicy::default());
 
         assert_eq!(

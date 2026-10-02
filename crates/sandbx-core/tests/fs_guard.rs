@@ -166,7 +166,7 @@ fn write_to_new_file_beside_a_symlink_still_works() {
 /// descends into one regardless of the check.
 #[cfg(unix)]
 #[test]
-fn walk_does_not_follow_a_symlink_to_a_file_outside_the_root() {
+fn walk_does_not_follow_a_symlink_out_of_the_root() {
     let root = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let secret = elsewhere.path().join("secret.txt");
@@ -278,7 +278,7 @@ fn refusals_outside_the_policy_are_indistinguishable() {
 }
 
 #[test]
-fn write_refusals_outside_the_policy_are_indistinguishable() {
+fn write_refusals_outside_the_policy_look_alike() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let exists = elsewhere.path().join("exists.txt");
@@ -303,7 +303,7 @@ fn write_refusals_outside_the_policy_are_indistinguishable() {
 /// discloses nothing the caller was not entitled to learn — and a model told only
 /// "refused" would retry a path it is allowed to use.
 #[test]
-fn a_missing_file_inside_an_allowed_root_still_says_so() {
+fn a_missing_file_in_an_allowed_root_says_so() {
     let root = tempfile::tempdir().unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
 
@@ -319,7 +319,7 @@ fn a_missing_file_inside_an_allowed_root_still_says_so() {
 }
 
 #[test]
-fn a_missing_file_in_an_allowed_subdirectory_still_says_so() {
+fn a_missing_file_in_an_allowed_subdirectory_says_so() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("sub")).unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
@@ -333,7 +333,7 @@ fn a_missing_file_in_an_allowed_subdirectory_still_says_so() {
 }
 
 #[test]
-fn open_read_returns_a_usable_handle_inside_an_allowed_root() {
+fn open_read_returns_a_handle_in_an_allowed_root() {
     use std::io::Read;
 
     let root = tempfile::tempdir().unwrap();
@@ -348,7 +348,7 @@ fn open_read_returns_a_usable_handle_inside_an_allowed_root() {
 }
 
 #[test]
-fn open_read_refuses_a_path_outside_every_allowed_root() {
+fn open_read_refuses_a_path_outside_every_root() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     std::fs::write(elsewhere.path().join("secret.txt"), b"secret").unwrap();
@@ -478,7 +478,7 @@ fn every_axis_grants_exactly_what_the_table_says() {
 /// and `canonicalize` fails identically on that and on a path it may not traverse, so
 /// dropping denies rather than permits and leaves no error to report.
 #[test]
-fn a_root_that_cannot_be_resolved_is_dropped_rather_than_refused() {
+fn an_unresolvable_root_is_dropped_not_refused() {
     let root = tempfile::tempdir().unwrap();
     let absent = root.path().join("not-created-yet");
     let real = root.path().join("notes.txt");

@@ -84,7 +84,7 @@ nothing, but stage 2 becomes the sandboxed command, and an inherited write end
 would let it forge records on sandbx's audit trail — or hold the pipe open and
 leave sandbx waiting on an EOF that never comes.
 
-It is pinned by `the_sandboxed_command_cannot_write_the_audit_channel`, and the
+It is pinned by `the_command_cannot_write_the_audit_channel`, and the
 test was checked by removing the line: without it the command's `printf` lands on
 the trail as `decision=degraded mechanism=capability_bounding_set`. That check also
 caught a flaw in the test's own first draft — a literal tab in the script is an
@@ -117,7 +117,7 @@ Left as a documented limit rather than closed, and the alternative was weighed:
 `nix::unistd::dup2_stdin` could point stage 1's fd 0 at `/dev/null` once the
 records are written, which would shut the window. It was not added, because it and
 the `Stdio::null()` above would mask each other — with both in place neither one's
-removal makes `the_sandboxed_command_cannot_write_the_audit_channel` fail, and the
+removal makes `the_command_cannot_write_the_audit_channel` fail, and the
 guard that matters would stop being the guard that is tested. One barrier on the
 path untrusted code actually takes, demonstrably load-bearing, beats two that each
 look optional. A policy granting `/proc` write hands the command worse than this
