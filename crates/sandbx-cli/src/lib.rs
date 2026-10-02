@@ -35,11 +35,13 @@ pub struct Cli {
 pub enum Command {
     /// Run a command under the sandbox and report what it did.
     ///
-    /// Everything is denied unless a flag grants it, except read access to the
-    /// system binaries and libraries a command needs in order to start. The
-    /// command runs under Landlock, an empty network namespace and a seccomp
-    /// filter; on a kernel that cannot enforce those, it is refused rather than
-    /// run unrestricted.
+    /// Everything is denied unless a flag grants it, except what a command needs
+    /// in order to start: read access to the system binaries and libraries, and
+    /// a handful of environment variables. The rest of the environment is
+    /// cleared, so a secret in the shell that launched `sandbx` does not reach
+    /// the command. The command runs under Landlock, an empty network namespace
+    /// and a seccomp filter; on a kernel that cannot enforce those, it is
+    /// refused rather than run unrestricted.
     ///
     /// Put the command after `--`:
     ///
@@ -89,6 +91,18 @@ pub struct SandboxRun {
     #[arg(long = "allow-unix-sockets")]
     allow_unix_sockets: bool,
 
+    /// Let the command inherit an environment variable. Repeatable.
+    ///
+    /// Names a variable, and takes its value from `sandbx`'s own environment —
+    /// there is no way to set one from here. Everything not named is dropped
+    /// before the command starts, so a secret in the shell that launched
+    /// `sandbx` does not reach it.
+    ///
+    /// The variables a command needs in order to start are granted anyway:
+    /// `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE` and `TZ`.
+    #[arg(long = "allow-env", value_name = "NAME")]
+    allow_env: Vec<String>,
+
     /// Kill the command if it runs longer than this many seconds.
     ///
     /// Unset means no limit, matching a plain shell. The agent sets one of its
@@ -124,13 +138,19 @@ impl SandboxRun {
     /// Starts from [`SandboxPolicy::default`], which grants nothing, so an
     /// unmentioned axis stays denied.
     ///
-    /// The one unconditional grant is read access to the system binaries and
-    /// libraries a command needs to start — without it this subcommand can run
-    /// nothing at all, and the resulting `exec` permission error names neither
-    /// the cause nor the fix. The user's own files, writes and network all stay
-    /// denied.
+    /// Two unconditional grants, both for the same reason: without them this
+    /// subcommand can run nothing at all, and the resulting error names neither
+    /// the cause nor the fix. Read access to the system binaries and libraries a
+    /// command needs to start, and the handful of environment variables it needs
+    /// to start — `PATH` above all, since without it a program named without a
+    /// leading `/` is looked up in the C library's fallback (`/bin:/usr/bin` on
+    /// glibc) and anything installed outside those two directories is simply not
+    /// found. The user's own files, writes, network and every other variable all
+    /// stay denied.
     pub fn policy(&self) -> SandboxPolicy {
-        let mut policy = SandboxPolicy::default().allow_system_executables();
+        let mut policy = SandboxPolicy::default()
+            .allow_system_executables()
+            .allow_standard_env();
 
         for axis in Axis::ALL {
             for path in self.paths(axis) {
@@ -149,6 +169,10 @@ impl SandboxRun {
                     policy = policy.grant(Axis::Read, path);
                 }
             }
+        }
+
+        for name in &self.allow_env {
+            policy = policy.allow_env(name);
         }
 
         if self.allow_network {
