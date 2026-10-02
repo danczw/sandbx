@@ -1,8 +1,9 @@
 //! Public contract of [`run_turn`]: what one streamed turn becomes.
 //!
 //! Every test drives the loop through the closure seam `run_turn` is generic
-//! over, with `MockProvider` on the other side of it, so the whole suite runs
-//! with no network access and no API key. Assertions on the rebuilt history go
+//! over, with the local [`Script`] on the other side of it — deliberately not
+//! `MockProvider`, for the reasons given there — so the whole suite runs with no
+//! network access and no API key. Assertions on the rebuilt history go
 //! through `serde_json::to_value`, because `ContentBlock` is `Serialize`-only and
 //! has no `PartialEq` to compare against.
 
