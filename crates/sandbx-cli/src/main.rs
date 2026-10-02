@@ -12,13 +12,24 @@ fn main() -> std::process::ExitCode {
     // this same binary as its helper, and in that mode the process restricts
     // itself and becomes the target command. The wrapper owns the other half —
     // a failed helper run ends the process rather than falling through to here.
-    sandbx_core::with_helper_dispatch(std::env::args_os(), || match Cli::parse().command {
-        Command::SandboxRun(args) => match args.execute() {
-            Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(1)),
-            Err(error) => {
-                eprintln!("sandbx: {error}");
-                std::process::ExitCode::FAILURE
-            }
-        },
+    sandbx_core::with_helper_dispatch(std::env::args_os(), || {
+        // Inside the closure, never above it. In helper mode this same process
+        // becomes the sandboxed command, and the parent captures and forwards its
+        // stderr verbatim — a subscriber installed above would write sandbx's own
+        // records into the output of the command being sandboxed. Warn and carry
+        // on: an unrecorded run still beats no run.
+        if let Err(error) = sandbx_cli::logging::init() {
+            eprintln!("sandbx: audit trail unavailable: {error}");
+        }
+
+        match Cli::parse().command {
+            Command::SandboxRun(args) => match args.execute() {
+                Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                Err(error) => {
+                    eprintln!("sandbx: {error}");
+                    std::process::ExitCode::FAILURE
+                }
+            },
+        }
     })
 }

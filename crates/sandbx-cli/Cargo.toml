@@ -19,6 +19,29 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
 sandbx-core = { path = "../sandbx-core" }
+# The audit trail is a product feature of `sandbx-core`, but `tracing` discards
+# every event when no subscriber is installed — which is what shipped until #89:
+# `RUST_LOG=trace sandbx sandbox-run …` printed nothing at all. A library cannot
+# install one, so the binary does, and this crate owns that one subscriber.
+#
+# `default-features = false` drops three of the five defaults: `ansi`
+# (`logging::subscriber` forces colour off, so `nu-ansi-term` would be linked and
+# never used), `tracing-log` (nothing in the workspace logs through the `log`
+# facade) and `smallvec` (a span-registry optimisation for a subscriber that
+# records no spans). `fmt` pulls in `registry` and `std` on its own, which is the
+# whole of what the layer needs. `env-filter` is deliberately absent: the audit
+# filter is `filter::Targets`, which is not behind that feature, so it costs no
+# `matchers`/`regex-automata`.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+  "fmt",
+] }
+
+[dev-dependencies]
+# Already in the tree as a dependency of `sandbx-core`; named here because
+# `audit_log` has to *emit* a non-audit event to prove the filter drops it, and
+# an integration test can only reach a dependency it names itself. No new crate
+# enters the tree.
+tracing = "0.1.44"
 
 [lints]
 workspace = true

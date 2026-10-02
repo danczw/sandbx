@@ -1161,6 +1161,8 @@ version = "0.1.0-alpha.5"
 dependencies = [
  "clap",
  "sandbx-core",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
