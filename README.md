@@ -35,6 +35,24 @@ Everything is denied unless a flag grants it. The one exception is read access
 to the system binaries and libraries a command needs in order to start — with
 nothing readable, not even `/bin/true` reaches `main`.
 
+Each run also records the policy it was about to run under, on stderr:
+
+```console
+$ sandbx sandbox-run --allow-read /srv -- /bin/true
+2026-10-02T09:11:52.287465Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network=false unix_sockets=false
+```
+
+Read `spawned` as the intent to spawn, not its success: the record is written
+before the helper execs, so it appears for a command that then fails to start, and
+a run killed by `--timeout` gets no closing record. What the record is for is the
+policy — what the command was granted — and that is settled before it runs.
+
+It is metadata only, never a command's output, and it never touches stdout: the
+command's own stdout is forwarded untouched, so piping it is unaffected. To keep
+only the record, `2>&1 >/dev/null | grep sandbx::audit`. Note that `2>/dev/null`
+discards the sandboxed command's own stderr along with the record — including the
+permission denials the examples above are there to show.
+
 | flag | grants |
 |------|--------|
 | `--allow-read PATH`  | read access to `PATH`. Repeatable |
