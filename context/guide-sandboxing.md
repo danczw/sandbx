@@ -182,9 +182,13 @@ is why a helper invoked **directly**, with no `sandbx` above it, is sanitised
 rather than trusted.
 
 `default()` is empty, so there is no `PATH` unless something grants one, and a
-bare program name is then resolved against the C library's fallback
-(`/bin:/usr/bin` on glibc) — `cat` starts, `/usr/local/bin/anything` is not
-found. The CLI calls
+bare program name is then resolved against whatever default the lookup falls back
+to — `execvp`'s is the C library's (`/bin:/usr/bin` on glibc), a shell's is its
+own compiled-in one (wider: dash and bash include `/usr/local/bin` and the `sbin`
+directories). So `cat` starts either way, `~/.cargo/bin/anything` starts neither
+way, and `/usr/local/bin/anything` depends on which spawned it. Partial and
+inconsistent, which is the reason to grant `PATH` rather than reason about it. The
+CLI calls
 `allow_standard_env()`; library callers either do the same or pass an absolute
 path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 `decision-environment-allowlist.md`.

@@ -208,18 +208,25 @@ impl SandboxPolicy {
     /// is read from the harness's own environment at spawn time, so a name that
     /// is unset there contributes nothing rather than an empty value.
     ///
-    /// A name containing `=` or a NUL is skipped, on the same basis as
-    /// [`allow_system_executables`] skipping a path this system lacks — neither
-    /// can be expressed to the kernel, so dropping it is the conservative
-    /// choice. Skipping it here rather than refusing it later is also what keeps
-    /// the helper wire format round-tripping: nothing `encode` can emit is
-    /// something `decode` rejects.
+    /// An empty name, or one containing `=` or a NUL, is skipped, on the same
+    /// basis as [`allow_system_executables`] skipping a path this system lacks —
+    /// none of them can name a variable that could ever be found, so dropping
+    /// them is the conservative choice. Skipping here rather than refusing later
+    /// is also what keeps the helper wire format round-tripping: nothing `encode`
+    /// can emit is something `decode` rejects.
+    ///
+    /// A name is **not** deduplicated, matching the path grants, which do not
+    /// either. Repeating one passes the same variable once, so the only trace is
+    /// the audit count — which records the allowlist's length and says so.
+    ///
+    /// `sandbx`'s own `--allow-env` refuses what this skips, because a person at
+    /// a terminal needs to be told; see `variable_name` in `sandbx-cli`.
     ///
     /// [`allow_system_executables`]: Self::allow_system_executables
     #[must_use]
     pub fn allow_env(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
-        if !name.contains('=') && !name.contains('\0') {
+        if !name.is_empty() && !name.contains('=') && !name.contains('\0') {
             self.env.push(name);
         }
         self
@@ -229,11 +236,20 @@ impl SandboxPolicy {
     ///
     /// The environment counterpart of [`allow_system_executables`], and needed
     /// for the same reason: with an empty allowlist there is no `PATH`, and a
-    /// program named without a leading `/` is then looked up in whatever the C
-    /// library uses when `PATH` is unset — `/bin:/usr/bin` on glibc. So `cat`
-    /// still starts and anything installed elsewhere does not, which is a worse
-    /// failure than a flat one: it surfaces as `No such file or directory` for
-    /// one program and not the next, naming neither the cause nor the fix.
+    /// program named without a leading `/` is then looked up in whatever default
+    /// the thing doing the lookup falls back to. Which is not one answer — the
+    /// failure is partial either way, and that is what makes it confusing:
+    ///
+    /// - A direct spawn goes through `execvp`, which uses the C library's
+    ///   fallback. On glibc that is `confstr(_CS_PATH)`, i.e. `/bin:/usr/bin`.
+    /// - A spawn through a shell gets the shell's own compiled-in default
+    ///   instead, which is wider — dash and bash both include `/usr/local/bin`
+    ///   and the `sbin` directories.
+    ///
+    /// So `cat` starts in both cases, and a program in `~/.cargo/bin` starts in
+    /// neither. The symptom is `No such file or directory` for one program and
+    /// not the next, naming neither the cause nor the fix, which is worse than a
+    /// flat failure would be.
     ///
     /// A caller that always passes an absolute program path does not need this.
     /// Every test in `sandbx-core` does exactly that, which is why the default

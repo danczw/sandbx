@@ -227,12 +227,19 @@ fn standard_env_carries_path() {
 /// A name that cannot be expressed is dropped rather than carried, the same way
 /// `allow_system_executables` drops a path this system lacks.
 ///
-/// `=` would make the wire format ambiguous and `NUL` cannot cross `exec` at
-/// all. Dropping at the gate is what keeps `HelperArgs` round-tripping: nothing
-/// `encode` can emit is something `decode` refuses.
+/// `=` would make the wire format ambiguous, `NUL` cannot cross `exec` at all,
+/// and the empty string can never match a variable — `std::env::var_os("")` is
+/// always `None` — so carrying it would put a token on the helper wire that
+/// nothing could ever satisfy. Dropping at the gate is what keeps `HelperArgs`
+/// round-tripping: nothing `encode` can emit is something `decode` refuses.
+///
+/// `sandbx`'s own `--allow-env` refuses all of these loudly instead; see
+/// `a_name_with_a_value_is_refused_rather_than_dropped` in the CLI's tests. The
+/// split is deliberate: a caller composing a policy in code gets the conservative
+/// drop, a person typing a flag gets told.
 #[test]
 fn allow_env_skips_a_name_it_could_not_encode() {
-    for bad in ["FOO=bar", "FOO\0BAR", "=", "\0"] {
+    for bad in ["FOO=bar", "FOO\0BAR", "=", "\0", ""] {
         let policy = SandboxPolicy::default().allow_env(bad);
 
         assert!(

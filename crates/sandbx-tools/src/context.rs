@@ -34,6 +34,22 @@ pub struct ExecutionContext {
 
 impl ExecutionContext {
     /// Resolve `policy` into a context tools can execute against.
+    ///
+    /// The policy is taken as given, including the parts a caller is likely to
+    /// forget. `bash` needs [`SandboxPolicy::allow_system_executables`] to start
+    /// anything at all, and since #98 it also runs with **exactly** the
+    /// environment the policy names — which for a default policy is none, so no
+    /// `PATH` and no `HOME`. A shell falls back to its own compiled-in search
+    /// path, so `echo` and `/usr/bin` tools still work, but a program in
+    /// `~/.cargo/bin` is not found and `git` or `cargo` misbehave with `HOME`
+    /// unset.
+    ///
+    /// Nothing is added here on the caller's behalf. An agent harness that wants
+    /// the ordinary thing calls
+    /// `allow_system_executables().allow_standard_env()`, the pair `sandbx
+    /// sandbox-run` uses; a harness that wants a tool to see a credential names
+    /// it with [`SandboxPolicy::allow_env`]. Granting either silently here would
+    /// put the decision in the layer that cannot see the agent's threat model.
     pub fn new(policy: SandboxPolicy) -> Self {
         Self {
             guard: FsGuard::new(&policy),

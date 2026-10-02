@@ -84,10 +84,18 @@ pub enum AuditEvent<'a> {
         /// Recorded separately from `network`: it is a distinct capability, and
         /// folding it in would understate the reach of the spawn.
         unix_sockets: bool,
-        /// How many environment variables the command inherited, not which: the
-        /// same basis as the path counts. A name is not a secret, but a value
+        /// How long the environment allowlist is, not what is in it: the same
+        /// basis as the path counts. A name is not a secret, but a value
         /// routinely is, and a record that listed names would invite the next
         /// change to list values beside them.
+        ///
+        /// The allowlist's length, deliberately, and not the number of variables
+        /// that end up crossing — a name the harness does not hold is passed as
+        /// nothing at all, so the two differ (a default `sandbx sandbox-run`
+        /// records `env=7` on a host where `TZ` and the `LC_*` pair are unset,
+        /// and the command sees four). Like `readable`, this records what the
+        /// policy granted rather than what the command went on to use: the record
+        /// is written before the spawn, and what it is for is the decision.
         env: usize,
     },
 }

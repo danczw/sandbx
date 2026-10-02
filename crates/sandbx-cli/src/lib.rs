@@ -100,7 +100,7 @@ pub struct SandboxRun {
     ///
     /// The variables a command needs in order to start are granted anyway:
     /// `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE` and `TZ`.
-    #[arg(long = "allow-env", value_name = "NAME")]
+    #[arg(long = "allow-env", value_name = "NAME", value_parser = variable_name)]
     allow_env: Vec<String>,
 
     /// Kill the command if it runs longer than this many seconds.
@@ -116,6 +116,35 @@ pub struct SandboxRun {
     // would reach `--help`, so this stays an ordinary comment.
     #[arg(last = true, required = true, value_name = "COMMAND")]
     command: Vec<String>,
+}
+
+/// Accept a name `--allow-env` can actually pass, and refuse anything else.
+///
+/// `SandboxPolicy::allow_env` *skips* a name it cannot encode, which is the right
+/// answer for a caller composing a policy in code. It is the wrong answer here,
+/// because the person typing it believes they granted something: someone reaching
+/// for `export` habits writes `--allow-env TOKEN=secret`, the policy drops it
+/// silently, and the command then fails for a reason that names neither the flag
+/// nor the variable. Worse, they walk away believing the secret was passed.
+///
+/// So the CLI refuses loudly where the library skips quietly, and says what to
+/// write instead. `=` is the one worth a tailored message, since it is the
+/// mistake a habit produces rather than a typo.
+fn variable_name(value: &str) -> Result<String, String> {
+    if let Some((name, _)) = value.split_once('=') {
+        return Err(format!(
+            "expected a variable name, not `NAME=VALUE`: \
+             --allow-env takes the value from sandbx's own environment, \
+             so write `--allow-env {name}`"
+        ));
+    }
+    if value.is_empty() {
+        return Err("expected a variable name, but this one is empty".to_string());
+    }
+    if value.contains('\0') {
+        return Err("a variable name cannot contain a NUL byte".to_string());
+    }
+    Ok(value.to_string())
 }
 
 impl SandboxRun {
