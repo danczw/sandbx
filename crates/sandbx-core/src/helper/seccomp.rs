@@ -143,24 +143,42 @@ fn blocked_syscalls(
     Ok(rules)
 }
 
-/// Compile [`blocked_syscalls`] into a seccomp filter and install it.
+/// Compile [`blocked_syscalls`] into the BPF program [`deny_dangerous_syscalls`]
+/// installs.
 ///
-/// Blocked calls return `EPERM` rather than killing the process. The syscall
-/// does not execute either way; `EPERM` is what tools already expect on hardened
+/// Split out for the same reason as [`blocked_syscalls`] above, and to make the
+/// filter's *polarity* assertable without a kernel: swap the two actions below
+/// and the result allows the denylist and `EPERM`s everything else, which only
+/// the kernel-backed suite noticed — as nine failures naming nothing (#91).
+///
+/// Blocked calls return `EPERM` rather than killing the process. The syscall does
+/// not execute either way; `EPERM` is what tools already expect on hardened
 /// systems, so they fail that operation instead of dying mid-run.
-pub(super) fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
-    use seccompiler::{BpfProgram, SeccompAction, SeccompFilter};
+///
+/// The two actions are positional and of the same type, so the compiler cannot
+/// tell them apart — hence the named bindings, and the tests below.
+fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProgram, SandboxError> {
+    use seccompiler::{SeccompAction, SeccompFilter};
+
+    // `SeccompFilter::new` takes the mismatch action before the match one: every
+    // syscall the filter does not name, then the ones it does.
+    let unlisted = SeccompAction::Allow;
+    let listed = SeccompAction::Errno(libc::EPERM as u32);
 
     let filter = SeccompFilter::new(
         blocked_syscalls(policy)?,
-        SeccompAction::Allow,
-        SeccompAction::Errno(libc::EPERM as u32),
+        unlisted,
+        listed,
         std::env::consts::ARCH.try_into().map_err(seccomp_failed)?,
     )
     .map_err(seccomp_failed)?;
 
-    let program: BpfProgram = filter.try_into().map_err(seccomp_failed)?;
-    seccompiler::apply_filter(&program).map_err(seccomp_failed)
+    filter.try_into().map_err(seccomp_failed)
+}
+
+/// Install the filter [`compiled_filter`] builds.
+pub(super) fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+    seccompiler::apply_filter(&compiled_filter(policy)?).map_err(seccomp_failed)
 }
 
 fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
