@@ -598,3 +598,40 @@ fn the_documented_call_shape_compiles_and_stays_spawnable(
         |_| {},
     ));
 }
+
+/// A round that produces nothing *after* tools have run is not a finished turn.
+///
+/// `a_round_that_produced_nothing_appends_no_message` covers the other shape of
+/// this: an empty first round, where there is nothing to hand back and `Ok` with
+/// an empty transcript is right. Here the transcript ends in the `tool_result`
+/// the model never answered, and handing that back as success breaks the *next*
+/// request — the caller appends its own user message after it, and the API
+/// rejects two consecutive user turns with `roles must alternate between "user"
+/// and "assistant"`. Same treatment as `RoundLimit`, for the same reason.
+#[tokio::test]
+async fn a_turn_that_ends_on_an_empty_round_mid_tool_use_is_an_error() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        // Answered the tool, then said nothing at all.
+        vec![stop(StopReason::EndTurn)],
+    ]);
+
+    let error = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx,
+        |_| {},
+    )
+    .await
+    .expect_err("a transcript ending in an unanswered tool_result is not a turn");
+
+    assert!(matches!(error, TurnError::EndedMidToolUse), "got {error:?}");
+}
