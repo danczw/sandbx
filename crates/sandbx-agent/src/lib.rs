@@ -12,8 +12,10 @@
 //! closure that opens an event stream, so the whole loop runs against a canned
 //! stream with no network access and no API key.
 
+mod compact;
 mod error;
 mod turn;
 
+pub use compact::Compaction;
 pub use error::TurnError;
-pub use turn::{Turn, TurnLimits, run_turn};
+pub use turn::{PromptUsage, Turn, TurnLimits, TurnOutcome, run_turn};

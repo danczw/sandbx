@@ -115,8 +115,10 @@ deleted the one-variant `Provider` enum that used to sit in front of it.
 ## `sandbx-agent`
 
 ```
-src/lib.rs    re-exports: TurnError, Turn, TurnLimits, run_turn
+src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
+                          PromptUsage, Compaction, run_turn
    turn.rs    run_turn — generic over a stream-opening closure
+ compact.rs   which prefix of a history may be withheld (+ unit tests)
    error.rs   TurnError (6 variants)
 tests/turn_loop.rs
 ```
