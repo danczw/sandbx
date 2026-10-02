@@ -138,7 +138,7 @@ else. Three rungs of evidence, strongest first:
 
 | Rung | Where | Covers |
 |---|---|---|
-| a real kernel refuses the call | `tests/enforcement.rs` | 4 — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd`, plus the three `socket(AF_UNIX)` paths |
+| a real kernel refuses the call | `tests/enforcement.rs` | 4 of the 28 — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` rule, which is not a list entry |
 | the compiled program returns `EPERM` for it | `eval` in `helper/seccomp.rs` | all 28, and what the `AF_UNIX` rule compares against |
 | the documented set matches the list | `tests/denylist.rs` | all 28 |
 
