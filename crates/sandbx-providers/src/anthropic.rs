@@ -7,9 +7,8 @@ use crate::{credentials, ensure_crypto_provider_installed, sse, wire};
 
 /// A hand-rolled streaming client for the Anthropic Messages API.
 ///
-/// `Debug` is derived rather than hand-written: `SecretString`'s own `Debug`
-/// prints a redaction instead of the secret, and the derive picks up any field
-/// added later.
+/// `Debug` is derived rather than hand-written: `SecretString`'s own `Debug` prints
+/// a redaction instead of the secret, and the derive picks up any field added later.
 #[derive(Clone, Debug)]
 pub struct AnthropicClient {
     http: reqwest::Client,
@@ -18,29 +17,19 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
-    /// Where [`new`] points unless [`with_base_url`] overrides it.
-    ///
-    /// [`new`]: Self::new
-    /// [`with_base_url`]: Self::with_base_url
+    /// Where [`new`](Self::new) points unless
+    /// [`with_base_url`](Self::with_base_url) overrides it.
     pub const DEFAULT_BASE_URL: &'static str = "https://api.anthropic.com";
     const ANTHROPIC_VERSION: &'static str = "2023-06-01";
 
-    /// Builds a client against [`DEFAULT_BASE_URL`] with the given key.
-    ///
-    /// Installs the `ring` crypto provider first (see
-    /// [`ensure_crypto_provider_installed`]), since building a `reqwest::Client`
-    /// without one panics. Makes no network call, so every failure is local.
-    ///
-    /// [`DEFAULT_BASE_URL`]: Self::DEFAULT_BASE_URL
-    /// [`ensure_crypto_provider_installed`]: crate::ensure_crypto_provider_installed
+    /// Builds a client against [`DEFAULT_BASE_URL`](Self::DEFAULT_BASE_URL) with the
+    /// given key. Makes no network call, so every failure is local.
     pub fn new(api_key: SecretString) -> Result<Self, ProviderError> {
         Self::configured(api_key, Self::DEFAULT_BASE_URL)
     }
 
-    /// Builds a client from `ANTHROPIC_API_KEY`.
-    ///
-    /// Fails with [`ProviderError::MissingCredential`] if the variable is
-    /// unset or empty.
+    /// Builds a client from `ANTHROPIC_API_KEY`, failing with
+    /// [`ProviderError::MissingCredential`] if it is unset or empty.
     pub fn from_env() -> Result<Self, ProviderError> {
         Self::new(credentials::anthropic_api_key()?)
     }
@@ -48,16 +37,11 @@ impl AnthropicClient {
     /// Overrides the base URL; also the seam for a self-hosted
     /// Anthropic-compatible gateway, so public rather than `#[cfg(test)]`-gated.
     ///
-    /// Returns [`ProviderError::InvalidBaseUrl`] for anything that is not
-    /// `https://`, since every request carries the API key in a header. `http://`
-    /// to a loopback host is the one exception, for a local mock server.
-    ///
-    /// A trailing `/` is trimmed, so no doubled slash reaches `/v1/messages`. A
-    /// path prefix is allowed, but a query string, fragment or embedded
-    /// credentials are rejected: the endpoint appends `/v1/messages`, which would
-    /// land *before* a `?`, so such a URL would post somewhere other than where
-    /// it reads. Rebuilds the HTTP client, two of whose settings depend on where
-    /// it now points — see `build_http`.
+    /// [`ProviderError::InvalidBaseUrl`] for anything that is not `https://`, since
+    /// every request carries the API key in the `x-api-key` header; `http://` to a
+    /// loopback host is the one exception, for a local mock server. A trailing `/`
+    /// is trimmed, so no doubled slash reaches `/v1/messages`. Rebuilds the HTTP
+    /// client, two of whose settings depend on where it now points.
     pub fn with_base_url(self, base_url: impl Into<String>) -> Result<Self, ProviderError> {
         Self::configured(self.api_key, base_url)
     }
@@ -87,10 +71,10 @@ impl AnthropicClient {
 
     /// Opens a streamed turn against the Messages API.
     ///
-    /// The returned `Result` covers everything knowable before the first event —
-    /// transport failure, a non-2xx status — while anything that goes wrong once
-    /// events are flowing arrives as an `Err` item *in* the stream. Takes the
-    /// request by value, so a caller that may retry should clone it first.
+    /// The returned `Result` covers everything knowable before the first event;
+    /// anything that goes wrong once events are flowing arrives as an `Err` item
+    /// *in* the stream. Takes the request by value, so a caller that may retry
+    /// should clone it first.
     pub async fn stream_chat(
         &self,
         request: MessagesRequest,
@@ -119,8 +103,8 @@ impl AnthropicClient {
     }
 }
 
-/// What kind of endpoint a base URL points at, which decides two client
-/// settings that cannot be chosen before the URL is known.
+/// What kind of endpoint a base URL points at, which decides two client settings
+/// that cannot be chosen before the URL is known.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Reachability {
     /// An `https://` URL to anywhere.
@@ -131,13 +115,13 @@ enum Reachability {
 
 /// Accept `https://` anywhere, `http://` only to a loopback host.
 ///
-/// `Err` carries the operator-facing reason rather than a bool, so the error
-/// says which rule was broken.
+/// `Err` carries the operator-facing reason rather than a bool, so the error says
+/// which rule was broken.
 fn validate_base_url(base_url: &str) -> Result<Reachability, &'static str> {
     let url = reqwest::Url::parse(base_url).map_err(|_| "not a valid absolute URL")?;
-    // `/v1/messages` is appended to the path, so anything after it would end up
-    // mid-URL: a post to `https://host/v1/messages?x=1`, or a userinfo that puts
-    // a second credential on the wire.
+    // `/v1/messages` is appended to the path, so anything after it lands mid-URL: a
+    // post to `https://host/v1/messages?x=1`, or a userinfo that puts a second
+    // credential on the wire.
     if url.query().is_some() {
         return Err("a base URL may not carry a query string");
     }
@@ -157,9 +141,8 @@ fn validate_base_url(base_url: &str) -> Result<Reachability, &'static str> {
 
 /// Build the HTTP client for a base URL of the given kind.
 ///
-/// Installs the `ring` crypto provider first (see
-/// [`ensure_crypto_provider_installed`]), since building a `reqwest::Client`
-/// without one panics.
+/// Installs the crypto provider first (see [`ensure_crypto_provider_installed`]),
+/// since building a `reqwest::Client` without one panics.
 ///
 /// [`ensure_crypto_provider_installed`]: crate::ensure_crypto_provider_installed
 fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderError> {
@@ -168,27 +151,24 @@ fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderErr
         .connect_timeout(std::time::Duration::from_secs(10))
         // A read timeout, not `.timeout(..)`: the latter bounds the whole streamed
         // body and would kill a legitimately long generation, while this bounds
-        // *inactivity between chunks* and resets on every one, so a stalled or
-        // half-open connection cannot hang `stream_chat` forever. Anthropic sends
-        // `ping` frames throughout a turn, so 120s of total silence means the
-        // connection is gone, not that the model is thinking. Not a per-turn
-        // wall-clock bound; that belongs one layer up.
+        // inactivity between chunks and resets on every one. Anthropic sends `ping`
+        // frames throughout a turn, so 120s of total silence means the connection
+        // is gone, not that the model is thinking.
         .read_timeout(std::time::Duration::from_secs(120))
         // reqwest's cross-host redirect scrubbing only strips headers it knows are
         // credentials (`Authorization`, `Cookie`, `Proxy-Authorization`), never the
         // `x-api-key` the key travels in. Under the default policy a 3xx would
         // replay the key — and, for 307/308, the conversation body — to whatever
-        // host `Location` names. The Messages API never legitimately redirects.
+        // host `Location` names.
         .redirect(reqwest::redirect::Policy::none());
 
     builder = match reachability {
         // Belt and braces over `validate_base_url`: if a later code path ever sets
-        // a cleartext URL, the client refuses the request rather than sending the
-        // key.
+        // a cleartext URL, the client refuses rather than sending the key.
         Reachability::PublicHttps => builder.https_only(true),
-        // `system-proxy` is enabled, so reqwest honours `HTTP_PROXY`. For a
-        // loopback URL that would route an approved `http://127.0.0.1` request off
-        // the machine with `x-api-key` in cleartext, and loopback needs no proxy.
+        // `system-proxy` is enabled, so reqwest honours `HTTP_PROXY`. For a loopback
+        // URL that would route an approved `http://127.0.0.1` request off the machine
+        // with `x-api-key` in cleartext, and loopback needs no proxy.
         Reachability::LoopbackHttp => builder.no_proxy(),
     };
 
@@ -210,10 +190,9 @@ fn is_loopback_host(host: &str) -> bool {
 
 /// Turn a non-2xx response into the right `ProviderError` variant.
 ///
-/// A 429 becomes [`ProviderError::RateLimited`]; everything else becomes
+/// A 429 becomes [`ProviderError::RateLimited`], everything else
 /// [`ProviderError::ApiError`], parsed from the vendor's
-/// `{"type":"error","error":{...}}` envelope where present. Which of those are
-/// worth retrying is [`ProviderError::is_retryable`]'s job.
+/// `{"type":"error","error":{...}}` envelope where present.
 async fn map_error_response(
     status: reqwest::StatusCode,
     response: reqwest::Response,

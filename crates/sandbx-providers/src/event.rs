@@ -7,28 +7,22 @@ pub enum AgentEvent {
     ///
     /// Block boundaries are not recoverable: `content_block_stop` is surfaced only
     /// for a `tool_use` block, so a consumer rebuilding content coalesces
-    /// consecutive text blocks into one. Lossless for replay, and part of the
-    /// contract `run_turn` relies on.
+    /// consecutive text blocks into one.
     Text {
         /// The new text to append; not the accumulated text so far.
         delta: String,
     },
     /// An incremental chunk of the model's extended-thinking text.
     ///
-    /// The cryptographic signature Anthropic streams alongside a thinking block —
-    /// required to replay it into a later turn — is discarded, and
-    /// [`ContentBlock`](crate::ContentBlock) has no thinking variant to hold one, so
-    /// a thinking block cannot be replayed. Harmless while
-    /// [`MessagesRequest`](crate::MessagesRequest) cannot enable extended thinking;
-    /// see #85.
+    /// The signature needed to replay a thinking block into a later turn is
+    /// discarded, and [`ContentBlock`](crate::ContentBlock) has no variant to hold
+    /// one; see #85.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
     },
-    /// A tool call whose JSON input has fully arrived and parsed.
-    ///
-    /// Emitted exactly once per call, after every fragment of its input has been
-    /// accumulated.
+    /// A tool call whose JSON input has fully arrived and parsed, emitted once per
+    /// call after every fragment of that input is accumulated.
     ToolCallRequested {
         /// The vendor's call ID, to echo in the answering `tool_result` block.
         id: String,
@@ -39,11 +33,10 @@ pub enum AgentEvent {
     },
     /// Token accounting for the turn.
     ///
-    /// Emitted at most once per turn, carrying the last figures the API reported:
-    /// Anthropic restates the counts cumulatively on every `message_delta`, so
-    /// summing several of these would double-count. A turn that reported no counts
-    /// emits no `Usage` event, and every field is `Option` because the API may omit
-    /// any of them — `None` is "not reported", not a reported zero.
+    /// Emitted at most once, carrying the last figures reported: Anthropic restates
+    /// the counts cumulatively on every `message_delta`, so summing several would
+    /// double-count. Every field is `Option` because the API may omit any of them —
+    /// `None` is "not reported", not a reported zero.
     Usage {
         /// Tokens in the request, excluding anything served from cache.
         input_tokens: Option<u32>,
@@ -56,11 +49,9 @@ pub enum AgentEvent {
     },
     /// The turn ended, and why.
     ///
-    /// Emitted when `message_stop` arrives, not when a stop reason is first seen. A
-    /// turn that never reaches `message_stop` produces an `Err` instead — see
-    /// [`ProviderError::StreamEndedUnexpectedly`] — never silence.
-    ///
-    /// [`ProviderError::StreamEndedUnexpectedly`]: crate::ProviderError::StreamEndedUnexpectedly
+    /// Emitted at `message_stop`, not when a stop reason is first seen; a turn that
+    /// never reaches it yields
+    /// [`StreamEndedUnexpectedly`](crate::ProviderError::StreamEndedUnexpectedly).
     Stop {
         /// Why it ended, or [`StopReason::Unspecified`] when the API never said.
         reason: StopReason,
@@ -72,8 +63,7 @@ pub enum AgentEvent {
 pub enum StopReason {
     /// The model finished its reply of its own accord (`end_turn`).
     EndTurn,
-    /// The model wants a tool run (`tool_use`); the caller must answer with
-    /// `tool_result` blocks.
+    /// The model wants a tool run (`tool_use`); answer with `tool_result` blocks.
     ToolUse,
     /// The reply was cut off at `max_tokens`, mid-thought.
     MaxTokens,
@@ -81,11 +71,9 @@ pub enum StopReason {
     StopSequence,
     /// The turn ended without the API ever reporting a reason:
     /// `message_delta.stop_reason` is nullable, so a stream can reach
-    /// `message_stop` with nothing having said why. Reported rather than omitting
-    /// [`AgentEvent::Stop`], which would make a finished turn look truncated.
+    /// `message_stop` with nothing having said why.
     Unspecified,
-    /// An unrecognized vendor string, verbatim: new stop reasons ship over time and
-    /// must not be a hard parse failure.
+    /// An unrecognized vendor string, verbatim: new stop reasons ship over time.
     Other(String),
 }
 
