@@ -156,7 +156,10 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
 /// set of an `execve`d binary at the old one and refuses to raise inheritable
 /// or ambient, so a leftover bounding bit can never become privilege. So it is
 /// attempted and logged, not enforced — and `SECURITY.md` claims it as
-/// best-effort rather than as part of the boundary.
+/// best-effort rather than as part of the boundary. A failure is recorded as an
+/// [`AuditEvent::Degraded`](crate::AuditEvent::Degraded), not at debug level: it
+/// fails on whole classes of host, so the one run where it matters is not the
+/// one where someone thought to raise the log level.
 ///
 /// Order matters within this function: the bounding set is dropped *before*
 /// the effective set, not after. `PR_CAPBSET_DROP` itself requires
@@ -166,10 +169,11 @@ fn harden_process_state() -> Result<(), SandboxError> {
     use caps::CapSet;
 
     if let Err(error) = caps::clear(None, CapSet::Bounding) {
-        tracing::debug!(
-            target: crate::AUDIT_TARGET,
-            "could not drop the capability bounding set, leaving it as inherited: {error}"
-        );
+        crate::AuditEvent::degraded(
+            "capability_bounding_set",
+            &format!("left as inherited: {error}"),
+        )
+        .emit();
     }
 
     for set in [
@@ -284,9 +288,10 @@ fn map_identity_into_userns(uid: u32, gid: u32) {
         .and_then(|()| std::fs::write("/proc/self/uid_map", format!("{uid} {uid} 1")));
 
     if let Err(error) = mapped {
-        tracing::debug!(
-            target: crate::AUDIT_TARGET,
-            "could not map user namespace identity, running as nobody: {error}"
-        );
+        crate::AuditEvent::degraded(
+            "userns_identity_map",
+            &format!("running as nobody: {error}"),
+        )
+        .emit();
     }
 }
