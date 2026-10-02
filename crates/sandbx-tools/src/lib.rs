@@ -1,13 +1,9 @@
 //! Tools an agent can call, each confined by `sandbx-core`.
 //!
-//! The built-ins split across the sandbox's two halves: `bash` spawns a process
-//! and the kernel confines it (Landlock, netns, seccomp); the rest touch the
-//! filesystem in-process, where `FsGuard` is the only confinement.
-//!
-//! Dispatch is a closed enum, not `dyn Tool`. A tool's name, description, schema
-//! and executor are one `ToolSpec` in the tool's own module, reached by a single
-//! match here: four parallel matches let an arm be transposed into a neighbour's
-//! and still compile.
+//! The built-ins split across the sandbox's two halves: `bash` spawns a process and
+//! the kernel confines it (Landlock, netns, seccomp); the rest touch the filesystem
+//! in-process, where `FsGuard` is the only confinement. Dispatch is a closed enum,
+//! not `dyn Tool`, resolved by one match over a per-tool `ToolSpec`.
 
 mod context;
 mod error;
@@ -21,9 +17,9 @@ pub use limits::ToolLimits;
 /// What a tool produced, as the model will see it.
 ///
 /// The field is private so [`ToolOutput::new`] is the only way in, which makes an
-/// empty result unrepresentable: the Messages API rejects a `tool_result` whose
-/// text is empty, so a tool handing back `""` ends the turn with a provider error.
-/// Silent successes (`touch`, `mkdir -p`, `true`) and empty files are ordinary.
+/// empty result unrepresentable: the Messages API rejects a `tool_result` whose text
+/// is empty, so a tool handing back `""` ends the turn with a provider error. Silent
+/// successes (`touch`, `mkdir -p`, `true`) and empty files are ordinary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolOutput {
     content: String,
@@ -56,11 +52,9 @@ impl ToolOutput {
 /// Stands in for a tool that succeeded without printing anything.
 const EMPTY_OUTPUT: &str = "(no output)";
 
-/// Everything [`BuiltinTool`] knows about one tool, written once in that tool's
-/// own module.
-///
-/// The schema is a function rather than a value because `schema_for!` allocates
-/// and so cannot be a `const`.
+/// Everything [`BuiltinTool`] knows about one tool, written once in that tool's own
+/// module. The schema is a function rather than a value because `schema_for!`
+/// allocates and so cannot be a `const`.
 pub(crate) struct ToolSpec {
     name: &'static str,
     description: &'static str,
@@ -107,8 +101,8 @@ impl BuiltinTool {
 
     /// The four facts about this tool, from the module that holds them.
     ///
-    /// The only place a variant is tied to a tool. One match rather than four means
-    /// a transposed arm cannot hand the model one tool's name with another's schema.
+    /// One match rather than four: a transposed arm cannot hand the model one tool's
+    /// name with another's schema.
     fn spec(&self) -> ToolSpec {
         match self {
             Self::Read => tools::read::SPEC,
@@ -126,27 +120,21 @@ impl BuiltinTool {
         self.spec().name
     }
 
-    /// What this tool does, in the words the model is shown.
-    ///
-    /// The text lives in the tool's own `SPEC`, beside the `execute` it describes,
-    /// so the prose the model steers on cannot drift from the behaviour.
+    /// What this tool does, in the words the model is shown. The text lives in the
+    /// tool's own `SPEC`, beside the `execute` it describes, so it cannot drift from
+    /// the behaviour.
     pub fn description(&self) -> &'static str {
         self.spec().description
     }
 
-    /// JSON schema of this tool's arguments, derived from its input struct.
-    ///
-    /// A `serde_json::Value` because that is what a provider request carries; a
-    /// caller wanting `schemars::Schema`'s own API should take the `schema_for!`
-    /// call in the tool's module rather than re-parsing this.
+    /// JSON schema of this tool's arguments, derived from its input struct — a
+    /// `serde_json::Value` because that is what a provider request carries.
     pub fn input_schema(&self) -> serde_json::Value {
         (self.spec().schema)()
     }
 
-    /// Run the tool.
-    ///
-    /// Each tool's `SPEC` parses into that tool's own input struct before calling
-    /// its `execute`, so no route to the filesystem can skip the parse.
+    /// Run the tool. Each tool's `SPEC` parses into that tool's own input struct
+    /// first, so no route to the filesystem can skip the parse.
     pub fn execute(
         &self,
         input: serde_json::Value,
@@ -179,9 +167,9 @@ pub(crate) fn failed(
 
 /// Read a file's contents through the guard.
 ///
-/// The guard check lives here, not at the call sites, so no in-process tool can
-/// read a file by forgetting it. Reads the handle the guard returns, not the path
-/// again: re-resolving on open leaves a window to swap the leaf for a symlink.
+/// The guard check lives here, not at the call sites, so no in-process tool can read
+/// a file by forgetting it. Reads the handle the guard returns, not the path again:
+/// re-resolving on open leaves a window to swap the leaf for a symlink.
 pub(crate) fn read_file(
     path: &std::path::Path,
     ctx: &ExecutionContext,
@@ -199,9 +187,9 @@ pub(crate) fn read_file(
 
 /// Render a list of results, bounded, distinguishing "none" from empty output.
 ///
-/// `stopped_early` is appended after the entry cap is applied, not before: a
-/// marker inside the list is a line the cap can trim away, which would leave a
-/// partial search looking complete.
+/// `stopped_early` is appended after the entry cap is applied, not before: a marker
+/// inside the list is a line the cap can trim away, which would leave a partial
+/// search looking complete.
 pub(crate) fn listing(
     lines: Vec<String>,
     ctx: &ExecutionContext,
