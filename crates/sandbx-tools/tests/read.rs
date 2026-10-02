@@ -85,7 +85,7 @@ fn advertises_a_schema_matching_its_input() {
 /// The Messages API rejects a `tool_result` whose text is empty, so a tool returning
 /// `""` kills the turn rather than producing an empty one.
 #[test]
-fn reports_an_empty_file_rather_than_returning_nothing() {
+fn an_empty_file_is_reported_as_empty() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("empty.txt");
     std::fs::write(&file, b"").unwrap();

@@ -46,7 +46,7 @@ fn a_command_from_the_seam_is_confined_by_the_policy() {
 
 /// Without this, the test above would pass on a seam that never works at all.
 #[test]
-fn a_command_from_the_seam_still_reaches_a_granted_path() {
+fn a_command_from_the_seam_reaches_a_granted_path() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("visible.txt"), b"VISIBLE").unwrap();
 
@@ -70,7 +70,7 @@ fn a_command_from_the_seam_still_reaches_a_granted_path() {
 }
 
 #[test]
-fn a_command_from_the_seam_carries_the_context_timeout() {
+fn the_seam_carries_the_context_timeout() {
     let ctx = context(SandboxPolicy::default().allow_system_executables())
         .with_timeout(std::time::Duration::from_millis(200));
 
