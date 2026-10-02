@@ -1121,7 +1121,6 @@ fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
 /// `restrict_unprivileged_userns`, default on Ubuntu 24.04+ and set on GitHub's
 /// runners) the command runs as the overflow `nobody` instead. What must never
 /// happen is a third value.
-#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn the_command_sees_a_consistent_real_uid() {
     // std exposes no getuid, and pulling nix's `user` feature in for one test is

@@ -155,4 +155,7 @@ power available in the negotiable range.
 | 4 | partial enforcement accepted | **done** (#76) — `enforcement_verdict` refuses it |
 | 5 | per-endpoint egress | **open** (#42) |
 
-38 real-kernel enforcement tests in `tests/enforcement.rs`.
+39 real-kernel enforcement tests in `tests/enforcement.rs`. The whole file is
+`#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
+count is unconditional — all 39 run or none compile, and `cargo test` reports
+`0 ignored`. Nothing checks this number against the file.
