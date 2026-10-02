@@ -1,9 +1,7 @@
-# cargo-deny configuration — run via `cargo deny check` (CI job + on demand).
-# Covers supply-chain advisories, licensing, and dependency hygiene in one tool,
-# which is why a separate `cargo audit` step is not used.
+# Run via `cargo deny check` (CI job + on demand). Covers advisories, licensing
+# and dependency hygiene in one tool, so there is no separate `cargo audit` step.
 
 [advisories]
-# Fail on any crate with a known security advisory.
 version = 2
 yanked = "deny"
 
@@ -22,12 +20,9 @@ allow = [
     "Zlib",
 ]
 
-# CDLA-Permissive-2.0 is a permissive *data* license (Linux Foundation), not a
-# code license, and it is here for exactly one crate: webpki-root-certs' bundled
-# Mozilla CA root certificate data, pulled in via rustls-platform-verifier ->
-# reqwest. Scoped as an exception rather than added to `allow` above, so a new
-# dependency arriving under it has to be considered on its own merits instead of
-# inheriting a blanket approval granted for certificate data.
+# CDLA-Permissive-2.0 is a permissive *data* license, not a code one, and covers
+# only webpki-root-certs' bundled Mozilla CA roots. An exception rather than an
+# `allow` entry, so the next crate arriving under it is considered on its own.
 [[licenses.exceptions]]
 name = "webpki-root-certs"
 allow = ["CDLA-Permissive-2.0"]
@@ -36,17 +31,14 @@ allow = ["CDLA-Permissive-2.0"]
 # Duplicate versions of the same crate bloat the binary and mean two copies of
 # any vulnerability. Warn rather than deny: transitive deps often force these.
 multiple-versions = "warn"
-# A wildcard version is a supply-chain hazard: `foo = "*"` accepts whatever the
-# registry serves. That reasoning does not apply to a path dependency, which
-# resolves to a directory in this repo and cannot be substituted by a registry.
-# Workspace crates carry no version for that reason, so allow the wildcard
-# exactly where it is one by construction, and keep denying it everywhere else.
+# `foo = "*"` accepts whatever the registry serves. A path dependency resolves to
+# a directory in this repo instead, and workspace crates carry no version, so the
+# wildcard is allowed exactly where it is one by construction.
 wildcards = "deny"
 allow-wildcard-paths = true
 
 [sources]
-# Only crates.io. A git or alternate-registry dependency sneaking in is a
-# supply-chain red flag worth failing the build over.
+# Only crates.io; a git or alternate-registry dependency fails the build.
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
