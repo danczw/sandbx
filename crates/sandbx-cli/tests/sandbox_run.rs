@@ -247,7 +247,7 @@ fn allow_write_also_grants_read_at_the_command_line() {
 /// Stated over the axis table rather than flag by flag, including the CLI's one
 /// widening.
 #[test]
-fn every_path_flag_grants_its_own_axis_and_nothing_else() {
+fn every_path_flag_grants_only_its_own_axis() {
     use sandbx_core::Axis;
 
     let granted = std::path::PathBuf::from("/srv/subject");
