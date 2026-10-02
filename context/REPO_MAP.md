@@ -1,0 +1,123 @@
+# Repo map
+
+Virtual Cargo workspace, `members = ["crates/*"]`, resolver 3, edition 2024.
+
+```
+Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid")
+clippy.toml         the disallowed-methods list
+deny.toml           cargo-deny
+.githooks/          pre-commit: fmt --check, clippy -D warnings, subject length
+SECURITY.md         the promise to users — the one doc that must never lag
+```
+
+## Crates
+
+| Crate | Owns | Internal deps |
+|---|---|---|
+| `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
+| `sandbx-tools` | the seven built-ins, each confined by core | core |
+| `sandbx-providers` | hand-rolled streaming API clients | — |
+| `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
+| `sandbx-cli` | arg parsing, policy derivation | core |
+| `sandbx-session` | placeholder — nothing implemented | — |
+| `sandbx-tui` | placeholder — nothing implemented | — |
+
+`sandbx-agent` depends on core only as a dev-dependency: its tests drive real
+tools over a temp dir rather than mocking below the tool boundary.
+
+`sandbx-cli` does **not** depend on `sandbx-agent` — the turn loop is not
+reachable from the shipped binary.
+
+## `sandbx-core`
+
+```
+src/lib.rs           re-exports; Linux-only, refused at compile time
+   policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
+   fs_guard.rs       in-process path enforcement (6 of 7 tools)
+   command.rs        SandboxedCommand, HelperDispatch, the kill chain
+   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx
+   audit.rs          AuditEvent, AUDIT_TARGET
+   error.rs
+   bin/sandbx-helper.rs
+   helper/
+      mod.rs         apply() — sequences all three mechanisms
+      hardening.rs   namespaces, capsets, rlimits, pdeathsig
+      seccomp.rs     BLOCKED_SYSCALLS (28), filter construction
+      ruleset/
+         compat.rs   ABI negotiation, enforcement_verdict
+         rights.rs   rights_for, fs_rules
+         tests/      unit tests: compat, grants, rules
+tests/               audit, capability_coverage, command, denylist,
+                     enforcement (34 real-kernel tests), fs_guard,
+                     helper_args, policy
+tests/support/       5 [[bin]] probes, required-features = ["sandbox-integration"]
+```
+
+Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
+`HelperDispatch`, `SandboxError`, `FsGuard`, `ReadableWalk`, `BLOCKED_SYSCALLS`,
+`HelperArgs`, `Axis`, `Grants`, `SandboxPolicy`.
+
+Four per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` —
+the four sites that spawn, not the whole crate.
+
+## `sandbx-tools`
+
+```
+src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput
+   context.rs     ExecutionContext — policy is PRIVATE (#56)
+   limits.rs      ToolLimits
+   error.rs       ToolError: Denied | BadInput | Failed | TimedOut
+   tools/         bash, edit, find, grep, ls, read, write
+tests/            per-tool, plus registry, limits, scan_limits, spawn
+```
+
+Public surface: `ExecutionContext`, `ToolError`, `ToolLimits`, `ToolOutput`,
+`BuiltinTool`.
+
+## `sandbx-providers`
+
+```
+src/lib.rs        Provider (closed enum), EventStream (boxed FusedStream)
+   anthropic.rs   AnthropicClient
+   credentials.rs resolve_api_key, SecretString
+   event.rs       AgentEvent, StopReason
+   request.rs     MessagesRequest
+   sse.rs         SSE framing
+   mock.rs        MockProvider — behind the `mock` feature
+   wire/          accumulate.rs, payload.rs + unit tests
+tests/            anthropic_client, credentials, crypto_provider, error,
+                  mock_provider (needs `mock`),
+                  live_anthropic (needs `live-anthropic-tests`),
+                  request_serialization
+```
+
+No vendor SDK. `Provider` is a closed enum, not a trait object — though #90
+notes it is a one-adapter seam and `EventStream` is the real one.
+
+## `sandbx-agent`
+
+```
+src/lib.rs    re-exports: TurnError, Turn, TurnLimits, run_turn
+   turn.rs    run_turn — generic over a stream-opening closure
+   error.rs   TurnError (6 variants)
+tests/turn_loop.rs
+```
+
+## `sandbx-cli`
+
+```
+src/lib.rs    Cli, Command::SandboxRun, policy derivation (unit-testable
+              without a sandbox-capable kernel)
+src/main.rs
+tests/        name, sandbox_run
+```
+
+Lib `sandbx_cli`, bin `sandbx`. One subcommand: `sandbox-run`.
+
+## Reading order
+
+1. `SECURITY.md` — what is claimed
+2. `context/SANDBOXING.md` — how it is enforced
+3. `context/enforcement-seam.md` — where policy becomes kernel state
+4. `context/axis-table.md` — why there is one table
+5. `context/TOOLS.md`, `context/TURN_LOOP.md` — the layers above
