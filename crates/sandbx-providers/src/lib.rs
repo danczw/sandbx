@@ -1,19 +1,18 @@
 //! Hand-rolled streaming clients against LLM provider APIs.
 //!
-//! The seam is [`EventStream`] — the return type — not a trait and not an enum
-//! over the backends. Each client is its own concrete type ([`AnthropicClient`]
-//! today, OpenAI planned next) and a caller names the one it constructed;
-//! interchangeability comes from every `stream_chat` handing back that same
-//! boxed stream, so sandbx-agent takes a closure producing one and neither knows
-//! nor cares which client is behind it.
+//! The seam is the return type: every client's `stream_chat` hands back the
+//! crate's [`EventStream`]. Each client is its own concrete type
+//! ([`AnthropicClient`] today, OpenAI planned next) and a caller names the one it
+//! constructed — see that alias for why that is enough.
 //!
-//! So no `dyn Provider`, no `async_trait`, and — unlike sandbx-tools'
-//! `BuiltinTool` — no closed enum over the backends either. That mirror does not
-//! hold: a tool is selected per call, by a name the model chose at runtime, so
-//! something has to dispatch on it. A provider is selected once at startup from
-//! configuration and never varies within a process, so an enum had nothing left
-//! to decide — its `stream_chat` only forwarded to the variant the construction
-//! site had already picked, which is why #90 removed it.
+//! No trait and no enum over the backends. There is one backend today,
+//! constructed directly by its caller from `ANTHROPIC_API_KEY`; the intent is
+//! that a backend is chosen where the client is constructed and does not vary
+//! per request, which is why the mirror of sandbx-tools' `BuiltinTool` does not
+//! hold — a tool is dispatched per call, on a name the model chose at runtime.
+//! Nothing enforces that intent yet, and no binary wires a client up at all. If
+//! a provider ever becomes a per-turn choice — a `/model` switch, a fallback on
+//! rate-limit — the enum #90 removed is worth revisiting.
 //!
 //! Runtime dispatch is reserved for the approval gate sandbx-agent will take,
 //! where the implementation genuinely is picked at runtime — an interactive
@@ -61,8 +60,8 @@ pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefin
 /// backend's stream is a different concrete type, so no single `impl Stream`
 /// return could name them all, and a caller written against the Anthropic
 /// client's opaque type would take a breaking change the day the second backend
-/// (OpenAI is the one planned next) lands. One allocation per turn, against an
-/// HTTP round trip, buys that.
+/// (OpenAI is the one planned next) lands. One allocation per request, against
+/// an HTTP round trip, buys that.
 ///
 /// `FusedStream` rather than `Stream` because the concrete stream underneath is
 /// built from `futures_util::stream::unfold`, which *panics* if polled after it

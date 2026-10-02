@@ -6,15 +6,12 @@ use crate::request::MessagesRequest;
 /// A test double that replays a canned sequence of events instead of calling
 /// a real API.
 ///
-/// Interchangeability with a real client comes from the return type alone:
-/// `stream_chat` hands back the same [`EventStream`] an [`AnthropicClient`] does,
-/// so a caller takes that one concrete type and neither knows nor cares which
-/// side produced it.
+/// Interchangeable with a real client through the return type alone:
+/// `stream_chat` hands back the same [`EventStream`] an [`AnthropicClient`] does.
 ///
-/// Deliberately *not* reached through a shared abstraction over the backends. As
-/// an implementor of a common trait, or a variant of a common enum, this double
-/// would be part of the shipped surface permanently and the `mock` feature could
-/// not hide it. Having no such abstraction is what lets the feature gate work.
+/// Deliberately *not* a variant of a shared enum over the backends: a variant is
+/// part of the shipped surface permanently, where the `mock` feature can hide a
+/// whole module.
 ///
 /// [`AnthropicClient`]: crate::AnthropicClient
 pub struct MockProvider {

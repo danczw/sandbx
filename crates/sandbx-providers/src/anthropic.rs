@@ -115,14 +115,10 @@ impl AnthropicClient {
     /// that wants to retry a turn after [`ProviderError::RateLimited`] should
     /// clone it before calling.
     ///
-    /// Returns the crate's [`EventStream`] — the same type every client here
-    /// returns, which is what makes them interchangeable without a trait. See
-    /// that alias for why it is boxed and fused rather than opaque.
-    ///
-    /// Boxing it here is what the alias asks for, and it is legal because the
-    /// stream owns everything it needs: the auth header is read above, and the
-    /// stream itself holds only an owned `reqwest::Response`. Nothing is borrowed
-    /// from `&self`, so the box is `'static`.
+    /// Returns the crate's [`EventStream`]; see that alias for why it is boxed
+    /// and fused. Boxing is legal here because the stream borrows nothing from
+    /// `&self` — the auth header is read above, and the stream holds only an
+    /// owned `reqwest::Response`.
     pub async fn stream_chat(
         &self,
         request: MessagesRequest,
