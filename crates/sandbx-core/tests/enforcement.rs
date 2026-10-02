@@ -14,11 +14,10 @@ use std::process::Command;
 
 use sandbx_core::{HelperArgs, SandboxPolicy};
 
-/// Paths the helper itself needs in order to `exec` anything at all.
-///
-/// `exec` happens *after* the restrictions are applied, so the interpreter and
-/// shared libraries must stay reachable or nothing can start. The program
-/// directories need read *and* execute; `ld.so.cache` the loader only reads.
+/// Paths the helper itself needs in order to `exec` anything at all: `exec` happens
+/// *after* the restrictions are applied, so the interpreter and shared libraries must
+/// stay reachable. Program directories need read *and* execute; `ld.so.cache` the
+/// loader only reads.
 fn runtime_paths(policy: SandboxPolicy) -> SandboxPolicy {
     let policy = ["/usr", "/bin", "/lib", "/lib64"]
         .iter()
@@ -31,10 +30,9 @@ fn runtime_paths(policy: SandboxPolicy) -> SandboxPolicy {
         .fold(policy, |acc, p| acc.allow_read(p))
 }
 
-/// Grant execute access to a probe binary so it can be `exec`ed.
-///
-/// Probes live under `target/`, which `runtime_paths` does not cover. Without this
-/// a denial test passes because nothing ran, not because the kernel refused.
+/// Grant execute on a probe binary: probes live under `target/`, which
+/// `runtime_paths` does not cover, and without this a denial test passes because
+/// nothing ran rather than because the kernel refused.
 fn allow_probe(policy: SandboxPolicy, probe: &str) -> SandboxPolicy {
     let dir = std::path::Path::new(probe)
         .parent()
@@ -51,7 +49,7 @@ fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Ou
         .expect("helper should start")
 }
 
-/// Baseline: without it the denial tests below would pass even if the sandbox broke
+/// Baseline: without it the denials below would pass on a sandbox that broke
 /// everything indiscriminately.
 #[test]
 fn allowed_path_can_be_read() {
@@ -156,15 +154,12 @@ fn malformed_arguments_do_not_run_the_command() {
 }
 
 /// Between the supervisor spawning this stage and the stage arming its parent death
-/// signal there is a window in which the supervisor can die with the signal never
-/// armed; the command would then run as PID 1 of a namespace nothing is watching —
-/// still confined, but unreaped. So the stage checks that the pid it was told to
-/// expect is still its parent.
-///
-/// The check reads `/proc/self/stat` rather than calling `getppid`, which returns 0
-/// inside a PID namespace whose parent lives outside it; `/proc` is the host's, so
-/// its ppid field still names the supervisor in host numbering. Pid 1 is a claim the
-/// stage can never legally receive: host pid 1 never spawns one of these.
+/// signal, the supervisor can die with the signal never armed, leaving the command
+/// PID 1 of a namespace nothing watches — confined, but unreaped — so the stage checks
+/// that the pid it was told to expect is still its parent. It reads `/proc/self/stat`
+/// and not `getppid`, which returns 0 inside a PID namespace whose parent lives
+/// outside it; `/proc` is the host's, so its ppid field still names the supervisor in
+/// host numbering. Pid 1 is a claim no stage can legally receive.
 #[test]
 fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
@@ -204,27 +199,21 @@ fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
 /// with the environment already narrowed, so without this the check could be deleted
 /// with the suite staying green.
 ///
-/// Reaching it needs the liveness check to pass, which means naming a supervisor that
-/// really is this process's parent — the harness spawns the helper directly, so its
-/// own pid is what `/proc/self/stat` reports. `HELPER_INNER_FLAG` is documented as not
-/// a trust boundary, so that is by design.
-///
-/// The variable is planted with `Command::env`; `set_var` is `unsafe` on edition 2024
-/// and would poison the whole harness. The policy grants everything `/bin/touch`
-/// needs, so with the check removed the command succeeds and each assertion fails on
-/// its own; under a `default()` policy the exec would be denied and the test would
-/// stay green for the wrong reason.
+/// Reaching it needs the liveness check to pass, so the supervisor named must really
+/// be this process's parent — the harness spawns the helper directly. The variable is
+/// planted with `Command::env`, since `set_var` is `unsafe` on edition 2024. The
+/// policy grants everything `/bin/touch` needs, so with the check removed each
+/// assertion fails on its own; under a `default()` policy the exec would be denied and
+/// the test would stay green for the wrong reason.
 #[test]
 fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
-    // the statement, and `!marker.exists()` asserts nothing about a path whose
-    // parent is already gone.
+    // the statement, and `!marker.exists()` would then assert nothing.
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("should-not-exist");
 
     // Nothing in the environment allowlist, so the planted variable is outside it —
-    // as is every variable cargo handed this process, which is what a real stage 1
-    // would have cleared.
+    // as is every variable cargo handed this process.
     let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
     let args = [marker.to_str().unwrap().to_string()];
 
@@ -261,13 +250,11 @@ fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
 }
 
 /// Asserted on its own, ahead of everything that depends on it, because the answer is
-/// a property of the host and cannot be read off a developer machine: a box without
-/// AppArmor grants capabilities inside a fresh user namespace that Ubuntu 24.04+ and
-/// GitHub's runners strip (`kernel.apparmor_restrict_unprivileged_userns`). Red here
-/// means the PID-namespace approach is dead.
-///
-/// A probe binary rather than an in-process `unshare`, which would strip the test
-/// harness of its own namespaces for every test that follows.
+/// a property of the host: a box without AppArmor grants capabilities inside a fresh
+/// user namespace that Ubuntu 24.04+ and GitHub's runners strip
+/// (`kernel.apparmor_restrict_unprivileged_userns`). Red here means the PID-namespace
+/// approach is dead. A probe binary rather than an in-process `unshare`, which would
+/// strip the harness of its own namespaces for every test that follows.
 #[test]
 fn unprivileged_pid_namespace_is_available() {
     #[allow(clippy::disallowed_methods)]
@@ -291,9 +278,7 @@ fn unprivileged_pid_namespace_is_available() {
 /// Everything about process lifetime rests on this: a process cannot leave the PID
 /// namespace it was born into, and `unshare`/`setns` are denied, so killing PID 1
 /// makes the kernel reap the rest unconditionally — where a process group is advisory.
-///
-/// `$$` is the shell's own pid as the kernel reports it, so reading it back is the
-/// command's own view of where it lives.
+/// `$$` is the shell's own pid as the kernel reports it.
 #[test]
 fn the_command_is_pid_one_of_its_own_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -314,9 +299,7 @@ fn the_command_is_pid_one_of_its_own_namespace() {
 /// Pid resolution is namespace-relative, so a host pid does not exist as far as the
 /// command is concerned. Without the namespace this succeeds: the command runs as the
 /// caller's uid, so it can signal the caller's processes — the harness included.
-///
-/// `kill -0` sends nothing; it asks whether the signal could be delivered, which is
-/// the permission question on its own.
+/// `kill -0` sends nothing; it asks whether the signal could be delivered.
 #[test]
 fn the_command_cannot_signal_a_process_outside_its_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -400,7 +383,6 @@ fn seccomp_filter_is_installed() {
     );
 }
 
-/// Read a named field out of the `/proc/self/status` a sandboxed command sees.
 fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
     status
         .lines()
@@ -410,19 +392,17 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
 }
 
 /// The four sets the helper can always clear, since shrinking them needs no
-/// capability.
-///
-/// Hex bitmasks; a fully dropped process reports each as `0000000000000000`. `CapBnd`
-/// is absent — see [`the_bounding_set_is_cleared_or_left_exactly_as_inherited`].
+/// capability. Hex bitmasks; a fully dropped process reports each as
+/// `0000000000000000`. `CapBnd` is absent — see
+/// [`the_bounding_set_is_cleared_or_left_exactly_as_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
-/// Can this machine drop the capability bounding set at all?
-///
-/// It needs `CAP_SETPCAP`, held only inside a self-created user namespace — and not
-/// even there when an LSM strips capabilities from one. AppArmor's
-/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+ and GitHub's runners) does
-/// that: the `unshare` succeeds but `PR_CAPBSET_DROP` returns `EPERM`. The helper
-/// treats the drop as best-effort, so the assertion has to be conditional in step.
+/// Can this machine drop the capability bounding set at all? It needs `CAP_SETPCAP`,
+/// held only inside a self-created user namespace — and not even there when an LSM
+/// strips capabilities from one. AppArmor's `restrict_unprivileged_userns` (default on
+/// Ubuntu 24.04+ and GitHub's runners) lets the `unshare` succeed but makes
+/// `PR_CAPBSET_DROP` return `EPERM`, so the helper treats the drop as best-effort and
+/// this assertion is conditional in step.
 fn bounding_set_is_droppable() -> bool {
     std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
         .map(|value| value.trim() != "1")
@@ -481,8 +461,8 @@ fn capabilities_are_dropped_when_network_is_allowed() {
 
 /// Both branches assert rather than one returning early, which would report `ok`
 /// without checking anything on every CI run. `caps::clear(Bounding)` issues one
-/// `PR_CAPBSET_DROP` per capability, so a mid-loop `EPERM` leaves a partial drop —
-/// a different failure from the documented fallback, and caught only by pinning it.
+/// `PR_CAPBSET_DROP` per capability, so a mid-loop `EPERM` leaves a partial drop — a
+/// different failure from the documented fallback.
 #[test]
 fn the_bounding_set_is_cleared_or_left_exactly_as_inherited() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -885,9 +865,8 @@ fn io_uring_setup_is_denied() {
 
 /// `memfd_create` returns a descriptor backed by RAM with no path anywhere, so
 /// Landlock — which binds its rules to inodes and paths — has nothing to match on.
-///
-/// Asserts the errno and not just the exit status: `EPERM` is what this filter
-/// returns, and any other value means the call failed for an unrelated reason.
+/// Asserts the errno and not just the exit status: any value other than `EPERM` means
+/// the call failed for an unrelated reason.
 #[test]
 fn memfd_create_is_denied() {
     let probe = env!("CARGO_BIN_EXE_sandbx-memfd-probe");
@@ -904,12 +883,11 @@ fn memfd_create_is_denied() {
 /// Reach a syscall through perl's `syscall` builtin and return what the kernel
 /// answered: the raw errno, or `"0"` when the call succeeded.
 ///
-/// The only way this suite can probe a syscall with no safe Rust wrapper in the
-/// dependency set, since the crate forbids `unsafe`. Pass `nr` from `libc` and never a
-/// literal: syscall numbers are per-architecture, and x86_64's `userfaultfd` number is
-/// aarch64's `signalfd`, so a literal probes a different call and passes for the wrong
-/// reason. `$!` is cleared first so a stale errno from perl's startup cannot be read
-/// back as this call's result.
+/// The only way this suite can probe a syscall with no safe Rust wrapper, since the
+/// crate forbids `unsafe`. Pass `nr` from `libc` and never a literal: syscall numbers
+/// are per-architecture, and x86_64's `userfaultfd` number is aarch64's `signalfd`, so
+/// a literal probes a different call. `$!` is cleared first so a stale errno from
+/// perl's startup cannot be read back as this call's result.
 fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
     let program = format!(
         "$! = 0; my $r = syscall({nr}, {args}); print +(defined $r && $r >= 0) ? 0 : $! + 0;"
@@ -990,8 +968,7 @@ fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
 /// Both paths create a user namespace, since the PID namespace needs one regardless of
 /// policy, so each is checked against the same two answers rather than one being the
 /// other's reference: the identity map is best-effort, and where the platform refuses
-/// it (AppArmor's `restrict_unprivileged_userns`) the command runs as the overflow uid.
-/// A third value must never appear.
+/// it the command runs as the overflow uid. A third value must never appear.
 #[test]
 fn the_command_sees_a_consistent_real_uid() {
     // std exposes no getuid and nix's `user` feature is not worth pulling in for one
@@ -1038,9 +1015,8 @@ fn the_command_sees_a_consistent_real_uid() {
 /// express "not this" about it.
 ///
 /// `CARGO_MANIFEST_DIR` rather than a planted variable: `std::env::set_var` is `unsafe`
-/// on edition 2024, so the test cannot mutate its own environment. Goes through `run`,
-/// which spawns the helper without clearing anything first, so what is under test is
-/// the helper stages doing it themselves — the case a library consumer gets.
+/// on edition 2024. Goes through `run`, which spawns the helper without clearing
+/// anything first, so what is under test is the helper stages doing it themselves.
 #[test]
 fn a_variable_the_policy_omits_does_not_reach_the_command() {
     let policy = runtime_paths(SandboxPolicy::default());

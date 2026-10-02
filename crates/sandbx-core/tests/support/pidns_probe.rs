@@ -2,14 +2,12 @@
 //! child was born as PID 1 of it; test-only
 //! (`required-features = ["sandbox-integration"]`).
 //!
-//! `CLONE_NEWPID` needs `CAP_SYS_ADMIN`, which an unprivileged process only holds
+//! `CLONE_NEWPID` needs `CAP_SYS_ADMIN`, which an unprivileged process holds only
 //! inside a user namespace it created, so both flags go in one `unshare`. The
-//! unsharing process does not enter the namespace; only its children do, which is
-//! why a re-exec is enough and a `fork` unnecessary. Both halves are checked: a
-//! kernel can permit the `unshare` and still not place the child where we expect.
-//! AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+ and
-//! GitHub's runners) permits the namespace but strips its capabilities, so the raw
-//! errno is printed — `EPERM` here is what proves the approach dead.
+//! unsharing process does not enter the namespace, only its children, so a
+//! re-exec is enough. AppArmor's `restrict_unprivileged_userns` (default on
+//! Ubuntu 24.04+ and GitHub's runners) permits the namespace but strips its
+//! capabilities, so the raw errno is printed: `EPERM` proves the approach dead.
 
 const CHILD_FLAG: &str = "--child";
 

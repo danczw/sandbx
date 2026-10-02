@@ -156,11 +156,9 @@ fn a_command_that_outruns_its_timeout_is_killed() {
 }
 
 /// Grandchildren inherit the pipes, so killing only the direct child leaves the
-/// reader threads waiting on an EOF that never comes.
-///
-/// A pipeline rather than `cmd &`: backgrounding in `sh` redirects the job's stdin
-/// from `/dev/null`, which this policy does not grant, so the shell would bail out
-/// before forking anything.
+/// reader threads waiting on an EOF that never comes. A pipeline rather than
+/// `cmd &`: backgrounding in `sh` redirects the job's stdin from `/dev/null`, which
+/// this policy does not grant, so the shell would bail out before forking anything.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_backgrounded_grandchild_does_not_hold_the_call_open() {
@@ -227,10 +225,9 @@ fn without_a_timeout_a_command_runs_to_completion() {
 ///
 /// A real fault rather than `kill -9 $$`: the command is PID 1 of its namespace, and
 /// the kernel discards an ordinary signal sent to a namespace's init from inside it.
-///
-/// Either encoding is accepted. The relay re-raises the signal, but Rust's runtime
-/// installs its own `SIGSEGV` handler to detect stack overflow, so raising that
-/// signal at ourselves does not kill us and the `128 + n` form comes out instead.
+/// Either encoding is accepted — the relay re-raises the signal, but Rust's runtime
+/// installs its own `SIGSEGV` handler to detect stack overflow, so raising that signal
+/// at ourselves does not kill us and the `128 + n` form comes out instead.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_killed_by_a_signal_is_reported_as_signalled() {
@@ -284,11 +281,10 @@ fn a_command_exit_code_survives_the_relay() {
 
 /// Two claims: a descendant inherits the pipe write-ends, so it must not keep the
 /// call blocked, and it must not outlive the command — which holds because the
-/// command is PID 1 of its own namespace and the kernel tears that down on exit.
-///
-/// The canary cannot race: writing it needs the descendant alive two seconds after
-/// the command returned, so the file existing can only mean it survived. `/dev/null`
-/// is granted because `sh` redirects a background job's stdin from it.
+/// command is PID 1 of its own namespace and the kernel tears that down on exit. The
+/// canary cannot race: writing it needs the descendant alive two seconds after the
+/// command returned. `/dev/null` is granted because `sh` redirects a background job's
+/// stdin from it.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_backgrounded_descendant_dies_with_the_command() {
@@ -339,10 +335,8 @@ fn a_backgrounded_descendant_dies_with_the_command() {
 
 /// `output()` without a timeout reads both pipes to EOF, and no deadline or kill
 /// fires on this path. The namespace is what closes them: the command is PID 1, so
-/// everything it left behind goes the moment it exits.
-///
-/// Ten seconds rather than a minute, so a regression costs a slow test instead of a
-/// hung suite.
+/// everything it left behind goes the moment it exits. Ten seconds rather than a
+/// minute, so a regression costs a slow test instead of a hung suite.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn without_a_timeout_a_descendant_does_not_block_the_call() {
@@ -374,10 +368,8 @@ fn without_a_timeout_a_descendant_does_not_block_the_call() {
 /// A process group is advisory — one `setsid` leaves it — so the timeout's group
 /// kill cannot promise the escapee is gone. A PID namespace is not: nothing leaves
 /// the one it was born into, `unshare` and `setns` are denied, and killing PID 1
-/// makes the kernel SIGKILL whatever is left inside.
-///
-/// The `setsid` is the point of the test. The escapee also keeps holding the pipe
-/// (no stdout redirect), so the call returning at all is asserted alongside.
+/// makes the kernel SIGKILL whatever is left inside. The escapee also keeps holding
+/// the pipe (no stdout redirect), so the call returning at all is asserted alongside.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_descendant_that_escapes_the_process_group_is_killed_with_it() {
