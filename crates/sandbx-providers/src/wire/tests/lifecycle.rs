@@ -41,7 +41,7 @@ async fn a_null_stop_reason_still_ends_the_turn_with_a_stop() {
 /// A stop reason arriving before `message_stop` is held, not emitted: a connection
 /// dropping between the two is a truncated turn, not a clean finish.
 #[tokio::test]
-async fn a_stop_reason_without_message_stop_is_still_a_truncated_turn() {
+async fn a_stop_reason_without_message_stop_truncates() {
     let out = events(vec![raw(
         r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8}}"#,
     )])

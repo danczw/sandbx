@@ -102,7 +102,7 @@ fn malformed_event_reports_the_detail() {
 }
 
 #[test]
-fn stream_ended_unexpectedly_renders_without_panicking() {
+fn stream_ended_unexpectedly_renders() {
     let error = ProviderError::StreamEndedUnexpectedly;
 
     assert!(!error.to_string().is_empty());
@@ -112,7 +112,7 @@ fn stream_ended_unexpectedly_renders_without_panicking() {
 /// `InvalidBaseUrl` is hit before any I/O, so its `Display` has to name the offending
 /// URL *and* say what was wrong with it.
 #[test]
-fn invalid_base_url_reports_both_the_url_and_the_reason() {
+fn invalid_base_url_reports_the_url_and_reason() {
     let error = ProviderError::InvalidBaseUrl {
         base_url: "ftp://example.com".to_string(),
         reason: "scheme must be https",
@@ -127,7 +127,7 @@ fn invalid_base_url_reports_both_the_url_and_the_reason() {
 /// A retry loop classifies by these two accessors rather than by matching the enum, so
 /// the classification is part of the public contract.
 #[test]
-fn transient_failures_are_retryable_and_client_errors_are_not() {
+fn transient_is_retryable_client_error_is_not() {
     let overloaded_http = ProviderError::ApiError {
         status: Some(529),
         kind: "overloaded_error".to_string(),

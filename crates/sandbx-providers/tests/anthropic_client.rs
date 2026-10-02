@@ -164,7 +164,7 @@ async fn a_429_response_is_reported_as_rate_limited() {
 }
 
 #[tokio::test]
-async fn a_400_response_is_reported_with_the_vendor_envelope() {
+async fn a_400_is_reported_with_the_vendor_envelope() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/messages"))
@@ -199,7 +199,7 @@ async fn a_400_response_is_reported_with_the_vendor_envelope() {
 /// 529 is Anthropic's "overloaded", the one status a caller most wants to retry, and
 /// it falls outside the range `reqwest`'s own `status().is_server_error()` covers.
 #[tokio::test]
-async fn a_529_response_is_retryable_and_carries_its_retry_after() {
+async fn a_529_is_retryable_and_carries_its_retry_after() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/messages"))
@@ -238,7 +238,7 @@ async fn a_529_response_is_retryable_and_carries_its_retry_after() {
 /// A mid-stream `error` event surfaces as an item in the stream, not the outer
 /// `Result`: by the time it arrives the response was already a 200.
 #[tokio::test]
-async fn a_mid_stream_error_event_ends_the_stream_as_an_item() {
+async fn a_mid_stream_error_ends_the_stream_as_an_item() {
     let server = MockServer::start().await;
     let body = concat!(
         "event: content_block_start\n",
@@ -271,7 +271,7 @@ async fn a_mid_stream_error_event_ends_the_stream_as_an_item() {
 
 /// Everything seen was well-formed, so this is not a `MalformedEvent`.
 #[tokio::test]
-async fn a_connection_closed_before_message_stop_is_reported() {
+async fn a_close_before_message_stop_is_reported() {
     let server = MockServer::start().await;
     let body = "event: ping\ndata: {\"type\":\"ping\"}\n\n";
     Mock::given(method("POST"))
@@ -297,7 +297,7 @@ async fn a_connection_closed_before_message_stop_is_reported() {
 ///
 /// [`EventStream`]: sandbx_providers::EventStream
 #[allow(dead_code)]
-fn the_clients_future_stays_spawnable(client: &'static AnthropicClient) {
+fn client_future_stays_spawnable(client: &'static AnthropicClient) {
     fn assert_send<T: Send>(_: T) {}
 
     assert_send(client.stream_chat(a_request()));
@@ -360,7 +360,7 @@ fn a_cleartext_base_url_is_rejected() {
 }
 
 #[test]
-fn an_https_base_url_is_accepted_and_its_trailing_slash_trimmed() {
+fn an_https_base_url_loses_its_trailing_slash() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
         .unwrap()
         .with_base_url("https://gateway.internal.example/")
@@ -386,7 +386,7 @@ fn a_non_http_base_url_scheme_is_rejected() {
 /// post to a different URL than the operator read back; userinfo would put a second
 /// credential on the wire.
 #[test]
-fn a_base_url_with_a_query_fragment_or_credentials_is_rejected() {
+fn a_query_fragment_or_credentials_is_rejected() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
 
     for base_url in [
@@ -405,7 +405,7 @@ fn a_base_url_with_a_query_fragment_or_credentials_is_rejected() {
 /// `Url::host_str` still wrapped in brackets, which do not parse as part of an
 /// address.
 #[test]
-fn every_spelling_of_a_loopback_host_is_accepted_over_cleartext() {
+fn every_loopback_spelling_is_accepted_cleartext() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
 
     for base_url in [
@@ -422,7 +422,7 @@ fn every_spelling_of_a_loopback_host_is_accepted_over_cleartext() {
 }
 
 #[test]
-fn the_client_does_not_leak_the_api_key_in_debug_output() {
+fn debug_output_does_not_leak_the_api_key() {
     let client =
         AnthropicClient::new(SecretString::from("sk-ant-super-secret".to_string())).unwrap();
 

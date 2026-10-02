@@ -102,7 +102,7 @@ async fn an_unknown_event_type_is_ignored_not_fatal() {
 }
 
 #[tokio::test]
-async fn an_unknown_content_block_and_delta_are_ignored_not_fatal() {
+async fn an_unknown_block_or_delta_is_ignored_not_fatal() {
     let out = ok_events(vec![
         raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search"}}"#),
         raw(r#"{"type":"content_block_delta","index":0,"delta":{"type":"citations_delta","citation":{"url":"https://example.com"}}}"#),

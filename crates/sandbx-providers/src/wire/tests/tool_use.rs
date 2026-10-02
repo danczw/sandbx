@@ -4,7 +4,7 @@
 use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
 
 #[tokio::test]
-async fn a_tool_call_split_across_fragments_becomes_one_event() {
+async fn a_call_split_across_fragments_becomes_one_event() {
     let out = ok_events(vec![
         raw(r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01A","name":"get_weather"}}"#),
         raw(r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"loc"}}"#),
@@ -75,7 +75,7 @@ async fn an_empty_input_json_delta_is_also_an_empty_input() {
 }
 
 #[tokio::test]
-async fn two_parallel_tool_calls_accumulate_independently_by_index() {
+async fn parallel_calls_accumulate_independently_by_index() {
     let out = ok_events(vec![
         raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_A","name":"get_weather"}}"#),
         raw(r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_B","name":"get_time"}}"#),
@@ -108,7 +108,7 @@ async fn two_parallel_tool_calls_accumulate_independently_by_index() {
 /// Dropping a block whose `content_block_stop` was lost, while still reporting
 /// `Stop { ToolUse }`, would tell the caller to run a tool it was never given.
 #[tokio::test]
-async fn a_tool_use_block_left_open_is_flushed_at_message_stop() {
+async fn a_block_left_open_is_flushed_at_message_stop() {
     let out = ok_events(vec![
         raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_A","name":"get_weather"}}"#),
         raw(r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\":\"NYC\"}"}}"#),
@@ -131,7 +131,7 @@ async fn a_tool_use_block_left_open_is_flushed_at_message_stop() {
 /// A new block's deltas landing in an abandoned tool call would emit a
 /// `ToolCallRequested` the model never asked for, which the agent loop would run.
 #[tokio::test]
-async fn a_block_opened_over_an_unclosed_tool_use_discards_it() {
+async fn a_block_opened_over_an_unclosed_one_discards_it() {
     let out = events(vec![
         raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_A","name":"bash"}}"#),
         raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#),
@@ -149,7 +149,7 @@ async fn a_block_opened_over_an_unclosed_tool_use_discards_it() {
 }
 
 #[tokio::test]
-async fn unparseable_accumulated_json_is_a_malformed_event_not_a_panic() {
+async fn unparseable_json_is_a_malformed_event_not_a_panic() {
     let out = events(vec![
         raw(r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_X","name":"broken"}}"#),
         raw(r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"not json"}}"#),

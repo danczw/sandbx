@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_trailing_event_with_no_final_blank_line_is_not_dropped() {
+    async fn a_trailing_event_with_no_blank_line_survives() {
         let events = tokenize_all(vec![b"event: message_stop\ndata: {}"]).await;
 
         assert_eq!(events.len(), 1);
@@ -251,7 +251,7 @@ mod tests {
 
     /// The shape a connection reset produces: the last chunk ends mid-line.
     #[tokio::test]
-    async fn an_unterminated_final_line_split_across_chunks_survives() {
+    async fn an_unterminated_line_split_across_chunks_survives() {
         let events = tokenize_all(vec![b"data: {\"ty", b"pe\":\"message_stop\"}"]).await;
 
         assert_eq!(events.len(), 1);

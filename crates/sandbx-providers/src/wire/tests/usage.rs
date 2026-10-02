@@ -4,7 +4,7 @@
 use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
 
 #[tokio::test]
-async fn message_start_and_message_delta_combine_into_one_usage_event() {
+async fn start_and_delta_combine_into_one_usage_event() {
     let out = ok_events(vec![
         raw(r#"{"type":"message_start","message":{"usage":{"input_tokens":10}}}"#),
         raw(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#),
@@ -29,7 +29,7 @@ async fn message_start_and_message_delta_combine_into_one_usage_event() {
 /// The `message_delta` counts are cumulative, and server-side tool use inflates
 /// `input_tokens` mid-stream, so the delta's figures must win.
 #[tokio::test]
-async fn a_message_delta_restating_input_tokens_wins_over_message_start() {
+async fn a_delta_restating_input_tokens_wins_over_start() {
     let out = ok_events(vec![
         raw(r#"{"type":"message_start","message":{"usage":{"input_tokens":2679,"cache_read_input_tokens":0}}}"#),
         raw(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10682,"cache_creation_input_tokens":0,"cache_read_input_tokens":4,"output_tokens":510}}"#),
@@ -51,7 +51,7 @@ async fn a_message_delta_restating_input_tokens_wins_over_message_start() {
 /// Several `message_delta` events are documented, each restating the totals, so
 /// exactly one `Usage` must come out or a consumer summing them overcounts.
 #[tokio::test]
-async fn several_message_deltas_produce_exactly_one_usage_event() {
+async fn several_deltas_produce_exactly_one_usage_event() {
     let out = ok_events(vec![
         raw(r#"{"type":"message_start","message":{"usage":{"input_tokens":10}}}"#),
         raw(r#"{"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":5}}"#),
@@ -90,7 +90,7 @@ async fn a_turn_with_no_usage_reported_emits_no_usage_event() {
 /// Both frames really ship without a `usage` key, and neither is worth ending a paid
 /// turn over.
 #[tokio::test]
-async fn frames_missing_their_usage_field_do_not_end_the_turn() {
+async fn a_frame_with_no_usage_field_does_not_end_the_turn() {
     let out = ok_events(vec![
         raw(r#"{"type":"message_start","message":{}}"#),
         raw(
