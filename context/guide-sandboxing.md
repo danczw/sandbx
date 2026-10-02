@@ -265,9 +265,14 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
 | Per-socket unix grants | **open**. Needs Landlock `ResolveUnix` (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. Today it is one all-or-nothing toggle. |
 | `FsGuard` TOCTOU | **mostly closed**. Tools take handles (`open_read`/`open_write`, `O_NOFOLLOW`), not resolved paths. Residual: a parent-directory swap mid-open, which needs full `openat`-chain resolution. `ls` still takes a path — `read_dir` has no handle form. |
 | Capability coverage | **closed**. `tests/capability_coverage.rs` reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
+| `Degraded` raised by nothing a test enters | **closed**. Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted on any host; `tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |
 
 ## Host environment
 
 AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+) is the
-reason the two best-effort steps exist. A dev box without AppArmor cannot
-exercise either path — capability and userns behaviour is only provable on CI.
+reason the two best-effort steps exist. A dev box without AppArmor cannot make
+either step fail, so what is provable where is split in two: that a refusal
+becomes a `Degraded` record is asserted everywhere, through the seams
+`drop_bounding_set` and `map_identity_into_userns_with` take their fallible call
+as a parameter for; that the kernel refuses at all is only observable on a host
+with the restriction, which the CI runner has.
