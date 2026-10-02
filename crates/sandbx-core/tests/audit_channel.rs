@@ -7,11 +7,18 @@
 //! round-trip cannot check: the sandboxed command must not be able to reach that
 //! pipe, and its own output must stay byte-exact.
 //!
-//! The *positive* case — a run on a host where hardening actually degrades — is
-//! #94's subject and is not reachable here: it needs a kernel or LSM configuration
-//! the test cannot impose, which is the whole reason the record was so easy to
-//! lose. `degradation.rs`'s unit tests stand in for the wire; these cover the
-//! boundary around it.
+//! Whether a run here degrades at all is the *host's* choice, not the test's, and
+//! both answers are correct: a developer machine without AppArmor's
+//! `restrict_unprivileged_userns` drops the bounding set cleanly and records
+//! nothing, while Ubuntu 24.04+ and GitHub's runners refuse the drop with `EPERM`
+//! and legitimately record one `capability_bounding_set` degradation on every run.
+//!
+//! So nothing below asserts the *absence* of a `degraded` record — that would be an
+//! assertion about the kernel the suite happens to run on, and it would fail on CI
+//! for the very reason this change exists. What they assert instead is that a record
+//! on the trail came from a hardening step rather than from the command, and that
+//! each step reports at most once. `degradation.rs`'s unit tests cover the wire
+//! format; making a host degrade *on demand* is #94's subject.
 //!
 //! Gated whole-file, the way `enforcement.rs` is: every test here spawns a real
 //! helper, so with the feature off there is nothing left but the capture harness
@@ -97,11 +104,20 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<
 /// status: what matters is that nothing the command wrote was recorded, however
 /// the kernel answered it.
 ///
+/// The forged *detail* is the discriminator, and deliberately so. A host that
+/// refuses `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation
+/// on this very run, so the mechanism name cannot tell the two apart, and asserting
+/// that no `degraded` record appeared at all would fail on exactly the hosts #95 was
+/// filed for. A detail string no hardening step would ever produce can only have
+/// come from the command.
+///
 /// `printf` and not `echo`, and the tab written as an escape the shell expands
 /// rather than one this file contains: a literal tab in the script is an `IFS`
 /// character, so the shell would split the word and `echo` would rejoin it with a
 /// space — the forged line would then reach the channel and be rejected for having
 /// no separator, and this test would pass against a sandbox that *could* write it.
+/// Checked by removing the `Stdio::null()` in `helper::exec_sandboxed`, which makes
+/// this fail — which is what makes it evidence rather than decoration.
 #[test]
 fn the_sandboxed_command_cannot_write_the_audit_channel() {
     let (output, lines) = sandboxed(
@@ -120,10 +136,6 @@ fn the_sandboxed_command_cannot_write_the_audit_channel() {
             .any(|line| line.contains("forged-by-the-command")),
         "the command wrote onto sandbx's audit trail: {lines:?}\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        !lines.iter().any(|line| line.contains("decision=degraded")),
-        "a degradation was recorded that no hardening step reported: {lines:?}"
     );
 }
 
@@ -153,15 +165,20 @@ fn the_commands_own_output_carries_no_audit_records() {
     );
 }
 
-/// A run where nothing degraded must record nothing, or the record stops meaning
-/// anything.
+/// Whatever this host records, the trail has to be well-formed: one spawn, and
+/// every degradation naming a real mechanism at most once.
 ///
-/// The channel is written only when there is something to report
-/// (`degradation::encode` of an empty slice is empty, and the helper skips the
-/// write), so an empty channel has to decode to no events rather than to one with
-/// blank fields.
+/// Deliberately not "nothing degraded". How many records a clean run produces is
+/// the host's answer — none where `PR_CAPBSET_DROP` succeeds, one where an LSM
+/// refuses it — so requiring either number would make this a test of the kernel
+/// underneath rather than of the channel. What is invariant is the *shape*, and
+/// three ways of breaking it are worth catching: a blank or unnamed mechanism,
+/// which is what an empty channel decoding to a record would look like; the same
+/// step reported twice, which is what a short write re-sent or a stale buffer
+/// would look like; and more than one spawn, since `record_degradations` runs on
+/// both the timeout and the ordinary path and must not re-emit.
 #[test]
-fn a_run_with_nothing_degraded_records_only_the_spawn() {
+fn every_record_on_the_trail_names_a_real_mechanism_at_most_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
     let degraded: Vec<_> = lines
@@ -169,10 +186,29 @@ fn a_run_with_nothing_degraded_records_only_the_spawn() {
         .filter(|line| line.contains("decision=degraded"))
         .collect();
 
-    assert!(
-        degraded.is_empty(),
-        "nothing degraded on this host, but a record says otherwise: {degraded:?}"
-    );
+    // The two labels `degradation::Degradation` can emit. Spelled out rather than
+    // read from the crate because they are a compatibility surface: this is the
+    // trail's view of them, and it should break if a rename reaches it.
+    let known = ["capability_bounding_set", "userns_identity_map"];
+
+    for record in &degraded {
+        assert!(
+            known.iter().any(|m| record.contains(m)),
+            "a degradation named a mechanism the crate does not define: {record}"
+        );
+        assert!(
+            !record.contains("detail= "),
+            "a degradation reached the trail with no detail: {record}"
+        );
+    }
+
+    for mechanism in known {
+        assert!(
+            degraded.iter().filter(|r| r.contains(mechanism)).count() <= 1,
+            "{mechanism} reported more than once: {degraded:?}"
+        );
+    }
+
     assert_eq!(
         lines
             .iter()

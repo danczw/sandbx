@@ -126,6 +126,14 @@ impl SandboxedCommand {
     ///
     /// Exposed so tests can assert the policy survives into argv without having
     /// to spawn anything.
+    ///
+    /// Spawning it yourself carries one obligation: the argv contains
+    /// `AUDIT_STDIN_FLAG`, which tells the helper its stdin is a channel to write
+    /// audit records to, and only [`output`](Self::output) sets that pipe up. Hand
+    /// this argv to a process whose fd 0 is a terminal and a degradation on a host
+    /// that has one will be written there, looking like output the command produced.
+    /// Either spawn it with a writable pipe on stdin and decode what comes back, or
+    /// drop that argument.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
         // Every helper speaks the same protocol: the flag, then the encoded
         // policy. An explicit helper is still a helper — a separate calling

@@ -131,17 +131,25 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         // to the command. Our own pid, in host numbering, which is what the inner
         // stage will read back out of `/proc`.
         .arg(std::process::id().to_string())
-        .args(argv)
-        // The security half of the audit channel, not a tidy-up. Our stdin is the
-        // write end of a pipe the parent reads audit records from; this stage
-        // becomes nothing, but the stage below it becomes the sandboxed command,
-        // which must not inherit a descriptor it could write forged records into —
-        // or hold open, leaving the parent waiting on an EOF that never comes.
-        // `null` rather than leaving it inherited is what makes the channel
-        // unreachable from inside the sandbox. Pinned by
-        // `the_sandboxed_command_cannot_write_the_audit_channel`, which without this
-        // line sees a `degraded` record the command invented.
-        .stdin(std::process::Stdio::null());
+        .args(argv);
+
+    // The security half of the audit channel, not a tidy-up. Our stdin is the write
+    // end of a pipe the parent reads audit records from; this stage becomes nothing,
+    // but the stage below it becomes the sandboxed command, which must not inherit a
+    // descriptor it could write forged records into — or hold open, leaving the
+    // parent waiting on an EOF that never comes. `null` rather than leaving it
+    // inherited is what makes the channel unreachable from inside the sandbox.
+    // Pinned by `the_sandboxed_command_cannot_write_the_audit_channel`, which
+    // without this sees a `degraded` record the command invented.
+    //
+    // Conditional on the same flag as the write, because the flag is what says fd 0
+    // *is* a channel. Without it nothing was written there and there is nothing to
+    // protect, so stdin stays inherited — which is what a hand-invoked
+    // `sandbx-helper` needs for a command that reads its own input, and what this
+    // stage did for every caller before the channel existed.
+    if audit_on_stdin {
+        inner.stdin(std::process::Stdio::null());
+    }
 
     let mut child = inner.spawn().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not start the inner sandbox stage",
