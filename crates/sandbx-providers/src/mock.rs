@@ -6,11 +6,17 @@ use crate::request::MessagesRequest;
 /// A test double that replays a canned sequence of events instead of calling
 /// a real API.
 ///
-/// Deliberately not a `Provider` variant: that would permanently ship a variant
-/// which must never run in production. Interchangeability comes from the return
-/// type instead — `stream_chat` hands back the same [`EventStream`] a real
-/// provider does, so a caller takes that one concrete type and neither knows nor
-/// cares which side produced it.
+/// Interchangeability with a real client comes from the return type alone:
+/// `stream_chat` hands back the same [`EventStream`] an [`AnthropicClient`] does,
+/// so a caller takes that one concrete type and neither knows nor cares which
+/// side produced it.
+///
+/// Deliberately *not* reached through a shared abstraction over the backends. As
+/// an implementor of a common trait, or a variant of a common enum, this double
+/// would be part of the shipped surface permanently and the `mock` feature could
+/// not hide it. Having no such abstraction is what lets the feature gate work.
+///
+/// [`AnthropicClient`]: crate::AnthropicClient
 pub struct MockProvider {
     events: Vec<Result<AgentEvent, ProviderError>>,
 }
@@ -27,12 +33,14 @@ impl MockProvider {
     }
 
     /// Consumes `self` — a `MockProvider` is throwaway per-test canned data,
-    /// unlike `Provider::stream_chat(&self, ..)`, which is reused across many
-    /// real turns from one long-lived client.
+    /// unlike [`AnthropicClient::stream_chat`], which takes `&self` because one
+    /// long-lived client serves many real turns.
     ///
     /// Returns the crate's [`EventStream`] rather than a bare `impl Stream`, so
     /// the mock carries the same `FusedStream + Send` guarantees a caller gets
-    /// from a real provider — that is the whole point of the alias.
+    /// from the real client — that is the whole point of the alias.
+    ///
+    /// [`AnthropicClient::stream_chat`]: crate::AnthropicClient::stream_chat
     pub async fn stream_chat(
         self,
         _request: MessagesRequest,

@@ -1,13 +1,27 @@
 //! Hand-rolled streaming clients against LLM provider APIs.
 //!
-//! `Provider` is a closed enum, not a trait object: the set of backends sandbx
-//! ships is small and known at compile time (mirrors sandbx-tools' `BuiltinTool`),
-//! so there is no `dyn Provider` and no `async_trait` here. Runtime dispatch is
-//! reserved for the approval gate sandbx-agent will take, where the
-//! implementation genuinely is picked at runtime — an interactive prompt, an
-//! auto-approver, or a test double — rather than fixed when the binary is
-//! built. Each variant owns its own request/response shape, SSE parsing, auth,
-//! and error mapping into the shared `ProviderError`; no vendor SDK or
+//! The seam is [`EventStream`] — the return type — not a trait and not an enum
+//! over the backends. Each client is its own concrete type ([`AnthropicClient`]
+//! today, OpenAI planned next) and a caller names the one it constructed;
+//! interchangeability comes from every `stream_chat` handing back that same
+//! boxed stream, so sandbx-agent takes a closure producing one and neither knows
+//! nor cares which client is behind it.
+//!
+//! So no `dyn Provider`, no `async_trait`, and — unlike sandbx-tools'
+//! `BuiltinTool` — no closed enum over the backends either. That mirror does not
+//! hold: a tool is selected per call, by a name the model chose at runtime, so
+//! something has to dispatch on it. A provider is selected once at startup from
+//! configuration and never varies within a process, so an enum had nothing left
+//! to decide — its `stream_chat` only forwarded to the variant the construction
+//! site had already picked, which is why #90 removed it.
+//!
+//! Runtime dispatch is reserved for the approval gate sandbx-agent will take,
+//! where the implementation genuinely is picked at runtime — an interactive
+//! prompt, an auto-approver, or a test double — rather than fixed when the binary
+//! is built.
+//!
+//! Each client owns its own request/response shape, SSE parsing, auth, and error
+//! mapping into the shared [`ProviderError`]; no vendor SDK or
 //! provider-abstraction crate sits between sandbx and the wire format.
 
 mod anthropic;
@@ -37,51 +51,29 @@ pub use event::{AgentEvent, StopReason};
 pub use mock::MockProvider;
 pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 
-/// The event stream a provider returns: owned, boxed, and fused.
+/// The event stream every provider client returns: owned, boxed, and fused.
 ///
-/// Boxed for the reason [`Provider::stream_chat`] gives. `FusedStream` rather
-/// than `Stream` because the concrete stream underneath is built from
-/// `futures_util::stream::unfold`, which *panics* if polled after it returns
-/// `None` — easy to do by accident in a `select!` loop that does not break on
-/// `None`. Naming fusedness in the type keeps the box from erasing it.
+/// This alias *is* the provider seam. A caller takes one concrete type and the
+/// choice of backend never reaches its signature — which is why no trait and no
+/// enum over the clients is needed to make them interchangeable.
+///
+/// Boxed rather than `impl Stream`, and that is what makes the seam hold: each
+/// backend's stream is a different concrete type, so no single `impl Stream`
+/// return could name them all, and a caller written against the Anthropic
+/// client's opaque type would take a breaking change the day the second backend
+/// (OpenAI is the one planned next) lands. One allocation per turn, against an
+/// HTTP round trip, buys that.
+///
+/// `FusedStream` rather than `Stream` because the concrete stream underneath is
+/// built from `futures_util::stream::unfold`, which *panics* if polled after it
+/// returns `None` — easy to do by accident in a `select!` loop that does not
+/// break on `None`. Naming fusedness in the type keeps the box from erasing it.
+///
+/// `Send` so the turn built on it can be `tokio::spawn`ed, which is what a TUI
+/// driving one has to do.
 pub type EventStream = std::pin::Pin<
     Box<dyn futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send>,
 >;
-
-/// The LLM backends sandbx can talk to.
-#[derive(Debug, Clone)]
-pub enum Provider {
-    /// The Anthropic Messages API.
-    Anthropic(AnthropicClient),
-}
-
-impl Provider {
-    /// Builds the Anthropic variant from `ANTHROPIC_API_KEY`.
-    ///
-    /// Fails with [`ProviderError::MissingCredential`] if the variable is
-    /// unset or empty; see [`AnthropicClient::from_env`].
-    pub fn anthropic_from_env() -> Result<Self, ProviderError> {
-        Ok(Self::Anthropic(AnthropicClient::from_env()?))
-    }
-
-    /// Opens a streamed turn against whichever backend this is.
-    ///
-    /// Boxed even with a single variant today: `impl Stream` here would have to
-    /// name one concrete type for every match arm, so the second backend
-    /// (OpenAI is the one planned next) would force a breaking signature change
-    /// on every caller.
-    ///
-    /// Takes the request by value; [`MessagesRequest`] is `Clone` so a caller
-    /// that may need to retry the turn can keep a copy.
-    pub async fn stream_chat(
-        &self,
-        request: MessagesRequest,
-    ) -> Result<EventStream, ProviderError> {
-        match self {
-            Self::Anthropic(client) => Ok(Box::pin(client.stream_chat(request).await?)),
-        }
-    }
-}
 
 /// Install the `ring` crypto provider for `rustls`, once per process.
 ///

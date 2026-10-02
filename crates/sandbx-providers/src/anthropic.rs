@@ -1,7 +1,7 @@
 use secrecy::{ExposeSecret, SecretString};
 
+use crate::EventStream;
 use crate::error::ProviderError;
-use crate::event::AgentEvent;
 use crate::request::MessagesRequest;
 use crate::{credentials, ensure_crypto_provider_installed, sse, wire};
 
@@ -114,23 +114,19 @@ impl AnthropicClient {
     /// Takes the request by value, and [`MessagesRequest`] is `Clone`: a caller
     /// that wants to retry a turn after [`ProviderError::RateLimited`] should
     /// clone it before calling.
+    ///
+    /// Returns the crate's [`EventStream`] — the same type every client here
+    /// returns, which is what makes them interchangeable without a trait. See
+    /// that alias for why it is boxed and fused rather than opaque.
+    ///
+    /// Boxing it here is what the alias asks for, and it is legal because the
+    /// stream owns everything it needs: the auth header is read above, and the
+    /// stream itself holds only an owned `reqwest::Response`. Nothing is borrowed
+    /// from `&self`, so the box is `'static`.
     pub async fn stream_chat(
         &self,
         request: MessagesRequest,
-    ) -> Result<
-        // `FusedStream`, not plain `Stream`: the stream is safe to poll past its
-        // end, and saying so in the signature is what lets a caller — or a
-        // combinator requiring fusedness — rely on that.
-        //
-        // `+ use<>`: the returned stream owns everything it needs (the auth
-        // header is read before this point; the stream itself only holds an
-        // owned `reqwest::Response`) and borrows nothing from `&self`. Without
-        // this, Rust's default RPIT capture rules tie the opaque type to
-        // `&self`'s lifetime, which breaks `Provider::stream_chat` boxing this
-        // into an owned box.
-        impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + use<>,
-        ProviderError,
-    > {
+    ) -> Result<EventStream, ProviderError> {
         let response = self
             .http
             .post(format!("{}/v1/messages", self.base_url))
@@ -149,7 +145,9 @@ impl AnthropicClient {
             return Err(map_error_response(status, response).await);
         }
 
-        Ok(wire::event_stream(sse::tokenize(response.bytes_stream())))
+        Ok(Box::pin(wire::event_stream(sse::tokenize(
+            response.bytes_stream(),
+        ))))
     }
 }
 

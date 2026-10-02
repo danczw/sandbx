@@ -578,22 +578,26 @@ fn the_default_stream_bound_is_the_documented_one() {
 }
 
 /// The call shape `run_turn`'s own docs promise, compiled but never run: a real
-/// `Provider`, borrowed by a plain non-async closure. `AsyncFnMut` is satisfied here
-/// by the blanket impl for `FnMut(..) -> Future`, so if that ever stopped covering
-/// this shape the build would fail rather than leave the doc comment lying.
+/// `AnthropicClient`, borrowed by a plain non-async closure. `AsyncFnMut` is
+/// satisfied here by the blanket impl for `FnMut(..) -> Future`, so if that ever
+/// stopped covering this shape the build would fail rather than leave the doc
+/// comment lying.
+///
+/// That the closure can stay non-async is the client's doing: its `stream_chat`
+/// returns `EventStream` directly, so there is nothing left here to box.
 ///
 /// Also pins that the returned future is `Send`. That is the one thing giving up a
 /// named `Fut` type parameter could have cost: a non-`Send` future cannot be
 /// `tokio::spawn`ed, which is exactly what a TUI needs to do with a turn.
 #[allow(dead_code)]
 fn the_documented_call_shape_compiles_and_stays_spawnable(
-    provider: &'static sandbx_providers::Provider,
+    client: &'static sandbx_providers::AnthropicClient,
     ctx: &'static ExecutionContext,
 ) {
     fn assert_send<T: Send>(_: T) {}
 
     assert_send(run_turn(
-        |request| provider.stream_chat(request),
+        |request| client.stream_chat(request),
         turn(&[], &[]),
         ctx,
         |_| {},

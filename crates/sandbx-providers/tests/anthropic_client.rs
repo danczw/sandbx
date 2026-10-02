@@ -1,9 +1,11 @@
-//! Public contract of [`AnthropicClient`] and [`Provider`], exercised over
-//! real HTTP against a local mock server — no live network access, no API key.
+//! Public contract of [`AnthropicClient`], exercised over real HTTP against a
+//! local mock server — no live network access, no API key.
+
+use std::future::Future;
 
 use futures_util::StreamExt;
 use sandbx_providers::{
-    AgentEvent, AnthropicClient, ContentBlock, MessagesRequest, Provider, ProviderError,
+    AgentEvent, AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError,
     RequestMessage, Role, StopReason,
 };
 use secrecy::SecretString;
@@ -298,24 +300,20 @@ async fn a_connection_closed_before_message_stop_is_reported() {
     ));
 }
 
-#[tokio::test]
-async fn provider_enum_dispatches_to_the_anthropic_client() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/messages"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw(FULL_TURN_SSE, "text/event-stream"))
-        .mount(&server)
-        .await;
+/// The seam is a type, so pin it as one: what the client returns must be *exactly*
+/// the alias sandbx-agent takes, not merely something shaped like it. A backend
+/// that boxed into an alias of its own, or a future that stopped being `Send` and
+/// so could no longer be `tokio::spawn`ed, would both compile here and fail only at
+/// a call site one crate away.
+///
+/// Compiled but never run, and so needs no `MockServer`. The event sequence itself
+/// is covered by `a_full_turn_produces_the_expected_event_sequence`, element by
+/// element, off the same fixture and through the same method.
+#[allow(dead_code)]
+fn the_client_returns_the_crate_seam(client: &'static AnthropicClient) {
+    fn assert_seam<F: Future<Output = Result<EventStream, ProviderError>> + Send>(_: F) {}
 
-    let provider = Provider::Anthropic(client_for(&server));
-    let stream = provider.stream_chat(a_request()).await.unwrap();
-    let events: Vec<_> = stream.collect().await;
-
-    assert_eq!(
-        events.len(),
-        4,
-        "the same sequence as calling AnthropicClient directly"
-    );
+    assert_seam(client.stream_chat(a_request()));
 }
 
 /// A redirect must not be followed: the API key rides in an `x-api-key`
