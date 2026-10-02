@@ -85,7 +85,9 @@ The relay cannot re-raise `SIGPIPE`, `SIGSEGV` or `SIGBUS`, so those surface as
 
 `unshare`, `setns` and `mount` are all in the seccomp denylist, so the command
 cannot build itself a new namespace or remount `/proc` out from under any of
-this.
+this. `clone` reaches those same namespaces through its flags argument, so it is
+filtered per flag; `clone3`, whose flags sit behind a pointer seccomp cannot
+follow, answers `ENOSYS` so callers fall back to the filtered `clone`.
 
 ## What this does NOT do
 

@@ -3,6 +3,10 @@
 //! Covers the escapes Landlock cannot see: a syscall that reaches the kernel without
 //! naming a path. The denylist is a constant so a test can assert the installed
 //! filter still matches it, and `super::apply` installs it.
+//!
+//! Three stacked filters, not one: a seccompiler filter carries a single match action,
+//! and `clone3` must answer `ENOSYS` while everything else answers `EPERM`. The kernel
+//! takes the most severe verdict across every installed filter.
 
 use crate::SandboxError;
 
@@ -71,6 +75,33 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_swapoff,
 ];
 
+/// Namespace-creating `clone` flags, refused one bit at a time.
+///
+/// `unshare` is on the denylist above, but `clone` reaches every one of these namespaces
+/// through its flags argument, so denying only `unshare` leaves the escape open (#118).
+///
+/// `CLONE_NEWTIME` is absent: it collides with `clone`'s exit-signal byte and the kernel
+/// refuses it for this syscall. `unshare` and `clone3`, the two calls that do accept it,
+/// are denied outright.
+const NAMESPACE_CLONE_FLAGS: &[libc::c_int] = &[
+    libc::CLONE_NEWNS,
+    libc::CLONE_NEWCGROUP,
+    libc::CLONE_NEWUTS,
+    libc::CLONE_NEWIPC,
+    libc::CLONE_NEWUSER,
+    libc::CLONE_NEWPID,
+    libc::CLONE_NEWNET,
+];
+
+/// `__X32_SYSCALL_BIT` from `asm/unistd.h`: the bit an x32 syscall number carries.
+///
+/// x32 reports `AUDIT_ARCH_X86_64`, so it passes the filter's architecture gate, but its
+/// numbers are the native ones with this bit set — and four denylisted calls (`ptrace`,
+/// `kexec_load`, `process_vm_readv`, `process_vm_writev`) sit at *different* numbers again
+/// in the x32 table. So the whole ABI is refused rather than enumerated (#117).
+#[cfg(target_arch = "x86_64")]
+const X32_SYSCALL_BIT: u32 = 0x4000_0000;
+
 /// The seccomp denylist [`deny_dangerous_syscalls`] will install, as data.
 ///
 /// Split out so it is assertable without a kernel. An empty rule vector means "match
@@ -88,6 +119,29 @@ fn blocked_syscalls(
         .copied()
         .map(|nr| (nr, Vec::new()))
         .collect::<BTreeMap<_, _>>();
+
+    // One rule per flag, because rules for a syscall are OR'd while conditions inside a
+    // rule are AND'd — a single `MaskedEq` over the union would only fire when *every*
+    // flag was set. `Dword`, like the socket rule below: `clone`'s flags live in the low
+    // half and the kernel ignores the high one, so a `Qword` compare would miss
+    // `clone(0x1_0000_0000 | CLONE_NEWUSER)`.
+    rules.insert(
+        libc::SYS_clone,
+        NAMESPACE_CLONE_FLAGS
+            .iter()
+            .map(|flag| {
+                let flag = *flag as u64;
+                let has_flag = SeccompCondition::new(
+                    0,
+                    SeccompCmpArgLen::Dword,
+                    SeccompCmpOp::MaskedEq(flag),
+                    flag,
+                )
+                .map_err(seccomp_failed)?;
+                SeccompRule::new(vec![has_flag]).map_err(seccomp_failed)
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    );
 
     // Unix sockets are their own axis, not a sub-case of network. A netns isolates only
     // *abstract* unix sockets; pathname sockets live in the filesystem and cross it
@@ -123,6 +177,19 @@ fn blocked_syscalls(
 /// Compile [`blocked_syscalls`] into the BPF program [`deny_dangerous_syscalls`]
 /// installs.
 ///
+/// Blocked calls return `EPERM` rather than killing the process: the syscall does not
+/// execute either way, and `EPERM` is what tools already expect on hardened systems, so
+/// they fail that operation instead of dying mid-run.
+fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProgram, SandboxError> {
+    deny_with(blocked_syscalls(policy)?, libc::EPERM)
+}
+
+/// Compile `rules` into a program that answers `errno` for what it names and allows the
+/// rest.
+///
+/// Takes an `errno` rather than a `SeccompAction`, so no caller can pass `Allow` here and
+/// invert the filter.
+///
 /// Split out to make the filter's *polarity* assertable without a kernel: the two actions
 /// below are positional and of the same type, so swapping them yields a filter that
 /// allows the denylist and `EPERM`s everything else. Hence the named bindings.
@@ -130,20 +197,19 @@ fn blocked_syscalls(
 /// `mod tests` keeps a twin of this function with the two actions swapped, which is what
 /// proves those tests would notice. It only mutates the real path as long as this body
 /// does nothing but call `SeccompFilter::new` — if that changes, change the twin.
-///
-/// Blocked calls return `EPERM` rather than killing the process: the syscall does not
-/// execute either way, and `EPERM` is what tools already expect on hardened systems, so
-/// they fail that operation instead of dying mid-run.
-fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProgram, SandboxError> {
+fn deny_with(
+    rules: std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
+    errno: libc::c_int,
+) -> Result<seccompiler::BpfProgram, SandboxError> {
     use seccompiler::{SeccompAction, SeccompFilter};
 
     // `SeccompFilter::new` takes the mismatch action before the match one: every
     // syscall the filter does not name, then the ones it does.
     let unlisted = SeccompAction::Allow;
-    let listed = SeccompAction::Errno(libc::EPERM as u32);
+    let listed = SeccompAction::Errno(errno as u32);
 
     let filter = SeccompFilter::new(
-        blocked_syscalls(policy)?,
+        rules,
         unlisted,
         listed,
         std::env::consts::ARCH.try_into().map_err(seccomp_failed)?,
@@ -153,9 +219,86 @@ fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProg
     filter.try_into().map_err(seccomp_failed)
 }
 
-/// Install the filter [`compiled_filter`] builds.
+/// `clone3` answered with `ENOSYS`, which is what makes the `clone` flag rules reachable.
+///
+/// Its flags sit in a struct behind a pointer, so seccomp cannot read them and the syscall
+/// has to go. `ENOSYS` and not `EPERM`: glibc 2.34+ calls `clone3` from `pthread_create`
+/// and falls back to `clone` only on `ENOSYS`, so `EPERM` here breaks every threaded
+/// program instead of routing it through the filtered `clone`.
+fn clone3_filter() -> Result<seccompiler::BpfProgram, SandboxError> {
+    deny_with(
+        std::collections::BTreeMap::from([(libc::SYS_clone3, Vec::new())]),
+        libc::ENOSYS,
+    )
+}
+
+/// Kill anything arriving over the x32 ABI, identified by [`X32_SYSCALL_BIT`] in `nr`.
+///
+/// Hand-assembled because seccompiler's conditions address syscall *arguments*; `nr` is
+/// reachable only as a filter key, and this rule is a mask over it rather than one number.
+///
+/// Killed, not `EPERM`'d, for the same reason the architecture gate kills: this is a
+/// foreign ABI whose syscall numbers mean something else, so no verdict per call is
+/// meaningful. Needs no architecture gate of its own — the denylist filter already kills
+/// every non-native architecture, and the kernel takes the most severe verdict.
+#[cfg(target_arch = "x86_64")]
+fn x32_gate() -> seccompiler::BpfProgram {
+    let insn = |code: u16, jt: u8, jf: u8, k: u32| seccompiler::sock_filter { code, jt, jf, k };
+
+    vec![
+        // `nr` is the first word of `struct seccomp_data`.
+        insn((libc::BPF_LD | libc::BPF_W | libc::BPF_ABS) as u16, 0, 0, 0),
+        insn(
+            (libc::BPF_ALU | libc::BPF_AND | libc::BPF_K) as u16,
+            0,
+            0,
+            X32_SYSCALL_BIT,
+        ),
+        insn(
+            (libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K) as u16,
+            0,
+            1,
+            X32_SYSCALL_BIT,
+        ),
+        insn(
+            (libc::BPF_RET | libc::BPF_K) as u16,
+            0,
+            0,
+            libc::SECCOMP_RET_KILL_PROCESS,
+        ),
+        insn(
+            (libc::BPF_RET | libc::BPF_K) as u16,
+            0,
+            0,
+            libc::SECCOMP_RET_ALLOW,
+        ),
+    ]
+}
+
+/// Every filter [`deny_dangerous_syscalls`] installs, in the order it installs them.
+fn installed_filters(
+    policy: &crate::SandboxPolicy,
+) -> Result<Vec<seccompiler::BpfProgram>, SandboxError> {
+    let filters = vec![
+        compiled_filter(policy)?,
+        clone3_filter()?,
+        #[cfg(target_arch = "x86_64")]
+        x32_gate(),
+    ];
+
+    Ok(filters)
+}
+
+/// Install the filters [`installed_filters`] builds.
+///
+/// Order carries no meaning: the kernel evaluates every installed filter and takes the
+/// most severe verdict, so a later filter cannot loosen an earlier one.
 pub(super) fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
-    seccompiler::apply_filter(&compiled_filter(policy)?).map_err(seccomp_failed)
+    for filter in installed_filters(policy)? {
+        seccompiler::apply_filter(&filter).map_err(seccomp_failed)?;
+    }
+
+    Ok(())
 }
 
 fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
@@ -174,6 +317,7 @@ mod tests {
     // source. These are kernel ABI and cannot move with the thing under test.
     const ALLOW: u32 = libc::SECCOMP_RET_ALLOW;
     const EPERM: u32 = libc::SECCOMP_RET_ERRNO | libc::EPERM as u32;
+    const ENOSYS: u32 = libc::SECCOMP_RET_ERRNO | libc::ENOSYS as u32;
     const KILL: u32 = libc::SECCOMP_RET_KILL_PROCESS;
 
     // The classic-BPF opcodes `compiled_filter`'s program is built from, composed from
@@ -677,6 +821,165 @@ mod tests {
         );
     }
 
+    /// The verdict for `clone(flags, …)`.
+    fn clone_verdict(program: seccompiler::BpfProgramRef<'_>, flags: u64) -> u32 {
+        verdict_with_args(program, libc::SYS_clone, [flags, 0, 0, 0, 0, 0])
+    }
+
+    /// Every namespace `unshare` is denied for is denied through `clone`'s flags too
+    /// (#118), one flag at a time.
+    ///
+    /// Per flag rather than over the union: the rules are OR'd, so a filter that only
+    /// fired when every flag was set would pass a union-only test.
+    #[test]
+    fn clone_cannot_create_a_namespace_unshare_is_denied_for() {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+
+        for flag in NAMESPACE_CLONE_FLAGS {
+            // `SIGCHLD` in the exit-signal byte, as a real caller passes it, so the test
+            // would catch a rule that matched the flags word exactly instead of masking.
+            let flags = *flag as u64 | libc::SIGCHLD as u64;
+
+            assert_eq!(
+                clone_verdict(&program, flags),
+                EPERM,
+                "clone({flag:#x}) is permitted, so the command can create a namespace \
+                 that `unshare` is denied for"
+            );
+        }
+    }
+
+    /// The flag rules must not cost an ordinary `fork`, which is `clone` carrying no
+    /// namespace flag at all. Without this, denying `clone` outright would pass the test
+    /// above.
+    #[test]
+    fn clone_without_a_namespace_flag_is_allowed() {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+
+        for (what, flags) in [
+            ("a bare fork", libc::SIGCHLD as u64),
+            (
+                "a thread",
+                (libc::CLONE_VM | libc::CLONE_FS | libc::CLONE_FILES | libc::CLONE_THREAD) as u64,
+            ),
+        ] {
+            assert_eq!(
+                clone_verdict(&program, flags),
+                ALLOW,
+                "clone() for {what} is refused, so the namespace rules have widened \
+                 into every process creation"
+            );
+        }
+    }
+
+    /// `clone`'s flags are an `unsigned long`, but the kernel reads namespace bits out of
+    /// the low half only, so the comparison has to ignore the high one — exactly as the
+    /// socket rule does. A `Qword` rule would let `clone(0x1_0000_0000 | CLONE_NEWUSER)`
+    /// through.
+    #[test]
+    fn the_clone_flag_comparison_ignores_the_high_half() {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+        let flags = 0xdead_beef_0000_0000 | libc::CLONE_NEWUSER as u64;
+
+        assert_eq!(
+            clone_verdict(&program, flags),
+            EPERM,
+            "garbage in the high half of `clone`'s flags escapes the namespace rules, \
+             so the comparison is 64-bit where the kernel's is 32-bit"
+        );
+    }
+
+    /// `clone3` carries its flags in a struct seccomp cannot read, so it is refused
+    /// outright — and with `ENOSYS`, which is what makes the `clone` rules reachable.
+    ///
+    /// glibc 2.34+ calls `clone3` from `pthread_create` and falls back to `clone` only on
+    /// `ENOSYS`. `EPERM` here would break every threaded program rather than routing it
+    /// onto the filtered `clone`, so the errno is load-bearing, not cosmetic.
+    #[test]
+    fn clone3_is_refused_with_enosys_so_callers_fall_back_to_clone() {
+        let program = clone3_filter().unwrap();
+
+        assert_eq!(
+            verdict(&program, libc::SYS_clone3),
+            ENOSYS,
+            "clone3 does not answer ENOSYS, so either it is reachable — and its flags \
+             are unreadable to seccomp — or glibc cannot fall back and threading breaks"
+        );
+        assert_eq!(
+            verdict(&program, libc::SYS_clone),
+            ALLOW,
+            "the clone3 filter also answers for clone, which must reach the flag rules \
+             in the denylist filter instead"
+        );
+    }
+
+    /// x32 syscalls reach the kernel with [`X32_SYSCALL_BIT`] set in `nr`, under the same
+    /// `AUDIT_ARCH_X86_64` the filter gates on, so the denylist's native numbers never
+    /// match them (#117).
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn the_x32_abi_is_killed_whatever_the_syscall() {
+        let program = x32_gate();
+
+        // `unshare` is the demonstration: a `common` syscall, so x32 reaches it at the
+        // native number with the bit set. `ptrace` sits at a *different* x32 number
+        // (521), which is why the gate is a mask rather than a list.
+        for (what, nr) in [
+            (
+                "unshare",
+                X32_SYSCALL_BIT as libc::c_long | libc::SYS_unshare,
+            ),
+            (
+                "ptrace at its x32 number",
+                X32_SYSCALL_BIT as libc::c_long | 521,
+            ),
+            (
+                "an x32 syscall sandbx does not denylist",
+                X32_SYSCALL_BIT as libc::c_long | libc::SYS_getpid,
+            ),
+        ] {
+            assert_eq!(
+                verdict(&program, nr),
+                KILL,
+                "{what} survives the x32 gate, so the whole denylist can be bypassed \
+                 by setting one bit in the syscall number"
+            );
+        }
+    }
+
+    /// The gate keys on one bit, so it must leave every native syscall alone — otherwise
+    /// it would kill the command outright and the test above would still pass.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn the_x32_gate_lets_native_syscalls_through() {
+        let program = x32_gate();
+
+        for nr in [libc::SYS_getpid, libc::SYS_ptrace, libc::SYS_clone] {
+            assert_eq!(
+                verdict(&program, nr),
+                ALLOW,
+                "the x32 gate judges native syscall {nr}, which is the denylist \
+                 filter's job"
+            );
+        }
+    }
+
+    /// `CLONE_NEWNET` and [`X32_SYSCALL_BIT`] are both `0x4000_0000`, in different fields.
+    /// Pinned because the two rules added together read as if one constant could serve
+    /// both, and a shared constant would couple a syscall number to a clone flag.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn the_x32_bit_and_clone_newnet_are_unrelated_despite_sharing_a_value() {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+
+        assert_eq!(
+            verdict(&program, X32_SYSCALL_BIT as libc::c_long | libc::SYS_getpid),
+            ALLOW,
+            "the denylist filter reacts to the x32 bit in `nr`, so a clone flag has \
+             leaked into a syscall-number comparison"
+        );
+    }
+
     /// The second assertion is the one worth having: a grant that also widened the
     /// denylist would otherwise be invisible here.
     #[test]
@@ -726,8 +1029,7 @@ mod tests {
 
         let filter = SeccompFilter::new(
             blocked_syscalls(policy).unwrap(),
-            // Swapped: in `compiled_filter` the first is `Allow`, the second
-            // `Errno(EPERM)`.
+            // Swapped: in `deny_with` the first is `Allow`, the second `Errno(errno)`.
             SeccompAction::Errno(libc::EPERM as u32),
             SeccompAction::Allow,
             std::env::consts::ARCH.try_into().unwrap(),
@@ -779,7 +1081,22 @@ mod tests {
     /// check included.
     #[test]
     fn the_program_is_one_the_kernel_would_accept() {
-        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+        let filters = installed_filters(&SandboxPolicy::default()).unwrap();
+
+        // Or the loop below checks nothing, and `x32_gate` — the one hand-assembled
+        // program here, and so the one most likely to be malformed — goes unexamined.
+        assert_eq!(
+            filters.len(),
+            if cfg!(target_arch = "x86_64") { 3 } else { 2 },
+            "a filter was added or dropped without this test being told which"
+        );
+
+        for program in filters {
+            check_program_is_well_formed(&program);
+        }
+    }
+
+    fn check_program_is_well_formed(program: seccompiler::BpfProgramRef<'_>) {
         let len = program.len();
 
         // `bpf_check_classic` refuses `flen == 0 || flen > BPF_MAXINSNS`, so 4096 is the
@@ -838,7 +1155,7 @@ mod tests {
             }
         }
 
-        let expected = std::collections::BTreeSet::from([ALLOW, EPERM, KILL]);
+        let expected = std::collections::BTreeSet::from([ALLOW, EPERM, ENOSYS, KILL]);
         assert!(
             verdicts.is_subset(&expected),
             "the filter can return a verdict it was never asked for: {verdicts:x?}"
