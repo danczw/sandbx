@@ -243,3 +243,86 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `wait(2)` status as the kernel encodes one, for a process that exited of
+    /// its own accord with `code`. `ExitStatus::from_raw` takes exactly that
+    /// encoding, and it is safe — so the three shapes below can be built here
+    /// rather than reached by spawning a process, which is what kept [`exit_code`]
+    /// testable only behind `sandbox-integration` until now (#91).
+    fn exited(code: i32) -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+
+        std::process::ExitStatus::from_raw(code << 8)
+    }
+
+    /// The same, for a process killed by `signal`. The signal number occupies the
+    /// low seven bits, which is why an exit code occupies the byte above them.
+    fn killed_by(signal: i32) -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+
+        std::process::ExitStatus::from_raw(signal)
+    }
+
+    /// An exit code is reported as itself, so a command's own verdict reaches the
+    /// caller unaltered.
+    #[test]
+    fn an_exit_code_is_reported_as_itself() {
+        for code in [0, 1, 42, 255] {
+            assert_eq!(
+                exit_code(&exited(code)),
+                code,
+                "an exit code must survive the translation unchanged, got {}",
+                exit_code(&exited(code))
+            );
+        }
+    }
+
+    /// A command the sandbox killed dies by signal and has no exit code of its
+    /// own. `128 + signal` is how a shell encodes that, and both callers —
+    /// [`relay`] and `sandbx-cli` — depend on the number being that and not 0,
+    /// which would report "succeeded" about a process seccomp shot.
+    #[test]
+    fn a_signalled_death_is_reported_as_128_plus_the_signal() {
+        for signal in [libc::SIGKILL, libc::SIGSEGV, libc::SIGPIPE] {
+            assert_eq!(
+                exit_code(&killed_by(signal)),
+                128 + signal,
+                "a command killed by {signal} must report {}, got {}",
+                128 + signal,
+                exit_code(&killed_by(signal))
+            );
+        }
+    }
+
+    /// A status that is neither an exit nor a death is refused with 1 rather than
+    /// given an invented success. A stop is the shape the low byte reserves for
+    /// one, and it is the only way to reach that arm.
+    ///
+    /// The premise is asserted first and deliberately: if a future libc or std
+    /// changes what this encoding decodes to, this says "the input stopped being
+    /// the case it was written for" instead of quietly re-testing the signal arm
+    /// above.
+    #[test]
+    fn a_status_that_is_neither_an_exit_nor_a_death_reports_failure() {
+        use std::os::unix::process::ExitStatusExt;
+
+        // 0x7f in the low byte is `WSTOPPED`; the signal that stopped it sits
+        // above, where an exit code would.
+        let stopped = std::process::ExitStatus::from_raw((libc::SIGSTOP << 8) | 0x7f);
+
+        assert!(
+            stopped.code().is_none() && stopped.signal().is_none(),
+            "this raw status was meant to be neither an exit nor a death: {stopped:?}"
+        );
+        assert_eq!(
+            exit_code(&stopped),
+            1,
+            "a status with no verdict of its own must report failure, got {}",
+            exit_code(&stopped)
+        );
+    }
+}
