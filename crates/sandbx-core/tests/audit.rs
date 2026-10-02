@@ -121,12 +121,11 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("unix_sockets=true"), "got: {line}");
 }
 
-/// A hardening step that did not take effect leaves the sandbox weaker than the
-/// policy asked for, so it belongs in the trail next to the decisions — not in
-/// debug output. The two sites that record one (the capability bounding set and
-/// the userns identity map) used a raw `debug!` on the audit target, which is
-/// off under the default filter: the sandbox could silently weaken and the
-/// record of it would reach nobody.
+/// A hardening step that did not take effect is part of what the sandbox did,
+/// so it belongs in the trail next to the decisions — not in debug output. The
+/// two sites that record one (the capability bounding set and the userns
+/// identity map) used a raw `debug!` on the audit target, which is off under the
+/// default filter: a step could go missing and the record of it reach nobody.
 #[test]
 fn records_a_degraded_hardening_step() {
     let lines = capture(|| {
