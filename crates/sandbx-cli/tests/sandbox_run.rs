@@ -1,8 +1,7 @@
 //! Argument parsing for `sandbx sandbox-run`, and the policy it derives.
 //!
 //! The policy is the security-relevant half: a flag that silently widens it, or a
-//! command argument mistaken for one of sandbx's own, is a sandbox escape dressed as a
-//! usability bug.
+//! command argument mistaken for one of sandbx's own, is a sandbox escape.
 
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
@@ -92,8 +91,8 @@ fn the_command_keeps_its_own_arguments() {
     assert_eq!(args.arguments(), ["-la", "/srv"]);
 }
 
-/// Swallowing a flag sandbx also defines would let the sandboxed command's own
-/// arguments widen the policy meant to confine it.
+/// Swallowing a flag sandbx also defines would let the sandboxed command's arguments
+/// widen the policy meant to confine it.
 #[test]
 fn flags_after_the_separator_are_not_our_flags() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--allow-network"]);
@@ -112,8 +111,6 @@ fn a_missing_command_is_rejected() {
     assert!(Cli::try_parse_from(["sandbx", "sandbox-run", "--allow-network"]).is_err());
 }
 
-/// Seconds, not some other unit: a timeout silently read as milliseconds would kill
-/// every real command.
 #[test]
 fn timeout_parses_as_seconds() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--timeout", "5", "--", "true"]);
@@ -121,8 +118,8 @@ fn timeout_parses_as_seconds() {
     assert_eq!(args.timeout(), Some(std::time::Duration::from_secs(5)));
 }
 
-/// Absent flag means no limit, matching a plain shell. A default would start killing
-/// long interactive runs nobody asked to bound.
+/// No limit, matching a plain shell: a default would kill long interactive runs nobody
+/// asked to bound.
 #[test]
 fn without_the_flag_there_is_no_timeout() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]);
@@ -161,8 +158,8 @@ fn unix_sockets_are_opt_in() {
     assert!(!bare.allows_unix_sockets());
 }
 
-/// `--allow-exec` is the only way to run a binary that is not a system one, so
-/// a read grant leaking onto the execute axis would silently widen it.
+/// `--allow-exec` is the only way to run a binary that is not a system one, so a read
+/// grant leaking onto the execute axis would silently widen it.
 #[test]
 fn exec_grants_are_repeatable_and_separate_from_read() {
     let policy = sandbox_run(&[
@@ -221,10 +218,9 @@ fn nothing_user_supplied_is_executable_by_default() {
     }
 }
 
-/// The library keeps the two axes separate, so a caller can build a write-only drop
-/// directory. At the command line that is a trap: `--allow-write ~/project` would let
-/// a tool write the tree but not `cat` it back. The narrow form stays available
-/// through the API.
+/// The library keeps the two axes separate so a caller can build a write-only drop
+/// directory; at the command line that is a trap, since `--allow-write ~/project` would
+/// let a tool write a tree it cannot `cat` back. The narrow form stays on the API.
 #[test]
 fn allow_write_also_grants_read_at_the_command_line() {
     let policy = sandbox_run(&[
@@ -248,9 +244,8 @@ fn allow_write_also_grants_read_at_the_command_line() {
     );
 }
 
-/// Stated over the axis table rather than flag by flag. The CLI's one widening is
-/// asserted here too: `--allow-write` grants read alongside write, which is a
-/// command-line affordance and not a property of the library's write axis.
+/// Stated over the axis table rather than flag by flag, including the CLI's one
+/// widening.
 #[test]
 fn every_path_flag_grants_its_own_axis_and_nothing_else() {
     use sandbx_core::Axis;
@@ -279,9 +274,8 @@ fn every_path_flag_grants_its_own_axis_and_nothing_else() {
     }
 }
 
-/// `PATH` above all: `sandbox-run -- cat file` is the documented usage, and without it
-/// a bare name reaches only the C library's fallback search path, so a program outside
-/// `/bin` and `/usr/bin` is not found.
+/// `PATH` above all: without it a bare program name reaches only the C library's
+/// fallback search path, so anything outside `/bin` and `/usr/bin` is not found.
 #[test]
 fn the_startup_environment_is_granted_anyway() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
@@ -323,8 +317,6 @@ fn passing_a_variable_is_opt_in() {
     );
 }
 
-/// Naming a variable must not widen a path grant or the network, any more than
-/// `--allow-read` passes a variable.
 #[test]
 fn allow_env_is_repeatable_and_widens_nothing_else() {
     let policy = sandbox_run(&[
@@ -357,17 +349,15 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
     assert!(!policy.allows_unix_sockets(), "env implied unix sockets");
 }
 
-/// The flag names a variable; it does not set one. `NAME=VALUE` would put a value in
+/// The flag names a variable; it does not set one — `NAME=VALUE` would put the value in
 /// helper argv, which the sandboxed command reads back out of its own
 /// `/proc/self/cmdline`.
 ///
 /// Refused rather than dropped: `SandboxPolicy::allow_env` skips a name it cannot
 /// encode, which would leave `--allow-env TOKEN=hunter2` exiting 0 having passed
-/// nothing, and the person who typed it believing the secret crossed.
-///
-/// Only the *name* is asserted. clap prefixes a `value_parser` refusal with `invalid
-/// value '<the value>'`, so `hunter2` does reach stderr — not worth working around,
-/// since by then `ps`, the shell history and `/proc/self/cmdline` already have it.
+/// nothing, and the person who typed it believing the secret crossed. Only the *name*
+/// is asserted; clap's refusal echoes the value, which `ps` and the shell history
+/// already have.
 #[test]
 fn a_name_with_a_value_is_refused_rather_than_dropped() {
     let refusal = Cli::try_parse_from([
