@@ -20,15 +20,9 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 /// Scripts one canned round per call, and records what was sent.
 ///
-/// This is the seam itself. `run_turn` asks for a closure that opens a stream, so a
-/// test hands it one that pops a canned round off the front and replays it.
-///
-/// Deliberately not built on `sandbx-providers`' `MockProvider`: that double's whole
-/// body is the `stream::iter(..).fuse()` in [`canned`] below, and reaching for it
-/// would mean a `mock` feature here, a `required-features` test target, and a CI
-/// command that has to name both — three coordinated parts, one of them a silent
-/// failure if forgotten, to borrow one line. Recording the requests has to live here
-/// either way, since `MockProvider` discards its own.
+/// Not built on `sandbx-providers`' `MockProvider`: borrowing the one line it would
+/// save costs a `mock` feature, a `required-features` test target and a CI command
+/// naming both, and the recording has to live here anyway since it discards its own.
 struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
     sent: Vec<MessagesRequest>,
@@ -45,8 +39,8 @@ impl Script {
     async fn open(&mut self, request: MessagesRequest) -> Result<EventStream, ProviderError> {
         self.sent.push(request.clone());
         // Not `unwrap_or_default`: an empty round surfaces as
-        // `StreamEndedWithoutStop`, so a test that miscounted rounds would fail with a
-        // misleading cause instead of naming the script.
+        // `StreamEndedWithoutStop`, so a miscounted script would fail with a
+        // misleading cause instead of naming itself.
         let events = self
             .rounds
             .pop_front()
@@ -57,8 +51,8 @@ impl Script {
 
 /// An `EventStream` that replays `events` and then ends.
 ///
-/// `fuse()` because `EventStream` promises a `FusedStream` — a caller may poll it
-/// past its end without panicking.
+/// `fuse()` because `EventStream` promises a `FusedStream`: a caller may poll it past
+/// its end without panicking.
 fn canned(events: Vec<AgentEvent>) -> EventStream {
     use futures_util::StreamExt;
     Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)).fuse())
@@ -77,7 +71,6 @@ fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a>
     }
 }
 
-/// Same shape the `sandbx-tools` suites use, so all eight call sites share it.
 fn ctx(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
 }
@@ -92,8 +85,7 @@ fn stop(reason: StopReason) -> AgentEvent {
     AgentEvent::Stop { reason }
 }
 
-/// The id every scripted call uses. Each round in this suite makes exactly one call,
-/// so threading a distinct id through every site would add noise and prove nothing.
+/// The id every scripted call uses; each round here makes exactly one call.
 const CALL_ID: &str = "call_1";
 
 fn call(name: &str, input: serde_json::Value) -> AgentEvent {
@@ -109,8 +101,7 @@ fn wire(messages: &[RequestMessage]) -> serde_json::Value {
     serde_json::to_value(messages).unwrap()
 }
 
-/// The single `tool_result` block a scripted call produced. The asserts stay at each
-/// call site so a failure still points at the test that cares.
+/// The single `tool_result` block a scripted call produced.
 fn tool_error(messages: &[RequestMessage]) -> serde_json::Value {
     wire(messages)[1]["content"][0].clone()
 }
@@ -137,10 +128,9 @@ async fn text_deltas_accumulate_into_one_block() {
     );
 }
 
-/// `sandbx-providers` discards the cryptographic signature that Anthropic streams
-/// alongside a thinking block, and `ContentBlock` has no thinking variant, so a
-/// thinking block cannot be replayed into a later request. It still has to reach
-/// the caller, or a TUI could not render extended thinking at all.
+/// `sandbx-providers` discards the signature Anthropic streams alongside a thinking
+/// block, so it cannot be replayed into a later request — but a TUI still has to see
+/// it to render extended thinking.
 #[tokio::test]
 async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
     let thinking = AgentEvent::Thinking {
@@ -172,9 +162,8 @@ async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
     assert!(seen.contains(&thinking), "got {seen:?}");
 }
 
-/// Text arrives as increments, never as the accumulated total, so a renderer
-/// needs each event as it lands rather than only the finished block. Leaving that
-/// to every consumer is the duplication #58 exists to stop.
+/// Text arrives as increments, never as the accumulated total, so a renderer needs
+/// each event as it lands rather than only the finished block.
 #[tokio::test]
 async fn the_observer_sees_every_event_in_arrival_order() {
     let round = vec![
@@ -203,8 +192,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
     assert_eq!(seen, round);
 }
 
-/// The API rejects a message whose content array is empty, so a round that
-/// produced nothing must append no message at all — appending an empty one would
+/// The API rejects a message whose content array is empty, so appending one would
 /// poison every later request in the conversation.
 #[tokio::test]
 async fn a_round_that_produced_nothing_appends_no_message() {
@@ -223,9 +211,9 @@ async fn a_round_that_produced_nothing_appends_no_message() {
     assert!(messages.is_empty(), "got {:?}", wire(&messages));
 }
 
-/// A real provider ends a turn with `Stop` or with an `Err`, never with silence.
-/// Treating a silent end as success would hand back a turn nothing can tell apart
-/// from a truncated one.
+/// A real provider ends a turn with `Stop` or with an `Err`, never with silence, so
+/// treating a silent end as success hands back a turn nothing can tell from a
+/// truncated one.
 #[tokio::test]
 async fn a_stream_that_never_reports_a_stop_is_an_error() {
     let mut script = Script::new([vec![text("cut off")]]);
@@ -245,9 +233,6 @@ async fn a_stream_that_never_reports_a_stop_is_an_error() {
     );
 }
 
-/// The request is where the two crates either side of this one actually meet: the
-/// history goes out verbatim, and each offered built-in has to arrive as the
-/// `ToolDefinition` shape a provider wants, bridged from its own accessors.
 #[tokio::test]
 async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
     let history = vec![RequestMessage {
@@ -282,9 +267,8 @@ async fn the_request_carries_the_history_and_a_definition_per_offered_tool() {
     );
 }
 
-/// The whole point of the loop, end to end: assistant text, a tool call, the tool
-/// actually running under a policy, its result threaded back, and a second round
-/// that sees all of it. No network and no API key anywhere in it.
+/// The loop end to end: assistant text, a tool call running under a policy, its
+/// result threaded back, and a second round that sees all of it.
 #[tokio::test]
 async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
     let root = tempfile::tempdir().unwrap();
@@ -341,8 +325,8 @@ async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
 }
 
 /// `message_delta.stop_reason` is nullable, so a round can reach `message_stop`
-/// carrying tool calls *and* `StopReason::Unspecified`. Keying re-entry off the stop
-/// reason instead of off the calls themselves would silently drop them.
+/// carrying tool calls *and* `StopReason::Unspecified`. Keying re-entry off the
+/// reason rather than the calls would silently drop them.
 #[tokio::test]
 async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
     let root = tempfile::tempdir().unwrap();
@@ -373,10 +357,9 @@ async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
     assert_eq!(script.sent.len(), 2, "the turn should have re-entered");
 }
 
-/// A refusal is not a turn-ending failure: the model is told it was refused and
-/// gets to ask for something in scope. `context/guide-tools.md` is explicit that the
-/// three `ToolError` variants exist because the model reacts to them differently,
-/// which only works if they reach it.
+/// A refusal is not a turn-ending failure: the model is told, and gets to ask for
+/// something in scope. The three `ToolError` variants only differ to the model if
+/// they reach it; see `context/guide-tools.md`.
 #[tokio::test]
 async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
     let allowed = tempfile::tempdir().unwrap();
@@ -422,8 +405,8 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
     assert_eq!(messages.len(), 3, "the turn should have carried on");
 }
 
-/// Arguments that do not match the schema are the model's mistake to fix, so it is
-/// told what was wrong rather than having the turn end under it.
+/// Arguments that do not match the schema are the model's mistake to fix, so the
+/// turn does not end under it.
 #[tokio::test]
 async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
     let root = tempfile::tempdir().unwrap();
@@ -463,8 +446,7 @@ async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
 }
 
 /// `BuiltinTool::from_name` is exact-match on purpose, so a name that does not
-/// resolve is a prompt or schema bug. The model is the one that can correct it, so
-/// it is told — and nothing runs in the meantime.
+/// resolve is a prompt or schema bug the model is the one to correct. Nothing runs.
 #[tokio::test]
 async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
     let mut script = Script::new([
@@ -492,14 +474,13 @@ async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
 }
 
 /// A model that keeps asking for tools — looping on its own, or steered into it by
-/// injected content — would otherwise drive tool execution without bound. The cap is
-/// what makes a turn's total cost derivable instead of open-ended.
+/// injected content — would otherwise drive tool execution without bound.
 #[tokio::test]
 async fn a_turn_ends_once_it_runs_out_of_rounds() {
     let root = tempfile::tempdir().unwrap();
     let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
-    // Exactly as many rounds as the cap allows: `run_turn` can never ask for more, so
-    // an endless supply would only hide the dependency this test is about.
+    // Exactly as many rounds as the cap allows: an endless supply would hide the
+    // dependency this test is about.
     let mut script = Script::new(std::iter::repeat_n(
         vec![
             call(
@@ -532,10 +513,7 @@ async fn a_turn_ends_once_it_runs_out_of_rounds() {
     );
 }
 
-/// Pinned literally rather than read off the type, because the value is the claim:
-/// with no caller measured yet, the default is deliberately at the tighter end, so a
-/// limit that is too low announces itself where one that is too high silently fails
-/// to catch the runaway it exists for.
+/// Pinned literally rather than read off the type: the value is the claim.
 #[test]
 fn the_default_round_cap_is_the_documented_one() {
     assert_eq!(TurnLimits::default().max_rounds, 8);
@@ -543,18 +521,16 @@ fn the_default_round_cap_is_the_documented_one() {
 
 /// A stream that opens and then goes quiet forever.
 ///
-/// `EventStream` is a `FusedStream`, which `stream::pending` satisfies — it never
+/// `stream::pending` satisfies the `FusedStream` `EventStream` promises: it never
 /// yields and never claims to be terminated.
 fn stalled() -> EventStream {
     Box::pin(futures_util::stream::pending())
 }
 
 /// A server that keeps the connection warm while producing nothing useful would
-/// otherwise hold a turn open indefinitely — see `TurnLimits::stream_timeout` for why
-/// the provider's own read timeout does not cover this.
-///
-/// Paused time rather than a real sleep: the runtime auto-advances once nothing else
-/// can make progress, so this asserts the bound without waiting for it.
+/// otherwise hold a turn open indefinitely; see `TurnLimits::stream_timeout` for why
+/// the provider's own read timeout does not cover it. Paused time, so the runtime
+/// auto-advances instead of this waiting out the bound.
 #[tokio::test(start_paused = true)]
 async fn a_round_that_never_finishes_streaming_times_out() {
     let mut stalling = turn(&[], &[]);
@@ -578,9 +554,9 @@ async fn a_round_that_never_finishes_streaming_times_out() {
     );
 }
 
-/// Pinned literally, like the round cap: the number is the claim. It bounds one
-/// round's whole generation, which is strictly tighter than the 120s *per-chunk*
-/// read timeout underneath it, and does not replace it.
+/// Pinned literally, like the round cap. It bounds one round's whole generation,
+/// which is tighter than the 120s *per-chunk* read timeout underneath it and does not
+/// replace it.
 #[test]
 fn the_default_stream_bound_is_the_documented_one() {
     assert_eq!(
@@ -589,18 +565,11 @@ fn the_default_stream_bound_is_the_documented_one() {
     );
 }
 
-/// The call shape `run_turn`'s own docs promise, compiled but never run: a real
-/// `AnthropicClient`, borrowed by a plain non-async closure. `AsyncFnMut` is
-/// satisfied here by the blanket impl for `FnMut(..) -> Future`, so if that ever
-/// stopped covering this shape the build would fail rather than leave the doc
-/// comment lying.
-///
-/// The closure can stay non-async because `stream_chat` returns `EventStream`
-/// directly, so there is nothing left here to box.
-///
-/// Also pins that the returned future is `Send` — the one thing giving up a named
-/// `Fut` type parameter could have cost. See `sandbx-providers`' `EventStream` for
-/// why that matters.
+/// The call shape `run_turn`'s docs promise, compiled but never run: a real
+/// `AnthropicClient` borrowed by a plain non-async closure, which `AsyncFnMut`
+/// accepts through the blanket impl for `FnMut(..) -> Future`. Also pins that the
+/// returned future is `Send` — the one thing giving up a named `Fut` parameter could
+/// have cost. Either regressing fails the build rather than leaving the docs lying.
 #[allow(dead_code)]
 fn the_documented_call_shape_compiles_and_stays_spawnable(
     client: &'static sandbx_providers::AnthropicClient,
@@ -616,15 +585,11 @@ fn the_documented_call_shape_compiles_and_stays_spawnable(
     ));
 }
 
-/// A round that produces nothing *after* tools have run is not a finished turn.
-///
-/// `a_round_that_produced_nothing_appends_no_message` covers the other shape of
-/// this: an empty first round, where there is nothing to hand back and `Ok` with
-/// an empty transcript is right. Here the transcript ends in the `tool_result`
-/// the model never answered, and handing that back as success breaks the *next*
-/// request — the caller appends its own user message after it, and the API
-/// rejects two consecutive user turns with `roles must alternate between "user"
-/// and "assistant"`. Same treatment as `RoundLimit`, for the same reason.
+/// A round that produces nothing *after* tools have run is not a finished turn: the
+/// transcript ends in a `tool_result` the model never answered, and handing that back
+/// as success breaks the *next* request, where the caller's own user message makes
+/// two consecutive user turns. An empty *first* round is the other shape, covered by
+/// `a_round_that_produced_nothing_appends_no_message`.
 #[tokio::test]
 async fn a_turn_that_ends_on_an_empty_round_mid_tool_use_is_an_error() {
     let root = tempfile::tempdir().unwrap();
