@@ -38,6 +38,22 @@ pub enum AuditEvent<'a> {
         reason: &'a str,
     },
 
+    /// A best-effort hardening step did not take effect, and the sandbox
+    /// carried on without it.
+    ///
+    /// Distinct from [`Denied`](Self::Denied): nothing the agent asked for was
+    /// refused. This says the sandbox is *weaker* than it meant to be, which is
+    /// the one record that must not be missing when it matters — the steps that
+    /// can fail this way fail on whole classes of host (AppArmor's
+    /// `restrict_unprivileged_userns`), not intermittently.
+    Degraded {
+        /// Which step did not take effect, as a stable label rather than prose,
+        /// so a trail can be filtered by it.
+        mechanism: &'a str,
+        /// Why it did not, and what the process runs as instead.
+        detail: &'a str,
+    },
+
     /// A sandboxed process was started, and under what shape of policy.
     Spawned {
         /// The program the sandbox is about to become.
@@ -73,6 +89,11 @@ impl<'a> AuditEvent<'a> {
             subject,
             reason,
         }
+    }
+
+    /// Record a hardening step that did not take effect.
+    pub fn degraded(mechanism: &'a str, detail: &'a str) -> Self {
+        Self::Degraded { mechanism, detail }
     }
 
     /// Record a spawn, summarising the policy rather than reproducing it.
@@ -125,6 +146,12 @@ impl<'a> AuditEvent<'a> {
                 tool,
                 subject,
                 reason,
+            ),
+            Self::Degraded { mechanism, detail } => tracing::info!(
+                target: AUDIT_TARGET,
+                decision = "degraded",
+                mechanism,
+                detail,
             ),
             Self::Spawned {
                 program,
