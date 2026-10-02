@@ -183,7 +183,13 @@ fn malformed_arguments_do_not_run_the_command() {
 /// one of these.
 #[test]
 fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
-    let marker = tempfile::tempdir().unwrap().path().join("should-not-exist");
+    // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
+    // the statement, which would leave `!marker.exists()` below asserting nothing.
+    // It is still the weaker of the two assertions — the environment check refuses
+    // this invocation too, so reaching the command takes removing both guards — and
+    // the stderr assertion is what names which one did it.
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("should-not-exist");
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .args([
@@ -232,14 +238,24 @@ fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
 ///
 /// The variable is planted with `Command::env` rather than `set_var`, which is
 /// `unsafe` on edition 2024 and would poison the whole harness besides.
+///
+/// The policy grants everything `/bin/touch` needs to run and to create the marker,
+/// which is what makes the two assertions below mean something: with the check
+/// removed the command *succeeds* and the file appears, so each of them fails on its
+/// own rather than only the one that reads stderr. A `default()` policy would deny
+/// the exec as well, and the test would stay green for the wrong reason.
 #[test]
 fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
-    let marker = tempfile::tempdir().unwrap().path().join("should-not-exist");
+    // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
+    // the statement, and `!marker.exists()` asserts nothing about a path whose
+    // parent is already gone.
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("should-not-exist");
 
-    // Nothing allowed, so the planted variable is outside the allowlist — as is
-    // every variable cargo handed this process, which is the harness-wide
+    // Nothing in the *environment* allowlist, so the planted variable is outside it
+    // — as is every variable cargo handed this process, which is the harness-wide
     // environment a real stage 1 would have cleared.
-    let policy = SandboxPolicy::default();
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
     let args = [marker.to_str().unwrap().to_string()];
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
