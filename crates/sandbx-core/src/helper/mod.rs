@@ -20,7 +20,7 @@ pub use seccomp::BLOCKED_SYSCALLS;
 use hardening::{
     bind_lifetime_to_supervisor, confirm_supervisor, prepare_supervisor, set_no_new_privs,
 };
-use ruleset::{enforcement_verdict, fs_rules, landlock_failed, negotiated_abi};
+use ruleset::{Requested, enforcement_verdict, landlock_failed, requested};
 use seccomp::deny_dangerous_syscalls;
 
 use crate::degradation::Degradation;
@@ -304,8 +304,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
-        Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
-        RulesetCreatedAttr,
+        CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
     };
 
     // The namespaces and the capability drops already happened, in the supervisor
@@ -321,27 +320,27 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     deny_dangerous_syscalls(policy)?;
 
-    // Settle on one ABI and hard-require all of it, rather than pinning a floor
+    // Settles on one ABI and hard-requires all of it, rather than pinning a floor
     // and taking whatever else the kernel happens to offer. Everything handled is
     // therefore enforced, which is what lets `enforcement_verdict` refuse a
     // partial result instead of accepting it as routine.
-    let abi = negotiated_abi()?;
+    //
+    // The negotiation happens inside `requested`, so no ABI is in scope here and
+    // the handled set cannot be derived from a different one than the rules —
+    // see `Requested`. Destructured for the reason that type gives.
+    let Requested { handled, rules } = requested(policy)?;
 
     let mut ruleset = Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
-        .handle_access(AccessFs::from_all(abi))
+        .handle_access(handled)
         .map_err(landlock_failed)?
         .create()
         .map_err(landlock_failed)?;
 
-    // `fs_rules` decides what to install; this loop only opens the paths. The
+    // `Requested` decides what to install; this loop only opens the paths. The
     // axis each rule came from is for the tests that assert the mapping — the
     // kernel is told the rights and nothing else.
-    //
-    // The same `abi` the ruleset handles: a rule carrying a right outside the
-    // handled set would be narrowed by `PathBeneath` and take the whole ruleset
-    // to `PartiallyEnforced`, which is now a refusal.
-    for (_, path, rights) in fs_rules(policy, abi) {
+    for (_, path, rights) in rules {
         let fd = PathFd::new(path).map_err(landlock_failed)?;
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))

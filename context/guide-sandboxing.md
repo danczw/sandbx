@@ -67,9 +67,9 @@ automatically, instead of being silently permitted until someone notices.
 One ABI, hard-required, or nothing:
 
 ```
-negotiated_abi()            NEGOTIABLE_ABI = [V9, V8, V7, V6, V5], newest first
-   │
-   ├─ handle_access(from_all(abi)) under HardRequirement
+negotiated_abi_from(probe)  NEGOTIABLE_ABI = [V9, V8, V7, V6, V5], newest first
+   │                        probe = kernel_probe in production, a closure in tests
+   ├─ handle_access(handled_access(abi)) under HardRequirement
    │     ├─ Ok                        ──► settle on this abi
    │     ├─ Err(HandleAccesses(_))    ──► step down one rung   ◄── the only steppable error
    │     └─ Err(other)                ──► refuse
@@ -86,7 +86,12 @@ Two things make this fail-closed rather than fail-quiet:
 
 - **A non-verdict error is a refusal.** Stepping down on it would hand back a
   lower ABI than the kernel has, leaving every right above it unhandled — and
-  Landlock leaves an unhandled access type unrestricted *everywhere*.
+  Landlock leaves an unhandled access type unrestricted *everywhere*. The walk is
+  split from the kernel it walks (`negotiated_abi_from` takes the probe), so this
+  discrimination is decidable with no Landlock host; replacing the refusing arm
+  with `continue` used to leave both suites green and both CI jobs passing (#87).
+  Two refusals that stay distinguishable: `Unsupported` names the ABI floor,
+  `Landlock` carries the kernel's own reason.
 - **Partial enforcement is a refusal** (#76). `enforcement_verdict` is total over
   `RulesetStatus`, so a variant added by a future landlock release fails to
   compile rather than landing in an accepting arm. The old `== NotEnforced`
@@ -102,8 +107,9 @@ the ladder walk in one process.
 ```
 set_no_new_privs()        ◄── seccomp will not install without it
 deny_dangerous_syscalls(policy)
-negotiated_abi()
-  ruleset + fs_rules(policy, abi) ──► PathFd::new ──► add_rule
+requested(policy)  ──► Requested { handled, rules }   ◄── negotiates internally
+  handle_access(handled) ──► create
+  for rules: PathFd::new ──► add_rule
 restrict_self()
 enforcement_verdict()
 ```
@@ -111,6 +117,14 @@ enforcement_verdict()
 Order is required, not incidental. `apply` is the one place all three mechanisms
 are sequenced; seccomp precedes Landlock because the filter needs `no_new_privs`
 first.
+
+`negotiated_abi` is no longer a step of its own: the handled set and the rules
+have to come from *one* ABI, and `apply` used to derive them from two separate
+expressions with only a comment saying they must agree (#87). `requested`
+negotiates and returns both, so no ABI is in scope in `apply` at all and the
+divergence is unexpressible rather than merely commented against. `Access` and
+`AccessFs` dropped out of `apply`'s imports with it, so reintroducing the split
+means reintroducing two imports — visible in a diff.
 
 A dir-only right on a regular file **fails `add_rule`** under `HardRequirement` —
 so the `& from_file(abi)` narrowing is not a tidying step. Dropping it would

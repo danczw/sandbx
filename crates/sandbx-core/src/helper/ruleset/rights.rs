@@ -126,8 +126,15 @@ pub(super) fn rights_for(
 /// Ordered `(axis, path, ..)` after [`SandboxPolicy::granted_paths`], the pairs
 /// this is an extension of.
 ///
+/// Reachable only inside this module, and its one caller is
+/// [`requested_at`](super::requested_at). It used to be visible to
+/// [`apply`](crate::helper::apply), which called it with an ABI of its own
+/// alongside a handled set built from a second one — two expressions that had to
+/// agree, with only a comment saying so. Narrowing the visibility is what retires
+/// that comment (#87).
+///
 /// [`SandboxPolicy::granted_paths`]: crate::SandboxPolicy::granted_paths
-pub(in crate::helper) fn fs_rules(
+pub(super) fn fs_rules(
     policy: &crate::SandboxPolicy,
     abi: landlock::ABI,
 ) -> Vec<(

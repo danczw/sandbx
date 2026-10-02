@@ -57,7 +57,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
       seccomp.rs     BLOCKED_SYSCALLS (28), blocked_syscalls, compiled_filter
       ruleset/
-         compat.rs   ABI negotiation, enforcement_verdict
+         mod.rs      Requested { handled, rules } — requested, requested_at
+         compat.rs   handled_access, kernel_probe, negotiated_abi_from,
+                     negotiated_abi, enforcement_verdict
          rights.rs   rights_for, fs_rules
          tests/      unit tests: compat, grants, rules
 tests/               audit, capability_coverage, command, denylist,

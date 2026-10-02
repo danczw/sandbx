@@ -138,7 +138,7 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
 /// The parent pid out of a `/proc/pid/stat` line, or `None` if the line has none
 /// to report.
 ///
-/// Split out for the same reason as [`fs_rules`](super::ruleset::fs_rules) (#52):
+/// Split out for the same reason as `fs_rules` in [`super::ruleset`] (#52):
 /// the parse is the part that can be wrong while the syscalls around it are
 /// right, and separated it can be checked against an adversarial name without a
 /// supervisor, a namespace or a second process (#91).
