@@ -58,7 +58,10 @@ policy — what the command was granted — and that is settled before it runs.
 
 `env=7` is a count, not a list: a variable's *name* is not a secret, but its value
 routinely is, and a record that spelled out the names would invite the next change
-to print values beside them.
+to print values beside them. It counts the allowlist, not what crossed — a name
+nothing in `sandbx`'s own environment matches passes nothing, so on a host with no
+`TZ` set the command above sees fewer than seven. Like `readable`, it records what
+was granted.
 
 It is metadata only, never a command's output, and it never touches stdout: the
 command's own stdout is forwarded untouched, so piping it is unaffected. To keep

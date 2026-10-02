@@ -368,13 +368,26 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
     assert!(!policy.allows_unix_sockets(), "env implied unix sockets");
 }
 
-/// The flag names a variable; it does not set one. `NAME=VALUE` would put a
-/// value in helper argv, which the sandboxed command reads back out of its own
-/// `/proc/self/cmdline` — so it is refused as a name rather than quietly
-/// accepted as one (#41 is where setting a value belongs).
+/// The flag names a variable; it does not set one. `NAME=VALUE` would put a value
+/// in helper argv, which the sandboxed command reads back out of its own
+/// `/proc/self/cmdline` — so it is refused rather than accepted (#41 is where
+/// setting a value belongs).
+///
+/// **Refused, not dropped**, and that is the point of the test.
+/// `SandboxPolicy::allow_env` skips a name it cannot encode, which would leave
+/// `--allow-env TOKEN=hunter2` exiting 0 having passed nothing — and the person
+/// who typed it believing the secret crossed. The error names what to write
+/// instead, since reaching for `export` syntax is the mistake a habit produces.
+///
+/// It is only the *name* that is asserted. clap prefixes a `value_parser` refusal
+/// with `invalid value '<the value>'`, so `hunter2` does reach stderr — not worth
+/// working around, because by then it is in argv, which means `ps`, the shell's
+/// history and `/proc/self/cmdline` already have it. A secret typed on a command
+/// line is exposed by the typing, not by the refusal, and the refusal is what stops
+/// it also being *silently useless*.
 #[test]
-fn allow_env_does_not_set_a_value() {
-    let policy = sandbox_run(&[
+fn a_name_with_a_value_is_refused_rather_than_dropped() {
+    let refusal = Cli::try_parse_from([
         "sandbx",
         "sandbox-run",
         "--allow-env",
@@ -382,10 +395,24 @@ fn allow_env_does_not_set_a_value() {
         "--",
         "true",
     ])
-    .policy();
+    .expect_err("`TOKEN=hunter2` was accepted as a variable name");
+    let message = refusal.to_string();
 
     assert!(
-        !policy.allowed_env().iter().any(|name| name.contains('=')),
-        "a NAME=VALUE pair was accepted as a variable name"
+        message.contains("--allow-env TOKEN"),
+        "the refusal does not say what to write instead: {message}"
     );
+}
+
+/// The other two names that cannot name a variable are refused on the same
+/// basis — an empty name matches nothing, and a NUL cannot cross `exec`.
+#[test]
+fn a_name_that_could_never_match_is_refused() {
+    for bad in ["", "FOO\0BAR"] {
+        assert!(
+            Cli::try_parse_from(["sandbx", "sandbox-run", "--allow-env", bad, "--", "true"])
+                .is_err(),
+            "{bad:?} was accepted as a variable name"
+        );
+    }
 }

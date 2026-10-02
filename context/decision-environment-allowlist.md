@@ -83,11 +83,18 @@ convenience.
 The trap this creates is worth naming, because it is the same one
 `allow_system_executables` has, and it is sharper than it first looks. With an
 empty allowlist there is no `PATH`, and a bare program name then resolves against
-the C library's fallback search path — `/bin:/usr/bin` on glibc, from
-`confstr(_CS_PATH)`. So it does not fail cleanly: `sandbox-run -- cat file` works,
-and `sandbox-run -- some-tool` installed in `/usr/local/bin` or `~/.cargo/bin`
-comes back as `No such file or directory` with nothing to connect that to the
-environment. A flat failure would at least be honest.
+whichever default the lookup falls back to. There are two, and they disagree:
+
+| Spawned by | Fallback when `PATH` is unset |
+|---|---|
+| `execvp` (a direct `sandbox-run -- tool`) | the C library's — `confstr(_CS_PATH)`, i.e. `/bin:/usr/bin` on glibc |
+| a shell (`sandbox-run -- sh -c …`, the `bash` tool) | the shell's own compiled-in default — dash and bash both add `/usr/local/bin` and the `sbin` directories |
+
+So it does not fail cleanly, and it does not fail consistently either:
+`sandbox-run -- cat file` works, `~/.cargo/bin/tool` is not found by any route,
+and `/usr/local/bin/tool` depends on whether a shell was in the way. The symptom
+is `No such file or directory` with nothing to connect it to the environment. A
+flat failure would at least be honest.
 
 `SandboxRun::policy()` therefore calls `allow_standard_env()` next to
 `allow_system_executables()`, and the two sit together with one rationale: both

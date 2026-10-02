@@ -45,11 +45,18 @@ a special case to skip it. The structural precedent is the `network` and
 `unix_sockets` toggles, which are policy fields with their own accessors and are
 not rows either; the environment is the same shape, as a list rather than a bool.
 
-The cost of staying off the table is that nothing *forces* a site to notice it:
-the four `env::restrict` call sites and the audit field are hand-written, and a
-fifth spawn site added later would silently inherit nothing. What stands in for
-the compiler there is `tests/enforcement.rs`, which runs `/usr/bin/env` through
-the real helper — see `decision-environment-allowlist.md`.
+The cost of staying off the table is that nothing *forces* a site to notice it.
+The four `env::restrict` calls and the audit field are hand-written, and a fifth
+spawn site added later would **leak the harness's whole environment** — not
+inherit nothing. It fails open, which is the one place this change is weaker than
+the path axes, where a new consumer that ignores `Axis::ALL` grants nothing
+instead.
+
+What stands in for the compiler is `tests/enforcement.rs`, which runs
+`/usr/bin/env` through the real helper and reads its stdout, so a stage that stops
+clearing is a test failure rather than a quiet regression. That covers the stages
+that exist; it cannot cover a stage nobody has written yet. See
+`decision-environment-allowlist.md`.
 
 ## Why the rights are subtractions
 
