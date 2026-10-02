@@ -176,6 +176,22 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     bind_lifetime_to_supervisor()?;
     confirm_supervisor(supervisor)?;
 
+    // Stage 1 already narrowed what we inherited, so this holds on every path that
+    // can reach here — `confirm_supervisor` above is what rules out the ones that
+    // cannot. It is an assertion and not a no-op because both stages call
+    // `env::restrict`: without it either call could be deleted and the other would
+    // cover for it, leaving the command's `environ` identical and no test able to
+    // tell (#98).
+    assert!(
+        std::env::vars_os().all(|(name, _)| request
+            .policy
+            .allowed_env()
+            .iter()
+            .any(|allowed| std::ffi::OsStr::new(allowed) == name.as_os_str())),
+        "the inner stage inherited a variable the policy does not name; \
+         an earlier stage did not narrow the environment"
+    );
+
     apply(&request.policy)?;
 
     // The workspace bans `Command::new` so nothing can spawn around the sandbox.
@@ -192,7 +208,8 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         // is the call that decides what it can read out of its own `environ`.
         // The earlier stages narrowing the same environment makes this a no-op
         // on the ordinary path, which is the point — nothing here depends on
-        // them having done it.
+        // them having done it. What the assertion above adds is that a stage
+        // which stopped doing it is reported rather than silently covered for.
         crate::env::restrict(&mut command, &request.policy);
 
         command.exec()
