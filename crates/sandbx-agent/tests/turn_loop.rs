@@ -5,11 +5,13 @@
 //! `MockProvider`, for the reasons given there — so the whole suite runs with no
 //! network access and no API key. Assertions on the rebuilt history go
 //! through `serde_json::to_value`, because `ContentBlock` is `Serialize`-only and
-//! has no `PartialEq` to compare against.
+//! has no `PartialEq` to compare against — on `TurnOutcome::messages` where the
+//! turn's own output is what matters, and on `Script::sent` where the question is
+//! what the API would have received, which is what compaction changes.
 
 use std::collections::VecDeque;
 
-use sandbx_agent::{Turn, TurnError, TurnLimits, run_turn};
+use sandbx_agent::{Compaction, PromptUsage, Turn, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, Role, StopReason,
@@ -70,6 +72,7 @@ fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a>
         tools,
         history,
         limits: TurnLimits::default(),
+        observed: None,
     }
 }
 
@@ -122,7 +125,8 @@ async fn text_deltas_accumulate_into_one_block() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     assert_eq!(
         wire(&messages),
@@ -155,7 +159,8 @@ async fn thinking_reaches_the_observer_but_not_the_replayed_turn() {
         |event: &AgentEvent| seen.push(event.clone()),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     assert_eq!(
         wire(&messages),
@@ -211,7 +216,8 @@ async fn a_round_that_produced_nothing_appends_no_message() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     assert!(messages.is_empty(), "got {:?}", wire(&messages));
 }
@@ -301,7 +307,8 @@ async fn a_tool_call_runs_and_its_result_is_fed_back_into_the_next_round() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
 
@@ -358,7 +365,8 @@ async fn a_tool_call_is_answered_even_when_no_stop_reason_was_reported() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     assert_eq!(messages.len(), 3, "got {:?}", wire(&messages));
     assert_eq!(script.sent.len(), 2, "the turn should have re-entered");
@@ -396,7 +404,8 @@ async fn a_refused_tool_call_is_reported_to_the_model_as_an_error() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     assert!(!outside.exists(), "the write must not have happened");
 
@@ -438,7 +447,8 @@ async fn a_tool_call_with_bad_arguments_is_reported_as_an_error() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     let result = tool_error(&messages);
     assert_eq!(result["is_error"], true);
@@ -468,7 +478,8 @@ async fn an_unknown_tool_name_is_reported_rather_than_ending_the_turn() {
         |_| {},
     )
     .await
-    .unwrap();
+    .unwrap()
+    .messages;
 
     let result = tool_error(&messages);
     assert_eq!(result["is_error"], true);
@@ -637,6 +648,583 @@ async fn a_turn_that_ends_on_an_empty_round_mid_tool_use_is_an_error() {
     )
     .await
     .expect_err("a transcript ending in an unanswered tool_result is not a turn");
+
+    assert!(matches!(error, TurnError::EndedMidToolUse), "got {error:?}");
+}
+
+// ---------------------------------------------------------------------------------
+// Compaction (#107). The planner's own algebra is unit-tested in `src/compact.rs`,
+// where `plan_cut` lives and is private; these cover the wiring — that the trigger is
+// wired to a measurement, that the measurement gets out of the turn at all, and that
+// what reaches the API is still a conversation it would accept.
+// ---------------------------------------------------------------------------------
+
+/// A measurement large enough to put any test over the budgets used below.
+fn measured(input: u32) -> AgentEvent {
+    AgentEvent::Usage {
+        input_tokens: Some(input),
+        output_tokens: Some(1),
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: None,
+    }
+}
+
+/// One prose turn, the shape that is a legal cut point.
+fn said(text: &str) -> RequestMessage {
+    RequestMessage {
+        role: Role::User,
+        content: vec![sandbx_providers::ContentBlock::Text {
+            text: text.to_string(),
+        }],
+    }
+}
+
+/// An assistant turn, which is not one.
+fn replied(text: &str) -> RequestMessage {
+    RequestMessage {
+        role: Role::Assistant,
+        content: vec![sandbx_providers::ContentBlock::Text {
+            text: text.to_string(),
+        }],
+    }
+}
+
+/// A four-message history whose only legal cut point is index 2.
+fn conversation() -> Vec<RequestMessage> {
+    vec![said("one"), replied("two"), said("three"), replied("four")]
+}
+
+/// What the request at `round` carried as its messages.
+fn sent(script: &Script, round: usize) -> serde_json::Value {
+    serde_json::to_value(&script.sent[round]).unwrap()["messages"].clone()
+}
+
+/// Pinned literally rather than read off the type, because the value is the claim.
+///
+/// Compaction is the one bound here that is lossy, and the only one whose right value
+/// depends on the model named in the request. On by default would silently send a model
+/// less than it was given, against a context window this crate cannot know.
+#[test]
+fn the_default_limits_leave_compaction_off() {
+    assert!(TurnLimits::default().compaction.is_none());
+}
+
+/// The feedback loop the whole feature hangs on. This event used to be observed and
+/// then dropped on the floor, so there was nothing for a policy to read.
+#[tokio::test]
+async fn the_outcome_carries_the_last_usage_the_round_reported() {
+    let mut script = Script::new([vec![text("hi"), measured(4_000), stop(StopReason::EndTurn)]]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome.usage,
+        Some(PromptUsage {
+            input_tokens: Some(4_000),
+            cache_read_input_tokens: None,
+            cache_creation_input_tokens: None,
+        }),
+        "got {:?}",
+        outcome.usage
+    );
+    assert_eq!(outcome.usage.unwrap().prompt_tokens(), 4_000);
+}
+
+/// `None` has to stay distinguishable from a reported zero, or a caller cannot tell
+/// whether to keep the figure it already had or believe a new one.
+#[tokio::test]
+async fn a_round_that_reported_no_usage_leaves_the_outcome_usage_empty() {
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert!(outcome.usage.is_none(), "got {:?}", outcome.usage);
+    assert_eq!(outcome.withheld, 0);
+}
+
+/// A conversation's first turn has no measurement to go on, and guessing would compact
+/// a conversation that may be two messages long.
+#[tokio::test]
+async fn compaction_cannot_fire_on_the_first_turn_of_a_conversation() {
+    let history = conversation();
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 1,
+    });
+    turn.observed = None;
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(outcome.withheld, 0);
+}
+
+/// The trigger has to be a trigger. A history that fits is sent whole, or compaction is
+/// just unconditional truncation wearing a budget.
+#[tokio::test]
+async fn a_turn_under_budget_sends_the_whole_history() {
+    let history = conversation();
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 10_000,
+        keep_recent: 1,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(9_999),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(outcome.withheld, 0);
+}
+
+/// The feature, end to end: a measurement fed in from the previous turn puts this one
+/// over budget, and the request leaves the oldest exchange out.
+///
+/// Asserted on what the script received, not on the return value: the request is the
+/// only thing the API can reject, so it is the only thing worth pinning here.
+#[tokio::test]
+async fn a_turn_over_budget_sends_only_the_recent_messages() {
+    let history = conversation();
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(101),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 2, "got {:?}", sent(&script, 0));
+    assert_eq!(sent(&script, 0), wire(&history[2..]));
+}
+
+/// Compaction is a view of the conversation, not a mutation of it. A caller appends
+/// `outcome.messages` to its own stored history, so anything compaction removed from
+/// *that* would be gone for good and the loss would compound every turn.
+#[tokio::test]
+async fn compaction_does_not_shorten_the_returned_transcript() {
+    let history = conversation();
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 1,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert!(outcome.withheld > 0, "the test needs compaction to fire");
+    assert_eq!(
+        wire(&outcome.messages),
+        serde_json::json!([
+            { "role": "assistant", "content": [{ "type": "text", "text": "hi" }] },
+        ])
+    );
+}
+
+/// The API rejects a conversation that does not open on a user turn, and index 1 of
+/// this history is the assistant's. Pinned on the serialized request, because that is
+/// where the invariant is actually tested in production.
+#[tokio::test]
+async fn the_request_still_opens_with_a_user_message_after_compaction() {
+    let history = conversation();
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 3,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        sent(&script, 0)[0]["role"],
+        "user",
+        "got {:?}",
+        sent(&script, 0)
+    );
+}
+
+/// The central adversarial case. An orphaned `tool_result` — one whose `tool_use` was
+/// withheld — is rejected outright, and in a tool-heavy transcript most indices are
+/// one, so the arithmetic alone would land on an invalid cut most of the time.
+#[tokio::test]
+async fn compaction_never_withholds_a_tool_result_from_the_call_it_answers() {
+    let history = vec![
+        said("first"),
+        RequestMessage {
+            role: Role::Assistant,
+            content: vec![sandbx_providers::ContentBlock::ToolUse {
+                id: "a".to_string(),
+                name: "ls".to_string(),
+                input: serde_json::json!({}),
+            }],
+        },
+        RequestMessage {
+            role: Role::User,
+            content: vec![sandbx_providers::ContentBlock::ToolResult {
+                tool_use_id: "a".to_string(),
+                content: "ok".to_string(),
+                is_error: None,
+            }],
+        },
+        said("second"),
+        replied("third"),
+    ];
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    // `keep_recent: 3` targets index 2 — the tool result. It must walk on to 3.
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 3,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    let messages = sent(&script, 0);
+    assert_eq!(messages, wire(&history[3..]), "got {messages:?}");
+    assert_eq!(
+        messages[0]["content"][0]["type"], "text",
+        "the request opened on an orphaned tool_result: {messages:?}"
+    );
+}
+
+/// Rung 3 of the fallback ladder. When every candidate is a tool-result continuation
+/// there is no legal cut, and sending the request uncompacted is right: cutting anyway
+/// turns a request that *might* be too long into one the API is certain to reject.
+#[tokio::test]
+async fn an_unbreakable_history_is_sent_oversized_rather_than_cut_invalid() {
+    let mut history = vec![said("only prose turn")];
+    for id in ["a", "b", "c"] {
+        history.push(RequestMessage {
+            role: Role::Assistant,
+            content: vec![sandbx_providers::ContentBlock::ToolUse {
+                id: id.to_string(),
+                name: "ls".to_string(),
+                input: serde_json::json!({}),
+            }],
+        });
+        history.push(RequestMessage {
+            role: Role::User,
+            content: vec![sandbx_providers::ContentBlock::ToolResult {
+                tool_use_id: id.to_string(),
+                content: "ok".to_string(),
+                is_error: None,
+            }],
+        });
+    }
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 1,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 0);
+    assert_eq!(sent(&script, 0), wire(&history));
+}
+
+/// The prompt cache keys on the request's prefix. A cut that moved between rounds would
+/// invalidate it on every round of every turn — and would show the model history it had
+/// already been denied.
+#[tokio::test]
+async fn a_cut_chosen_in_one_round_is_reused_by_every_later_round() {
+    let root = tempfile::tempdir().unwrap();
+    let history = conversation();
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("done"), stop(StopReason::EndTurn)],
+    ]);
+    let mut turn = turn(&history, &[BuiltinTool::Ls]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(101),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 2);
+    // Round two carries the same withheld prefix, with this turn's own work after it.
+    assert_eq!(sent(&script, 0), wire(&history[2..]));
+    assert_eq!(sent(&script, 1)[0], wire(&history[2..])[0]);
+    assert_eq!(sent(&script, 1)[1], wire(&history[2..])[1]);
+}
+
+/// The oscillation case, and the reason the cut is frozen. Round one's own measurement
+/// comes back *under* budget; round two must not put the dropped history back, which
+/// would rewrite the cached prefix and re-show what the model had already lost.
+#[tokio::test]
+async fn usage_falling_back_under_budget_mid_turn_does_not_put_the_history_back() {
+    let root = tempfile::tempdir().unwrap();
+    let history = conversation();
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            // Comfortably under the budget the turn was triggered on.
+            measured(1),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("done"), stop(StopReason::EndTurn)],
+    ]);
+    let mut turn = turn(&history, &[BuiltinTool::Ls]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(101),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 2);
+    assert_eq!(sent(&script, 1)[0], wire(&history[2..])[0]);
+    // And the turn still reports what it last measured, low as it was.
+    assert_eq!(outcome.usage.unwrap().prompt_tokens(), 1);
+}
+
+/// `produced` is handed to the planner as a count, never a slice, so a `keep_recent`
+/// smaller than this turn's own output cannot force that output out. Withholding the
+/// tool result the model is waiting on would be API-valid and useless — the turn would
+/// loop until it ran out of rounds.
+#[tokio::test]
+async fn a_keep_recent_smaller_than_the_turns_own_output_still_sends_that_output() {
+    let root = tempfile::tempdir().unwrap();
+    let history = conversation();
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("done"), stop(StopReason::EndTurn)],
+    ]);
+    let mut turn = turn(&history, &[BuiltinTool::Ls]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 1,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    // Round two's request is built from the two messages round one produced — the call
+    // and its result — whatever was withheld in front of them. They are the tail.
+    let second = sent(&script, 1);
+    let own = wire(&outcome.messages[..2]);
+    let count = second.as_array().unwrap().len();
+    assert!(count >= 2, "got {second:?}");
+    assert_eq!(second[count - 2], own[0], "got {second:?}");
+    assert_eq!(second[count - 1], own[1], "got {second:?}");
+}
+
+/// The degenerate configuration, given defined behaviour rather than rejected at
+/// construction: `Compaction` has public fields and no constructor to validate in.
+#[tokio::test]
+async fn a_budget_of_zero_compacts_every_turn_that_reported_any_tokens() {
+    let history = conversation();
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 2,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 2);
+}
+
+/// `EndedMidToolUse` reads `produced`, which compaction cannot reach, so the check is
+/// unchanged with it on. The coupling runs the other way — withholding history is one
+/// of the things that can confuse a model into an empty round — and a turn that ends
+/// there must still be discarded rather than handed back looking finished.
+#[tokio::test]
+async fn a_compacted_turn_that_ends_mid_tool_use_is_still_an_error() {
+    let root = tempfile::tempdir().unwrap();
+    let history = conversation();
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        // Answered the tool, then said nothing at all.
+        vec![stop(StopReason::EndTurn)],
+    ]);
+    let mut turn = turn(&history, &[BuiltinTool::Ls]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 2,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let error = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        |_| {},
+    )
+    .await
+    .expect_err("a compacted turn ending on an unanswered tool_result is not a turn");
 
     assert!(matches!(error, TurnError::EndedMidToolUse), "got {error:?}");
 }
