@@ -15,8 +15,10 @@ edition = "2024"
 # means deleting a let-chain *and* pinning those back.
 #
 # A `[workspace.package]` entry is inert unless a member inherits it, so all
-# seven carry `rust-version.workspace = true`. The CI job that reads this field
-# back fails if one of them does not.
+# seven carry `rust-version.workspace = true`. The CI job reads the inherited
+# value back and fails unless all seven agree on one, which catches a crate that
+# inherits nothing — not one that hardcodes the same number by hand. That one
+# surfaces the next time this line moves, which is late but not silent.
 #
 # Resolver 3 reads this too, and this is the first field that gives its
 # MSRV-aware resolution anything to compare against: `cargo update` now prefers

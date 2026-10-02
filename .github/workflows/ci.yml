@@ -94,9 +94,15 @@ jobs:
       - name: Read the floor out of the manifest
         id: floor
         run: |
-          floor="$(cargo metadata --format-version 1 --no-deps | jq -r '
+          # Two statements rather than one pipeline: the default shell is
+          # `bash -e` without `pipefail`, so piping cargo into jq would take
+          # jq's exit status and report a manifest that does not *parse* as one
+          # that is missing a floor — sending the reader to the wrong file.
+          # Assigning first lets `-e` fail the step on cargo's own error.
+          metadata="$(cargo metadata --format-version 1 --no-deps)"
+          floor="$(jq -r '
             [.packages[].rust_version] | unique
-            | if length == 1 and .[0] != null then .[0] else "" end')"
+            | if length == 1 and .[0] != null then .[0] else "" end' <<<"$metadata")"
           if [ -z "$floor" ]; then
             echo "::error::every crate must inherit one rust-version from [workspace.package]"
             exit 1
