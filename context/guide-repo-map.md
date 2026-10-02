@@ -40,9 +40,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    error.rs
    bin/sandbx-helper.rs
    helper/
-      mod.rs         apply() — sequences all three mechanisms
-      hardening.rs   namespaces, capsets, rlimits, pdeathsig
-      seccomp.rs     BLOCKED_SYSCALLS (28), filter construction
+      mod.rs         apply() — sequences all three mechanisms; exit_code
+      hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
+      seccomp.rs     BLOCKED_SYSCALLS (28), compiled_filter
       ruleset/
          compat.rs   ABI negotiation, enforcement_verdict
          rights.rs   rights_for, fs_rules
