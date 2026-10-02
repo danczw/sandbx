@@ -22,6 +22,11 @@ caps = "0.5.6"
 landlock = "0.4.7"
 libc = "0.2.189"
 nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "user", "resource"] }
+# A caret range, so a minor bump arrives as a lockfile-only change touching no
+# file a reviewer reads. One thing in the tree does depend on this crate's
+# codegen: `eval` in `helper/seccomp.rs` interprets the closed set of opcodes
+# 0.5.0 emits, and panics by name on any other. Read that panic before widening
+# this range — not pinned to `=0.5.0`, which would also refuse patch releases.
 seccompiler = "0.5.0"
 tracing = "0.1.44"
 # Test-only, and only when the integration feature is on: the sole safe way to
