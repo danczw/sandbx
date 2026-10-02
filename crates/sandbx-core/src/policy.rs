@@ -51,10 +51,10 @@ impl Axis {
     /// Every axis, in the order a policy and the helper argv carry them.
     ///
     /// A `const` array rather than an iterator trait: consumers loop over it to
-    /// derive their own tables, and two of them — the audit record's
-    /// fixed-arity destructuring, and `Axis::ALL.map(..)` — need the length at
-    /// compile time, which is what makes a forgotten axis a build failure there
-    /// rather than a silently missing grant.
+    /// derive their own tables. What makes a forgotten axis a build failure is
+    /// not this array but the exhaustive `match` that each site unable to derive
+    /// its answer pairs with the loop — the audit record's counts, and
+    /// `SandboxRun::paths`.
     pub const ALL: [Axis; 3] = [Axis::Read, Axis::Write, Axis::ReadExecute];
 
     /// What this axis grants. **The table.**
