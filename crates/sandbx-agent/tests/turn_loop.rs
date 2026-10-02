@@ -757,10 +757,14 @@ async fn a_round_that_reported_no_usage_leaves_the_outcome_usage_empty() {
     assert_eq!(outcome.withheld, 0);
 }
 
-/// A conversation's first turn has no measurement to go on, and guessing would compact
-/// a conversation that may be two messages long.
+/// A conversation's first turn has no measurement to go on for its *first round*, and
+/// guessing would compact a conversation that may be two messages long.
+///
+/// Only the first round. A turn that measures itself over budget compacts from the next
+/// round on, with no previous turn involved — see
+/// [`a_first_turn_compacts_from_the_round_after_it_measures_itself`].
 #[tokio::test]
-async fn compaction_cannot_fire_on_the_first_turn_of_a_conversation() {
+async fn compaction_cannot_fire_on_a_turns_first_round() {
     let history = conversation();
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
     let mut turn = turn(&history, &[]);
@@ -781,6 +785,56 @@ async fn compaction_cannot_fire_on_the_first_turn_of_a_conversation() {
 
     assert_eq!(sent(&script, 0), wire(&history));
     assert_eq!(outcome.withheld, 0);
+}
+
+/// The other half of the above, and the reason that one says *round* rather than *turn*.
+/// Nothing is threaded in here: the turn measures itself on round one and acts on it on
+/// round two, which is the only in-turn bound there is — `produced` grows the request as
+/// the turn goes round, and this is the single opportunity to react to it.
+///
+/// So the cut moves exactly once, `None` to `Some`, which narrows the request's cached
+/// prefix mid-turn. Deliberate: the alternative is a turn that watches itself blow
+/// through the budget and keeps sending the whole history for all eight rounds. Monotone
+/// either way, so the model is never re-shown history it had lost — only
+/// `usage_falling_back_under_budget_mid_turn_does_not_put_the_history_back` could break
+/// that, and it does not.
+#[tokio::test]
+async fn a_first_turn_compacts_from_the_round_after_it_measures_itself() {
+    let history = conversation();
+    let mut script = Script::new([
+        vec![
+            call("rm", serde_json::json!({})),
+            measured(500),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("done"), stop(StopReason::EndTurn)],
+    ]);
+    let mut turn = turn(&history, &[BuiltinTool::Write]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    // Nothing carried in at all: a conversation's very first turn.
+    turn.observed = None;
+    turn.withheld = 0;
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    // Round one goes out whole — there was no figure to go on yet.
+    assert_eq!(sent(&script, 0), wire(&history));
+    // Round two acts on round one's own 500, which is over the budget of 100.
+    assert_eq!(outcome.withheld, 2, "got {:?}", sent(&script, 1));
+    let second = sent(&script, 1);
+    let kept = second.as_array().unwrap();
+    assert_eq!(kept.len(), 4, "got {second:?}");
+    assert_eq!(&kept[..2], &wire(&history[2..]).as_array().unwrap()[..]);
 }
 
 /// The trigger has to be a trigger. A history that fits is sent whole, or compaction is

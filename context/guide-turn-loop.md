@@ -31,7 +31,7 @@ taking one would make the whole future non-`Send`.
 ```
 ┌─ round (max_rounds = 8) ────────────────────────────────────┐
 │  request = history[cut..] ++ produced                       │
-│    cut: ≥ last turn's, set once this turn, then frozen      │
+│    cut: ≥ last turn's; once it lands it is final           │
 │  open(request)                     ◄── per-round timeout    │
 │  consume stream ──► flush text before ToolUse, keep Usage   │
 │  no ToolUse blocks?  ──► return TurnOutcome                 │
@@ -72,7 +72,8 @@ that already went out — a cache read is a real prompt token, so counting `inpu
 alone under-reads a long cached conversation badly. An unreported counter sums as zero;
 the API omits the cache fields entirely when no cache was involved, and reading that as
 "unknown" would switch compaction off for every uncached request. No measurement at all
-means no compaction, so it can never fire on a conversation's first turn.
+means no compaction, so it can never fire on a turn's *first round* — see the third
+property below for why that is a weaker claim than "a conversation's first turn".
 
 **Both halves have to be threaded back, not just the usage.** `TurnOutcome::withheld`
 goes into the next `Turn::withheld`, where it is the *floor* for the next cut: this turn
@@ -130,10 +131,16 @@ Three properties that are easier to state than to infer:
 - **It never reaches `produced`.** The planner is handed the count of the turn's own
   messages, not the messages, so no cut can withhold the tool result the model is waiting
   on. `TurnOutcome::withheld` reports what the last request left out.
-- **The cut never moves backwards.** Within a turn it is set at most once and then
-  frozen; across turns the previous cut is the floor. Either way round, re-deciding
-  shallower would invalidate the request's cached prefix and re-show the model history it
-  had already lost.
+- **The cut only ever deepens.** Within a turn it goes `None` → `Some` at most once and
+  is then fixed — never `Some` → a different `Some`, however the measurement moves after
+  that. Across turns the previous cut is the floor. So the model is never re-shown history
+  it had lost, and the cached prefix is never rebuilt backwards.
+
+  The one `None` → `Some` move *does* narrow that prefix mid-turn, on the round after a
+  turn first measures itself over budget. It is also the only in-turn bound there is —
+  `produced` grows the request as the turn goes round — so a turn with nothing threaded in
+  still compacts on its own figure from round two. "No measurement means no compaction"
+  therefore bounds a turn's **first round**, not the whole turn.
 
 `EndedMidToolUse` is unaffected: it reads `produced`, which compaction cannot reach. The
 coupling runs the other way — withholding history is one of the things that can confuse a
