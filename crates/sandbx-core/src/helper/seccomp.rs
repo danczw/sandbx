@@ -147,16 +147,15 @@ fn blocked_syscalls(
 /// installs.
 ///
 /// Split out for the same reason as [`blocked_syscalls`] above, and to make the
-/// filter's *polarity* assertable without a kernel: swap the two actions below
-/// and the result allows the denylist and `EPERM`s everything else, which only
-/// the kernel-backed suite noticed — as nine failures naming nothing (#91).
+/// filter's *polarity* assertable without a kernel: the two actions below are
+/// positional and of the same type, so the compiler cannot tell them apart, and
+/// swapping them yields a filter that allows the denylist and `EPERM`s
+/// everything else. Only the kernel-backed suite noticed that — as nine failures
+/// naming nothing — hence the named bindings and the tests below (#91).
 ///
 /// Blocked calls return `EPERM` rather than killing the process. The syscall does
 /// not execute either way; `EPERM` is what tools already expect on hardened
 /// systems, so they fail that operation instead of dying mid-run.
-///
-/// The two actions are positional and of the same type, so the compiler cannot
-/// tell them apart — hence the named bindings, and the tests below.
 fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProgram, SandboxError> {
     use seccompiler::{SeccompAction, SeccompFilter};
 
@@ -237,9 +236,11 @@ mod tests {
         );
     }
 
-    /// `BPF_RET | BPF_K` — return an immediate. Both halves are internal to
-    /// seccompiler, so the opcode is spelled out rather than imported.
-    const RET: u16 = 0x06;
+    /// `BPF_RET | BPF_K` — return an immediate. Composed from `libc` rather than
+    /// written as the folded literal `0x06`: seccompiler keeps its own copies of
+    /// these private, but they are classic-BPF ABI, so naming them ties the
+    /// opcode to one source for the bit layout instead of to a transcription.
+    const RET: u16 = (libc::BPF_RET | libc::BPF_K) as u16;
 
     /// This is a denylist, so the program's fallthrough has to be `Allow`:
     /// anything the filter does not name must still run. Swap the two actions in
@@ -263,8 +264,11 @@ mod tests {
     }
 
     /// `BPF_JMP | BPF_JEQ | BPF_K` — compare the loaded word against an
-    /// immediate. Internal to seccompiler like [`RET`], so also spelled out.
-    const JEQ: u16 = 0x15;
+    /// immediate. Composed like [`RET`], and this is the one that needs it: three
+    /// constants fold into `0x15`, and a literal that is wrong but still matches
+    /// some instruction would leave the scan below starting in the wrong place,
+    /// silently asserting nothing.
+    const JEQ: u16 = (libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K) as u16;
 
     /// The other half of the polarity: a syscall the filter *does* name gets
     /// `EPERM`. Needed alongside the fallthrough because either one alone admits
