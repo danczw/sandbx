@@ -7,6 +7,26 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.1.0-alpha.5"
 edition = "2024"
+# The oldest toolchain this builds on, and the reason cargo refuses before it
+# compiles rather than leaving a stranger to read an E0658 inside sandbx-core.
+# Two independent things set it at 1.88: the let-chain in `helper`, the only one
+# in the tree (edition 2024 stabilised them there), and the `icu_*` crates that
+# arrive via reqwest -> url -> idna, which declare 1.88 themselves. Lowering it
+# means deleting a let-chain *and* pinning those back.
+#
+# A `[workspace.package]` entry is inert unless a member inherits it, so all
+# seven carry `rust-version.workspace = true`. The CI job that reads this field
+# back fails if one of them does not.
+#
+# Resolver 3 reads this too, and this is the first field that gives its
+# MSRV-aware resolution anything to compare against: `cargo update` now prefers
+# versions a 1.88 toolchain can build, and holds a dependency back rather than
+# cross the floor, saying so as `(available: vX, requires Rust Y)` — a line that
+# is easy to miss when the held-back version is the one that fixes an advisory.
+# Security wins and the floor moves in the same commit:
+# `cargo update -p <crate> --precise <ver> --ignore-rust-version`, then edit this
+# line. Never `--ignore-rust-version` in CI; that makes the floor cosmetic.
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/danczw/sandbx"
 # Distribution is GitHub Releases only, never crates.io: internal crates use
