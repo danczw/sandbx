@@ -84,6 +84,11 @@ pub enum AuditEvent<'a> {
         /// Recorded separately from `network`: it is a distinct capability, and
         /// folding it in would understate the reach of the spawn.
         unix_sockets: bool,
+        /// How many environment variables the command inherited, not which: the
+        /// same basis as the path counts. A name is not a secret, but a value
+        /// routinely is, and a record that listed names would invite the next
+        /// change to list values beside them.
+        env: usize,
     },
 }
 
@@ -135,6 +140,7 @@ impl<'a> AuditEvent<'a> {
             executable,
             network: policy.allows_network(),
             unix_sockets: policy.allows_unix_sockets(),
+            env: policy.allowed_env().len(),
         }
     }
 
@@ -177,6 +183,7 @@ impl<'a> AuditEvent<'a> {
                 executable,
                 network,
                 unix_sockets,
+                env,
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "spawned",
@@ -186,6 +193,7 @@ impl<'a> AuditEvent<'a> {
                 executable,
                 network,
                 unix_sockets,
+                env,
             ),
         }
     }
