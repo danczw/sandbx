@@ -174,12 +174,7 @@ fn ppid_from_stat(stat: &str) -> Option<&str> {
 fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError> {
     use caps::CapSet;
 
-    let degraded = caps::clear(None, CapSet::Bounding).err().map(|error| {
-        (
-            Degradation::CapabilityBoundingSet,
-            format!("left as inherited: {error}"),
-        )
-    });
+    let degraded = drop_bounding_set(|| caps::clear(None, CapSet::Bounding));
 
     for set in [
         CapSet::Effective,
@@ -197,6 +192,23 @@ fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError>
     )?;
 
     Ok(degraded)
+}
+
+/// Name the bounding set as degraded if `clear` is refused.
+///
+/// Split from the syscall because the decision worth asserting is that a refusal becomes a
+/// record rather than an error, and `PR_CAPBSET_DROP` only fails on a host whose LSM
+/// strips `CAP_SETPCAP` from a fresh user namespace — unreachable on one that does not.
+/// Generic over the error so a test can refuse without constructing a `caps` error.
+fn drop_bounding_set<E: std::fmt::Display>(
+    clear: impl FnOnce() -> Result<(), E>,
+) -> Option<(Degradation, String)> {
+    clear().err().map(|error| {
+        (
+            Degradation::CapabilityBoundingSet,
+            format!("left as inherited: {error}"),
+        )
+    })
 }
 
 /// Set `no_new_privs`, refusing if the kernel will not.
@@ -284,20 +296,41 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
 /// Names the failure rather than recording it, for the reason [`prepare_supervisor`]
 /// gives.
 fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)> {
+    map_identity_into_userns_with(uid, gid, |path, contents| std::fs::write(path, contents))
+}
+
+/// The three writes the map needs, naming the first one `write` refuses.
+///
+/// Split from `std::fs::write` for the reason [`drop_bounding_set`] gives: a host that
+/// creates the namespace and then denies the map is the only one that enters the branch.
+/// `FnMut` so a test's writer can record which paths it was handed.
+fn map_identity_into_userns_with(
+    uid: u32,
+    gid: u32,
+    mut write: impl FnMut(&str, String) -> std::io::Result<()>,
+) -> Option<(Degradation, String)> {
     // `setgroups` must be denied before an unprivileged `gid_map` write or the kernel
     // rejects it, and denying it is correct anyway: a single mapped gid has no
-    // supplementary groups. If any write fails the rest are skipped and the namespace
-    // stays unmapped.
-    let mapped = std::fs::write("/proc/self/setgroups", "deny")
-        .and_then(|()| std::fs::write("/proc/self/gid_map", format!("{gid} {gid} 1")))
-        .and_then(|()| std::fs::write("/proc/self/uid_map", format!("{uid} {uid} 1")));
+    // supplementary groups.
+    let maps = [
+        ("/proc/self/setgroups", "deny".to_string()),
+        ("/proc/self/gid_map", format!("{gid} {gid} 1")),
+        ("/proc/self/uid_map", format!("{uid} {uid} 1")),
+    ];
 
-    mapped.err().map(|error| {
-        (
-            Degradation::UsernsIdentityMap,
-            format!("running as nobody: {error}"),
-        )
-    })
+    for (path, contents) in maps {
+        // Returning on the first refusal rather than carrying on: the writes are ordered,
+        // so a later one the kernel would reject says nothing the first does not, and the
+        // namespace stays unmapped either way.
+        if let Err(error) = write(path, contents) {
+            return Some((
+                Degradation::UsernsIdentityMap,
+                format!("running as nobody: {error}"),
+            ));
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -429,5 +462,98 @@ mod tests {
             "the stat parse and PPid: disagree about this process's parent; \
              the stat line was {stat:?}"
         );
+    }
+
+    #[test]
+    fn a_refused_bounding_set_drop_reports_a_degradation() {
+        let (step, detail) = drop_bounding_set(|| Err("Operation not permitted (os error 1)"))
+            .expect("a refused PR_CAPBSET_DROP must name itself as degraded");
+
+        assert_eq!(
+            step,
+            Degradation::CapabilityBoundingSet,
+            "a refused bounding-set drop reported the wrong mechanism"
+        );
+        assert!(
+            detail.contains("left as inherited"),
+            "the detail does not say what the sandbox is left with: {detail:?}"
+        );
+        assert!(
+            detail.contains("os error 1"),
+            "the detail dropped the kernel's own reason: {detail:?}"
+        );
+    }
+
+    #[test]
+    fn a_bounding_set_that_drops_reports_nothing() {
+        assert_eq!(
+            drop_bounding_set(|| Ok::<(), String>(())),
+            None,
+            "a successful drop put a degradation on the trail"
+        );
+    }
+
+    #[test]
+    fn the_identity_map_is_written_in_the_order_the_kernel_requires() {
+        let mut written = Vec::new();
+
+        let degraded = map_identity_into_userns_with(1000, 2000, |path, contents| {
+            written.push((path.to_string(), contents));
+            Ok(())
+        });
+
+        assert_eq!(degraded, None, "every write succeeded, so nothing degraded");
+        assert_eq!(
+            written,
+            vec![
+                ("/proc/self/setgroups".to_string(), "deny".to_string()),
+                ("/proc/self/gid_map".to_string(), "2000 2000 1".to_string()),
+                ("/proc/self/uid_map".to_string(), "1000 1000 1".to_string()),
+            ],
+            "setgroups must be denied before an unprivileged gid_map write, and each map \
+             names one id mapped to itself"
+        );
+    }
+
+    #[test]
+    fn a_map_the_kernel_refuses_reports_a_degradation_and_stops() {
+        for refused in [
+            "/proc/self/setgroups",
+            "/proc/self/gid_map",
+            "/proc/self/uid_map",
+        ] {
+            let mut attempted = Vec::new();
+
+            let degraded = map_identity_into_userns_with(1000, 2000, |path, _| {
+                attempted.push(path.to_string());
+                if path == refused {
+                    Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+                } else {
+                    Ok(())
+                }
+            });
+
+            let (step, detail) =
+                degraded.unwrap_or_else(|| panic!("{refused} was refused and nothing reported it"));
+
+            assert_eq!(
+                step,
+                Degradation::UsernsIdentityMap,
+                "a denied {refused} reported the wrong mechanism"
+            );
+            assert!(
+                detail.contains("running as nobody"),
+                "the detail does not say what the process is left as: {detail:?}"
+            );
+            assert!(
+                detail.contains("permission denied"),
+                "the detail dropped the kernel's own reason: {detail:?}"
+            );
+            assert_eq!(
+                attempted.last().map(String::as_str),
+                Some(refused),
+                "a write after the refused one was attempted: {attempted:?}"
+            );
+        }
     }
 }
