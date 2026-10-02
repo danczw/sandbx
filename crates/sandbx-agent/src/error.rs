@@ -2,32 +2,28 @@ use sandbx_providers::ProviderError;
 
 /// Why a turn did not finish.
 ///
-/// Deliberately not a catch-all for everything that can go wrong inside a turn: a
-/// tool that fails is *not* an error here. A refused or malformed tool call is fed
-/// back to the model as a `tool_result` marked `is_error`, because the model can
-/// act on that and the turn is still healthy. Only a failure that ends the turn
-/// reaches this type.
+/// A tool that fails is *not* an error here: a refused or malformed call is fed back
+/// to the model as a `tool_result` marked `is_error`, and the turn is still healthy.
+/// Only a failure that ends the turn reaches this type.
 #[derive(Debug)]
 pub enum TurnError {
     /// The provider failed, either before the stream opened or partway through it.
     ///
     /// Carried rather than flattened so a caller can reach
-    /// [`ProviderError::is_retryable`] and [`ProviderError::retry_after`] without
-    /// this crate having to restate that decision.
+    /// [`ProviderError::is_retryable`] and [`ProviderError::retry_after`].
     Provider(ProviderError),
 
     /// The stream ended without ever reporting that the turn was over.
     ///
-    /// A real provider ends a turn with an `AgentEvent::Stop` or with an `Err`,
-    /// never with silence, so this is a wire-format or test-double fault. Reported
-    /// rather than treated as a finished turn, which would leave a caller unable
-    /// to tell a complete turn from a truncated one.
+    /// A real provider ends a turn with `AgentEvent::Stop` or with an `Err`, never
+    /// with silence, so this is a wire-format or test-double fault. Reported rather
+    /// than treated as a finished turn, which a caller could not tell from a
+    /// truncated one.
     StreamEndedWithoutStop,
 
     /// The model was still asking for tools when the turn ran out of rounds.
     ///
-    /// Not a quiet stop: a turn cut off here did not finish, and the partial
-    /// transcript is discarded rather than handed back looking complete.
+    /// The partial transcript is discarded rather than handed back looking complete.
     RoundLimit {
         /// The cap that was reached.
         rounds: usize,
@@ -35,12 +31,11 @@ pub enum TurnError {
 
     /// The model stopped producing content while a tool call was still unanswered.
     ///
-    /// The round arrived with no content blocks at all, and the transcript so far
-    /// ends in the `tool_result` the model asked for. Not handed back as a finished
-    /// turn: a caller appends its own user message after what it is given, and the
-    /// API rejects two consecutive user turns — so returning this as `Ok` would
-    /// break the request *after* the one that went wrong. Same treatment, and the
-    /// same reason, as [`RoundLimit`].
+    /// The round arrived with no content blocks, so the transcript ends in a
+    /// `tool_result` the model never answered. A caller appends its own user message
+    /// after what it is given, and the API rejects two consecutive user turns, so
+    /// returning `Ok` here would break the request *after* the one that went wrong.
+    /// Discarded like [`RoundLimit`].
     ///
     /// An empty *first* round is not this: there is nothing unanswered behind it, so
     /// it comes back as an empty turn.
@@ -50,8 +45,8 @@ pub enum TurnError {
 
     /// One round outran its streaming bound and the turn was abandoned.
     ///
-    /// Distinct from [`Provider`]: the stream was healthy, it simply did not finish
-    /// in time, so a retry of the same turn may well succeed.
+    /// Distinct from [`Provider`]: the stream was healthy, so a retry of the same
+    /// turn may well succeed.
     ///
     /// [`Provider`]: Self::Provider
     TimedOut {
@@ -61,12 +56,9 @@ pub enum TurnError {
 
     /// A tool's blocking task did not return a result.
     ///
-    /// Almost always means the tool panicked; a runtime shut down while the task was
-    /// in flight produces the same thing, which a UI exit path can reach. No built-in
-    /// panics, and `BuiltinTool` is a closed enum, so no test can inject one that
-    /// would — this exists so a panic surfaces as a typed failure naming the tool,
-    /// rather than taking the harness down or being resumed into whichever task owns
-    /// the turn.
+    /// Almost always a panic in the tool; a runtime shut down while the task was in
+    /// flight produces the same thing. Typed rather than resumed, so a panic names
+    /// the tool instead of taking down whichever task owns the turn.
     ToolPanicked {
         /// The tool that was running.
         name: String,

@@ -9,17 +9,16 @@ use crate::{Compaction, TurnError, compact};
 
 /// What to ask the model for.
 ///
-/// Borrows the history rather than taking it, because [`run_turn`] hands back the
-/// turns it produced instead of appending to a caller's list — see its docs.
+/// Borrows the history: [`run_turn`] hands back the turns it produced rather than
+/// appending to a caller's list.
 pub struct Turn<'a> {
     /// The model to ask. A freeform string, as `MessagesRequest` takes it.
     pub model: String,
-    /// The cap on the model's reply. This crate has no default opinion either.
+    /// The cap on the model's reply. This crate has no default opinion.
     pub max_tokens: u32,
     /// The system prompt, omitted from the request entirely when `None`.
     pub system: Option<String>,
-    /// The built-ins to offer. An empty slice offers none, which is not the same
-    /// as offering all of them.
+    /// The built-ins to offer. An empty slice offers none, not all of them.
     pub tools: &'a [BuiltinTool],
     /// The conversation so far, oldest first.
     pub history: &'a [RequestMessage],
@@ -153,39 +152,31 @@ pub struct TurnOutcome {
 
 /// The bounds one turn runs within.
 ///
-/// Every field is at the tighter end of what is plausible. There is no agent caller
-/// to measure against yet, and a bound that is too tight announces itself the first
-/// time real work dies, where one that is too loose silently fails to catch the
-/// runaway it exists for — the same reasoning `sandbx-tools`' own `DEFAULT_TIMEOUT`
-/// is set by. Raise them when that actually bites.
+/// Both defaults sit at the tighter end of plausible: a bound that is too tight
+/// announces itself the first time real work dies, where one that is too loose
+/// silently fails to catch the runaway it exists for.
 #[derive(Debug, Clone, Copy)]
 pub struct TurnLimits {
     /// How many times the model may be asked within one turn.
     ///
     /// A turn re-enters once per batch of tool calls, so this bounds how far a
     /// looping or injected-into model can drive tool execution. Reaching it is a
-    /// [`TurnError::RoundLimit`], not a quiet stop, because a turn cut off here did
-    /// not finish and a caller should not read it as if it had.
+    /// [`TurnError::RoundLimit`], not a quiet stop.
     pub max_rounds: usize,
 
     /// How long one round may spend streaming before the turn is abandoned.
     ///
-    /// Bounds the *consumption* of one round, which is the bound
-    /// `sandbx-providers` explicitly leaves to a caller: its own read timeout
-    /// bounds inactivity between chunks and resets on every one, so a connection
-    /// that stays warm while producing nothing useful is not bounded by it.
+    /// Bounds the *consumption* of one round, which `sandbx-providers` leaves to a
+    /// caller: its own read timeout bounds inactivity between chunks and resets on
+    /// every one, so a connection that stays warm while producing nothing useful is
+    /// not bounded by it.
     ///
-    /// This does not bound a tool call, and nothing bounds one in wall-clock
-    /// terms. `ExecutionContext::timeout` is applied where the sandbox spawns a
-    /// process, so it covers `bash` and none of the six in-process tools; those
-    /// are bounded by *work* instead — `ToolLimits` caps the files a search
-    /// walks and the bytes it reads, so a broad `grep` terminates, but a single
-    /// read on a stalled filesystem still does not.
-    ///
-    /// So a turn has no total time bound to state. An outer deadline would
-    /// bound when a caller stops waiting, not when the tool stops working:
-    /// tools run on `spawn_blocking`, which cannot be cancelled, so the work
-    /// continues after the future is dropped. Cancellation is #26.
+    /// Nothing bounds a tool call in wall-clock terms, so a turn has no total time
+    /// bound. `ExecutionContext::timeout` applies where the sandbox spawns a process,
+    /// so it covers `bash` and none of the six in-process tools; those are bounded by
+    /// *work* instead, `ToolLimits` capping the files a search walks and the bytes it
+    /// reads. An outer deadline would not help: tools run on `spawn_blocking`, which
+    /// cannot be cancelled, so the work continues after the future is dropped (#26).
     pub stream_timeout: std::time::Duration,
 
     /// Whether to withhold the oldest history from a request that has outgrown a
@@ -218,7 +209,13 @@ impl Default for TurnLimits {
 
 /// Run one turn, accumulating its event stream into replayable messages.
 ///
-/// # The seam
+/// `open` is a closure that opens a stream rather than a provider, so this is
+/// generic over the *stream shape* and not over which client produced it: the real
+/// call is `run_turn(|request| client.stream_chat(request), ..)`, and a test passes
+/// one that replays canned events. `AsyncFnMut` leaves the returned future unnamed,
+/// which costs one thing — a *generic* wrapper around `run_turn` cannot add its own
+/// `Send` bound to it. `observe` stays a generic for the mirror reason: `dyn FnMut`
+/// is not `Send`, so taking one would make this future unspawnable.
 ///
 /// `open` is a closure that opens a stream, rather than a provider. The real call
 /// is `run_turn(|request| client.stream_chat(request), ..)`; a test passes one
@@ -290,38 +287,29 @@ impl Default for TurnLimits {
 /// # The blocking boundary
 ///
 /// `BuiltinTool::execute` is synchronous and may sit in a `write`, a directory walk
-/// or a 90-second command. Calling it straight from here would block the runtime's
-/// thread, and on a current-thread runtime that freezes every other task on it —
-/// a TUI's input handling included. So every call goes through `spawn_blocking`,
-/// and this is the only place that has to know it.
+/// or a 90-second command, which on a current-thread runtime would freeze every
+/// other task. So every call goes through `spawn_blocking`, and this is the only
+/// place that has to know it.
 ///
-/// What that costs: `spawn_blocking` cannot be cancelled. Dropping this future
-/// drops the `JoinHandle` while the blocking task runs to completion, so a turn
-/// abandoned mid-tool — a TUI cancel, a losing `select!` branch, an outer
-/// deadline — still applies the `write`, or lets the `bash` command run out its
-/// timeout, after the caller has stopped waiting. The transcript that would have
-/// named the call goes with the dropped future; the audit trail is where that
-/// side effect is still recorded. Cancellation is #26.
+/// `spawn_blocking` cannot be cancelled. Dropping this future drops the
+/// `JoinHandle` while the blocking task runs to completion, so a turn abandoned
+/// mid-tool still applies the `write` after the caller stopped waiting; the
+/// transcript goes with the dropped future, and the audit trail is where that side
+/// effect is still recorded (#26).
 ///
-/// # What the runtime must provide
+/// Needs a tokio runtime with the time driver enabled. The per-round bound is
+/// `tokio::time::timeout`, which panics with "there is no timer running" otherwise,
+/// on the first round. `#[tokio::main]` and `Builder::new_*().enable_all()` enable
+/// it; `Builder::new_current_thread().enable_io().build()` does not. The flavour is
+/// still the binary's call: `spawn_blocking` needs only `rt`.
 ///
-/// A tokio runtime with the **time driver enabled**. The per-round bound is
-/// `tokio::time::timeout`, which panics with "there is no timer running" when the
-/// runtime has no timer — on the first round, before any work is done.
-/// `#[tokio::main]` and `Builder::new_*().enable_all()` enable it;
-/// `Builder::new_current_thread().enable_io().build()` does not. The *flavour* is
-/// still the binary's call, as `Cargo.toml` says: `spawn_blocking` needs only
-/// `rt`, never `rt-multi-thread`.
+/// The turn re-enters on the *presence* of tool calls, never on `StopReason::ToolUse`:
+/// a stop reason is nullable on the wire, so a round can arrive with tool calls and
+/// `StopReason::Unspecified`, and keying off the reason would drop them silently.
 ///
-/// # When the turn re-enters
-///
-/// On the *presence* of tool calls, never on `StopReason::ToolUse`. A stop reason is
-/// nullable on the wire, so a round can arrive with tool calls and
-/// `StopReason::Unspecified`; keying off the reason would drop them silently.
-///
-/// A tool that fails does not end the turn. It comes back as a `tool_result` marked
-/// `is_error`, which is what lets the model ask for something else — see
-/// [`TurnError`] for where the line is drawn.
+/// A tool that fails does not end the turn — it comes back as a `tool_result` marked
+/// `is_error`, so the model can ask for something else. See [`TurnError`] for where
+/// the line is drawn.
 pub async fn run_turn<F, O>(
     mut open: F,
     turn: Turn<'_>,
@@ -443,9 +431,8 @@ where
         });
     }
 
-    // Fallen out of the loop still wanting tools run. `produced` is dropped rather
-    // than returned: the last thing in it is a tool_result the model never got to
-    // answer, and handing a caller a turn that ends there would read as finished.
+    // Still wanting tools run. `produced` is dropped rather than returned: it ends in
+    // a tool_result the model never answered, which would read as a finished turn.
     Err(TurnError::RoundLimit {
         rounds: turn.limits.max_rounds,
     })
@@ -454,9 +441,8 @@ where
 /// Run every tool call in `blocks`, in the order the model asked for them, and
 /// answer each one.
 ///
-/// Sequential: concurrency here would need the ordering semantics of two tools
-/// sharing one `ExecutionContext` settled first, which is #26's half of the
-/// question, not this one's.
+/// Sequential: concurrency would need the ordering semantics of two tools sharing
+/// one `ExecutionContext` settled first (#26).
 async fn answer_calls(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
@@ -470,17 +456,16 @@ async fn answer_calls(
 
         let Some(tool) = BuiltinTool::from_name(name) else {
             // Lookup is exact by design, so a miss is a prompt or schema bug rather
-            // than a near-miss to normalise away. Nothing runs, and the model is
-            // told which name failed so it can correct itself.
+            // than a near-miss to normalise away. Nothing runs, and the model is told
+            // which name failed so it can correct itself.
             results.push(refused(id, format!("unknown tool: {name}")));
             continue;
         };
 
-        // Cloned into the closure because `spawn_blocking` needs `'static`, and one
-        // clone per call because the closure consumes it. An `Arc` would avoid the
-        // copies without changing the signature — it is simply not worth it: copying
-        // a few path lists is a fraction of the thread handoff on the next line.
-        // Revisit if `ExecutionContext` ever holds something costly to copy.
+        // Cloned because `spawn_blocking` needs `'static`, once per call because the
+        // closure consumes it. Copying a few path lists is a fraction of the thread
+        // handoff below; an `Arc` would pay off only if `ExecutionContext` grew
+        // something costly to copy.
         let input = input.clone();
         let context = ctx.clone();
         let outcome = tokio::task::spawn_blocking(move || tool.execute(input, &context))
@@ -590,9 +575,7 @@ fn flush(text: &mut String, blocks: &mut Vec<ContentBlock>) {
 ///
 /// Three field copies and no table of its own: `name`, `description` and
 /// `input_schema` are one `SPEC` per tool in `sandbx-tools`, beside the behaviour
-/// they describe. So nothing here restates them — the seven-arm match #54
-/// predicted this crate would grow — and nothing here can read them out of step
-/// with each other either (#88).
+/// they describe, so nothing here can restate them or read them out of step.
 fn definition(tool: BuiltinTool) -> ToolDefinition {
     ToolDefinition {
         name: tool.name().to_string(),
