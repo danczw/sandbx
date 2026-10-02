@@ -6,45 +6,36 @@ use crate::{HelperArgs, SandboxError, SandboxPolicy};
 
 /// Argument that marks a process as running in helper mode.
 ///
-/// The host binary checks for this before doing anything else and, when present,
-/// hands off to the helper path through [`dispatch_helper_mode`].
+/// The host binary checks for this before doing anything else and hands off to
+/// [`dispatch_helper_mode`].
 pub const HELPER_FLAG: &str = "--sandbx-core-exec";
 
 /// Argument that marks a process as the *inner* stage of helper mode.
 ///
-/// Internal protocol between the two helper stages, not a caller-facing API: the
-/// supervisor started by [`HELPER_FLAG`] re-execs this same binary with this flag
-/// once the namespaces exist, and that child is PID 1 of the new PID namespace.
+/// Internal protocol between the two helper stages: the supervisor started by
+/// [`HELPER_FLAG`] re-execs this binary with this flag once the namespaces exist, and
+/// that child is PID 1 of the new PID namespace. Public only so a test can invoke the
+/// inner stage directly; using it elsewhere runs a command without the namespaces
+/// confining it.
 ///
-/// Public only so a test can invoke the inner stage directly and assert what it
-/// does when its supervisor is already gone. Reaching for it anywhere else means
-/// running a command without the namespaces it is supposed to be confined by.
-///
-/// The check behind that is a *liveness* check, not an authorization one: the inner
-/// stage confirms the pid it was handed is still its parent, which tells it someone
-/// is positioned to reap it. It does not authenticate who that is, and a parent
-/// passing its own pid satisfies it. Nothing here is a trust boundary — what confines
-/// the command is the namespaces, seccomp and Landlock, all of which only ever
-/// narrow.
+/// The check behind it is a *liveness* check, not an authorization one: the inner stage
+/// confirms the pid it was handed is still its parent, so someone is positioned to reap
+/// it. A parent passing its own pid satisfies it. What confines the command is the
+/// namespaces, seccomp and Landlock, which only ever narrow.
 pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
 
 /// A command that runs under a [`SandboxPolicy`].
 ///
-/// The only sanctioned way for sandbx to execute anything. Rather than restricting
-/// a child directly — which would require unsafe work in the fragile window
-/// between `fork` and `exec` — this spawns a helper that restricts *itself* and
-/// then becomes the command.
+/// The only sanctioned way for sandbx to execute anything. Rather than restricting a
+/// child directly — which would need unsafe work between `fork` and `exec` — this
+/// spawns a helper that restricts *itself* and then becomes the command, in two stages:
+/// the first creates the namespaces, including a PID namespace, and re-execs into the
+/// second, which is therefore PID 1 of it and applies the restrictions before becoming
+/// the command. So the command and everything it spawns live in a namespace that ends
+/// when the call does — see `kill_group`.
 ///
-/// The helper does that in two stages. The first creates the namespaces, including
-/// a PID namespace, and re-execs into the second, which is therefore PID 1 of it
-/// and applies the restrictions before becoming the command. So the command and
-/// everything it spawns live in a namespace that ends when the call does — see
-/// `kill_group`.
-///
-/// By default the helper is this same executable re-run with [`HELPER_FLAG`], so
-/// no second binary has to be installed. [`helper`] overrides that.
-///
-/// [`helper`]: SandboxedCommand::helper
+/// By default the helper is this same executable re-run with [`HELPER_FLAG`], so no
+/// second binary has to be installed; [`SandboxedCommand::helper`] overrides that.
 #[derive(Debug, Clone)]
 pub struct SandboxedCommand {
     program: String,
@@ -57,18 +48,14 @@ pub struct SandboxedCommand {
 /// How often the timed path checks whether the child has exited.
 ///
 /// `std::process` offers no timed wait, so the deadline is enforced by polling.
-/// Short enough that a killed command is reclaimed promptly, long enough that
-/// waiting costs nothing measurable.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// How long the pipe readers get once the command itself is gone.
 ///
-/// The PID namespace is what normally closes the pipes: every descendant dies with
-/// the command, so there is nothing left holding a write-end. This is the floor
-/// under that — a bound on the wait rather than a promise about who is still
-/// running, so the call returns even in the cases the namespace cannot cover.
-/// Long enough that output in flight is not lost, short enough that no command can
-/// use it to stall its caller.
+/// The PID namespace normally closes the pipes — every descendant dies with the
+/// command, so nothing holds a write-end. This is a bound on the wait rather than a
+/// promise about who is still running, so the call returns even in the cases the
+/// namespace cannot cover.
 const DRAIN_GRACE: Duration = Duration::from_millis(200);
 
 impl SandboxedCommand {
@@ -103,19 +90,15 @@ impl SandboxedCommand {
 
     /// Use a specific helper executable instead of re-running this one.
     ///
-    /// Mainly for tests, which have a dedicated helper binary and no dispatch in
-    /// the test harness's own `main`.
+    /// Mainly for tests, which have a dedicated helper binary and no dispatch in the
+    /// test harness's own `main`.
     #[must_use]
     pub fn helper(mut self, path: impl AsRef<Path>) -> Self {
         self.helper = Some(path.as_ref().to_path_buf());
         self
     }
 
-    /// Kill the command if it has not finished within `limit`.
-    ///
-    /// Unset by default, which keeps the plain blocking behaviour. Callers that
-    /// cannot afford to wait forever — anything driving an agent — should set
-    /// one; an interactive caller at a terminal already has Ctrl-C.
+    /// Kill the command if it has not finished within `limit`; unset by default.
     #[must_use]
     pub fn timeout(mut self, limit: Duration) -> Self {
         self.timeout = Some(limit);
@@ -124,28 +107,21 @@ impl SandboxedCommand {
 
     /// Build the exact command line that will be run.
     ///
-    /// Exposed so tests can assert the policy survives into argv without having
-    /// to spawn anything.
-    ///
     /// Spawning it yourself carries one obligation: the argv contains
-    /// `AUDIT_STDIN_FLAG`, which tells the helper its stdin is a channel to write
-    /// audit records to, and only [`output`](Self::output) sets that pipe up. Hand
-    /// this argv to a process whose fd 0 is a terminal and a degradation on a host
-    /// that has one will be written there, looking like output the command produced.
-    /// Either spawn it with a writable pipe on stdin and decode what comes back, or
-    /// drop that argument.
+    /// `AUDIT_STDIN_FLAG`, which tells the helper its stdin is a channel to write audit
+    /// records to, and only [`output`](Self::output) sets that pipe up. Hand this argv
+    /// to a process whose fd 0 is a terminal and a degradation is written there, looking
+    /// like output the command produced. Either give it a writable pipe on stdin and
+    /// decode what comes back, or drop that argument.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
-        // Every helper speaks the same protocol: the flag, then the encoded
-        // policy. An explicit helper is still a helper — a separate calling
-        // convention would mean two protocols and a silent mismatch whenever a
-        // binary implemented the other one.
+        // Every helper speaks the same protocol, explicit or re-exec'd: a second calling
+        // convention would mean a silent mismatch whenever a binary implemented the other.
         let helper = match &self.helper {
             Some(path) => path.clone(),
             None => current_exe()?,
         };
-        // Ahead of the policy, where `exec_sandboxed` splits it off before
-        // decoding: it says where to report a degradation, not what the command may
-        // do. Unconditional because both spawn paths below always set the pipe up.
+        // Ahead of the policy, where `exec_sandboxed` splits it off before decoding, and
+        // unconditional because both spawn paths below always set the pipe up.
         let mut argv = vec![
             HELPER_FLAG.to_string(),
             crate::helper::AUDIT_STDIN_FLAG.to_string(),
@@ -157,27 +133,21 @@ impl SandboxedCommand {
 
     /// Run the command to completion and collect its output.
     ///
-    /// Blocks until the command exits, or — when [`timeout`] is set — until the
-    /// limit expires, at which point the command is killed and
+    /// Blocks until the command exits, or — when [`timeout`](Self::timeout) is set —
+    /// until the limit expires, at which point the command is killed and
     /// [`SandboxError::TimedOut`] is returned.
-    ///
-    /// [`timeout`]: Self::timeout
     pub fn output(&self) -> Result<std::process::Output, SandboxError> {
         let (helper, argv) = self.command_line()?;
 
         crate::AuditEvent::spawned(&self.program, &self.policy).emit();
 
         match self.timeout {
-            // `output()` already reads both pipes concurrently, which is the
-            // part that is easy to get wrong.
             None => {
                 let (audit, write_end) = audit_channel()?;
 
-                // Built by `spawn::command`, which is the only thing in the
-                // workspace allowed to construct one — and which narrows the
-                // environment as it does, so a secret the harness holds never
-                // enters even this intermediate helper process, whose
-                // `/proc/<pid>/environ` is readable for as long as it lives.
+                // `spawn::command` narrows the environment as it builds, so a secret the
+                // harness holds never enters even this intermediate helper, whose
+                // `/proc/<pid>/environ` is readable while it lives.
                 let mut helper = crate::spawn::command(&helper, &self.policy);
                 helper
                     .args(&argv)
@@ -188,10 +158,9 @@ impl SandboxedCommand {
                     source,
                 });
 
-                // Dropped before the channel is read, and that ordering is what
-                // makes the read terminate: the `Command` still owns this process's
-                // copy of the write end, so until it goes the pipe has a writer and
-                // never reaches EOF.
+                // Dropped before the channel is read, and that ordering is what makes the
+                // read terminate: the `Command` still owns this process's copy of the
+                // write end, so until it goes the pipe never reaches EOF.
                 drop(helper);
                 record_degradations(audit);
 
@@ -204,14 +173,10 @@ impl SandboxedCommand {
 
 /// A pipe for the helper to report degraded hardening on.
 ///
-/// The read end stays here and the write end becomes the helper's stdin — the one
-/// descriptor std can hand a child without `unsafe`, which this crate forbids.
-/// The first helper stage replaces it with `null` before spawning anything, so the
-/// sandboxed command never has a handle on it; see `helper::exec_sandboxed`.
-///
-/// Claiming the stdin slot is a real cost: it forecloses giving the sandboxed
-/// command a stdin of its own without moving this channel elsewhere. Both paths
-/// here passed `null` before, so nothing a caller could observe has changed.
+/// The write end becomes the helper's stdin — the one descriptor std can hand a child
+/// without `unsafe`, which this crate forbids. The first helper stage replaces it with
+/// `null` before spawning anything, so the sandboxed command never has a handle on it;
+/// see `helper::exec_sandboxed`. The cost is that the stdin slot is taken.
 fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), SandboxError> {
     std::io::pipe().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not open a channel for the sandbox helper's audit records",
@@ -221,15 +186,13 @@ fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), Sandbox
 
 /// Read what the helper reported and put it on the audit trail.
 ///
-/// Emitted here rather than in the helper because this is the process with a
-/// subscriber: the helper installs none, and cannot without writing sandbx's
-/// records into the sandboxed command's own output (#95).
+/// Emitted here because this is the process with a subscriber: the helper installs none,
+/// and cannot without writing sandbx's records into the sandboxed command's own output.
 ///
-/// Reads to EOF with the helper already waited on, so nothing is draining the pipe
-/// while the helper writes. That is safe only because the records are bounded —
-/// one per best-effort step, with a capped detail — which `degradation::encode`
-/// owns and pins; a channel that could outgrow the pipe buffer would deadlock the
-/// run it is reporting on. A read failure costs the record and nothing else.
+/// Reads to EOF with the helper already waited on, so nothing drains the pipe while the
+/// helper writes. Safe only because the records are bounded — one per best-effort step,
+/// with a capped detail, which `degradation::encode` owns; a channel that could outgrow
+/// the pipe buffer would deadlock the run it is reporting on.
 fn record_degradations(mut audit: std::io::PipeReader) {
     use std::io::Read;
 
@@ -245,8 +208,8 @@ fn record_degradations(mut audit: std::io::PipeReader) {
 
 /// Spawn the helper and wait for it, giving up after `limit`.
 ///
-/// `std::process` has no timed wait, so this cannot use `output()`: it spawns,
-/// drains both pipes on their own threads, and polls for exit until the deadline.
+/// `std::process` has no timed wait, so this cannot use `output()`: it spawns, drains
+/// both pipes on their own threads, and polls for exit until the deadline.
 fn run_with_deadline(
     helper: &Path,
     argv: &[String],
@@ -263,8 +226,7 @@ fn run_with_deadline(
 
     let (audit, write_end) = audit_channel()?;
 
-    // Its own process group, so the kill below reaches descendants too. Narrowed
-    // on the way in for the same reason as the untimed path, by the same factory.
+    // Its own process group, so the kill below reaches descendants too.
     let mut command = crate::spawn::command(helper, policy);
     command
         .args(argv)
@@ -275,19 +237,15 @@ fn run_with_deadline(
 
     let mut child = command.spawn().map_err(spawn_failed)?;
 
-    // Dropped as soon as the child has it, for the reason the untimed path gives:
-    // this process's copy of the write end is what would keep the channel from
-    // ever reaching EOF.
+    // This process's copy of the write end would keep the channel from reaching EOF.
     drop(command);
 
-    // Captured now, while the child is definitely unreaped. `try_wait` reaps it
-    // on success, after which `child.id()` names a pid that may already have
-    // been recycled — a stale value to aim a signal with.
+    // Captured while the child is definitely unreaped: `try_wait` reaps it on success,
+    // after which `child.id()` names a pid that may already have been recycled.
     let group = child.id();
 
-    // Both pipes must be drained concurrently. A single thread reading stdout to
-    // EOF deadlocks as soon as the command fills the stderr buffer, and vice
-    // versa.
+    // Both pipes must be drained concurrently. One thread reading stdout to EOF
+    // deadlocks as soon as the command fills the stderr buffer, and vice versa.
     let out = drain(child.stdout.take());
     let err = drain(child.stderr.take());
 
@@ -300,10 +258,10 @@ fn run_with_deadline(
         }
     };
 
-    // On *both* paths, not just the timeout. A command is free to background
-    // work and exit well inside its deadline; whatever it left behind inherited
-    // the pipe write-ends, so without this the readers below never see EOF and
-    // the deadline — already satisfied — never rescues the call.
+    // On *both* paths, not just the timeout: a command may background work and exit well
+    // inside its deadline, and whatever it left behind inherited the pipe write-ends, so
+    // without this the readers never see EOF and the satisfied deadline cannot rescue
+    // the call.
     kill_group(group);
 
     let status = match finished {
@@ -312,9 +270,8 @@ fn run_with_deadline(
             // Reap the killed child rather than leaving a zombie.
             let _ = child.wait();
             settle(&out.0, &err.0);
-            // Recorded even though the run is being refused: the hardening
-            // degraded before the command started, so it is true of the attempt
-            // regardless of how the attempt ended.
+            // Recorded even though the run is refused: the hardening degraded before the
+            // command started, so it is true of the attempt however it ended.
             record_degradations(audit);
             return Err(SandboxError::TimedOut { after: limit });
         }
@@ -332,12 +289,9 @@ fn run_with_deadline(
 
 /// Give the pipe readers a bounded chance to finish, then stop waiting.
 ///
-/// The PID namespace means the writers are gone by the time this runs, so in the
-/// ordinary case both readers are already at EOF. It stays bounded anyway: waiting
-/// on a pipe unconditionally would make the call's return depend on a guarantee
-/// holding, and the whole point of this function is that it holds no matter what
-/// the command does. The cost is that output still in flight past the grace period
-/// is dropped.
+/// The PID namespace means the writers are already gone, so both readers are ordinarily
+/// at EOF. Bounded anyway, so the call's return does not depend on that guarantee
+/// holding; the cost is that output still in flight past the grace period is dropped.
 fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<()>) {
     let until = Instant::now() + DRAIN_GRACE;
     while Instant::now() < until && !(readers.is_finished() && more.is_finished()) {
@@ -347,16 +301,11 @@ fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<
 
 /// Take what a reader has collected so far.
 ///
-/// Moved out rather than copied: this is the only read of the buffer, and the
-/// handle on it goes out of scope on the next line.
-///
-/// A reader that outlived `settle`'s grace period still holds its own `Arc` clone
-/// and may append after this returns. Those bytes are lost either way — `settle`
-/// documents that output still in flight past the grace period is dropped — so
-/// taking rather than copying loses nothing a clone would have kept.
+/// A reader that outlived `settle`'s grace period may still append after this returns,
+/// but those bytes are lost either way, so taking loses nothing a copy would keep.
 fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
-    // A panicking reader poisons the lock but leaves the bytes it already read
-    // intact, and partial output beats none.
+    // A panicking reader poisons the lock but leaves the bytes it read intact, and
+    // partial output beats none.
     std::mem::take(
         &mut *buffer
             .lock()
@@ -366,13 +315,10 @@ fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
 
 /// Read one pipe on its own thread, into a buffer the caller can take early.
 ///
-/// Separate threads rather than one: reading stdout to EOF from the same thread
-/// that must also read stderr deadlocks the moment the command fills whichever
-/// buffer is not being drained.
-///
-/// Chunked into a shared buffer rather than `read_to_end`, so that abandoning a
-/// reader still yields whatever it managed to read. `read_to_end` holds the
-/// bytes inside the thread until it returns, which is exactly when it cannot.
+/// One thread per pipe, because reading stdout to EOF from the thread that must also
+/// read stderr deadlocks the moment the command fills whichever buffer is not draining.
+/// Chunked into a shared buffer rather than `read_to_end`, which holds the bytes inside
+/// the thread until it returns — exactly when an abandoned reader cannot.
 #[allow(clippy::type_complexity)]
 fn drain<R>(
     pipe: Option<R>,
@@ -407,26 +353,20 @@ where
 
 /// SIGKILL a process group, and with it the PID namespace inside it.
 ///
-/// `SIGKILL` rather than a `SIGTERM` grace period: a command that has already
-/// blown its deadline has not earned more time, and a grace period is a second
-/// knob plus a second delay.
-///
-/// The group on its own would be best-effort, because it is advisory — a
-/// descendant that calls `setsid` leaves it, which was #28. What makes this
-/// unescapable is where the signal lands: the helper's supervisor stage is in this
-/// group and never leaves it, and the command runs as PID 1 of a PID namespace
-/// bound to that supervisor's lifetime. When the supervisor dies, PID 1 dies, and
-/// the kernel SIGKILLs everything still in the namespace — `setsid` or not, since
-/// nothing can leave the namespace it was born into and `unshare`/`setns` are
-/// denied.
+/// The group alone would be best-effort, because it is advisory — a descendant that
+/// calls `setsid` leaves it. What makes this unescapable is where the signal lands: the
+/// helper's supervisor stage is in this group and never leaves it, and the command runs
+/// as PID 1 of a PID namespace bound to that supervisor's lifetime. When the supervisor
+/// dies, PID 1 dies, and the kernel SIGKILLs everything still in the namespace —
+/// `setsid` or not, since nothing can leave the namespace it was born into and
+/// `unshare`/`setns` are denied.
 fn kill_group(group: u32) {
     use nix::sys::signal::{Signal, killpg};
     use nix::unistd::Pid;
 
-    // `process_group(0)` made the child its own group leader, so its pid is the
-    // group id. The kernel keeps that number reserved while the group still has
-    // members, so it cannot name someone else's group here. An error means the
-    // group is already empty, which is the outcome being asked for.
+    // `process_group(0)` made the child its own group leader, so its pid is the group id,
+    // reserved by the kernel while the group has members — it cannot name someone else's.
+    // An error means the group is already empty, which is the outcome being asked for.
     if let Ok(pid) = i32::try_from(group) {
         let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
     }
@@ -442,41 +382,34 @@ pub(crate) fn current_exe() -> Result<PathBuf, SandboxError> {
 
 /// What [`dispatch_helper_mode`] decided.
 ///
-/// Two outcomes, not three: becoming the command never returns, so there is no
-/// success variant to accidentally ignore. Each caller must name which of the
-/// remaining two it is handling, because the right response differs by binary —
-/// the host `sandbx` carries on parsing arguments, while a helper-only binary
-/// has nothing else to do and reports a usage error.
+/// Two outcomes, not three: becoming the command never returns, so there is no success
+/// variant to accidentally ignore. Each caller names which of the two it handles,
+/// because the right response differs by binary — the host `sandbx` carries on parsing
+/// arguments, while a helper-only binary reports a usage error.
 #[derive(Debug)]
 #[must_use = "a helper run that failed must not fall through to running the command"]
 pub enum HelperDispatch {
-    /// Not a helper invocation: an ordinary run of the host binary.
-    ///
-    /// Also covers an argv too short to carry a flag, which is indistinguishable
-    /// from an ordinary run and equally not a reason to enforce anything.
+    /// Not a helper invocation: an ordinary run of the host binary, including an argv
+    /// too short to carry a flag.
     NotHelperMode,
 
-    /// Helper mode ran and failed. **No unrestricted execution occurred.**
+    /// Helper mode ran and failed; no unrestricted execution occurred.
     ///
-    /// Usually the command never started at all: applying the restrictions
-    /// happens before the `exec`, so a failure there means nothing ran. The one
-    /// exception is a failure while waiting on the inner stage — by then the
-    /// command may have run, but it ran *with* the restrictions applied, so this
-    /// never reports a command that escaped the sandbox.
+    /// Usually the command never started, the restrictions being applied before the
+    /// `exec`. The one exception is a failure while waiting on the inner stage — by then
+    /// the command may have run, but it ran *with* the restrictions applied.
     ///
-    /// Exit non-zero either way. Falling through to run the command from here is
-    /// the exact failure the sandbox exists to prevent.
+    /// Exit non-zero either way. Falling through to run the command from here is the
+    /// exact failure the sandbox exists to prevent.
     Failed(SandboxError),
 }
 
 /// Hand off to helper mode when this process was started with [`HELPER_FLAG`].
 ///
-/// Call first thing in `main`, before any threads start: the helper restricts
-/// itself and `exec`s, so anything set up beforehand is discarded anyway.
-///
-/// On a helper run this either never returns or reports why not. Prefer
-/// [`with_helper_dispatch`] in a binary that has an ordinary mode too — it owns
-/// the "exit non-zero on failure" half so each `main` cannot forget it.
+/// Call first thing in `main`, before any threads start: the helper restricts itself and
+/// `exec`s, so anything set up beforehand is discarded anyway. Prefer
+/// [`with_helper_dispatch`] in a binary that has an ordinary mode too — it owns the
+/// "exit non-zero on failure" half so each `main` cannot forget it.
 pub fn dispatch_helper_mode<I>(argv: I) -> HelperDispatch
 where
     I: IntoIterator<Item = OsString>,
@@ -491,9 +424,9 @@ where
         return HelperDispatch::NotHelperMode;
     };
 
-    // Exhaustive `match` on the result in each arm rather than `?`: the entry
-    // points return `Infallible` on success, so this cannot silently gain a path
-    // that returns without either running the command or reporting why not.
+    // Exhaustive `match` on the result in each arm rather than `?`: the entry points
+    // return `Infallible` on success, so this cannot silently gain a path that returns
+    // without either running the command or reporting why not.
     match flag.as_str() {
         HELPER_FLAG => match crate::helper::exec_sandboxed(helper_args) {
             Err(error) => HelperDispatch::Failed(error),
@@ -501,21 +434,16 @@ where
         HELPER_INNER_FLAG => match crate::helper::exec_inner(helper_args) {
             Err(error) => HelperDispatch::Failed(error),
         },
-        // Not a helper run at all: an ordinary invocation of the host binary.
         _ => HelperDispatch::NotHelperMode,
     }
 }
 
 /// Dispatch helper mode first, then run `ordinary_main` if this was not one.
 ///
-/// For a binary with both modes — the shipped `sandbx` — because the failure
-/// half is what a hand-written `main` gets wrong: printing the error but
-/// forgetting to return non-zero falls through to the ordinary path, and a
-/// fall-through here is a command that runs unrestricted. Owning it once means
-/// no `main` can omit it.
-///
-/// It does not, and cannot, enforce being called *first*; a caller can still put
-/// work above it. What it enforces is that a failed helper run ends the process.
+/// The failure half is what a hand-written `main` gets wrong: printing the error but
+/// forgetting to return non-zero falls through to the ordinary path, and a fall-through
+/// here is a command that runs unrestricted. It cannot enforce being called *first*;
+/// what it enforces is that a failed helper run ends the process.
 pub fn with_helper_dispatch<I, F>(argv: I, ordinary_main: F) -> std::process::ExitCode
 where
     I: IntoIterator<Item = OsString>,
