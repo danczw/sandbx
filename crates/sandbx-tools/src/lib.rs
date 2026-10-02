@@ -240,13 +240,32 @@ pub(crate) fn read_file(
 }
 
 /// Render a list of results, bounded, distinguishing "none" from empty output.
-pub(crate) fn listing(lines: Vec<String>, ctx: &ExecutionContext) -> ToolOutput {
-    if lines.is_empty() {
+///
+/// `stopped_early` is appended after the entry cap is applied, not before: a
+/// marker inside the list is a line the cap can trim away, which would leave a
+/// partial search looking complete — the one thing the marker exists to prevent.
+pub(crate) fn listing(
+    lines: Vec<String>,
+    ctx: &ExecutionContext,
+    stopped_early: bool,
+) -> ToolOutput {
+    if lines.is_empty() && !stopped_early {
         return ToolOutput::new("no matches");
     }
 
-    ToolOutput::new(ctx.limits().take_entries(lines).join("\n"))
+    let mut rendered = ctx.limits().take_entries(lines);
+    if stopped_early {
+        rendered.push(PARTIAL_SEARCH.to_string());
+    }
+
+    ToolOutput::new(rendered.join("\n"))
 }
+
+/// Tells the model its search was abandoned, not exhausted.
+///
+/// Without it a scan that gave up looks like a scan that found nothing, and the
+/// model concludes the symbol is absent rather than narrowing its search.
+const PARTIAL_SEARCH: &str = "... stopped early: scan limit reached, results are incomplete";
 
 /// Parse tool arguments, reporting a schema mismatch rather than a panic.
 fn parse<T: serde::de::DeserializeOwned>(input: serde_json::Value) -> Result<T, ToolError> {

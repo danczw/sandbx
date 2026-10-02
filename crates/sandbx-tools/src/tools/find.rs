@@ -15,16 +15,16 @@ pub struct FindInput {
 
 /// Find files beneath a directory whose name contains a substring.
 pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let files = ctx
+    let walk = ctx
         .guard()
-        .walk_readable(&input.path, usize::MAX)
-        .map_err(|error| crate::denied(&input.path, error))?
-        .files;
+        .walk_readable(&input.path, ctx.limits().max_files_scanned())
+        .map_err(|error| crate::denied(&input.path, error))?;
 
     // Matched against the name being reported, not the name it was reached by:
     // reporting one path while having matched a different one gives the model a
     // result whose filename does not contain what it searched for.
-    let found = files
+    let found = walk
+        .files
         .into_iter()
         .filter(|path| {
             path.file_name()
@@ -33,5 +33,5 @@ pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         .map(|path| path.display().to_string())
         .collect();
 
-    Ok(crate::listing(found, ctx))
+    Ok(crate::listing(found, ctx, walk.truncated))
 }

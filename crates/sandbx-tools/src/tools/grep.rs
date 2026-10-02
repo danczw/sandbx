@@ -28,19 +28,28 @@ pub struct GrepInput {
 /// dependency and a whole class of pathological-pattern behaviour, for a tool
 /// whose common use is "find where this symbol is mentioned".
 pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let files = ctx
+    let walk = ctx
         .guard()
-        .walk_readable(&input.path, usize::MAX)
-        .map_err(|error| crate::denied(&input.path, error))?
-        .files;
+        .walk_readable(&input.path, ctx.limits().max_files_scanned())
+        .map_err(|error| crate::denied(&input.path, error))?;
 
     let mut hits = Vec::new();
+    let mut scanned = 0usize;
+    let mut stopped_early = walk.truncated;
 
     // Already ordered, so nothing is sorted afterwards: `walk_readable` returns
     // files sorted and lines are visited ascending within each file. Sorting the
     // rendered lines instead would be wrong anyway — it orders line numbers
     // lexicographically, putting `:10` before `:2`.
-    for file in files {
+    for file in walk.files {
+        // Checked before the read, so the budget bounds what is actually read
+        // rather than being noticed once it has already been exceeded. A file
+        // skipped below costs nothing and is not charged for.
+        if scanned >= ctx.limits().max_bytes_scanned() {
+            stopped_early = true;
+            break;
+        }
+
         // Checked before opening rather than after: `read_to_string` would read
         // the whole file before failing UTF-8 validation on a binary.
         if file.metadata().is_ok_and(|m| m.len() > MAX_FILE_BYTES) {
@@ -52,6 +61,7 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         let Ok(content) = crate::read_file(&file, ctx) else {
             continue;
         };
+        scanned += content.len();
 
         for (number, line) in content.lines().enumerate() {
             if line.contains(&input.pattern) {
@@ -65,5 +75,5 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         }
     }
 
-    Ok(crate::listing(hits, ctx))
+    Ok(crate::listing(hits, ctx, stopped_early))
 }
