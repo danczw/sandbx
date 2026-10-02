@@ -16,7 +16,7 @@ use crate::SandboxError;
 /// Landlock cannot express any of these: they are not filesystem access. That is
 /// why both layers exist rather than one.
 ///
-/// Lifted out of [`deny_dangerous_syscalls`] so a test can assert the list still
+/// Lifted out of `deny_dangerous_syscalls` so a test can assert the list still
 /// contains what `SECURITY.md` claims it does. The filter is built from this and
 /// nothing else, so the two cannot drift.
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
