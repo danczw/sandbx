@@ -1,9 +1,8 @@
 /// Why a provider call did not produce a usable event stream.
 ///
-/// Split by what the caller can do about it: a configuration problem to fix
-/// before retrying at all, something a retry might clear, or a wire-format
-/// mismatch no retry fixes. [`is_retryable`](Self::is_retryable) is the one place
-/// that split is decided.
+/// Split by what the caller can do about it: a configuration problem to fix before
+/// retrying at all, something a retry might clear, or a wire-format mismatch no
+/// retry fixes. [`is_retryable`](Self::is_retryable) decides that split.
 #[derive(Debug)]
 pub enum ProviderError {
     /// No credential could be resolved for this provider.
@@ -12,12 +11,10 @@ pub enum ProviderError {
         env_var: &'static str,
     },
 
-    /// A base URL handed to `AnthropicClient::with_base_url` was rejected before
-    /// any request was made.
-    ///
-    /// The key travels in a request header, so a non-`https` base URL would put it
-    /// on the wire in cleartext. Loopback `http://` is permitted, for a local mock
-    /// server.
+    /// A base URL handed to `AnthropicClient::with_base_url` was rejected before any
+    /// request was made: the key travels in a request header, so a non-`https` base
+    /// URL would put it on the wire in cleartext. Loopback `http://` is permitted,
+    /// for a local mock server.
     InvalidBaseUrl {
         /// The rejected value, as given.
         base_url: String,
@@ -30,19 +27,15 @@ pub enum ProviderError {
     Transport {
         /// What was being attempted, for the operator to act on.
         detail: String,
-        /// The reqwest message, which is what separates a DNS failure from a TLS
-        /// one from a dropped socket.
+        /// The reqwest message, which separates a DNS failure from a TLS one from a
+        /// dropped socket.
         source: reqwest::Error,
     },
 
-    /// The API answered with a non-2xx status other than a rate limit, or sent
-    /// an in-band SSE `error` event mid-stream.
-    ///
-    /// Rate limiting is split out as [`RateLimited`](Self::RateLimited) so a caller
-    /// can back off without string-matching `kind`.
+    /// The API answered with a non-2xx status other than a rate limit, or sent an
+    /// in-band SSE `error` event mid-stream.
     ApiError {
-        /// `None` for an in-band SSE `error` event, which carries no HTTP
-        /// status of its own.
+        /// `None` for an in-band SSE `error` event, which carries no HTTP status.
         status: Option<u16>,
         /// The vendor's error type string, e.g. `"invalid_request_error"`.
         kind: String,
@@ -70,10 +63,7 @@ pub enum ProviderError {
     },
 
     /// The connection closed before a `message_stop` event arrived: every event seen
-    /// was well-formed, but the turn never reached a defined end state. A turn that
-    /// *did* reach `message_stop` always ends with an
-    /// [`AgentEvent::Stop`](crate::AgentEvent::Stop), so these are the only two ways
-    /// a stream can end.
+    /// was well-formed, but the turn never reached a defined end state.
     StreamEndedUnexpectedly,
 }
 
@@ -84,9 +74,9 @@ impl ProviderError {
 
     /// Whether retrying the identical request could plausibly succeed.
     ///
-    /// A transport failure or rate limit is retryable, and a 5xx (Anthropic documents
-    /// 500 `api_error` and 529 `overloaded_error` as transient); a 4xx other than 429
-    /// is not. A truncated stream reports `false` because the turn was already partly
+    /// A transport failure, a rate limit, and any 5xx (Anthropic documents 500
+    /// `api_error` and 529 `overloaded_error` as transient); a 4xx other than 429 is
+    /// not. A truncated stream reports `false` because the turn was already partly
     /// delivered, so re-sending is the caller's judgement call.
     pub fn is_retryable(&self) -> bool {
         match self {
@@ -105,10 +95,9 @@ impl ProviderError {
         }
     }
 
-    /// How long the API asked the caller to wait before retrying, if it said.
-    ///
-    /// Reads the same `Retry-After` for a rate limit and an overload, so a backoff
-    /// layer need not know which variant it holds.
+    /// How long the API asked the caller to wait before retrying, if it said. Reads
+    /// the same `Retry-After` for a rate limit and an overload, so a backoff layer
+    /// need not know which variant it holds.
     pub fn retry_after(&self) -> Option<std::time::Duration> {
         match self {
             Self::RateLimited { retry_after, .. } | Self::ApiError { retry_after, .. } => {

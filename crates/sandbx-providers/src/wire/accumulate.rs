@@ -1,8 +1,8 @@
 //! Folding a sequence of [`super::payload`] frames into [`AgentEvent`]s.
 //!
-//! Where the module doc's two invariants are kept: an unmodeled tag is skipped
-//! rather than ending the stream, and a turn ends exactly once — with an
-//! [`AgentEvent::Stop`] at `message_stop`, or an `Err` if it never arrives.
+//! Where two invariants are kept: an unmodeled tag is skipped rather than ending
+//! the stream, and a turn ends exactly once — with an [`AgentEvent::Stop`] at
+//! `message_stop`, or an `Err` if it never arrives.
 
 use std::collections::{BTreeMap, VecDeque};
 
