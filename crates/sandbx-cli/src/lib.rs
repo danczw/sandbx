@@ -5,6 +5,8 @@
 //! question, and it should be answerable by a unit test on a machine with no
 //! sandbox-capable kernel at all.
 
+pub mod logging;
+
 use std::io::Write;
 use std::path::PathBuf;
 
