@@ -380,14 +380,18 @@ mod tests {
         );
     }
 
-    /// The case that makes this a security property rather than a robustness one.
+    /// The worst shape a name can take: `) 1 2 3` makes the line look like the
+    /// numeric fields start three tokens early, so counting from the left returns
+    /// a short, plausible integer rather than an obviously wrong token. A parse
+    /// that lands there could *agree* with the expected pid instead of merely
+    /// disagreeing, which is the one way [`confirm_supervisor`] fails open (#91).
     ///
-    /// A command named `) 1 2 3` makes the line look like the numeric fields
-    /// start three tokens early, so counting from the left returns a short,
-    /// plausible integer that the *command* chose. [`confirm_supervisor`] compares
-    /// that against the pid it was told to expect, so a name picked to match is a
-    /// false pass — the check agreeing that a supervisor is still watching when it
-    /// is not. Every other broken reading here merely refuses to run (#91).
+    /// Robustness, not a defence against a chosen name: the line belongs to this
+    /// process, and `confirm_supervisor` runs before the `exec` in
+    /// [`exec_inner`](super::exec_inner), so field 2 is sandbx's own helper
+    /// binary — resolved through `/proc/self/exe`, so not even a name a caller
+    /// supplied. The sandboxed command never appears here. What this pins is that
+    /// the parse stays correct however that binary is named.
     #[test]
     fn an_executable_name_shaped_like_the_fields_after_it_is_not_read_as_one() {
         let stat = stat_line(") 1 2 3");
@@ -442,8 +446,12 @@ mod tests {
     /// Cross-checked against `status` and not `getppid`, which the kernel
     /// translates into the caller's pid namespace and reports as 0 for PID 1 of a
     /// nested one — the exact skew [`confirm_supervisor`] exists to work around,
-    /// so leaning on it here would break the test inside the sandbox. Both files
-    /// come from the same procfs instance, so they agree unconditionally.
+    /// so leaning on it here would break the test inside the sandbox.
+    ///
+    /// The two files are read in two syscalls, so a parent that exits between
+    /// them would be reparented and leave `PPid:` naming init while the captured
+    /// stat line still names the old pid. Not worth guarding: the parent under
+    /// `cargo test` is cargo, which outlives the harness by construction.
     #[test]
     fn the_parse_agrees_with_what_procfs_reports_under_another_name() {
         let stat = std::fs::read_to_string("/proc/self/stat").expect("procfs is mounted");
