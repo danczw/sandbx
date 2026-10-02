@@ -117,7 +117,10 @@ Lib `sandbx_cli`, bin `sandbx`. One subcommand: `sandbox-run`.
 ## Reading order
 
 1. `SECURITY.md` — what is claimed
-2. `context/SANDBOXING.md` — how it is enforced
-3. `context/enforcement-seam.md` — where policy becomes kernel state
-4. `context/axis-table.md` — why there is one table
-5. `context/TOOLS.md`, `context/TURN_LOOP.md` — the layers above
+2. `guide-sandboxing.md` — how it is enforced
+3. `decision-enforcement-seam.md` — where policy becomes kernel state
+4. `decision-axis-table.md` — why there is one table
+5. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+
+`guide-` describes a subsystem as it currently is; `decision-` records why a
+choice was made, and stays useful after the code moves.

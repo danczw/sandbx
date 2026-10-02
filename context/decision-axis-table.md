@@ -1,7 +1,7 @@
 # The axis table
 
 Why filesystem policy has one table and five consumers instead of five parallel
-lists. The current derived-vs-forced breakdown lives in `enforcement-seam.md`;
+lists. The current derived-vs-forced breakdown lives in `decision-enforcement-seam.md`;
 this is how it got that way and how it was checked.
 
 ## The table
