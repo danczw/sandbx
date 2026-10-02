@@ -177,23 +177,33 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     confirm_supervisor(supervisor)?;
 
     // Stage 1 narrowed this process's environment before spawning it, so on every
-    // supported path there is nothing here outside the allowlist. Deliberately not
-    // claimed as something `confirm_supervisor` enforces: that is a liveness check
-    // and explicitly not a trust boundary (see `HELPER_INNER_FLAG`), so a caller
-    // invoking the inner stage directly can still arrive with a full environment
-    // and will be refused rather than narrowed.
+    // supported path there is nothing here outside the allowlist. Checked rather
+    // than trusted, and deliberately not folded into `confirm_supervisor`: that is
+    // a liveness check and explicitly not a trust boundary (see
+    // `HELPER_INNER_FLAG`), so a caller invoking the inner stage directly can
+    // arrive with a full environment and is refused here rather than narrowed.
     //
-    // An assertion and not a second `restrict` because both stages narrow the same
+    // A check and not a second `restrict` because both stages narrow the same
     // environment: either call could be deleted and the other would cover for it,
     // leaving the command's `environ` identical and no test able to tell. This is
     // what makes the stage-1 clear a thing that can fail (#98).
+    //
+    // A returned error and not an `assert!`: `dispatch_helper_mode` is exhaustive
+    // so that a helper run cannot end without either running the command or
+    // reporting why not, and a panic leaves through neither — it reports a broken
+    // harness invariant as a crash on the command's own stderr. The message names
+    // no variable, for the reason
+    // `records_how_many_variables_a_spawn_passed_not_which` gives.
     let allowed_env = request.policy.allowed_env();
-    assert!(
-        std::env::vars_os()
-            .all(|(name, _)| allowed_env.iter().any(|allowed| name == allowed.as_str())),
-        "the inner stage inherited a variable the policy does not name; \
-         an earlier stage did not narrow the environment"
-    );
+    if std::env::vars_os()
+        .any(|(name, _)| !allowed_env.iter().any(|allowed| name == allowed.as_str()))
+    {
+        return Err(SandboxError::ProcessHardening {
+            detail: "the inner stage inherited a variable the policy does not name; \
+                     an earlier stage did not narrow the environment"
+                .to_string(),
+        });
+    }
 
     apply(&request.policy)?;
 
@@ -211,8 +221,8 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         // is the call that decides what it can read out of its own `environ`.
         // The earlier stages narrowing the same environment makes this a no-op
         // on the ordinary path, which is the point — nothing here depends on
-        // them having done it. What the assertion above adds is that a stage
-        // which stopped doing it is reported rather than silently covered for.
+        // them having done it. What the check above adds is that a stage which
+        // stopped doing it is reported rather than silently covered for.
         crate::env::restrict(&mut command, &request.policy);
 
         command.exec()

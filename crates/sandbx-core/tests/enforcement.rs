@@ -214,6 +214,69 @@ fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
     );
 }
 
+/// The inner stage refuses an environment an earlier stage should have narrowed,
+/// rather than narrowing it again and carrying on.
+///
+/// This is what pins the check itself. Every other path reaches `exec_inner` with
+/// the environment already narrowed, where the check is trivially satisfied, and
+/// `the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of` above never gets
+/// that far — so without this test the check could be deleted with the suite
+/// staying green, which is the exact class of unobservable line it was added to
+/// close (#98).
+///
+/// Reaching it needs the liveness check to pass, which means naming a supervisor
+/// that really is this process's parent. That is the test harness: it spawns the
+/// helper directly, so its own pid is the one `/proc/self/stat` will report. The
+/// liveness check accepting it is by design — `HELPER_INNER_FLAG` is documented as
+/// not a trust boundary — and is what leaves the environment to be caught here.
+///
+/// The variable is planted with `Command::env` rather than `set_var`, which is
+/// `unsafe` on edition 2024 and would poison the whole harness besides.
+#[test]
+fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
+    let marker = tempfile::tempdir().unwrap().path().join("should-not-exist");
+
+    // Nothing allowed, so the planted variable is outside the allowlist — as is
+    // every variable cargo handed this process, which is the harness-wide
+    // environment a real stage 1 would have cleared.
+    let policy = SandboxPolicy::default();
+    let args = [marker.to_str().unwrap().to_string()];
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
+        .arg(sandbx_core::HELPER_INNER_FLAG)
+        .arg(std::process::id().to_string())
+        .args(HelperArgs::encode(&policy, "/bin/touch", &args))
+        .env("SANDBX_SHOULD_NOT_SURVIVE", "leaked-abc123")
+        .output()
+        .expect("helper should start");
+
+    assert!(
+        !output.status.success(),
+        "the inner stage ran with an environment the policy never named"
+    );
+    assert!(
+        !marker.exists(),
+        "the inner stage ran the command despite a leaked environment"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Named in the refusal, so this cannot pass merely because the supervisor
+    // check or the decode rejected something first — which is what it would prove
+    // if the environment check were absent.
+    assert!(
+        stderr.contains("environment"),
+        "the refusal must say the environment is the reason, got: {stderr}"
+    );
+    // And not named: a refusal is a diagnostic an operator reads, and
+    // `records_how_many_variables_a_spawn_passed_not_which` in `audit.rs` makes the
+    // same argument about the audit trail. Naming the variable here would walk it
+    // back one seam over.
+    assert!(
+        !stderr.contains("SANDBX_SHOULD_NOT_SURVIVE"),
+        "the refusal must not name the variable it found, got: {stderr}"
+    );
+}
+
 /// The precondition for #28: this host lets an unprivileged process create a PID
 /// namespace, and the next child is born as PID 1 of it.
 ///

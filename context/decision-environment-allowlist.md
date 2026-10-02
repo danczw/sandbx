@@ -1,8 +1,8 @@
 # The environment allowlist
 
 Why a sandboxed command starts with an empty environment, and why clearing it is
-repeated at four spawn sites rather than asserted at one — with the inner stage
-asserting as well, so the repetition is checkable. The mechanism is in
+repeated at four spawn sites rather than checked at one — with the inner stage
+checking as well, so the repetition is falsifiable. The mechanism is in
 `guide-sandboxing.md`; this is what the choices were between.
 
 ## What #98 actually was
@@ -62,7 +62,7 @@ Four `Command`s are built on the spawn path — `output()`, `run_with_deadline()
 the supervisor's re-exec into stage 2, and stage 2's `.exec()` into the real
 program. All four call `env::restrict`.
 
-The alternative was to clear once at the top and have the inner stages *assert*
+The alternative was to clear once at the top and have the inner stages *check* that
 their environment already matched. Rejected **for stage 1**, because the helper is
 a public entry point: any binary calling `with_helper_dispatch` becomes a helper
 when handed `HELPER_FLAG`, and the enforcement suite invokes the helper binary
@@ -71,14 +71,25 @@ a direct invocation into a refusal; applying the filter makes it correct instead
 `restrict` is idempotent — after the first clear the environment already *is* the
 allowlist — so the repetition costs nothing.
 
-Stage 2 is the exception, and both halves are kept there: it asserts *and* then
-filters. The filter is what the command actually relies on; the assertion is what
-makes the stage-1 clear falsifiable. Without it the two stages mask each other —
-either `restrict` call could be deleted and the other would cover for it, leaving
-the command's `environ` byte-identical and no test able to tell. So a later stage
-*does* now depend on an earlier one having run, deliberately and in one direction
-only: stage 2 is reachable only through stage 1, which is why the asymmetry with
-the paragraph above is sound rather than inconsistent.
+Stage 2 is the exception, and both halves are kept there: it **checks** its own
+inherited environment and refuses, *and then* filters what it passes on. The filter
+is what the command actually relies on; the check is what makes the stage-1 clear
+falsifiable. Without it the two stages mask each other — either `restrict` call
+could be deleted and the other would cover for it, leaving the command's `environ`
+byte-identical and no test able to tell.
+
+So stage 2 *does* now depend on an earlier stage having run, and the asymmetry with
+the paragraph above is a deliberate trade rather than a derivation from
+reachability. Stage 2 is **not** reachable only through stage 1: `HELPER_INNER_FLAG`
+is `pub` and dispatched from argv, exactly as the enforcement suite invokes it. The
+honest statement is that direct inner invocation is a test-only entry point the
+project is willing to see refused, where direct stage-1 invocation is a supported
+one a library consumer has, so stage 1 sanitises and stage 2 refuses.
+
+A refusal through `SandboxError` and not an `assert!`, for the reason
+`dispatch_helper_mode` is exhaustive: a helper run must end by either running the
+command or reporting why not, and a panic is neither — it would report a broken
+harness invariant as a crash on the command's own stderr.
 
 What that buys is bounded, and worth stating plainly. Only the stage-1 clear is
 pinned by it. The two `command.rs` sites are upstream of a stage that re-narrows,
@@ -172,3 +183,10 @@ a new spawn site to call `env::restrict`. What stands in for that is
 asserting on its stdout — the issue's own reproducer, inverted. It goes through
 the suite's `run()` helper, which spawns the helper *without* clearing anything
 first, so what it pins is the helper stages doing it on their own.
+
+Stage 2's refusal needs a test of its own, because every path that reaches it
+honestly reaches it already narrowed, where the check is trivially satisfied:
+`the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow` invokes the
+inner stage directly, naming the test harness as the supervisor so the liveness
+check passes, and plants a variable with `Command::env`. Without it the check would
+be as deletable-with-a-green-suite as the lines it exists to pin.
