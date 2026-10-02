@@ -9,6 +9,7 @@ Where to look, and where to put something new:
 | how a subsystem works | `context/guide-*.md` |
 | why a design went the way it did | `context/decision-*.md` |
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
+| how long a code comment may be, and what it must not say | `context/guide-code-comments.md` |
 | what is claimed, and what is not | `SECURITY.md` |
 | what was planned and is still missing | an open issue, on a phase milestone |
 | when open work happens, and what it waits on | GitHub milestones, one per phase |
