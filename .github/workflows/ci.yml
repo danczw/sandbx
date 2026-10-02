@@ -78,6 +78,56 @@ jobs:
       - name: Test (sandbox enforcement)
         run: cargo test --workspace --features sandbox-integration
 
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The floor is a claim the manifest makes, so read it from there rather than
+      # pinning a version here: a second copy drifts the moment someone bumps
+      # `rust-version`, and a job testing a version nobody claims proves nothing.
+      #
+      # `rust_version` from cargo metadata is the *inherited* value each crate
+      # ends up with. That matters: a `[workspace.package]` entry no member
+      # inherits is inert — cargo never checks it — and shows up here as a null,
+      # which is the one failure mode this job exists to rule out.
+      - name: Read the floor out of the manifest
+        id: floor
+        run: |
+          floor="$(cargo metadata --format-version 1 --no-deps | jq -r '
+            [.packages[].rust_version] | unique
+            | if length == 1 and .[0] != null then .[0] else "" end')"
+          if [ -z "$floor" ]; then
+            echo "::error::every crate must inherit one rust-version from [workspace.package]"
+            exit 1
+          fi
+          echo "floor=$floor" >> "$GITHUB_OUTPUT"
+          echo "floor=$floor"
+
+      # @master, not @stable, because `with: toolchain` needs a ref that takes an
+      # argument. Not a weaker pin: this action ships no version tags, so @stable
+      # is a mutable branch too.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.floor.outputs.floor }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Both feature sets the stable jobs cover between them, in one run: the
+      # `sandbox-integration` suite needs a Linux kernel with Landlock ABI 5
+      # (6.10+), same as the `sandbox` job above, and `sandbx-providers/mock`
+      # unlocks the test target gated on it by `required-features`.
+      #
+      # `--locked` is the point of the job, not a nicety. Cargo.lock is what the
+      # release builds and what `cargo install --locked` uses, so it is the thing
+      # with a floor. Worse, resolver 3 *prefers* MSRV-compatible versions once
+      # `rust-version` is stated, so an unlocked run would resolve its way around
+      # a lockfile that cannot build at the floor at all, and pass.
+      - name: Test at the stated floor
+        run: |
+          cargo test --workspace --locked \
+            --features sandbox-integration,sandbx-providers/mock
+
   audit:
     runs-on: ubuntu-latest
     steps:
