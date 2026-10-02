@@ -4,9 +4,10 @@
 //! naming a path. The denylist is a constant so a test can assert the installed
 //! filter still matches it, and `super::apply` installs it.
 //!
-//! Three stacked filters, not one: a seccompiler filter carries a single match action,
-//! and `clone3` must answer `ENOSYS` while everything else answers `EPERM`. The kernel
-//! takes the most severe verdict across every installed filter.
+//! Stacked filters, not one: a seccompiler filter carries a single match action, and
+//! `clone3` must answer `ENOSYS` while everything else answers `EPERM`. Three on x86_64,
+//! where the x32 gate also applies; two elsewhere. The kernel takes the most severe
+//! verdict across every installed filter.
 
 use crate::SandboxError;
 
@@ -80,9 +81,11 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
 /// `unshare` is on the denylist above, but `clone` reaches every one of these namespaces
 /// through its flags argument, so denying only `unshare` leaves the escape open (#118).
 ///
-/// `CLONE_NEWTIME` is absent: it collides with `clone`'s exit-signal byte and the kernel
-/// refuses it for this syscall. `unshare` and `clone3`, the two calls that do accept it,
-/// are denied outright.
+/// `CLONE_NEWTIME` is absent, and not because it is safe: `0x80` falls inside `CSIGNAL`,
+/// and `SYSCALL_DEFINE5(clone)` takes `lower_32_bits(flags) & ~CSIGNAL`, so `clone`
+/// silently drops the bit and creates no time namespace. Do not read a refusal into it —
+/// the call succeeds. `unshare` and `clone3`, which do honour the flag, are denied
+/// outright.
 const NAMESPACE_CLONE_FLAGS: &[libc::c_int] = &[
     libc::CLONE_NEWNS,
     libc::CLONE_NEWCGROUP,
@@ -241,13 +244,29 @@ fn clone3_filter() -> Result<seccompiler::BpfProgram, SandboxError> {
 /// foreign ABI whose syscall numbers mean something else, so no verdict per call is
 /// meaningful. Needs no architecture gate of its own — the denylist filter already kills
 /// every non-native architecture, and the kernel takes the most severe verdict.
+///
+/// A negative `nr` is excluded before the mask, or `syscall(-1)` — `0xffff_ffff`, bit 30
+/// among the rest — would die by signal where every kernel answers `ENOSYS`. `do_syscall_64`
+/// special-cases `nr == -1`, and x32 dispatch is `nr - BIT < X32_NR_syscalls`, so nothing
+/// with the sign bit set is x32. A positive number past the end of the x32 table is still
+/// killed rather than refused: matching the table exactly would mean pinning its size here,
+/// and only an x32 caller reaches for those numbers at all.
 #[cfg(target_arch = "x86_64")]
 fn x32_gate() -> seccompiler::BpfProgram {
     let insn = |code: u16, jt: u8, jf: u8, k: u32| seccompiler::sock_filter { code, jt, jf, k };
 
+    // `jt`/`jf` count from the *following* instruction. Laid out so the two returns sit
+    // last: both jumps forward, and the fallthrough is the allow.
     vec![
         // `nr` is the first word of `struct seccomp_data`.
         insn((libc::BPF_LD | libc::BPF_W | libc::BPF_ABS) as u16, 0, 0, 0),
+        // Sign bit set? Not x32 — skip to the allow.
+        insn(
+            (libc::BPF_JMP | libc::BPF_JGE | libc::BPF_K) as u16,
+            3,
+            0,
+            0x8000_0000,
+        ),
         insn(
             (libc::BPF_ALU | libc::BPF_AND | libc::BPF_K) as u16,
             0,
@@ -575,10 +594,10 @@ mod tests {
     /// cases cover the classic mis-implementations over hand-written programs rather than
     /// the compiled filter.
     ///
-    /// `ALU|AND`, `JGT` and `JGE` are unreachable from [`compiled_filter`] today: sandbx
-    /// builds only `Dword`/`Eq` rules, which compile to loads and `jeq`. They are
-    /// implemented anyway, because the alternative is three arms that panic on a program
-    /// seccompiler can legitimately emit.
+    /// Only `JGT` is unreachable from the installed filters now: the `clone` rules are
+    /// `MaskedEq`, which seccompiler compiles to `ALU|AND` plus `jeq`, and `x32_gate`
+    /// hand-writes a `JGE`. It is implemented anyway, because the alternative is an arm
+    /// that panics on a program seccompiler can legitimately emit.
     #[test]
     fn eval_implements_the_opcodes_seccompiler_can_emit() {
         // Every program loads word 0, `nr`, so the case's `nr` is what the comparison
@@ -960,6 +979,27 @@ mod tests {
                 ALLOW,
                 "the x32 gate judges native syscall {nr}, which is the denylist \
                  filter's job"
+            );
+        }
+    }
+
+    /// A negative `nr` carries bit 30 like an x32 number does, but is not one.
+    ///
+    /// `syscall(-1)` is legal to pass and every kernel answers `ENOSYS`; a bare mask over
+    /// bit 30 kills it instead, by a signal and with nothing on stderr. The rest of this
+    /// file assumes that call is survivable — `seccomp_data` passes `nr` through as a
+    /// signed `int` for exactly this reason.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn the_x32_gate_does_not_kill_a_negative_syscall_number() {
+        let program = x32_gate();
+
+        for nr in [-1, -2, libc::c_long::from(i32::MIN)] {
+            assert_eq!(
+                verdict(&program, nr),
+                ALLOW,
+                "syscall({nr}) is killed by the x32 gate, but the sign bit means it is \
+                 not an x32 number — the kernel would answer ENOSYS"
             );
         }
     }
