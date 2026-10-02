@@ -1,17 +1,15 @@
 //! Naive compaction: withhold the oldest history from a request that has grown past a
 //! caller's token budget.
 //!
-//! Naive in the planned sense — no summarisation model, just a bounded window. What
-//! makes it less trivial than dropping the first `n` messages is that the API will not
-//! accept an arbitrary prefix drop. Four shapes are rejected outright: a conversation
-//! that does not open on a user turn, two consecutive user turns, a `tool_result` whose
-//! `tool_use` is absent (or the reverse), and an empty content array.
+//! No summarisation model, just a bounded window. The API will not accept an arbitrary
+//! prefix drop: it rejects a conversation that does not open on a user turn, two
+//! consecutive user turns, a `tool_result` whose `tool_use` is absent (or the reverse),
+//! and an empty content array.
 //!
-//! Because only a *prefix* is ever dropped, every interior pair survives untouched and
-//! alternation inside the kept span is whatever it already was. So the whole question
-//! collapses onto the new first message, which is what [`opens_a_request`] decides. The
-//! consequence worth internalising: in a tool-heavy transcript the legal cut points are
-//! exactly the human prose turns — one per exchange, not one per message.
+//! Only a *prefix* is ever dropped, so every interior pair survives and the whole
+//! question collapses onto the new first message, which [`opens_a_request`] decides. In a
+//! tool-heavy transcript that makes the legal cut points exactly the human prose turns —
+//! one per exchange, not one per message.
 
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
 
@@ -19,27 +17,25 @@ use crate::PromptUsage;
 
 /// When to withhold history, and how much to keep.
 ///
-/// Opt-in, and the only bound in this crate that is off by default. The others refuse
-/// to proceed when they are hit; this one quietly sends the model less than it was
-/// given, and the right value for it depends on the model named in the request — which
-/// `Turn::model` carries as a freeform string, with no context-window table behind it.
-/// Only a caller knows what its own model's window is.
+/// Opt-in, and the only bound in this crate that is off by default: the others refuse to
+/// proceed when hit, where this one quietly sends the model less than it was given. The
+/// right value depends on the model named in the request, which `Turn::model` carries as
+/// a freeform string with no context-window table behind it.
 #[derive(Debug, Clone, Copy)]
 pub struct Compaction {
     /// Compaction fires once the last *measured* prompt exceeded this.
     ///
-    /// Measured, not predicted: it is compared against what the provider reported for
-    /// the request that was already sent, which does not include the reply to it or the
-    /// tool results that follow. So set it below the model's window with room to spare.
+    /// Measured, not predicted: compared against what the provider reported for the
+    /// request already sent, which excludes the reply to it and the tool results that
+    /// follow. So set it below the model's window with room to spare.
     pub budget_tokens: u32,
 
     /// How many of the newest messages to aim to keep.
     ///
-    /// A target rather than a guarantee, in both directions. The cut has to land on a
-    /// legal boundary, so honouring this exactly is usually impossible; and the current
-    /// turn's own messages are never withheld, so a small value cannot force them out.
-    /// Counted over the whole request — the caller's history plus the turn's own work —
-    /// so the number means what it looks like it means.
+    /// A target rather than a guarantee, in both directions: the cut has to land on a
+    /// legal boundary, and the current turn's own messages are never withheld, so a
+    /// small value cannot force them out. Counted over the whole request — the caller's
+    /// history plus the turn's own work.
     pub keep_recent: usize,
 }
 
@@ -47,62 +43,51 @@ pub struct Compaction {
 ///
 /// A `None` measurement never fires: a turn's first round has no figure to go on, and
 /// guessing would compact a conversation that may be two messages long. That bounds the
-/// *round*, not the turn — `run_turn` feeds each round's own report back in, so a turn
-/// that started with nothing still compacts once it has measured itself.
+/// *round*, not the turn — `run_turn` feeds each round's own report back in.
 pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> bool {
     observed.is_some_and(|usage| usage.prompt_tokens() > u64::from(budget_tokens))
 }
 
 /// How many of `history`'s oldest messages to withhold, or `None` to withhold none.
 ///
-/// Pure and total: two bounded index scans, no allocation, no unbounded loop, every
-/// lookup through `get` and every subtraction guarded. It cannot panic, cannot diverge,
-/// and cannot return a cut that leaves the request invalid or empty.
+/// Pure and total: two bounded index scans, every lookup through `get` and every
+/// subtraction guarded. It cannot panic, cannot diverge, and cannot return a cut that
+/// leaves the request invalid or empty.
 ///
-/// `produced` is a *count*, not a slice, so no cut this function returns can reach the
-/// current turn's own messages. Load-bearing twice over: the request's cached prefix
-/// stays a prefix as the turn goes round again, and a turn can never be made to re-ask
-/// for a tool whose result it withheld from itself.
-///
-/// # Why `floor`, and why the cut only ever deepens
+/// `produced` is a *count*, not a slice, so no cut returned here can reach the current
+/// turn's own messages. Load-bearing twice: the request's cached prefix stays a prefix
+/// as the turn goes round again, and a turn can never be made to re-ask for a tool whose
+/// result it withheld from itself.
 ///
 /// `floor` is what the previous turn withheld, and the returned cut is never shallower
-/// than it. Without that the whole mechanism oscillates and bounds nothing: the figure
-/// a caller measures is the cost of the *already compacted* request, so the turn after
-/// a successful compaction reads comfortably under budget, puts the whole history back,
-/// and sends more than the turn that just triggered. Compaction would fire on alternate
-/// turns while the uncompacted leg grew without limit.
-///
-/// Appending to a history does not move the indices of its prefix, so a cut that was
-/// legal last turn still names the same message this turn — which is what makes
-/// carrying it forward meaningful rather than approximate.
-///
-/// # The target, and the three rungs
+/// than it, so the cut only ever deepens. Without that the mechanism oscillates and
+/// bounds nothing: the figure a caller measures is the cost of the *already compacted*
+/// request, so the turn after a successful compaction reads under budget, puts the whole
+/// history back, and sends more than the turn that just triggered. Carrying a count
+/// forward is exact rather than approximate because appending to a history does not move
+/// the indices of its prefix.
 ///
 /// `keep_recent` is `None` when the last measured prompt was *within* budget: hold the
-/// floor and deepen no further. `Some` asks for the cut the cap implies, but never
-/// shallower than the floor.
-///
-/// Then, because an over-budget turn that cannot be compacted still has to run:
+/// floor and deepen no further. `Some` asks for the cut the cap implies, never shallower
+/// than the floor. Then, because an over-budget turn that cannot be compacted still has
+/// to run:
 ///
 /// 1. the shallowest legal cut at or after the target;
-/// 2. failing that, the deepest legal cut between the floor and the target. This is the
-///    long unbroken tool chain: nothing legal is deep enough, so shed less than asked
-///    rather than nothing, and let the next turn re-measure;
-/// 3. failing that, `None` — the request goes out uncompacted.
+/// 2. failing that, the deepest legal cut between the floor and the target — the long
+///    unbroken tool chain, where shedding less than asked still beats shedding nothing
+///    and the next turn re-measures;
+/// 3. failing that, `None`: the request goes out uncompacted.
 ///
-/// Rung 3 is deliberate. Erroring would turn an opt-in optimisation into a turn-killer;
-/// cutting anyway sends a request the API is certain to reject, converting a request
-/// that might have been too long into one that definitely fails, as an opaque
-/// `TurnError::Provider`; and looking harder for a cut that provably does not exist is
-/// the infinite loop. The provider's own context-length error stays the real backstop,
-/// which is the honest limit of compaction this naive: it sheds whole exchanges, so a
-/// single enormous exchange cannot be shed at all.
+/// Rung 3 rather than erroring, which would turn an opt-in optimisation into a
+/// turn-killer, or cutting anyway, which sends a request the API is certain to reject.
+/// The provider's own context-length error stays the real backstop — the honest limit of
+/// compaction this naive, which sheds whole exchanges and so cannot shed a single
+/// enormous one at all.
 ///
 /// Reaching rung 3 with a non-zero `floor` means a caller threaded back a count its
-/// history no longer supports — history was rewritten, not just appended to. Honouring
-/// the floor is impossible then, so it is dropped rather than forced, and the request
-/// goes out whole: too large is recoverable where invalid is not.
+/// history no longer supports, having rewritten history rather than appended to it. The
+/// floor is dropped rather than forced and the request goes out whole: too large is
+/// recoverable where invalid is not.
 pub(crate) fn plan_cut(
     history: &[RequestMessage],
     produced: usize,
@@ -111,13 +96,13 @@ pub(crate) fn plan_cut(
 ) -> Option<usize> {
     // The scans stop short of `history.len()`: cutting there would open the request on
     // `produced[0]`, which `run_turn` always pushes as an assistant message, or on
-    // nothing at all when the turn has produced nothing yet.
+    // nothing at all when the turn has produced nothing.
     let ceiling = history.len();
     let floor = floor.min(ceiling);
 
     let target = match keep_recent {
-        // The saturating subtraction is what makes a `keep_recent` larger than the
-        // conversation land on 0 and withhold nothing, rather than wrapping.
+        // Saturating, so a `keep_recent` larger than the conversation lands on 0 and
+        // withholds nothing rather than wrapping.
         Some(keep) => (history.len() + produced)
             .saturating_sub(keep)
             .min(ceiling)
@@ -142,18 +127,18 @@ pub(crate) fn plan_cut(
 /// Whether `history[cut..]` followed by the turn's own messages is still a conversation
 /// the API accepts, given that the uncut one already was.
 ///
-/// Three conditions on the message that would become the first, and the module docs say
-/// why these three are the whole of it:
+/// Three conditions on the message that would become the first; the module docs say why
+/// these three are the whole of it:
 ///
 /// 1. `Role::User`. The API rejects a conversation opening on the assistant, and a cut
 ///    onto an assistant message would strand its `tool_use` blocks as well — their
 ///    answers sit in the message after it, which would then be a second user turn.
-/// 2. No `ToolResult` block. Its matching `ToolUse` is in `history[cut - 1]`, which is
-///    being withheld, and an orphaned `tool_result` is rejected. This is the clause
-///    that makes an arbitrary index illegal.
-/// 3. Non-empty content. The API rejects an empty content array. `run_turn` never
-///    builds one, so this guards only a caller's own history — and it guards by
-///    declining to cut onto it, not by pretending to repair it.
+/// 2. No `ToolResult` block. Its matching `ToolUse` is in the withheld `history[cut - 1]`,
+///    and an orphaned `tool_result` is rejected. This is the clause that makes an
+///    arbitrary index illegal.
+/// 3. Non-empty content, which the API rejects. `run_turn` never builds one, so this
+///    guards only a caller's own history, by declining to cut onto it rather than
+///    repairing it.
 ///
 /// `cut == 0` is false because it withholds nothing, so a `Some` from [`plan_cut`]
 /// always means something was actually withheld.
@@ -173,7 +158,7 @@ fn opens_a_request(history: &[RequestMessage], cut: usize) -> bool {
 mod tests {
     use super::*;
 
-    /// A human prose turn: the only shape that is ever a legal cut point.
+    /// A human prose turn: the only shape that is a legal cut point.
     fn user_text(text: &str) -> RequestMessage {
         RequestMessage {
             role: Role::User,
@@ -183,7 +168,6 @@ mod tests {
         }
     }
 
-    /// An assistant turn asking for a tool.
     fn assistant_call(id: &str) -> RequestMessage {
         RequestMessage {
             role: Role::Assistant,
@@ -195,7 +179,7 @@ mod tests {
         }
     }
 
-    /// The user turn that answers one, which is never a legal cut point.
+    /// The user turn answering a call, which is never a legal cut point.
     fn user_result(id: &str) -> RequestMessage {
         RequestMessage {
             role: Role::User,
@@ -207,7 +191,7 @@ mod tests {
         }
     }
 
-    /// A shape `run_turn` never produces, which a caller editing its own history can.
+    /// A shape `run_turn` never produces, but a caller editing its own history can.
     fn empty_user() -> RequestMessage {
         RequestMessage {
             role: Role::User,
@@ -238,9 +222,8 @@ mod tests {
         }
     }
 
-    /// The happy path, and the one that pins the search *direction*. Scanning forward
-    /// from the target keeps the shallowest cut that still meets the cap; scanning
-    /// backward would keep more than `keep_recent` and fail to get under budget.
+    /// Pins the search *direction*: scanning backward from the target would keep more
+    /// than `keep_recent` and fail to get under budget.
     #[test]
     fn the_cut_lands_on_the_first_user_message_at_or_after_the_target() {
         let history = vec![
@@ -253,9 +236,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(2));
     }
 
-    /// The central property. An orphaned `tool_result` is a hard API rejection, and in
-    /// a tool-heavy transcript most indices are one — so the predicate has to walk past
-    /// them rather than take the index arithmetic at face value.
+    /// An orphaned `tool_result` is a hard API rejection, and in a tool-heavy transcript
+    /// most indices are one.
     #[test]
     fn a_cut_onto_a_tool_result_is_refused_and_the_next_boundary_is_taken() {
         let mut history = exchange("a", "first");
@@ -266,8 +248,7 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(6), 0), Some(4));
     }
 
-    /// The API rejects a conversation that does not open on a user turn, and a cut onto
-    /// an assistant message strands its `tool_use` as well.
+    /// A cut onto an assistant message strands its `tool_use` as well.
     #[test]
     fn a_cut_onto_an_assistant_message_is_refused() {
         let history = exchange("a", "first");
@@ -276,9 +257,7 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(1), 0), None);
     }
 
-    /// Rung 2 of the ladder. The recent tail is one unbroken chain, so no legal cut is
-    /// deep enough — shedding less than asked still beats shedding nothing, and the
-    /// next turn re-measures and tries again.
+    /// Rung 2: no legal cut is deep enough, so shed less than asked rather than nothing.
     #[test]
     fn a_tail_that_is_one_unbroken_tool_chain_falls_back_to_an_earlier_boundary() {
         let mut history = vec![user_text("first"), assistant_call("a"), user_result("a")];
@@ -293,8 +272,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
     }
 
-    /// Rung 3. Proves the no-legal-cut case declines rather than cutting anyway,
-    /// erroring, or looping: an invalid request fails where an oversized one might not.
+    /// Rung 3: declines rather than cutting anyway, erroring, or looping — an invalid
+    /// request fails where an oversized one might not.
     #[test]
     fn a_history_whose_only_boundary_is_its_first_message_is_left_uncompacted() {
         let mut history = vec![user_text("first")];
@@ -306,9 +285,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(1), 0), None);
     }
 
-    /// Guards the saturating-subtraction trap. The target lands on 0, and without the
-    /// guard on that the forward scan cuts at the first boundary it finds, compacting a
-    /// conversation the configuration said to keep whole.
+    /// The target lands on 0, and without the guard on that the forward scan cuts at the
+    /// first boundary it finds.
     #[test]
     fn a_keep_recent_larger_than_the_conversation_withholds_nothing() {
         let history = vec![user_text("one"), user_text("two")];
@@ -318,9 +296,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 1, Some(3), 0), None);
     }
 
-    /// The degenerate configuration, given defined behaviour rather than rejected at
-    /// construction — `Compaction` has public fields and no constructor to validate in.
-    /// "As aggressive as legally possible" must still leave a sendable request.
+    /// Defined behaviour rather than rejected at construction: `Compaction` has public
+    /// fields and no constructor to validate in.
     #[test]
     fn a_keep_recent_of_zero_cuts_to_the_newest_boundary_rather_than_emptying_it() {
         let history = vec![
@@ -335,8 +312,7 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(0), 0), Some(3));
     }
 
-    /// The invariant behind "the request is never empty and never opens on the
-    /// assistant's own output", swept over the shapes that could break it.
+    /// Swept over the shapes that could break it.
     #[test]
     fn no_plan_ever_withholds_the_whole_history() {
         let mut shapes = vec![
@@ -366,8 +342,8 @@ mod tests {
         }
     }
 
-    /// The type-level guarantee, checked behaviourally: growing the turn's own output
-    /// only ever deepens the cut into history, never reaches past it.
+    /// Growing the turn's own output only deepens the cut into history, never reaches
+    /// past it.
     #[test]
     fn the_current_turns_own_messages_are_never_candidates() {
         let history = vec![
@@ -386,8 +362,8 @@ mod tests {
         }
     }
 
-    /// An empty content array is rejected by the API. Compaction must not *choose* a
-    /// boundary it can see is invalid, even one a caller put there.
+    /// Compaction must not choose a boundary it can see is invalid, even one a caller put
+    /// there.
     #[test]
     fn a_cut_onto_an_empty_content_array_is_refused() {
         let history = vec![
@@ -401,9 +377,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
     }
 
-    /// The predicate is "contains no `ToolResult`", not "is not solely a `ToolResult`".
-    /// `run_turn` never builds this shape; a caller assembling its own history can, and
-    /// cutting onto it orphans the `tool_use` in the message before.
+    /// The predicate is "contains no `ToolResult`", not "is not solely a `ToolResult`":
+    /// cutting onto a mixed message orphans the `tool_use` in the one before.
     #[test]
     fn a_user_message_mixing_prose_and_a_tool_result_is_not_a_boundary() {
         let mixed = RequestMessage {
@@ -429,17 +404,15 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
     }
 
-    /// All the weight is in the turn's own output, which compaction cannot touch. The
-    /// answer is `None` rather than a panic on an empty range.
+    /// `None` rather than a panic on an empty range.
     #[test]
     fn an_empty_history_is_left_uncompacted() {
         assert_eq!(plan_cut(&[], 0, Some(0), 0), None);
         assert_eq!(plan_cut(&[], 6, Some(2), 0), None);
     }
 
-    /// Monotonicity, which is what lets `run_turn` freeze the cut for the whole turn: a
-    /// larger conversation never proposes a shallower cut. If it could, the request's
-    /// cached prefix would be rebuilt backwards as the turn went round again.
+    /// Monotonicity is what lets `run_turn` freeze the cut for the whole turn; without
+    /// it the request's cached prefix would be rebuilt backwards each round.
     #[test]
     fn a_growing_conversation_never_proposes_a_shallower_cut() {
         let mut history = exchange("a", "first");
@@ -455,10 +428,9 @@ mod tests {
         }
     }
 
-    /// The fix for the oscillation that made the first version of this bound nothing.
-    /// The figure a caller measures after a compaction is the cost of the *compacted*
-    /// request, so the next turn reads under budget — and without a floor it would put
-    /// the whole, now-longer history back and send more than the turn that triggered.
+    /// The oscillation guard: the figure a caller measures after a compaction is the cost
+    /// of the *compacted* request, so the next turn reads under budget and without a
+    /// floor would put the whole, now-longer history back.
     #[test]
     fn a_turn_within_budget_still_holds_what_the_previous_turn_withheld() {
         let mut history = exchange("a", "first");
@@ -470,9 +442,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, None, 4), Some(4));
     }
 
-    /// The same floor, now with a `keep_recent` that on its own would cut shallower.
-    /// Honouring it would undo a cut the previous turn already paid for and re-show the
-    /// model history it had lost.
+    /// Honouring it would undo a cut the previous turn paid for and re-show the model
+    /// history it had lost.
     #[test]
     fn a_keep_recent_that_asks_for_a_shallower_cut_than_the_floor_is_overruled() {
         let mut history = exchange("a", "first");
@@ -485,8 +456,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(10), 8), Some(8));
     }
 
-    /// The floor is a floor, not a ceiling: a conversation that has grown back over
-    /// budget since the last cut has to be cut deeper, or it is bounded only once.
+    /// A conversation that has grown back over budget since the last cut has to be cut
+    /// deeper, or it is bounded only once.
     #[test]
     fn a_floor_does_not_stop_the_cut_from_deepening() {
         let mut history = exchange("a", "first");
@@ -496,9 +467,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(3), 4), Some(8));
     }
 
-    /// The floor is snapped forward to a legal boundary, never honoured literally. A
-    /// cut carried in from a turn whose history has since been *appended* to is still
-    /// legal, but this also covers the index landing mid-exchange.
+    /// Covers a floor landing mid-exchange; one carried in from a history that was only
+    /// appended to is legal already.
     #[test]
     fn a_floor_that_is_not_itself_a_legal_boundary_is_snapped_forward() {
         let mut history = exchange("a", "first");
@@ -511,9 +481,8 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, None, 5), None);
     }
 
-    /// A floor past the end of the history it is meant to index — a caller that
-    /// rewrote history rather than appending to it. Clamping rather than slicing is what
-    /// keeps this a declined compaction instead of a panic in `run_turn`.
+    /// A caller that rewrote history rather than appending to it. Clamping rather than
+    /// slicing keeps this a declined compaction instead of a panic in `run_turn`.
     #[test]
     fn a_floor_beyond_the_history_is_clamped_rather_than_indexed() {
         let history = exchange("a", "first");
@@ -522,8 +491,8 @@ mod tests {
         assert_eq!(plan_cut(&[], 0, None, 99), None);
     }
 
-    /// With compaction on but never yet triggered there is no floor and nothing to
-    /// hold, and the within-budget path must not invent a cut.
+    /// Compaction on but never yet triggered: no floor, nothing to hold, and the
+    /// within-budget path must not invent a cut.
     #[test]
     fn a_turn_within_budget_with_no_floor_withholds_nothing() {
         let mut history = exchange("a", "first");
@@ -532,18 +501,16 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, None, 0), None);
     }
 
-    /// A turn's first round has no measurement, and guessing would compact a
-    /// conversation that may be two messages long. Only the round: `run_turn` feeds each
-    /// round's own report back in, so this does not keep a whole turn uncompacted.
+    /// Guessing would compact a conversation that may be two messages long. Only the
+    /// round, not the turn: `run_turn` feeds each round's own report back in.
     #[test]
     fn over_budget_is_false_when_nothing_has_been_observed() {
         assert!(!over_budget(None, 0));
         assert!(!over_budget(None, 100));
     }
 
-    /// Cache reads are real prompt tokens charged against the window. Counting only
-    /// `input_tokens` would under-read a cached conversation by an order of magnitude —
-    /// which is exactly the long conversation compaction exists for.
+    /// A cache read is a real prompt token charged against the window, so `input_tokens`
+    /// alone would under-read a cached conversation by an order of magnitude.
     #[test]
     fn over_budget_sums_the_three_prompt_counters() {
         let spread = usage(Some(40), Some(40), Some(40));
@@ -553,16 +520,15 @@ mod tests {
         assert!(!over_budget(Some(spread), 120), "the budget is a ceiling");
     }
 
-    /// `output_tokens` is not on `PromptUsage` at all. Pinned behaviourally so a later
-    /// field addition cannot quietly fold the reply into the prompt figure.
+    /// Pinned behaviourally so a later field addition cannot fold the reply into the
+    /// prompt figure.
     #[test]
     fn the_prompt_figure_counts_only_the_request() {
         assert_eq!(usage(Some(10), None, None).prompt_tokens(), 10);
     }
 
-    /// The API omits the cache fields entirely when no cache was involved. Treating a
-    /// missing field as "unknown" and declining to compare would disable compaction for
-    /// every uncached request.
+    /// The API omits the cache fields entirely when no cache was involved, so treating a
+    /// missing field as "unknown" would disable compaction for every uncached request.
     #[test]
     fn over_budget_treats_an_unreported_counter_as_zero() {
         assert_eq!(usage(Some(10), None, None).prompt_tokens(), 10);
@@ -570,9 +536,8 @@ mod tests {
         assert!(!over_budget(Some(usage(None, None, None)), 0));
     }
 
-    /// Three saturated counters overflow a `u32`, which panics in a debug build. The
-    /// figures come off the wire, so a hostile or simply broken response must not be
-    /// able to take the turn down.
+    /// Three saturated counters overflow a `u32`, which panics in a debug build, and
+    /// these figures come off the wire.
     #[test]
     fn over_budget_does_not_overflow_on_three_saturated_counters() {
         let saturated = usage(Some(u32::MAX), Some(u32::MAX), Some(u32::MAX));
