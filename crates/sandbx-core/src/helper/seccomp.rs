@@ -320,13 +320,16 @@ mod tests {
     ///
     /// Takes `BpfProgramRef` rather than `&BpfProgram`, which is a `&Vec` and
     /// trips `clippy::ptr_arg`; it is also what `apply_filter` takes.
+    /// This loop cannot spin, and it is worth saying why rather than guarding it:
+    /// every arm below derives its target as `pc + 1 + <unsigned offset>`, so `pc`
+    /// strictly increases, and once it reaches `program.len()` the `get` at the top
+    /// panics by name. Termination is a property of the arms, so an added guard
+    /// would be unreachable code claiming to catch something. An arm that *could*
+    /// jump backwards would have to subtract — which is where to put a check, if a
+    /// future opcode ever needs one.
     fn eval(program: seccompiler::BpfProgramRef<'_>, data: &[u32; 16]) -> u32 {
         let mut acc = 0u32;
         let mut pc = 0usize;
-        // Classic BPF has no backward jumps, so a program the kernel would accept
-        // returns within its own length. The budget turns one that does not into a
-        // named failure instead of a hung test.
-        let mut budget = program.len() + 1;
 
         loop {
             let insn = program.get(pc).unwrap_or_else(|| {
@@ -388,17 +391,6 @@ mod tests {
                 )
             };
 
-            assert!(
-                target > pc,
-                "the instruction at pc {pc} jumps to {target}, which is not forward; \
-                 classic BPF has no backward jumps: {insn:?}"
-            );
-            budget -= 1;
-            assert!(
-                budget > 0,
-                "the program did not return within its own length of {}",
-                program.len()
-            );
             pc = target;
         }
     }
@@ -616,6 +608,69 @@ mod tests {
         );
     }
 
+    /// Does [`seccomp_data`] put every field where the kernel puts it?
+    ///
+    /// Nothing else here would notice if it did not. Every other test passes
+    /// either all-zero arguments or a value in `args[0]` alone, and the array
+    /// starts zeroed — so the stride `4 + 2 * i` could map arguments 1 through 5
+    /// onto each other's words, or onto the unused tail, and all of them would
+    /// still pass. Verified by mutation: swapping the words `args[1]` and `args[2]`
+    /// land in leaves the rest of this module green.
+    ///
+    /// That matters for the next rule rather than for today's. sandbx gates only
+    /// on `socket`'s argument 0, but `clone`'s flags, `socket`'s `type` and an
+    /// `ioctl` request are all at an index above zero (#118), and a rule on one of
+    /// those would be evaluated against the wrong word — reporting a verdict the
+    /// kernel would not produce, silently, which is the failure mode #99 exists to
+    /// remove.
+    ///
+    /// Each half is checked separately, with distinct values, because an argument
+    /// written as one 64-bit store to the right *pair* in the wrong order would
+    /// otherwise pass.
+    #[test]
+    fn seccomp_data_puts_each_field_where_the_kernel_does() {
+        let args = std::array::from_fn::<u64, 6, _>(|i| {
+            let i = i as u64;
+            (0x2000_0000 | i) << 32 | (0x1000_0000 | i)
+        });
+        let data = seccomp_data(libc::SYS_socket, args);
+
+        // Byte offsets into `struct seccomp_data`, read off its definition rather
+        // than off `seccomp_data`'s own arithmetic: `nr` @0, `arch` @4, the 64-bit
+        // `instruction_pointer` @8, `args[6]` @16.
+        let mut fields = vec![
+            ("nr".to_owned(), 0, libc::SYS_socket as u32),
+            ("arch".to_owned(), 4, AUDIT_ARCH),
+            ("instruction_pointer low".to_owned(), 8, 0),
+            ("instruction_pointer high".to_owned(), 12, 0),
+        ];
+        for (i, arg) in args.iter().enumerate() {
+            fields.push((format!("args[{i}] low"), 16 + 8 * i, *arg as u32));
+            fields.push((format!("args[{i}] high"), 20 + 8 * i, (*arg >> 32) as u32));
+        }
+
+        for (field, offset, expected) in fields {
+            // `eval` has no way to return the accumulator — classic BPF's
+            // `BPF_RET | BPF_A` is not an opcode seccompiler emits — so the
+            // comparison is the program: load the field, and return `ALLOW` only
+            // if it holds what it should.
+            let program = [
+                insn(LD_W_ABS, 0, 0, u32::try_from(offset).unwrap()),
+                insn(JEQ_K, 0, 1, expected),
+                insn(RET_K, 0, 0, ALLOW),
+                insn(RET_K, 0, 0, EPERM),
+            ];
+
+            assert_eq!(
+                eval(&program, &data),
+                ALLOW,
+                "a load at byte {offset} does not read {field}, so `seccomp_data` \
+                 does not model the kernel's struct and a rule on that field would \
+                 be evaluated against the wrong word"
+            );
+        }
+    }
+
     /// This is a denylist, so a syscall the filter does not name has to be
     /// allowed. Swap the two actions in [`compiled_filter`] and this becomes
     /// `EPERM` — a sandbox that refuses every syscall and permits the dangerous
@@ -827,9 +882,15 @@ mod tests {
         let program = compiled_filter(&SandboxPolicy::default()).unwrap();
         let len = program.len();
 
+        // `bpf_check_classic` refuses `flen == 0 || flen > BPF_MAXINSNS`, so 4096
+        // is the largest filter the kernel loads, not the first one it refuses.
+        // seccompiler's own `BPF_MAX_LEN` guard is stricter — it errors at `>=`
+        // 4096 — so a program can only fail this assertion by being empty. Stated
+        // as the kernel's bound anyway, because that is the one a reader chasing a
+        // real `FilterTooLarge` needs to have right.
         assert!(
-            (1..4096).contains(&len),
-            "a classic BPF filter holds between 1 and 4095 instructions, this one \
+            (1..=4096).contains(&len),
+            "a filter the kernel would load holds 1 to 4096 instructions, this one \
              holds {len}"
         );
 
