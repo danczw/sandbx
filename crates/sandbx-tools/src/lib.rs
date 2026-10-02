@@ -8,6 +8,13 @@
 //! Dispatch is a closed enum rather than `dyn Tool`: the set is fixed and there
 //! is no plugin system, so the compiler can check exhaustiveness. That is the
 //! point at which to reach for trait objects, not before.
+//!
+//! What a tool *is* — its name, the description the model steers on, its argument
+//! schema, its executor — is one [`ToolSpec`] in the tool's own module, beside
+//! the input struct and the `execute` those four describe. Four parallel matches
+//! here let an arm be transposed into a neighbour's and still compile, which
+//! happened once (#55) and went unnoticed a second time (#88). One match moves
+//! all four together.
 
 mod context;
 mod error;
@@ -60,6 +67,28 @@ impl ToolOutput {
 /// Stands in for a tool that succeeded without printing anything.
 const EMPTY_OUTPUT: &str = "(no output)";
 
+/// Everything [`BuiltinTool`] knows about one tool, written once in that tool's
+/// own module.
+///
+/// Two `&'static str`s and two function pointers is a table, not a vtable with an
+/// open set behind it: it is reachable only through an exhaustive match on a
+/// closed, fieldless enum, so nothing becomes extensible and the compiler still
+/// checks every variant is handled. The crate doc's objection to `dyn Tool` is to
+/// *runtime* membership, which this does not reopen.
+///
+/// The schema is a function rather than a value because `schema_for!` allocates
+/// and so cannot be a `const`.
+pub(crate) struct ToolSpec {
+    /// The name the model calls this tool by.
+    name: &'static str,
+    /// What this tool does, in the words the model is shown.
+    description: &'static str,
+    /// Builds the JSON schema of this tool's arguments.
+    schema: fn() -> serde_json::Value,
+    /// Parses untyped arguments into this tool's input struct, then runs it.
+    run: fn(serde_json::Value, &ExecutionContext) -> Result<ToolOutput, ToolError>,
+}
+
 /// The tools an agent may call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinTool {
@@ -102,54 +131,41 @@ impl BuiltinTool {
         Self::ALL.into_iter().find(|tool| tool.name() == name)
     }
 
+    /// The four facts about this tool, from the module that holds them.
+    ///
+    /// The only place a variant is tied to a tool. One match rather than four
+    /// means a transposed arm relabels a variant *consistently* — it cannot hand
+    /// the model one tool's name with another's schema, which is what #55 and #88
+    /// each were.
+    ///
+    /// Returned by value: a [`ToolSpec`] is four words, and copying one out of a
+    /// `const` avoids leaning on static promotion to produce a `&'static`.
+    fn spec(&self) -> ToolSpec {
+        match self {
+            Self::Read => tools::read::SPEC,
+            Self::Write => tools::write::SPEC,
+            Self::Bash => tools::bash::SPEC,
+            Self::Edit => tools::edit::SPEC,
+            Self::Ls => tools::ls::SPEC,
+            Self::Grep => tools::grep::SPEC,
+            Self::Find => tools::find::SPEC,
+        }
+    }
+
     /// The name the model calls this tool by.
     pub fn name(&self) -> &'static str {
-        match self {
-            Self::Read => "read",
-            Self::Write => "write",
-            Self::Bash => "bash",
-            Self::Edit => "edit",
-            Self::Ls => "ls",
-            Self::Grep => "grep",
-            Self::Find => "find",
-        }
+        self.spec().name
     }
 
     /// What this tool does, in the words the model is shown.
     ///
-    /// Lives here rather than in the agent because this is the string the model
-    /// steers on, and prose kept a crate away from the behaviour it describes
-    /// drifts from it (#54). The rustdoc on each `execute` stays the *why* for a
-    /// reader of the code; this is the *what* for a caller of the tool, so the
-    /// two say deliberately different things.
-    ///
-    /// Each one names the constraint that changes how the tool is called — an
-    /// absolute path, a literal rather than a pattern, a match that must be
-    /// unique — because a model that learns those from an error has already
-    /// spent a turn.
+    /// Lives in this crate rather than in the agent because this is the string
+    /// the model steers on, and prose kept a crate away from the behaviour it
+    /// describes drifts from it (#54). The text itself is in the tool's own
+    /// `SPEC`, a few lines from the `execute` it describes, so nothing restates
+    /// it here. `tools`' module doc says how to write one.
     pub fn description(&self) -> &'static str {
-        match self {
-            Self::Read => "Read a file's contents. Takes an absolute path.",
-            Self::Write => {
-                "Write a file, creating it or replacing its contents entirely. \
-                 Takes an absolute path."
-            }
-            Self::Bash => {
-                "Run a shell command. Use it for what the other tools do not \
-                 cover; prefer a dedicated tool wherever one fits."
-            }
-            Self::Edit => {
-                "Replace one exact occurrence of a string in a file. The text \
-                 must appear exactly once — an absent or ambiguous match is an \
-                 error, not a guess."
-            }
-            Self::Ls => "List a directory's entries. Directories are marked with a trailing slash.",
-            Self::Grep => {
-                "Search file contents beneath a directory for a literal string. \
-                 Not a regular expression."
-            }
-            Self::Find => "Find files beneath a directory whose name contains a substring.",
-        }
+        self.spec().description
     }
 
     /// JSON schema of this tool's arguments, derived from its input struct.
@@ -158,38 +174,24 @@ impl BuiltinTool {
     /// that is the type the only destination wants: a tool definition in a
     /// provider request carries a JSON value, so converting here keeps a foreign
     /// type out of the signature. A caller needing `Schema`'s own API —
-    /// validation, `$ref` resolution — should take the `schema_for!` call rather
-    /// than re-parsing this.
+    /// validation, `$ref` resolution — should take the `schema_for!` call in the
+    /// tool's own module rather than re-parsing this.
     pub fn input_schema(&self) -> serde_json::Value {
-        match self {
-            Self::Read => schemars::schema_for!(tools::read::ReadInput).to_value(),
-            Self::Write => schemars::schema_for!(tools::write::WriteInput).to_value(),
-            Self::Bash => schemars::schema_for!(tools::bash::BashInput).to_value(),
-            Self::Edit => schemars::schema_for!(tools::edit::EditInput).to_value(),
-            Self::Ls => schemars::schema_for!(tools::ls::LsInput).to_value(),
-            Self::Grep => schemars::schema_for!(tools::grep::GrepInput).to_value(),
-            Self::Find => schemars::schema_for!(tools::find::FindInput).to_value(),
-        }
+        (self.spec().schema)()
     }
 
     /// Run the tool.
     ///
-    /// Arguments are parsed against the schema first, so malformed input is
-    /// rejected before anything touches the filesystem.
+    /// Each tool's `SPEC` parses into that tool's own input struct before calling
+    /// its `execute`, which takes the struct by value — so there is no route to
+    /// the filesystem that skips the parse, rather than seven arms that each have
+    /// to remember one.
     pub fn execute(
         &self,
         input: serde_json::Value,
         ctx: &ExecutionContext,
     ) -> Result<ToolOutput, ToolError> {
-        match self {
-            Self::Read => tools::read::execute(parse(input)?, ctx),
-            Self::Write => tools::write::execute(parse(input)?, ctx),
-            Self::Bash => tools::bash::execute(parse(input)?, ctx),
-            Self::Edit => tools::edit::execute(parse(input)?, ctx),
-            Self::Ls => tools::ls::execute(parse(input)?, ctx),
-            Self::Grep => tools::grep::execute(parse(input)?, ctx),
-            Self::Find => tools::find::execute(parse(input)?, ctx),
-        }
+        (self.spec().run)(input, ctx)
     }
 }
 
@@ -268,7 +270,9 @@ pub(crate) fn listing(
 const PARTIAL_SEARCH: &str = "... stopped early: scan limit reached, results are incomplete";
 
 /// Parse tool arguments, reporting a schema mismatch rather than a panic.
-fn parse<T: serde::de::DeserializeOwned>(input: serde_json::Value) -> Result<T, ToolError> {
+pub(crate) fn parse<T: serde::de::DeserializeOwned>(
+    input: serde_json::Value,
+) -> Result<T, ToolError> {
     serde_json::from_value(input).map_err(|error| ToolError::BadInput {
         detail: error.to_string(),
     })

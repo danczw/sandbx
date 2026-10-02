@@ -2,7 +2,28 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::{ExecutionContext, ToolError, ToolOutput};
+use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
+
+/// This tool, as `BuiltinTool` sees it.
+pub(crate) const SPEC: ToolSpec = ToolSpec {
+    name: "edit",
+    description: "Replace one exact occurrence of a string in a file. The text \
+                  must appear exactly once — an absent or ambiguous match is an \
+                  error, not a guess.",
+    schema,
+    run,
+};
+
+/// Argument schema for this tool. Built per call: `schema_for!` allocates, so it
+/// cannot be a const value.
+fn schema() -> serde_json::Value {
+    schemars::schema_for!(EditInput).to_value()
+}
+
+/// Parse untyped arguments into this tool's own input struct, then run it.
+fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+    execute(crate::parse(input)?, ctx)
+}
 
 /// Arguments for the `edit` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
