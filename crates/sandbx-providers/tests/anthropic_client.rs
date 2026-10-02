@@ -1,12 +1,10 @@
 //! Public contract of [`AnthropicClient`], exercised over real HTTP against a
 //! local mock server — no live network access, no API key.
 
-use std::future::Future;
-
 use futures_util::StreamExt;
 use sandbx_providers::{
-    AgentEvent, AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError,
-    RequestMessage, Role, StopReason,
+    AgentEvent, AnthropicClient, ContentBlock, MessagesRequest, ProviderError, RequestMessage,
+    Role, StopReason,
 };
 use secrecy::SecretString;
 use wiremock::matchers::{body_json, header, method, path};
@@ -300,20 +298,21 @@ async fn a_connection_closed_before_message_stop_is_reported() {
     ));
 }
 
-/// The seam is a type, so pin it as one: what the client returns must be *exactly*
-/// the alias sandbx-agent takes, not merely something shaped like it. A backend
-/// that boxed into an alias of its own, or a future that stopped being `Send` and
-/// so could no longer be `tokio::spawn`ed, would both compile here and fail only at
-/// a call site one crate away.
+/// That the returned type is [`EventStream`] the signature already says; that the
+/// *future* is `Send` it does not — that is inferred, so it can regress silently,
+/// and a non-`Send` future cannot be `tokio::spawn`ed, which is what a TUI driving
+/// a turn has to do. Pinned here rather than relying on sandbx-agent's
+/// `the_documented_call_shape_compiles_and_stays_spawnable`, which would stop
+/// covering it if `run_turn`'s bound ever loosened.
 ///
-/// Compiled but never run, and so needs no `MockServer`. The event sequence itself
-/// is covered by `a_full_turn_produces_the_expected_event_sequence`, element by
-/// element, off the same fixture and through the same method.
+/// Compiled but never run, and so needs no `MockServer`.
+///
+/// [`EventStream`]: sandbx_providers::EventStream
 #[allow(dead_code)]
-fn the_client_returns_the_crate_seam(client: &'static AnthropicClient) {
-    fn assert_seam<F: Future<Output = Result<EventStream, ProviderError>> + Send>(_: F) {}
+fn the_clients_future_stays_spawnable(client: &'static AnthropicClient) {
+    fn assert_send<T: Send>(_: T) {}
 
-    assert_seam(client.stream_chat(a_request()));
+    assert_send(client.stream_chat(a_request()));
 }
 
 /// A redirect must not be followed: the API key rides in an `x-api-key`
