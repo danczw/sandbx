@@ -236,4 +236,52 @@ mod tests {
             "granting unix sockets must lift the socket() filter"
         );
     }
+
+    /// `BPF_RET | BPF_K` — return an immediate. Both halves are internal to
+    /// seccompiler, so the opcode is spelled out rather than imported.
+    const RET: u16 = 0x06;
+
+    /// This is a denylist, so the program's fallthrough has to be `Allow`:
+    /// anything the filter does not name must still run. Swap the two actions in
+    /// [`compiled_filter`] and the fallthrough becomes `EPERM` — a sandbox that
+    /// refuses every syscall and permits the dangerous ones (#91).
+    ///
+    /// The fallthrough is the program's last instruction. That is inherent to a
+    /// straight-line BPF filter, where every syscall comparison failing has to
+    /// fall off the end, and it is where seccompiler emits the mismatch action.
+    #[test]
+    fn a_syscall_the_filter_does_not_name_falls_through_to_allow() {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+        let fallthrough = program.last().expect("a compiled filter has instructions");
+
+        assert_eq!(
+            (fallthrough.code, fallthrough.k),
+            (RET, u32::from(seccompiler::SeccompAction::Allow)),
+            "the filter does not fall through to allow, so an unlisted syscall \
+             would be refused: {fallthrough:?}"
+        );
+    }
+
+    /// The other half of the polarity: a syscall the filter *does* name gets
+    /// `EPERM`. Asserted alongside the fallthrough because either one alone
+    /// admits one of the two broken filters — allowing everywhere is as wrong as
+    /// refusing everywhere, and only the pair rules both out (#91).
+    ///
+    /// What the kernel then does with the program is not in reach here; that is
+    /// what the `sandbox-integration` suite spawns a process to establish. This
+    /// pins what sandbx asked for.
+    #[test]
+    fn a_syscall_the_filter_names_is_refused_with_eperm() {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+        let eperm = u32::from(seccompiler::SeccompAction::Errno(libc::EPERM as u32));
+
+        assert!(
+            program
+                .iter()
+                .any(|insn| insn.code == RET && insn.k == eperm),
+            "nothing in the compiled filter returns EPERM, so nothing on the \
+             denylist is actually blocked ({} instructions)",
+            program.len()
+        );
+    }
 }
