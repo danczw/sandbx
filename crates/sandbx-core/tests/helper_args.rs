@@ -140,3 +140,95 @@ fn a_path_flag_without_its_path_is_rejected_on_every_axis() {
         );
     }
 }
+
+/// The environment allowlist crosses the seam like the rest of the policy, and
+/// for the same reason: a name dropped in encoding is a variable the command
+/// silently does not get, and one invented is a variable it should never have
+/// seen.
+#[test]
+fn round_trips_an_env_allowlist() {
+    let policy = SandboxPolicy::default()
+        .allow_standard_env()
+        .allow_env("GIT_AUTHOR_NAME");
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+    let decoded = HelperArgs::decode(&args).unwrap();
+
+    assert_eq!(decoded.policy, policy);
+}
+
+/// Names, never values. argv is readable by the sandboxed command through its
+/// own `/proc/self/cmdline`, so a value here would be handed to exactly the
+/// process the allowlist exists to keep it from.
+#[test]
+fn the_wire_carries_the_name_and_not_the_value() {
+    let args = HelperArgs::encode(
+        // `CARGO_MANIFEST_DIR` is set in this process by cargo, so the encoder
+        // had a value available to leak had it been inclined to.
+        &SandboxPolicy::default().allow_env("CARGO_MANIFEST_DIR"),
+        "/bin/true",
+        &[],
+    );
+
+    assert!(
+        args.iter().any(|arg| arg == "CARGO_MANIFEST_DIR"),
+        "{args:?}"
+    );
+    let value = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    assert!(
+        !args.iter().any(|arg| arg.contains(&value)),
+        "the variable's value reached argv: {args:?}"
+    );
+}
+
+/// An env flag with nothing after it is a refusal, for the reason a pathless
+/// path flag is: carrying on would mean running under a policy that differs from
+/// the one sandbx intended.
+#[test]
+fn an_env_flag_without_a_name_is_rejected() {
+    let emitted = HelperArgs::encode(
+        &SandboxPolicy::default().allow_env("HOME"),
+        "/bin/true",
+        &[],
+    );
+    let flag = emitted[0].clone();
+
+    // The reason, not just the failure: this argv also lacks the `--`
+    // separator, so `is_err()` alone would pass with the check removed.
+    let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+        .expect_err("the env flag was accepted with no name after it");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("env flag with no variable name")
+        ),
+        "{flag} was refused for the wrong reason: {refusal:?}"
+    );
+}
+
+/// `allow_env` *skips* a name it could not encode, which is right for a caller
+/// composing a policy. Here it is a refusal instead: such a name cannot have
+/// come from `encode`, so the argv was built by something speaking a different
+/// protocol, and this seam refuses rather than guesses.
+#[test]
+fn an_env_name_with_an_equals_sign_is_rejected() {
+    let args = vec![
+        "--env".to_string(),
+        "FOO=bar".to_string(),
+        "--".to_string(),
+        "/bin/true".to_string(),
+    ];
+
+    let refusal = HelperArgs::decode(&args).expect_err("`FOO=bar` was accepted as a name");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("env variable name containing")
+        ),
+        "refused for the wrong reason: {refusal:?}"
+    );
+}

@@ -3,6 +3,13 @@ use std::path::{Path, PathBuf};
 /// Where a system keeps the binaries and libraries a command needs to start.
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 
+/// The environment variables a command conventionally needs in order to start.
+///
+/// Exact names rather than an `LC_*` prefix: a glob would need a second grammar
+/// on the helper wire for one convenience, and a caller wanting another `LC_`
+/// variable can name it.
+const STANDARD_ENV_NAMES: [&str; 7] = ["PATH", "HOME", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ"];
+
 /// A kind of access a policy can grant on a path.
 ///
 /// The axis *names* a grant; [`Axis::grants`] says what it confers. Those two
@@ -94,6 +101,10 @@ pub struct SandboxPolicy {
     executable: Vec<PathBuf>,
     network: bool,
     unix_sockets: bool,
+    /// Environment variable *names* the command may inherit. Never values: a
+    /// policy says what is permitted, and the value is read from the harness's
+    /// own environment when the command is spawned.
+    env: Vec<String>,
 }
 
 impl SandboxPolicy {
@@ -179,6 +190,68 @@ impl SandboxPolicy {
     /// [`allows_network`]: Self::allows_network
     pub fn allows_unix_sockets(&self) -> bool {
         self.unix_sockets
+    }
+
+    /// Environment variable names the process may inherit.
+    ///
+    /// Names, not values. Everything not listed here is dropped before the
+    /// command starts, so a secret the harness holds is not something the
+    /// filesystem policy has to express "not this" about — it simply does not
+    /// cross.
+    pub fn allowed_env(&self) -> &[String] {
+        &self.env
+    }
+
+    /// Let the process inherit the variable called `name`.
+    ///
+    /// The one place a variable enters a policy. The value is not given here: it
+    /// is read from the harness's own environment at spawn time, so a name that
+    /// is unset there contributes nothing rather than an empty value.
+    ///
+    /// A name containing `=` or a NUL is skipped, on the same basis as
+    /// [`allow_system_executables`] skipping a path this system lacks — neither
+    /// can be expressed to the kernel, so dropping it is the conservative
+    /// choice. Skipping it here rather than refusing it later is also what keeps
+    /// the helper wire format round-tripping: nothing `encode` can emit is
+    /// something `decode` rejects.
+    ///
+    /// [`allow_system_executables`]: Self::allow_system_executables
+    #[must_use]
+    pub fn allow_env(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        if !name.contains('=') && !name.contains('\0') {
+            self.env.push(name);
+        }
+        self
+    }
+
+    /// Let the process inherit the variables a command needs in order to start.
+    ///
+    /// The environment counterpart of [`allow_system_executables`], and needed
+    /// for the same reason: with an empty allowlist there is no `PATH`, and a
+    /// program named without a leading `/` is then looked up in whatever the C
+    /// library uses when `PATH` is unset — `/bin:/usr/bin` on glibc. So `cat`
+    /// still starts and anything installed elsewhere does not, which is a worse
+    /// failure than a flat one: it surfaces as `No such file or directory` for
+    /// one program and not the next, naming neither the cause nor the fix.
+    ///
+    /// A caller that always passes an absolute program path does not need this.
+    /// Every test in `sandbx-core` does exactly that, which is why the default
+    /// stays empty.
+    ///
+    /// Deliberately narrow: what a shell and a libc need to behave — `PATH`,
+    /// `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ` — and nothing that
+    /// conventionally carries a credential. Anything else is named one at a time
+    /// through [`allow_env`].
+    ///
+    /// [`allow_env`]: Self::allow_env
+    /// [`allow_system_executables`]: Self::allow_system_executables
+    #[must_use]
+    pub fn allow_standard_env(self) -> Self {
+        STANDARD_ENV_NAMES
+            .iter()
+            .copied()
+            .fold(self, Self::allow_env)
     }
 
     /// Grant read access to `path`.
