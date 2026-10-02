@@ -2,8 +2,7 @@
 //!
 //! `SandboxedCommand` defaults to re-executing the current binary with
 //! [`sandbx_core::HELPER_FLAG`], which assumes that binary calls
-//! [`sandbx_core::dispatch_helper_mode`] first. A test harness does not, so tests
-//! point at this instead, exercising the dispatch the shipped `sandbx` binary uses.
+//! [`sandbx_core::dispatch_helper_mode`] first; a test harness does not.
 
 fn main() -> std::process::ExitCode {
     // Must come first: in helper mode this never returns.
