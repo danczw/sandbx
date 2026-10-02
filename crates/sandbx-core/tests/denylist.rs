@@ -81,7 +81,8 @@ fn every_claimed_syscall_is_actually_denied() {
          BLOCKED_SYSCALLS: {missing:?}. The filter is built from that list, so \
          they are permitted inside the sandbox and the security docs now \
          overstate the boundary. Fix by restoring the entries in \
-         crates/sandbx-core/src/helper.rs — or, if the removal was deliberate, \
+         crates/sandbx-core/src/helper/seccomp.rs — or, if the removal was \
+         deliberate, \
          drop the claim from SECURITY.md in the same change."
     );
 }
