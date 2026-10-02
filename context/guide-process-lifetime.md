@@ -52,8 +52,10 @@ completion as PID 1 of a namespace no one is watching.
 `getppid()` is useless here — stage 2 is PID 1 of a namespace whose parent is
 outside it, so the kernel returns 0. `/proc` is still the host's procfs (not
 remounted: `mount(2)` is denied), so field 4 of `/proc/self/stat` names the
-supervisor in host numbering. Parsed by splitting after the **last** `)`, because
-field 2 is an unquoted executable name free to contain spaces and parens.
+supervisor in host numbering. `ppid_from_stat` parses it by splitting after the
+**last** `)`, because field 2 is an unquoted executable name free to contain
+spaces and parens — and it is a separate function so that the unit tests beside
+it can hand it such a name without a supervisor or a namespace.
 
 Pid reuse cannot produce a false pass: the comparison is against the kernel's
 live parent link, and an orphan reparents to init or a subreaper, neither of
