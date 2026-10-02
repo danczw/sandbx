@@ -36,5 +36,6 @@ pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, Too
     // unchanged directory does not look different between calls.
     names.sort();
 
-    Ok(crate::listing(names, ctx))
+    // Never partial: `ls` reads one directory, so there is no walk to cut off.
+    Ok(crate::listing(names, ctx, false))
 }
