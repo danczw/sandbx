@@ -31,21 +31,34 @@ sandbx sandbox-run --allow-read /srv -- cat /etc/shadow      # permission denied
 sandbx sandbox-run -- curl https://example.com               # no network at all
 ```
 
-Everything is denied unless a flag grants it. The one exception is read access
-to the system binaries and libraries a command needs in order to start — with
-nothing readable, not even `/bin/true` reaches `main`.
+Everything is denied unless a flag grants it. The one exception is what a command
+needs in order to start: read access to the system binaries and libraries — with
+nothing readable, not even `/bin/true` reaches `main` — and the handful of
+environment variables below.
+
+The environment is cleared too. A sandboxed command does not inherit the one
+`sandbx` was launched with, so a secret in your shell does not reach it; name a
+variable with `--allow-env` to pass it through. Granted anyway, for the same
+reason as the system binaries: `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`,
+`LC_CTYPE` and `TZ`. `PATH` matters most: without it a bare program name is looked
+up only in the C library's fallback (`/bin:/usr/bin`), so `cat` would still start
+but anything installed elsewhere would not be found.
 
 Each run also records the policy it was about to run under, on stderr:
 
 ```console
 $ sandbx sandbox-run --allow-read /srv -- /bin/true
-2026-10-02T09:11:52.287465Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network=false unix_sockets=false
+2026-10-02T09:11:52.287465Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network=false unix_sockets=false env=7
 ```
 
 Read `spawned` as the intent to spawn, not its success: the record is written
 before the helper execs, so it appears for a command that then fails to start, and
 a run killed by `--timeout` gets no closing record. What the record is for is the
 policy — what the command was granted — and that is settled before it runs.
+
+`env=7` is a count, not a list: a variable's *name* is not a secret, but its value
+routinely is, and a record that spelled out the names would invite the next change
+to print values beside them.
 
 It is metadata only, never a command's output, and it never touches stdout: the
 command's own stdout is forwarded untouched, so piping it is unaffected. To keep
@@ -60,6 +73,7 @@ permission denials the examples above are there to show.
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
 | `--allow-network`    | a network namespace with an interface. IP egress only |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
+| `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. There is no way to set one from here. Repeatable |
 | `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |
 
 ## Install

@@ -38,6 +38,7 @@ run through `SandboxedCommand`:
 | filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper/ruleset/compat.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
 | network | empty network namespace | IP egress, abstract unix sockets |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
+| environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create` |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (the bounding set is best-effort — see below) |
 | process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` to leave its process group |
@@ -58,7 +59,13 @@ Three properties matter as much as the list:
   `RulesetStatus::FullyEnforced`. The earlier design asked for the newest ABI
   *best-effort* and refused only a ruleset enforced not at all, which meant
   every kernel older than that ABI ran `PartiallyEnforced` and was accepted.
-- **It is default-deny.** A policy grants nothing until something is added.
+- **It is default-deny.** A policy grants nothing until something is added, and
+  that covers the environment too: `SandboxPolicy::default()` passes zero
+  variables. The `sandbx` CLI opts into the handful a command needs in order to
+  start, the same way it opts into the system binaries (see the flag table in the
+  README). Until #98 this was the one thing the sandbox did not bound at all —
+  not a policy that defaulted open, but an axis that did not exist — so a command
+  inherited the harness's entire environment.
 - **Grants do not widen each other, with one named exception.** Read access
   does not confer the right to execute what it can see, and write access confers
   neither read nor execute — a write-only drop directory stays unreadable, on
@@ -145,6 +152,21 @@ Three properties matter as much as the list:
   available in practice yet. Until then, what the command can *read* is what
   bounds which sockets exist to be dialled, so keep the filesystem policy narrow
   when granting this.
+- **A variable you pass through is passed in full.** The environment allowlist is
+  by *name*: `--allow-env ANTHROPIC_API_KEY` hands the command the value the
+  harness holds, verbatim. There is no redaction, no partial value, no per-tool
+  scoping, and every process the command spawns inherits it — the environment
+  crosses `exec` and nothing downstream narrows it again. So the allowlist decides
+  *whether* a secret is shared, never *how much* of it. Handing a credential to a
+  tool without exposing the value to the tool is a separate problem
+  ([#41](https://github.com/danczw/sandbx/issues/41)) and is not solved here;
+  until it is, name a variable only when the command genuinely needs its value.
+- **The policy itself is visible to the command.** It crosses into the helper as
+  argv, and a process can read its own `/proc/self/cmdline`, so the granted paths
+  and the allowlisted variable *names* are readable from inside the sandbox. Only
+  names travel that way and never values — which is why `--allow-env` takes a name
+  rather than a `NAME=VALUE` pair — but a command can enumerate what it was
+  granted. Policy is a boundary, not a secret.
 - **The capability bounding set is cleared best-effort, not guaranteed.**
   Dropping it needs `CAP_SETPCAP`, which an unprivileged process holds only
   inside a user namespace it created itself — and not even there when an LSM
@@ -185,6 +207,11 @@ Track them with the [`security` label](https://github.com/danczw/sandbx/labels/s
 These are documented behaviour, and reports of them will be closed as such:
 
 - Network reachable after you passed `--allow-network`.
+- A command reading an environment variable you passed with `--allow-env`,
+  including the startup set (`PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE`,
+  `TZ`) the CLI grants so that a program named without a leading `/` is looked up
+  in your `PATH` rather than only in the C library's fallback. The value arrives
+  whole — see *A variable you pass through is passed in full* above.
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.

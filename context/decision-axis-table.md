@@ -35,6 +35,22 @@ silently missing grant.
 > now needs the array's length at compile time. The exhaustive matches are the
 > whole mechanism.
 
+## What is deliberately not a row
+
+The environment allowlist (#98). An `Axis` is keyed by **path**, and `Grants`
+answers read/write/execute about one — neither question means anything about a
+variable name, so a fourth variant would have to carry a `Grants` value where all
+three fields are meaningless and every `fs_rules` / `FsGuard` consumer would need
+a special case to skip it. The structural precedent is the `network` and
+`unix_sockets` toggles, which are policy fields with their own accessors and are
+not rows either; the environment is the same shape, as a list rather than a bool.
+
+The cost of staying off the table is that nothing *forces* a site to notice it:
+the four `env::restrict` call sites and the audit field are hand-written, and a
+fifth spawn site added later would silently inherit nothing. What stands in for
+the compiler there is `tests/enforcement.rs`, which runs `/usr/bin/env` through
+the real helper — see `decision-environment-allowlist.md`.
+
 ## Why the rights are subtractions
 
 ```

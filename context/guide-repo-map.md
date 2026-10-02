@@ -35,8 +35,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
    fs_guard.rs       in-process path enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, HelperDispatch, the kill chain
-   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx
+   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx, --env
    audit.rs          AuditEvent, AUDIT_TARGET
+   env.rs            env::restrict — env_clear + the policy's name allowlist
    error.rs
    bin/sandbx-helper.rs
    helper/
@@ -48,7 +49,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          rights.rs   rights_for, fs_rules
          tests/      unit tests: compat, grants, rules
 tests/               audit, capability_coverage, command, denylist,
-                     enforcement (34 real-kernel tests), fs_guard,
+                     enforcement (38 real-kernel tests), fs_guard,
                      helper_args, policy
 tests/support/       5 [[bin]] probes, required-features = ["sandbox-integration"]
 ```
@@ -120,7 +121,8 @@ Lib `sandbx_cli`, bin `sandbx`. One subcommand: `sandbox-run`.
 2. `guide-sandboxing.md` — how it is enforced
 3. `decision-enforcement-seam.md` — where policy becomes kernel state
 4. `decision-axis-table.md` — why there is one table
-5. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+5. `decision-environment-allowlist.md` — the one bound that is not path-keyed
+6. `guide-tools.md`, `guide-turn-loop.md` — the layers above
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
