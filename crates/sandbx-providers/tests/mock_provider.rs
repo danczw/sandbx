@@ -1,9 +1,9 @@
 //! Public contract of [`MockProvider`].
 //!
-//! Deliberately kept outside the `Provider` enum — see its doc comment — so the
-//! agent loop must be generic over the stream shape
-//! (`impl Stream<Item = Result<AgentEvent, ProviderError>>`), not over
-//! `Provider`/`MockProvider` identity. These tests exercise it that way.
+//! Deliberately kept out of any shared abstraction over the backends — see its
+//! doc comment — so the agent loop is generic over the stream shape
+//! (`EventStream`), never over which type produced it. These tests exercise it
+//! that way.
 
 use futures_util::StreamExt;
 use sandbx_providers::{AgentEvent, MessagesRequest, MockProvider, ProviderError, StopReason};

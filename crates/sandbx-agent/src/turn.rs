@@ -80,9 +80,9 @@ impl Default for TurnLimits {
 /// # The seam
 ///
 /// `open` is a closure that opens a stream, rather than a provider. The real call
-/// is `run_turn(|request| provider.stream_chat(request), ..)`; a test passes one
+/// is `run_turn(|request| client.stream_chat(request), ..)`; a test passes one
 /// that replays canned events. That keeps this generic over the *stream shape*
-/// rather than over which provider produced it, and means no trait, no `dyn` and
+/// rather than over which client produced it, and means no trait, no `dyn` and
 /// no test double in anyone's public API.
 ///
 /// `AsyncFnMut` rather than a separate `Fut` parameter, so the future it returns

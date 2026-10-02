@@ -11,11 +11,11 @@
 #![cfg(feature = "live-anthropic-tests")]
 
 use futures_util::StreamExt;
-use sandbx_providers::{ContentBlock, MessagesRequest, Provider, RequestMessage, Role};
+use sandbx_providers::{AnthropicClient, ContentBlock, MessagesRequest, RequestMessage, Role};
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {
-    let provider = Provider::anthropic_from_env()
+    let client = AnthropicClient::from_env()
         .expect("ANTHROPIC_API_KEY must be set to run live-anthropic-tests");
 
     let request = MessagesRequest {
@@ -34,7 +34,7 @@ async fn streams_a_real_response_from_the_anthropic_api() {
         tools: vec![],
     };
 
-    let events: Vec<_> = provider
+    let events: Vec<_> = client
         .stream_chat(request)
         .await
         .expect("the request must reach the real API")
