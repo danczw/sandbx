@@ -285,3 +285,107 @@ fn every_path_flag_grants_its_own_axis_and_nothing_else() {
         }
     }
 }
+
+/// The CLI opts into the startup set, exactly as it opts into the system
+/// executables — and for the same reason. `PATH` above all: `sandbox-run -- cat
+/// file` is the documented usage, and without it a bare name reaches only the C
+/// library's fallback search path, so a program outside `/bin` and `/usr/bin` is
+/// not found.
+#[test]
+fn the_startup_environment_is_granted_anyway() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+
+    assert_eq!(
+        policy.allowed_env(),
+        sandbx_core::SandboxPolicy::default()
+            .allow_standard_env()
+            .allowed_env(),
+        "default environment access is wider than what a command needs to start"
+    );
+}
+
+/// Anything beyond the startup set is opt-in, which is the whole of #98's fix as
+/// a user sees it.
+#[test]
+fn passing_a_variable_is_opt_in() {
+    let granted = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-env",
+        "GIT_AUTHOR_NAME",
+        "--",
+        "true",
+    ])
+    .policy();
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+
+    assert!(
+        granted
+            .allowed_env()
+            .iter()
+            .any(|name| name == "GIT_AUTHOR_NAME")
+    );
+    assert!(
+        !bare
+            .allowed_env()
+            .iter()
+            .any(|name| name == "GIT_AUTHOR_NAME"),
+        "a variable arrived without being asked for"
+    );
+}
+
+/// Repeatable, and on its own axis: naming a variable must not widen a path
+/// grant or the network, any more than `--allow-read` passes a variable.
+#[test]
+fn allow_env_is_repeatable_and_widens_nothing_else() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-env",
+        "ONE",
+        "--allow-env",
+        "TWO",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    for name in ["ONE", "TWO"] {
+        assert!(
+            policy.allowed_env().iter().any(|seen| seen == name),
+            "{name} was not granted"
+        );
+    }
+    assert_eq!(
+        policy.readable_paths(),
+        sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+            .policy()
+            .readable_paths(),
+        "an env grant widened the read axis"
+    );
+    assert!(policy.writable_paths().is_empty(), "env implied write");
+    assert!(!policy.allows_network(), "env implied network");
+    assert!(!policy.allows_unix_sockets(), "env implied unix sockets");
+}
+
+/// The flag names a variable; it does not set one. `NAME=VALUE` would put a
+/// value in helper argv, which the sandboxed command reads back out of its own
+/// `/proc/self/cmdline` — so it is refused as a name rather than quietly
+/// accepted as one (#41 is where setting a value belongs).
+#[test]
+fn allow_env_does_not_set_a_value() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-env",
+        "TOKEN=hunter2",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    assert!(
+        !policy.allowed_env().iter().any(|name| name.contains('=')),
+        "a NAME=VALUE pair was accepted as a variable name"
+    );
+}
