@@ -95,11 +95,44 @@ Four facts in, four facts out, a third of the lines.
 
 ## Verifying a pass
 
-Comment lines (`///`, `//!`, `//`) as a share of all lines, before this guide:
-core 36%, cli 32%, agent 29%, providers 26%, tools 22%. Under 15% is the smell
-test everywhere except `sandbx-core/src/helper/`. It is a smell test, not a
-quota.
+The target is under 15% comment lines (`///`, `//!`, `//`) as a share of all
+lines in a crate. It is a smell test, not a quota, and it is read per crate:
 
-A comment-only change leaves the code byte-identical. Check with
-`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
-`cargo doc --no-deps` — trimming a referenced item breaks intra-doc links.
+```sh
+find crates/<crate> -name '*.rs' | xargs grep -hcE '^\s*(///|//!|//([^/!]|$))'
+```
+
+### The floor
+
+No file goes under its floor, which is one mandatory `///` per public item,
+field and variant over its non-comment lines. `missing_docs = "warn"` fires on
+fields and variants too, so a crate that is mostly public API has a high floor
+with *no* explanation left in it, and a short file has a higher one still — a
+five-line module doc is a large share of a thirty-line file on its own.
+
+Two things are exempt by nature rather than by arithmetic:
+`sandbx-core/src/helper/`, which is enforcement rationale end to end, and any
+file whose comments *are* the content, such as a syscall denylist's group labels.
+
+Count the floor for the file in front of you before chasing the target. Below it,
+a pass is deleting facts.
+
+### Checks
+
+A comment-only change leaves the code byte-identical:
+
+```sh
+git diff -U0 -- '*.rs' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
+  | sed 's/^[+-][[:space:]]*//' | grep -vE '^(///|//!|//|$)'
+```
+
+That must print nothing. Then `cargo fmt --check`,
+`cargo clippy --workspace --all-targets -- -D warnings`, and
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+--document-private-items` — trimming a referenced item breaks an intra-doc link,
+and CI gates those.
+
+For a crate whose docs are rendered somewhere, diff the rendering too: capture
+`--help` before and after. A doc comment on a clap type reaches `--help` even
+when `about` is set, because clap derives `long_about` from it unless given
+`long_about = None`.
