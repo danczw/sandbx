@@ -91,11 +91,6 @@ impl ExecutionContext {
         &self.limits
     }
 
-    /// How long a tool's command may run before it is killed.
-    pub fn timeout(&self) -> std::time::Duration {
-        self.timeout
-    }
-
     /// Path checks for tools that touch the filesystem in-process.
     pub fn guard(&self) -> &FsGuard {
         &self.guard
