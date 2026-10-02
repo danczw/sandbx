@@ -1,35 +1,32 @@
 //! Process state the sandbox depends on but Landlock and seccomp cannot express:
-//! namespaces, capability sets, resource limits, and the supervisor the inner
-//! stage checks for.
+//! namespaces, capability sets, resource limits, and the supervisor the inner stage
+//! checks for.
 //!
 //! All of it is inherited across `exec`, which is what lets stage 1 set it up and
-//! stage 2 still be covered by it. Every change here is irreversible for the
-//! process that makes it, so none of it may run inside sandbx itself — see
-//! `super::exec_sandboxed`.
+//! stage 2 still be covered by it. Every change here is irreversible for the process
+//! that makes it, so none of it may run inside sandbx itself.
 
 use crate::SandboxError;
 use crate::degradation::Degradation;
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
 ///
-/// Split out from [`apply`](super::apply) because these two steps are the ones that have to
-/// happen in the *supervisor*, not in the stage that becomes the command:
+/// Separate from [`apply`](super::apply) because both steps have to happen in the
+/// *supervisor*, not in the stage that becomes the command:
 ///
-/// - the namespaces, because `CLONE_NEWPID` only places this process's children,
-///   so unsharing here is what makes the inner stage PID 1;
+/// - the namespaces, because `CLONE_NEWPID` only places this process's children, so
+///   unsharing here is what makes the inner stage PID 1;
 /// - the capability drops, because `PR_CAPBSET_DROP` needs `CAP_SETPCAP` in the
 ///   effective set, which an unprivileged process only ever holds inside a user
-///   namespace it just created. All four sets and `RLIMIT_CORE` are inherited
-///   across `fork` and `exec`, so dropping them here still covers the command.
+///   namespace it just created. All four sets and `RLIMIT_CORE` are inherited across
+///   `fork` and `exec`, so dropping them here still covers the command.
 ///
-/// Returns what degraded rather than recording it. Nothing here can reach the
-/// audit trail: this runs in the re-exec'd helper, which installs no subscriber,
-/// and cannot install one without writing sandbx's records into the output of the
-/// command being sandboxed (#95). So the two best-effort steps *name* what did not
-/// take effect and [`exec_sandboxed`](super::exec_sandboxed) — the one place that
-/// holds the channel to the parent — reports it. The detail travels as a string
-/// because it is built from an errno here and is prose by the time anyone reads
-/// it.
+/// Returns what degraded rather than recording it: nothing here can reach the audit
+/// trail, since this runs in the re-exec'd helper, which installs no subscriber and
+/// cannot install one without writing sandbx's records into the sandboxed command's
+/// output. So the best-effort steps *name* what did not take effect and
+/// [`exec_sandboxed`](super::exec_sandboxed), which holds the channel to the parent,
+/// reports it. The detail travels as a string because it is built from an errno.
 pub(super) fn prepare_supervisor(
     policy: &crate::SandboxPolicy,
 ) -> Result<Vec<(Degradation, String)>, SandboxError> {
@@ -37,50 +34,42 @@ pub(super) fn prepare_supervisor(
 
     degraded.extend(isolate(policy)?);
 
-    // After the unshare, not before: entering a fresh user namespace grants the
-    // full capability set *within it*, so dropping earlier would be undone.
+    // After the unshare, not before: entering a fresh user namespace grants the full
+    // capability set *within it*, so dropping earlier would be undone.
     degraded.extend(harden_process_state()?);
 
-    // Here as well as in the inner stage, so that *every* `exec` this design
-    // performs is covered by it rather than only the last one.
+    // Here as well as in the inner stage, so that *every* `exec` this design performs
+    // is covered by it rather than only the last one. Without it, what stops a
+    // capability being regained across the exec into the inner stage is that the
+    // binary is our own — unprivileged, no file capabilities — plus uid 0 being
+    // unmapped in the fresh user namespace. Both hold, so this is hardening and not a
+    // fix, but it costs one syscall and does not rest on properties of the binary.
     //
-    // Splitting the helper in two added an `execve` — this stage into the inner
-    // one — that sits after the capability sets are cleared. Without this, what
-    // stops a capability being regained across it is that the binary being
-    // executed is our own, unprivileged and without file capabilities, plus uid 0
-    // being unmapped in the fresh user namespace. Both hold, which is why this is
-    // hardening and not a fix. But it makes the guarantee rest on properties of
-    // the binary and the uid map rather than on a flag that states it directly,
-    // and the flag costs one syscall.
-    //
-    // Deliberately not removed from the inner stage. It is irreversible and
-    // inherited, so the second call is a no-op — but the inner stage must not
-    // depend on a caller having set it, since seccomp will not install without it.
+    // Not removed from the inner stage. It is irreversible and inherited, so the
+    // second call is a no-op — but the inner stage must not depend on a caller having
+    // set it, since seccomp will not install without it.
     set_no_new_privs()?;
 
     Ok(degraded)
 }
 
-/// Die when the supervisor dies (#28).
+/// Die when the supervisor dies.
 ///
 /// This process is PID 1 of a fresh PID namespace, and the kernel SIGKILLs every
-/// remaining process in a namespace whose init exits. So making this process die
-/// with its supervisor is what turns the timeout's kill from advisory into
-/// unconditional: whatever the command spawned, however it detached itself, it
-/// goes when this process goes.
+/// remaining process in a namespace whose init exits. So dying with the supervisor is
+/// what turns the timeout's kill from advisory into unconditional: whatever the
+/// command spawned, however it detached itself, it goes when this process goes.
 ///
-/// Two independent paths reach us, deliberately. The supervisor stays in the
-/// process group sandbx kills, and so do we — but the command we are about to
-/// become may call `setsid` and leave it, which is the whole of #28. The parent
-/// death signal does not care: it fires on the supervisor's death, not on group
-/// membership, and it survives `execve` of an ordinary binary. Keeping both means
-/// neither one is a single point of failure — worth having, because the kernel
-/// clears this signal for a secure `exec` (a setuid target or one with file
-/// capabilities), where the group kill is then what still reaps us.
+/// Two independent paths reach us, deliberately. The supervisor is in the process
+/// group sandbx kills and so are we — but the command we become may `setsid` and
+/// leave it. The parent death signal fires on the supervisor's death regardless of
+/// group membership and survives `execve` of an ordinary binary; the kernel clears it
+/// for a *secure* `exec` (setuid target, or file capabilities), where the group kill
+/// is then what still reaps us. Neither is a single point of failure.
 ///
 /// Set before anything else in this stage, so the window in which the supervisor
-/// could die unnoticed is as short as the kernel allows. The window is not closed
-/// by this alone; `confirm_supervisor` is what closes it.
+/// could die unnoticed is as short as the kernel allows. [`confirm_supervisor`] is
+/// what closes the window; this alone does not.
 pub(super) fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
     nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL).map_err(|errno| {
         SandboxError::NamespaceSetupFailed {
@@ -97,22 +86,21 @@ pub(super) fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
 
 /// Refuse to run unless the supervisor is still our parent.
 ///
-/// This is what closes the window [`bind_lifetime_to_supervisor`] cannot: if the
-/// supervisor died before the parent death signal was armed, nothing will ever kill
-/// this process, and the command would run to completion as PID 1 of a namespace no
-/// one is watching. Ordering is what makes the pair complete — arm first, then
-/// check. A death before the check is caught by the check; a death after it is
-/// caught by the signal that is already armed.
+/// Closes the window [`bind_lifetime_to_supervisor`] cannot: if the supervisor died
+/// before the parent death signal was armed, nothing will ever kill this process, and
+/// the command would run to completion as PID 1 of a namespace no one is watching.
+/// Ordering is what makes the pair complete — arm first, then check. A death before
+/// the check is caught by the check; a death after it by the armed signal.
 ///
-/// `getppid` is no use here: this process is PID 1 of a namespace whose parent lives
+/// `getppid` is no use: this process is PID 1 of a namespace whose parent lives
 /// outside it, so the kernel has no number to report and returns 0. `/proc` is still
-/// the host's procfs, though — it is not remounted, because that would need
-/// `mount(2)`, which the filter denies — so its `ppid` field names the supervisor in
-/// host numbering, which is exactly what was passed in.
+/// the host's procfs — it is not remounted, which would need `mount(2)`, and the
+/// filter denies that — so its `ppid` field names the supervisor in host numbering,
+/// which is what was passed in.
 ///
-/// Pid reuse cannot produce a false pass: the comparison is against the kernel's
-/// live parent link, and an orphan is reparented to init or a subreaper, neither of
-/// which can be the pid of a supervisor that just spawned us.
+/// Pid reuse cannot produce a false pass: the comparison is against the kernel's live
+/// parent link, and an orphan is reparented to init or a subreaper, neither of which
+/// can be the pid of a supervisor that just spawned us.
 ///
 /// Runs before Landlock and seccomp, so it needs no grant for `/proc` and no
 /// privilege.
@@ -135,29 +123,24 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
     }
 }
 
-/// The parent pid out of a `/proc/pid/stat` line, or `None` if the line has none
-/// to report.
-///
-/// Split out for the same reason as `fs_rules` in [`super::ruleset`] (#52):
-/// the parse is the part that can be wrong while the syscalls around it are
-/// right, and separated it can be checked against an adversarial name without a
-/// supervisor, a namespace or a second process (#91).
+/// The parent pid out of a `/proc/pid/stat` line, or `None` if the line has none to
+/// report.
 ///
 /// Field 4, counting from 1. Split after the *last* `)` rather than on whitespace
 /// from the start: field 2 is the executable name, unquoted and free to contain
-/// spaces and parentheses of its own — the kernel escapes control characters
-/// there but not those — so counting from the left is how this kind of parse goes
-/// wrong. Counting from the right is exact rather than merely safer, because
-/// every field after the name is numeric and so holds no `)` of its own, making
-/// the line's last one necessarily the name's.
+/// spaces and parentheses of its own — the kernel escapes control characters there
+/// but not those. Counting from the right is exact rather than merely safer, because
+/// every field after the name is numeric and so holds no `)`, making the line's last
+/// one necessarily the name's.
 ///
 /// A `&str` and not a parsed integer: [`confirm_supervisor`] compares against the
-/// token its caller passed on the command line, and parsing both sides would
-/// widen the comparison so that `0123` starts matching `123`.
+/// token its caller passed on the command line, and parsing both sides would widen
+/// the comparison so that `0123` starts matching `123`.
 ///
-/// `None` rather than a guess for a line this does not recognise.
-/// [`confirm_supervisor`] turns that into a refusal to run, which is the side to
-/// fail on.
+/// `None` rather than a guess for an unrecognised line; [`confirm_supervisor`] turns
+/// that into a refusal to run, which is the side to fail on. Split out so the parse
+/// can be checked against an adversarial name without a supervisor, a namespace or a
+/// second process.
 fn ppid_from_stat(stat: &str) -> Option<&str> {
     stat.rsplit_once(')')
         .and_then(|(_, rest)| rest.split_whitespace().nth(1))
@@ -165,44 +148,36 @@ fn ppid_from_stat(stat: &str) -> Option<&str> {
 
 /// Drop capabilities and disable core dumps.
 ///
-/// Landlock and seccomp bound what the sandboxed command can *do*; this bounds
-/// what a descendant that somehow survives the kill (#28) can still reach.
-/// None of it needs privilege to apply in the general case: every one of these
-/// calls only ever removes a right this process already holds, never grants
-/// one.
+/// Landlock and seccomp bound what the sandboxed command can *do*; this bounds what a
+/// descendant that somehow survives the kill can still reach. None of it needs
+/// privilege in the general case: every call only ever removes a right this process
+/// already holds.
 ///
 /// Deliberately does NOT set `PR_SET_DUMPABLE`: the kernel resets that flag to
-/// dumpable on every `execve` of an ordinary (non-setuid, no file-capability)
-/// binary — see `setup_new_exec` in `fs/exec.c` — so setting it here would
-/// only affect this process's own brief pre-exec window, not the command it
-/// is about to become. Applying it would be a claim `SECURITY.md` cannot back
-/// up, not real hardening; core dumps are already fully covered below via
-/// `RLIMIT_CORE`, which — unlike the dumpable flag — does persist across exec.
+/// dumpable on every `execve` of an ordinary (non-setuid, no file-capability) binary
+/// — `setup_new_exec` in `fs/exec.c` — so setting it here would cover only this
+/// process's brief pre-exec window, not the command. `RLIMIT_CORE` below does persist
+/// across exec and covers core dumps fully.
 ///
-/// The capability *bounding* set is best-effort, and deliberately so. Dropping
-/// it needs `CAP_SETPCAP`, which an unprivileged process holds only inside a
-/// user namespace it created itself — and not even there when an LSM strips
-/// capabilities from such a namespace. AppArmor's
-/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+, and set on
-/// GitHub's runners) does exactly that: `isolate`'s `unshare` succeeds,
-/// but `PR_CAPBSET_DROP` then returns `EPERM`. Treating that as a refusal
-/// would take the sandbox away entirely on the most common Linux desktop and
-/// CI hosts, in exchange for a bit that cannot be spent: once the four sets
-/// below are empty and `no_new_privs` is set, the kernel caps the permitted
-/// set of an `execve`d binary at the old one and refuses to raise inheritable
-/// or ambient, so a leftover bounding bit can never become privilege. So it is
-/// attempted and reported, not enforced — and `SECURITY.md` claims it as
-/// best-effort rather than as part of the boundary. A failure becomes an
-/// [`AuditEvent::Degraded`](crate::AuditEvent::Degraded) at `INFO` and not a
-/// debug-level note: it fails on whole classes of host, so the one run where it
-/// matters is not the one where someone thought to raise the log level. This
-/// function only names the failure; the parent is what emits it, because no
-/// subscriber exists in this process — see [`prepare_supervisor`].
+/// The capability *bounding* set is best-effort, deliberately. Dropping it needs
+/// `CAP_SETPCAP`, which an unprivileged process holds only inside a user namespace it
+/// created itself — and not even there when an LSM strips capabilities from such a
+/// namespace. AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+ and
+/// on GitHub's runners) does exactly that: `isolate`'s `unshare` succeeds but
+/// `PR_CAPBSET_DROP` returns `EPERM`. Treating that as a refusal would take the
+/// sandbox away entirely on the most common Linux desktop and CI hosts, in exchange
+/// for a bit that cannot be spent: once the four sets below are empty and
+/// `no_new_privs` is set, the kernel caps the permitted set of an `execve`d binary at
+/// the old one and refuses to raise inheritable or ambient, so a leftover bounding bit
+/// can never become privilege. So it is attempted and reported, not enforced, and
+/// `SECURITY.md` claims it as best-effort rather than as part of the boundary. The
+/// failure becomes an [`AuditEvent::Degraded`](crate::AuditEvent::Degraded) at `INFO`
+/// and not at debug level, because it fails on whole classes of host. This function
+/// only names it; the parent emits it — see [`prepare_supervisor`].
 ///
-/// Order matters within this function: the bounding set is dropped *before*
-/// the effective set, not after. `PR_CAPBSET_DROP` itself requires
-/// `CAP_SETPCAP` in the effective set — clearing effective first would remove
-/// the very right this function needs to drop the bounding set at all.
+/// Order matters: the bounding set is dropped *before* the effective set.
+/// `PR_CAPBSET_DROP` itself requires `CAP_SETPCAP` in the effective set, so clearing
+/// effective first would remove the very right needed to drop the bounding set.
 fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError> {
     use caps::CapSet;
 
@@ -252,19 +227,19 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
 ///
 /// Denying network means an empty one: a fresh netns has only a (down) loopback
 /// interface and no route anywhere, so there is no network to reach rather than a
-/// filtered one. That is stronger than Landlock's network rules, which only cover
-/// TCP bind/connect and would leave UDP and raw sockets untouched.
+/// filtered one. Stronger than Landlock's network rules, which cover only TCP
+/// bind/connect and leave UDP and raw sockets untouched.
 ///
 /// `CLONE_NEWUSER` is requested alongside because creating any other namespace
-/// otherwise needs `CAP_SYS_ADMIN`; a user namespace grants that capability
-/// *within the new namespaces only*, which is what lets this work unprivileged.
-/// Some distributions restrict unprivileged user namespaces (e.g. AppArmor's
-/// `kernel.apparmor_restrict_unprivileged_userns`), and there the call fails —
-/// which surfaces as a refusal, never as a silent fallback.
+/// otherwise needs `CAP_SYS_ADMIN`; a user namespace grants that capability *within
+/// the new namespaces only*, which is what lets this work unprivileged. Where
+/// unprivileged user namespaces are restricted (AppArmor's
+/// `kernel.apparmor_restrict_unprivileged_userns`) the call fails, and that surfaces
+/// as a refusal, never as a silent fallback.
 ///
-/// One `unshare` for all of them rather than one per namespace: the kernel applies
-/// the flags together, so there is no window in which the process holds some of the
-/// isolation and not the rest, and no second failure path to unwind.
+/// One `unshare` for all of them: the kernel applies the flags together, so there is
+/// no window holding some of the isolation and not the rest, and no second failure
+/// path to unwind.
 ///
 /// Returns whatever [`map_identity_into_userns`] could not do, for
 /// [`prepare_supervisor`] to pass on to the parent.
@@ -273,16 +248,15 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
     use nix::unistd::{getgid, getuid};
 
     // The PID namespace is unconditional: a guarantee about process lifetime that
-    // depended on a policy flag would not be a guarantee. It is also why the user
-    // namespace is now unconditional, where it used to come along only when
-    // network was denied.
+    // depended on a policy flag would not be a guarantee. Which is also why the user
+    // namespace is unconditional.
     let mut flags = CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWPID;
     if !policy.allows_network() {
         flags |= CloneFlags::CLONE_NEWNET;
     }
 
-    // Captured before the unshare: afterwards this process reads back as the
-    // overflow uid, and it is the *real* identity we want to map to itself.
+    // Captured before the unshare: afterwards this process reads back as the overflow
+    // uid, and it is the *real* identity we want to map to itself.
     let uid = getuid().as_raw();
     let gid = getgid().as_raw();
 
@@ -302,29 +276,26 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
 
 /// Map the real uid/gid to themselves inside the fresh user namespace.
 ///
-/// Without this the namespace has no map, so the process reads back as the
-/// overflow uid (`nobody`) even though its on-host identity is unchanged — a
-/// file it writes is still owned by the real user. Tools that branch on
-/// `getuid()` see a value that does not match reality; mapping the identity to
-/// itself makes the namespace transparent without granting anything, since the
-/// process already acts as this uid on the host.
+/// Without a map the process reads back as the overflow uid (`nobody`) even though
+/// its on-host identity is unchanged — a file it writes is still owned by the real
+/// user — so tools that branch on `getuid()` see a value that does not match reality.
+/// Mapping the identity to itself grants nothing, since the process already acts as
+/// this uid on the host.
 ///
-/// Best-effort, deliberately. This is not a security control — running as the
-/// overflow `nobody` is if anything *more* restrictive, and it is what happened
-/// before this map existed. Some environments create the namespace but deny the
-/// map: AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+)
-/// leaves an unprivileged userns without `CAP_SETUID`, so the write is refused.
-/// Aborting the sandbox there would trade a truthful uid for no sandbox at all,
-/// which is the wrong way round — so a failed write leaves the process as
-/// `nobody` and the command still runs fully confined.
+/// Best-effort, deliberately. This is not a security control: running as the overflow
+/// `nobody` is if anything *more* restrictive. Some environments create the namespace
+/// but deny the map — AppArmor's `restrict_unprivileged_userns` (default on Ubuntu
+/// 24.04+) leaves an unprivileged userns without `CAP_SETUID` — and aborting there
+/// would trade a truthful uid for no sandbox at all, so a failed write leaves the
+/// process as `nobody` with the command still fully confined.
 ///
-/// Names the failure rather than recording it, for the reason
-/// [`prepare_supervisor`] gives: this process has no subscriber to record it on.
+/// Names the failure rather than recording it, for the reason [`prepare_supervisor`]
+/// gives.
 fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)> {
-    // `setgroups` must be denied before an unprivileged `gid_map` write, or the
-    // kernel rejects it. Denying it is correct anyway: this maps a single gid,
-    // so there are no supplementary groups to set. If any write fails the rest
-    // are skipped and the namespace simply stays unmapped.
+    // `setgroups` must be denied before an unprivileged `gid_map` write or the kernel
+    // rejects it, and denying it is correct anyway: a single mapped gid has no
+    // supplementary groups. If any write fails the rest are skipped and the namespace
+    // stays unmapped.
     let mapped = std::fs::write("/proc/self/setgroups", "deny")
         .and_then(|()| std::fs::write("/proc/self/gid_map", format!("{gid} {gid} 1")))
         .and_then(|()| std::fs::write("/proc/self/uid_map", format!("{uid} {uid} 1")));
@@ -341,10 +312,9 @@ fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)>
 mod tests {
     use super::*;
 
-    /// A `/proc/pid/stat` line for an ordinary process, with the executable name
-    /// substituted in. Long enough to carry the fields *after* the parent, so a
-    /// parse that lands past field 4 returns a plausible number rather than
-    /// `None`.
+    /// A `/proc/pid/stat` line with the executable name substituted in. Long enough
+    /// to carry the fields *after* the parent, so a parse that lands past field 4
+    /// returns a plausible number rather than `None`.
     fn stat_line(comm: &str) -> String {
         format!(
             "4242 ({comm}) S 1234 4242 4242 34816 4321 4194304 1537 0 0 0 \
@@ -352,13 +322,9 @@ mod tests {
         )
     }
 
-    /// The ordinary case, and the control for the rest of this module: field 4 is
-    /// the parent, and it is the second token after the executable name because
-    /// field 3 is the single-letter process state.
-    ///
-    /// On its own this pins almost nothing — the regression that prompted #91,
-    /// counting four tokens from the left, passes it. Every other test here is
-    /// what distinguishes the two.
+    /// The control for the rest of this module: field 4 is the parent, and it is the
+    /// second token after the name because field 3 is the process state. On its own
+    /// it pins almost nothing — counting four tokens from the left passes it too.
     #[test]
     fn the_parent_pid_is_the_field_after_the_process_state() {
         let stat = stat_line("bash");
@@ -370,10 +336,9 @@ mod tests {
         );
     }
 
-    /// The executable name is unquoted, so a space in it moves every later field
-    /// one token to the right. Counting from the left returns the process state
-    /// here, which never equals a pid — so the sandbox would refuse every run
-    /// under a binary whose name has a space in it.
+    /// The name is unquoted, so a space in it moves every later field one token
+    /// right. Counting from the left returns the process state, which never equals a
+    /// pid — so every run under a binary whose name has a space would be refused.
     #[test]
     fn an_executable_name_with_a_space_does_not_shift_the_field() {
         let stat = stat_line("my program");
@@ -385,9 +350,8 @@ mod tests {
         );
     }
 
-    /// The name may also contain parentheses of its own, which is why the split
-    /// is on the *last* `)` and not the first. Splitting on the first would stop
-    /// inside the name and read its remainder as the fields after it.
+    /// Why the split is on the *last* `)`: splitting on the first stops inside a name
+    /// that contains one and reads its remainder as the fields after it.
     #[test]
     fn an_executable_name_containing_a_paren_does_not_truncate_the_parse() {
         let stat = stat_line("weird ) name");
@@ -399,18 +363,15 @@ mod tests {
         );
     }
 
-    /// The worst shape a name can take: `) 1 2 3` makes the line look like the
-    /// numeric fields start three tokens early, so counting from the left returns
-    /// a short, plausible integer rather than an obviously wrong token. A parse
-    /// that lands there could *agree* with the expected pid instead of merely
-    /// disagreeing, which is the one way [`confirm_supervisor`] fails open (#91).
+    /// The worst shape a name can take: `) 1 2 3` makes the numeric fields look like
+    /// they start three tokens early, so a left-counting parse returns a short,
+    /// plausible integer that could *agree* with the expected pid — the one way
+    /// [`confirm_supervisor`] fails open.
     ///
-    /// Robustness, not a defence against a chosen name: the line belongs to this
-    /// process, and `confirm_supervisor` runs before the `exec` in
-    /// [`exec_inner`](super::exec_inner), so field 2 is sandbx's own helper
-    /// binary — resolved through `/proc/self/exe`, so not even a name a caller
-    /// supplied. The sandboxed command never appears here. What this pins is that
-    /// the parse stays correct however that binary is named.
+    /// Robustness, not a defence against a chosen name: the line is this process's
+    /// own, and `confirm_supervisor` runs before the `exec`, so field 2 is sandbx's
+    /// helper binary resolved through `/proc/self/exe`. The sandboxed command never
+    /// appears here.
     #[test]
     fn an_executable_name_shaped_like_the_fields_after_it_is_not_read_as_one() {
         let stat = stat_line(") 1 2 3");
@@ -423,9 +384,8 @@ mod tests {
     }
 
     /// Nothing in a line with no `)` is the executable name, so nothing in it is
-    /// field 4 either. Counting from the left finds a fourth token in the first
-    /// case and would hand [`confirm_supervisor`] a pid from a line it cannot
-    /// actually parse.
+    /// field 4 either. Counting from the left finds a fourth token in the first case
+    /// and would hand [`confirm_supervisor`] a pid from an unparseable line.
     #[test]
     fn a_line_with_no_executable_name_to_split_on_yields_nothing() {
         for stat in ["4242 bash S 1234 4242", "not a stat line", ""] {
@@ -437,9 +397,8 @@ mod tests {
         }
     }
 
-    /// A line that stops before field 4 has no parent to report, and the state
-    /// letter is not one. Pinned so that a future rewrite cannot start returning
-    /// the state, or an empty string, in its place.
+    /// A line that stops before field 4 has no parent to report, and the state letter
+    /// is not one.
     #[test]
     fn a_line_that_stops_before_the_parent_yields_nothing() {
         for stat in ["4242 (bash)", "4242 (bash) S", "4242 (bash) S "] {
@@ -451,25 +410,23 @@ mod tests {
         }
     }
 
-    /// Every line above is synthetic, written from one reading of the format. This
-    /// is the one test that reads a line the kernel wrote, and checks it against
-    /// the same number reported under a *name* rather than a position — so the
-    /// synthetic expectations are anchored to something outside this module (#91).
+    /// The one test that reads a line the kernel wrote, checked against the same
+    /// number reported under a *name* rather than a position — so the synthetic
+    /// expectations above are anchored to something outside this module.
     ///
     /// An anchor and not a discriminator: a neighbouring field can happen to equal
-    /// the parent, and under a test harness `pgrp` usually does, the parent being
-    /// the process-group leader. So this agreeing proves the parse is reading a
-    /// real line without panicking; it is the cases above that pin the index.
+    /// the parent, and under a test harness `pgrp` usually does. The cases above are
+    /// what pin the index.
     ///
-    /// Cross-checked against `status` and not `getppid`, which the kernel
-    /// translates into the caller's pid namespace and reports as 0 for PID 1 of a
-    /// nested one — the exact skew [`confirm_supervisor`] exists to work around,
-    /// so leaning on it here would break the test inside the sandbox.
+    /// Cross-checked against `status` and not `getppid`, which the kernel translates
+    /// into the caller's pid namespace and reports as 0 for PID 1 of a nested one —
+    /// the exact skew [`confirm_supervisor`] works around, so leaning on it here would
+    /// break the test inside the sandbox.
     ///
-    /// The two files are read in two syscalls, so a parent that exits between
-    /// them would be reparented and leave `PPid:` naming init while the captured
-    /// stat line still names the old pid. Not worth guarding: the parent under
-    /// `cargo test` is cargo, which outlives the harness by construction.
+    /// The two files are read in two syscalls, so a parent exiting between them would
+    /// leave `PPid:` naming init while the captured stat line names the old pid. Not
+    /// worth guarding: under `cargo test` the parent is cargo, which outlives the
+    /// harness.
     #[test]
     fn the_parse_agrees_with_what_procfs_reports_under_another_name() {
         let stat = std::fs::read_to_string("/proc/self/stat").expect("procfs is mounted");

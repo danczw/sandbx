@@ -1,10 +1,9 @@
-//! Unit tests for the ruleset layer: [`grants`] for what an axis confers,
-//! [`rules`] for the one-rule-per-grant mapping, [`compat`] for the ABI ladder
-//! and the enforcement verdict.
+//! Unit tests for the ruleset layer: [`grants`] for what an axis confers, [`rules`] for
+//! the one-rule-per-grant mapping, [`compat`] for the ABI ladder and the enforcement
+//! verdict.
 //!
-//! All of them are deliberately kernel-free — no root, no network namespace, no
-//! Landlock-capable host (#52) — so they run anywhere. `tests/enforcement.rs` is
-//! where the live kernel is involved.
+//! All of them are kernel-free — no root, no network namespace, no Landlock-capable host
+//! — so they run anywhere. `tests/enforcement.rs` is where a live kernel is involved.
 
 mod compat;
 mod grants;
