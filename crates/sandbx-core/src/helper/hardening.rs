@@ -315,3 +315,151 @@ fn map_identity_into_userns(uid: u32, gid: u32) {
         .emit();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `/proc/pid/stat` line for an ordinary process, with the executable name
+    /// substituted in. Long enough to carry the fields *after* the parent, so a
+    /// parse that lands past field 4 returns a plausible number rather than
+    /// `None`.
+    fn stat_line(comm: &str) -> String {
+        format!(
+            "4242 ({comm}) S 1234 4242 4242 34816 4321 4194304 1537 0 0 0 \
+             1 2 0 0 20 0 1 0 9876 4337664 1234 18446744073709551615"
+        )
+    }
+
+    /// The ordinary case, and the control for the rest of this module: field 4 is
+    /// the parent, and it is the second token after the executable name because
+    /// field 3 is the single-letter process state.
+    ///
+    /// On its own this pins almost nothing — the regression that prompted #91,
+    /// counting four tokens from the left, passes it. Every other test here is
+    /// what distinguishes the two.
+    #[test]
+    fn the_parent_pid_is_the_field_after_the_process_state() {
+        let stat = stat_line("bash");
+
+        assert_eq!(
+            ppid_from_stat(&stat),
+            Some("1234"),
+            "the parent is field 4 of {stat:?}"
+        );
+    }
+
+    /// The executable name is unquoted, so a space in it moves every later field
+    /// one token to the right. Counting from the left returns the process state
+    /// here, which never equals a pid — so the sandbox would refuse every run
+    /// under a binary whose name has a space in it.
+    #[test]
+    fn an_executable_name_with_a_space_does_not_shift_the_field() {
+        let stat = stat_line("my program");
+
+        assert_eq!(
+            ppid_from_stat(&stat),
+            Some("1234"),
+            "a space in the executable name shifted the parse; got {:?}",
+            ppid_from_stat(&stat)
+        );
+    }
+
+    /// The name may also contain parentheses of its own, which is why the split
+    /// is on the *last* `)` and not the first. Splitting on the first would stop
+    /// inside the name and read its remainder as the fields after it.
+    #[test]
+    fn an_executable_name_containing_a_paren_does_not_truncate_the_parse() {
+        let stat = stat_line("weird ) name");
+
+        assert_eq!(
+            ppid_from_stat(&stat),
+            Some("1234"),
+            "a parenthesis in the executable name truncated the parse; got {:?}",
+            ppid_from_stat(&stat)
+        );
+    }
+
+    /// The case that makes this a security property rather than a robustness one.
+    ///
+    /// A command named `) 1 2 3` makes the line look like the numeric fields
+    /// start three tokens early, so counting from the left returns a short,
+    /// plausible integer that the *command* chose. [`confirm_supervisor`] compares
+    /// that against the pid it was told to expect, so a name picked to match is a
+    /// false pass — the check agreeing that a supervisor is still watching when it
+    /// is not. Every other broken reading here merely refuses to run (#91).
+    #[test]
+    fn an_executable_name_shaped_like_the_fields_after_it_is_not_read_as_one() {
+        let stat = stat_line(") 1 2 3");
+
+        assert_eq!(
+            ppid_from_stat(&stat),
+            Some("1234"),
+            "a name shaped like the fields after it was read as one; got {:?}",
+            ppid_from_stat(&stat)
+        );
+    }
+
+    /// Nothing in a line with no `)` is the executable name, so nothing in it is
+    /// field 4 either. Counting from the left finds a fourth token in the first
+    /// case and would hand [`confirm_supervisor`] a pid from a line it cannot
+    /// actually parse.
+    #[test]
+    fn a_line_with_no_executable_name_to_split_on_yields_nothing() {
+        for stat in ["4242 bash S 1234 4242", "not a stat line", ""] {
+            assert_eq!(
+                ppid_from_stat(stat),
+                None,
+                "{stat:?} has no executable name to split on, so it names no parent"
+            );
+        }
+    }
+
+    /// A line that stops before field 4 has no parent to report, and the state
+    /// letter is not one. Pinned so that a future rewrite cannot start returning
+    /// the state, or an empty string, in its place.
+    #[test]
+    fn a_line_that_stops_before_the_parent_yields_nothing() {
+        for stat in ["4242 (bash)", "4242 (bash) S", "4242 (bash) S "] {
+            assert_eq!(
+                ppid_from_stat(stat),
+                None,
+                "{stat:?} stops before field 4, so it names no parent"
+            );
+        }
+    }
+
+    /// Every line above is synthetic, written from one reading of the format. This
+    /// is the one test that reads a line the kernel wrote, and checks it against
+    /// the same number reported under a *name* rather than a position — so the
+    /// synthetic expectations are anchored to something outside this module (#91).
+    ///
+    /// An anchor and not a discriminator: a neighbouring field can happen to equal
+    /// the parent, and under a test harness `pgrp` usually does, the parent being
+    /// the process-group leader. So this agreeing proves the parse is reading a
+    /// real line without panicking; it is the cases above that pin the index.
+    ///
+    /// Cross-checked against `status` and not `getppid`, which the kernel
+    /// translates into the caller's pid namespace and reports as 0 for PID 1 of a
+    /// nested one — the exact skew [`confirm_supervisor`] exists to work around,
+    /// so leaning on it here would break the test inside the sandbox. Both files
+    /// come from the same procfs instance, so they agree unconditionally.
+    #[test]
+    fn the_parse_agrees_with_what_procfs_reports_under_another_name() {
+        let stat = std::fs::read_to_string("/proc/self/stat").expect("procfs is mounted");
+        let status = std::fs::read_to_string("/proc/self/status").expect("procfs is mounted");
+
+        let named = status
+            .lines()
+            .find_map(|line| line.strip_prefix("PPid:"))
+            .map(str::trim)
+            .expect("/proc/self/status reports a PPid");
+
+        assert_eq!(
+            ppid_from_stat(&stat),
+            Some(named),
+            "the stat parse and PPid: disagree about this process's parent; \
+             the stat line was {stat:?}"
+        );
+    }
+}
