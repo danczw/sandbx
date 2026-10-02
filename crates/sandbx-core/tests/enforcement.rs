@@ -1,15 +1,12 @@
 //! Does the kernel actually block an escape?
 //!
-//! Everything else in this crate tests our own logic. These tests spawn real
-//! processes and assert the *kernel* refuses them, which is the only evidence
-//! that the sandbox does anything at all.
-//!
-//! Gated behind `--features sandbox-integration` because they need a Linux
-//! kernel with Landlock available (5.13+, enabled at boot).
+//! Everything else in this crate tests our own logic; these spawn real processes
+//! and assert the *kernel* refuses them, which is the only evidence the sandbox
+//! does anything at all. Gated behind `--features sandbox-integration`: they need
+//! Landlock available (5.13+, enabled at boot).
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
-// Both `Command::new` uses below spawn the sandbox helper itself — never a
-// command that bypasses it. The workspace ban exists to stop code executing
-// *around* the sandbox; launching the sandbox is the subject of these tests.
+// Every `Command::new` below spawns the sandbox helper itself, never a command that
+// bypasses it; the workspace ban exists to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
 use std::path::Path;
@@ -20,11 +17,8 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 /// Paths the helper itself needs in order to `exec` anything at all.
 ///
 /// `exec` happens *after* the restrictions are applied, so the interpreter and
-/// shared libraries must stay reachable or nothing can start — including the
-/// commands these tests use to probe the sandbox.
-///
-/// The program directories need read *and* execute; `ld.so.cache` is a plain
-/// file the loader only reads, so it gets the narrower grant.
+/// shared libraries must stay reachable or nothing can start. The program
+/// directories need read *and* execute; `ld.so.cache` the loader only reads.
 fn runtime_paths(policy: SandboxPolicy) -> SandboxPolicy {
     let policy = ["/usr", "/bin", "/lib", "/lib64"]
         .iter()
@@ -39,9 +33,8 @@ fn runtime_paths(policy: SandboxPolicy) -> SandboxPolicy {
 
 /// Grant execute access to a probe binary so it can be `exec`ed.
 ///
-/// Probes live under `target/`, which `runtime_paths` does not cover. Without
-/// this the probe fails to start, and a denial test would pass because nothing
-/// ran — not because the kernel refused anything.
+/// Probes live under `target/`, which `runtime_paths` does not cover. Without this
+/// a denial test passes because nothing ran, not because the kernel refused.
 fn allow_probe(policy: SandboxPolicy, probe: &str) -> SandboxPolicy {
     let dir = std::path::Path::new(probe)
         .parent()
@@ -58,8 +51,8 @@ fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Ou
         .expect("helper should start")
 }
 
-/// Baseline: with the path allowed, the command works. Without this the denial
-/// tests below would pass even if the sandbox broke everything indiscriminately.
+/// Baseline: without it the denial tests below would pass even if the sandbox broke
+/// everything indiscriminately.
 #[test]
 fn allowed_path_can_be_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -77,15 +70,14 @@ fn allowed_path_can_be_read() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "visible");
 }
 
-/// The point of the whole crate: a path the policy never granted is unreadable,
-/// enforced by the kernel rather than by our own checks.
+/// The point of the whole crate, enforced by the kernel rather than our own checks.
 #[test]
 fn unallowed_path_cannot_be_read() {
     let dir = tempfile::tempdir().unwrap();
     let secret = dir.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
-    // Note the temp dir is deliberately NOT granted.
+    // The temp dir is not granted.
     let policy = runtime_paths(SandboxPolicy::default());
     let output = run(&policy, "/bin/cat", &[secret.to_str().unwrap()]);
 
@@ -99,8 +91,7 @@ fn unallowed_path_cannot_be_read() {
     );
 }
 
-/// Read access must not carry write access, at the kernel level and not merely
-/// in `FsGuard`.
+/// At the kernel level, not merely in `FsGuard`.
 #[test]
 fn read_only_grant_cannot_write() {
     let dir = tempfile::tempdir().unwrap();
@@ -142,7 +133,6 @@ fn write_grant_can_write() {
     assert_eq!(std::fs::read_to_string(&created).unwrap(), "written\n");
 }
 
-/// A helper that cannot enforce must not run the command anyway.
 #[test]
 fn malformed_arguments_do_not_run_the_command() {
     let marker = tempfile::tempdir().unwrap().path().join("should-not-exist");
@@ -165,29 +155,20 @@ fn malformed_arguments_do_not_run_the_command() {
     );
 }
 
-/// The inner stage refuses to run when its supervisor is already gone (#28).
-///
-/// Between the supervisor spawning this stage and this stage arming its parent
-/// death signal there is a window — short, but real — in which the supervisor could
-/// be killed and the signal never armed. The command would then run to completion
-/// as PID 1 of a namespace nothing is watching: still fully confined, but unreaped,
-/// which is the exact weakness being closed. So the stage checks that the pid the
-/// supervisor told it to expect is still its parent, and refuses if it is not.
+/// Between the supervisor spawning this stage and the stage arming its parent death
+/// signal there is a window in which the supervisor can die with the signal never
+/// armed; the command would then run as PID 1 of a namespace nothing is watching —
+/// still confined, but unreaped. So the stage checks that the pid it was told to
+/// expect is still its parent.
 ///
 /// The check reads `/proc/self/stat` rather than calling `getppid`, which returns 0
-/// inside a PID namespace whose parent lives outside it. `/proc` is the host's, so
-/// its ppid field still names the supervisor in host numbering.
-///
-/// Passing pid 1 as the claimed supervisor is a value the stage can never legally
-/// have: the real supervisor is an ordinary process, and host pid 1 never spawns
-/// one of these.
+/// inside a PID namespace whose parent lives outside it; `/proc` is the host's, so
+/// its ppid field still names the supervisor in host numbering. Pid 1 is a claim the
+/// stage can never legally receive: host pid 1 never spawns one of these.
 #[test]
 fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
     // the statement, which would leave `!marker.exists()` below asserting nothing.
-    // It is still the weaker of the two assertions — the environment check refuses
-    // this invocation too, so reaching the command takes removing both guards — and
-    // the stderr assertion is what names which one did it.
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("should-not-exist");
 
@@ -210,9 +191,8 @@ fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
         !marker.exists(),
         "the inner stage ran the command despite having no supervisor"
     );
-    // Named in the refusal, so this test cannot pass merely because the pid token
-    // was rejected as an unrecognised flag — which is what it would prove if the
-    // liveness check were absent.
+    // Named in the refusal, so this cannot pass merely because the pid token was
+    // rejected as an unrecognised flag.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("supervisor"),
@@ -220,30 +200,20 @@ fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
     );
 }
 
-/// The inner stage refuses an environment an earlier stage should have narrowed,
-/// rather than narrowing it again and carrying on.
+/// The only test that reaches this check: every other path arrives at `exec_inner`
+/// with the environment already narrowed, so without this the check could be deleted
+/// with the suite staying green.
 ///
-/// This is what pins the check itself. Every other path reaches `exec_inner` with
-/// the environment already narrowed, where the check is trivially satisfied, and
-/// `the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of` above never gets
-/// that far — so without this test the check could be deleted with the suite
-/// staying green, which is the exact class of unobservable line it was added to
-/// close (#98).
+/// Reaching it needs the liveness check to pass, which means naming a supervisor that
+/// really is this process's parent — the harness spawns the helper directly, so its
+/// own pid is what `/proc/self/stat` reports. `HELPER_INNER_FLAG` is documented as not
+/// a trust boundary, so that is by design.
 ///
-/// Reaching it needs the liveness check to pass, which means naming a supervisor
-/// that really is this process's parent. That is the test harness: it spawns the
-/// helper directly, so its own pid is the one `/proc/self/stat` will report. The
-/// liveness check accepting it is by design — `HELPER_INNER_FLAG` is documented as
-/// not a trust boundary — and is what leaves the environment to be caught here.
-///
-/// The variable is planted with `Command::env` rather than `set_var`, which is
-/// `unsafe` on edition 2024 and would poison the whole harness besides.
-///
-/// The policy grants everything `/bin/touch` needs to run and to create the marker,
-/// which is what makes the two assertions below mean something: with the check
-/// removed the command *succeeds* and the file appears, so each of them fails on its
-/// own rather than only the one that reads stderr. A `default()` policy would deny
-/// the exec as well, and the test would stay green for the wrong reason.
+/// The variable is planted with `Command::env`; `set_var` is `unsafe` on edition 2024
+/// and would poison the whole harness. The policy grants everything `/bin/touch`
+/// needs, so with the check removed the command succeeds and each assertion fails on
+/// its own; under a `default()` policy the exec would be denied and the test would
+/// stay green for the wrong reason.
 #[test]
 fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
@@ -252,9 +222,9 @@ fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("should-not-exist");
 
-    // Nothing in the *environment* allowlist, so the planted variable is outside it
-    // — as is every variable cargo handed this process, which is the harness-wide
-    // environment a real stage 1 would have cleared.
+    // Nothing in the environment allowlist, so the planted variable is outside it —
+    // as is every variable cargo handed this process, which is what a real stage 1
+    // would have cleared.
     let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
     let args = [marker.to_str().unwrap().to_string()];
 
@@ -276,37 +246,28 @@ fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // Named in the refusal, so this cannot pass merely because the supervisor
-    // check or the decode rejected something first — which is what it would prove
-    // if the environment check were absent.
+    // Named in the refusal, so this cannot pass merely because the supervisor check
+    // or the decode rejected something first.
     assert!(
         stderr.contains("environment"),
         "the refusal must say the environment is the reason, got: {stderr}"
     );
-    // And not named: a refusal is a diagnostic an operator reads, and
-    // `records_how_many_variables_a_spawn_passed_not_which` in `audit.rs` makes the
-    // same argument about the audit trail. Naming the variable here would walk it
-    // back one seam over.
+    // And not named: a refusal is a diagnostic an operator reads, so naming the
+    // variable would walk back what the audit trail already refuses to record.
     assert!(
         !stderr.contains("SANDBX_SHOULD_NOT_SURVIVE"),
         "the refusal must not name the variable it found, got: {stderr}"
     );
 }
 
-/// The precondition for #28: this host lets an unprivileged process create a PID
-/// namespace, and the next child is born as PID 1 of it.
+/// Asserted on its own, ahead of everything that depends on it, because the answer is
+/// a property of the host and cannot be read off a developer machine: a box without
+/// AppArmor grants capabilities inside a fresh user namespace that Ubuntu 24.04+ and
+/// GitHub's runners strip (`kernel.apparmor_restrict_unprivileged_userns`). Red here
+/// means the PID-namespace approach is dead.
 ///
-/// Asserted on its own, ahead of anything that depends on it, because the answer
-/// is a property of the *host* rather than of our code and it cannot be read off
-/// a developer machine. A box without AppArmor grants capabilities inside a fresh
-/// user namespace that Ubuntu 24.04+ and GitHub's runners strip
-/// (`kernel.apparmor_restrict_unprivileged_userns`), and #39 already learned the
-/// hard way that "it passes locally" is not evidence about namespace or
-/// capability behaviour. If this test is red on CI, the PID-namespace approach is
-/// dead before anything is built on it.
-///
-/// A probe binary rather than an in-process `unshare`: calling it here would
-/// strip the *test harness* of its own namespaces for every test that follows.
+/// A probe binary rather than an in-process `unshare`, which would strip the test
+/// harness of its own namespaces for every test that follows.
 #[test]
 fn unprivileged_pid_namespace_is_available() {
     #[allow(clippy::disallowed_methods)]
@@ -327,16 +288,12 @@ fn unprivileged_pid_namespace_is_available() {
     );
 }
 
-/// The command runs as PID 1 of a namespace of its own (#28).
+/// Everything about process lifetime rests on this: a process cannot leave the PID
+/// namespace it was born into, and `unshare`/`setns` are denied, so killing PID 1
+/// makes the kernel reap the rest unconditionally — where a process group is advisory.
 ///
-/// This is the fact everything else about process lifetime rests on: a process
-/// cannot leave the PID namespace it was born into, and `unshare`/`setns` are
-/// denied, so killing PID 1 makes the kernel reap the rest unconditionally. A
-/// process group, which is what the timeout kill used to target on its own, is
-/// advisory by comparison.
-///
-/// `$$` in `sh` is the shell's own pid as the kernel reports it to the shell, so
-/// reading it back is the command's own view of where it lives.
+/// `$$` is the shell's own pid as the kernel reports it, so reading it back is the
+/// command's own view of where it lives.
 #[test]
 fn the_command_is_pid_one_of_its_own_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -354,15 +311,12 @@ fn the_command_is_pid_one_of_its_own_namespace() {
     );
 }
 
-/// A PID namespace also takes away the ability to signal anything outside it.
+/// Pid resolution is namespace-relative, so a host pid does not exist as far as the
+/// command is concerned. Without the namespace this succeeds: the command runs as the
+/// caller's uid, so it can signal the caller's processes — the harness included.
 ///
-/// Pid resolution is namespace-relative, so a pid from the host simply does not
-/// exist as far as the command is concerned. Without the namespace this succeeds:
-/// the command runs as the same uid as the caller, so it can signal every one of
-/// the caller's processes — including the harness that is testing it.
-///
-/// `kill -0` sends nothing; it asks whether the signal *could* be delivered,
-/// which is the permission question on its own.
+/// `kill -0` sends nothing; it asks whether the signal could be delivered, which is
+/// the permission question on its own.
 #[test]
 fn the_command_cannot_signal_a_process_outside_its_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -375,10 +329,8 @@ fn the_command_cannot_signal_a_process_outside_its_namespace() {
     );
 }
 
-/// Network denial comes from an empty network namespace, not from Landlock.
-///
-/// A fresh netns has only the loopback interface, so reading the caller's own
-/// interface list is a hermetic check — no external network required.
+/// Network denial comes from an empty network namespace, not from Landlock. A fresh
+/// netns has only loopback, so reading the interface list needs no external network.
 #[test]
 fn network_is_denied_by_default() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -406,8 +358,7 @@ fn network_is_denied_by_default() {
     );
 }
 
-/// The opposite direction: granting network must actually grant it, or the flag
-/// is decorative.
+/// The opposite direction, or the flag is decorative.
 #[test]
 fn allowed_network_keeps_host_interfaces() {
     let policy = runtime_paths(SandboxPolicy::default())
@@ -423,11 +374,8 @@ fn allowed_network_keeps_host_interfaces() {
     );
 }
 
-/// A seccomp filter must actually be installed, not merely constructed.
-///
-/// `/proc/self/status` reports `Seccomp: 2` once a BPF filter is in force, so
-/// the sandboxed process can confirm its own state without needing a tool that
-/// attempts a blocked syscall.
+/// Installed, not merely constructed: `/proc/self/status` reports `Seccomp: 2` once a
+/// BPF filter is in force, which needs no tool that attempts a blocked syscall.
 #[test]
 fn seccomp_filter_is_installed() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -461,36 +409,27 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
 }
 
-/// The four sets the helper can always clear, whatever privilege it holds:
-/// shrinking them needs no capability at all.
+/// The four sets the helper can always clear, since shrinking them needs no
+/// capability.
 ///
-/// `Cap{Eff,Prm,Inh,Amb}` are hex bitmasks; a fully dropped process reports each
-/// as `0000000000000000`. `CapBnd` is deliberately absent — see
-/// [`the_bounding_set_is_cleared_or_left_exactly_as_inherited`].
+/// Hex bitmasks; a fully dropped process reports each as `0000000000000000`. `CapBnd`
+/// is absent — see [`the_bounding_set_is_cleared_or_left_exactly_as_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
 /// Can this machine drop the capability bounding set at all?
 ///
-/// Doing so needs `CAP_SETPCAP`, which an unprivileged process holds only inside
-/// a user namespace it created itself — and not even there when an LSM strips
-/// capabilities from such a namespace. AppArmor's
-/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+, and set on GitHub's
-/// runners) does exactly that: the `unshare` succeeds but `PR_CAPBSET_DROP`
-/// returns `EPERM`.
-///
-/// The helper treats that as a best-effort step rather than a refusal, so the
-/// assertion has to be conditional in the same way — otherwise this suite would
-/// demand a guarantee the kernel is refusing to give.
+/// It needs `CAP_SETPCAP`, held only inside a self-created user namespace — and not
+/// even there when an LSM strips capabilities from one. AppArmor's
+/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+ and GitHub's runners) does
+/// that: the `unshare` succeeds but `PR_CAPBSET_DROP` returns `EPERM`. The helper
+/// treats the drop as best-effort, so the assertion has to be conditional in step.
 fn bounding_set_is_droppable() -> bool {
     std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
         .map(|value| value.trim() != "1")
         .unwrap_or(true)
 }
 
-/// The unprivileged capability sets must be gone on the default
-/// (network-denied) path, and `no_new_privs` must be set — piggybacked here
-/// since it reads from the same `/proc/self/status` output and has no dedicated
-/// test of its own yet.
+/// `no_new_privs` is checked here too, off the same `/proc/self/status` read.
 #[test]
 fn capabilities_are_dropped() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -517,12 +456,8 @@ fn capabilities_are_dropped() {
     );
 }
 
-/// Granting the network must not cost any of the unprivileged capability sets.
-///
-/// They are cleared on both paths, since shrinking them needs no privilege. Both
-/// paths now enter a user namespace — the PID namespace of #28 requires one
-/// whatever the policy says — so what this pins is that the *conditional* part,
-/// `CLONE_NEWNET`, is the only thing the network flag changes.
+/// Both paths enter a user namespace, since the PID namespace requires one whatever
+/// the policy says, so this pins `CLONE_NEWNET` as the only thing the flag changes.
 #[test]
 fn capabilities_are_dropped_when_network_is_allowed() {
     let policy = runtime_paths(SandboxPolicy::default().allow_network()).allow_read("/proc");
@@ -544,17 +479,10 @@ fn capabilities_are_dropped_when_network_is_allowed() {
     }
 }
 
-/// The bounding set is cleared where the kernel permits it, and left *exactly*
-/// as inherited where it does not.
-///
-/// Both branches assert, deliberately. An earlier version returned early on
-/// hosts that strip capabilities from a fresh user namespace, which meant this
-/// test reported `ok` there without checking anything — indistinguishable from a
-/// run that actually verified the guarantee, and on CI that was every run.
-/// Asserting the fallback instead pins it too: a *partial* drop is a different
-/// failure from the documented one, and `caps::clear(Bounding)` issues one
-/// `PR_CAPBSET_DROP` per capability, so a partial drop is exactly what a
-/// mid-loop `EPERM` would leave behind.
+/// Both branches assert rather than one returning early, which would report `ok`
+/// without checking anything on every CI run. `caps::clear(Bounding)` issues one
+/// `PR_CAPBSET_DROP` per capability, so a mid-loop `EPERM` leaves a partial drop —
+/// a different failure from the documented fallback, and caught only by pinning it.
 #[test]
 fn the_bounding_set_is_cleared_or_left_exactly_as_inherited() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -577,8 +505,8 @@ fn the_bounding_set_is_cleared_or_left_exactly_as_inherited() {
         return;
     }
 
-    // This process is the helper's parent, so its bounding set is the one the
-    // helper inherits — the only correct value when the kernel refuses the drop.
+    // This process is the helper's parent, so its bounding set is the one the helper
+    // inherits — the only correct value when the kernel refuses the drop.
     let host = std::fs::read_to_string("/proc/self/status")
         .expect("could not read this process's own status");
 
@@ -618,13 +546,9 @@ fn core_dumps_are_disabled() {
     assert_eq!(hard, "0", "hard RLIMIT_CORE was not zero");
 }
 
-/// Truncation is a write. Landlock leaves *unhandled* access types unrestricted
-/// everywhere, so a ruleset that never handles `Truncate` permits zeroing any
-/// file on the machine — including one granted read-only.
-///
-/// Uses a dedicated probe: `: > file` and `truncate(1)` both go through
-/// `open(O_TRUNC)`/`ftruncate`, which `WriteFile` already covers. Only
-/// `truncate(2)` on a path exercises the right under test.
+/// Landlock leaves *unhandled* access types unrestricted everywhere, so a ruleset that
+/// never handles `Truncate` permits zeroing any file on the machine, read-only grant
+/// included. Needs the probe: only `truncate(2)` on a path exercises that right.
 #[test]
 fn truncate_on_read_only_grant_is_denied() {
     let dir = tempfile::tempdir().unwrap();
@@ -646,14 +570,13 @@ fn truncate_on_read_only_grant_is_denied() {
     );
 }
 
-/// The same with no grant of any kind.
 #[test]
 fn truncate_on_ungranted_path_is_denied() {
     let dir = tempfile::tempdir().unwrap();
     let victim = dir.path().join("victim.txt");
     std::fs::write(&victim, b"original contents").unwrap();
 
-    // dir is deliberately NOT granted.
+    // `dir` is not granted.
     let probe = env!("CARGO_BIN_EXE_sandbx-truncate-probe");
     let policy = allow_probe(runtime_paths(SandboxPolicy::default()), probe);
     let output = run(&policy, probe, &[victim.to_str().unwrap()]);
@@ -687,10 +610,9 @@ fn truncate_on_write_grant_is_permitted() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
 }
 
-/// Reaching a host daemon over a unix socket is not IP egress, so granting
-/// network must not grant it. This is #8: `--allow-network` used to lift the
-/// unix-socket denial too, which turned "let it talk to the internet" into "let
-/// it ask systemd to run something outside the cage".
+/// Reaching a host daemon over a unix socket is not IP egress: one grant covering
+/// both turns "let it talk to the internet" into "let it ask systemd to run something
+/// outside the cage".
 #[test]
 fn granting_network_does_not_grant_unix_sockets() {
     let dir = tempfile::tempdir().unwrap();
@@ -724,8 +646,8 @@ fn granting_network_does_not_grant_unix_sockets() {
     );
 }
 
-/// The grant that does allow it, so the denial above is not just the sandbox
-/// refusing everything.
+/// The grant that does allow it, so the denial above is not the sandbox refusing
+/// everything.
 #[test]
 fn an_explicit_unix_socket_grant_permits_the_connection() {
     let dir = tempfile::tempdir().unwrap();
@@ -740,8 +662,8 @@ fn an_explicit_unix_socket_grant_permits_the_connection() {
     });
 
     let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
-    // The socket's directory must be readable too: the grant lifts the seccomp
-    // denial, it does not bypass the filesystem policy.
+    // The socket's directory must be readable too: the grant lifts the seccomp denial,
+    // it does not bypass the filesystem policy.
     let policy = allow_probe(
         runtime_paths(SandboxPolicy::default().allow_unix_sockets()),
         probe,
@@ -760,10 +682,9 @@ fn an_explicit_unix_socket_grant_permits_the_connection() {
     );
 }
 
-/// A network namespace isolates only *abstract* unix sockets. Pathname sockets
-/// live in the filesystem and cross it freely, so denying network is not enough
-/// on its own — without a further control a command can still dial host daemons
-/// (systemd's bus, docker.sock, an ssh-agent) and have them act outside the cage.
+/// A network namespace isolates only *abstract* unix sockets; pathname sockets live in
+/// the filesystem and cross it freely, so without a further control a command can dial
+/// host daemons (systemd's bus, docker.sock, an ssh-agent) and have them act for it.
 #[test]
 fn unix_socket_connect_to_ungranted_path_is_denied() {
     let dir = tempfile::tempdir().unwrap();
@@ -777,7 +698,7 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
         }
     });
 
-    // The socket's directory is deliberately NOT granted, and network is denied.
+    // The socket's directory is not granted, and network is denied.
     let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
     let policy = allow_probe(runtime_paths(SandboxPolicy::default()), probe);
     let output = run(&policy, probe, &[socket.to_str().unwrap()]);
@@ -796,13 +717,9 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
     );
 }
 
-/// A symlinked policy root grants its resolved target, and both enforcement
-/// layers must agree on that.
-///
-/// `FsGuard` canonicalizes its roots; the helper must too, or the same policy
-/// means different things in-process and in the kernel. Resolving rather than
-/// rejecting is deliberate: `/bin`, `/lib` and `/lib64` are symlinks on ordinary
-/// systems, so refusing symlinked roots would refuse every realistic policy.
+/// `FsGuard` canonicalizes its roots; the helper must too, or one policy means
+/// different things in-process and in the kernel. Resolved rather than rejected
+/// because `/bin`, `/lib` and `/lib64` are symlinks on ordinary systems.
 #[test]
 fn symlinked_policy_root_resolves_consistently() {
     let real = tempfile::tempdir().unwrap();
@@ -814,12 +731,10 @@ fn symlinked_policy_root_resolves_consistently() {
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(&link);
 
-    // Reachable through the link — the path actually granted.
+    // Through the link — the path actually granted.
     let via_link = run(&policy, "/bin/cat", &[link.join("s.txt").to_str().unwrap()]);
     assert!(via_link.status.success());
 
-    // The in-process guard must reach the same verdict for the resolved path,
-    // rather than denying what the kernel permits.
     let guard = sandbx_core::FsGuard::new(&policy);
     assert!(
         guard.check_read(&real.path().join("s.txt")).is_ok(),
@@ -827,13 +742,9 @@ fn symlinked_policy_root_resolves_consistently() {
     );
 }
 
-/// The two layers must also agree about the *execute* axis, not just read.
-///
-/// `allow_read_execute` grants read alongside execute, and the kernel gets
-/// exactly that: `AccessFs::from_read` bundles `ReadFile`/`ReadDir` in with
-/// `Execute`. `FsGuard` consulted only the read and write axes, so under the
-/// identical policy `bash` could `cat` a file that the native `read` tool
-/// refused — one policy, two answers. Regression test for #50.
+/// The kernel gets read alongside execute, since `AccessFs::from_read` bundles
+/// `ReadFile`/`ReadDir` in with `Execute`. If `FsGuard` reads only the read and write
+/// axes, `bash` can `cat` a file the native `read` tool refuses under one policy.
 #[test]
 fn execute_grant_reads_consistently_across_both_layers() {
     let dir = tempfile::tempdir().unwrap();
@@ -857,13 +768,9 @@ fn execute_grant_reads_consistently_across_both_layers() {
     );
 }
 
-/// A write grant must not let the process *read* what it can write.
-///
 /// `SandboxPolicy::writable_paths` promises a write-only drop directory stays
-/// unreadable. `FsGuard` always kept that promise; the kernel did not, because
-/// `AccessFs::from_all` bundles `ReadFile`/`ReadDir` and only `Execute` was
-/// subtracted. Both layers are asserted here, on one policy, so they cannot
-/// drift apart again. Regression test for #49.
+/// unreadable, and `AccessFs::from_all` bundles `ReadFile`/`ReadDir` — so the kernel
+/// side needs more than `Execute` subtracted. Both layers are asserted on one policy.
 #[test]
 fn a_write_grant_does_not_make_files_readable() {
     let dir = tempfile::tempdir().unwrap();
@@ -872,14 +779,12 @@ fn a_write_grant_does_not_make_files_readable() {
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
 
-    // The kernel layer: the command may write here, but not read it back.
     let output = run(&policy, "/bin/cat", &[secret.to_str().unwrap()]);
     assert!(
         !String::from_utf8_lossy(&output.stdout).contains("WRITE-ONLY-SECRET"),
         "a write-only grant let the command read the file back"
     );
 
-    // The in-process layer must reach the same verdict for the same policy.
     let guard = sandbx_core::FsGuard::new(&policy);
     assert!(
         guard.check_read(&secret).is_err(),
@@ -888,12 +793,9 @@ fn a_write_grant_does_not_make_files_readable() {
     );
 }
 
-/// A read grant must not let the process *run* what it can read.
-///
-/// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so
-/// for a long time every read grant silently carried it. Nothing about the name
-/// `allow_read` suggests that, and a caller granting a data directory would not
-/// infer it. Regression test for #19.
+/// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so a read
+/// grant mapped straight onto it carries execute — which nothing about the name
+/// `allow_read` would suggest to a caller granting a data directory.
 #[test]
 fn a_read_grant_does_not_make_files_executable() {
     let dir = tempfile::tempdir().unwrap();
@@ -909,8 +811,8 @@ fn a_read_grant_does_not_make_files_executable() {
     );
 }
 
-/// The mirror of the above. Without it, the denial test would also pass if the
-/// sandbox simply refused to execute anything at all.
+/// Without this mirror, the denial above would pass on a sandbox that refused to
+/// execute anything at all.
 #[test]
 fn a_read_execute_grant_does_make_files_executable() {
     let dir = tempfile::tempdir().unwrap();
@@ -927,9 +829,8 @@ fn a_read_execute_grant_does_make_files_executable() {
     );
 }
 
-/// The scenario #19 actually describes: write a binary, then run it. Write
-/// grants mapped to `from_all`, which also contains `Execute`, so fixing only
-/// the read side would have left this open.
+/// Write a binary, then run it: write grants map to `from_all`, which also contains
+/// `Execute`, so fixing only the read side leaves this open.
 #[test]
 fn a_write_grant_does_not_make_files_executable() {
     let dir = tempfile::tempdir().unwrap();
@@ -966,10 +867,9 @@ fn a_write_grant_does_not_make_files_executable() {
     );
 }
 
-/// seccomp filters syscalls, and io_uring runs equivalent operations from a
-/// submission queue without issuing them — so a ring set up inside the sandbox
-/// sidesteps the denylist, including the `socket(AF_UNIX)` rule that #8 relies
-/// on. `io_uring_setup` must be denied so the ring cannot be created (#30).
+/// io_uring runs operations from a submission queue without issuing the syscalls, so a
+/// ring inside the sandbox sidesteps the whole denylist, the `socket(AF_UNIX)` rule
+/// included. Denying `io_uring_setup` is what keeps the ring from existing.
 #[test]
 fn io_uring_setup_is_denied() {
     let probe = env!("CARGO_BIN_EXE_sandbx-iouring-probe");
@@ -983,15 +883,11 @@ fn io_uring_setup_is_denied() {
     );
 }
 
-/// `memfd_create` returns a file descriptor backed by RAM with no path anywhere
-/// on the filesystem, so Landlock — which binds its rules to inodes and paths —
-/// has nothing to match on. That makes it the standard way to stage a payload
-/// inside a sandbox that governs the filesystem, which is why container runtimes
-/// and OpenShell's profile both deny it (#40).
+/// `memfd_create` returns a descriptor backed by RAM with no path anywhere, so
+/// Landlock — which binds its rules to inodes and paths — has nothing to match on.
 ///
-/// Asserts the errno, not just the exit status: `EPERM` is what this filter
-/// returns, so any other value means the call failed for an unrelated reason and
-/// the test would have passed without proving anything.
+/// Asserts the errno and not just the exit status: `EPERM` is what this filter
+/// returns, and any other value means the call failed for an unrelated reason.
 #[test]
 fn memfd_create_is_denied() {
     let probe = env!("CARGO_BIN_EXE_sandbx-memfd-probe");
@@ -1008,29 +904,19 @@ fn memfd_create_is_denied() {
 /// Reach a syscall through perl's `syscall` builtin and return what the kernel
 /// answered: the raw errno, or `"0"` when the call succeeded.
 ///
-/// This is the only way this suite can probe a syscall with no safe Rust wrapper
-/// in the dependency set. `sandbx-core` forbids `unsafe`, so a probe binary
-/// cannot issue a raw syscall, and the alternative was three new crates for
-/// test-only code — one of which drags in bindgen. Running a host interpreter as
-/// the sandboxed command is already how `the_command_sees_a_consistent_real_uid`
-/// works, so this adds no new kind of dependency.
-///
-/// `nr` comes from `libc` rather than being written out, deliberately: syscall
-/// numbers are per-architecture, and x86_64's `userfaultfd` number is aarch64's
-/// `signalfd`. A hardcoded number silently probes a different call and the
-/// assertion passes for the wrong reason.
-///
-/// `$!` is cleared first so a stale errno from perl's own startup cannot be read
+/// The only way this suite can probe a syscall with no safe Rust wrapper in the
+/// dependency set, since the crate forbids `unsafe`. Pass `nr` from `libc` and never a
+/// literal: syscall numbers are per-architecture, and x86_64's `userfaultfd` number is
+/// aarch64's `signalfd`, so a literal probes a different call and passes for the wrong
+/// reason. `$!` is cleared first so a stale errno from perl's startup cannot be read
 /// back as this call's result.
 fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
     let program = format!(
         "$! = 0; my $r = syscall({nr}, {args}); print +(defined $r && $r >= 0) ? 0 : $! + 0;"
     );
 
-    // perl opens /dev/null read-write on startup, so it needs both axes or it
-    // never reaches the syscall at all. Until #49 the write grant alone was
-    // enough, because the kernel layer handed out read with it — this call site
-    // is the evidence that the divergence was load-bearing, not theoretical.
+    // perl opens /dev/null read-write on startup, so it needs both axes or it never
+    // reaches the syscall at all.
     let policy = runtime_paths(SandboxPolicy::default())
         .allow_read("/dev/null")
         .allow_write("/dev/null");
@@ -1045,9 +931,7 @@ fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
     stdout
 }
 
-/// `pidfd_open` is how a process gets a handle on another process, and the
-/// handle is what `pidfd_getfd` below needs. Denying it costs nothing a coding
-/// tool does (#40).
+/// `pidfd_open` is how a process gets the handle `pidfd_getfd` below needs.
 #[test]
 fn pidfd_open_is_denied() {
     assert_eq!(
@@ -1058,10 +942,9 @@ fn pidfd_open_is_denied() {
     );
 }
 
-/// The one that matters most of the pair: `pidfd_getfd` lifts an open descriptor
-/// *out* of another process — a socket, a file above the policy — which is not
-/// filesystem access, so Landlock cannot express it and denying `ptrace` does
-/// not cover it (#40).
+/// `pidfd_getfd` lifts an open descriptor *out* of another process — a socket, a file
+/// above the policy. Not filesystem access, so Landlock cannot express it, and denying
+/// `ptrace` does not cover it.
 #[test]
 fn pidfd_getfd_is_denied() {
     assert_eq!(
@@ -1071,18 +954,10 @@ fn pidfd_getfd_is_denied() {
     );
 }
 
-/// `userfaultfd` gets no end-to-end probe, and the reason is worth stating where
-/// someone looks for one.
-///
-/// It is denied — `BLOCKED_SYSCALLS` carries it, pinned by `tests/denylist.rs` —
-/// but an `EPERM` assertion here would be close to worthless: the kernel's own
-/// `vm.unprivileged_userfaultfd` sysctl returns `EPERM` for an unprivileged
-/// caller when it is `0`, which is the default on many hosts including this
-/// project's dev box. The assertion would pass identically with the filter
-/// removed, which is the definition of a test proving nothing.
-///
-/// So this test records the situation instead of faking evidence: where the
-/// sysctl already denies it, note that the filter is not what was observed.
+/// `userfaultfd` gets no end-to-end probe: `vm.unprivileged_userfaultfd` returns
+/// `EPERM` for an unprivileged caller when it is `0`, the default on many hosts, so an
+/// `EPERM` assertion would pass identically with the filter removed. Where the sysctl
+/// permits it, the filter must be what refuses.
 #[test]
 fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
     let sysctl = std::fs::read_to_string("/proc/sys/vm/unprivileged_userfaultfd")
@@ -1095,8 +970,8 @@ fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
     );
 
     if sysctl == "0" {
-        // Documented outcome, not a skip: the kernel denies it here regardless, so
-        // there is no filter-specific observation to make on this host.
+        // The kernel denies it here regardless, so there is no filter-specific
+        // observation to make on this host.
         return;
     }
 
@@ -1108,23 +983,19 @@ fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
     );
 }
 
-/// The command should see its real uid, not the overflow `nobody` that a fresh
-/// user namespace reports when no uid_map is written. It already *acts* as the
-/// real uid on the host (files it writes are owned by it), so reporting 65534 is
-/// a lie that `getuid()`-based logic trips over. #35.
+/// A fresh user namespace reports the overflow `nobody` until a uid_map is written,
+/// while the command still *acts* as the real uid on the host — a mismatch that
+/// `getuid()`-based logic trips over.
 ///
-/// Both paths create a user namespace now: the PID namespace of #28 needs one
-/// regardless of policy, so granting network no longer means skipping the
-/// unshare. Each path is therefore checked against the same two acceptable
-/// answers rather than one being used as the other's reference — the identity map
-/// is best-effort by design, and where the platform refuses it (AppArmor's
-/// `restrict_unprivileged_userns`, default on Ubuntu 24.04+ and set on GitHub's
-/// runners) the command runs as the overflow `nobody` instead. What must never
-/// happen is a third value.
+/// Both paths create a user namespace, since the PID namespace needs one regardless of
+/// policy, so each is checked against the same two answers rather than one being the
+/// other's reference: the identity map is best-effort, and where the platform refuses
+/// it (AppArmor's `restrict_unprivileged_userns`) the command runs as the overflow uid.
+/// A third value must never appear.
 #[test]
 fn the_command_sees_a_consistent_real_uid() {
-    // std exposes no getuid, and pulling nix's `user` feature in for one test is
-    // not worth it; ask the host directly.
+    // std exposes no getuid and nix's `user` feature is not worth pulling in for one
+    // test; ask the host directly.
     let host_value = |args: &[&str]| {
         String::from_utf8(
             std::process::Command::new("/usr/bin/id")
@@ -1162,21 +1033,14 @@ fn the_command_sees_a_consistent_real_uid() {
     }
 }
 
-/// #98's reproducer, inverted.
+/// A variable the harness holds does not travel through the filesystem — `fork`/`exec`
+/// hands it over before Landlock or seccomp have any say — so no path policy can
+/// express "not this" about it.
 ///
-/// A variable the harness holds does not travel through the filesystem — it is
-/// handed over by `fork`/`exec` before Landlock or seccomp have any say — so no
-/// path policy can express "not this" about it. Before the fix, the whole
-/// environment arrived and the suite could not see it.
-///
-/// `CARGO_MANIFEST_DIR` rather than a variable this test plants: `std::env::set_var`
-/// is `unsafe` on the 2024 edition and `unsafe` is forbidden workspace-wide, so
-/// the test cannot mutate its own environment. Cargo sets this one for us, which
-/// is as good — it is in the parent's environment and in no policy below.
-///
-/// Note this goes through `run`, which spawns the helper *without* clearing
-/// anything first. So what is under test is the helper stages doing it on their
-/// own, which is the case a library consumer invoking the helper directly gets.
+/// `CARGO_MANIFEST_DIR` rather than a planted variable: `std::env::set_var` is `unsafe`
+/// on edition 2024, so the test cannot mutate its own environment. Goes through `run`,
+/// which spawns the helper without clearing anything first, so what is under test is
+/// the helper stages doing it themselves — the case a library consumer gets.
 #[test]
 fn a_variable_the_policy_omits_does_not_reach_the_command() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -1195,10 +1059,8 @@ fn a_variable_the_policy_omits_does_not_reach_the_command() {
     );
 }
 
-/// Baseline for the test above: with the variable granted it does arrive.
-///
-/// Without this, the denial would pass even if the environment were dropped
-/// wholesale and the allowlist did nothing — which is a different bug, not a fix.
+/// Baseline: without it the denial above would pass on a helper that dropped the
+/// environment wholesale and ignored the allowlist.
 #[test]
 fn a_granted_variable_reaches_the_command_with_its_value() {
     let expected = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets this for a test");
@@ -1218,8 +1080,7 @@ fn a_granted_variable_reaches_the_command_with_its_value() {
     );
 }
 
-/// Nothing *but* what was granted. The allowlist is the whole statement, so a
-/// second variable arriving alongside the one asked for would mean the clear is
+/// A second variable arriving alongside the one asked for means the clear is
 /// filtering rather than clearing.
 #[test]
 fn granting_one_variable_passes_only_that_one() {
@@ -1240,10 +1101,8 @@ fn granting_one_variable_passes_only_that_one() {
     );
 }
 
-/// A name the harness does not hold is absent, not present and empty.
-///
-/// The distinction is load-bearing for a command that branches on whether a
-/// variable is *set* — a blank value would read as "configured, to nothing".
+/// Absent, not present and empty: a command branching on whether a variable is *set*
+/// reads a blank value as "configured, to nothing".
 #[test]
 fn granting_a_variable_the_harness_lacks_passes_nothing() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_env("SANDBX_DEFINITELY_NOT_SET_98");

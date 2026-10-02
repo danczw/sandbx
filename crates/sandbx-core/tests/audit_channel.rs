@@ -1,28 +1,18 @@
 //! The channel helper-side degradations cross, from the parent's side.
 //!
-//! Both best-effort hardening steps run in the re-exec'd helper, which installs no
-//! `tracing` subscriber — so until #95 a `Degraded` record was emitted into nothing
-//! at all. It now crosses as bytes on a pipe in the helper's stdin slot and the
-//! parent emits it, which puts two properties on the critical path that a wire
-//! round-trip cannot check: the sandboxed command must not be able to reach that
-//! pipe, and its own output must stay byte-exact.
+//! Both hardening steps run in the re-exec'd helper, which installs no `tracing`
+//! subscriber, so a `Degraded` record crosses as bytes on a pipe in the helper's
+//! stdin slot and the parent emits it. That puts two properties on the critical
+//! path which a wire round-trip cannot check: the sandboxed command must not reach
+//! that pipe, and its own output must stay byte-exact.
 //!
-//! Whether a run here degrades at all is the *host's* choice, not the test's, and
-//! both answers are correct: a developer machine without AppArmor's
-//! `restrict_unprivileged_userns` drops the bounding set cleanly and records
-//! nothing, while Ubuntu 24.04+ and GitHub's runners refuse the drop with `EPERM`
-//! and legitimately record one `capability_bounding_set` degradation on every run.
+//! Whether a run degrades at all is the host's answer — a box without AppArmor's
+//! `restrict_unprivileged_userns` drops the bounding set cleanly, Ubuntu 24.04+ and
+//! GitHub's runners refuse it with `EPERM` — so nothing below asserts the *absence*
+//! of a `degraded` record. Making a host degrade on demand is #94.
 //!
-//! So nothing below asserts the *absence* of a `degraded` record — that would be an
-//! assertion about the kernel the suite happens to run on, and it would fail on CI
-//! for the very reason this change exists. What they assert instead is that a record
-//! on the trail came from a hardening step rather than from the command, and that
-//! each step reports at most once. `degradation.rs`'s unit tests cover the wire
-//! format; making a host degrade *on demand* is #94's subject.
-//!
-//! Gated whole-file, the way `enforcement.rs` is: every test here spawns a real
-//! helper, so with the feature off there is nothing left but the capture harness
-//! and `-D warnings` would reject it as dead code.
+//! Gated whole-file: every test spawns a real helper, so with the feature off
+//! `-D warnings` would reject the capture harness as dead code.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use std::sync::{Arc, Mutex};
@@ -33,9 +23,8 @@ use tracing_subscriber::layer::SubscriberExt;
 
 /// Collects audit events so a test can assert on what was recorded.
 ///
-/// The same shape as the harness in `audit.rs`, repeated rather than shared
-/// because cargo gives each `tests/*.rs` its own binary and a `tests/support`
-/// module would be compiled into both.
+/// Repeated from `audit.rs` rather than shared: cargo gives each `tests/*.rs` its
+/// own binary, so a `tests/support` module would be compiled into both.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
 
@@ -90,34 +79,17 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<
     )
 }
 
-/// The security property the design rests on.
+/// Without the first helper stage replacing its stdin with `null`, the sandboxed
+/// command inherits a writable descriptor onto sandbx's own audit trail: the pipe
+/// arrives in the stdin slot because that is the only descriptor std can pass a
+/// child without `unsafe`.
 ///
-/// The parent hands the helper a pipe it reads audit records from, and it arrives
-/// in the stdin slot because that is the only descriptor std can pass a child
-/// without `unsafe`. So the first helper stage replaces its stdin with `null`
-/// before spawning anything — without that line the sandboxed command would
-/// inherit a writable descriptor onto sandbx's own audit trail and could put
-/// whatever it liked on it.
-///
-/// Writing to fd 0 from inside the sandbox must therefore reach `/dev/null` and
-/// not the channel. The assertion is on the trail rather than on the write's exit
-/// status: what matters is that nothing the command wrote was recorded, however
-/// the kernel answered it.
-///
-/// The forged *detail* is the discriminator, and deliberately so. A host that
-/// refuses `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation
-/// on this very run, so the mechanism name cannot tell the two apart, and asserting
-/// that no `degraded` record appeared at all would fail on exactly the hosts #95 was
-/// filed for. A detail string no hardening step would ever produce can only have
-/// come from the command.
-///
-/// `printf` and not `echo`, and the tab written as an escape the shell expands
-/// rather than one this file contains: a literal tab in the script is an `IFS`
-/// character, so the shell would split the word and `echo` would rejoin it with a
-/// space — the forged line would then reach the channel and be rejected for having
-/// no separator, and this test would pass against a sandbox that *could* write it.
-/// Checked by removing the `Stdio::null()` in `helper::exec_sandboxed`, which makes
-/// this fail — which is what makes it evidence rather than decoration.
+/// The forged *detail* is the discriminator, not the mechanism name — a host that
+/// refuses `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation on
+/// this very run. `printf` with the tab as an escape the shell expands: a literal
+/// tab is an `IFS` character, so the shell would split the word, and the rejoined
+/// line would be rejected for having no separator while the sandbox had in fact
+/// let it through.
 #[test]
 fn the_sandboxed_command_cannot_write_the_audit_channel() {
     let (output, lines) = sandboxed(
@@ -139,13 +111,8 @@ fn the_sandboxed_command_cannot_write_the_audit_channel() {
     );
 }
 
-/// The channel must not cost the command its own streams.
-///
-/// This is what the old placement protected and what putting a subscriber in the
-/// helper would have given up: sandbx's records interleaved into the output of the
-/// command being sandboxed, indistinguishable from bytes the command itself wrote.
-/// Byte-exact on both streams, so a record leaking in would fail here rather than
-/// only showing up for whoever was parsing the output.
+/// A record interleaved into the command's own output is indistinguishable from
+/// bytes the command wrote, so both streams are compared byte-exact.
 #[test]
 fn the_commands_own_output_carries_no_audit_records() {
     let (output, _) = sandboxed(
@@ -165,18 +132,11 @@ fn the_commands_own_output_carries_no_audit_records() {
     );
 }
 
-/// Whatever this host records, the trail has to be well-formed: one spawn, and
-/// every degradation naming a real mechanism at most once.
-///
-/// Deliberately not "nothing degraded". How many records a clean run produces is
-/// the host's answer — none where `PR_CAPBSET_DROP` succeeds, one where an LSM
-/// refuses it — so requiring either number would make this a test of the kernel
-/// underneath rather than of the channel. What is invariant is the *shape*, and
-/// three ways of breaking it are worth catching: a blank or unnamed mechanism,
-/// which is what an empty channel decoding to a record would look like; the same
-/// step reported twice, which is what a short write re-sent or a stale buffer
-/// would look like; and more than one spawn, since `record_degradations` runs on
-/// both the timeout and the ordinary path and must not re-emit.
+/// Shape, not count: how many records a clean run produces is the host's answer, so
+/// requiring a number would test the kernel underneath. A blank mechanism is what
+/// an empty channel decoding to a record looks like, a repeated one what a re-sent
+/// short write looks like, and a second spawn record what `record_degradations`
+/// re-emitting on both the timeout and the ordinary path looks like.
 #[test]
 fn every_record_on_the_trail_names_a_real_mechanism_at_most_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
@@ -186,9 +146,8 @@ fn every_record_on_the_trail_names_a_real_mechanism_at_most_once() {
         .filter(|line| line.contains("decision=degraded"))
         .collect();
 
-    // The two labels `degradation::Degradation` can emit. Spelled out rather than
-    // read from the crate because they are a compatibility surface: this is the
-    // trail's view of them, and it should break if a rename reaches it.
+    // Spelled out rather than read from the crate: these labels are a compatibility
+    // surface, so a rename should break the trail's view of them.
     let known = ["capability_bounding_set", "userns_identity_map"];
 
     for record in &degraded {

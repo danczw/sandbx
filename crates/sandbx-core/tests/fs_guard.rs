@@ -1,11 +1,10 @@
 //! Public contract of [`FsGuard`]: nothing outside an allowed root is reachable.
 //!
-//! These go through the public API only — the same surface a consumer has — so
-//! a pass here is evidence the boundary actually holds, not that the test could
-//! reach internals no real caller can.
-// `mkfifo` is spawned to build a test fixture — a named pipe cannot be
-// created through std. This is not code executing around the sandbox,
-// which is what the workspace ban on `Command::new` exists to stop.
+//! Through the public API only — the same surface a consumer has — so a pass is
+//! evidence the boundary holds, not that the test reached internals no caller can.
+// `mkfifo` is spawned to build a test fixture: a named pipe cannot be created
+// through std. Not code executing around the sandbox, which is what the workspace
+// ban on `Command::new` exists to stop.
 #![allow(clippy::disallowed_methods)]
 
 use sandbx_core::{FsGuard, SandboxPolicy};
@@ -33,8 +32,8 @@ fn read_outside_allowed_root_is_denied() {
     assert!(guard.check_read(&secret).is_err());
 }
 
-/// A guard comparing string prefixes passes this path — it starts with the
-/// allowed root — while actually pointing outside it.
+/// A guard comparing string prefixes passes this path — it starts with the allowed
+/// root — while pointing outside it.
 #[test]
 fn parent_traversal_cannot_escape_root() {
     let root = tempfile::tempdir().unwrap();
@@ -72,8 +71,8 @@ fn symlink_cannot_escape_root() {
     );
 }
 
-/// Writes target files that do not exist yet, so the check cannot require the
-/// path itself to resolve — only its parent.
+/// A write targets a file that does not exist yet, so the check can require only
+/// the parent to resolve.
 #[test]
 fn write_to_new_file_in_allowed_root_is_permitted() {
     let root = tempfile::tempdir().unwrap();
@@ -85,8 +84,6 @@ fn write_to_new_file_in_allowed_root_is_permitted() {
     assert!(guard.check_write(&new_file).is_ok());
 }
 
-/// A new file's parent is resolved, so `..` cannot escape on the write path
-/// either.
 #[test]
 fn write_to_new_file_outside_allowed_root_is_denied() {
     let root = tempfile::tempdir().unwrap();
@@ -128,11 +125,9 @@ fn default_policy_permits_no_path() {
     assert!(guard.check_write(&file).is_err());
 }
 
-/// A symlink whose target does not exist yet must not be treated as a new file.
-///
-/// `canonicalize` fails identically on a nonexistent path and on a dangling
-/// symlink, so a guard that falls back to resolving only the parent approves the
-/// link — and the caller's write then follows it out of the root.
+/// `canonicalize` fails identically on a nonexistent path and on a dangling symlink,
+/// so a guard that falls back to resolving only the parent approves the link — and
+/// the caller's write then follows it out of the root.
 #[cfg(unix)]
 #[test]
 fn write_to_dangling_symlink_is_denied() {
@@ -156,7 +151,7 @@ fn write_to_dangling_symlink_is_denied() {
     );
 }
 
-/// The case the fallback exists for must keep working: a plain new file.
+/// The case that fallback exists for must keep working.
 #[cfg(unix)]
 #[test]
 fn write_to_new_file_beside_a_symlink_still_works() {
@@ -166,12 +161,9 @@ fn write_to_new_file_beside_a_symlink_still_works() {
     assert!(guard.check_write(&root.path().join("fresh.txt")).is_ok());
 }
 
-/// A symlink to a *file* outside the root must not be walked into.
-///
-/// This is the case that actually exercises the per-entry check. A symlink to a
-/// *directory* does not: `DirEntry::file_type` is lstat-based, so `is_dir()` is
-/// false for it and the walk never descends regardless. Mutation testing showed
-/// directory-symlink tests stay green with the check deleted entirely.
+/// A *file* is what exercises the per-entry check: `DirEntry::file_type` is
+/// lstat-based, so `is_dir()` is false for a directory symlink and the walk never
+/// descends into one regardless of the check.
 #[cfg(unix)]
 #[test]
 fn walk_does_not_follow_a_symlink_to_a_file_outside_the_root() {
@@ -193,8 +185,7 @@ fn walk_does_not_follow_a_symlink_to_a_file_outside_the_root() {
     assert_eq!(found.len(), 1, "expected only the in-root file: {found:?}");
 }
 
-/// A symlink to a file *inside* the root is still reachable, or the test above
-/// would pass on a walk that simply skips every symlink.
+/// Without this, the test above would pass on a walk that skips every symlink.
 #[cfg(unix)]
 #[test]
 fn walk_includes_a_symlink_to_a_file_inside_the_root() {
@@ -258,13 +249,10 @@ fn walk_refuses_a_root_outside_the_policy() {
     assert!(guard.walk_readable(elsewhere.path(), usize::MAX).is_err());
 }
 
-/// Refusals must not reveal whether a path outside the policy exists.
-///
-/// `canonicalize` fails differently for a missing file (ENOENT), an
-/// unreadable parent (EACCES) and a path that resolves but is out of bounds.
-/// Passing those differences to a caller turns the guard into a filesystem
-/// oracle: a prompt-injected model can map the host by probing paths and
-/// reading the reason back.
+/// `canonicalize` fails differently for a missing file (ENOENT), an unreadable
+/// parent (EACCES) and a path that resolves but is out of bounds. Passing the
+/// difference back turns the guard into a filesystem oracle: a prompt-injected model
+/// can map the host by probing paths and reading the reason.
 #[test]
 fn refusals_outside_the_policy_are_indistinguishable() {
     let allowed = tempfile::tempdir().unwrap();
@@ -289,7 +277,6 @@ fn refusals_outside_the_policy_are_indistinguishable() {
     );
 }
 
-/// The same for writes, which already behaved this way — pinned so it stays.
 #[test]
 fn write_refusals_outside_the_policy_are_indistinguishable() {
     let allowed = tempfile::tempdir().unwrap();
@@ -312,11 +299,9 @@ fn write_refusals_outside_the_policy_are_indistinguishable() {
     );
 }
 
-/// Inside an allowed root, "no such file" is honest feedback and must survive.
-///
-/// The policy already grants this directory, so saying a file in it is absent
-/// discloses nothing the caller was not entitled to learn — and a model told
-/// only "refused" would retry a path it is allowed to use.
+/// The policy already grants this directory, so reporting a file in it absent
+/// discloses nothing the caller was not entitled to learn — and a model told only
+/// "refused" would retry a path it is allowed to use.
 #[test]
 fn a_missing_file_inside_an_allowed_root_still_says_so() {
     let root = tempfile::tempdir().unwrap();
@@ -333,7 +318,6 @@ fn a_missing_file_inside_an_allowed_root_still_says_so() {
     );
 }
 
-/// The distinction survives one level down, where the parent is in-root.
 #[test]
 fn a_missing_file_in_an_allowed_subdirectory_still_says_so() {
     let root = tempfile::tempdir().unwrap();
@@ -407,8 +391,8 @@ fn open_write_refuses_a_read_only_grant() {
     );
 }
 
-/// `open_write` truncates, matching the `write` tool's replace-the-file
-/// semantics — otherwise a shorter write would leave a tail of the old content.
+/// Matches the `write` tool's replace-the-file semantics: otherwise a shorter write
+/// leaves a tail of the old content.
 #[test]
 fn open_write_truncates_existing_content() {
     use std::io::Write;
@@ -425,17 +409,10 @@ fn open_write_truncates_existing_content() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "short");
 }
 
-/// An execute grant permits reading, because that is what the axis grants.
-///
-/// [`SandboxPolicy::executable_paths`] is documented as "paths the process may
-/// read *and* execute", and `allow_read_execute` says why it hands out both: a
-/// program needs `Execute` on the binary and `ReadFile` on the libraries its
-/// loader pulls in, so execute alone would start nothing. The kernel layer
-/// matches — `AccessFs::from_read` bundles `ReadFile`/`ReadDir` with `Execute`.
-///
-/// `FsGuard` consulted only the read and write axes, so under `--allow-exec DIR`
-/// `bash` could `cat` a file that the native `read` tool refused. Regression
-/// test for #50.
+/// A program needs `Execute` on the binary and `ReadFile` on the libraries its
+/// loader pulls in, so execute alone would start nothing; the kernel layer matches,
+/// as `AccessFs::from_read` bundles `ReadFile`/`ReadDir` with `Execute`. If `FsGuard`
+/// disagrees, `bash` and the native `read` tool answer differently for one policy.
 #[test]
 fn an_execute_grant_permits_reading() {
     let root = tempfile::tempdir().unwrap();
@@ -450,10 +427,8 @@ fn an_execute_grant_permits_reading() {
     );
 }
 
-/// Widening read to the execute axis must not widen write along with it.
-///
-/// The kernel grants `from_read` there and nothing more, so being able to run
-/// `ls` must still not confer the right to replace it.
+/// The kernel grants `from_read` on that axis and nothing more, so being able to run
+/// `ls` must not confer the right to replace it.
 #[test]
 fn an_execute_grant_does_not_permit_writing() {
     let root = tempfile::tempdir().unwrap();
@@ -468,14 +443,8 @@ fn an_execute_grant_does_not_permit_writing() {
     );
 }
 
-/// The in-process layer must grant exactly what the axis table says, for every
-/// axis — including one added after this test was written.
-///
-/// #50 was this property broken on one axis: `FsGuard::new` consulted the read
-/// and write lists and never looked at the execute axis, so `bash` could `cat` a
-/// file the native `read` tool refused under the same policy. The pairs below
-/// pin today's three axes by hand; this is the same claim stated over
-/// [`Axis::ALL`], so the next axis cannot slip through the way that one did.
+/// The same claim as the pairs above, stated over [`Axis::ALL`], so an axis added
+/// later cannot slip through the way the execute axis once did.
 #[test]
 fn every_axis_grants_exactly_what_the_table_says() {
     use sandbx_core::Axis;
@@ -504,16 +473,10 @@ fn every_axis_grants_exactly_what_the_table_says() {
     }
 }
 
-/// The invariant behind an infallible constructor.
-///
-/// `FsGuard::new` returns `Self`, not a `Result`, and that holds only because
-/// every root it cannot resolve is dropped. A policy may name a directory that
-/// has not been created yet, and `canonicalize` fails identically on that and
-/// on a path it may not traverse — so dropping denies rather than permits, and
-/// there is no error left to report.
-///
-/// Nothing asserted that before: the signature says construction cannot fail,
-/// while the reason it cannot was only readable in `canonical_roots` (#56).
+/// `FsGuard::new` returns `Self` rather than a `Result`, which holds only because a
+/// root it cannot resolve is dropped: a policy may name a directory not created yet,
+/// and `canonicalize` fails identically on that and on a path it may not traverse, so
+/// dropping denies rather than permits and leaves no error to report.
 #[test]
 fn a_root_that_cannot_be_resolved_is_dropped_rather_than_refused() {
     let root = tempfile::tempdir().unwrap();
@@ -527,17 +490,15 @@ fn a_root_that_cannot_be_resolved_is_dropped_rather_than_refused() {
             .allow_write(&absent),
     );
 
-    // The dropped root grants nothing, on either axis.
     assert!(guard.check_read(&absent.join("inside.txt")).is_err());
     assert!(guard.check_write(&absent.join("inside.txt")).is_err());
     // And it did not widen into a sibling that does exist.
     assert!(guard.check_read(&real).is_err());
 }
 
-/// The walk collects every readable path into memory before a caller reads a
-/// byte, so an unbounded tree is unbounded time *and* unbounded memory. The cap
-/// stops the walk rather than trimming the result afterwards, which is the
-/// difference between bounding the work and bounding the answer.
+/// The walk collects every readable path into memory first, so an unbounded tree is
+/// unbounded memory. The cap stops the walk rather than trimming the result, which is
+/// the difference between bounding the work and bounding the answer.
 #[test]
 fn walk_stops_at_the_file_cap() {
     let root = tempfile::tempdir().unwrap();
@@ -552,8 +513,7 @@ fn walk_stops_at_the_file_cap() {
     assert!(walk.truncated, "cap applied without reporting it");
 }
 
-/// A tree that fits is not reported as cut off: the flag is what a tool turns
-/// into "there may be more", and a false one teaches the model to distrust it.
+/// The flag is what a tool turns into "there may be more".
 #[test]
 fn walk_under_the_cap_is_not_truncated() {
     let root = tempfile::tempdir().unwrap();
@@ -567,9 +527,8 @@ fn walk_under_the_cap_is_not_truncated() {
     assert!(!walk.truncated);
 }
 
-/// A tree of exactly the cap's size is not cut off either. Inferring truncation
-/// from `files.len() == max` would report this one as partial, which is why the
-/// walk carries the flag rather than letting the caller deduce it.
+/// Inferring truncation from `files.len() == max` would report this tree as partial,
+/// which is why the walk carries the flag rather than letting the caller deduce it.
 #[test]
 fn walk_of_exactly_the_cap_is_not_truncated() {
     let root = tempfile::tempdir().unwrap();

@@ -1,9 +1,8 @@
-//! Tries to connect to a pathname AF_UNIX socket and read from it.
+//! Tries to connect to a pathname AF_UNIX socket and read from it. Test-only.
 //!
-//! Test-only. A netns isolates only *abstract* unix sockets; pathname sockets
-//! live in the filesystem and cross it freely, so this probes whether a policy
-//! that denies network still lets a command reach host daemons
-//! (systemd's bus, docker.sock, the ssh-agent) over a unix socket.
+//! A netns isolates only *abstract* unix sockets; pathname sockets live in the
+//! filesystem and cross it freely, so a policy that denies network can still
+//! reach host daemons (systemd's bus, docker.sock, an ssh-agent).
 
 use std::io::Read;
 
