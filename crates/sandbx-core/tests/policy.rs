@@ -38,7 +38,7 @@ fn default_policy_denies_everything() {
 
 /// A command cannot start without its interpreter, loader and shared libraries.
 #[test]
-fn system_executables_grants_the_paths_a_command_needs_to_start() {
+fn system_executables_grants_what_a_command_needs() {
     let policy = SandboxPolicy::default().allow_system_executables();
 
     for expected in ["/usr", "/bin", "/lib"] {
@@ -297,7 +297,7 @@ fn a_grant_lands_only_on_its_own_axis() {
 /// Every consumer iterates `granted_paths`: a pair dropped here is a permission
 /// silently withheld, and a pair invented is one silently added.
 #[test]
-fn granted_paths_yields_every_grant_once_in_axis_order() {
+fn granted_paths_yields_each_grant_in_axis_order() {
     use sandbx_core::Axis;
 
     let policy = SandboxPolicy::default()

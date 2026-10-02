@@ -19,7 +19,7 @@ fn kernel_last_cap() -> u8 {
 }
 
 #[test]
-fn the_caps_crate_covers_every_capability_this_kernel_has() {
+fn the_caps_crate_covers_every_kernel_capability() {
     let kernel_last = kernel_last_cap();
     let known_last = caps::all()
         .iter()

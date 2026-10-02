@@ -123,7 +123,7 @@ fn records_the_policy_shape_of_a_spawn() {
 /// A name on the trail is one edit away from the value beside it; the count is
 /// enough.
 #[test]
-fn records_how_many_variables_a_spawn_passed_not_which() {
+fn records_how_many_variables_passed_not_which() {
     let policy = SandboxPolicy::default().allow_env("AWS_SECRET_ACCESS_KEY");
 
     let lines = capture(|| {

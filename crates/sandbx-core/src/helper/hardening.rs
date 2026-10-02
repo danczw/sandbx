@@ -350,7 +350,7 @@ mod tests {
     /// The control for the rest of this module; on its own it pins almost nothing, since
     /// counting four tokens from the left passes it too.
     #[test]
-    fn the_parent_pid_is_the_field_after_the_process_state() {
+    fn the_parent_pid_follows_the_process_state() {
         let stat = stat_line("bash");
 
         assert_eq!(
@@ -363,7 +363,7 @@ mod tests {
     /// Counting from the left returns the process state, which never equals a pid, so
     /// every run under a binary whose name has a space would be refused.
     #[test]
-    fn an_executable_name_with_a_space_does_not_shift_the_field() {
+    fn a_space_in_the_executable_name_shifts_nothing() {
         let stat = stat_line("my program");
 
         assert_eq!(
@@ -376,7 +376,7 @@ mod tests {
     /// Why the split is on the *last* `)`: splitting on the first stops inside such a
     /// name and reads its remainder as the fields after it.
     #[test]
-    fn an_executable_name_containing_a_paren_does_not_truncate_the_parse() {
+    fn a_paren_in_the_executable_name_truncates_nothing() {
         let stat = stat_line("weird ) name");
 
         assert_eq!(
@@ -394,7 +394,7 @@ mod tests {
     /// and `confirm_supervisor` runs before the `exec`, so field 2 is sandbx's helper
     /// binary. The sandboxed command never appears here.
     #[test]
-    fn an_executable_name_shaped_like_the_fields_after_it_is_not_read_as_one() {
+    fn an_executable_name_shaped_like_a_field_is_not_one() {
         let stat = stat_line(") 1 2 3");
 
         assert_eq!(
@@ -407,7 +407,7 @@ mod tests {
     /// Counting from the left finds a fourth token in the first case, and would hand
     /// [`confirm_supervisor`] a pid out of an unparseable line.
     #[test]
-    fn a_line_with_no_executable_name_to_split_on_yields_nothing() {
+    fn a_line_with_no_executable_name_yields_nothing() {
         for stat in ["4242 bash S 1234 4242", "not a stat line", ""] {
             assert_eq!(
                 ppid_from_stat(stat),
@@ -446,7 +446,7 @@ mod tests {
     /// leave `PPid:` naming init while the stat line names the old pid. Not worth
     /// guarding: under `cargo test` the parent is cargo, which outlives the harness.
     #[test]
-    fn the_parse_agrees_with_what_procfs_reports_under_another_name() {
+    fn the_parse_agrees_with_procfs_under_another_name() {
         let stat = std::fs::read_to_string("/proc/self/stat").expect("procfs is mounted");
         let status = std::fs::read_to_string("/proc/self/status").expect("procfs is mounted");
 
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn the_identity_map_is_written_in_the_order_the_kernel_requires() {
+    fn the_identity_map_is_written_in_kernel_order() {
         let mut written = Vec::new();
 
         let degraded = map_identity_into_userns_with(1000, 2000, |path, contents| {
@@ -516,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn a_map_the_kernel_refuses_reports_a_degradation_and_stops() {
+    fn a_refused_map_reports_a_degradation_and_stops() {
         for refused in [
             "/proc/self/setgroups",
             "/proc/self/gid_map",

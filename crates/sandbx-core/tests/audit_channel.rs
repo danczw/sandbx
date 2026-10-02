@@ -100,10 +100,10 @@ fn bounding_set_is_droppable() -> bool {
 ///
 /// Both branches assert, because returning early on one would report `ok` without
 /// checking anything — the argument
-/// `the_bounding_set_is_cleared_or_left_exactly_as_inherited` makes about the same
+/// `the_bounding_set_is_cleared_or_left_inherited` makes about the same
 /// two hosts.
 #[test]
-fn the_bounding_set_reports_degraded_exactly_when_the_kernel_refuses_the_drop() {
+fn the_bounding_set_degrades_only_on_a_refused_drop() {
     let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
     // Without this the droppable branch passes on a run that never happened: a command
@@ -143,7 +143,7 @@ fn the_bounding_set_reports_degraded_exactly_when_the_kernel_refuses_the_drop() 
 /// be rejected for having no separator while the sandbox had in fact let it
 /// through.
 #[test]
-fn the_sandboxed_command_cannot_write_the_audit_channel() {
+fn the_command_cannot_write_the_audit_channel() {
     let (output, lines) = sandboxed(
         // `|| true` so the command's own exit status does not depend on whether
         // fd 0 accepted the write; this test is about where the bytes went.
@@ -189,7 +189,7 @@ fn the_commands_own_output_carries_no_audit_records() {
 /// repeated one a re-sent short write, and a second spawn record
 /// `record_degradations` re-emitting on both the timeout and the ordinary path.
 #[test]
-fn every_record_on_the_trail_names_a_real_mechanism_at_most_once() {
+fn every_record_names_a_real_mechanism_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
     let degraded: Vec<_> = lines

@@ -68,7 +68,7 @@ fn union(
 /// Directory-only rights are invalid on a regular file, and the kernel rejects the whole
 /// ruleset if one is attached to it — so a file rule must come out narrowed.
 #[test]
-fn a_rule_on_a_regular_file_drops_directory_only_rights() {
+fn a_file_rule_drops_directory_only_rights() {
     let dir = tempdir();
     let file = plain_file(&dir);
     let policy = SandboxPolicy::default()
@@ -128,7 +128,7 @@ fn a_policy_with_no_paths_produces_no_rules() {
 /// the kernel unions. A grant dropped here is a permission the command silently does not
 /// get.
 #[test]
-fn every_grant_produces_a_rule_even_for_a_repeated_path() {
+fn every_grant_produces_a_rule_even_when_repeated() {
     let dir = tempdir();
     let file = plain_file(&dir);
     let policy = SandboxPolicy::default()

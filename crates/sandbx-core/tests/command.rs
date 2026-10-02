@@ -19,7 +19,7 @@ fn defaults_to_re_executing_the_current_binary() {
 /// Positional and ahead of the policy: `HelperArgs::decode` refuses a flag it does
 /// not recognise, so `exec_sandboxed` splits this one off before decoding.
 #[test]
-fn asks_the_helper_to_report_degradations_on_the_channel() {
+fn asks_the_helper_to_report_on_the_channel() {
     let (_, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
         .helper("/nonexistent/helper")
         .command_line()
@@ -161,7 +161,7 @@ fn a_command_that_outruns_its_timeout_is_killed() {
 /// this policy does not grant, so the shell would bail out before forking anything.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
-fn a_backgrounded_grandchild_does_not_hold_the_call_open() {
+fn a_backgrounded_grandchild_frees_the_call() {
     let started = std::time::Instant::now();
 
     let result = SandboxedCommand::new(
@@ -230,7 +230,7 @@ fn without_a_timeout_a_command_runs_to_completion() {
 /// at ourselves does not kill us and the `128 + n` form comes out instead.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
-fn a_command_killed_by_a_signal_is_reported_as_signalled() {
+fn a_command_killed_by_a_signal_reports_signalled() {
     use std::os::unix::process::ExitStatusExt;
 
     let faulting = std::path::Path::new("/usr/bin/python3");
@@ -339,7 +339,7 @@ fn a_backgrounded_descendant_dies_with_the_command() {
 /// minute, so a regression costs a slow test instead of a hung suite.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
-fn without_a_timeout_a_descendant_does_not_block_the_call() {
+fn without_a_timeout_a_descendant_does_not_block() {
     let started = std::time::Instant::now();
 
     let output = SandboxedCommand::new(
@@ -372,7 +372,7 @@ fn without_a_timeout_a_descendant_does_not_block_the_call() {
 /// the pipe (no stdout redirect), so the call returning at all is asserted alongside.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
-fn a_descendant_that_escapes_the_process_group_is_killed_with_it() {
+fn a_descendant_that_leaves_the_group_is_still_killed() {
     let dir = tempfile::tempdir().unwrap();
     let canary = dir.path().join("canary");
     let started = std::time::Instant::now();

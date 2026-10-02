@@ -161,7 +161,7 @@ fn malformed_arguments_do_not_run_the_command() {
 /// outside it; `/proc` is the host's, so its ppid field still names the supervisor in
 /// host numbering. Pid 1 is a claim no stage can legally receive.
 #[test]
-fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
+fn the_inner_stage_refuses_a_foreign_supervisor() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
     // the statement, which would leave `!marker.exists()` below asserting nothing.
     let dir = tempfile::tempdir().unwrap();
@@ -206,7 +206,7 @@ fn the_inner_stage_refuses_a_supervisor_it_is_not_a_child_of() {
 /// assertion fails on its own; under a `default()` policy the exec would be denied and
 /// the test would stay green for the wrong reason.
 #[test]
-fn the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow() {
+fn the_inner_stage_refuses_an_unnarrowed_environment() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
     // the statement, and `!marker.exists()` would then assert nothing.
     let dir = tempfile::tempdir().unwrap();
@@ -301,7 +301,7 @@ fn the_command_is_pid_one_of_its_own_namespace() {
 /// caller's uid, so it can signal the caller's processes — the harness included.
 /// `kill -0` sends nothing; it asks whether the signal could be delivered.
 #[test]
-fn the_command_cannot_signal_a_process_outside_its_namespace() {
+fn the_command_cannot_signal_outside_its_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
     let ours = std::process::id();
     let output = run(&policy, "/bin/sh", &["-c", &format!("kill -0 {ours}")]);
@@ -394,7 +394,7 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
 /// The four sets the helper can always clear, since shrinking them needs no
 /// capability. Hex bitmasks; a fully dropped process reports each as
 /// `0000000000000000`. `CapBnd` is absent — see
-/// [`the_bounding_set_is_cleared_or_left_exactly_as_inherited`].
+/// [`the_bounding_set_is_cleared_or_left_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
 /// Can this machine drop the capability bounding set at all? It needs `CAP_SETPCAP`,
@@ -474,7 +474,7 @@ fn capabilities_are_dropped_when_network_is_allowed() {
 /// `PR_CAPBSET_DROP` per capability, so a mid-loop `EPERM` leaves a partial drop — a
 /// different failure from the documented fallback.
 #[test]
-fn the_bounding_set_is_cleared_or_left_exactly_as_inherited() {
+fn the_bounding_set_is_cleared_or_left_inherited() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
@@ -639,7 +639,7 @@ fn granting_network_does_not_grant_unix_sockets() {
 /// The grant that does allow it, so the denial above is not the sandbox refusing
 /// everything.
 #[test]
-fn an_explicit_unix_socket_grant_permits_the_connection() {
+fn an_explicit_unix_grant_permits_the_connection() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("host.sock");
 
@@ -736,7 +736,7 @@ fn symlinked_policy_root_resolves_consistently() {
 /// `ReadFile`/`ReadDir` in with `Execute`. If `FsGuard` reads only the read and write
 /// axes, `bash` can `cat` a file the native `read` tool refuses under one policy.
 #[test]
-fn execute_grant_reads_consistently_across_both_layers() {
+fn an_execute_grant_reads_the_same_in_both_layers() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("data.txt");
     std::fs::write(&file, b"exec-axis-readable").unwrap();
@@ -1028,7 +1028,7 @@ fn the_command_sees_a_consistent_real_uid() {
 /// on edition 2024. Goes through `run`, which spawns the helper without clearing
 /// anything first, so what is under test is the helper stages doing it themselves.
 #[test]
-fn a_variable_the_policy_omits_does_not_reach_the_command() {
+fn a_variable_the_policy_omits_never_reaches_it() {
     let policy = runtime_paths(SandboxPolicy::default());
 
     let output = run(&policy, "/usr/bin/env", &[]);
@@ -1048,7 +1048,7 @@ fn a_variable_the_policy_omits_does_not_reach_the_command() {
 /// Baseline: without it the denial above would pass on a helper that dropped the
 /// environment wholesale and ignored the allowlist.
 #[test]
-fn a_granted_variable_reaches_the_command_with_its_value() {
+fn a_granted_variable_reaches_it_with_its_value() {
     let expected = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets this for a test");
     let policy = runtime_paths(SandboxPolicy::default()).allow_env("CARGO_MANIFEST_DIR");
 
@@ -1090,7 +1090,7 @@ fn granting_one_variable_passes_only_that_one() {
 /// Absent, not present and empty: a command branching on whether a variable is *set*
 /// reads a blank value as "configured, to nothing".
 #[test]
-fn granting_a_variable_the_harness_lacks_passes_nothing() {
+fn granting_what_the_harness_lacks_passes_nothing() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_env("SANDBX_DEFINITELY_NOT_SET_98");
 
     let output = run(&policy, "/usr/bin/env", &[]);

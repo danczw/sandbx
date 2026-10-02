@@ -204,7 +204,7 @@ its own.
 
 Stage 2's refusal needs a test of its own, because every path that reaches it
 honestly reaches it already narrowed, where the check is trivially satisfied:
-`the_inner_stage_refuses_an_environment_an_earlier_stage_did_not_narrow` invokes the
+`the_inner_stage_refuses_an_unnarrowed_environment` invokes the
 inner stage directly, naming the test harness as the supervisor so the liveness
 check passes, and plants a variable with `Command::env`. Without it the check would
 be as deletable-with-a-green-suite as the lines it exists to pin.

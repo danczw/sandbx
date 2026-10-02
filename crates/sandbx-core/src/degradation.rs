@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unrecognised_mechanism_is_refused_rather_than_echoed() {
+    fn an_unrecognised_mechanism_is_refused() {
         let decoded = decode("not_a_mechanism\tsomething plausible\n");
 
         assert!(
@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn a_malformed_line_does_not_discard_the_records_around_it() {
+    fn a_malformed_line_keeps_the_records_around_it() {
         let channel = format!(
             "garbage\nnot_a_mechanism\tplausible\n{}\tleft as inherited\n",
             Degradation::CapabilityBoundingSet.label()
@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn more_records_than_there_are_steps_are_not_all_accepted() {
+    fn more_records_than_steps_are_not_all_accepted() {
         let line = format!("{}\tagain\n", Degradation::CapabilityBoundingSet.label());
         let channel = line.repeat(RECORD_LIMIT + 5);
 

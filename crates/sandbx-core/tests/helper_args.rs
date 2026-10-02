@@ -107,7 +107,7 @@ fn round_trips_a_grant_on_every_axis() {
 /// Derived from the table too, so the flag spellings are not restated: a flag
 /// `encode` emits is a flag `decode` must police.
 #[test]
-fn a_path_flag_without_its_path_is_rejected_on_every_axis() {
+fn every_axis_rejects_a_path_flag_without_its_path() {
     use sandbx_core::Axis;
 
     for axis in Axis::ALL {
