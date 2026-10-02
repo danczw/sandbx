@@ -10,7 +10,7 @@
 //! point at which to reach for trait objects, not before.
 //!
 //! What a tool *is* — its name, the description the model steers on, its argument
-//! schema, its executor — is one [`ToolSpec`] in the tool's own module, beside
+//! schema, its executor — is one `ToolSpec` in the tool's own module, beside
 //! the input struct and the `execute` those four describe. Four parallel matches
 //! here let an arm be transposed into a neighbour's and still compile, which
 //! happened once (#55) and went unnoticed a second time (#88). One match moves
