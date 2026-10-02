@@ -60,8 +60,8 @@ fn read_grant_does_not_permit_writing() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "original");
 }
 
-/// The agent can plant symlinks in any writable root, so a symlink leaf must not
-/// become a write to wherever it points.
+/// The agent can plant symlinks in any writable root, so following one would land a
+/// write outside the policy.
 #[cfg(unix)]
 #[test]
 fn refuses_to_write_through_a_symlink_leaf() {

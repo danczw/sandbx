@@ -1,17 +1,15 @@
 //! The spawn seam on `ExecutionContext`.
 //!
-//! `bash` is the only built-in that spawns, and it used to assemble the policy,
-//! helper and timeout by hand. These assert the context does it instead, so a
-//! second spawning tool cannot forget one — and so no tool needs to be handed
-//! the raw policy in order to spawn at all (#56).
+//! `bash` is the only built-in that spawns. These assert the context assembles the
+//! policy, helper and timeout, so a second spawning tool cannot forget one — and no
+//! tool needs the raw policy in order to spawn at all.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use sandbx_core::SandboxPolicy;
 use sandbx_tools::ExecutionContext;
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
-    // The test harness does not dispatch helper mode, so point at a binary that
-    // does rather than re-executing this one.
+    // The test harness does not dispatch helper mode; point at a binary that does.
     ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper"))
 }
 
@@ -23,15 +21,14 @@ fn rendered(output: &std::process::Output) -> String {
     )
 }
 
-/// The seam carries the policy, so a command built through it is confined
-/// without the caller passing the policy in.
+/// The seam carries the policy, so the caller never passes one in.
 #[test]
 fn a_command_from_the_seam_is_confined_by_the_policy() {
     let dir = tempfile::tempdir().unwrap();
     let secret = dir.path().join("secret.txt");
     std::fs::write(&secret, b"SECRET-CONTENTS").unwrap();
 
-    // dir is deliberately not granted.
+    // dir is not granted.
     let ctx = context(SandboxPolicy::default().allow_system_executables());
     let output = ctx
         .sandboxed_command("/bin/sh")
@@ -47,8 +44,7 @@ fn a_command_from_the_seam_is_confined_by_the_policy() {
     );
 }
 
-/// Granted paths stay reachable, or the test above would pass on a seam that
-/// simply never works.
+/// Without this, the test above would pass on a seam that never works at all.
 #[test]
 fn a_command_from_the_seam_still_reaches_a_granted_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -73,8 +69,6 @@ fn a_command_from_the_seam_still_reaches_a_granted_path() {
     );
 }
 
-/// And it carries the timeout, which the caller would otherwise have to
-/// remember on every spawn.
 #[test]
 fn a_command_from_the_seam_carries_the_context_timeout() {
     let ctx = context(SandboxPolicy::default().allow_system_executables())

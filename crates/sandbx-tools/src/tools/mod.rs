@@ -1,15 +1,12 @@
 //! One module per tool, each holding every fact about it: an input struct, an
-//! `execute` taking that struct by value, and a `SPEC` naming the tool and
-//! pointing at the two one-line fns that build its schema and run it.
-//! [`crate::BuiltinTool`] reaches all of it through a single match, so the four
-//! cannot drift apart the way four parallel matches let them (#55, #88).
+//! `execute` taking it by value, and a `SPEC` naming the tool and pointing at the
+//! fns that build its schema and run it. [`crate::BuiltinTool`] reaches all four
+//! through a single match, so they cannot drift apart.
 //!
-//! A `SPEC` description names the constraint that changes how the tool is called
-//! — an absolute path, a literal rather than a pattern, a match that must be
-//! unique — because a model that learns that from an error has already spent a
-//! turn. The rustdoc on `execute` is the *why*, for a reader of the code; the
-//! description is the *what*, for a caller of the tool. They say deliberately
-//! different things.
+//! A `SPEC` description names the constraint that changes how the tool is called —
+//! an absolute path, a literal not a pattern, a match that must be unique — since a
+//! model that learns it from an error has already spent a turn. `execute`'s rustdoc
+//! is the *why* for a reader; the description is the *what* for a caller.
 
 pub mod bash;
 pub mod edit;

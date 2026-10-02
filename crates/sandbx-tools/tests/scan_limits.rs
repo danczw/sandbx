@@ -1,11 +1,10 @@
 //! The work a tool does must stay bounded, not just what it returns.
 //!
-//! `limits.rs` covers the output caps, which trim an answer the tool has already
-//! paid for. These cover the input budget: `grep` and `find` walk a tree and
-//! `grep` reads every file in it, so on a large root the cost is paid before any
-//! cap applies. The in-process tools have no timeout — `ExecutionContext`'s
-//! bounds the spawned command alone — so this budget is the only thing standing
-//! between one broad search and an unbounded turn.
+//! `limits.rs` covers the output caps, which trim an answer already paid for. These
+//! cover the input budget: `grep` and `find` walk a tree and `grep` reads every file
+//! in it, so on a large root the cost is paid before any output cap applies. The
+//! in-process tools have no timeout — `ExecutionContext`'s bounds the spawned
+//! command alone — so this budget is all that bounds one broad search.
 
 use sandbx_core::SandboxPolicy;
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
@@ -51,8 +50,8 @@ fn grep_stops_at_the_file_scan_cap() {
     assert_eq!(hits, 5, "scan cap not applied:\n{}", out.content());
 }
 
-/// The marker matters as much as the cap: a model that cannot tell a complete
-/// search from an abandoned one concludes the symbol does not exist.
+/// The marker matters as much as the cap: a model that cannot tell a complete search
+/// from an abandoned one concludes the symbol does not exist.
 #[test]
 fn grep_reports_that_it_stopped_early() {
     let root = tree(50, "");
@@ -75,8 +74,8 @@ fn grep_reports_that_it_stopped_early() {
     );
 }
 
-/// Bytes, not just file count: one tree of large files costs as much to scan as
-/// a wide tree of small ones, and only the byte budget sees it.
+/// Bytes, not just file count: a few large files cost as much to scan as many small
+/// ones, and only the byte budget sees it.
 #[test]
 fn grep_stops_at_the_byte_scan_budget() {
     let root = tree(50, &"filler\n".repeat(500));
@@ -105,8 +104,8 @@ fn grep_stops_at_the_byte_scan_budget() {
     );
 }
 
-/// `find` never reads a file, so only the walk's cap applies to it — but it has
-/// to report the cut-off for the same reason `grep` does.
+/// `find` never reads a file, so only the walk's cap applies — but it must report
+/// the cut-off for the same reason `grep` does.
 #[test]
 fn find_reports_a_truncated_walk() {
     let root = tree(50, "");
@@ -129,8 +128,8 @@ fn find_reports_a_truncated_walk() {
     );
 }
 
-/// A search that fit inside the budget is not marked. A marker that appears on
-/// complete results is worse than none: it teaches the model to ignore it.
+/// A marker on complete results is worse than none: it teaches the model to ignore
+/// it.
 #[test]
 fn a_search_within_the_budget_is_not_marked() {
     let root = tree(3, "");
@@ -139,8 +138,7 @@ fn a_search_within_the_budget_is_not_marked() {
         ToolLimits::default(),
     );
 
-    // Each takes a differently named argument, so the input is per tool rather
-    // than one shared value.
+    // Each takes a differently named argument, so the input is per tool.
     let path = root.path().to_str().unwrap();
     let inputs = [
         (

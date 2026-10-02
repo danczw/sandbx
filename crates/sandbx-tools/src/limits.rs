@@ -1,12 +1,8 @@
 /// How much a tool may do, and how much it may return.
 ///
-/// Output goes straight into the model's context, so an uncapped result can
-/// evict the conversation that explains what the agent was doing — and the
-/// tokens are spent before `sandbx-agent` ever sees the result, so it cannot be
-/// fixed downstream.
-///
-/// Defaults are deliberately generous enough that ordinary work never notices
-/// them, and small enough that one broad search cannot swamp a session.
+/// Output goes straight into the model's context, and the tokens are spent before
+/// `sandbx-agent` sees the result, so an uncapped result cannot be fixed
+/// downstream — it evicts the conversation that explains what the agent was doing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolLimits {
     max_entries: usize,
@@ -18,18 +14,16 @@ pub struct ToolLimits {
 impl Default for ToolLimits {
     fn default() -> Self {
         Self {
-            // Enough to see a real pattern of matches; far short of a whole tree.
+            // A pattern of matches, far short of a whole tree.
             max_entries: 200,
-            // Comfortably larger than a source file, well short of a context window.
+            // Larger than a source file, well short of a context window.
             max_bytes: 256 * 1024,
-            // A whole source tree fits; a checkout padded with vendored
-            // dependencies and build output does not. The walk holds one
-            // `PathBuf` per file, so this bounds its memory as well as its time.
+            // A source tree fits; one padded with vendored deps and build output does
+            // not. The walk holds a `PathBuf` per file, so this bounds memory too.
             max_files_scanned: 10_000,
-            // Enough to read every source file in a large project, far short of
-            // the pack files and binaries a repository also contains. Counted
-            // across the whole search, not per file: a hundred 2 MiB files cost
-            // the same as one 200 MiB file, and only a total sees that.
+            // Every source file in a large project, short of its pack files and
+            // binaries. Counted across the whole search: a hundred 2 MiB files cost
+            // what one 200 MiB file does, and only a total sees that.
             max_bytes_scanned: 64 * 1024 * 1024,
         }
     }
@@ -76,9 +70,8 @@ impl ToolLimits {
 
     /// Trim `lines` to the entry cap, reporting how many were dropped.
     ///
-    /// The count is included rather than a bare "truncated" because a model that
-    /// knows it saw 200 of 4000 matches can narrow its search, where one that
-    /// only knows it was cut off cannot judge by how much.
+    /// The count, not a bare "truncated": a model that knows it saw 200 of 4000
+    /// matches can narrow its search.
     pub(crate) fn take_entries(&self, mut lines: Vec<String>) -> Vec<String> {
         let total = lines.len();
         if total <= self.max_entries {
@@ -99,8 +92,7 @@ impl ToolLimits {
             return content;
         }
 
-        // Cutting at a byte offset can land mid-character, which would leave
-        // invalid UTF-8. Back up to the nearest boundary.
+        // Cutting at a byte offset can land mid-character; back up to a boundary.
         let mut end = self.max_bytes;
         while end > 0 && !content.is_char_boundary(end) {
             end -= 1;

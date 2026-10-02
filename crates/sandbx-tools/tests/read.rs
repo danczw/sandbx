@@ -1,8 +1,8 @@
 //! Public contract of the `read` tool.
 //!
-//! `read` is a native-Rust tool: it never spawns a process, so the kernel
-//! enforcement in `sandbx-core` never sees it. `FsGuard` is the only thing
-//! keeping it inside the policy, which is why these tests dwell on refusal.
+//! `read` never spawns a process, so the kernel enforcement in `sandbx-core` never
+//! sees it. `FsGuard` is the only thing keeping it inside the policy, which is why
+//! these dwell on refusal.
 
 use sandbx_core::SandboxPolicy;
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
@@ -41,8 +41,7 @@ fn refuses_a_path_outside_every_allowed_root() {
     assert!(matches!(err, ToolError::Denied { .. }), "got {err:?}");
 }
 
-/// A missing file is a plain failure, not a policy refusal — the agent should be
-/// told which it was, since only one of them is worth retrying differently.
+/// Only one of the two is worth the agent retrying differently.
 #[test]
 fn distinguishes_a_missing_file_from_a_refusal() {
     let root = tempfile::tempdir().unwrap();
@@ -58,7 +57,7 @@ fn distinguishes_a_missing_file_from_a_refusal() {
     assert!(matches!(err, ToolError::Denied { .. }) || matches!(err, ToolError::Failed { .. }));
 }
 
-/// Malformed input is rejected before any filesystem access is attempted.
+/// Rejected before any filesystem access is attempted.
 #[test]
 fn rejects_input_that_does_not_match_the_schema() {
     let root = tempfile::tempdir().unwrap();
@@ -71,8 +70,7 @@ fn rejects_input_that_does_not_match_the_schema() {
     assert!(matches!(err, ToolError::BadInput { .. }), "got {err:?}");
 }
 
-/// The name and schema are what the model is shown, so they must exist and
-/// describe the field the tool actually parses.
+/// The schema is what the model is shown, so it must name the field the tool parses.
 #[test]
 fn advertises_a_schema_matching_its_input() {
     assert_eq!(BuiltinTool::Read.name(), "read");
@@ -84,9 +82,8 @@ fn advertises_a_schema_matching_its_input() {
     );
 }
 
-/// An empty file still has to come back as something the model can read. The
-/// Messages API rejects a `tool_result` whose text content is empty, so a tool
-/// that returns `""` does not produce an empty turn — it kills the turn.
+/// The Messages API rejects a `tool_result` whose text is empty, so a tool returning
+/// `""` kills the turn rather than producing an empty one.
 #[test]
 fn reports_an_empty_file_rather_than_returning_nothing() {
     let root = tempfile::tempdir().unwrap();

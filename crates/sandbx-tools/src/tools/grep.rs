@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
 
-/// This tool, as `BuiltinTool` sees it.
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "grep",
     description: "Search file contents beneath a directory for a literal string. \
@@ -13,24 +12,19 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     run,
 };
 
-/// Argument schema for this tool. Built per call: `schema_for!` allocates, so it
-/// cannot be a const value.
 fn schema() -> serde_json::Value {
     schemars::schema_for!(GrepInput).to_value()
 }
 
-/// Parse untyped arguments into this tool's own input struct, then run it.
 fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     execute(crate::parse(input)?, ctx)
 }
 
 /// Files above this size are skipped without reading.
 ///
-/// A source file is never this large, while a repository checkout is full of
-/// pack files, build output and vendored binaries that are. Reading them costs
-/// time and peak memory to produce nothing, since they fail UTF-8 validation
-/// anyway — and `read_to_string` only discovers that *after* allocating the
-/// whole file.
+/// No source file is this large; a checkout's pack files and binaries are, and they
+/// fail UTF-8 validation anyway — which `read_to_string` discovers only after
+/// allocating the whole file.
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Arguments for the `grep` tool.
@@ -44,9 +38,8 @@ pub struct GrepInput {
 
 /// Search file contents beneath a directory for a literal string.
 ///
-/// Deliberately a literal search, not a regex: a regex would pull in a
-/// dependency and a whole class of pathological-pattern behaviour, for a tool
-/// whose common use is "find where this symbol is mentioned".
+/// A literal search, not a regex: a regex adds a dependency and a class of
+/// pathological-pattern behaviour, for a tool mostly asked where a symbol appears.
 pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let walk = ctx
         .guard()
@@ -57,27 +50,22 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     let mut scanned = 0usize;
     let mut stopped_early = walk.truncated;
 
-    // Already ordered, so nothing is sorted afterwards: `walk_readable` returns
-    // files sorted and lines are visited ascending within each file. Sorting the
-    // rendered lines instead would be wrong anyway — it orders line numbers
-    // lexicographically, putting `:10` before `:2`.
+    // Nothing is sorted afterwards: `walk_readable` returns files sorted and lines
+    // are visited ascending. Sorting the rendered lines would put `:10` before `:2`.
     for file in walk.files {
-        // Checked before the read, so the budget bounds what is actually read
-        // rather than being noticed once it has already been exceeded. A file
-        // skipped below costs nothing and is not charged for.
+        // Before the read, so the budget bounds what is read rather than noticing
+        // once it is spent. A file skipped below is not charged for.
         if scanned >= ctx.limits().max_bytes_scanned() {
             stopped_early = true;
             break;
         }
 
-        // Checked before opening rather than after: `read_to_string` would read
-        // the whole file before failing UTF-8 validation on a binary.
+        // Before opening: `read_to_string` reads a binary whole, then fails.
         if file.metadata().is_ok_and(|m| m.len() > MAX_FILE_BYTES) {
             continue;
         }
 
-        // Read through the guard, so the handle rather than a re-resolved path is
-        // what gets read. A binary file fails UTF-8 validation and is skipped.
+        // A binary that slipped under the size cap fails UTF-8 validation here.
         let Ok(content) = crate::read_file(&file, ctx) else {
             continue;
         };

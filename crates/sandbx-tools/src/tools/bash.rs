@@ -2,7 +2,6 @@ use serde::Deserialize;
 
 use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
 
-/// This tool, as `BuiltinTool` sees it.
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "bash",
     description: "Run a shell command. Use it for what the other tools do not \
@@ -11,13 +10,10 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     run,
 };
 
-/// Argument schema for this tool. Built per call: `schema_for!` allocates, so it
-/// cannot be a const value.
 fn schema() -> serde_json::Value {
     schemars::schema_for!(BashInput).to_value()
 }
 
-/// Parse untyped arguments into this tool's own input struct, then run it.
 fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     execute(crate::parse(input)?, ctx)
 }
@@ -31,14 +27,11 @@ pub struct BashInput {
 
 /// Run a shell command under the sandbox.
 ///
-/// The only built-in that spawns a process, so unlike its siblings the kernel
-/// does the confining: the command comes from
-/// [`ExecutionContext::sandboxed_command`], which applies Landlock, a network
-/// namespace and a seccomp filter before `exec`.
-///
-/// Note the command string is passed to `sh -c` verbatim. That is not an
-/// injection hole to close — running arbitrary commands *is* the tool's purpose,
-/// and the sandbox, not argument parsing, is what bounds the damage.
+/// The only built-in that spawns, so the kernel does the confining:
+/// [`ExecutionContext::sandboxed_command`] applies Landlock, a network namespace
+/// and a seccomp filter before `exec`. The command string reaches `sh -c` verbatim;
+/// running arbitrary commands is the purpose, and the sandbox — not argument
+/// parsing — is what bounds the damage.
 pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let command = ctx
         .sandboxed_command("/bin/sh")
@@ -47,8 +40,7 @@ pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
 
     let output = command.output().map_err(|error| {
         let subject = format!("run `{}`", input.command);
-        // A wedge and a genuine failure call for different reactions, so they
-        // must not arrive as the same variant.
+        // A wedge and a genuine failure need different reactions from the agent.
         match error {
             sandbx_core::SandboxError::TimedOut { after } => ToolError::TimedOut { subject, after },
             error => ToolError::Failed {
@@ -58,22 +50,19 @@ pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         }
     })?;
 
-    // Borrowed, not owned: on the normal all-valid-UTF-8 path `from_utf8_lossy`
-    // hands back the bytes unchanged, and `combine` only needs a `&str`.
+    // Borrowed: `from_utf8_lossy` copies nothing on the valid-UTF-8 path.
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     if output.status.success() {
-        // The largest unbounded source of all: the command chooses how much it
-        // prints, and `cat` on a large file would otherwise return every byte of
-        // it.
+        // The command chooses how much it prints: uncapped, `cat` on a large file
+        // returns every byte of it.
         return Ok(ToolOutput::new(
             ctx.limits().take_bytes(combine(&stdout, &stderr)),
         ));
     }
 
-    // Surface the exit code rather than swallowing it: a command that failed
-    // looks identical to one that produced no output otherwise.
+    // Without the exit code, a failed command looks like one that printed nothing.
     Err(ToolError::Failed {
         subject: format!("run `{}`", input.command),
         detail: format!(
@@ -87,8 +76,7 @@ pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     })
 }
 
-/// Interleave the two streams the model cares about, labelling stderr only when
-/// there is some, so ordinary output stays clean.
+/// Join both streams, labelling stderr only when there is some.
 fn combine(stdout: &str, stderr: &str) -> String {
     match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
         (_, true) => stdout.trim_end().to_string(),

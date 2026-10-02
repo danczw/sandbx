@@ -4,23 +4,17 @@ use crate::ToolLimits;
 
 /// How long a tool's command may run before it is killed.
 ///
-/// Deliberately the tighter end: there is no agent caller yet to measure
-/// against, and a limit that is too short announces itself the first time real
-/// work dies, where one that is too long silently fails to catch the wedge it
-/// exists for. The known pressure point is a cold `cargo build` on a large
-/// workspace; raise this when that actually bites.
+/// The tighter end, since too long silently fails to catch the wedge this exists
+/// for. The known pressure point is a cold `cargo build` on a large workspace.
 pub const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 
 /// What a tool is allowed to touch, and the machinery for enforcing it.
 ///
-/// Built once per session from a [`SandboxPolicy`] and shared by every tool
-/// call. Holds both halves of the sandbox because the built-ins split across
-/// them: native-Rust tools check paths through [`FsGuard`], while `bash` spawns
-/// through the kernel-enforced path.
-///
-/// The policy is private, and reachable only as a configured
-/// [`sandboxed_command`]. That is what keeps the split honest rather than
-/// merely documented — see that method.
+/// Built once per session from a [`SandboxPolicy`] and shared by every tool call.
+/// Holds both halves of the sandbox because the built-ins split across them:
+/// in-process tools check paths through [`FsGuard`], `bash` spawns through the
+/// kernel-enforced path. The policy itself is private, reachable only as a
+/// configured [`sandboxed_command`], which is what keeps that split enforced.
 ///
 /// [`sandboxed_command`]: Self::sandboxed_command
 #[derive(Debug, Clone)]
@@ -35,21 +29,13 @@ pub struct ExecutionContext {
 impl ExecutionContext {
     /// Resolve `policy` into a context tools can execute against.
     ///
-    /// The policy is taken as given, including the parts a caller is likely to
-    /// forget. `bash` needs [`SandboxPolicy::allow_system_executables`] to start
-    /// anything at all, and since #98 it also runs with **exactly** the
-    /// environment the policy names — which for a default policy is none, so no
-    /// `PATH` and no `HOME`. A shell falls back to its own compiled-in search
-    /// path, so `echo` and `/usr/bin` tools still work, but a program in
-    /// `~/.cargo/bin` is not found and `git` or `cargo` misbehave with `HOME`
-    /// unset.
-    ///
-    /// Nothing is added here on the caller's behalf. An agent harness that wants
-    /// the ordinary thing calls
-    /// `allow_system_executables().allow_standard_env()`, the pair `sandbx
-    /// sandbox-run` uses; a harness that wants a tool to see a credential names
-    /// it with [`SandboxPolicy::allow_env`]. Granting either silently here would
-    /// put the decision in the layer that cannot see the agent's threat model.
+    /// Nothing is added on the caller's behalf, including the parts a caller
+    /// forgets: `bash` needs [`SandboxPolicy::allow_system_executables`] to start
+    /// anything, and runs with exactly the environment the policy names — none by
+    /// default, so no `PATH` and no `HOME` (a shell's compiled-in search path still
+    /// finds `/usr/bin`, but `~/.cargo/bin` is missed and `git` misbehaves). The
+    /// ordinary pair is `allow_system_executables().allow_standard_env()`; a
+    /// credential is named with [`SandboxPolicy::allow_env`].
     pub fn new(policy: SandboxPolicy) -> Self {
         Self {
             guard: FsGuard::new(&policy),
@@ -99,16 +85,12 @@ impl ExecutionContext {
     /// A command to spawn, with the policy, the helper and the timeout already
     /// applied.
     ///
-    /// The only route to the policy, and deliberately one that spends it rather
-    /// than lending it out. An accessor returning `&SandboxPolicy` let a native
-    /// filesystem tool read the path lists and open files itself, bypassing the
-    /// TOCTOU-safe handles [`FsGuard`] exists to hand back — the split was
-    /// documented but nothing enforced it (#56). A tool can now spawn, or check
-    /// paths through [`guard`]; neither hands it the lists.
-    ///
-    /// Applying the timeout and helper here rather than at each call site is the
-    /// same argument one layer down: a second spawning built-in cannot forget
-    /// what it never has to remember.
+    /// The only route to the policy, and one that spends it rather than lending it
+    /// out: an accessor returning `&SandboxPolicy` would let an in-process tool read
+    /// the path lists and open files itself, bypassing the TOCTOU-safe handles
+    /// [`FsGuard`] hands back. A tool can spawn, or check paths through [`guard`];
+    /// neither hands it the lists. Timeout and helper are applied here so a second
+    /// spawning built-in cannot forget them.
     ///
     /// [`guard`]: Self::guard
     #[must_use]
