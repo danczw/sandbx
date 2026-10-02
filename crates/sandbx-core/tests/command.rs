@@ -14,6 +14,28 @@ fn defaults_to_re_executing_the_current_binary() {
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
 }
 
+/// The audit channel is opt-in, and `SandboxedCommand` is what opts in: it always
+/// hands the helper a pipe to report degraded hardening on, so it must always say
+/// so (#95). Without the flag the helper writes nothing and a weakened sandbox goes
+/// unrecorded; with it but no pipe, it would write audit records into whatever fd 0
+/// happened to be.
+///
+/// Positional, and ahead of the policy: `HelperArgs::decode` refuses a flag it does
+/// not recognise, so `exec_sandboxed` has to split this one off before decoding.
+#[test]
+fn asks_the_helper_to_report_degradations_on_the_channel() {
+    let (_, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+        .helper("/nonexistent/helper")
+        .command_line()
+        .unwrap();
+
+    assert_eq!(
+        argv.get(1).map(String::as_str),
+        Some("--sandbx-audit-stdin"),
+        "the audit flag must directly follow the dispatch flag: {argv:?}"
+    );
+}
+
 /// The policy must reach the helper intact: a grant lost here is a permission
 /// the tool silently does not get, and one invented here is one it should not
 /// have had.

@@ -159,6 +159,12 @@ impl<'a> AuditEvent<'a> {
     /// every level. A library cannot install one without deciding for whoever
     /// embeds it, so the binary does — and for a while nothing did, which is what
     /// #89 cost. Anything embedding this crate owes itself the same subscriber.
+    ///
+    /// Which is why the re-exec'd helper does not call this at all. That process
+    /// installs no subscriber and must not — its stderr is the sandboxed command's
+    /// own — so the hardening steps that run there name what degraded and let the
+    /// parent emit it, over the channel `degradation.rs` describes (#95). A call
+    /// to this from inside helper mode records nothing.
     pub fn emit(&self) {
         match self {
             Self::Allowed { tool, subject } => tracing::info!(

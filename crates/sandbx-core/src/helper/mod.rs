@@ -23,7 +23,50 @@ use hardening::{
 use ruleset::{enforcement_verdict, fs_rules, landlock_failed, negotiated_abi};
 use seccomp::deny_dangerous_syscalls;
 
+use crate::degradation::Degradation;
 use crate::{HelperArgs, SandboxError};
+
+/// Argument telling the first stage that its stdin is the audit channel.
+///
+/// Opt-in, and deliberately not implied by [`HELPER_FLAG`](crate::HELPER_FLAG):
+/// without it a helper invoked by hand would write audit records into whatever
+/// fd 0 happens to be — a terminal is writable, so the records would appear on
+/// the screen as if the command had printed them, and a read-only pipe gives
+/// `EBADF`. `SandboxedCommand` always passes it, because it always sets the pipe
+/// up; anything else gets the old behaviour of a degradation that goes unrecorded,
+/// which is the honest outcome when there is nowhere to record it.
+pub(crate) const AUDIT_STDIN_FLAG: &str = "--sandbx-audit-stdin";
+
+/// Write what degraded to the parent, on the pipe it put in our stdin slot.
+///
+/// Every failure is swallowed. This reports that the sandbox is *weaker* than
+/// advertised, and a channel that cannot be written is a lost record rather than a
+/// reason to refuse a command the parent has already been told is running — the
+/// same call `sandbx-cli` makes when the subscriber itself will not install.
+///
+/// The write end arrives in the stdin slot because it is the only descriptor std
+/// can hand a child without `unsafe`, which this crate forbids; stdout and stderr
+/// are the command's own output. `try_clone_to_owned` is what turns the inherited
+/// fd into something writable — `Stdin` is a reader, but the underlying descriptor
+/// was opened for writing, and `File` does not second-guess that. See
+/// `context/decision-helper-audit-channel.md`.
+fn report_degradations(degraded: &[(Degradation, String)]) {
+    use std::io::Write;
+    use std::os::fd::AsFd;
+
+    let records = crate::degradation::encode(degraded);
+    if records.is_empty() {
+        return;
+    }
+
+    let Ok(channel) = std::io::stdin().as_fd().try_clone_to_owned() else {
+        return;
+    };
+
+    // One `write_all` for the whole batch: a short write would split a record
+    // across two, and the parent skips a line it cannot parse.
+    let _ = std::fs::File::from(channel).write_all(records.as_bytes());
+}
 
 /// Supervise a sandboxed command: build the namespaces, then run the inner stage
 /// inside them.
@@ -49,6 +92,14 @@ use crate::{HelperArgs, SandboxError};
 /// a helper that fell through to running the command unrestricted would be the
 /// exact failure the sandbox exists to prevent.
 pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+    // Split off before `decode`, which refuses a flag it does not recognise. It is
+    // not part of the policy grammar for the same reason the supervisor pid is not
+    // (see `exec_inner`): it describes how to report, not what the command may do.
+    let (audit_on_stdin, argv) = match argv.split_first() {
+        Some((flag, rest)) if flag == AUDIT_STDIN_FLAG => (true, rest),
+        _ => (false, argv),
+    };
+
     // Decoded for this stage's own use — it needs to know whether the policy
     // grants network before choosing the unshare flags. What gets passed on is the
     // argv it was given, verbatim: a re-encode here would be a second chance for
@@ -59,7 +110,14 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
     // happens while nothing has been changed yet.
     let exe = crate::command::current_exe()?;
 
-    prepare_supervisor(&request.policy)?;
+    let degraded = prepare_supervisor(&request.policy)?;
+
+    // Before the spawn below, so the write end is gone by the time any other
+    // process exists. Nothing is read back: a best-effort channel carrying a
+    // best-effort record must not be able to fail a run that is otherwise fine.
+    if audit_on_stdin {
+        report_degradations(&degraded);
+    }
 
     // What this spawns is this same binary in inner mode, which restricts itself
     // before becoming the command. `spawn::command` narrows its environment as it
@@ -73,7 +131,17 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         // to the command. Our own pid, in host numbering, which is what the inner
         // stage will read back out of `/proc`.
         .arg(std::process::id().to_string())
-        .args(argv);
+        .args(argv)
+        // The security half of the audit channel, not a tidy-up. Our stdin is the
+        // write end of a pipe the parent reads audit records from; this stage
+        // becomes nothing, but the stage below it becomes the sandboxed command,
+        // which must not inherit a descriptor it could write forged records into —
+        // or hold open, leaving the parent waiting on an EOF that never comes.
+        // `null` rather than leaving it inherited is what makes the channel
+        // unreachable from inside the sandbox. Pinned by
+        // `the_sandboxed_command_cannot_write_the_audit_channel`, which without this
+        // line sees a `degraded` record the command invented.
+        .stdin(std::process::Stdio::null());
 
     let mut child = inner.spawn().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not start the inner sandbox stage",

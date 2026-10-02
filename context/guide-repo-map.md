@@ -137,10 +137,12 @@ Lib `sandbx_cli`, bin `sandbx`. One subcommand: `sandbox-run`.
 3. `decision-enforcement-seam.md` — where policy becomes kernel state
 4. `decision-axis-table.md` — why there is one table
 5. `decision-environment-allowlist.md` — the one bound that is not path-keyed
-6. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-7. `decision-provider-seam.md` — why there is no provider trait, and what is still
+6. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+   recorded, and how one made inside the helper gets out
+7. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+8. `decision-provider-seam.md` — why there is no provider trait, and what is still
    vendor-shaped
-8. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+9. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
    is not given
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

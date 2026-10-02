@@ -25,9 +25,13 @@ use tracing_subscriber::util::SubscriberInitExt;
 /// The filter admits `AUDIT_TARGET` at `INFO` and nothing else. Both halves are
 /// load-bearing. The target half keeps `sandbx-core`'s own `debug!` diagnostics
 /// out, so making the audit trail visible does not also make the internals
-/// user-visible noise. The level bound keeps the `DEBUG`-level notes that share
-/// this target — the best-effort hardening failures in the re-exec'd helper —
-/// out of a record that is meant to be read as decisions.
+/// user-visible noise. The level bound keeps anything below `INFO` that merely
+/// borrowed this target out of a record meant to be read as decisions — the
+/// best-effort hardening failures are `INFO` since #89 and admitted deliberately,
+/// a weakened sandbox not being something an operator should have to opt into
+/// seeing. They are detected in the re-exec'd helper, which installs no subscriber
+/// at all, and reach this one over the audit channel `core/src/degradation.rs`
+/// describes (#95).
 ///
 /// Returns `impl SubscriberInitExt` rather than `impl tracing::Subscriber`: that
 /// is exactly the two methods the two callers need — [`init`] uses `try_init`,

@@ -8,6 +8,7 @@
 //! `super::exec_sandboxed`.
 
 use crate::SandboxError;
+use crate::degradation::Degradation;
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
 ///
@@ -20,12 +21,25 @@ use crate::SandboxError;
 ///   effective set, which an unprivileged process only ever holds inside a user
 ///   namespace it just created. All four sets and `RLIMIT_CORE` are inherited
 ///   across `fork` and `exec`, so dropping them here still covers the command.
-pub(super) fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
-    isolate(policy)?;
+///
+/// Returns what degraded rather than recording it. Nothing here can reach the
+/// audit trail: this runs in the re-exec'd helper, which installs no subscriber,
+/// and cannot install one without writing sandbx's records into the output of the
+/// command being sandboxed (#95). So the two best-effort steps *name* what did not
+/// take effect and [`exec_sandboxed`](super::exec_sandboxed) — the one place that
+/// holds the channel to the parent — reports it. The detail travels as a string
+/// because it is built from an errno here and is prose by the time anyone reads
+/// it.
+pub(super) fn prepare_supervisor(
+    policy: &crate::SandboxPolicy,
+) -> Result<Vec<(Degradation, String)>, SandboxError> {
+    let mut degraded = Vec::new();
+
+    degraded.extend(isolate(policy)?);
 
     // After the unshare, not before: entering a fresh user namespace grants the
     // full capability set *within it*, so dropping earlier would be undone.
-    harden_process_state()?;
+    degraded.extend(harden_process_state()?);
 
     // Here as well as in the inner stage, so that *every* `exec` this design
     // performs is covered by it rather than only the last one.
@@ -42,7 +56,9 @@ pub(super) fn prepare_supervisor(policy: &crate::SandboxPolicy) -> Result<(), Sa
     // Deliberately not removed from the inner stage. It is irreversible and
     // inherited, so the second call is a no-op — but the inner stage must not
     // depend on a caller having set it, since seccomp will not install without it.
-    set_no_new_privs()
+    set_no_new_privs()?;
+
+    Ok(degraded)
 }
 
 /// Die when the supervisor dies (#28).
@@ -175,26 +191,27 @@ fn ppid_from_stat(stat: &str) -> Option<&str> {
 /// below are empty and `no_new_privs` is set, the kernel caps the permitted
 /// set of an `execve`d binary at the old one and refuses to raise inheritable
 /// or ambient, so a leftover bounding bit can never become privilege. So it is
-/// attempted and logged, not enforced — and `SECURITY.md` claims it as
-/// best-effort rather than as part of the boundary. A failure is recorded as an
-/// [`AuditEvent::Degraded`](crate::AuditEvent::Degraded), not at debug level: it
-/// fails on whole classes of host, so the one run where it matters is not the
-/// one where someone thought to raise the log level.
+/// attempted and reported, not enforced — and `SECURITY.md` claims it as
+/// best-effort rather than as part of the boundary. A failure becomes an
+/// [`AuditEvent::Degraded`](crate::AuditEvent::Degraded) at `INFO` and not a
+/// debug-level note: it fails on whole classes of host, so the one run where it
+/// matters is not the one where someone thought to raise the log level. This
+/// function only names the failure; the parent is what emits it, because no
+/// subscriber exists in this process — see [`prepare_supervisor`].
 ///
 /// Order matters within this function: the bounding set is dropped *before*
 /// the effective set, not after. `PR_CAPBSET_DROP` itself requires
 /// `CAP_SETPCAP` in the effective set — clearing effective first would remove
 /// the very right this function needs to drop the bounding set at all.
-fn harden_process_state() -> Result<(), SandboxError> {
+fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError> {
     use caps::CapSet;
 
-    if let Err(error) = caps::clear(None, CapSet::Bounding) {
-        crate::AuditEvent::degraded(
-            "capability_bounding_set",
-            &format!("left as inherited: {error}"),
+    let degraded = caps::clear(None, CapSet::Bounding).err().map(|error| {
+        (
+            Degradation::CapabilityBoundingSet,
+            format!("left as inherited: {error}"),
         )
-        .emit();
-    }
+    });
 
     for set in [
         CapSet::Effective,
@@ -211,7 +228,7 @@ fn harden_process_state() -> Result<(), SandboxError> {
         },
     )?;
 
-    Ok(())
+    Ok(degraded)
 }
 
 /// Set `no_new_privs`, refusing if the kernel will not.
@@ -248,7 +265,10 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
 /// One `unshare` for all of them rather than one per namespace: the kernel applies
 /// the flags together, so there is no window in which the process holds some of the
 /// isolation and not the rest, and no second failure path to unwind.
-fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+///
+/// Returns whatever [`map_identity_into_userns`] could not do, for
+/// [`prepare_supervisor`] to pass on to the parent.
+fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)>, SandboxError> {
     use nix::sched::{CloneFlags, unshare};
     use nix::unistd::{getgid, getuid};
 
@@ -277,8 +297,7 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         },
     })?;
 
-    map_identity_into_userns(uid, gid);
-    Ok(())
+    Ok(map_identity_into_userns(uid, gid))
 }
 
 /// Map the real uid/gid to themselves inside the fresh user namespace.
@@ -298,7 +317,10 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 /// Aborting the sandbox there would trade a truthful uid for no sandbox at all,
 /// which is the wrong way round — so a failed write leaves the process as
 /// `nobody` and the command still runs fully confined.
-fn map_identity_into_userns(uid: u32, gid: u32) {
+///
+/// Names the failure rather than recording it, for the reason
+/// [`prepare_supervisor`] gives: this process has no subscriber to record it on.
+fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)> {
     // `setgroups` must be denied before an unprivileged `gid_map` write, or the
     // kernel rejects it. Denying it is correct anyway: this maps a single gid,
     // so there are no supplementary groups to set. If any write fails the rest
@@ -307,13 +329,12 @@ fn map_identity_into_userns(uid: u32, gid: u32) {
         .and_then(|()| std::fs::write("/proc/self/gid_map", format!("{gid} {gid} 1")))
         .and_then(|()| std::fs::write("/proc/self/uid_map", format!("{uid} {uid} 1")));
 
-    if let Err(error) = mapped {
-        crate::AuditEvent::degraded(
-            "userns_identity_map",
-            &format!("running as nobody: {error}"),
+    mapped.err().map(|error| {
+        (
+            Degradation::UsernsIdentityMap,
+            format!("running as nobody: {error}"),
         )
-        .emit();
-    }
+    })
 }
 
 #[cfg(test)]
