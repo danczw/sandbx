@@ -150,6 +150,45 @@ no supplementary groups to set.
 Bounding set is dropped *before* the effective set — `PR_CAPBSET_DROP` itself
 needs `CAP_SETPCAP` in effective.
 
+## The command's environment
+
+A fourth bound, and the one none of the three primitives can reach: the kernel
+hands the environment over during `exec`, before any Landlock ruleset or seccomp
+filter the new image installs has a say. So it is enforced by *not passing it*
+(#98).
+
+```
+SandboxPolicy { env: Vec<String> }        names only, never values
+        │
+        └──► env::restrict(&mut Command, &policy)
+                 env_clear()
+                 envs(allowed_env ∩ live environment)      unset name ⇒ absent
+```
+
+Applied at **all four** spawn sites, not just the last:
+
+```
+sandbx ──► helper stage 1 ──► stage 2 ──► the command
+       ↑               ↑            ↑             ↑
+   output()      run_with_        re-exec      .exec()   ◄── the load-bearing one
+                 deadline()
+```
+
+`restrict` is idempotent — after the first clear the environment already *is* the
+allowlist — which is what makes repeating it free. The first three keep a secret
+out of a helper's `/proc/<pid>/environ` for the seconds it lives; the last decides
+what the real command can read out of its own. Stages 1 and 2 doing it themselves
+is why a helper invoked **directly**, with no `sandbx` above it, is sanitised
+rather than trusted.
+
+`default()` is empty, so there is no `PATH` unless something grants one, and a
+bare program name is then resolved against the C library's fallback
+(`/bin:/usr/bin` on glibc) — `cat` starts, `/usr/local/bin/anything` is not
+found. The CLI calls
+`allow_standard_env()`; library callers either do the same or pass an absolute
+path, as every test in `crates/sandbx-core/tests/` does. Rationale in
+`decision-environment-allowlist.md`.
+
 ## What this does NOT protect against
 
 Matches `SECURITY.md`'s known-weaknesses table. The short form:
@@ -166,6 +205,12 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
   prompt-injected tool call and your files.
 - **`unsafe` is forbidden workspace-wide** and spawning outside `sandbx-core` is
   a clippy error, but convention plus tooling is not a capability system.
+- **A variable passed through is passed whole.** The environment allowlist is by
+  name; there is no redaction and no per-tool scoping, and every descendant
+  inherits it. Credential injection without exposing the value is #41.
+- **The policy is readable from inside.** Granted paths and allowlisted variable
+  names cross as argv, and the command can read `/proc/self/cmdline`. Names only,
+  never values — which is why there is no `--allow-env NAME=VALUE`.
 
 ## Known gaps
 
@@ -175,7 +220,7 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
 | `FsGuard` TOCTOU | **mostly closed**. Tools take handles (`open_read`/`open_write`, `O_NOFOLLOW`), not resolved paths. Residual: a parent-directory swap mid-open, which needs full `openat`-chain resolution. `ls` still takes a path — `read_dir` has no handle form. |
 | Capability coverage | **closed**. `tests/capability_coverage.rs` reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
 
-## Environment
+## Host environment
 
 AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+) is the
 reason the two best-effort steps exist. A dev box without AppArmor cannot

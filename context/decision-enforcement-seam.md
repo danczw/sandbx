@@ -33,8 +33,8 @@ sandbx ──argv──► helper stage 1 (supervisor) ──argv verbatim──
 |---|---|
 | Shape | `HelperArgs { policy, program, args }`, `encode` / `decode` |
 | Path flags | `--ro` / `--rw` / `--rx`, from the single `path_flag(axis)` match |
-| Other flags | `--allow-network`, `--allow-unix-sockets`, `--` separator |
-| Why argv | the environment is inherited by the sandboxed command, where policy details have no business being |
+| Other flags | `--allow-network`, `--allow-unix-sockets`, `--env NAME` (repeatable), `--` separator |
+| Why argv | the environment is now cleared at every stage (#98), so it cannot carry the policy — argv is the only channel left that survives the re-exec. It is not *private*: the command reads its own `/proc/self/cmdline`, so the rule is that argv carries variable **names**, never values |
 | Decode failure | always a refusal; an unrecognised flag is an error, never skipped |
 | Stage 1 → 2 | argv passed **verbatim**, not re-encoded — a re-encode is a second chance for the policy to drift on its way to the stage that enforces it |
 
@@ -113,4 +113,4 @@ failure — not the length of `Axis::ALL`, which nothing needs at compile time.
 | 4 | partial enforcement accepted | **done** (#76) — `enforcement_verdict` refuses it |
 | 5 | per-endpoint egress | **open** (#42) |
 
-34 real-kernel enforcement tests in `tests/enforcement.rs`.
+38 real-kernel enforcement tests in `tests/enforcement.rs`.
