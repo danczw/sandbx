@@ -45,21 +45,24 @@ a special case to skip it. The structural precedent is the `network` and
 `unix_sockets` toggles, which are policy fields with their own accessors and are
 not rows either; the environment is the same shape, as a list rather than a bool.
 
-The cost of staying off the table is that nothing *forces* a site to notice it.
-The four `env::restrict` calls and the audit field are hand-written, and a fifth
-spawn site added later would **leak the harness's whole environment** — not
-inherit nothing. It fails open, which is the one place this change is weaker than
-the path axes, where a new consumer that ignores `Axis::ALL` grants nothing
-instead.
+The cost of staying off the table was that nothing *forced* a site to notice it.
+While the four `env::restrict` calls were hand-written, a fifth spawn site added
+later would have **leaked the harness's whole environment** — not inherited
+nothing — which failed open, the one place this was weaker than the path axes,
+where a new consumer that ignores `Axis::ALL` grants nothing instead.
 
-What stands in for the compiler is `tests/enforcement.rs`, which runs
+Closed since, by a different mechanism than the table: every `Command` in the
+crate is built by `spawn::command`, which narrows as it constructs, and
+`clippy.toml` bans `Command::new` everywhere else under `-D warnings`. So a new
+spawn site does not compile rather than failing open. The lint stands in for the
+exhaustive `match` the environment does not get by being a row. The audit field is
+still hand-written.
+
+What stands in for the compiler on the *behaviour* — that `spawn::command` narrows
+at all, which the lint says nothing about — is `tests/enforcement.rs`, which runs
 `/usr/bin/env` through the real helper and reads its stdout, plus the check in
-`exec_inner` that refuses an environment stage 1 should already have narrowed — so
-a stage that stops clearing is a test failure rather than a quiet regression. That
-covers the stages that exist, and only the one the check sits above: the two
-`command.rs` sites are still unobservable, because a later stage re-narrows and the
-command's `environ` comes out identical either way. It cannot cover a stage nobody
-has written yet. See `decision-environment-allowlist.md`.
+`exec_inner` that refuses an environment an earlier stage should have narrowed. One
+site to delete, 24 failures when it goes. See `decision-environment-allowlist.md`.
 
 ## Why the rights are subtractions
 

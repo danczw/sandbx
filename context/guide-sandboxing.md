@@ -160,32 +160,39 @@ filter the new image installs has a say. So it is enforced by *not passing it*
 ```
 SandboxPolicy { env: Vec<String> }        names only, never values
         │
-        └──► env::restrict(&mut Command, &policy)
+        └──► spawn::command(program, &policy) -> Command
+                 Command::new(program)                     the only one in the workspace
                  env_clear()
                  envs(allowed_env ∩ live environment)      unset name ⇒ absent
 ```
 
-Applied at **all four** spawn sites, not just the last:
+Not applied *at* the four spawn sites — it is what builds them. All four get their
+`Command` from `spawn::command`, so narrowing is a property of construction rather
+than a call each site has to remember:
 
 ```
 sandbx ──► helper stage 1 ──► stage 2 ──► the command
        ↑               ↑            ↑             ↑
    output()      run_with_        re-exec      .exec()   ◄── the load-bearing one
                  deadline()
+       └──────────────┴────────────┴─────────────┘
+                  all four via spawn::command
 ```
 
-`restrict` is idempotent — after the first clear the environment already *is* the
-allowlist — which is what makes repeating it free. The first three keep a secret
-out of a helper's `/proc/<pid>/environ` for the seconds it lives; the last decides
-what the real command can read out of its own. Stage 1 doing it itself is why a
+`clippy.toml` bans `std::process::Command::new` workspace-wide, and
+`spawn::command` holds the single `#[allow]` for it — so a fifth spawn site does not
+compile unless it goes through the narrowing. The first three keep a secret out of a
+helper's `/proc/<pid>/environ` for the seconds it lives; the last decides what the
+real command can read out of its own. Stage 1 narrowing on the way in is why a
 helper invoked **directly**, with no `sandbx` above it, is sanitised rather than
 trusted.
 
 Stage 2 is the one that does not trust its input: before applying anything it
-refuses outright if it finds a variable the policy does not name, because on every
-supported path stage 1 has already cleared it. So a *direct* stage-2 invocation is
-refused rather than sanitised — the one place the two stages differ, and what makes
-stage 1's clear something a test can catch the absence of.
+refuses outright if it finds a variable the policy does not name in the environment
+it *inherited*, because on every supported path stage 1 has already cleared it. So a
+*direct* stage-2 invocation is refused rather than sanitised — the one place the two
+stages differ, and what makes the clear something a test can catch the absence of
+rather than merely something the code does.
 
 `default()` is empty, so there is no `PATH` unless something grants one, and a
 bare program name is then resolved against whatever default the lookup falls back

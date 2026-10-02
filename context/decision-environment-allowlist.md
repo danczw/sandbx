@@ -1,9 +1,10 @@
 # The environment allowlist
 
-Why a sandboxed command starts with an empty environment, and why clearing it is
-repeated at four spawn sites rather than checked at one — with the inner stage
-checking as well, so the repetition is falsifiable. The mechanism is in
-`guide-sandboxing.md`; this is what the choices were between.
+Why a sandboxed command starts with an empty environment, and why the clearing
+happens in the one factory every `Command` in the crate is built by rather than at
+each of the four spawn sites — with the inner stage checking what it inherited as
+well, so the clearing is falsifiable. The mechanism is in `guide-sandboxing.md`;
+this is what the choices were between.
 
 ## What #98 actually was
 
@@ -56,52 +57,67 @@ A consequence worth stating: a name the harness does not hold contributes
 *nothing*, rather than an empty string. Absent and empty are different to a
 program that checks.
 
-## Filter at every stage, not just the last
+## Narrow by construction, at one site
 
 Four `Command`s are built on the spawn path — `output()`, `run_with_deadline()`,
 the supervisor's re-exec into stage 2, and stage 2's `.exec()` into the real
-program. All four call `env::restrict`.
+program. None of them calls `Command::new`: all four go through `spawn::command`,
+which clears and re-adds as it builds, so a narrowed environment is a property of
+every `Command` in the crate rather than a step each site remembers.
 
-The alternative was to clear once at the top and have the inner stages *check* that
-their environment already matched. Rejected **for stage 1**, because the helper is
-a public entry point: any binary calling `with_helper_dispatch` becomes a helper
-when handed `HELPER_FLAG`, and the enforcement suite invokes the helper binary
-directly with nothing above it to have cleared anything. An assertion there turns
-a direct invocation into a refusal; applying the filter makes it correct instead.
-`restrict` is idempotent — after the first clear the environment already *is* the
-allowlist — so the repetition costs nothing.
+Three alternatives were on the table, and the first two were tried and discarded.
 
-Stage 2 is the exception, and both halves are kept there: it **checks** its own
-inherited environment and refuses, *and then* filters what it passes on. The filter
-is what the command actually relies on; the check is what makes the stage-1 clear
-falsifiable. Without it the two stages mask each other — either `restrict` call
-could be deleted and the other would cover for it, leaving the command's `environ`
-byte-identical and no test able to tell.
+**Clear once at the top, check at the inner stages.** Rejected **for stage 1**,
+because the helper is a public entry point: any binary calling
+`with_helper_dispatch` becomes a helper when handed `HELPER_FLAG`, and the
+enforcement suite invokes the helper binary directly with nothing above it to have
+cleared anything. A check there turns a supported invocation into a refusal, where
+filtering makes it correct instead.
 
-So stage 2 *does* now depend on an earlier stage having run, and the asymmetry with
-the paragraph above is a deliberate trade rather than a derivation from
-reachability. Stage 2 is **not** reachable only through stage 1: `HELPER_INNER_FLAG`
-is `pub` and dispatched from argv, exactly as the enforcement suite invokes it. The
-honest statement is that direct inner invocation is a test-only entry point the
-project is willing to see refused, where direct stage-1 invocation is a supported
-one a library consumer has, so stage 1 sanitises and stage 2 refuses.
+**Call `restrict` at each of the four sites.** What actually shipped first (#101),
+and the problem was not correctness but that every one of the four calls was
+unfalsifiable. The sites mask each other: any single clear could be deleted and a
+later one covered for it, leaving the command's `environ` byte-identical with no
+test able to tell. Four hand-written obligations, each individually unobservable,
+and a fifth spawn site added later would have inherited the harness's whole
+environment rather than nothing — failing *open*.
+
+**One factory.** `spawn::command` is the only `Command::new` in the workspace, and
+the only `#[allow(clippy::disallowed_methods)]` for it. Two properties fall out
+that no amount of per-site discipline gave:
+
+- There is one line to delete, and deleting it fails 24 enforcement tests. The
+  invariant is now pinned, not merely upheld.
+- A new spawn site cannot forget. `clippy.toml` bans `Command::new` workspace-wide
+  under `-D warnings`, so the only way to build one is the way that narrows —
+  checked by adding a bare `Command::new` elsewhere and watching the lint refuse
+  to compile it. The fail-open hole above is closed structurally rather than by
+  remembering.
+
+Keeping the first three sites, rather than narrowing only at the final `exec`, is
+not ceremony either. A helper process lives for milliseconds, but
+`/proc/<pid>/environ` is readable for all of them, and the point is that the secret
+is never anywhere it does not need to be.
+
+## Stage 2 checks as well, and refuses
+
+Stage 2 does one more thing: before applying anything it looks at the environment
+it *inherited* and refuses if a variable is outside the allowlist. The factory is
+what the command relies on; this is what says whether the stage above actually went
+through it. Narrowing again instead would answer the same question with silence.
+
+So stage 2 depends on an earlier stage having run, and the asymmetry with stage 1
+is a deliberate trade rather than a derivation from reachability. Stage 2 is **not**
+reachable only through stage 1: `HELPER_INNER_FLAG` is `pub` and dispatched from
+argv, exactly as the enforcement suite invokes it. The honest statement is that
+direct inner invocation is a test-only entry point the project is willing to see
+refused, where direct stage-1 invocation is a supported one a library consumer has.
+So stage 1 sanitises and stage 2 refuses.
 
 A refusal through `SandboxError` and not an `assert!`, for the reason
 `dispatch_helper_mode` is exhaustive: a helper run must end by either running the
 command or reporting why not, and a panic is neither — it would report a broken
 harness invariant as a crash on the command's own stderr.
-
-What that buys is bounded, and worth stating plainly. Only the stage-1 clear is
-pinned by it. The two `command.rs` sites are upstream of a stage that re-narrows,
-and stage 2's own `.exec()` hands over an environment stage 1 already narrowed, so
-all three remain deletable with a green suite. Collapsing the four sites into a
-single `Command` factory — one place carrying the `clippy::disallowed_methods`
-allow, narrowing by construction — would subsume the whole class and is the real
-fix; this is the cheap part of it.
-
-The first three are not ceremony either. A helper process lives for milliseconds,
-but `/proc/<pid>/environ` is readable for all of them, and the whole point is that
-the secret is never anywhere it does not need to be.
 
 ## `default()` passes nothing
 
@@ -177,12 +193,14 @@ load-bearing, but not in the all-or-nothing way the first draft of this file
 claimed.
 
 The gap the tests close that the compiler cannot: the environment is deliberately
-not an `Axis` row (see `decision-axis-table.md`), so no exhaustive `match` forces
-a new spawn site to call `env::restrict`. What stands in for that is
-`tests/enforcement.rs` running `/usr/bin/env` through the real helper and
-asserting on its stdout — the issue's own reproducer, inverted. It goes through
-the suite's `run()` helper, which spawns the helper *without* clearing anything
-first, so what it pins is the helper stages doing it on their own.
+not an `Axis` row (see `decision-axis-table.md`), so no exhaustive `match` forces a
+new spawn site to narrow. The clippy ban covers most of that — a site that does not
+go through `spawn::command` does not compile — but a lint is not a proof that the
+factory narrows anything. What supplies that is `tests/enforcement.rs` running
+`/usr/bin/env` through the real helper and asserting on its stdout — the issue's own
+reproducer, inverted. It goes through the suite's `run()` helper, which spawns the
+helper *without* clearing anything first, so what it pins is the sandbox doing it on
+its own.
 
 Stage 2's refusal needs a test of its own, because every path that reaches it
 honestly reaches it already narrowed, where the check is trivially satisfied:

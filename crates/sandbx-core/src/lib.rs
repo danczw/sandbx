@@ -2,9 +2,10 @@
 //!
 //! Every tool an agent runs passes through this crate. It is the only place in
 //! the workspace permitted to spawn a subprocess, and even here the permission
-//! is per-call-site: four `#[allow(clippy::disallowed_methods)]` annotations,
-//! each on a line that re-execs the sandbox helper. `unsafe` is forbidden in
-//! this crate exactly as it is in every other one.
+//! sits at a single site: one `#[allow(clippy::disallowed_methods)]`, in
+//! `spawn::command`, which builds every `Command` the crate ever runs and narrows
+//! its environment as it does. `unsafe` is forbidden in this crate exactly as it
+//! is in every other one.
 //!
 //! Two layers, because they cover different things:
 //!
@@ -39,12 +40,12 @@ compile_error!(
 
 mod audit;
 mod command;
-mod env;
 mod error;
 mod fs_guard;
 mod helper;
 mod helper_args;
 mod policy;
+mod spawn;
 
 pub use audit::{AUDIT_TARGET, AuditEvent};
 pub use command::{
