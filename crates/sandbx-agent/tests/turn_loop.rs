@@ -73,6 +73,7 @@ fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a>
         history,
         limits: TurnLimits::default(),
         observed: None,
+        withheld: 0,
     }
 }
 
@@ -843,6 +844,118 @@ async fn a_turn_over_budget_sends_only_the_recent_messages() {
 
     assert_eq!(outcome.withheld, 2, "got {:?}", sent(&script, 0));
     assert_eq!(sent(&script, 0), wire(&history[2..]));
+}
+
+/// The regression for the thing that made the first version of this bound nothing at
+/// all. `outcome.usage` measures the request that was *already* compacted, so a caller
+/// threading only that reads the next turn as comfortably under budget, puts the whole —
+/// now longer — history back, and sends more than the turn that triggered. Compaction
+/// would fire on alternate turns while the uncompacted leg grew without limit.
+///
+/// Two real turns, threaded the way the docs prescribe, because the failure lives
+/// entirely in the hand-off between them: one turn in isolation looks correct.
+#[tokio::test]
+async fn the_turn_after_a_compaction_does_not_put_the_history_back() {
+    let policy = Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    };
+
+    let first_history = conversation();
+    let mut first_script = Script::new([vec![text("hi"), measured(10), stop(StopReason::EndTurn)]]);
+    let mut first = turn(&first_history, &[]);
+    first.limits.compaction = Some(policy);
+    first.observed = Some(PromptUsage {
+        input_tokens: Some(101),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+
+    let first_outcome = run_turn(
+        async |r| first_script.open(r).await,
+        first,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(first_outcome.withheld, 2);
+    assert_eq!(
+        first_outcome.usage.map(|usage| usage.prompt_tokens()),
+        Some(10),
+        "the test needs the compacted request to measure back under budget"
+    );
+
+    // Exactly what a caller does between turns: append the turn it got, add the next
+    // prompt, thread *both* halves of the feedback back.
+    let mut second_history = first_history.clone();
+    second_history.extend(first_outcome.messages.iter().cloned());
+    second_history.push(said("five"));
+
+    let mut second_script = Script::new([vec![text("ok"), stop(StopReason::EndTurn)]]);
+    let mut second = turn(&second_history, &[]);
+    second.limits.compaction = Some(policy);
+    second.observed = first_outcome.usage;
+    second.withheld = first_outcome.withheld;
+
+    let second_outcome = run_turn(
+        async |r| second_script.open(r).await,
+        second,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    // Nothing asked to deepen — 10 is well under 100 — but the cut the first turn paid
+    // for holds, and the longer history is still sent short.
+    assert_eq!(
+        second_outcome.withheld,
+        2,
+        "got {:?}",
+        sent(&second_script, 0)
+    );
+    assert_eq!(sent(&second_script, 0), wire(&second_history[2..]));
+}
+
+/// The floor is a floor, not a ceiling. A conversation that has grown back over budget
+/// since the last cut has to be cut deeper, or it is bounded exactly once and then never
+/// again.
+#[tokio::test]
+async fn a_turn_still_over_budget_deepens_the_previous_turns_cut() {
+    let mut history = conversation();
+    history.extend([
+        said("five"),
+        replied("six"),
+        said("seven"),
+        replied("eight"),
+    ]);
+
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(101),
+        cache_read_input_tokens: None,
+        cache_creation_input_tokens: None,
+    });
+    turn.withheld = 2;
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 6, "got {:?}", sent(&script, 0));
+    assert_eq!(sent(&script, 0), wire(&history[6..]));
 }
 
 /// Compaction is a view of the conversation, not a mutation of it. A caller appends

@@ -33,10 +33,32 @@ pub struct Turn<'a> {
     /// exists, and that first round is precisely the one whose history has grown too
     /// large. A turn given `None` cannot compact at all, so threading
     /// [`TurnOutcome::usage`] back here — `observed = outcome.usage.or(observed)` — is
-    /// what makes [`TurnLimits::compaction`] do anything across a conversation.
+    /// half of what makes [`TurnLimits::compaction`] do anything across a conversation.
+    /// [`withheld`] is the other half, and neither works alone.
     ///
     /// `None` on a conversation's first turn, where there is genuinely nothing to know.
+    ///
+    /// [`withheld`]: Self::withheld
     pub observed: Option<PromptUsage>,
+
+    /// How many of `history`'s oldest messages the *previous* turn left out of its
+    /// request. [`TurnOutcome::withheld`], threaded back unchanged.
+    ///
+    /// A floor, not an instruction: this turn may withhold more, never less. Without it
+    /// compaction bounds nothing at all, because [`observed`] measures the request that
+    /// was *already compacted* — small, by construction. The turn after a successful
+    /// compaction would read comfortably under budget, put the whole history back, and
+    /// send more than the turn that triggered. Compaction would fire on every other turn
+    /// while the uncompacted leg grew without limit.
+    ///
+    /// `0` on a conversation's first turn, and whenever the previous turn withheld
+    /// nothing. Safe to carry only because a caller *appends* to history: appending does
+    /// not move the indices of a prefix, so a count from last turn still names the same
+    /// messages. A caller that rewrites history instead invalidates it, which
+    /// `compact::plan_cut` absorbs by dropping the floor rather than cutting blind.
+    ///
+    /// [`observed`]: Self::observed
+    pub withheld: usize,
 }
 
 /// The prompt-side token counters of the last `AgentEvent::Usage` a turn reported.
@@ -102,15 +124,25 @@ pub struct TurnOutcome {
     /// `observed = outcome.usage.or(observed)`. Not pre-merged with what was passed in,
     /// so "this turn reported nothing" stays distinguishable from "this turn reported
     /// what you already knew".
+    ///
+    /// On its own this figure is *not* enough to keep a conversation bounded: once
+    /// compaction has fired it measures the compacted request. [`withheld`] is the other
+    /// half, and both have to be threaded back.
+    ///
+    /// [`withheld`]: Self::withheld
     pub usage: Option<PromptUsage>,
 
     /// How many of the oldest history messages the last request left out.
     ///
+    /// Thread it into the next turn's [`Turn::withheld`] unchanged, where it becomes the
+    /// floor the next cut may deepen but not undo. Compaction only bounds a conversation
+    /// if it does: see [`Turn::withheld`] for what goes wrong when it does not.
+    ///
     /// `0` covers three cases a caller cannot tell apart from this number alone:
-    /// compaction was off, it was on and under budget, or it was over budget and found
-    /// nothing it could legally withhold. The last is a real outcome — see
-    /// `compact::plan_cut` — and a caller that cares can compare its own budget against
-    /// [`usage`].
+    /// compaction was off, it was on and under budget with nothing carried in, or it was
+    /// over budget and found nothing it could legally withhold. The last is a real
+    /// outcome — see `compact::plan_cut` — and a caller that cares can compare its own
+    /// budget against [`usage`].
     ///
     /// [`usage`]: Self::usage
     pub withheld: usize,
@@ -225,13 +257,19 @@ impl Default for TurnLimits {
 /// prompt was over budget, the oldest history is left out of the request — not
 /// out of [`TurnOutcome::messages`], which is always the whole turn.
 ///
-/// Two properties that are easier to state here than to infer. The cut is decided **at
-/// most once per turn and then frozen**: re-deciding each round would let it move as
-/// the measurement crossed the budget, rewriting the request's cached prefix every
-/// round and showing the model history it had already lost. And the cut can never reach
-/// the messages *this* turn produced — `compact::plan_cut` is handed their count rather
-/// than the messages, so a turn cannot withhold from itself the tool result it is
-/// waiting on.
+/// It needs **two** things threaded back, not one: `observed = outcome.usage.or(observed)`
+/// *and* `withheld = outcome.withheld`. Usage alone does not bound anything, because
+/// after a compaction it measures the compacted request — see [`Turn::withheld`] for the
+/// oscillation that results.
+///
+/// Three properties that are easier to state here than to infer. The cut never moves
+/// backwards: **within** a turn it is decided at most once and then frozen, and **across**
+/// turns the previous cut is the floor for the next. Re-deciding either way would show
+/// the model history it had already lost and rewrite the request's cached prefix. The cut
+/// can never reach the messages *this* turn produced, because `compact::plan_cut` is
+/// handed their count rather than the messages — so a turn cannot withhold from itself
+/// the tool result it is waiting on. And it is a view: nothing here mutates
+/// [`Turn::history`] or narrows [`TurnOutcome::messages`].
 ///
 /// Where it cannot help: it sheds whole exchanges, because those are the only legal cut
 /// points, so a single enormous exchange is not compactable and the request goes out
@@ -301,9 +339,14 @@ where
     for _ in 0..turn.limits.max_rounds {
         if cut.is_none()
             && let Some(policy) = turn.limits.compaction
-            && compact::over_budget(observed, policy.budget_tokens)
         {
-            cut = compact::plan_cut(turn.history, produced.len(), policy.keep_recent);
+            // Over budget asks to deepen; within budget asks only to hold what the
+            // previous turn withheld. `None` is not "do not compact" — a conversation
+            // that has already been cut stays cut, or the cut it paid for is undone and
+            // nothing is bounded.
+            let keep_recent =
+                compact::over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
+            cut = compact::plan_cut(turn.history, produced.len(), keep_recent, turn.withheld);
         }
         let withheld = cut.unwrap_or(0);
 
