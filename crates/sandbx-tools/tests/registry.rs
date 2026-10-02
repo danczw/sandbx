@@ -69,6 +69,30 @@ fn lookup_does_not_normalise_the_name() {
     assert_eq!(BuiltinTool::from_name("read "), None);
 }
 
+/// A tool's name is its variant, lowercased.
+///
+/// Nothing derives it — the name is a literal, so swapping two of them stays
+/// unique, still round-trips through `from_name`, and leaves every other test
+/// green while the model is offered a tool called `find` that is handed `ls`'s
+/// schema and runs `ls` (#88). `names_are_unique` sees only the half-swap; the
+/// round-trip above is self-consistent either way.
+///
+/// The tie is the variant's own spelling, which `Debug` already prints. That
+/// makes a variant whose name is not its lowercased spelling — `MultiEdit`
+/// against `multi_edit` — fail here, which is the prompt to pick one or the
+/// other; the same trade `every_tool_advertises_its_own_input_struct` makes
+/// against schemars' `title`.
+#[test]
+fn every_tool_is_named_after_its_variant() {
+    for tool in BuiltinTool::ALL {
+        assert_eq!(
+            tool.name(),
+            format!("{tool:?}").to_lowercase(),
+            "{tool:?} does not answer to its own name"
+        );
+    }
+}
+
 /// Every variant must advertise its *own* input struct.
 ///
 /// `input_schema` is a seven-arm match and nothing ties an arm to its variant,
