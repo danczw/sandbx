@@ -1,12 +1,11 @@
 //! Public contract of the `grep` and `find` tools.
 //!
 //! Both walk a directory tree via `FsGuard::walk_readable`, which owns the
-//! confinement rule: a symlink inside a readable directory can point anywhere,
-//! so symlinked entries are re-checked rather than trusted. These assert the
-//! tools inherit that, not that they re-implement it.
-// `mkfifo` is spawned to build a test fixture — a named pipe cannot be
-// created through std. This is not code executing around the sandbox,
-// which is what the workspace ban on `Command::new` exists to stop.
+//! confinement rule: a symlink inside a readable directory can point anywhere, so
+//! symlinked entries are re-checked rather than trusted. These assert the tools
+//! inherit that, not that they re-implement it.
+// `mkfifo` is spawned to build a fixture: std cannot create a named pipe. Not code
+// escaping the sandbox, which is what the ban on `Command::new` exists to stop.
 #![allow(clippy::disallowed_methods)]
 
 use sandbx_core::SandboxPolicy;
@@ -166,10 +165,8 @@ fn find_does_not_follow_a_symlink_out_of_the_root() {
     );
 }
 
-/// Hits must be ordered by line number, not by its rendered text.
-///
 /// Sorting formatted `path:N: text` strings orders numbers lexicographically,
-/// putting line 10 before line 2 — visible in any file with ten or more hits.
+/// putting line 10 before line 2 in any file with ten or more hits.
 #[test]
 fn grep_orders_hits_by_line_number() {
     let root = tempfile::tempdir().unwrap();
@@ -201,12 +198,9 @@ fn grep_orders_hits_by_line_number() {
     );
 }
 
-/// Hits from different files must come out in path order.
-///
-/// grep does not sort: it relies on `walk_readable` returning files already
-/// sorted, and visits lines ascending within each. Nothing else pins that
-/// contract, so dropping the sort inside `walk_readable` would silently put
-/// output in readdir order with the rest of the suite still green.
+/// grep does not sort: it relies on `walk_readable` returning files already sorted.
+/// Nothing else pins that contract, so dropping the sort inside `walk_readable`
+/// would put output in readdir order with the rest of the suite still green.
 #[test]
 fn grep_orders_hits_across_files_by_path() {
     let root = tempfile::tempdir().unwrap();
@@ -237,8 +231,7 @@ fn grep_orders_hits_across_files_by_path() {
     );
 }
 
-/// A FIFO in the tree must not wedge the call: reading one with no writer
-/// blocks forever.
+/// Reading a FIFO with no writer blocks forever.
 #[cfg(unix)]
 #[test]
 fn grep_does_not_block_on_a_fifo() {
@@ -261,9 +254,9 @@ fn grep_does_not_block_on_a_fifo() {
     assert!(out.content().contains("real.txt"), "got: {}", out.content());
 }
 
-/// A symlink to a *file* outside the root is the case that actually exercises
-/// the walk's confinement; a symlink to a directory is skipped for unrelated
-/// reasons and would pass even with the check removed.
+/// A symlink to a file outside the root is what exercises the walk's confinement: a
+/// symlink to a directory is skipped for unrelated reasons and would pass with the
+/// check removed.
 #[cfg(unix)]
 #[test]
 fn grep_does_not_follow_a_symlink_to_a_file_outside_the_root() {

@@ -37,7 +37,6 @@ fn replaces_a_unique_occurrence() {
     );
 }
 
-/// An ambiguous edit must fail rather than guess which occurrence was meant.
 #[test]
 fn refuses_an_ambiguous_match() {
     let root = tempfile::tempdir().unwrap();
@@ -64,7 +63,7 @@ fn refuses_an_ambiguous_match() {
     );
 }
 
-/// A string that is not present must fail loudly, not silently no-op.
+/// Loudly, not as a silent no-op: the model believes the edit happened.
 #[test]
 fn refuses_a_missing_match() {
     let root = tempfile::tempdir().unwrap();
@@ -105,11 +104,9 @@ fn read_grant_alone_does_not_permit_editing() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
 }
 
-/// A refused edit must not truncate the file it refused to edit.
-///
-/// The write handle truncates on open, so it is opened only after the
-/// replacement is known to be unambiguous. Opening it earlier would destroy the
-/// content on exactly the paths that report failure.
+/// The write handle truncates on open, so it is opened only after the replacement is
+/// known unique. Opening earlier would empty the file on the paths that report
+/// failure.
 #[test]
 fn a_refused_edit_leaves_the_file_intact() {
     let root = tempfile::tempdir().unwrap();

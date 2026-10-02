@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
 
-/// This tool, as `BuiltinTool` sees it.
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "find",
     description: "Find files beneath a directory whose name contains a substring.",
@@ -12,13 +11,10 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     run,
 };
 
-/// Argument schema for this tool. Built per call: `schema_for!` allocates, so it
-/// cannot be a const value.
 fn schema() -> serde_json::Value {
     schemars::schema_for!(FindInput).to_value()
 }
 
-/// Parse untyped arguments into this tool's own input struct, then run it.
 fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     execute(crate::parse(input)?, ctx)
 }
@@ -39,9 +35,8 @@ pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         .walk_readable(&input.path, ctx.limits().max_files_scanned())
         .map_err(|error| crate::denied(&input.path, error))?;
 
-    // Matched against the name being reported, not the name it was reached by:
-    // reporting one path while having matched a different one gives the model a
-    // result whose filename does not contain what it searched for.
+    // Matched against the name being reported, not the one it was reached by: the
+    // model would otherwise get hits whose filename lacks what it searched for.
     let found = walk
         .files
         .into_iter()

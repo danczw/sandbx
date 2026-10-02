@@ -1,10 +1,9 @@
 //! Tool output must stay bounded.
 //!
-//! Unbounded output is not a security problem — it stays inside the allowed
-//! roots — but one broad `grep` can consume the whole context window, evicting
-//! the conversation that explains what the agent was doing. The marker matters
-//! as much as the cap: a silently truncated list looks complete, and the model
-//! draws conclusions from it.
+//! Not a security problem — output stays inside the allowed roots — but one broad
+//! `grep` can consume the whole context window, evicting the conversation that
+//! explains what the agent was doing. The marker matters as much as the cap: a
+//! silently truncated list looks complete, and the model concludes from it.
 
 use sandbx_core::SandboxPolicy;
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
@@ -46,7 +45,7 @@ fn grep_caps_the_number_of_hits() {
     assert_eq!(hits, 10, "cap not applied:\n{}", out.content());
 }
 
-/// Truncation must be visible, or the model treats a partial list as complete.
+/// Invisible truncation leaves the model treating a partial list as complete.
 #[test]
 fn grep_says_when_it_truncated() {
     let root = tree_with_matches(50);
@@ -69,7 +68,7 @@ fn grep_says_when_it_truncated() {
     );
 }
 
-/// A result that fits must not be marked, or the marker means nothing.
+/// A marker on a complete result makes the marker mean nothing.
 #[test]
 fn grep_does_not_mark_a_complete_result() {
     let root = tree_with_matches(3);
@@ -141,7 +140,7 @@ fn ls_caps_and_marks() {
     );
 }
 
-/// `read` is capped by bytes rather than entries — one file, arbitrarily long.
+/// `read` is capped by bytes, not entries: one file, arbitrarily long.
 #[test]
 fn read_caps_by_bytes_and_marks() {
     let root = tempfile::tempdir().unwrap();
@@ -187,12 +186,11 @@ fn read_does_not_mark_a_file_that_fits() {
     assert_eq!(out.content(), "short");
 }
 
-/// Truncating mid-character must not produce invalid UTF-8 or panic.
 #[test]
 fn read_truncates_on_a_character_boundary() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("wide.txt");
-    // Three-byte characters, so most byte offsets fall mid-character.
+    // Three-byte characters, so most byte offsets land mid-character.
     std::fs::write(&file, "日".repeat(1000)).unwrap();
 
     let ctx = context(

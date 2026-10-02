@@ -23,7 +23,7 @@ fn lists_entries_of_an_allowed_directory() {
     assert!(out.content().contains("sub"), "got: {}", out.content());
 }
 
-/// Directories are marked, or the model cannot tell what it can descend into.
+/// Unmarked, the model cannot tell what it may descend into.
 #[test]
 fn distinguishes_directories_from_files() {
     let root = tempfile::tempdir().unwrap();

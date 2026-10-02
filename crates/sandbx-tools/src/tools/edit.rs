@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
 
-/// This tool, as `BuiltinTool` sees it.
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "edit",
     description: "Replace one exact occurrence of a string in a file. The text \
@@ -14,13 +13,10 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     run,
 };
 
-/// Argument schema for this tool. Built per call: `schema_for!` allocates, so it
-/// cannot be a const value.
 fn schema() -> serde_json::Value {
     schemars::schema_for!(EditInput).to_value()
 }
 
-/// Parse untyped arguments into this tool's own input struct, then run it.
 fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     execute(crate::parse(input)?, ctx)
 }
@@ -38,17 +34,13 @@ pub struct EditInput {
 
 /// Replace one exact occurrence of a string in a file.
 ///
-/// Requires the path to be both readable and writable, and checks each
-/// separately — the policy grants them independently, so an edit on a read-only
-/// root must fail even though the read half would succeed.
-///
-/// A match that is absent or ambiguous is an error, never a silent no-op or a
-/// guess: the model believes the edit happened, so getting it wrong quietly is
-/// worse than failing.
+/// Read and write are granted independently, so each is checked separately: an edit
+/// on a read-only root must fail even though its read half succeeds. An absent or
+/// ambiguous match is an error, never a silent no-op — the model otherwise believes
+/// the edit happened.
 pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    // Read first — through [`crate::read_file`], which is where the read half of
-    // the policy check lives — so a read-only grant fails before any content is
-    // disclosed through an error message.
+    // Read first, where the read half of the policy check lives, so a write-only
+    // grant fails before an error message can disclose content.
     let content = crate::read_file(&input.path, ctx)?;
 
     let occurrences = content.matches(&input.old).count();
@@ -62,8 +54,8 @@ pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         });
     }
 
-    // Opened only once the replacement is known to be unambiguous, so a failed
-    // edit never truncates the file it could not edit.
+    // The write handle truncates on open, so open only once the match is unique:
+    // otherwise a refused edit empties the file it refused to edit.
     let updated = content.replace(&input.old, &input.new);
     let mut target = ctx
         .guard()

@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
 
-/// This tool, as `BuiltinTool` sees it.
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "ls",
     description: "List a directory's entries. Directories are marked with a trailing slash.",
@@ -12,13 +11,10 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     run,
 };
 
-/// Argument schema for this tool. Built per call: `schema_for!` allocates, so it
-/// cannot be a const value.
 fn schema() -> serde_json::Value {
     schemars::schema_for!(LsInput).to_value()
 }
 
-/// Parse untyped arguments into this tool's own input struct, then run it.
 fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     execute(crate::parse(input)?, ctx)
 }
@@ -30,10 +26,8 @@ pub struct LsInput {
     pub path: PathBuf,
 }
 
-/// List a directory's entries.
-///
-/// Directories carry a trailing `/` so the model can tell what it may descend
-/// into without a second call per entry.
+/// List a directory's entries, marking directories with a trailing `/` so the model
+/// need not spend a call per entry to find what it can descend into.
 pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let resolved = ctx
         .guard()
@@ -51,8 +45,8 @@ pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, Too
         names.push(if is_dir { format!("{name}/") } else { name });
     }
 
-    // Readdir order is filesystem-dependent; sorting keeps output stable so an
-    // unchanged directory does not look different between calls.
+    // Readdir order is filesystem-dependent: sort so an unchanged directory does
+    // not read differently between calls.
     names.sort();
 
     // Never partial: `ls` reads one directory, so there is no walk to cut off.

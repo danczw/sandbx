@@ -1,9 +1,8 @@
 /// Why a tool call did not produce a result.
 ///
-/// The variants are distinguished because the agent reacts to them differently:
-/// a refusal means "ask for something else", bad input means "call it correctly",
-/// and a failure means "the operation itself went wrong". Collapsing them would
-/// leave the model guessing.
+/// Distinguished because the agent reacts differently: a refusal means "ask for
+/// something else", bad input "call it correctly", a failure "the operation went
+/// wrong". Collapsing them leaves the model guessing.
 #[derive(Debug)]
 pub enum ToolError {
     /// The sandbox policy refused the operation.
@@ -30,9 +29,8 @@ pub enum ToolError {
 
     /// The operation ran past its time limit and was killed.
     ///
-    /// Separate from [`Failed`] because the agent should react differently: a
-    /// command that failed will fail again, while one that ran out of time might
-    /// succeed if narrowed or given longer.
+    /// Separate from [`Failed`]: a command that failed will fail again, one that ran
+    /// out of time might succeed if narrowed or given longer.
     ///
     /// [`Failed`]: Self::Failed
     TimedOut {
