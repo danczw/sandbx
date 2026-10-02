@@ -67,11 +67,14 @@ pub enum SandboxError {
         detail: &'static str,
     },
 
-    /// This process could not be hardened: capabilities dropped or core
-    /// dumps disabled.
+    /// This process is not in the state a sandboxed command may be born into:
+    /// capabilities not dropped, core dumps not disabled, or an environment an
+    /// earlier stage should have narrowed and did not.
     ///
-    /// A refusal: running the command with capabilities or core dumps still
-    /// available would widen what a descendant process could reach.
+    /// A refusal: running the command with capabilities, core dumps, or a variable
+    /// the policy never named still available would widen what a descendant
+    /// process could reach. All three are inherited across `exec`, which is why
+    /// they are one fact about this process rather than three unrelated failures.
     ProcessHardening {
         /// What failed, for the operator to act on.
         detail: String,
