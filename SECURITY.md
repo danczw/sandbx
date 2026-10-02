@@ -28,6 +28,11 @@ new.
 Pre-1.0, there are no backports. Fixes land on `main` and ship in the next
 tagged pre-release. If you are running an alpha, run the newest one.
 
+The intended release rhythm was one per completed phase. In practice it has become
+one per security fix — alpha.4 and alpha.5 were both cut for a sandbox weakness
+rather than a feature. That is the cadence to expect while pre-1.0: a fix to the
+boundary ships on its own rather than waiting for whatever else is in flight.
+
 ## What sandbx claims to enforce
 
 On Linux 6.10 or newer with unprivileged user namespaces available, for a command

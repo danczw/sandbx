@@ -3,7 +3,9 @@
 Virtual Cargo workspace, `members = ["crates/*"]`, resolver 3, edition 2024.
 
 ```
-Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid")
+Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
+                    workspace-wide with no per-crate exemption — the one planned
+                    for sandbx-core was never needed; zero unsafe anywhere)
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
 .githooks/          pre-commit: fmt --check, clippy -D warnings, subject length
@@ -11,6 +13,16 @@ SECURITY.md         the promise to users — the one doc that must never lag
 ```
 
 ## Crates
+
+```
+sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed to spawn
+    └──► sandbx-tools ──┐
+                        ├──► sandbx-agent      turn loop
+sandbx-providers ───────┘
+sandbx-core ──► sandbx-cli                     clap, policy derivation
+sandbx-session   placeholder
+sandbx-tui       placeholder
+```
 
 | Crate | Owns | Internal deps |
 |---|---|---|
@@ -59,7 +71,9 @@ Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
 `exit_code`, `HelperArgs`, `Axis`, `Grants`, `SandboxPolicy`.
 
 Four per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` —
-the four sites that spawn, not the whole crate.
+the four sites that spawn, not the whole crate. The lint *is* the backstop: a CI
+grep for `Command::new` was planned as a second one and never added, because a
+lint that fails the build at the call site beats a grep that fails after it.
 
 ## `sandbx-tools`
 
@@ -124,6 +138,10 @@ Lib `sandbx_cli`, bin `sandbx`. One subcommand: `sandbox-run`.
 4. `decision-axis-table.md` — why there is one table
 5. `decision-environment-allowlist.md` — the one bound that is not path-keyed
 6. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+7. `decision-provider-seam.md` — why there is no provider trait, and what is still
+   vendor-shaped
+8. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+   is not given
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
