@@ -33,6 +33,21 @@ pub enum TurnError {
         rounds: usize,
     },
 
+    /// The model stopped producing content while a tool call was still unanswered.
+    ///
+    /// The round arrived with no content blocks at all, and the transcript so far
+    /// ends in the `tool_result` the model asked for. Not handed back as a finished
+    /// turn: a caller appends its own user message after what it is given, and the
+    /// API rejects two consecutive user turns — so returning this as `Ok` would
+    /// break the request *after* the one that went wrong. Same treatment, and the
+    /// same reason, as [`RoundLimit`].
+    ///
+    /// An empty *first* round is not this: there is nothing unanswered behind it, so
+    /// it comes back as an empty turn.
+    ///
+    /// [`RoundLimit`]: Self::RoundLimit
+    EndedMidToolUse,
+
     /// One round outran its streaming bound and the turn was abandoned.
     ///
     /// Distinct from [`Provider`]: the stream was healthy, it simply did not finish
@@ -68,6 +83,12 @@ impl std::fmt::Display for TurnError {
             Self::RoundLimit { rounds } => {
                 write!(f, "still asking for tools after {rounds} rounds")
             }
+            Self::EndedMidToolUse => {
+                write!(
+                    f,
+                    "the turn ended with a tool result the model never answered"
+                )
+            }
             Self::TimedOut { after } => {
                 write!(f, "a round did not finish streaming within {after:?}")
             }
@@ -82,6 +103,7 @@ impl std::error::Error for TurnError {
             Self::Provider(error) => Some(error),
             Self::StreamEndedWithoutStop
             | Self::RoundLimit { .. }
+            | Self::EndedMidToolUse
             | Self::TimedOut { .. }
             | Self::ToolPanicked { .. } => None,
         }

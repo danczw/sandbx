@@ -177,6 +177,15 @@ where
         // nothing appends nothing — a message with no blocks would invalidate every
         // later request in the conversation.
         if blocks.is_empty() {
+            // Unless a `tool_result` is already waiting to be answered. Handing that
+            // back as a finished turn breaks the request *after* this one, not this
+            // one: a caller appends its own user message to what it is given, and the
+            // API rejects two consecutive user turns. Discarded for the same reason
+            // the `RoundLimit` path below discards.
+            if matches!(produced.last(), Some(last) if matches!(last.role, Role::User)) {
+                return Err(TurnError::EndedMidToolUse);
+            }
+
             return Ok(produced);
         }
 
