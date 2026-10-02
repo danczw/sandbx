@@ -1,11 +1,8 @@
-//! Tool-call accumulation: the one block kind whose deltas have to be buffered
-//! before they mean anything, and the ways a stream can leave that buffer in an
-//! odd state.
+//! Tool-call accumulation: the one block kind whose deltas have to be buffered before
+//! they mean anything, and the ways a stream can leave that buffer in an odd state.
 
 use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
 
-/// The star case: a tool call's JSON input arrives in fragments, and must
-/// collapse into exactly one event with the fully parsed input.
 #[tokio::test]
 async fn a_tool_call_split_across_fragments_becomes_one_event() {
     let out = ok_events(vec![
@@ -32,11 +29,9 @@ async fn a_tool_call_split_across_fragments_becomes_one_event() {
     );
 }
 
-/// A tool taking no arguments sends no `input_json_delta` at all, so the
-/// accumulated buffer is empty at `content_block_stop`. `{}` is the input.
-/// Reporting that as malformed would hand the caller a `Stop { ToolUse }`
-/// with no call to answer, and the API rejects the next request for an
-/// unanswered `tool_use`.
+/// A tool taking no arguments sends no `input_json_delta`, so the buffer is empty at
+/// `content_block_stop` and `{}` is the input — and the API rejects the next request
+/// for an unanswered `tool_use`.
 #[tokio::test]
 async fn a_zero_argument_tool_call_yields_an_empty_input() {
     let out = ok_events(vec![
@@ -58,8 +53,7 @@ async fn a_zero_argument_tool_call_yields_an_empty_input() {
     assert_eq!(out.last(), Some(&stop(StopReason::ToolUse)));
 }
 
-/// The same call, but with the empty-string delta the API sends instead on
-/// some turns.
+/// The same call, with the empty-string delta the API sends instead on some turns.
 #[tokio::test]
 async fn an_empty_input_json_delta_is_also_an_empty_input() {
     let out = ok_events(vec![
@@ -80,8 +74,6 @@ async fn an_empty_input_json_delta_is_also_an_empty_input() {
     );
 }
 
-/// Parallel tool calls (different indices) must accumulate and close out
-/// independently, interleaved or not.
 #[tokio::test]
 async fn two_parallel_tool_calls_accumulate_independently_by_index() {
     let out = ok_events(vec![
@@ -113,9 +105,8 @@ async fn two_parallel_tool_calls_accumulate_independently_by_index() {
     );
 }
 
-/// A `tool_use` block whose `content_block_stop` never arrives must still be
-/// delivered at `message_stop`. Dropping it while still reporting
-/// `Stop { ToolUse }` tells the caller to run a tool it was never given.
+/// Dropping a block whose `content_block_stop` was lost, while still reporting
+/// `Stop { ToolUse }`, would tell the caller to run a tool it was never given.
 #[tokio::test]
 async fn a_tool_use_block_left_open_is_flushed_at_message_stop() {
     let out = ok_events(vec![
@@ -137,11 +128,8 @@ async fn a_tool_use_block_left_open_is_flushed_at_message_stop() {
     assert_eq!(out.last(), Some(&stop(StopReason::ToolUse)));
 }
 
-/// Reusing an index without closing it must not let the new block's deltas
-/// land in the abandoned tool call: the resulting `ToolCallRequested` would
-/// name a tool the model never asked for, and the agent loop would run it.
-/// Only reachable on a malformed stream — which is exactly the case where a
-/// fabricated tool call matters.
+/// A new block's deltas landing in an abandoned tool call would emit a
+/// `ToolCallRequested` the model never asked for, which the agent loop would run.
 #[tokio::test]
 async fn a_block_opened_over_an_unclosed_tool_use_discards_it() {
     let out = events(vec![
@@ -171,7 +159,7 @@ async fn unparseable_accumulated_json_is_a_malformed_event_not_a_panic() {
     .await;
 
     assert!(matches!(out[0], Err(ProviderError::MalformedEvent { .. })));
-    // Unlike a frame that fails to parse, one unusable tool call does not
-    // end the turn — the `message_stop` behind it is still honoured.
+    // Unlike a frame that fails to parse, one unusable tool call does not end the
+    // turn: the `message_stop` behind it is still honoured.
     assert!(matches!(out[1], Ok(AgentEvent::Stop { .. })));
 }

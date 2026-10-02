@@ -1,9 +1,7 @@
 //! Public contract of [`MockProvider`].
 //!
-//! Deliberately kept out of any shared abstraction over the backends — see its
-//! doc comment — so the agent loop is generic over the stream shape
-//! (`EventStream`), never over which type produced it. These tests exercise it
-//! that way.
+//! Kept out of any shared abstraction over the backends, so the agent loop is generic
+//! over the stream shape (`EventStream`), never over which type produced it.
 
 use futures_util::StreamExt;
 use sandbx_providers::{AgentEvent, MessagesRequest, MockProvider, ProviderError, StopReason};
@@ -64,9 +62,8 @@ async fn an_empty_sequence_yields_no_events() {
     assert!(events.is_empty());
 }
 
-/// The negative-path constructor: a caller testing a provider that fails
-/// partway through a turn needs the error at a specific point, not merely an
-/// all-success sequence.
+/// The negative-path constructor: an error at a specific point in the sequence, not
+/// merely an all-success one.
 #[tokio::test]
 async fn with_results_can_inject_a_terminal_error() {
     let provider = MockProvider::with_results(vec![

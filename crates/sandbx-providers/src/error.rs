@@ -1,10 +1,9 @@
 /// Why a provider call did not produce a usable event stream.
 ///
-/// Split by what the caller can do about it: a missing credential is a
-/// configuration problem to fix before retrying at all; a transport failure,
-/// a rate limit, or a 5xx might succeed on retry; a 4xx other than 429 will
-/// not; and a malformed or truncated stream is a wire-format bug in sandbx or
-/// a vendor-side change, not something any retry fixes.
+/// Split by what the caller can do about it: a configuration problem to fix
+/// before retrying at all, something a retry might clear, or a wire-format
+/// mismatch no retry fixes. [`is_retryable`](Self::is_retryable) is the one place
+/// that split is decided.
 #[derive(Debug)]
 pub enum ProviderError {
     /// No credential could be resolved for this provider.
@@ -13,14 +12,12 @@ pub enum ProviderError {
         env_var: &'static str,
     },
 
-    /// A base URL handed to `AnthropicClient::with_base_url` was rejected
-    /// before any request was made.
+    /// A base URL handed to `AnthropicClient::with_base_url` was rejected before
+    /// any request was made.
     ///
-    /// A configuration problem, like [`MissingCredential`]: the key travels in
-    /// a request header, so a non-`https` base URL would put it on the wire in
-    /// cleartext. Loopback `http://` is permitted, for a local mock server.
-    ///
-    /// [`MissingCredential`]: Self::MissingCredential
+    /// The key travels in a request header, so a non-`https` base URL would put it
+    /// on the wire in cleartext. Loopback `http://` is permitted, for a local mock
+    /// server.
     InvalidBaseUrl {
         /// The rejected value, as given.
         base_url: String,
@@ -28,32 +25,21 @@ pub enum ProviderError {
         reason: &'static str,
     },
 
-    /// The request never reached the API, or the connection dropped before a
-    /// full response arrived.
-    ///
-    /// Distinct from [`ApiError`]: the API never got a chance to answer, so
-    /// there is no status code or vendor error body to report.
-    ///
-    /// [`ApiError`]: Self::ApiError
+    /// The request never reached the API, or the connection dropped before a full
+    /// response arrived — so there is no status code or vendor error body to report.
     Transport {
         /// What was being attempted, for the operator to act on.
         detail: String,
-        /// Kept so the cause survives `detail`: the reqwest message is what
-        /// separates a DNS failure from a TLS one from a dropped socket.
+        /// The reqwest message, which is what separates a DNS failure from a TLS
+        /// one from a dropped socket.
         source: reqwest::Error,
     },
 
     /// The API answered with a non-2xx status other than a rate limit, or sent
     /// an in-band SSE `error` event mid-stream.
     ///
-    /// Rate limiting is split out as [`RateLimited`] so a caller can back off
-    /// without string-matching `kind`. Which *other* failures are worth retrying
-    /// — a 529 `overloaded_error` and a 500 `api_error` are, a 400 is not — is
-    /// [`is_retryable`]'s answer, not a `status`/`kind` comparison at the call
-    /// site.
-    ///
-    /// [`RateLimited`]: Self::RateLimited
-    /// [`is_retryable`]: Self::is_retryable
+    /// Rate limiting is split out as [`RateLimited`](Self::RateLimited) so a caller
+    /// can back off without string-matching `kind`.
     ApiError {
         /// `None` for an in-band SSE `error` event, which carries no HTTP
         /// status of its own.
@@ -62,41 +48,32 @@ pub enum ProviderError {
         kind: String,
         /// The vendor's human-readable message.
         message: String,
-        /// How long the API asked the caller to wait, from `Retry-After`, if it
-        /// said. A 529 carries one as often as a 429 does, so it is read on
-        /// every status rather than only the rate-limited path.
+        /// From `Retry-After`, if the API said. A 529 carries one as often as a 429
+        /// does, so it is read on every status, not only the rate-limited path.
         retry_after: Option<std::time::Duration>,
     },
 
     /// The API answered 429.
     RateLimited {
-        /// How long the API asked the caller to wait, from `Retry-After`, if
-        /// it said.
+        /// From `Retry-After`, if the API said.
         retry_after: Option<std::time::Duration>,
         /// The vendor's human-readable message.
         message: String,
     },
 
     /// A chunk of the SSE stream was not valid UTF-8, not a well-formed
-    /// `event:`/`data:` frame, or its `data:` payload did not deserialize into
-    /// any known event shape (including a `tool_use` block whose accumulated
-    /// JSON never parsed).
+    /// `event:`/`data:` frame, or its `data:` payload matched no known event shape —
+    /// including a `tool_use` block whose accumulated JSON never parsed.
     MalformedEvent {
         /// What was wrong, for the operator to act on.
         detail: String,
     },
 
-    /// The connection closed before a `message_stop` event arrived.
-    ///
-    /// Distinct from [`MalformedEvent`]: every event seen so far was
-    /// well-formed, but the turn never reached a defined end state, so nothing
-    /// downstream can tell whether it actually finished. The complement holds
-    /// too — a turn that *did* reach `message_stop` always ends with an
-    /// [`AgentEvent::Stop`], even when the API never named a stop reason, so
-    /// these two are the only two ways a stream can end.
-    ///
-    /// [`MalformedEvent`]: Self::MalformedEvent
-    /// [`AgentEvent::Stop`]: crate::AgentEvent::Stop
+    /// The connection closed before a `message_stop` event arrived: every event seen
+    /// was well-formed, but the turn never reached a defined end state. A turn that
+    /// *did* reach `message_stop` always ends with an
+    /// [`AgentEvent::Stop`](crate::AgentEvent::Stop), so these are the only two ways
+    /// a stream can end.
     StreamEndedUnexpectedly,
 }
 
@@ -107,13 +84,10 @@ impl ProviderError {
 
     /// Whether retrying the identical request could plausibly succeed.
     ///
-    /// The one place the retry/no-retry split is decided, so a retry layer never
-    /// matches on `status` or `kind` itself: a transport failure or a rate limit
-    /// is retryable, a 5xx is (Anthropic documents 500 `api_error` and 529
-    /// `overloaded_error` as such), a 4xx other than 429 is not. A malformed
-    /// stream is a wire-format bug no retry fixes; a truncated one might be, but
-    /// the turn was already partially delivered, so re-sending is the caller's
-    /// judgement call.
+    /// A transport failure or rate limit is retryable, and a 5xx (Anthropic documents
+    /// 500 `api_error` and 529 `overloaded_error` as transient); a 4xx other than 429
+    /// is not. A truncated stream reports `false` because the turn was already partly
+    /// delivered, so re-sending is the caller's judgement call.
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::Transport { .. } | Self::RateLimited { .. } => true,
@@ -133,8 +107,8 @@ impl ProviderError {
 
     /// How long the API asked the caller to wait before retrying, if it said.
     ///
-    /// Reads the same `Retry-After` for a rate limit and for an overload, so a
-    /// backoff layer does not need to know which variant it is holding.
+    /// Reads the same `Retry-After` for a rate limit and an overload, so a backoff
+    /// layer need not know which variant it holds.
     pub fn retry_after(&self) -> Option<std::time::Duration> {
         match self {
             Self::RateLimited { retry_after, .. } | Self::ApiError { retry_after, .. } => {

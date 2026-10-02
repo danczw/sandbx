@@ -3,26 +3,17 @@ use serde::{Serialize, Serializer};
 
 /// A request to the Messages API.
 ///
-/// There is no `stream` field: this crate builds no non-streaming path, since
-/// the agent loop it feeds always consumes an event stream. The flag is
-/// serialized as the constant `true` by the hand-written [`Serialize`] impl
-/// below, rather than asked of every caller and every test only to be given
-/// the same answer each time.
+/// There is no `stream` field: this crate builds no non-streaming path, and the
+/// flag is serialized as the constant `true` by the [`Serialize`] impl below.
 ///
-/// `Clone` is part of the contract, not an incidental derive: `stream_chat`
-/// takes the request by value, so without it a caller could not retry the same
-/// turn after a [`ProviderError::RateLimited`] or [`ProviderError::Transport`].
-/// The whole tree below derives it for the same reason.
-///
-/// [`ProviderError::RateLimited`]: crate::ProviderError::RateLimited
-/// [`ProviderError::Transport`]: crate::ProviderError::Transport
+/// `Clone` is part of the contract, here and down the whole tree: `stream_chat`
+/// takes the request by value, so without it a caller could not retry a turn after
+/// a rate limit or transport failure.
 #[derive(Debug, Clone)]
 pub struct MessagesRequest {
-    /// A freeform string, not an enum — new model IDs ship regularly, and an
-    /// enum would need a code change every release. See the Anthropic API
-    /// reference for current model identifiers.
+    /// A freeform string, not an enum: new model IDs ship regularly.
     pub model: String,
-    /// This crate has no default opinion on a value; the caller supplies one.
+    /// Required by the API; this crate has no default opinion on a value.
     pub max_tokens: u32,
     /// The system prompt. Omitted from the body entirely when `None`, which is
     /// not the same as sending `null`.
@@ -34,17 +25,13 @@ pub struct MessagesRequest {
 }
 
 impl Serialize for MessagesRequest {
-    /// Hand-written rather than derived so `stream` can be a constant in the
-    /// wire shape without being a field in the public API. Field order matches
-    /// the declaration order above; `system` and `tools` are omitted rather
-    /// than sent as `null`/`[]`, which the derive did via
-    /// `skip_serializing_if`.
+    /// Hand-written rather than derived so `stream` can be a constant in the wire
+    /// shape without being a field in the public API; `system` and `tools` are
+    /// omitted rather than sent as `null`/`[]`.
     ///
-    /// The destructuring `let` is deliberate, not style: an impl reading
-    /// `self.model` and friends would silently drop any field added later, with
-    /// no compiler or clippy warning. Binding every field by name makes a new
-    /// one fail to compile here until it is written to the wire or explicitly
-    /// ignored.
+    /// The destructuring `let` is load-bearing: an impl reading `self.model` would
+    /// silently drop any field added later, where binding every field by name makes
+    /// a new one fail to compile until it is written to the wire.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let Self {
             model,
@@ -95,33 +82,28 @@ pub enum Role {
 pub enum ContentBlock {
     /// Prose, the only block kind a first user turn needs.
     Text {
-        /// Sent as given. Nothing here checks its length, so the model's context
-        /// window is what bounds it.
+        /// Sent as given; the model's context window is what bounds its length.
         text: String,
     },
     /// A tool call the model made on a previous turn, replayed back into the
     /// conversation.
     ToolUse {
-        /// The vendor's call ID, which the matching [`ToolResult`] must echo.
-        ///
-        /// [`ToolResult`]: Self::ToolResult
+        /// The vendor's call ID, which the answering
+        /// [`ToolResult`](Self::ToolResult) must echo.
         id: String,
         /// The tool's name, as it stood in the model's original call.
         name: String,
-        /// The arguments the model produced, replayed verbatim rather than
-        /// re-serialized from a parsed form.
+        /// Replayed verbatim rather than re-serialized from a parsed form.
         input: serde_json::Value,
     },
     /// The outcome of running a tool call.
     ToolResult {
-        /// The `id` of the [`ToolUse`] block this answers.
-        ///
-        /// [`ToolUse`]: Self::ToolUse
+        /// The `id` of the [`ToolUse`](Self::ToolUse) block this answers.
         tool_use_id: String,
         /// The tool's output, or its error message when `is_error` is set.
         content: String,
-        /// `Some(true)` marks the call as failed. Omitted from the body
-        /// entirely when `None`, which is not the same as sending `null`.
+        /// `Some(true)` marks the call as failed. Omitted from the body entirely
+        /// when `None`, which is not the same as sending `null`.
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
@@ -132,11 +114,9 @@ pub enum ContentBlock {
 pub struct ToolDefinition {
     /// The name the model uses to call it.
     pub name: String,
-    /// What it does, in prose — this is the model's only guide to when to
-    /// reach for it.
+    /// What it does, in prose — the model's only guide to when to reach for it.
     pub description: String,
-    /// A plain `serde_json::Value`, not `schemars::Schema` — decouples this
-    /// crate from sandbx-tools entirely. Bridging `BuiltinTool::input_schema()`
-    /// into this shape is the caller's job.
+    /// A plain `serde_json::Value`, not `schemars::Schema`, so this crate does not
+    /// depend on sandbx-tools; bridging the two is the caller's job.
     pub input_schema: serde_json::Value,
 }

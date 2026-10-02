@@ -1,6 +1,6 @@
-//! Text and thinking blocks, which stream straight through, and the frames that
-//! must produce no event at all rather than ending the turn: pings, unmodeled
-//! tags at all three levels, and a payload-less heartbeat.
+//! Text and thinking blocks, which stream straight through, and the frames that must
+//! produce no event rather than ending the turn: pings, unmodeled tags at all three
+//! levels, and a payload-less heartbeat.
 
 use super::{AgentEvent, StopReason, ok_events, raw, stop};
 
@@ -29,9 +29,6 @@ async fn text_deltas_stream_immediately() {
     );
 }
 
-/// A field-name bug here (the wire field is "thinking", matching
-/// text_delta's "text" — not "delta") would silently break every
-/// extended-thinking stream with a deserialization error.
 #[tokio::test]
 async fn thinking_deltas_stream_immediately() {
     let out = ok_events(vec![
@@ -57,9 +54,8 @@ async fn thinking_deltas_stream_immediately() {
     );
 }
 
-/// A signature_delta accompanies a thinking block but has nowhere to go
-/// in AgentEvent yet (see its doc comment) — it must be consumed and
-/// ignored, not cause a parse failure.
+/// A `signature_delta` accompanies a thinking block and has nowhere to go in
+/// `AgentEvent` yet, so it must be consumed rather than fail to parse.
 #[tokio::test]
 async fn signature_delta_is_accepted_and_produces_no_event() {
     let out = ok_events(vec![
@@ -84,10 +80,6 @@ async fn ping_produces_no_event() {
     assert_eq!(out, vec![stop(StopReason::Unspecified)]);
 }
 
-/// The streaming docs say new event types ship over time and clients must
-/// tolerate them. Since a parse failure ends the stream, an unmodeled type
-/// must be ignored instead — otherwise `server_tool_use`, MCP or citations
-/// would discard the remainder of a paid turn with no code change here.
 #[tokio::test]
 async fn an_unknown_event_type_is_ignored_not_fatal() {
     let out = ok_events(vec![
@@ -109,9 +101,6 @@ async fn an_unknown_event_type_is_ignored_not_fatal() {
     assert_eq!(out.last(), Some(&stop(StopReason::EndTurn)));
 }
 
-/// The same tolerance one level down: an unmodeled content-block type and an
-/// unmodeled delta type, which is how `server_tool_use` and
-/// `citations_delta` arrive.
 #[tokio::test]
 async fn an_unknown_content_block_and_delta_are_ignored_not_fatal() {
     let out = ok_events(vec![
@@ -135,9 +124,6 @@ async fn an_unknown_content_block_and_delta_are_ignored_not_fatal() {
     );
 }
 
-/// A frame carrying no `data:` line — an intermediary's keep-alive comment —
-/// reaches this layer as an empty payload. Failing to parse `""` would end
-/// an otherwise healthy turn on the whim of a proxy.
 #[tokio::test]
 async fn a_frame_with_no_payload_does_not_end_the_turn() {
     let out = ok_events(vec![

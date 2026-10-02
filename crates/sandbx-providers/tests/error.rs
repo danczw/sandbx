@@ -1,8 +1,7 @@
 //! Public contract of [`ProviderError`].
 //!
-//! Every variant's `Display` must render something a user or log line can act
-//! on, and `source()` must be wired only where a variant actually carries an
-//! underlying error — mirroring `SandboxError`'s contract in sandbx-core.
+//! Every variant's `Display` must render something a user or log line can act on, and
+//! `source()` must be wired only where a variant carries an underlying error.
 
 use sandbx_providers::ProviderError;
 
@@ -20,9 +19,8 @@ fn missing_credential_names_the_env_var() {
     assert!(source_of(&error).is_none());
 }
 
-/// Distinct from `ApiError`: the request never got far enough to receive a
-/// status code or vendor error body, so this is the only variant whose
-/// `source()` points at anything.
+/// The request never got far enough for a status code or vendor error body, so this is
+/// the only variant whose `source()` points at anything.
 #[test]
 fn transport_carries_its_source() {
     let reqwest_error = reqwest_error_for_test();
@@ -55,8 +53,8 @@ fn api_error_with_a_status_reports_it() {
     assert!(source_of(&error).is_none());
 }
 
-/// `status: None` is how an in-band SSE `error` event is distinguished from an
-/// HTTP-level failure — it carries no status code of its own.
+/// `status: None` is how an in-band SSE `error` event, which carries no status code of
+/// its own, is distinguished from an HTTP-level failure.
 #[test]
 fn api_error_without_a_status_still_reports_the_body() {
     let error = ProviderError::ApiError {
@@ -111,9 +109,8 @@ fn stream_ended_unexpectedly_renders_without_panicking() {
     assert!(source_of(&error).is_none());
 }
 
-/// `InvalidBaseUrl` is the one variant a caller hits before any I/O happens, so
-/// its `Display` has to name the offending URL *and* say what was wrong with it
-/// — "invalid base URL" alone leaves the caller guessing.
+/// `InvalidBaseUrl` is hit before any I/O, so its `Display` has to name the offending
+/// URL *and* say what was wrong with it.
 #[test]
 fn invalid_base_url_reports_both_the_url_and_the_reason() {
     let error = ProviderError::InvalidBaseUrl {
@@ -127,9 +124,8 @@ fn invalid_base_url_reports_both_the_url_and_the_reason() {
     assert!(source_of(&error).is_none());
 }
 
-/// A retry loop classifies by these two accessors rather than by matching the
-/// enum itself, so the classification is part of the public contract: retrying a
-/// 400 wastes money and retrying a 529 is the whole point.
+/// A retry loop classifies by these two accessors rather than by matching the enum, so
+/// the classification is part of the public contract.
 #[test]
 fn transient_failures_are_retryable_and_client_errors_are_not() {
     let overloaded_http = ProviderError::ApiError {
@@ -201,9 +197,8 @@ fn transient_failures_are_retryable_and_client_errors_are_not() {
     );
 }
 
-/// The server's own backoff hint, wherever it arrived from: a 429's
-/// `Retry-After` and a 5xx's `Retry-After` are surfaced through one accessor so
-/// a retry loop need not know which variant it is holding.
+/// A 429's `Retry-After` and a 5xx's are surfaced through one accessor, so a retry loop
+/// need not know which variant it holds.
 #[test]
 fn retry_after_is_exposed_from_both_carrying_variants() {
     let two_secs = std::time::Duration::from_secs(2);
@@ -235,8 +230,7 @@ fn retry_after_is_exposed_from_both_carrying_variants() {
 
 /// The only way to get a real `reqwest::Error` without a network call.
 fn reqwest_error_for_test() -> reqwest::Error {
-    // Building any reqwest::Client panics without a crypto provider installed
-    // first — see `ensure_crypto_provider_installed`'s doc comment.
+    // Building any reqwest::Client panics without a crypto provider installed first.
     sandbx_providers::ensure_crypto_provider_installed();
     reqwest::Client::new()
         .get("not a url")

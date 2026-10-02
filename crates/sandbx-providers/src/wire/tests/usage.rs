@@ -26,10 +26,8 @@ async fn message_start_and_message_delta_combine_into_one_usage_event() {
     );
 }
 
-/// The docs call the `message_delta` counts cumulative, and server-side tool
-/// use inflates `input_tokens` mid-stream — Anthropic's own web-search
-/// example jumps from 2679 to 10682. The delta's figures must win, or the
-/// turn is billed at a fraction of what it cost.
+/// The `message_delta` counts are cumulative, and server-side tool use inflates
+/// `input_tokens` mid-stream, so the delta's figures must win.
 #[tokio::test]
 async fn a_message_delta_restating_input_tokens_wins_over_message_start() {
     let out = ok_events(vec![
@@ -50,9 +48,8 @@ async fn a_message_delta_restating_input_tokens_wins_over_message_start() {
     );
 }
 
-/// "One or more" `message_delta` events are documented, and the counts in
-/// each restate the totals. Exactly one `Usage` event must come out, or a
-/// consumer adding them up reports several times the real spend.
+/// Several `message_delta` events are documented, each restating the totals, so
+/// exactly one `Usage` must come out or a consumer summing them overcounts.
 #[tokio::test]
 async fn several_message_deltas_produce_exactly_one_usage_event() {
     let out = ok_events(vec![
@@ -79,8 +76,6 @@ async fn several_message_deltas_produce_exactly_one_usage_event() {
     );
 }
 
-/// A turn that never reported a count emits no `Usage` at all, rather than
-/// one claiming a genuine zero.
 #[tokio::test]
 async fn a_turn_with_no_usage_reported_emits_no_usage_event() {
     let out = ok_events(vec![
@@ -92,9 +87,8 @@ async fn a_turn_with_no_usage_reported_emits_no_usage_event() {
     assert_eq!(out, vec![stop(StopReason::EndTurn)]);
 }
 
-/// A `message_delta` with no `usage` key, and a `message_start` with no
-/// `usage` key — the latter is the shape the docs' extended-thinking example
-/// shows. Neither is worth ending a paid turn over.
+/// Both frames really ship without a `usage` key, and neither is worth ending a paid
+/// turn over.
 #[tokio::test]
 async fn frames_missing_their_usage_field_do_not_end_the_turn() {
     let out = ok_events(vec![

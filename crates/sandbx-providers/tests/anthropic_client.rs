@@ -13,8 +13,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 fn client_for(server: &MockServer) -> AnthropicClient {
     AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
         .unwrap()
-        // wiremock binds loopback, which `with_base_url` allows over plain
-        // http precisely so this works without a TLS mock.
+        // wiremock binds loopback, which `with_base_url` allows over plain http
+        // precisely so this works without a TLS mock.
         .with_base_url(server.uri())
         .unwrap()
 }
@@ -34,9 +34,8 @@ fn a_request() -> MessagesRequest {
     }
 }
 
-/// The full happy-path SSE body a real turn produces, including a tool call
-/// split across fragments — this is the same shape the `wire` module's unit tests
-/// exercise in-process, now proven over a real HTTP round trip.
+/// The full happy-path SSE body a real turn produces, including a tool call split
+/// across fragments.
 const FULL_TURN_SSE: &str = concat!(
     "event: message_start\n",
     "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n\n",
@@ -60,10 +59,9 @@ const FULL_TURN_SSE: &str = concat!(
     "data: {\"type\":\"message_stop\"}\n\n",
 );
 
-/// Asserts the *whole* request, body included. Without a body matcher the suite
-/// would pass with `stream: true` dropped, or with `.json(&request)` swapped for
-/// a `.body(..)` that loses `content-type` — `request_serialization.rs` checks
-/// `serde_json::to_value` in isolation and never goes through the client.
+/// Asserts the *whole* request, body included: without a body matcher the suite would
+/// pass with `stream: true` dropped, or with `.json(&request)` swapped for a
+/// `.body(..)` that loses `content-type`.
 #[tokio::test]
 async fn sends_the_right_headers_and_body() {
     let server = MockServer::start().await;
@@ -87,8 +85,8 @@ async fn sends_the_right_headers_and_body() {
     let stream = client.stream_chat(a_request()).await.unwrap();
     let _: Vec<_> = stream.collect().await;
 
-    // wiremock's `.expect(1)` (verified on drop) is the real assertion that
-    // every matcher above held; reaching here without a panic confirms it.
+    // wiremock's `.expect(1)`, verified on drop, is the real assertion that every
+    // matcher above held.
 }
 
 #[tokio::test]
@@ -198,11 +196,8 @@ async fn a_400_response_is_reported_with_the_vendor_envelope() {
     }
 }
 
-/// 529 is Anthropic's "overloaded", the one status a caller most wants to retry.
-/// Asserted end-to-end rather than on a hand-built error because the
-/// classification only pays off if `map_error_response` produces a retryable
-/// error from a real response — and because 529 falls outside the range
-/// `reqwest`'s own `status().is_server_error()` covers.
+/// 529 is Anthropic's "overloaded", the one status a caller most wants to retry, and
+/// it falls outside the range `reqwest`'s own `status().is_server_error()` covers.
 #[tokio::test]
 async fn a_529_response_is_retryable_and_carries_its_retry_after() {
     let server = MockServer::start().await;
@@ -240,9 +235,8 @@ async fn a_529_response_is_retryable_and_carries_its_retry_after() {
     }
 }
 
-/// A mid-stream `error` event (no `message_stop`) must surface as an item in
-/// the stream, not as the outer `Result` — by the time it arrives the
-/// response was already a 200 and events were already flowing.
+/// A mid-stream `error` event surfaces as an item in the stream, not the outer
+/// `Result`: by the time it arrives the response was already a 200.
 #[tokio::test]
 async fn a_mid_stream_error_event_ends_the_stream_as_an_item() {
     let server = MockServer::start().await;
@@ -275,8 +269,7 @@ async fn a_mid_stream_error_event_ends_the_stream_as_an_item() {
     }
 }
 
-/// Everything seen was well-formed, so this is not a `MalformedEvent`: the turn
-/// simply never reached a defined end state.
+/// Everything seen was well-formed, so this is not a `MalformedEvent`.
 #[tokio::test]
 async fn a_connection_closed_before_message_stop_is_reported() {
     let server = MockServer::start().await;
@@ -298,14 +291,9 @@ async fn a_connection_closed_before_message_stop_is_reported() {
     ));
 }
 
-/// That the returned type is [`EventStream`] the signature already says; that the
-/// *future* is `Send` it does not — that is inferred, so it can regress silently,
-/// and a non-`Send` future cannot be `tokio::spawn`ed, which is what a TUI driving
-/// a turn has to do. Pinned here rather than relying on sandbx-agent's
-/// `the_documented_call_shape_compiles_and_stays_spawnable`, which would stop
-/// covering it if `run_turn`'s bound ever loosened.
-///
-/// Compiled but never run, and so needs no `MockServer`.
+/// The signature states the returned [`EventStream`]; that the *future* is `Send` it
+/// does not — that is inferred, so it can regress silently, and a non-`Send` future
+/// cannot be `tokio::spawn`ed. Compiled but never run, so needs no `MockServer`.
 ///
 /// [`EventStream`]: sandbx_providers::EventStream
 #[allow(dead_code)]
@@ -315,10 +303,9 @@ fn the_clients_future_stays_spawnable(client: &'static AnthropicClient) {
     assert_send(client.stream_chat(a_request()));
 }
 
-/// A redirect must not be followed: the API key rides in an `x-api-key`
-/// header, which reqwest does not scrub across hosts, so following one would
-/// hand a live key to whatever the `Location` names. The Messages API never
-/// legitimately redirects, so a 3xx is reported as an error instead.
+/// The API key rides in an `x-api-key` header, which reqwest does not scrub across
+/// hosts, so following a redirect would hand a live key to whatever `Location` names.
+/// The Messages API never legitimately redirects.
 #[tokio::test]
 async fn a_redirect_is_not_followed() {
     let attacker = MockServer::start().await;
@@ -351,8 +338,8 @@ async fn a_redirect_is_not_followed() {
         ),
         "expected the 307 to surface as an error, got {error:?}"
     );
-    // `attacker`'s `.expect(0)`, verified on drop, is the real assertion: the
-    // key was never replayed to it.
+    // `attacker`'s `.expect(0)`, verified on drop, is the real assertion: the key
+    // was never replayed to it.
 }
 
 #[test]
@@ -395,10 +382,9 @@ fn a_non_http_base_url_scheme_is_rejected() {
     );
 }
 
-/// The endpoint is built by appending `/v1/messages`, which lands *before* a
-/// `?` or `#`. Accepting either would post to a different URL than the one the
-/// operator read back, and userinfo would put a second credential on the wire —
-/// so all three are rejected up front rather than silently mangled.
+/// `/v1/messages` is appended, which lands *before* a `?` or `#`, so either would
+/// post to a different URL than the operator read back; userinfo would put a second
+/// credential on the wire.
 #[test]
 fn a_base_url_with_a_query_fragment_or_credentials_is_rejected() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
@@ -415,10 +401,9 @@ fn a_base_url_with_a_query_fragment_or_credentials_is_rejected() {
     }
 }
 
-/// The loopback exception exists for the mock server the rest of this file uses,
-/// and has to cover every spelling of loopback — `127.0.0.1` is not the only
-/// one, and an IPv6 literal arrives from `Url::host_str` still wrapped in
-/// brackets, which do not parse as part of an address.
+/// Every spelling of loopback counts, and an IPv6 literal arrives from
+/// `Url::host_str` still wrapped in brackets, which do not parse as part of an
+/// address.
 #[test]
 fn every_spelling_of_a_loopback_host_is_accepted_over_cleartext() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
