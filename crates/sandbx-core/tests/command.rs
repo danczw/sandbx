@@ -109,17 +109,22 @@ fn refuses_a_path_the_policy_omits() {
     let secret = dir.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
-    let policy = SandboxPolicy::default()
-        .allow_read("/usr")
-        .allow_read("/bin")
-        .allow_read("/lib")
-        .allow_read("/lib64");
+    let policy = SandboxPolicy::default().allow_system_executables();
 
     let output = SandboxedCommand::new("/bin/cat", policy)
         .arg(secret.to_str().unwrap())
         .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
         .output()
         .unwrap();
+
+    // A helper that never execed also satisfies both assertions below, and a granted
+    // path absent on this distribution fails the ruleset build before the command runs.
+    // Rule that out first, or this passes without the kernel having been asked.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("sandbx-helper:"),
+        "setup failed, so the denial was never tested: {stderr}"
+    );
 
     assert!(!output.status.success());
     assert!(!String::from_utf8_lossy(&output.stdout).contains("secret"));
