@@ -378,6 +378,99 @@ fn a_port_list_permits_stream_sockets_only_in_the_ip_families() {
     }
 }
 
+/// The family allowlist guards `socket`, and a socket's family does not stay fixed there:
+/// `setsockopt(fd, SOL_TCP, TCP_ULP, "smc")` re-points the descriptor at a new `AF_SMC`
+/// socket, so a permitted `socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)` becomes the very thing
+/// the rule above refuses to create.
+///
+/// `TCP_ULP` is 31 (`include/uapi/linux/tcp.h`), which `libc` does not name.
+#[test]
+fn a_port_list_denies_the_tcp_ulp_sockopt() {
+    let program = compiled_filter(&port_list()).unwrap();
+    const TCP_ULP: u64 = 31;
+
+    assert_eq!(
+        verdict_with_args(
+            &program,
+            libc::SYS_setsockopt,
+            [3, libc::IPPROTO_TCP as u64, TCP_ULP, 0, 0, 0]
+        ),
+        EPERM,
+        "a port allowlist permits TCP_ULP, so a legal TCP socket can be converted to one \
+         whose connect no Landlock port rule sees"
+    );
+}
+
+/// The denial is the option and not the syscall: a program that cannot call `setsockopt` at
+/// all cannot set `SO_REUSEADDR` or a timeout, and `TCP_NODELAY` shares the level the rule
+/// names — so the `optname` half of the condition has to be doing work.
+#[test]
+fn a_port_list_permits_other_sockopts() {
+    let program = compiled_filter(&port_list()).unwrap();
+
+    for (level, optname) in [
+        (libc::SOL_SOCKET, libc::SO_REUSEADDR),
+        (libc::SOL_SOCKET, libc::SO_RCVTIMEO),
+        (libc::IPPROTO_TCP, libc::TCP_NODELAY),
+        (libc::IPPROTO_TCP, libc::TCP_KEEPIDLE),
+    ] {
+        assert_eq!(
+            verdict_with_args(
+                &program,
+                libc::SYS_setsockopt,
+                [3, level as u64, optname as u64, 0, 0, 0]
+            ),
+            ALLOW,
+            "setsockopt({level}, {optname}) is refused, so the rule denies the syscall \
+             rather than the ULP option"
+        );
+    }
+}
+
+/// `level` and `optname` are `int`s, so the kernel discards each register's high half before
+/// `do_tcp_setsockopt` reads it — a `Qword` compare would miss both of these.
+#[test]
+fn the_tcp_ulp_rule_ignores_the_arguments_high_half() {
+    let program = compiled_filter(&port_list()).unwrap();
+    let high = 0xdead_beef_0000_0000u64;
+
+    for (level, optname) in [
+        (high | libc::IPPROTO_TCP as u64, 31),
+        (libc::IPPROTO_TCP as u64, high | 31),
+    ] {
+        assert_eq!(
+            verdict_with_args(&program, libc::SYS_setsockopt, [3, level, optname, 0, 0, 0]),
+            EPERM,
+            "TCP_ULP passed as ({level:#x}, {optname:#x}), hiding behind bits the kernel \
+             drops, so the comparison is 64-bit where the kernel's is 32-bit"
+        );
+    }
+}
+
+/// The denial belongs to the port allowlist. Under the other two states there is no claim it
+/// would falsify — an empty netns has nowhere for an SMC socket to dial, and unrestricted
+/// egress was the request — and `TCP_ULP` is how in-process kTLS is enabled.
+#[test]
+fn only_a_port_list_denies_the_tcp_ulp_sockopt() {
+    for policy in [
+        SandboxPolicy::default(),
+        SandboxPolicy::default().allow_network(),
+    ] {
+        let program = compiled_filter(&policy).unwrap();
+
+        assert_eq!(
+            verdict_with_args(
+                &program,
+                libc::SYS_setsockopt,
+                [3, libc::IPPROTO_TCP as u64, 31, 0, 0, 0]
+            ),
+            ALLOW,
+            "a policy with no port allowlist refuses TCP_ULP, which is narrower than it \
+             claims"
+        );
+    }
+}
+
 /// TCP Fast Open reaches a port without calling `connect`, so Landlock never sees it:
 /// `tcp_sendmsg_fastopen` connects via `__inet_stream_connect`, and `security_socket_connect`
 /// is only reached from `__sys_connect_file`.

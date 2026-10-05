@@ -45,7 +45,7 @@ run through `SandboxedCommand`:
 | control | mechanism | covers |
 |---------|-----------|--------|
 | filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper/ruleset/compat.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
-| network | an empty network namespace, or — when a port allowlist is given — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families and TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when it is granted per port |
+| network | an empty network namespace, or — when a port allowlist is given — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when it is granted per port |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create`. Namespace creation is denied on every route, not just `unshare`: `clone` is filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`. A foreign architecture is killed outright rather than refused per call — an i386 binary on x86\_64, or AArch32 on aarch64 — since its syscall numbers mean something else. On x86\_64 the x32 ABI is refused wholesale for the same reason, and needs a rule of its own because, unlike those, it shares the architecture the filter gates on |
@@ -185,11 +185,13 @@ Three properties matter as much as the list:
   it names and nowhere else, which is only true if everything Landlock cannot
   police is shut: UDP, raw sockets, stream sockets carrying a protocol other
   than TCP (MPTCP, SCTP), stream sockets in a family that tunnels IP from inside
-  the kernel (AF_SMC, AF_TIPC), and TCP Fast Open, which connects inside a
-  `sendmsg` and so never passes the hook the port rules hang off. All denied by
-  seccomp while a port list is in force. So **name resolution fails** under
-  `--allow-network <port>` — `getaddrinfo` can reach neither a UDP resolver nor
-  `AF_NETLINK` — and so do QUIC, HTTP/3 and `ping`. Until that is addressed
+  the kernel (AF_SMC, AF_TIPC) — including `setsockopt(TCP_ULP)`, which converts
+  an already-created TCP socket into one — and TCP Fast Open, which connects
+  inside a `sendmsg` and so never passes the hook the port rules hang off. All
+  denied by seccomp while a port list is in force. So **name resolution fails**
+  under `--allow-network <port>` — `getaddrinfo` can reach neither a UDP resolver
+  nor `AF_NETLINK` — and so do QUIC, HTTP/3, `ping` and in-process kTLS. Until
+  the first of those is addressed
   ([#147](https://github.com/danczw/sandbx/issues/147)), a command needing names
   wants a bare `--allow-network`, or an address resolved before the run.
   `context/decision-port-allowlist.md` records why the denial is not narrower.
