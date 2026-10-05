@@ -103,27 +103,39 @@ fn variable_name(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
-/// Where home directories live, for when no `$HOME` names one.
+/// Where home directories live, for a cwd `$HOME` does not settle.
 const HOME_PARENTS: [&str; 4] = ["/home", "/Users", "/var/home", "/root"];
 
-/// Whether `cwd` is somewhere a home directory cannot be ruled out.
+/// Whether `cwd` is one of [`HOME_PARENTS`] or holds one.
 ///
-/// Three readings, because without a `$HOME` nothing distinguishes them: `cwd` holds one of
-/// the well-known locations (`/`, `/var`), is one (`/home`), or is a child of one and so
-/// looks exactly like a home directory whatever it is named (`/home/other`).
+/// Not gated on `$HOME`: a root at `/home` is write over every user's home whatever the
+/// variable names, and a service account's `HOME=/var/lib/svc` would let it through.
+fn holds_home_directories(cwd: &Path) -> bool {
+    HOME_PARENTS
+        .into_iter()
+        .any(|known| Path::new(known).starts_with(cwd))
+}
+
+/// Whether `cwd` is a direct child of one of [`HOME_PARENTS`], and so shaped like a home.
+///
+/// Only with no `$HOME` to compare: `/home/other` is then indistinguishable from a home
+/// directory, where a readable `HOME` makes it a neighbour's and the operator's business.
 fn looks_like_a_home(cwd: &Path) -> bool {
     HOME_PARENTS
         .into_iter()
-        .map(Path::new)
-        .any(|known| known.starts_with(cwd) || cwd.parent() == Some(known))
+        .any(|known| cwd.parent() == Some(Path::new(known)))
 }
 
 /// `cwd` itself, or why no default may be rooted there.
 ///
-/// An empty `homes` means `HOME` was unreadable, which would leave the home rule below with
-/// nothing to compare and silently stop it existing — so it degrades to [`HOME_PARENTS`]
-/// rather than being skipped.
-fn vetted_root<'a>(cwd: &'a Path, homes: &[PathBuf], exe: &Path) -> Result<&'a Path, PolicyError> {
+/// An empty `homes` means `HOME` named no usable directory, leaving the exact home rule
+/// nothing to compare — so [`looks_like_a_home`] stands in for it rather than being skipped.
+fn vetted_root<'a>(
+    cwd: &'a Path,
+    homes: &[PathBuf],
+    exe: &Path,
+    granted: &[PathBuf],
+) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
         return Err(PolicyError::FilesystemRoot);
     }
@@ -138,12 +150,27 @@ fn vetted_root<'a>(cwd: &'a Path, homes: &[PathBuf], exe: &Path) -> Result<&'a P
         });
     }
 
-    // Only in the degraded case: with a `$HOME` to compare, the rule above is exact, and
-    // widening it would refuse `/home/other` for an operator who has no business there but
-    // also no way to say so.
+    if holds_home_directories(cwd) {
+        return Err(PolicyError::HomeParent {
+            cwd: cwd.to_path_buf(),
+        });
+    }
+
     if homes.is_empty() && looks_like_a_home(cwd) {
         return Err(PolicyError::UnnamedHome {
             cwd: cwd.to_path_buf(),
+        });
+    }
+
+    // Either direction, since Landlock rights cover a subtree — and a merged-`/usr` host
+    // resolves `/bin` to `/usr/bin`, which holds no granted path and so passed one way round.
+    if let Some(path) = granted
+        .iter()
+        .find(|path| path.starts_with(cwd) || cwd.starts_with(path))
+    {
+        return Err(PolicyError::SystemExecutables {
+            cwd: cwd.to_path_buf(),
+            path: path.clone(),
         });
     }
 
@@ -158,7 +185,7 @@ fn vetted_root<'a>(cwd: &'a Path, homes: &[PathBuf], exe: &Path) -> Result<&'a P
 }
 
 /// [`vetted_root`] over this process's own state.
-fn current_root() -> Result<PathBuf, PolicyError> {
+fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
     let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
         detail: "could not read the working directory to derive a policy from",
         source,
@@ -180,8 +207,12 @@ fn current_root() -> Result<PathBuf, PolicyError> {
     let exe = exe.canonicalize().unwrap_or(exe);
 
     let mut homes = Vec::new();
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
+    // Absolute only: an empty or relative `HOME` matches no resolved `getcwd`, so keeping it
+    // would read as a home that settles the cwd while answering nothing.
+    if let Some(home) = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|home| home.is_absolute())
+    {
         // Both forms, because Fedora Silverblue ships `/home -> /var/home`: `getcwd` says
         // `/var/home/u` where `$HOME` says `/home/u`, and comparing one bypasses the other.
         if let Ok(resolved) = home.canonicalize() {
@@ -190,7 +221,7 @@ fn current_root() -> Result<PathBuf, PolicyError> {
         homes.push(home);
     }
 
-    vetted_root(&cwd, &homes, &exe).map(Path::to_path_buf)
+    vetted_root(&cwd, &homes, &exe, granted).map(Path::to_path_buf)
 }
 
 impl Grants {
@@ -233,7 +264,7 @@ impl Grants {
         if !self.paths_given() {
             // Looked up inside the branch, not above it: an invocation that typed its own
             // flags depends on neither `getcwd` nor `HOME`, so must not be refused for them.
-            let root = current_root()?;
+            let root = current_root(policy.executable_paths())?;
             policy = policy.allow_read(&root).allow_write(&root);
         }
 
@@ -283,6 +314,14 @@ mod tests {
 
     const EXE: &str = "/usr/local/bin/sandbx";
 
+    /// What every run may already execute, which `policy()` passes from the live policy.
+    fn granted() -> Vec<PathBuf> {
+        SandboxPolicy::default()
+            .allow_system_executables()
+            .executable_paths()
+            .to_vec()
+    }
+
     fn bare() -> Grants {
         Grants {
             allow_read: Vec::new(),
@@ -299,7 +338,7 @@ mod tests {
     }
 
     fn root(cwd: &str, homes: &[PathBuf]) -> Result<PathBuf, PolicyError> {
-        vetted_root(Path::new(cwd), homes, Path::new(EXE)).map(Path::to_path_buf)
+        vetted_root(Path::new(cwd), homes, Path::new(EXE), &granted()).map(Path::to_path_buf)
     }
 
     #[test]
@@ -387,26 +426,36 @@ mod tests {
         );
     }
 
-    /// Without this the home rule would not degrade but *vanish*, and `/home` with `HOME`
-    /// unset would derive read and write over every user's home. `HOME` is routinely unset
-    /// under a systemd unit, cron, or `docker exec`.
+    /// `HOME` is routinely unset under a systemd unit, cron, or `docker exec`, and before
+    /// this `/home` derived read and write over every user's home.
     #[test]
-    fn an_unset_home_refuses_the_well_known_homes() {
+    fn the_home_parents_are_refused_with_no_home_set() {
         for cwd in ["/home", "/Users", "/var/home", "/root", "/var"] {
             let error = root(cwd, &[]).expect_err("a well-known home location");
 
             assert!(
-                matches!(error, PolicyError::UnnamedHome { .. }),
+                matches!(error, PolicyError::HomeParent { .. }),
                 "{error} let {cwd} through with no HOME set"
-            );
-            assert!(
-                error.to_string().contains("with HOME unset"),
-                "{error} does not say why {cwd} could not be told apart"
             );
         }
     }
 
-    /// The reading `starts_with` alone cannot give: with no `$HOME` naming it, a child of
+    /// The gap the exact rule leaves: a service account's `HOME=/var/lib/svc` matches
+    /// nothing under `/home`, so gating this arm on a *set* `HOME` let `/home` through.
+    #[test]
+    fn the_home_parents_are_refused_when_home_is_elsewhere() {
+        for cwd in ["/home", "/Users", "/var/home", "/root"] {
+            let error =
+                root(cwd, &homes(&["/var/lib/svc"])).expect_err("a well-known home location");
+
+            assert!(
+                matches!(error, PolicyError::HomeParent { .. }),
+                "{error} let {cwd} through for a $HOME that names somewhere else"
+            );
+        }
+    }
+
+    /// The reading the arm above cannot give: with no `$HOME` naming it, a child of
     /// `/home` is indistinguishable from a home directory whatever it is called.
     #[test]
     fn an_unset_home_refuses_a_child_of_one() {
@@ -416,6 +465,36 @@ mod tests {
             assert!(
                 matches!(error, PolicyError::UnnamedHome { .. }),
                 "{error} let {cwd} through with no HOME set"
+            );
+            assert!(
+                error.to_string().contains("with no usable HOME"),
+                "{error} does not say why {cwd} could not be told apart"
+            );
+        }
+    }
+
+    /// Write here plus the execute every run already has is the pair `Axis::grants` keeps
+    /// apart. Both directions, since a merged-`/usr` host resolves `/bin` to `/usr/bin`.
+    #[test]
+    fn a_directory_overlapping_the_system_binaries_is_refused() {
+        for cwd in ["/usr", "/lib64", "/usr/bin", "/usr/lib", "/usr/src/app"] {
+            let error = root(cwd, &homes(&["/home/u"])).expect_err("a system executable path");
+
+            assert!(
+                matches!(error, PolicyError::SystemExecutables { .. }),
+                "{error} let {cwd} through as a writable root"
+            );
+        }
+    }
+
+    /// Whole-component, so the rule claims no directory merely spelled like a system one.
+    #[test]
+    fn a_directory_named_like_a_system_one_is_a_valid_root() {
+        for cwd in ["/usrlocal", "/libexec", "/srv/usr"] {
+            assert_eq!(
+                root(cwd, &homes(&["/home/u"])).expect("an ordinary project directory"),
+                Path::new(cwd),
+                "prefix matching crossed a component boundary"
             );
         }
     }
@@ -447,6 +526,7 @@ mod tests {
             Path::new("/home/u/sandbx"),
             &homes(&["/home/u"]),
             Path::new("/home/u/sandbx/target/debug/sandbx"),
+            &granted(),
         )
         .expect_err("the enforcer inside the root");
 
@@ -462,6 +542,7 @@ mod tests {
             Path::new("/home/u/project"),
             &homes(&["/home/u"]),
             Path::new("/home/u/project-tools/sandbx"),
+            &granted(),
         )
         .expect("a sibling directory is not inside the root");
 
@@ -478,10 +559,14 @@ mod tests {
             root("/", &[]).expect_err("the filesystem root"),
             root("/home/u", &homes(&["/home/u"])).expect_err("home as a root"),
             root("/home", &homes(&["/home/u"])).expect_err("a parent of home"),
+            root("/home", &homes(&["/var/lib/svc"])).expect_err("a home parent"),
+            root("/home/other", &[]).expect_err("something shaped like a home"),
+            root("/usr", &homes(&["/home/u"])).expect_err("a system executable path"),
             vetted_root(
                 Path::new("/home/u/sandbx"),
                 &homes(&["/home/u"]),
                 Path::new("/home/u/sandbx/sandbx"),
+                &granted(),
             )
             .expect_err("the enforcer inside the root"),
         ];

@@ -55,19 +55,25 @@ is a strict widening of this, so nothing here forecloses it.
 ## The refusals, and the shape of the predicate
 
 A derived write grant is reachable by accident in a way a typed one is not, so
-`vetted_root` refuses four roots outright rather than deriving a narrower one:
+`vetted_root` refuses outright rather than deriving a narrower root:
 
 | Refuse when | Test |
 |---|---|
 | cwd is the filesystem root | `cwd.parent().is_none()` |
 | cwd is `$HOME`, or *holds* it | `homes.iter().any(\|h\| h.starts_with(cwd))` |
-| `$HOME` is unreadable and cwd could be a home | `looks_like_a_home(cwd)`, below |
+| cwd is where homes live, or holds it | `holds_home_directories(cwd)`, below |
+| no usable `$HOME`, and cwd is shaped like a home | `looks_like_a_home(cwd)`, below |
+| cwd overlaps a path already granted execute | `granted.iter().any(\|p\| p.starts_with(cwd) \|\| cwd.starts_with(p))` |
 | the running `sandbx` is inside cwd | `exe.starts_with(cwd)` |
 
-One `starts_with` covers both home cases: it is true of equal paths, so "cwd is
+One `starts_with` covers both `$HOME` cases: it is true of equal paths, so "cwd is
 `$HOME`" and "cwd is `/home`" fall out of the same test, and it is
 whole-component, so `/home/u/project-tools` is not inside `/home/u/project`. The
 root rule stays alongside it because it subsumes the root only when `HOME` is set.
+
+Only the `$HOME` arm reads the environment, and it is there to *name* a directory
+the arm below it already covers by location. That ordering is deliberate: it was
+the other way round once, and the inversion was a hole — see below.
 
 Every arm is a refusal and not a narrower default, because both fallbacks are
 worse. Falling back to the system paths alone makes an ordinary command fail for a
@@ -90,37 +96,61 @@ starts a denylist whose first omission is silent, which is the shape
 `~/code/project` is the entire use case. What the guard is for is the no-flag run
 that happens *by accident*, and that is standing in `$HOME` itself.
 
-### `HOME` unset derives anyway, but the home rule degrades rather than vanishing
+### Where homes live is refused by location, not by `$HOME`
 
-Refusing outright would break the container case the default exists for — `HOME`
-unset, cwd `/app` — so an unreadable `HOME` still yields a root. This is the one
+`HOME_PARENTS` — `/home`, `/Users`, `/var/home`, `/root` — is refused whatever the
+environment says, and only the *child* reading (`/home/other`) is gated on there
+being no usable `$HOME`.
+
+It was the other way round for two drafts, and both were holes. The first gated
+the whole rule on `homes.is_empty()`, so `cd /home && env -u HOME sandbx
+sandbox-run -- true` derived read and write over every user's home. The second
+fixed that and was still wrong, because `homes.is_empty()` asks whether `HOME` was
+*set*, not whether it named anything useful. `HOME=`, `HOME=relative/path`,
+`HOME=/nonexistent` and — the ordinary case — a service account's
+`HOME=/var/lib/svc` all leave `homes` non-empty holding a path no cwd under
+`/home` can match, which disabled the exact arm and skipped the fallback at once.
+All four were reproduced deriving `readable=1 writable=1` over `/home`.
+
+What that showed is that `$HOME` was carrying a decision it cannot carry. Nothing
+about the variable makes a root at `/home` narrower — it is write over every
+user's home however `HOME` is spelled — so the location rule stands on its own and
+`$HOME` only adds the one directory a location cannot name: `~/code` is fine,
+`~` is not. `current_root` also now keeps only an absolute `HOME`, since set but
+useless is the unset case.
+
+This is a list of names, which the depth-rule section above rejects for exactly
+that reason, and the distinction is worth stating because it is thin. The depth
+rule would have been guessing at which directories are *sensitive*; this names the
+one place on a Unix system whose entire purpose is to hold other people's trees,
+and the cost of an omission is that one layout degrades to no protection rather
+than that the mechanism has a hole. Over-refusing stays the right direction: `/var`
+is refused because `/var/home` is in the list, and `/root/work` in the degraded
+case, and `--allow-read`/`--allow-write` lift both.
+
+An unusable `HOME` still *derives* — refusing outright would break the container
+case the default exists for, `HOME` unset and cwd `/app`. That is the one
 constraint here a plausible edit would quietly reverse, which is why it is the
 sentence on `vetted_root`'s `///` as well as a line in this file.
 
-The first draft stopped there, and that was a bug rather than a trade. With
-`homes` empty the home arm has nothing to compare, so it does not loosen — it
-stops existing, and `cd /home && env -u HOME sandbx sandbox-run -- true` derived
-read and write over every user's home. `HOME` is routinely unset under a systemd
-unit, cron, and `docker exec`, so this was not an exotic path.
+### The system binaries are refused from both directions
 
-So the arm falls back to `HOME_PARENTS` — `/home`, `/Users`, `/var/home`, `/root`
-— and refuses a cwd that holds one, is one, or is a direct child of one. The third
-reading is what catches `/home/other`: without a `$HOME` naming it, a child of
-`/home` is indistinguishable from a home directory.
+`allow_system_executables` grants read and execute on `/usr`, `/bin`, `/lib`,
+`/lib64` to every run. A derived root overlapping one of those would add write
+beside that execute — the pair `Axis::grants` exists to keep apart — so
+`vetted_root` refuses it, reading the paths off the policy it is deriving rather
+than restating them.
 
-This is a list of names, which the depth-rule section above rejects for exactly
-that reason, and the distinction is worth stating because it is thin. It is a
-*fallback for one specific test*, not a rule of its own: `$HOME` remains what
-identifies a home, and the list only supplies the answer the environment refused
-to give. An omission from it therefore degrades the degraded case back to what
-shipped first, rather than opening a hole in the mechanism. The fallback is gated
-on `homes.is_empty()` for the same reason — with a `$HOME` to compare, widening
-would refuse `/home/other` for an operator who has no business there but also no
-way to say so, and that is a usability cost paid for nothing.
+The test is `starts_with` both ways round. One way was tried and is not a control:
+on any merged-`/usr` host `getcwd` resolves `/bin` to `/usr/bin`, which *holds* no
+granted path and so passed, handing a no-flag run write over every system binary.
+Landlock rights cover a subtree, so containment in either direction is the same
+collision.
 
-It is deliberately wider than the rule it stands in for: `/var` and `/root/work`
-are refused where an exact `$HOME` would allow them. Over-refusing is the right
-direction for a guess, and `--allow-read`/`--allow-write` lift it.
+The cost is `/usr/src/app`, the stock `WORKDIR` in the official Node images, which
+now needs its two flags. That is a real ergonomic loss on a deployment this
+feature is for, and it is the trade this file keeps making: the operator gets less
+than expected and hears about it immediately, by name, with the flags to type.
 
 ### Both spellings of `$HOME`
 
@@ -159,17 +189,13 @@ gain. A failure to resolve it is a refusal, since core's own call would fail at 
 first spawn anyway — but the *canonicalization* of it falls back to the unresolved
 path, so a failure there cannot turn into a missing guard.
 
-### The execute axis is not touched, which is not the same as not executable
+### The execute axis is not touched
 
 The default grants read and write and no execute, and
-`the_default_root_is_not_executable` pins that. It cannot pin more. Landlock rights
-cover a subtree, so a working directory *under* a granted system path is executable
-by way of `allow_system_executables` — `/usr/src/app` is the stock `WORKDIR` in the
-official Node images, which is exactly the container deployment the default is for.
-Nothing escapes there; the code still runs confined. But "the operator's own writes
-are not runnable" is a claim the CLI cannot make, so the test asserts the thing it
-can see — that the execute axis is byte-identical to `allow_system_executables`'s —
-and says why in its own `///`.
+`the_default_root_is_not_executable` pins that by asserting the execute axis is
+byte-identical to `allow_system_executables`'s. The overlap arm above is what makes
+that assertion mean something: the one way a derived root could have been executable
+anyway was by sitting under a granted system path, and such a root is now refused.
 
 ### What it does not reach
 
@@ -258,20 +284,37 @@ home arm narrowed from starts_with to equality
    ──► a_directory_holding_home_is_refused             fails
        a_refusal_names_the_flags_to_type_instead       fails
 
-HOME-unset fallback deleted
-   ──► an_unset_home_refuses_the_well_known_homes      fails
-       an_unset_home_still_derives_a_root              passes  ◄── /app is not on the list
-       a_named_home_leaves_a_neighbour_alone           passes
+holds_home_directories arm deleted
+   ──► the_home_parents_are_refused_with_no_home_set       fails
+       the_home_parents_are_refused_when_home_is_elsewhere fails
+       a_refusal_names_the_flags_to_type_instead           fails
+       refuses_to_run_from_home_whatever_home_names        fails
+       an_unset_home_still_derives_a_root                  passes  ◄── /app is not a home parent
+       a_named_home_leaves_a_neighbour_alone               passes
 
-the fallback keeps only the starts_with reading
-   ──► an_unset_home_refuses_a_child_of_one            fails
-       an_unset_home_refuses_the_well_known_homes      passes
+that arm re-gated on homes.is_empty() (the draft-2 hole)
+   ──► the_home_parents_are_refused_when_home_is_elsewhere fails   ◄── $HOME=/var/lib/svc
+       refuses_to_run_from_home_whatever_home_names        fails
+       the_home_parents_are_refused_with_no_home_set       passes  ◄── the gate is satisfied
+
+the child reading deleted
+   ──► an_unset_home_refuses_a_child_of_one                fails
+       the_home_parents_are_refused_with_no_home_set       passes
+
+overlap arm deleted, or tested one way round
+   ──► a_directory_overlapping_the_system_binaries_is_refused  fails
+       refuses_to_run_from_the_system_binaries                 fails
+       a_directory_named_like_a_system_one_is_a_valid_root     passes
 ```
 
-The last two are why the degraded fallback is two readings and the test is two
-tests: a single looping test could not tell "the fallback is gone" from "the
-fallback no longer sees `/home/other`", and the second is the reading that is easy
-to drop by accident.
+The home arms are three tests rather than one loop because the gating is what went
+wrong twice: a single looping test could not tell "the location rule is gone" from
+"it is back behind `homes.is_empty()`" from "it no longer sees `/home/other`", and
+the middle one is the reproduced bug.
+
+Deleting the overlap arm and testing it one way round fail the same two tests,
+which is the signal being asked for — `/usr/bin` and `/usr/src/app` are both in the
+loop, so a one-way test is detected as the absence it is.
 
 Two things the first mutation shows. Dropping the guard breaks tests in two
 suites that never mention the default — `each_allow_flag_widens_only_its_own_axis`
@@ -282,9 +325,12 @@ comparison mutate together: that is the derived-expectation trap
 `decision-enforcement-seam.md` names, and it is why it is a cross-subcommand
 consistency test and not the one pinning what the default *is*.
 
-The gap the tests do not close: `current_root()`'s own three lookups — the two
-spellings of `$HOME`, the `canonicalize` fallbacks — are read off the live process
-and have no unit test, by construction. What covers the parts that matter is
-`tests/cwd_policy.rs` setting `HOME` on the spawned binary; the Silverblue
-double-push is argued above and tested only through `vetted_root`, which receives
-both forms as values.
+The gap the tests do not close: `current_root()`'s own lookups — the two spellings
+of `$HOME`, the `is_absolute` filter, the `canonicalize` fallbacks — are read off
+the live process and have no unit test, by construction. `tests/cwd_policy.rs`
+covers what it can by setting `HOME` on the spawned binary, which is how the
+empty-and-relative cases are pinned; the Silverblue double-push is argued above and
+tested only through `vetted_root`, which receives both forms as values. Note what
+this means for the filter: it is the arm that does *not* depend on it —
+`holds_home_directories` — carrying the security weight, and that is the reason to
+prefer it.

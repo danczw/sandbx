@@ -67,17 +67,41 @@ fn refuses_to_run_from_the_home_directory() {
     );
 }
 
-/// The reproducer: with `HOME` gone the home rule has nothing to compare, and before the
-/// well-known fallback this derived read and write over every user's home.
+/// The reproducers. Each leaves the exact home rule nothing under `/home` to match, and
+/// each derived read and write over every user's home before the refusal stopped depending
+/// on `$HOME` — the last being the ordinary case of a service account.
 #[test]
-fn refuses_to_run_from_home_with_no_home_set() {
-    let (ok, stderr) = run_without_home("/home", &[]);
+fn refuses_to_run_from_home_whatever_home_names() {
+    let cases = [
+        run_without_home("/home", &[]),
+        run("/home", "", &[]),
+        run("/home", "relative/path", &[]),
+        run("/home", "/var/lib/svc", &[]),
+    ];
 
-    assert!(!ok, "a no-flag run from /home with no HOME was allowed");
-    assert!(
-        stderr.contains("with HOME unset"),
-        "{stderr} does not say why /home could not be told apart"
-    );
+    for (ok, stderr) in cases {
+        assert!(!ok, "a no-flag run from /home was allowed: {stderr}");
+        assert!(
+            stderr.contains("where home directories live"),
+            "{stderr} does not say what was refused about /home"
+        );
+    }
+}
+
+/// `/usr` is granted execute unconditionally, so write overlapping it is the pair
+/// `Axis::grants` keeps apart — rewrite `/usr/bin/git`, exec it, same run. `/bin` is here
+/// because a merged-`/usr` host resolves it to `/usr/bin`.
+#[test]
+fn refuses_to_run_from_the_system_binaries() {
+    for cwd in ["/usr", "/bin", "/usr/lib"] {
+        let (ok, stderr) = run(cwd, PACKAGE, &[]);
+
+        assert!(!ok, "a no-flag run from {cwd} was allowed: {stderr}");
+        assert!(
+            stderr.contains("refusing to derive") && stderr.contains("already execute"),
+            "{stderr} does not say why {cwd} could not be a writable root"
+        );
+    }
 }
 
 /// The container case, through the real binary: an unset `HOME` must not refuse an ordinary

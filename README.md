@@ -58,25 +58,27 @@ until you add `--allow-exec ~/.cargo/bin` and read access to what it needs
 (`~/.cargo/registry`, `~/.rustup`). What works with no flags is a command from
 the system paths, which is why the examples above use `grep` and `cat`.
 
-Four working directories are refused rather than granted, because the tree would
-be far wider than you meant or would contain the enforcer itself:
+Some working directories are refused rather than granted, because the tree would
+be far wider than you meant, would hold what every command already runs, or would
+hold the enforcer itself:
 
 ```console
 $ cd ~ && sandbx sandbox-run -- true
 sandbx: refusing to derive a policy from your home directory /home/you — pass --allow-read PATH and --allow-write PATH for the tree the command needs
 ```
 
-The others are the filesystem root, any directory holding your home directory
-(`/home`, `/Users`), and any directory holding the running `sandbx` — a write
-grant there replaces the thing doing the enforcing. Each refusal names the flags
-to type instead, and passing them lifts it: the guard governs what `sandbx`
-derives, never what you ask for.
+The rest are the filesystem root; where home directories live (`/home`, `/Users`,
+`/var/home`, `/root`, or anything holding one); anything overlapping the system
+binaries, since `sandbx` already grants execute there and write beside it would
+let a command rewrite `/usr/bin/git`; and any directory holding the running
+`sandbx`, where a write grant replaces the thing doing the enforcing. Each refusal
+names the flags to type instead, and passing them lifts it: the guard governs what
+`sandbx` derives, never what you ask for.
 
-With `HOME` unset — a systemd unit, cron, `docker exec` — `sandbx` cannot tell a
-home directory from any other, so it refuses the well-known locations by name
-instead: `/home`, `/Users`, `/var/home`, `/root`, anything holding them, and any
-direct child of one. That is wider than the rule it stands in for, which is the
-right direction for a guess.
+With no usable `HOME` — a systemd unit, cron, `docker exec`, or a `HOME` that is
+empty or points nowhere — `sandbx` cannot tell one person's home directory from
+another's, so it also refuses any direct child of those locations. That is wider
+than the rule it stands in for, which is the right direction for a guess.
 
 Read [SECURITY.md](SECURITY.md) before relying on this: a write grant over a
 project tree also covers `.git/hooks`, `Makefile` and `.cargo/config.toml`, which

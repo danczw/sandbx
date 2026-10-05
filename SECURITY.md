@@ -83,12 +83,14 @@ Three properties matter as much as the list:
   you give *no* path flag, the working directory becomes readable and writable, so
   the common case costs no flags. Giving any path flag replaces that default
   rather than adding to it, so an explicit policy is never widened behind you; and
-  the default refuses to be rooted at the filesystem root, at `$HOME`, in a
-  directory holding `$HOME`, or in one holding the running `sandbx`. With `HOME`
-  unreadable that last pair cannot be evaluated, so the refusal widens to the
-  well-known home locations by name rather than lapsing. What that write grant
-  means for files executed *later*, outside the sandbox, is a non-claim of its own
-  below.
+  the default refuses to be rooted at the filesystem root, at `$HOME`, where home
+  directories live (`/home`, `/Users`, `/var/home`, `/root`, or anything holding
+  one), anywhere overlapping the system binaries the same default grants execute
+  on, or in a directory holding the running `sandbx`. Only the `$HOME` arm depends
+  on the environment, and only to name a directory the others already cover by
+  location; with no usable `HOME` the refusal widens to any direct child of those
+  locations rather than lapsing. What that write grant means for files executed
+  *later*, outside the sandbox, is a non-claim of its own below.
 - **Grants do not widen each other, with one named exception.** Read access
   does not confer the right to execute what it can see, and write access confers
   neither read nor execute — a write-only drop directory stays unreadable, on
@@ -172,6 +174,14 @@ Three properties matter as much as the list:
   candidates would be a denylist whose first omission is silent. So this is a
   property of granting write at all, stated rather than guarded — if it matters
   for a tree, grant read and keep write to a scratch directory.
+
+  Standing in a system directory is the same property, not a further one. The
+  derived default refuses the trees it grants execute on, but `/etc`, `/var`,
+  `/proc` and `/sys` are not refused by name: depth is not sensitivity, `/srv` and
+  `/opt` and `/app` are ordinary project roots, and the moment the guard holds a
+  list of dangerous directories its first omission is silent. A no-flag run from
+  `/etc` as root derives write over `/etc` — which DAC would have allowed that
+  command anyway, and which `--allow-read`/`--allow-write` state out loud.
 - **The boundary is enforced by convention plus tooling**, not by a capability
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor

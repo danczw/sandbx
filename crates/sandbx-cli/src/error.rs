@@ -40,10 +40,24 @@ pub enum PolicyError {
         home: PathBuf,
     },
 
-    /// With `HOME` unreadable, the working directory could not be ruled out as a home.
+    /// The working directory is where home directories live, or holds it.
+    HomeParent {
+        /// The directory a default would have been rooted at.
+        cwd: PathBuf,
+    },
+
+    /// With no usable `HOME`, the working directory could not be ruled out as a home.
     UnnamedHome {
         /// The directory a default would have been rooted at.
         cwd: PathBuf,
+    },
+
+    /// The working directory holds a path every command is already granted execute on.
+    SystemExecutables {
+        /// The directory a default would have been rooted at.
+        cwd: PathBuf,
+        /// The granted path found inside it.
+        path: PathBuf,
     },
 
     /// The working directory is the filesystem root.
@@ -67,11 +81,24 @@ impl std::fmt::Display for PolicyError {
             Self::EnforcerUnknown { source } => {
                 write!(f, "could not locate the running sandbx binary: {source}")
             }
+            Self::HomeParent { cwd } => write!(
+                f,
+                "refusing to derive a policy from {}, which is where home directories live \
+                 — {ADVICE}",
+                cwd.display()
+            ),
             Self::UnnamedHome { cwd } => write!(
                 f,
-                "refusing to derive a policy from {}: with HOME unset, \
+                "refusing to derive a policy from {}: with no usable HOME, \
                  sandbx cannot tell it from a home directory — {ADVICE}",
                 cwd.display()
+            ),
+            Self::SystemExecutables { cwd, path } => write!(
+                f,
+                "refusing to derive a policy from {}: it holds {}, which every command may \
+                 already execute, so a write grant there rewrites what runs next — {ADVICE}",
+                cwd.display(),
+                path.display()
             ),
             Self::HomeDirectory { cwd, home } if cwd == home => write!(
                 f,
@@ -105,7 +132,9 @@ impl std::error::Error for PolicyError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::HomeDirectory { .. }
+            | Self::HomeParent { .. }
             | Self::UnnamedHome { .. }
+            | Self::SystemExecutables { .. }
             | Self::FilesystemRoot
             | Self::EnforcerInside { .. } => None,
             Self::Unavailable { source, .. } | Self::EnforcerUnknown { source } => Some(source),
