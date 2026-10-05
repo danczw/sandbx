@@ -1,9 +1,8 @@
 //! How a real run ends, from the parent's side.
 //!
-//! The record a run closes with is assembled from two things a wire round-trip cannot
-//! produce together: the status the helper relayed, and what crossed the audit channel. A
-//! command that was never executed is the case that needs both — the helper exits non-zero
-//! on its behalf, so only the channel distinguishes it from a command that exited 1.
+//! The terminal record is the status the helper relayed and what crossed the audit channel
+//! together, which is why these tests need a real helper: stage 2 exits non-zero for a
+//! command it could not become, so only the channel tells that from an exit of 1.
 //!
 //! Gated whole-file: every test spawns a real helper, so with the feature off `-D warnings`
 //! would reject the capture harness as dead code.
@@ -51,8 +50,7 @@ impl tracing::field::Visit for Collect {
     }
 }
 
-/// The result *and* the trail: the outcome record is a claim about the run, so a test that
-/// could not see both would be asserting against itself.
+/// The result *and* the trail, the record being a claim about the result.
 type Run = (Result<std::process::Output, SandboxError>, Vec<String>);
 
 fn run(command: SandboxedCommand) -> Run {
@@ -74,8 +72,7 @@ fn sandboxed(script: &str) -> Run {
     .helper(env!("CARGO_BIN_EXE_sandbx-helper")))
 }
 
-/// The one record carrying how the run ended, which every test here needs and exactly one
-/// of which must exist.
+/// The one record carrying how the run ended; a second one is a failure here.
 fn outcome(lines: &[String]) -> &str {
     let mut found = lines
         .iter()
@@ -99,8 +96,6 @@ fn a_clean_run_records_the_code_it_exited_with() {
     assert!(record.contains("code=0 "), "got: {record}");
 }
 
-/// A trail recording every run as over without saying how it went answers nothing a
-/// reviewer asks of it.
 #[test]
 fn a_nonzero_exit_reaches_the_trail() {
     let (_, lines) = sandboxed("exit 42");
@@ -129,9 +124,7 @@ fn a_timeout_records_a_failure_not_an_exit() {
     assert!(record.contains("reason=timeout"), "got: {record}");
 }
 
-/// The issue's own reproducer. The helper relays its own non-zero exit for a command it
-/// could not become, so without the channel this run is indistinguishable from a command
-/// that ran and exited 1.
+/// #96's own reproducer, and the one case the relayed status cannot answer by itself.
 #[test]
 fn a_program_that_does_not_exist_never_exits() {
     let (_, lines) = run(SandboxedCommand::new(
@@ -145,8 +138,8 @@ fn a_program_that_does_not_exist_never_exits() {
     assert!(record.contains("reason=exec_failed"), "got: {record}");
 }
 
-/// Two outcome records would double-count every run in an aggregate, and `outcome` is
-/// what refuses them; this names the property so a second emit fails here by name.
+/// Two records would double-count the run in any aggregate; named so a second emit fails
+/// here rather than only inside `outcome`.
 #[test]
 fn a_run_records_exactly_one_outcome() {
     let (_, lines) = sandboxed("true");

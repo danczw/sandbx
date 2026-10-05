@@ -194,8 +194,6 @@ fn records_a_degraded_hardening_step() {
     assert!(line.contains("running as nobody"), "got: {line}");
 }
 
-/// A trail that cannot tell a clean exit from a failing one cannot answer what the run
-/// did, which is the question it exists for.
 #[test]
 fn records_the_code_a_command_exited_with() {
     for code in [0, 42] {
@@ -243,8 +241,7 @@ fn records_a_timeout_as_a_failed_run() {
     assert!(line.contains("reason=timeout"), "got: {line}");
 }
 
-/// Every refusal names itself, so a trail can be filtered by what stopped the run rather
-/// than by prose that may be reworded.
+/// The label, not the `Display` prose: a trail is filtered by one and not the other.
 #[test]
 fn records_a_failure_to_start_under_its_own_reason() {
     let refused = SandboxError::SpawnFailed {
@@ -261,8 +258,7 @@ fn records_a_failure_to_start_under_its_own_reason() {
     assert!(!line.contains("timeout"), "got: {line}");
 }
 
-/// The issue's own case: a helper that started and a command that never existed are
-/// different facts, and collapsing them hides the second one entirely.
+/// A helper that never started and a command that never existed are different facts.
 #[test]
 fn an_exec_failure_and_a_spawn_failure_differ() {
     let missing = SandboxError::ExecFailed {
@@ -286,8 +282,7 @@ fn an_exec_failure_and_a_spawn_failure_differ() {
     assert!(lines[0].contains("reason=exec_failed"), "got: {}", lines[0]);
 }
 
-/// An outcome below the default level leaves a trail that records every spawn and no
-/// result.
+/// Below the default level the trail would record every spawn and no result.
 #[test]
 fn an_outcome_is_emitted_at_info_not_debug() {
     let sink = Captured::default();
@@ -321,8 +316,7 @@ fn a_spawn_and_its_outcome_name_one_program() {
     assert_eq!(lines.len(), 2, "a spawn and its outcome, got: {lines:?}");
 }
 
-/// A spawn that never got as far as a command still ends the trail: the record the
-/// operator greps for is the one saying the run is over.
+/// A spawn that never got as far as a command still ends the trail.
 #[test]
 fn a_helper_that_cannot_start_closes_the_trail() {
     let lines = capture(|| {
