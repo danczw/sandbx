@@ -121,35 +121,54 @@ impl SandboxedCommand {
     /// the limit expires, which kills it and returns [`SandboxError::TimedOut`].
     pub fn output(&self) -> Result<std::process::Output, SandboxError> {
         let (helper, argv) = self.command_line()?;
+        let (audit, write_end) = audit_channel()?;
 
         crate::AuditEvent::spawned(&self.program, &self.policy).emit();
 
-        match self.timeout {
-            None => {
-                let (audit, write_end) = audit_channel()?;
+        let result = match self.timeout {
+            None => run_to_completion(&helper, &argv, &self.policy, write_end),
+            Some(limit) => run_with_deadline(&helper, &argv, &self.policy, limit, write_end),
+        };
 
-                // `spawn::command` narrows the environment as it builds, so a secret never
-                // enters even this helper, whose `/proc/<pid>/environ` is readable.
-                let mut helper = crate::spawn::command(&helper, &self.policy);
-                helper
-                    .args(&argv)
-                    .stdin(std::process::Stdio::from(write_end));
+        // Read here rather than in either path, both having waited by the time they return,
+        // so nothing drains the pipe while the helper writes it. Read on the error paths
+        // too: the hardening degraded before the command started, so it holds of the
+        // attempt however it ended.
+        record_degradations(audit);
 
-                let output = helper.output().map_err(|source| SandboxError::SpawnFailed {
-                    detail: "could not start the sandbox helper",
-                    source,
-                });
-
-                // Dropped before the channel is read, and that ordering is what makes the
-                // read terminate: the `Command` owns this process's copy of the write end.
-                drop(helper);
-                record_degradations(audit);
-
-                output
-            }
-            Some(limit) => run_with_deadline(&helper, &argv, &self.policy, limit),
-        }
+        result
     }
+}
+
+/// Spawn the helper and wait for it, with no deadline.
+///
+/// `Command::output` reads both pipes to EOF before it waits, so a command that never exits
+/// wedges the caller; [`run_with_deadline`] is the path that cannot.
+fn run_to_completion(
+    helper: &Path,
+    argv: &[String],
+    policy: &SandboxPolicy,
+    write_end: std::io::PipeWriter,
+) -> Result<std::process::Output, SandboxError> {
+    // `spawn::command` narrows the environment as it builds, so a secret never enters even
+    // this helper, whose `/proc/<pid>/environ` is readable.
+    let mut command = crate::spawn::command(helper, policy);
+    command
+        .args(argv)
+        .stdin(std::process::Stdio::from(write_end));
+
+    let output = command
+        .output()
+        .map_err(|source| SandboxError::SpawnFailed {
+            detail: "could not start the sandbox helper",
+            source,
+        });
+
+    // Dropped before the caller reads the channel, and that ordering is what makes the read
+    // terminate: the `Command` owns this process's copy of the write end.
+    drop(command);
+
+    output
 }
 
 /// A pipe for the helper to report degraded hardening on.
@@ -193,6 +212,7 @@ fn run_with_deadline(
     argv: &[String],
     policy: &SandboxPolicy,
     limit: Duration,
+    write_end: std::io::PipeWriter,
 ) -> Result<std::process::Output, SandboxError> {
     use std::os::unix::process::CommandExt;
     use std::process::Stdio;
@@ -201,8 +221,6 @@ fn run_with_deadline(
         detail: "could not start the sandbox helper",
         source,
     };
-
-    let (audit, write_end) = audit_channel()?;
 
     // Its own process group, so the kill below reaches descendants too.
     let mut command = crate::spawn::command(helper, policy);
@@ -245,15 +263,11 @@ fn run_with_deadline(
         None => {
             let _ = child.wait();
             settle(&out.0, &err.0);
-            // Recorded even though the run is refused: the hardening degraded before the
-            // command started, so it holds of the attempt however it ended.
-            record_degradations(audit);
             return Err(SandboxError::TimedOut { after: limit });
         }
     };
 
     settle(&out.0, &err.0);
-    record_degradations(audit);
 
     Ok(std::process::Output {
         status,
