@@ -1,4 +1,4 @@
-use crate::{Axis, SandboxPolicy};
+use crate::{Axis, NetworkPolicy, SandboxPolicy};
 
 /// `tracing` target carrying the audit trail.
 ///
@@ -55,8 +55,15 @@ pub enum AuditEvent<'a> {
         writable: usize,
         /// How many paths were read-executable, counted apart from `readable`.
         executable: usize,
-        /// Whether IP egress was granted; says nothing about unix sockets.
-        network: bool,
+        /// What shape of IP egress was granted — `denied`, `any` or `ports`; says nothing
+        /// about unix sockets.
+        ///
+        /// A closed set of labels rather than a stringified [`NetworkPolicy`], so `emit` stays
+        /// a field assignment with no allocation on the audit path.
+        network: &'static str,
+        /// How many ports the allowlist named, not which ones — matching `env`'s shape. Zero
+        /// unless `network` is `ports`; the numbers are already in `/proc/self/cmdline`.
+        network_ports: usize,
         /// Whether unix-domain sockets were granted.
         unix_sockets: bool,
         /// How long the environment allowlist is, never the names in it — a record listing
@@ -103,12 +110,19 @@ impl<'a> AuditEvent<'a> {
             }
         }
 
+        let (network, network_ports) = match policy.network() {
+            NetworkPolicy::Denied => ("denied", 0),
+            NetworkPolicy::AnyPort => ("any", 0),
+            NetworkPolicy::Ports(ports) => ("ports", ports.len()),
+        };
+
         Self::Spawned {
             program,
             readable,
             writable,
             executable,
-            network: policy.allows_network(),
+            network,
+            network_ports,
             unix_sockets: policy.allows_unix_sockets(),
             env: policy.allowed_env().len(),
         }
@@ -152,6 +166,7 @@ impl<'a> AuditEvent<'a> {
                 writable,
                 executable,
                 network,
+                network_ports,
                 unix_sockets,
                 env,
             } => tracing::info!(
@@ -162,6 +177,7 @@ impl<'a> AuditEvent<'a> {
                 writable,
                 executable,
                 network,
+                network_ports,
                 unix_sockets,
                 env,
             ),

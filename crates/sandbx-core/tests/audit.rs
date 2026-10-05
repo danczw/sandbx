@@ -115,9 +115,38 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("readable=1"), "got: {line}");
     assert!(line.contains("writable=1"), "got: {line}");
     assert!(line.contains("executable=1"), "got: {line}");
-    assert!(line.contains("network=false"), "got: {line}");
+    assert!(line.contains("network=denied"), "got: {line}");
+    assert!(line.contains("network_ports=0"), "got: {line}");
     assert!(line.contains("unix_sockets=true"), "got: {line}");
     assert!(line.contains("env=2"), "got: {line}");
+}
+
+/// Three shapes of network grant, three labels. A trail that collapsed `any` and `ports`
+/// into one could not say whether a spawn was allowlisted.
+#[test]
+fn records_which_shape_of_network_grant_a_spawn_had() {
+    for (policy, network, count) in [
+        (SandboxPolicy::default(), "denied", 0),
+        (SandboxPolicy::default().allow_network(), "any", 0),
+        (
+            SandboxPolicy::default()
+                .allow_network_port(443)
+                .allow_network_port(80),
+            "ports",
+            2,
+        ),
+    ] {
+        let lines = capture(|| {
+            AuditEvent::spawned("/bin/cat", &policy).emit();
+        });
+
+        let line = &lines[0];
+        assert!(line.contains(&format!("network={network} ")), "got: {line}");
+        assert!(
+            line.contains(&format!("network_ports={count} ")),
+            "got: {line}"
+        );
+    }
 }
 
 /// A name on the trail is one edit away from the value beside it; the count is

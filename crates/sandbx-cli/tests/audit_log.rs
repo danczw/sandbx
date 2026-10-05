@@ -74,9 +74,35 @@ fn a_spawn_records_the_policy_shape() {
     assert!(output.contains(r#"program="/bin/true""#), "{output}");
     assert!(output.contains("readable=1"), "{output}");
     assert!(output.contains("writable=1"), "{output}");
-    assert!(output.contains("network=false"), "{output}");
+    assert!(output.contains(r#"network="denied""#), "{output}");
+    assert!(output.contains("network_ports=0"), "{output}");
     assert!(output.contains("unix_sockets=true"), "{output}");
     assert!(output.contains("env=7"), "{output}");
+}
+
+/// The two network fields travel together, so a record cannot say `ports` and name none.
+#[test]
+fn a_spawn_records_the_shape_of_a_port_allowlist() {
+    let policy = SandboxPolicy::default()
+        .allow_network_port(443)
+        .allow_network_port(80);
+
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+
+    assert!(output.contains(r#"network="ports""#), "{output}");
+    assert!(output.contains("network_ports=2"), "{output}");
+}
+
+/// `any` and `ports` are distinguishable on the trail: without the label, a reader could
+/// not tell an unrestricted grant from an allowlisted one.
+#[test]
+fn a_spawn_records_an_unrestricted_network_grant() {
+    let policy = SandboxPolicy::default().allow_network();
+
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+
+    assert!(output.contains(r#"network="any""#), "{output}");
+    assert!(output.contains("network_ports=0"), "{output}");
 }
 
 /// `Degraded` is emitted at `INFO` so this filter admits it. Its emitters run in the
