@@ -84,9 +84,11 @@ Three properties matter as much as the list:
   the common case costs no flags. Giving any path flag replaces that default
   rather than adding to it, so an explicit policy is never widened behind you; and
   the default refuses to be rooted at the filesystem root, at `$HOME`, in a
-  directory holding `$HOME`, or in one holding the running `sandbx`. What that
-  write grant means for files executed *later*, outside the sandbox, is a
-  non-claim of its own below.
+  directory holding `$HOME`, or in one holding the running `sandbx`. With `HOME`
+  unreadable that last pair cannot be evaluated, so the refusal widens to the
+  well-known home locations by name rather than lapsing. What that write grant
+  means for files executed *later*, outside the sandbox, is a non-claim of its own
+  below.
 - **Grants do not widen each other, with one named exception.** Read access
   does not confer the right to execute what it can see, and write access confers
   neither read nor execute — a write-only drop directory stays unreadable, on
@@ -179,10 +181,13 @@ Three properties matter as much as the list:
   requesting one and `sandbx-tools` executing it. `sandbx agent-run` reaches that
   loop, so this is what a prompt you type does, not only what the library would do:
   the sandbox is the only thing between a prompt-injected tool call and your files,
-  which is why it is default-deny and why the grants you pass `agent-run` are the
-  whole of what a hijacked turn can touch. A gate will not change this bullet: a
-  tool call you approve runs. sandbx bounds what it can reach; it does not decide
-  whether it should run.
+  which is why it is default-deny and why the policy `agent-run` derives is the
+  whole of what a hijacked turn can touch. Size that policy before you trust it:
+  with no path flag it is read *and write* over the directory you ran the command
+  from, so a hijacked turn there reaches your whole project. The flags you pass
+  replace that, which is the way to make the blast radius smaller than a tree. A
+  gate will not change this bullet: a tool call you approve runs. sandbx bounds
+  what it can reach; it does not decide whether it should run.
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
   an opt-in `--timeout`; that call always returns by then. The other six tools run

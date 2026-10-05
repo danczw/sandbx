@@ -15,14 +15,27 @@ const PACKAGE: &str = env!("CARGO_MANIFEST_DIR");
 
 /// Whether `sandbox-run` succeeded from `cwd` with `HOME` set to `home`, and its stderr.
 fn run(cwd: &str, home: &str, flags: &[&str]) -> (bool, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_sandbx"))
+    spawn(cwd, flags, |command| command.env("HOME", home))
+}
+
+/// [`run`], but with `HOME` removed from the child's environment entirely.
+fn run_without_home(cwd: &str, flags: &[&str]) -> (bool, String) {
+    spawn(cwd, flags, |command| command.env_remove("HOME"))
+}
+
+fn spawn(
+    cwd: &str,
+    flags: &[&str],
+    home: impl FnOnce(&mut Command) -> &mut Command,
+) -> (bool, String) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_sandbx"));
+    command
         .arg("sandbox-run")
         .args(flags)
         .args(["--", "true"])
-        .current_dir(cwd)
-        .env("HOME", home)
-        .output()
-        .expect("sandbx should start");
+        .current_dir(cwd);
+
+    let output = home(&mut command).output().expect("sandbx should start");
 
     (
         output.status.success(),
@@ -51,6 +64,31 @@ fn refuses_to_run_from_the_home_directory() {
     assert!(
         stderr.contains("refusing to derive") && stderr.contains("--allow-write"),
         "{stderr} does not say what was refused, or what to type instead"
+    );
+}
+
+/// The reproducer: with `HOME` gone the home rule has nothing to compare, and before the
+/// well-known fallback this derived read and write over every user's home.
+#[test]
+fn refuses_to_run_from_home_with_no_home_set() {
+    let (ok, stderr) = run_without_home("/home", &[]);
+
+    assert!(!ok, "a no-flag run from /home with no HOME was allowed");
+    assert!(
+        stderr.contains("with HOME unset"),
+        "{stderr} does not say why /home could not be told apart"
+    );
+}
+
+/// The container case, through the real binary: an unset `HOME` must not refuse an ordinary
+/// directory, or the fallback above has broken the deployment the default exists for.
+#[test]
+fn an_unset_home_still_runs_from_a_project() {
+    let (_, stderr) = run_without_home(PACKAGE, &[]);
+
+    assert!(
+        !stderr.contains("refusing to derive"),
+        "an unset HOME refused an ordinary project directory: {stderr}"
     );
 }
 

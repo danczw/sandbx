@@ -26,12 +26,24 @@ pub enum PolicyError {
         source: std::io::Error,
     },
 
+    /// The running `sandbx` could not be located, so the guard below it cannot run.
+    EnforcerUnknown {
+        /// The underlying OS failure.
+        source: std::io::Error,
+    },
+
     /// The working directory is the home directory, or holds it.
     HomeDirectory {
         /// The directory a default would have been rooted at.
         cwd: PathBuf,
         /// The home directory that is it, or is inside it.
         home: PathBuf,
+    },
+
+    /// With `HOME` unreadable, the working directory could not be ruled out as a home.
+    UnnamedHome {
+        /// The directory a default would have been rooted at.
+        cwd: PathBuf,
     },
 
     /// The working directory is the filesystem root.
@@ -50,6 +62,17 @@ impl std::fmt::Display for PolicyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unavailable { detail, source } => write!(f, "{detail}: {source} — {ADVICE}"),
+            // No `ADVICE`: a path flag skips this lookup, but `command_line()` makes the
+            // same call on every spawn, so the run would fail again a step later.
+            Self::EnforcerUnknown { source } => {
+                write!(f, "could not locate the running sandbx binary: {source}")
+            }
+            Self::UnnamedHome { cwd } => write!(
+                f,
+                "refusing to derive a policy from {}: with HOME unset, \
+                 sandbx cannot tell it from a home directory — {ADVICE}",
+                cwd.display()
+            ),
             Self::HomeDirectory { cwd, home } if cwd == home => write!(
                 f,
                 "refusing to derive a policy from your home directory {} — {ADVICE}",
@@ -81,8 +104,11 @@ impl std::fmt::Display for PolicyError {
 impl std::error::Error for PolicyError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::HomeDirectory { .. } | Self::FilesystemRoot | Self::EnforcerInside { .. } => None,
-            Self::Unavailable { source, .. } => Some(source),
+            Self::HomeDirectory { .. }
+            | Self::UnnamedHome { .. }
+            | Self::FilesystemRoot
+            | Self::EnforcerInside { .. } => None,
+            Self::Unavailable { source, .. } | Self::EnforcerUnknown { source } => Some(source),
         }
     }
 }

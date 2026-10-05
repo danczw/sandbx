@@ -28,7 +28,7 @@ rather than degrading to unrestricted execution.
 before trusting an agent to it:
 
 ```sh
-sandbx sandbox-run -- cargo test                             # works: the project you are in
+sandbx sandbox-run -- grep -rn TODO .                        # works: the project you are in
 sandbx sandbox-run -- cat /etc/shadow                        # permission denied
 sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt   # works
 sandbx sandbox-run --allow-read /srv -- cat /etc/shadow      # permission denied
@@ -51,6 +51,13 @@ nothing else. That direction is deliberate: a policy narrower than you expected
 announces itself as a permission denial naming the path, while a wider one says
 nothing at all.
 
+It grants the *directory*, not your toolchain. A compiler or package manager
+installed under your home — rustup's `~/.cargo/bin`, nvm, pyenv — is outside the
+default, so `sandbx sandbox-run -- cargo test` fails with a permission denial
+until you add `--allow-exec ~/.cargo/bin` and read access to what it needs
+(`~/.cargo/registry`, `~/.rustup`). What works with no flags is a command from
+the system paths, which is why the examples above use `grep` and `cat`.
+
 Four working directories are refused rather than granted, because the tree would
 be far wider than you meant or would contain the enforcer itself:
 
@@ -64,6 +71,12 @@ The others are the filesystem root, any directory holding your home directory
 grant there replaces the thing doing the enforcing. Each refusal names the flags
 to type instead, and passing them lifts it: the guard governs what `sandbx`
 derives, never what you ask for.
+
+With `HOME` unset — a systemd unit, cron, `docker exec` — `sandbx` cannot tell a
+home directory from any other, so it refuses the well-known locations by name
+instead: `/home`, `/Users`, `/var/home`, `/root`, anything holding them, and any
+direct child of one. That is wider than the rule it stands in for, which is the
+right direction for a guess.
 
 Read [SECURITY.md](SECURITY.md) before relying on this: a write grant over a
 project tree also covers `.git/hooks`, `Makefile` and `.cargo/config.toml`, which

@@ -103,11 +103,26 @@ fn variable_name(value: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
+/// Where home directories live, for when no `$HOME` names one.
+const HOME_PARENTS: [&str; 4] = ["/home", "/Users", "/var/home", "/root"];
+
+/// Whether `cwd` is somewhere a home directory cannot be ruled out.
+///
+/// Three readings, because without a `$HOME` nothing distinguishes them: `cwd` holds one of
+/// the well-known locations (`/`, `/var`), is one (`/home`), or is a child of one and so
+/// looks exactly like a home directory whatever it is named (`/home/other`).
+fn looks_like_a_home(cwd: &Path) -> bool {
+    HOME_PARENTS
+        .into_iter()
+        .map(Path::new)
+        .any(|known| known.starts_with(cwd) || cwd.parent() == Some(known))
+}
+
 /// `cwd` itself, or why no default may be rooted there.
 ///
-/// An unset `HOME` arrives as an empty `homes` and still yields a root, the guard degraded
-/// to the filesystem-root rule: refusing would break the container case the default exists
-/// for, `HOME` unset and cwd `/app`.
+/// An empty `homes` means `HOME` was unreadable, which would leave the home rule below with
+/// nothing to compare and silently stop it existing — so it degrades to [`HOME_PARENTS`]
+/// rather than being skipped.
 fn vetted_root<'a>(cwd: &'a Path, homes: &[PathBuf], exe: &Path) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
         return Err(PolicyError::FilesystemRoot);
@@ -120,6 +135,15 @@ fn vetted_root<'a>(cwd: &'a Path, homes: &[PathBuf], exe: &Path) -> Result<&'a P
         return Err(PolicyError::HomeDirectory {
             cwd: cwd.to_path_buf(),
             home: home.clone(),
+        });
+    }
+
+    // Only in the degraded case: with a `$HOME` to compare, the rule above is exact, and
+    // widening it would refuse `/home/other` for an operator who has no business there but
+    // also no way to say so.
+    if homes.is_empty() && looks_like_a_home(cwd) {
+        return Err(PolicyError::UnnamedHome {
+            cwd: cwd.to_path_buf(),
         });
     }
 
@@ -152,10 +176,7 @@ fn current_root() -> Result<PathBuf, PolicyError> {
     // `command_line()` resolves this same path again on every spawn, which is what makes a
     // write grant over it reach the enforcer mid-turn. Falling back to the unresolved path
     // keeps a canonicalize failure from turning into a *missing* guard.
-    let exe = std::env::current_exe().map_err(|source| PolicyError::Unavailable {
-        detail: "could not locate the running sandbx binary",
-        source,
-    })?;
+    let exe = std::env::current_exe().map_err(|source| PolicyError::EnforcerUnknown { source })?;
     let exe = exe.canonicalize().unwrap_or(exe);
 
     let mut homes = Vec::new();
@@ -363,6 +384,50 @@ mod tests {
         assert!(
             matches!(error, PolicyError::FilesystemRoot),
             "{error} is not the root refusal"
+        );
+    }
+
+    /// Without this the home rule would not degrade but *vanish*, and `/home` with `HOME`
+    /// unset would derive read and write over every user's home. `HOME` is routinely unset
+    /// under a systemd unit, cron, or `docker exec`.
+    #[test]
+    fn an_unset_home_refuses_the_well_known_homes() {
+        for cwd in ["/home", "/Users", "/var/home", "/root", "/var"] {
+            let error = root(cwd, &[]).expect_err("a well-known home location");
+
+            assert!(
+                matches!(error, PolicyError::UnnamedHome { .. }),
+                "{error} let {cwd} through with no HOME set"
+            );
+            assert!(
+                error.to_string().contains("with HOME unset"),
+                "{error} does not say why {cwd} could not be told apart"
+            );
+        }
+    }
+
+    /// The reading `starts_with` alone cannot give: with no `$HOME` naming it, a child of
+    /// `/home` is indistinguishable from a home directory whatever it is called.
+    #[test]
+    fn an_unset_home_refuses_a_child_of_one() {
+        for cwd in ["/home/other", "/Users/other", "/root/work"] {
+            let error = root(cwd, &[]).expect_err("something shaped like a home directory");
+
+            assert!(
+                matches!(error, PolicyError::UnnamedHome { .. }),
+                "{error} let {cwd} through with no HOME set"
+            );
+        }
+    }
+
+    /// The degraded rule must not widen the exact one: with a `$HOME` to compare, standing
+    /// in a neighbour's directory is the operator's business and not sandbx's to guess at.
+    #[test]
+    fn a_named_home_leaves_a_neighbour_alone() {
+        assert_eq!(
+            root("/home/other", &homes(&["/home/u"])).expect("a named home identifies itself"),
+            Path::new("/home/other"),
+            "the degraded rule fired where $HOME was readable"
         );
     }
 
