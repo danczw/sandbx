@@ -1,7 +1,136 @@
-//! What can stop `agent-run` before it has an answer.
+//! What can stop a subcommand before it has an answer.
+
+use std::path::PathBuf;
 
 use sandbx_agent::TurnError;
+use sandbx_core::SandboxError;
 use sandbx_providers::ProviderError;
+
+/// What to type instead, appended to every [`PolicyError`].
+///
+/// One `const` so a refusal cannot name different flags than its sibling does.
+const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
+                      for the tree the command needs";
+
+/// Why no policy could be derived from the working directory.
+///
+/// Every variant is a refusal rather than a narrower default, because the alternatives
+/// are worse: falling back to the system paths alone makes an ordinary command fail for
+/// a reason the message would not explain, and granting the directory anyway is the
+/// thing being refused.
+#[derive(Debug)]
+pub enum PolicyError {
+    /// The process state the default is derived from could not be read.
+    Unavailable {
+        /// What could not be read, for the operator to act on.
+        detail: &'static str,
+        /// The underlying OS failure.
+        source: std::io::Error,
+    },
+
+    /// The working directory is the home directory, or holds it.
+    HomeDirectory {
+        /// The directory a default would have been rooted at.
+        cwd: PathBuf,
+        /// The home directory that is it, or is inside it.
+        home: PathBuf,
+    },
+
+    /// The working directory is the filesystem root.
+    FilesystemRoot,
+
+    /// The working directory holds the running `sandbx`, which a write grant replaces.
+    EnforcerInside {
+        /// The directory a default would have been rooted at.
+        cwd: PathBuf,
+        /// The binary doing the enforcing, found inside it.
+        exe: PathBuf,
+    },
+}
+
+impl std::fmt::Display for PolicyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable { detail, source } => write!(f, "{detail}: {source} — {ADVICE}"),
+            Self::HomeDirectory { cwd, home } if cwd == home => write!(
+                f,
+                "refusing to derive a policy from your home directory {} — {ADVICE}",
+                home.display()
+            ),
+            Self::HomeDirectory { cwd, home } => write!(
+                f,
+                "refusing to derive a policy from {}, which holds your home directory {} — {ADVICE}",
+                cwd.display(),
+                home.display()
+            ),
+            Self::FilesystemRoot => {
+                write!(
+                    f,
+                    "refusing to derive a policy from the filesystem root — {ADVICE}"
+                )
+            }
+            Self::EnforcerInside { cwd, exe } => write!(
+                f,
+                "refusing to derive a policy from {}: it holds the running sandbx binary {}, \
+                 and write access there replaces the sandbox — {ADVICE}",
+                cwd.display(),
+                exe.display()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for PolicyError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::HomeDirectory { .. } | Self::FilesystemRoot | Self::EnforcerInside { .. } => None,
+            Self::Unavailable { source, .. } => Some(source),
+        }
+    }
+}
+
+/// Why `sandbox-run` did not run the command.
+///
+/// Separate from [`SandboxError`], which `sandbx-core` owns: deriving a policy is the
+/// CLI's own step, and core must not grow a variant it never produces.
+#[derive(Debug)]
+pub enum SandboxRunError {
+    /// The flags described no policy.
+    Policy(PolicyError),
+
+    /// The sandbox itself refused, or the command could not be run under it.
+    Sandbox(SandboxError),
+}
+
+impl From<PolicyError> for SandboxRunError {
+    fn from(error: PolicyError) -> Self {
+        Self::Policy(error)
+    }
+}
+
+impl From<SandboxError> for SandboxRunError {
+    fn from(error: SandboxError) -> Self {
+        Self::Sandbox(error)
+    }
+}
+
+impl std::fmt::Display for SandboxRunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Policy(error) => write!(f, "{error}"),
+            Self::Sandbox(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for SandboxRunError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Policy(error) => Some(error),
+            Self::Sandbox(error) => Some(error),
+        }
+    }
+}
 
 /// Why a turn did not finish.
 ///
@@ -11,6 +140,9 @@ use sandbx_providers::ProviderError;
 pub enum AgentError {
     /// The prompt was blank, which the API rejects as an empty text block.
     EmptyPrompt,
+
+    /// The flags described no policy, so no tool could be bounded.
+    Policy(PolicyError),
 
     /// The runtime the turn needs could not be built.
     Runtime(std::io::Error),
@@ -23,6 +155,12 @@ pub enum AgentError {
 
     /// The turn itself ended without an answer.
     Turn(TurnError),
+}
+
+impl From<PolicyError> for AgentError {
+    fn from(error: PolicyError) -> Self {
+        Self::Policy(error)
+    }
 }
 
 impl From<ProviderError> for AgentError {
@@ -41,6 +179,7 @@ impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyPrompt => write!(f, "the prompt is empty"),
+            Self::Policy(error) => write!(f, "{error}"),
             Self::Runtime(error) => write!(f, "building the async runtime: {error}"),
             Self::Output(error) => write!(f, "writing the answer: {error}"),
             Self::Provider(error) => write!(f, "{error}"),
@@ -53,6 +192,7 @@ impl std::error::Error for AgentError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::EmptyPrompt => None,
+            Self::Policy(error) => Some(error),
             Self::Runtime(error) | Self::Output(error) => Some(error),
             Self::Provider(error) => Some(error),
             Self::Turn(error) => Some(error),
