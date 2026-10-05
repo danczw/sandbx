@@ -1,11 +1,20 @@
-use futures_util::StreamExt;
+//! One turn: the round loop, the public types it is driven by, and the compaction
+//! threading those types carry.
+//!
+//! Rebuilding a round's message is `accumulate`; running what it asked for is `tools`.
+
 use sandbx_providers::{
-    AgentEvent, ContentBlock, EventStream, MessagesRequest, ProviderError, RequestMessage, Role,
-    ToolDefinition,
+    AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, Role, ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::{Compaction, TurnError, compact};
+
+mod accumulate;
+mod tools;
+
+use accumulate::accumulate;
+use tools::{answer_calls, definition};
 
 /// What to ask the model for.
 ///
@@ -205,12 +214,9 @@ impl Default for TurnLimits {
 /// points, so a single enormous one is not compactable at all and the provider's
 /// context-length error stays the backstop.
 ///
-/// `BuiltinTool::execute` is synchronous and may sit in a `write`, a directory walk or a
-/// 90-second command, which on a current-thread runtime would freeze every other task, so
-/// every call goes through `spawn_blocking` and this is the only place that knows it.
-/// `spawn_blocking` cannot be cancelled: dropping this future drops the `JoinHandle` while
-/// the blocking task runs to completion, so a turn abandoned mid-tool still applies the
-/// `write`, recorded only in the audit trail (#26).
+/// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future drops the
+/// `JoinHandle` while the blocking task runs to completion, so a turn abandoned mid-tool
+/// still applies the `write`, recorded only in the audit trail (#26).
 ///
 /// Needs a tokio runtime with the time driver enabled: the per-round bound is
 /// `tokio::time::timeout`, which panics with "there is no timer running" otherwise.
@@ -346,143 +352,4 @@ where
     Err(TurnError::RoundLimit {
         rounds: turn.limits.max_rounds,
     })
-}
-
-/// Run and answer every tool call in `blocks`, in the order the model asked for them.
-///
-/// Sequential: concurrency would need the ordering semantics of two tools sharing one
-/// `ExecutionContext` settled first (#26).
-async fn answer_calls(
-    blocks: &[ContentBlock],
-    ctx: &ExecutionContext,
-) -> Result<Vec<ContentBlock>, TurnError> {
-    let mut results = Vec::new();
-
-    for block in blocks {
-        let ContentBlock::ToolUse { id, name, input } = block else {
-            continue;
-        };
-
-        let Some(tool) = BuiltinTool::from_name(name) else {
-            // Lookup is exact by design, so a miss is a prompt or schema bug rather than a
-            // near-miss to normalise away. Nothing runs; the model is told which name.
-            results.push(refused(id, format!("unknown tool: {name}")));
-            continue;
-        };
-
-        // Cloned because `spawn_blocking` needs `'static`, once per call because the
-        // closure consumes it. An `Arc` would pay off only if `ExecutionContext` grew
-        // something costlier than a few path lists.
-        let input = input.clone();
-        let context = ctx.clone();
-        let outcome = tokio::task::spawn_blocking(move || tool.execute(input, &context))
-            .await
-            .map_err(|_| TurnError::ToolPanicked {
-                name: name.to_string(),
-            })?;
-
-        results.push(match outcome {
-            Ok(output) => ContentBlock::ToolResult {
-                tool_use_id: id.clone(),
-                content: output.into_content(),
-                is_error: None,
-            },
-            Err(error) => refused(id, error.to_string()),
-        });
-    }
-
-    Ok(results)
-}
-
-/// A tool result the model should read as a failure.
-fn refused(id: &str, content: String) -> ContentBlock {
-    ContentBlock::ToolResult {
-        tool_use_id: id.to_string(),
-        content,
-        is_error: Some(true),
-    }
-}
-
-/// What one round of streaming came to.
-struct Round {
-    /// The content blocks the stream described.
-    blocks: Vec<ContentBlock>,
-    /// What it reported the request cost, if it reported anything.
-    usage: Option<PromptUsage>,
-}
-
-/// Drain one stream into the content blocks it describes, keeping its token counts.
-///
-/// The counts are last-one-wins rather than summed: Anthropic restates them cumulatively
-/// on every `message_delta`, so adding them up would multiply the figure.
-///
-/// Depends on `Usage` arriving before `Stop`, since the `Stop` arm returns and anything
-/// behind it is never seen. `sandbx-providers` guarantees the order and its
-/// `wire/tests/usage.rs` pins it; the failure would be silent, the counts always `None`
-/// and compaction never firing.
-async fn accumulate<O>(stream: &mut EventStream, observe: &mut O) -> Result<Round, TurnError>
-where
-    O: FnMut(&AgentEvent),
-{
-    let mut blocks = Vec::new();
-    let mut text = String::new();
-    let mut usage = None;
-
-    while let Some(event) = stream.next().await {
-        let event = event.map_err(TurnError::Provider)?;
-        observe(&event);
-
-        match event {
-            AgentEvent::Text { delta } => text.push_str(&delta),
-            AgentEvent::ToolCallRequested { id, name, input } => {
-                // Before the tool block, not after: the API reads a content array in
-                // order, and the text that introduced a call precedes it.
-                flush(&mut text, &mut blocks);
-                blocks.push(ContentBlock::ToolUse { id, name, input });
-            }
-            AgentEvent::Usage {
-                input_tokens,
-                cache_read_input_tokens,
-                cache_creation_input_tokens,
-                // The reply, not the request. Compaction asks how large the request was,
-                // and `observe` saw the whole event above.
-                output_tokens: _,
-            } => {
-                usage = Some(PromptUsage {
-                    input_tokens,
-                    cache_read_input_tokens,
-                    cache_creation_input_tokens,
-                });
-            }
-            AgentEvent::Stop { .. } => {
-                flush(&mut text, &mut blocks);
-                return Ok(Round { blocks, usage });
-            }
-            // Observed above, carried no further — see `run_turn`'s docs.
-            AgentEvent::Thinking { .. } => {}
-        }
-    }
-
-    Err(TurnError::StreamEndedWithoutStop)
-}
-
-/// Move buffered text into a block of its own, if there is any to move.
-fn flush(text: &mut String, blocks: &mut Vec<ContentBlock>) {
-    if !text.is_empty() {
-        blocks.push(ContentBlock::Text {
-            text: std::mem::take(text),
-        });
-    }
-}
-
-/// Bridge a built-in into the shape a provider request wants.
-///
-/// No table of its own: `name`, `description` and `input_schema` come from one `SPEC`
-/// per tool in `sandbx-tools`, beside the behaviour they describe.
-fn definition(tool: BuiltinTool) -> ToolDefinition {
-    ToolDefinition {
-        name: tool.name().to_string(),
-        description: tool.description().to_string(),
-        input_schema: tool.input_schema(),
-    }
 }

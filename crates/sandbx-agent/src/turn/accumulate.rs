@@ -1,0 +1,85 @@
+//! Rebuilding one round's assistant message from the deltas it arrives as.
+//!
+//! Content comes off the wire as increments, so the blocks here are assembled rather than
+//! received. The ordering that matters is text before the tool call it introduced.
+
+use futures_util::StreamExt;
+use sandbx_providers::{AgentEvent, ContentBlock, EventStream};
+
+use super::PromptUsage;
+use crate::TurnError;
+
+/// What one round of streaming came to.
+pub(super) struct Round {
+    /// The content blocks the stream described.
+    pub(super) blocks: Vec<ContentBlock>,
+    /// What it reported the request cost, if it reported anything.
+    pub(super) usage: Option<PromptUsage>,
+}
+
+/// Drain one stream into the content blocks it describes, keeping its token counts.
+///
+/// The counts are last-one-wins rather than summed: Anthropic restates them cumulatively
+/// on every `message_delta`, so adding them up would multiply the figure.
+///
+/// Depends on `Usage` arriving before `Stop`, since the `Stop` arm returns and anything
+/// behind it is never seen. `sandbx-providers` guarantees the order and its
+/// `wire/tests/usage.rs` pins it; the failure would be silent, the counts always `None`
+/// and compaction never firing.
+pub(super) async fn accumulate<O>(
+    stream: &mut EventStream,
+    observe: &mut O,
+) -> Result<Round, TurnError>
+where
+    O: FnMut(&AgentEvent),
+{
+    let mut blocks = Vec::new();
+    let mut text = String::new();
+    let mut usage = None;
+
+    while let Some(event) = stream.next().await {
+        let event = event.map_err(TurnError::Provider)?;
+        observe(&event);
+
+        match event {
+            AgentEvent::Text { delta } => text.push_str(&delta),
+            AgentEvent::ToolCallRequested { id, name, input } => {
+                // Before the tool block, not after: the API reads a content array in
+                // order, and the text that introduced a call precedes it.
+                flush(&mut text, &mut blocks);
+                blocks.push(ContentBlock::ToolUse { id, name, input });
+            }
+            AgentEvent::Usage {
+                input_tokens,
+                cache_read_input_tokens,
+                cache_creation_input_tokens,
+                // The reply, not the request. Compaction asks how large the request was,
+                // and `observe` saw the whole event above.
+                output_tokens: _,
+            } => {
+                usage = Some(PromptUsage {
+                    input_tokens,
+                    cache_read_input_tokens,
+                    cache_creation_input_tokens,
+                });
+            }
+            AgentEvent::Stop { .. } => {
+                flush(&mut text, &mut blocks);
+                return Ok(Round { blocks, usage });
+            }
+            // Observed above, carried no further — see `run_turn`'s docs.
+            AgentEvent::Thinking { .. } => {}
+        }
+    }
+
+    Err(TurnError::StreamEndedWithoutStop)
+}
+
+/// Move buffered text into a block of its own, if there is any to move.
+fn flush(text: &mut String, blocks: &mut Vec<ContentBlock>) {
+    if !text.is_empty() {
+        blocks.push(ContentBlock::Text {
+            text: std::mem::take(text),
+        });
+    }
+}
