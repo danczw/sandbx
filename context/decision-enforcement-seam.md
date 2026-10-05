@@ -148,13 +148,13 @@ power available in the negotiable range.
 
 ## #52's five items
 
-| # | Item | State |
+| # | Item | Where it landed |
 |---|---|---|
-| 1 | `fs_rules` untestable without root | **done** — split out, asserted with no kernel |
-| 2 | nothing asserted the axis→rights mapping | **done** |
-| 3 | nothing pinned the *exact* right set | **done** (#74) — `each_axis_confers_exactly_the_documented_set` pins every axis's whole `BitFlags` at `BASELINE_ABI` and `LATEST_ABI`, and asserts a row exists per `Axis::ALL` |
-| 4 | partial enforcement accepted | **done** (#76) — `enforcement_verdict` refuses it |
-| 5 | per-endpoint egress | **per-port done** (#42) — a TCP port allowlist, which is all the kernel can match on; per-host needs a userspace proxy and is **open** (#145) |
+| 1 | `fs_rules` untestable without root | split out, asserted with no kernel |
+| 2 | nothing asserted the axis→rights mapping | asserted |
+| 3 | nothing pinned the *exact* right set | #74 — `each_axis_confers_exactly_the_documented_set` pins every axis's whole `BitFlags` at `BASELINE_ABI` and `LATEST_ABI`, and asserts a row exists per `Axis::ALL` |
+| 4 | partial enforcement accepted | #76 — `enforcement_verdict` refuses it |
+| 5 | per-endpoint egress | #42 — a TCP port allowlist, which is all the kernel can match on. Per-host is not enforced and needs a userspace proxy (#145) |
 
 45 real-kernel enforcement tests, split by what enforces them: 31 in
 `tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
