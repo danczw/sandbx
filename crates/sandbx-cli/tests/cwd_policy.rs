@@ -2,9 +2,8 @@
 //!
 //! Spawned rather than called, because the guard reads `getcwd` and `HOME` off the real
 //! process and `set_current_dir` is process-global — under parallel tests one case would
-//! decide another's verdict. `PolicyError::EnforcerInside` has no case here: reaching it
-//! needs the binary *under* the test's cwd, which cargo's layout prevents, so it is
-//! covered inline in `grants.rs` only.
+//! decide another's verdict. `PolicyError::EnforcerInside` needs the binary *under* the
+//! test's cwd, which cargo's layout prevents, so it is covered inline in `grants.rs` only.
 // `Command::new` here spawns sandbx itself, never a command that bypasses it; the
 // workspace ban exists to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
@@ -42,9 +41,8 @@ fn refuses_to_run_from_the_filesystem_root() {
     );
 }
 
-/// A no-flag run from `$HOME` is the accident the guard exists for: it would hand the
-/// command `~/.ssh` and every dotfile, and for `agent-run` that is a prompt injection's
-/// blast radius.
+/// The accident the guard exists for: it would hand the command `~/.ssh` and every
+/// dotfile, and for `agent-run` that is a prompt injection's blast radius.
 #[test]
 fn refuses_to_run_from_the_home_directory() {
     let (ok, stderr) = run(PACKAGE, PACKAGE, &[]);
@@ -56,10 +54,10 @@ fn refuses_to_run_from_the_home_directory() {
     );
 }
 
-/// The guard must fire on the derived default and never on an explicit one — otherwise
-/// adding it made a hand-written policy unrunnable from the one directory operators
-/// stand in most. Asserts only the absence of the refusal: whether the run then succeeds
-/// depends on the kernel, which is the sandbox suite's question rather than this one's.
+/// The guard must fire on the derived default and never on an explicit one, or adding it
+/// made a hand-written policy unrunnable from `$HOME`. Asserts only the refusal's absence:
+/// whether the run then succeeds is kernel-dependent, which is the sandbox suite's
+/// question.
 #[test]
 fn a_path_flag_runs_from_the_home_directory() {
     let (_, stderr) = run(PACKAGE, PACKAGE, &["--allow-read", "/usr"]);

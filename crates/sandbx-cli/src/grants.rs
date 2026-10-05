@@ -105,18 +105,17 @@ fn variable_name(value: &str) -> Result<String, String> {
 
 /// `cwd` itself, or why no default may be rooted there.
 ///
-/// An unset `HOME` arrives as an empty `homes` and still yields a root, with the guard
-/// degraded to the filesystem-root rule. Refusing instead would break the container
-/// case the default exists for, where `HOME` is unset and the working directory is
-/// `/app`, and an absent `HOME` does not make a directory more dangerous.
+/// An unset `HOME` arrives as an empty `homes` and still yields a root, the guard degraded
+/// to the filesystem-root rule: refusing would break the container case the default exists
+/// for, `HOME` unset and cwd `/app`.
 fn vetted_root<'a>(cwd: &'a Path, homes: &[PathBuf], exe: &Path) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
         return Err(PolicyError::FilesystemRoot);
     }
 
-    // `starts_with` is whole-component and true of equal paths, so this one test covers
-    // both "cwd *is* $HOME" and "cwd holds it" — `/home`, `/Users`, `/var/home` — while
-    // leaving `/home/u/project-tools` outside `/home/u/project`.
+    // `starts_with` is true of equal paths, so one test covers both "cwd *is* $HOME" and
+    // "cwd holds it", and it is whole-component, so `/home/u/project-tools` is not inside
+    // `/home/u/project`.
     if let Some(home) = homes.iter().find(|home| home.starts_with(cwd)) {
         return Err(PolicyError::HomeDirectory {
             cwd: cwd.to_path_buf(),
@@ -140,10 +139,9 @@ fn current_root() -> Result<PathBuf, PolicyError> {
         detail: "could not read the working directory to derive a policy from",
         source,
     })?;
-    // `getcwd` already returns a resolved path, so this is here for the other thing
-    // `canonicalize` proves: that the directory is still openable. `PathFd::new` in the
-    // helper requires that, and `FsGuard::canonical_roots` drops a root it cannot
-    // resolve rather than refusing — so an unopenable cwd must fail here, loudly.
+    // `getcwd` already resolves, so this is for what `canonicalize` else proves: the
+    // directory is still openable, which `PathFd::new` requires and which
+    // `FsGuard::canonical_roots` answers by dropping the root rather than refusing.
     let cwd = cwd
         .canonicalize()
         .map_err(|source| PolicyError::Unavailable {
@@ -151,11 +149,9 @@ fn current_root() -> Result<PathBuf, PolicyError> {
             source,
         })?;
 
-    // `std::env::current_exe` rather than `sandbx_core`'s `pub(crate)` wrapper, which
-    // would drag `SandboxError` into this crate's error mapping; core resolves the same
-    // path again on every spawn, which is what makes a write grant here reach the
-    // enforcer. Falling back to the unresolved path keeps a failure here from turning
-    // into a *missing* guard.
+    // `command_line()` resolves this same path again on every spawn, which is what makes a
+    // write grant over it reach the enforcer mid-turn. Falling back to the unresolved path
+    // keeps a canonicalize failure from turning into a *missing* guard.
     let exe = std::env::current_exe().map_err(|source| PolicyError::Unavailable {
         detail: "could not locate the running sandbx binary",
         source,
@@ -165,9 +161,8 @@ fn current_root() -> Result<PathBuf, PolicyError> {
     let mut homes = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
-        // Both forms, because Fedora Silverblue ships `/home -> /var/home`: `getcwd`
-        // says `/var/home/u` where `$HOME` says `/home/u`, and comparing one is a
-        // bypass of the other.
+        // Both forms, because Fedora Silverblue ships `/home -> /var/home`: `getcwd` says
+        // `/var/home/u` where `$HOME` says `/home/u`, and comparing one bypasses the other.
         if let Ok(resolved) = home.canonicalize() {
             homes.push(resolved);
         }
@@ -180,8 +175,8 @@ fn current_root() -> Result<PathBuf, PolicyError> {
 impl Grants {
     /// Whether any path flag was given, in which case no default is derived.
     ///
-    /// Over [`Axis::ALL`] so a new path flag joins the rule rather than being forgotten
-    /// into a default that silently widens it.
+    /// Over [`Axis::ALL`] so a new path flag joins the rule rather than being left behind a
+    /// default that then widens it.
     fn paths_given(&self) -> bool {
         Axis::ALL
             .into_iter()
@@ -206,19 +201,17 @@ impl Grants {
     /// grants on top, without which nothing can be run at all: read on the system
     /// binaries and libraries, and the startup environment — `PATH` above all, since
     /// without it a program named without a leading `/` reaches only the C library's
-    /// fallback (`/bin:/usr/bin` on glibc). Then read and write on the working
-    /// directory, but *only* when no path flag was given: a path flag replaces that
-    /// default rather than adding to it, so an explicit policy is never widened behind
-    /// the operator's back.
+    /// fallback (`/bin:/usr/bin` on glibc). Then read and write on the working directory,
+    /// but *only* when no path flag was given — a path flag replaces that default rather
+    /// than adding to it, so an explicit policy is never widened silently.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()
             .allow_standard_env();
 
         if !self.paths_given() {
-            // Looked up inside the branch, not above it: an invocation that typed its
-            // own flags depends on neither `getcwd` nor `HOME`, and must not be refused
-            // for them.
+            // Looked up inside the branch, not above it: an invocation that typed its own
+            // flags depends on neither `getcwd` nor `HOME`, so must not be refused for them.
             let root = current_root()?;
             policy = policy.allow_read(&root).allow_write(&root);
         }
@@ -307,8 +300,8 @@ mod tests {
         );
     }
 
-    /// A no-flag run from `$HOME` would hand a command `~/.ssh` and every dotfile, which
-    /// for `agent-run` is a prompt injection's blast radius.
+    /// A no-flag run from `$HOME` hands the command `~/.ssh` and every dotfile, which for
+    /// `agent-run` is a prompt injection's blast radius.
     #[test]
     fn the_home_directory_is_refused_as_a_root() {
         let error = root("/home/u", &homes(&["/home/u"])).expect_err("home as a root");
@@ -373,8 +366,7 @@ mod tests {
         );
     }
 
-    /// The container case the default exists for: `HOME` unset, cwd `/app`. Refusing
-    /// here would kill the default where sandbx is most likely to be deployed.
+    /// The container case the default exists for: `HOME` unset, cwd `/app`.
     #[test]
     fn an_unset_home_still_derives_a_root() {
         assert_eq!(
@@ -384,8 +376,6 @@ mod tests {
         );
     }
 
-    /// `command_line()` resolves `current_exe()` on every spawn, so a tool that renames
-    /// a replacement over the binary picks its own confinement for the next call.
     #[test]
     fn the_binary_inside_the_root_is_refused() {
         let error = vetted_root(
@@ -417,7 +407,6 @@ mod tests {
         );
     }
 
-    /// Every refusal is a dead end unless it says what to type instead.
     #[test]
     fn a_refusal_names_the_flags_to_type_instead() {
         let refusals = [
@@ -460,8 +449,7 @@ mod tests {
         }
     }
 
-    /// A flag naming no path must not suppress the default: it would silently narrow a
-    /// policy whose path axes the operator never touched.
+    /// Suppressing here would silently narrow a policy whose path axes were never touched.
     #[test]
     fn a_non_path_flag_leaves_the_default_alone() {
         let mut grants = bare();
