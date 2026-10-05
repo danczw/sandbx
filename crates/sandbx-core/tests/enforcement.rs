@@ -3,7 +3,7 @@
 //! Everything else in this crate tests our own logic; these spawn real processes
 //! and assert the *kernel* refuses them, which is the only evidence the sandbox
 //! does anything at all. Gated behind `--features sandbox-integration`: they need
-//! Landlock available (5.13+, enabled at boot).
+//! Landlock available (ABI 5, Linux 6.10+, enabled at boot).
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 // Every `Command::new` below spawns the sandbox helper itself, never a command that
 // bypasses it; the workspace ban exists to stop code executing *around* the sandbox.

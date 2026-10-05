@@ -11,9 +11,9 @@ use crate::SandboxError;
 /// the ceiling it negotiates up to.
 ///
 /// This pair is the only place the floor `SECURITY.md` claims — ABI 5, no kernel older
-/// than 6.10 — is enforced. `README.md`, this crate's `Cargo.toml` and `ci.yml` state the
-/// same number in prose with nothing checking them against this value, so they move in
-/// the same change as this one.
+/// than 6.10 — is enforced. `README.md`, `tests/enforcement.rs`, this crate's `Cargo.toml`
+/// and `ci.yml` state the same number in prose with nothing checking them against this
+/// value, so they move in the same change as this one.
 ///
 /// A floor rather than a preference: Landlock leaves any access type *not* in the handled
 /// set unrestricted everywhere, so pinning a lower ABI leaves whole categories unguarded
