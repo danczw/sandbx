@@ -1,6 +1,6 @@
 # sandbx
 
-A security-first AI coding agent harness. Seven crates, at `v0.1.0-alpha.5`.
+A security-first AI coding agent harness. Seven crates, at `v0.1.0-alpha.7`.
 
 Where to look, and where to put something new:
 

@@ -176,6 +176,48 @@ jobs:
           cargo test --workspace --locked \
             --features sandbox-integration,sandbx-providers/mock
 
+  # release.yml gates on the same script, but that gate fails after the tag is
+  # public and a tag cannot be un-pushed. Every file rather than the changed
+  # ones, which would need a base ref for no coverage gained.
+  # `cargo metadata` before any toolchain step, as in `msrv`: the runner's
+  # preinstalled cargo is enough to read a manifest.
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The file for the version in the manifest, by name: a bump that forgets
+      # its notes is otherwise green here and fails in release.yml with the tag
+      # already pushed. The bump and the notes land in one PR, so on every other
+      # PR this file is already there.
+      - name: Check the notes for the version in the manifest
+        run: |
+          metadata="$(cargo metadata --format-version 1 --no-deps)"
+          version="$(jq -r '
+            [.packages[].version] | unique
+            | if length == 1 then .[0] else "" end' <<<"$metadata")"
+          if [ -z "$version" ]; then
+            echo "::error::every crate must inherit one version from [workspace.package]"
+            exit 1
+          fi
+          .github/scripts/check-release-notes.sh "docs/release-notes/v$version.md"
+
+      # The `v*` glob skips TEMPLATE.md, which carries the placeholder the
+      # script rejects so that an unedited copy of it fails. A zero count means
+      # the directory or the naming moved, not that there is nothing to check.
+      - name: Check every other release-notes file
+        run: |
+          found=0
+          for f in docs/release-notes/v*.md; do
+            [ -f "$f" ] || continue
+            found=$((found + 1))
+            .github/scripts/check-release-notes.sh "$f"
+          done
+          echo "checked $found"
+          [ "$found" -gt 0 ] || { echo "::error::no docs/release-notes/v*.md"; exit 1; }
+
   audit:
     runs-on: ubuntu-latest
     steps:
