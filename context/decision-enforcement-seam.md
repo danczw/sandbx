@@ -156,10 +156,10 @@ power available in the negotiable range.
 | 4 | partial enforcement accepted | **done** (#76) — `enforcement_verdict` refuses it |
 | 5 | per-endpoint egress | **per-port done** (#42) — a TCP port allowlist, which is all the kernel can match on; per-host needs a userspace proxy and is **open** (#145) |
 
-44 real-kernel enforcement tests, split by what enforces them: 31 in
+45 real-kernel enforcement tests, split by what enforces them: 31 in
 `tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
-for the calls Landlock cannot express, 5 in `tests/enforcement_network.rs` for
+for the calls Landlock cannot express, 6 in `tests/enforcement_network.rs` for
 the ports it does. All three files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 44 run or none of the files compiles, and
+count is unconditional — all 45 run or none of the files compiles, and
 `cargo test` reports `0 ignored`. Nothing checks this number against the files.

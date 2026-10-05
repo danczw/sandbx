@@ -9,7 +9,7 @@ this file is the bug.
 | Mechanism | Bounds | Where |
 |---|---|---|
 | Landlock | filesystem paths, and TCP ports | `helper/ruleset/rights.rs` |
-| seccomp-BPF | syscalls, down to a socket's domain, type and protocol | `helper/seccomp/rules.rs` |
+| seccomp-BPF | syscalls, down to a socket's domain, type and protocol and a send's flags | `helper/seccomp/rules.rs` |
 | namespaces | network, PIDs, identity | `helper/hardening.rs` |
 
 ## Two layers, one table
@@ -331,15 +331,18 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
   never values — which is why there is no `--allow-env NAME=VALUE`.
 - **A port allowlist is not a destination allowlist.** Landlock matches the port
   and nothing else, so `--allow-network 443` reaches port 443 on every routable
-  host. Per-host needs a userspace proxy (#145). Rationale, and the cost of the
-  UDP denial that makes the port claim true, in
+  host. Per-host needs a userspace proxy (#145).
+- **A port allowlist is not uniformly narrower than withholding network.** It
+  refuses `bind` on every unlisted port, `bind(0)` included, and it shares the
+  host's netns where `Denied` had an empty one — so host loopback is reachable.
+  That, and the denials that make the port claim true at all, in
   `decision-port-allowlist.md`.
 
 ## Known gaps
 
 | Gap | State |
 |---|---|
-| Per-host egress | **open** (#145). Per-*port* is enforced — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets and non-TCP stream protocols — but no kernel mechanism can match the destination, so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution; #147 holds the options. |
+| Per-host egress | **open** (#145). Per-*port* is enforced — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families and TCP Fast Open — but no kernel mechanism can match the destination, so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution; #147 holds the options. |
 | Per-socket unix grants | **open**. Needs Landlock `ResolveUnix` (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. Today it is one all-or-nothing toggle. |
 | `FsGuard` TOCTOU | **mostly closed**. Tools take handles (`open_read`/`open_write`, `O_NOFOLLOW`), not resolved paths. Residual: a parent-directory swap mid-open, which needs full `openat`-chain resolution. `ls` still takes a path — `read_dir` has no handle form. |
 | Capability coverage | **closed**. `tests/capability_coverage.rs` reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |

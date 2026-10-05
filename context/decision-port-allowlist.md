@@ -1,4 +1,4 @@
-# Why the port allowlist denies UDP
+# What a port allowlist has to deny besides other ports
 
 `--allow-network 443` says egress reaches port 443 and nowhere else. Landlock's
 network rules police TCP bind and connect and nothing else, so with UDP left open
@@ -7,11 +7,21 @@ datagrams to any host on any port. The repo rule that `SECURITY.md` must never
 overstate the sandbox then leaves two choices — weaken the claim, or deny the
 transports that falsify it. The claim is the product. The transports go.
 
-So, whenever a port list is in force, seccomp denies on `socket`:
+Three other things falsify it the same way, each by reaching a TCP port without
+passing the hook Landlock's port rules hang off: a stream socket carrying a
+protocol other than TCP, a stream socket in a family that tunnels IP, and TCP
+Fast Open. Whenever a port list is in force, seccomp denies on `socket`:
 
 ```
-type & 0xf != SOCK_STREAM, domain != AF_UNIX        ◄── 15 rules
-domain in {AF_INET, AF_INET6}, protocol not in {0, IPPROTO_TCP}   ◄── 2 rules
+type & 0xf != SOCK_STREAM, domain != AF_UNIX                           ◄── 15 rules
+type & 0xf == SOCK_STREAM, domain not in {AF_UNIX, AF_INET, AF_INET6}  ◄──  1 rule
+domain in {AF_INET, AF_INET6}, protocol not in {0, IPPROTO_TCP}        ◄──  2 rules
+```
+
+and on `sendto`, `sendmsg` and `sendmmsg`:
+
+```
+flags & MSG_FASTOPEN                                                   ◄──  3 rules
 ```
 
 ## What it costs
@@ -24,11 +34,35 @@ the cost belongs next to the claim it buys:
   interfaces either. This is the big one, and the usual way the allowlist first
   surprises someone: `--allow-network 443 -- curl https://example.com` fails at
   resolution, not at connect. Tracked as #147.
+- **`bind` fails on every port the list does not name**, including `bind(port 0)`
+  — the ephemeral port a program asks for when it wants a local listener, which
+  an allowlist cannot express. `handled_net_access` hands Landlock `BindTcp`
+  alongside `ConnectTcp`, so handling the axis at all denies both directions on
+  an unlisted port. A test harness that stands up a local HTTP mock on
+  `127.0.0.1:0` works under the default policy, whose empty netns leaves `bind`
+  alone, and fails under `--allow-network <port>`. The narrower-looking flag is
+  not narrower on this axis.
 - QUIC and HTTP/3, which are UDP.
 - `ping` and anything else over ICMP, which is a raw socket.
 - MPTCP and SCTP, which are stream sockets the Landlock hooks do not police.
+- AF_VSOCK and AF_BLUETOOTH streams, caught by the family allowlist below.
+- TCP Fast Open, for any client that asks for it by flag.
 
 A bare `--allow-network` is unaffected by any of it.
+
+## The host network namespace is shared, not narrowed
+
+`allows_network()` is true for `Ports`, so `hardening::isolate` drops
+`CLONE_NEWNET` — a port rule inside an empty netns would have nothing to permit.
+The consequence is worth stating plainly: a port allowlist puts the command in
+the *host's* network namespace, where the default policy had it in an empty one.
+So `--allow-network 8080` reaches a developer's own `127.0.0.1:8080`, and the
+host's abstract unix socket namespace is no longer isolated either — only the
+`socket(AF_UNIX)` denial stands between the command and it, which
+`--allow-unix-sockets` lifts.
+
+A port allowlist is therefore not uniformly narrower than `Denied`. It is
+narrower on which remote ports are reachable and wider on what is local.
 
 ## Why not for `Denied` or `AnyPort`
 
@@ -74,10 +108,47 @@ the type the allowlist is about and has to pass. MPTCP is the one that matters i
 practice, being built into distribution kernels with no module to load.
 
 Those two rules name `AF_INET` and `AF_INET6` instead of excluding `AF_UNIX` the
-way the type rules do, because those two families are exactly `sk_is_inet`. A
-port allowlist makes no claim about a vsock or a Bluetooth stream, so it must not
-quietly refuse one. Protocol 0 passes beside `IPPROTO_TCP`: it means the family's
-default for the type, which for a stream socket is TCP.
+way the type rules do, because those two families are exactly `sk_is_inet` —
+beyond them a protocol number means something else entirely. Protocol 0 passes
+beside `IPPROTO_TCP`: it means the family's default for the type, which for a
+stream socket is TCP.
+
+## Why stream sockets are allowlisted by family
+
+A protocol rule scoped to the IP families leaves a stream socket in some *other*
+family untouched, and a family that tunnels IP dials its inner socket from inside
+the kernel. `smc_connect` (`net/smc/af_smc.c`) calls
+`kernel_connect(smc->clcsock, …)`, and `kernel_connect` goes straight to
+`sock->ops->connect` without `security_socket_connect` — so no Landlock hook
+runs and no port rule is consulted. `socket(AF_SMC, SOCK_STREAM, SMCPROTO_SMC)`
+needs no privilege, autoloads `net-pf-43`, and reached any TCP port. AF_TIPC and
+AF_IB are the same shape.
+
+Hence one rule denying a stream socket in any family but `AF_UNIX`, `AF_INET` and
+`AF_INET6`, rather than a denylist of the families known to tunnel — the same
+argument as the type field, one layer up. It costs AF_VSOCK and AF_BLUETOOTH
+streams under an allowlist, which is the right side of the trade: a vsock to the
+hypervisor is egress the allowlist makes no promise about, and silently
+permitting it is the failure mode, not refusing it.
+
+## Why TCP Fast Open is denied
+
+`tcp_sendmsg_locked` routes a send carrying `MSG_FASTOPEN` into
+`tcp_sendmsg_fastopen`, which calls `__inet_stream_connect` directly
+(`net/ipv4/tcp.c`). `security_socket_connect` is reached only from
+`__sys_connect_file`, so the destination in `msg_name` is a port Landlock never
+sees — and `net.ipv4.tcp_fastopen` has client mode enabled by default on
+mainline and on every mainstream distribution. The connect happens *inside a
+send*, which is why the rules live on `sendto`, `sendmsg` and `sendmmsg` and not
+on `socket`.
+
+Expressible, unlike a destination check, because `MSG_FASTOPEN` is a flag in a
+register rather than anything behind a pointer. An ordinary send never sets it,
+so the cost is confined to clients that opt in by flag.
+
+The `TCP_FASTOPEN_CONNECT` sockopt is a different path and needs no rule: it
+defers the handshake but still goes through the `connect` syscall, so
+`security_socket_connect` runs on the address and the port rules apply.
 
 ## What was rejected
 
