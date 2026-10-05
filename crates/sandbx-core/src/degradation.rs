@@ -1,11 +1,9 @@
 //! The channel the helper reports what the parent cannot see on, and its wire format.
 //!
 //! The helper installs no `tracing` subscriber and must not — its stderr is a pipe the
-//! parent replays verbatim, and the stage below becomes the sandboxed command. So the helper
-//! names what degraded and what it could not `exec`, this module renders bytes, and the
-//! *parent* turns them back into audit events; what a record means is decided here, never by
-//! whatever wrote the line. See `context/decision-helper-audit-channel.md` for the stdin
-//! slot.
+//! parent replays verbatim — so it names what degraded and what it could not `exec`, and
+//! the *parent* decodes and emits. What a record means is decided here, never by whatever
+//! wrote the line. See `context/decision-helper-audit-channel.md` for the stdin slot.
 
 use std::fmt::Write as _;
 
@@ -34,9 +32,9 @@ const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
 
 /// The label a command that was never executed carries, on the wire and in the trail.
 ///
-/// Spelled once, here: [`SandboxError::label`](crate::SandboxError::label) returns this for
-/// [`ExecFailed`](crate::SandboxError::ExecFailed), which is what the stage that could not
-/// `exec` puts on the channel.
+/// Spelled once: [`SandboxError::label`](crate::SandboxError::label) returns it for
+/// [`ExecFailed`](crate::SandboxError::ExecFailed), and the stage that could not `exec`
+/// writes it.
 pub(crate) const EXEC_FAILED: &str = "exec_failed";
 
 /// What the helper reported on the channel.
@@ -47,8 +45,8 @@ pub(crate) enum Report<'a> {
 
     /// The command was never executed, so the run's outcome is this and not an exit.
     ///
-    /// Carried here because the parent cannot tell otherwise: a stage that fails to `exec`
-    /// exits non-zero, and that status reaches the parent as if the command itself had.
+    /// On the channel because a stage that fails to `exec` exits non-zero, which reaches
+    /// the parent as if the command had.
     ExecFailed,
 }
 
@@ -112,8 +110,8 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
 
 /// Render the record a stage that could not `exec` reports.
 ///
-/// No detail: the errno reaches the operator on the helper's own stderr, which the parent
-/// forwards verbatim, and the audit record carries the label alone.
+/// No detail: the errno reaches the operator on the helper's stderr, which the parent
+/// forwards verbatim.
 pub(crate) fn encode_exec_failure() -> String {
     format!("{EXEC_FAILED}{SEPARATOR}\n")
 }

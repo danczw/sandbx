@@ -136,10 +136,10 @@ impl SandboxedCommand {
         // attempt however it ended.
         let refused = record_reports(audit);
 
-        // Exactly one of these per `spawned`: nothing between the two emits can return
-        // early, and no other site builds either record. The channel outranks the status
-        // because a command that was never executed exited as the helper rather than as
-        // itself, and only the channel knows which it was.
+        // Exactly one of these per `spawned`: nothing between the two emits returns early,
+        // and no other site builds either record. The channel outranks the status, a
+        // command that was never executed having exited as the helper rather than as
+        // itself.
         match (&result, refused) {
             (_, Some(reason)) => crate::AuditEvent::failed(&self.program, reason),
             (Ok(output), None) => crate::AuditEvent::exited(&self.program, &output.status),
@@ -194,8 +194,8 @@ fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), Sandbox
     })
 }
 
-/// Read what the helper reported, put the degradations on the audit trail, and return the
-/// reason the command never ran if the helper reported one.
+/// Read what the helper reported, put it on the audit trail, and return the reason the
+/// command never ran if there was one.
 ///
 /// Emitted here because this is the process with a subscriber; the helper installs none, and
 /// cannot without writing sandbx's records into the command's own output. Reads to EOF with

@@ -120,11 +120,9 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         .arg(std::process::id().to_string());
 
     // Handed down rather than nulled here: a command that could not be `exec`ed is a fact
-    // only the stage below has, and taking fd 0 away from the command is that stage's job
-    // now — see `claim_audit_channel`, which is what keeps the write end out of the
-    // command's hands. The flag is what says fd 0 *is* a channel; without it stdin stays
-    // inherited, which a hand-invoked `sandbx-helper` needs for a command that reads its
-    // own input.
+    // only the stage below has, so taking fd 0 away from the command is its job now — see
+    // `claim_audit_channel`. Without the flag stdin stays inherited, which a hand-invoked
+    // `sandbx-helper` needs for a command that reads its own input.
     if audit_on_stdin {
         inner.arg(AUDIT_STDIN_FLAG);
     }
@@ -274,7 +272,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     // `exec` returns only on failure and the duplicate is close-on-exec, so this is
     // reachable only where the command does not exist — which is what makes the record
     // true rather than a guess. Swallowed like a degradation: a lost record must not fail
-    // a run the parent has already been told about.
+    // a run the parent was already told about.
     if let Some(mut channel) = channel {
         use std::io::Write;
 
@@ -286,12 +284,12 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
 /// Take the audit channel out of the stdin slot, leaving the command a null one.
 ///
-/// The returned duplicate is `F_DUPFD_CLOEXEC`, so a successful `exec` closes it and the
-/// command inherits `/dev/null` on fd 0. Both halves matter: a command holding the write
-/// end could forge records, or hold the channel open and leave the parent waiting on an
-/// EOF that never comes. Pinned by `the_command_cannot_write_the_audit_channel`.
+/// The duplicate is `F_DUPFD_CLOEXEC`, so a successful `exec` closes it; the command
+/// inherits `/dev/null`. Both halves matter — a command holding the write end could forge
+/// records, or hold the channel open and leave the parent waiting on an EOF that never
+/// comes. Pinned by `the_command_cannot_write_the_audit_channel`.
 ///
-/// Fails closed. Becoming the command with the channel still on fd 0 is worse than any
+/// Fails closed: becoming the command with the channel still on fd 0 is worse than any
 /// record it would have bought.
 fn claim_audit_channel() -> Result<std::fs::File, SandboxError> {
     use std::os::fd::AsFd;

@@ -106,10 +106,10 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// The sandboxed command could not be executed, so it never ran.
+    /// The innermost stage could not become the command, so it never ran.
     ///
-    /// Distinct from [`SpawnFailed`](Self::SpawnFailed): that is the harness failing to
-    /// start a *helper*, this is the innermost stage failing to become the command.
+    /// Distinct from [`SpawnFailed`](Self::SpawnFailed), which is a *helper* that did not
+    /// start.
     ExecFailed {
         /// The underlying OS failure.
         source: std::io::Error,
