@@ -217,18 +217,25 @@ fn an_unrestricted_grant_permits_udp() {
 }
 
 /// The default policy keeps datagrams too, for a different reason: it runs in an empty
-/// network namespace, so a UDP socket has nowhere to send — and `AF_NETLINK` is a
-/// `SOCK_DGRAM` socket that glibc's `getaddrinfo` needs.
+/// network namespace, so a UDP socket has nowhere to send — and `getaddrinfo` needs
+/// `AF_NETLINK`, which glibc's `__check_pf` opens as `SOCK_RAW`.
+///
+/// Both netlink types, because the exemption has to cover the call glibc actually makes and
+/// `netlink_create` accepts either.
 #[test]
 fn a_denied_policy_permits_udp_in_an_empty_netns() {
-    let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+    for (domain, socket_type) in [
+        (libc::AF_INET, libc::SOCK_DGRAM),
+        (libc::AF_NETLINK, libc::SOCK_DGRAM),
+        (libc::AF_NETLINK, libc::SOCK_RAW),
+    ] {
+        let program = compiled_filter(&SandboxPolicy::default()).unwrap();
 
-    for domain in [libc::AF_INET, libc::AF_NETLINK] {
         assert_eq!(
-            typed_socket_verdict(&program, domain as u64, libc::SOCK_DGRAM as u64),
+            typed_socket_verdict(&program, domain as u64, socket_type as u64),
             ALLOW,
-            "the default policy refuses a datagram socket in domain {domain}, which \
-             the empty netns already confines and `getaddrinfo` needs"
+            "the default policy refuses a type {socket_type} socket in domain {domain}, \
+             which the empty netns already confines and `getaddrinfo` needs"
         );
     }
 }

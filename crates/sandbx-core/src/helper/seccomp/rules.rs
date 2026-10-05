@@ -194,8 +194,9 @@ pub(super) fn blocked_syscalls(
     // A port allowlist claims egress reaches the ports it names and nowhere else, and
     // Landlock polices TCP alone — a UDP or raw socket would carry traffic anywhere and make
     // the claim false. True for `Ports` only: `Denied` is already in an empty netns and needs
-    // `AF_NETLINK`, a `SOCK_DGRAM` socket, for `getaddrinfo`; `AnyPort` asked for
-    // unrestricted egress. `context/decision-port-allowlist.md` records what this costs.
+    // `AF_NETLINK` — `SOCK_RAW`, which is how glibc's `__check_pf` opens it — for
+    // `getaddrinfo`; `AnyPort` asked for unrestricted egress.
+    // `context/decision-port-allowlist.md` records what this costs.
     let confine_to_tcp = match policy.network() {
         crate::NetworkPolicy::Denied | crate::NetworkPolicy::AnyPort => false,
         crate::NetworkPolicy::Ports(_) => true,

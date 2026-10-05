@@ -50,7 +50,7 @@ fn a_port_list_handles_the_axis_and_carries_every_port() {
         .allow_network_port(80);
 
     for net in net_at_both_abis(&policy) {
-        let RequestedNet::Ports { rights, ports } = net else {
+        let RequestedNet::Ports { granted, ports, .. } = net else {
             panic!("a port allowlist left the network axis unhandled, so TCP is unrestricted");
         };
 
@@ -60,7 +60,7 @@ fn a_port_list_handles_the_axis_and_carries_every_port() {
             "a port the policy named was not installed"
         );
         assert!(
-            !rights.is_empty(),
+            !granted.is_empty(),
             "the port rules carry no rights, so Landlock has nothing to permit \
              and the allowlist denies the ports it names"
         );
@@ -95,20 +95,44 @@ fn the_three_network_cases_map_to_distinct_requests() {
 /// without `BindTcp` a command may listen on any port. Asked at the floor, the weakest
 /// kernel this build accepts, where both are still present because both arrived in ABI V4.
 #[test]
-fn the_baseline_abi_handles_both_tcp_rights() {
+fn a_port_rule_grants_both_tcp_rights_and_nothing_else() {
     let policy = SandboxPolicy::default().allow_network_port(443);
 
-    let RequestedNet::Ports { rights, .. } = requested_at(&policy, BASELINE_ABI).net else {
+    let RequestedNet::Ports { granted, .. } = requested_at(&policy, BASELINE_ABI).net else {
         panic!("a port allowlist left the network axis unhandled");
     };
 
-    for right in [
-        landlock::AccessNet::BindTcp,
-        landlock::AccessNet::ConnectTcp,
-    ] {
+    assert_eq!(
+        granted,
+        landlock::AccessNet::BindTcp | landlock::AccessNet::ConnectTcp,
+        "the rights a port rule grants are not exactly the two an allowlist promises"
+    );
+}
+
+/// The asymmetry `net_rules` exists to keep: the handled set is `from_all`, so a network
+/// right a future ABI adds is policed, while the port rules grant a fixed pair, so that
+/// right arrives permitted on no port. Taking `handled` for both would hand a UDP or raw
+/// right to every port the operator allowlisted, which is the direction that fails open.
+///
+/// Asserted as a subset relation rather than against two literals, because the claim is
+/// about which way they may differ, not about today's values — and Landlock refuses a rule
+/// carrying a right the ruleset does not handle, so the inclusion is also a precondition.
+#[test]
+fn a_port_rule_grants_no_more_than_the_kernel_is_told_to_police() {
+    let policy = SandboxPolicy::default().allow_network_port(443);
+
+    for abi in [BASELINE_ABI, LATEST_ABI] {
+        let RequestedNet::Ports {
+            handled, granted, ..
+        } = requested_at(&policy, abi).net
+        else {
+            panic!("a port allowlist left the network axis unhandled");
+        };
+
         assert!(
-            rights.contains(right),
-            "{right:?} is not handled at the ABI floor"
+            handled.contains(granted),
+            "a port rule grants {granted:?}, which is not inside the handled set \
+             {handled:?}, so Landlock refuses the rule"
         );
     }
 }

@@ -296,9 +296,13 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // Landlock splits `handle_access`, which must precede `create`, from `add_rule`, which
     // must follow it. Decided once here so both uses below are gated on the same `Option`,
     // and no path installs a port rule without handling the axis.
-    let (net_rights, net_ports) = match net {
+    let (net_axis, net_ports) = match net {
         RequestedNet::Unhandled => (None, &[][..]),
-        RequestedNet::Ports { rights, ports } => (Some(rights), ports),
+        RequestedNet::Ports {
+            handled,
+            granted,
+            ports,
+        } => (Some((handled, granted)), ports),
     };
 
     let mut builder = Ruleset::default()
@@ -306,8 +310,8 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         .handle_access(handled)
         .map_err(landlock_failed)?;
 
-    if let Some(rights) = net_rights {
-        builder = builder.handle_access(rights).map_err(landlock_failed)?;
+    if let Some((handled, _)) = net_axis {
+        builder = builder.handle_access(handled).map_err(landlock_failed)?;
     }
 
     let mut ruleset = builder.create().map_err(landlock_failed)?;
@@ -324,10 +328,10 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     // Under the `HardRequirement` set above, a port rule carrying a right the ruleset does
     // not handle is an error rather than a right the kernel quietly drops.
-    if let Some(rights) = net_rights {
+    if let Some((_, granted)) = net_axis {
         for port in net_ports {
             ruleset = ruleset
-                .add_rule(NetPort::new(*port, rights))
+                .add_rule(NetPort::new(*port, granted))
                 .map_err(landlock_failed)?;
         }
     }

@@ -36,7 +36,7 @@ Named here rather than discovered later, and repeated in `SECURITY.md` because
 the cost belongs next to the claim it buys:
 
 - **Name resolution fails.** `getaddrinfo` can reach neither a UDP resolver nor
-  `AF_NETLINK`, which is a `SOCK_DGRAM` socket, so it cannot enumerate
+  `AF_NETLINK`, which glibc opens as a `SOCK_RAW` socket, so it cannot enumerate
   interfaces either. This is the big one, and the usual way the allowlist first
   surprises someone: `--allow-network 443 -- curl https://example.com` fails at
   resolution, not at connect. Tracked as #147.

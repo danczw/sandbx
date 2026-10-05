@@ -56,8 +56,13 @@ pub(super) enum RequestedNet<'policy> {
     Unhandled,
     /// Hand it over, permitting `ports` and refusing every other.
     Ports {
-        /// Rights each port rule carries. See [`compat::handled_net_access`].
-        rights: landlock::BitFlags<landlock::AccessNet>,
+        /// Every network right the kernel is told to police. See
+        /// [`compat::handled_net_access`].
+        handled: landlock::BitFlags<landlock::AccessNet>,
+        /// What each port rule permits — a fixed subset of `handled`, not all of it, so a
+        /// right a future ABI adds is policed everywhere and granted nowhere. See
+        /// [`rights::net_rules`].
+        granted: landlock::BitFlags<landlock::AccessNet>,
         /// The allowlist, already free of port 0 — `SandboxPolicy::allow_network_port`
         /// skips it and `HelperArgs::decode` refuses it.
         ports: &'policy [u16],
