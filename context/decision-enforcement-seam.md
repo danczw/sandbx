@@ -155,7 +155,9 @@ power available in the negotiable range.
 | 4 | partial enforcement accepted | **done** (#76) — `enforcement_verdict` refuses it |
 | 5 | per-endpoint egress | **open** (#42) |
 
-39 real-kernel enforcement tests in `tests/enforcement.rs`. The whole file is
+39 real-kernel enforcement tests, split by what enforces them: 31 in
+`tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
+for the calls Landlock cannot express. Both files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 39 run or none compile, and `cargo test` reports
-`0 ignored`. Nothing checks this number against the file.
+count is unconditional — all 39 run or neither file compiles, and `cargo test`
+reports `0 ignored`. Nothing checks this number against the files.

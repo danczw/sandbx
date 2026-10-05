@@ -238,13 +238,15 @@ This is why an outer deadline is not a substitute for real cancellation (#26).
 ## Test suite
 
 Split by visibility, as the workspace splits everywhere: `compact.rs`'s planner is
-private, so its cut-point algebra is a `#[cfg(test)] mod tests` beside it, while
-`tests/turn_loop.rs` covers the public surface — including that what reaches the API
-after compaction is still a conversation it would accept, which is asserted on
-`Script::sent` rather than on the return value.
+private, so its cut-point algebra lives in `src/compact/tests.rs` beside it, while
+`tests/` covers the public surface. That half splits again by subject —
+`turn_loop.rs` for what one streamed turn becomes, `turn_compaction.rs` for
+compaction's wiring, including that what reaches the API after a cut is still a
+conversation it would accept, which is asserted on `Script::sent` rather than on
+the return value.
 
-`tests/turn_loop.rs` drives the loop through the closure seam with a local
-`Script`, deliberately **not** `MockProvider`: that double's whole body is the
+Both drive the loop through the closure seam with the `Script` in
+`tests/support/mod.rs`, deliberately **not** `MockProvider`: that double's whole body is the
 `stream::iter(..).fuse()` in `canned`, and reaching for it would mean a `mock`
 feature here, a `required-features` target, and a CI command naming both — three
 coordinated parts, one a silent failure if forgotten, to borrow one line.
