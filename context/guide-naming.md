@@ -16,9 +16,9 @@ The ceilings are headroom, not a target. The tree sits near 10 characters for
 items and around 40 for tests; a name that needs the whole budget is usually a
 name describing two things.
 
-Tests get a longer budget because the name is the documentation — a test function
-carries no `///` (see `guide-code-comments.md`), so what it asserts has to be
-legible from the failure line alone. That is a reason for a sentence, not for an
+Tests get a longer budget because the name is what a failure prints: `cargo test`
+shows it without the `///`, so what the test asserts has to be legible from the
+failure line alone. That is a reason for a sentence, not for an
 essay: `cargo test` prints the name, and past about fifty characters it stops
 being scannable in a list of four hundred.
 

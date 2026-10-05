@@ -23,8 +23,8 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-# Wraps the API key the moment it is read: no Debug impl, so logging one is a
-# compile error rather than a review nit.
+# Wraps the API key the moment it is read: its Debug prints `[REDACTED]`, so a key
+# reaches a log only through an explicit `expose_secret`.
 secrecy = "0.10.3"
 # The minimal crate (not the `futures` megacrate): Stream/StreamExt,
 # stream::unfold, BoxStream. Nothing here touches futures' io/sink/compat.

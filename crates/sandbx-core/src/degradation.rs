@@ -19,7 +19,7 @@ const SEPARATOR: char = '\t';
 ///
 /// The whole channel must fit a pipe buffer with nobody reading the other end — the parent
 /// reads only once the helper has been waited on, so a stage 1 blocked writing here would
-/// deadlock the run it is reporting on. Two records of this length sit three orders of
+/// deadlock the run it is reporting on. Two records of this length sit two orders of
 /// magnitude inside the 64 KiB a Linux pipe holds by default.
 const DETAIL_LIMIT: usize = 256;
 
