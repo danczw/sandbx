@@ -46,6 +46,9 @@ pub enum AuditEvent<'a> {
     },
 
     /// A sandboxed process was started, and under what shape of policy.
+    ///
+    /// Written before the exec, so [`Exited`](Self::Exited) or [`Failed`](Self::Failed) is
+    /// what says it ran.
     Spawned {
         /// The program the sandbox is about to become.
         program: &'a str,
@@ -69,6 +72,25 @@ pub enum AuditEvent<'a> {
         /// names would invite the next change to list values beside them. Its length, not
         /// the number that cross: a name the harness does not hold is passed as nothing.
         env: usize,
+    },
+
+    /// A sandboxed process ended, and with what status.
+    Exited {
+        /// The program the spawn record named.
+        program: &'a str,
+        /// What it ended with, encoded the way a shell does — 128 + n for a signal.
+        code: i32,
+    },
+
+    /// A sandboxed process ended without a status of its own.
+    ///
+    /// Separate from [`Exited`](Self::Exited) rather than an absent `code`: `tracing` omits
+    /// a `None` field, so one event would vary its own field set.
+    Failed {
+        /// The program the spawn record named.
+        program: &'a str,
+        /// Why it has none, as a stable label a trail can be filtered by.
+        reason: &'static str,
     },
 }
 
@@ -127,6 +149,26 @@ impl<'a> AuditEvent<'a> {
         }
     }
 
+    /// Record how a spawned command ended.
+    ///
+    /// Derived through [`exit_code`](crate::exit_code) from the status itself, for the
+    /// reason [`spawned`](Self::spawned) takes a policy: the number on the trail is the one
+    /// `sandbx` exits with, and a caller cannot invent it.
+    pub fn exited(program: &'a str, status: &std::process::ExitStatus) -> Self {
+        Self::Exited {
+            program,
+            code: crate::exit_code(status),
+        }
+    }
+
+    /// Record a run that ended without a status, naming what stopped it.
+    ///
+    /// The label rather than the error, so this module stays ignorant of `SandboxError`;
+    /// the call site passes [`SandboxError::label`](crate::SandboxError::label).
+    pub fn failed(program: &'a str, reason: &'static str) -> Self {
+        Self::Failed { program, reason }
+    }
+
     /// Emit this event on the audit target.
     ///
     /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]: `tracing` drops
@@ -179,6 +221,18 @@ impl<'a> AuditEvent<'a> {
                 network_ports,
                 unix_sockets,
                 env,
+            ),
+            Self::Exited { program, code } => tracing::info!(
+                target: AUDIT_TARGET,
+                decision = "exited",
+                program,
+                code,
+            ),
+            Self::Failed { program, reason } => tracing::info!(
+                target: AUDIT_TARGET,
+                decision = "failed",
+                program,
+                reason,
             ),
         }
     }

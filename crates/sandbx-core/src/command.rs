@@ -134,7 +134,18 @@ impl SandboxedCommand {
         // so nothing drains the pipe while the helper writes it. Read on the error paths
         // too: the hardening degraded before the command started, so it holds of the
         // attempt however it ended.
-        let _ = record_reports(audit);
+        let refused = record_reports(audit);
+
+        // Exactly one of these per `spawned`: nothing between the two emits can return
+        // early, and no other site builds either record. The channel outranks the status
+        // because a command that was never executed exited as the helper rather than as
+        // itself, and only the channel knows which it was.
+        match (&result, refused) {
+            (_, Some(reason)) => crate::AuditEvent::failed(&self.program, reason),
+            (Ok(output), None) => crate::AuditEvent::exited(&self.program, &output.status),
+            (Err(error), None) => crate::AuditEvent::failed(&self.program, error.label()),
+        }
+        .emit();
 
         result
     }
