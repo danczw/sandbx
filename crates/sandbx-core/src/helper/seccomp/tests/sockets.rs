@@ -153,7 +153,7 @@ fn a_port_list_denies_udp_with_cloexec_set() {
 }
 
 /// `SOCK_SEQPACKET` over `AF_INET` is SCTP, which Landlock's `ConnectTcp` does not police.
-/// The enumeration over all sixteen type values is what closes it, and anything else the
+/// The enumeration over the whole 4-bit type field is what closes it, and anything else the
 /// field grows to mean.
 #[test]
 fn a_port_list_denies_seqpacket() {

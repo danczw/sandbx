@@ -3,11 +3,9 @@ use crate::{Axis, NetworkPolicy, SandboxError, SandboxPolicy};
 const FLAG_NET: &str = "--allow-network";
 /// Introduces one allowlisted TCP port, and takes exactly one value.
 ///
-/// Its own flag rather than an optional value on [`FLAG_NET`], which is how the CLI spells
-/// the same choice: [`decode`](HelperArgs::decode) walks argv a token at a time and refuses
-/// anything it does not recognise, so letting `FLAG_NET` optionally swallow the next token
-/// would put a "does this look like a port?" guess in the decoder that gates enforcement.
-/// `--env NAME` against the CLI's `--allow-env NAME` is the same divergence.
+/// Its own flag rather than an optional value on [`FLAG_NET`] the way the CLI spells it: an
+/// optional value would make `decode`'s refusal of an unrecognised token a "does this look
+/// like a port?" guess. Why, in `context/decision-enforcement-seam.md`.
 const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Introduces the *name* of a variable the command may inherit. Never a value.
@@ -117,15 +115,14 @@ impl HelperArgs {
                     let port = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "network port flag with no port after it",
                     })?;
-                    // `parse::<u16>` is the range check: a number above 65535 and a token
-                    // that is not a number at all are the same refusal, with no `as` cast
-                    // in between to truncate one into the other.
+                    // `parse::<u16>` is the range check: out-of-range and not-a-number are
+                    // one refusal, with no `as` cast between them to truncate one into the
+                    // other.
                     let port: u16 = port.parse().map_err(|_| SandboxError::BadHelperArgs {
                         detail: "network port that is not a number in 1..=65535",
                     })?;
-                    // Refused where `allow_network_port` skips it, for the reason the env
-                    // flag below gives: `encode` never emits 0, so a 0 here means the argv
-                    // speaks a different protocol.
+                    // Refused where `allow_network_port` skips it: `encode` never emits 0, so
+                    // a 0 here means the argv speaks a different protocol.
                     if port == 0 {
                         return Err(SandboxError::BadHelperArgs {
                             detail: "network port 0, which matches no port",

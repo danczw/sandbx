@@ -45,14 +45,11 @@ pub(super) struct Requested<'policy> {
 
 /// What [`apply`](super::apply) asks Landlock for on the network axis.
 ///
-/// A sibling of `handled` rather than a widening of it: `BitFlags<AccessFs>` and
-/// `BitFlags<AccessNet>` are distinct types that cannot share a field, and an *empty*
-/// `BitFlags<AccessNet>` would be the fail-open spelling of [`Unhandled`](Self::Unhandled)
-/// — which it is not, handling the axis with no port rule denying every TCP port.
-///
-/// So the two halves of the decision are inseparable here: there is no way to hold rights
-/// without the ports they go with, and no way to hold ports with no rights to install them
-/// under. [`rights::net_rules`] is the only place that chooses between the variants.
+/// A sibling of `handled` and not a widening of it: `BitFlags<AccessFs>` and
+/// `BitFlags<AccessNet>` are distinct types, and an *empty* `BitFlags<AccessNet>` would be
+/// the fail-open spelling of [`Unhandled`](Self::Unhandled) — which it is not, since
+/// handling the axis with no port rule denies every TCP port. The enum makes rights and
+/// ports inseparable; [`rights::net_rules`] is the only place that chooses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RequestedNet<'policy> {
     /// Do not hand Landlock the network axis; TCP is bounded by whatever is below it.

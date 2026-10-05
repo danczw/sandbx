@@ -58,11 +58,11 @@ pub enum AuditEvent<'a> {
         /// What shape of IP egress was granted — `denied`, `any` or `ports`; says nothing
         /// about unix sockets.
         ///
-        /// A closed set of labels rather than a stringified [`NetworkPolicy`], so `emit` stays
-        /// a field assignment with no allocation on the audit path.
+        /// A closed set of labels and not a stringified [`NetworkPolicy`], so `emit` stays a
+        /// field assignment with no allocation on the audit path.
         network: &'static str,
-        /// How many ports the allowlist named, not which ones — matching `env`'s shape. Zero
-        /// unless `network` is `ports`; the numbers are already in `/proc/self/cmdline`.
+        /// How many ports the allowlist named, never which — they are already in
+        /// `/proc/self/cmdline`. Zero unless `network` is `ports`.
         network_ports: usize,
         /// Whether unix-domain sockets were granted.
         unix_sockets: bool,
