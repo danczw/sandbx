@@ -33,8 +33,10 @@ jobs:
 
       # `v1`, not `stable`: `v1` tags master's head, while the `stable` branch is
       # regenerated as master plus one commit, so a SHA from it is reachable from
-      # no ref the next time master moves. Master leaves `toolchain` required, so
-      # every call site names its channel.
+      # no ref the next time master moves — and dependabot bumps a SHA pin whose
+      # tag has moved by resolving the branch containing it, so an orphaned
+      # `stable` commit would never be bumped at all. Master leaves `toolchain`
+      # required, so every call site names its channel.
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: stable
