@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-agent"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "futures-util",
  "sandbx-core",
@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-cli"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "clap",
  "sandbx-core",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-core"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "caps",
  "io-uring",
@@ -1182,7 +1182,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-providers"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "bytes",
  "futures-util",
@@ -1197,11 +1197,11 @@ dependencies = [
 
 [[package]]
 name = "sandbx-session"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 
 [[package]]
 name = "sandbx-tools"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "sandbx-core",
  "schemars",
@@ -1212,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-tui"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 
 [[package]]
 name = "schannel"
