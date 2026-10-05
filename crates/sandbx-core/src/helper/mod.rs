@@ -20,13 +20,16 @@ use seccomp::deny_dangerous_syscalls;
 use crate::degradation::Degradation;
 use crate::{HelperArgs, SandboxError};
 
-/// Argument telling the first stage that its stdin is the audit channel.
+/// Argument telling a helper stage that its stdin is the audit channel.
 ///
 /// Opt-in, and not implied by [`HELPER_FLAG`](crate::HELPER_FLAG): without it a
 /// hand-invoked helper would write audit records into whatever fd 0 happens to be — a
 /// terminal is writable, so they would appear as the command's own output, and a
 /// read-only pipe gives `EBADF`. A degradation then goes unrecorded, which is the honest
 /// outcome when there is nowhere to record it.
+///
+/// Stage 1 passes it on to stage 2, which reports what it could not `exec` on the same
+/// channel.
 pub(crate) const AUDIT_STDIN_FLAG: &str = "--sandbx-audit-stdin";
 
 /// Write what degraded to the parent, on the pipe it put in our stdin slot.
@@ -98,9 +101,9 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 
     let degraded = prepare_supervisor(&request.policy)?;
 
-    // Before the spawn below, so the write end is gone by the time any other process
-    // exists. Nothing is read back: a best-effort channel carrying a best-effort
-    // record must not be able to fail a run that is otherwise fine.
+    // Before the spawn below, so this stage's records are on the channel ahead of anything
+    // the stage below reports. Nothing is read back: a best-effort channel carrying a
+    // best-effort record must not be able to fail a run that is otherwise fine.
     if audit_on_stdin {
         report_degradations(&degraded);
     }
@@ -114,21 +117,19 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         .arg(crate::HELPER_INNER_FLAG)
         // So the inner stage can confirm we are still here before it hands control
         // to the command. Host numbering, which is what it reads back from `/proc`.
-        .arg(std::process::id().to_string())
-        .args(argv);
+        .arg(std::process::id().to_string());
 
-    // The security half of the audit channel, not a tidy-up. Our stdin is the write end
-    // of a pipe the parent reads audit records from; the stage below becomes the sandboxed
-    // command, which must not inherit a descriptor it could write forged records into —
-    // or hold open, leaving the parent waiting on an EOF that never comes. Pinned by
-    // `the_command_cannot_write_the_audit_channel`.
-    //
-    // Conditional on the same flag as the write, because the flag is what says fd 0 *is* a
-    // channel. Without it nothing was written there, so stdin stays inherited — which a
-    // hand-invoked `sandbx-helper` needs for a command that reads its own input.
+    // Handed down rather than nulled here: a command that could not be `exec`ed is a fact
+    // only the stage below has, and taking fd 0 away from the command is that stage's job
+    // now — see `claim_audit_channel`, which is what keeps the write end out of the
+    // command's hands. The flag is what says fd 0 *is* a channel; without it stdin stays
+    // inherited, which a hand-invoked `sandbx-helper` needs for a command that reads its
+    // own input.
     if audit_on_stdin {
-        inner.stdin(std::process::Stdio::null());
+        inner.arg(AUDIT_STDIN_FLAG);
     }
+
+    inner.args(argv);
 
     let mut child = inner.spawn().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not start the inner sandbox stage",
@@ -210,6 +211,12 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         detail: "inner helper mode without a supervisor pid",
     })?;
 
+    // Split off for the reason the pid above is, and in the order stage 1 wrote them.
+    let (audit_on_stdin, argv) = match argv.split_first() {
+        Some((flag, rest)) if flag == AUDIT_STDIN_FLAG => (true, rest),
+        _ => (false, argv),
+    };
+
     let request = HelperArgs::decode(argv)?;
 
     bind_lifetime_to_supervisor()?;
@@ -240,6 +247,13 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         });
     }
 
+    // Before `apply`, so a seccomp filter or a Landlock ruleset cannot be what refuses the
+    // `dup` or `/dev/null` below.
+    let channel = match audit_on_stdin {
+        true => Some(claim_audit_channel()?),
+        false => None,
+    };
+
     apply(&request.policy)?;
 
     // After `apply`, so the command inherits the cage rather than escaping it: this
@@ -257,10 +271,47 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         command.exec()
     };
 
-    Err(SandboxError::SpawnFailed {
-        detail: "could not execute the sandboxed command",
-        source: error,
-    })
+    // `exec` returns only on failure and the duplicate is close-on-exec, so this is
+    // reachable only where the command does not exist — which is what makes the record
+    // true rather than a guess. Swallowed like a degradation: a lost record must not fail
+    // a run the parent has already been told about.
+    if let Some(mut channel) = channel {
+        use std::io::Write;
+
+        let _ = channel.write_all(crate::degradation::encode_exec_failure().as_bytes());
+    }
+
+    Err(SandboxError::ExecFailed { source: error })
+}
+
+/// Take the audit channel out of the stdin slot, leaving the command a null one.
+///
+/// The returned duplicate is `F_DUPFD_CLOEXEC`, so a successful `exec` closes it and the
+/// command inherits `/dev/null` on fd 0. Both halves matter: a command holding the write
+/// end could forge records, or hold the channel open and leave the parent waiting on an
+/// EOF that never comes. Pinned by `the_command_cannot_write_the_audit_channel`.
+///
+/// Fails closed. Becoming the command with the channel still on fd 0 is worse than any
+/// record it would have bought.
+fn claim_audit_channel() -> Result<std::fs::File, SandboxError> {
+    use std::os::fd::AsFd;
+
+    let refused = |step: &str, source: &dyn std::fmt::Display| SandboxError::ProcessHardening {
+        detail: format!("{step}: {source}"),
+    };
+
+    let channel = std::io::stdin()
+        .as_fd()
+        .try_clone_to_owned()
+        .map_err(|source| refused("could not take the audit channel off stdin", &source))?;
+
+    let null = std::fs::File::open("/dev/null")
+        .map_err(|source| refused("could not open /dev/null for the command", &source))?;
+
+    nix::unistd::dup2_stdin(&null)
+        .map_err(|source| refused("could not put /dev/null in the stdin slot", &source))?;
+
+    Ok(std::fs::File::from(channel))
 }
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
