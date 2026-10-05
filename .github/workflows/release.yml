@@ -115,6 +115,8 @@ jobs:
   # Committed rather than generated, so the prose is reviewed with the change.
   notes:
     runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.classify.outputs.channel }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -130,6 +132,16 @@ jobs:
           name: notes
           path: docs/release-notes/${{ github.ref_name }}.md
           if-no-files-found: error
+
+      # Here rather than in a job of its own: this one already has the repo, and
+      # `publish` checks nothing out. Not in `build`, which is a matrix — two
+      # legs writing one output map is last-writer-wins.
+      - name: Classify the tag
+        id: classify
+        run: |
+          channel="$(.github/scripts/release-channel.sh "$GITHUB_REF_NAME")"
+          echo "channel=$channel"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
 
   # Separate so `gh release create` runs once whatever the matrix size, and so
   # `contents: write` is confined to a job that checks out no source.
@@ -167,14 +179,18 @@ jobs:
 
       # Pre-1.0 every published tag is a pre-release; see SECURITY.md.
       - name: Publish
+        env:
+          CHANNEL: ${{ needs.notes.outputs.channel }}
         run: |
-          # Only an exact 1.0-or-later version may become "latest"; anything
-          # else, recognised or not, is a pre-release. Build metadata is matched
-          # explicitly, since a hyphen inside it is not a pre-release suffix.
-          prerelease=(--prerelease)
-          if [[ "${GITHUB_REF_NAME#v}" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
-            prerelease=()
-          fi
+          # An empty `$CHANNEL` means the handoff broke, not that the tag was
+          # unrecognised — treating it as a pre-release would be right for every
+          # pre-1.0 tag and hide the break until the 1.0 release. So: abort.
+          prerelease=()
+          case "$CHANNEL" in
+            release) ;;
+            prerelease) prerelease=(--prerelease) ;;
+            *) echo "::error::unusable channel: '$CHANNEL'"; exit 1 ;;
+          esac
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file notes.md \
