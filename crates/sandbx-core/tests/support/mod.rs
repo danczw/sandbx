@@ -1,6 +1,6 @@
-//! What both halves of the enforcement suite need to start a sandboxed command.
+//! What every part of the enforcement suite needs to start a sandboxed command.
 //!
-//! The intersection only: `dead_code` is per test crate, so a helper one half does not use
+//! The intersection only: `dead_code` is per test crate, so a helper one target does not use
 //! warns there, and belongs in the file that uses it. The probes beside this file are
 //! `[[bin]]` targets, not modules.
 // `Command::new` here spawns the sandbox helper itself, never a command that bypasses it;

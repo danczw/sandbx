@@ -253,13 +253,11 @@ impl SandboxPolicy {
     /// Grant TCP connect and bind on `port`, and nothing else on the network.
     ///
     /// Repeat to allowlist several; duplicates collapse, and this cannot narrow
-    /// [`allow_network`](Self::allow_network)'s grant of every port. While an allowlist is in
-    /// force UDP and raw sockets are denied, or arbitrary datagrams would make it decorative,
-    /// and UDP DNS stops resolving — `context/decision-port-allowlist.md`.
+    /// [`allow_network`](Self::allow_network). An allowlist also denies UDP and raw sockets,
+    /// and `bind` on every port it does not name — `context/decision-port-allowlist.md`.
     ///
     /// Port 0 is skipped, as [`allow_env`](Self::allow_env) skips a name it cannot encode:
-    /// `bind(0)` asks the kernel to choose a port, which an allowlist cannot express. The CLI
-    /// refuses it loudly.
+    /// `bind(0)` asks the kernel to choose a port, which an allowlist cannot express.
     #[must_use]
     pub fn allow_network_port(mut self, port: u16) -> Self {
         if port == 0 {

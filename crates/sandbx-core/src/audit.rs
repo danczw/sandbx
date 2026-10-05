@@ -55,11 +55,10 @@ pub enum AuditEvent<'a> {
         writable: usize,
         /// How many paths were read-executable, counted apart from `readable`.
         executable: usize,
-        /// What shape of IP egress was granted — `denied`, `any` or `ports`; says nothing
-        /// about unix sockets.
+        /// What shape of IP egress was granted — `denied`, `any` or `ports`.
         ///
-        /// A closed set of labels and not a stringified [`NetworkPolicy`], so `emit` stays a
-        /// field assignment with no allocation on the audit path.
+        /// A closed set of labels, not a stringified [`NetworkPolicy`]: `emit` stays a field
+        /// assignment with no allocation on the audit path.
         network: &'static str,
         /// How many ports the allowlist named, never which — they are already in
         /// `/proc/self/cmdline`. Zero unless `network` is `ports`.
