@@ -245,6 +245,22 @@ pub(super) fn blocked_syscalls(
             ],
         )?;
 
+        // The rule above guards `socket`, where the family is not settled:
+        // `setsockopt(fd, SOL_TCP, TCP_ULP, "smc")` runs `smc_ulp_init`, which assigns
+        // `file->private_data = smcsock`, so `sock_from_file` sends a later `connect` to
+        // `smc_connect` and `sk_is_tcp` is false for the result. Nothing privileged is
+        // involved — `__tcp_ulp_find_autoload`'s `CAP_NET_ADMIN` gates the module autoload,
+        // not the lookup of a resident ULP.
+        //
+        // 31 is `TCP_ULP` (`include/uapi/linux/tcp.h`), which `libc` does not name; level 6
+        // is the only route into `do_tcp_setsockopt`. The option and not the ULP name,
+        // because `optval` is behind a pointer — so this costs kTLS too.
+        deny_when(
+            &mut rules,
+            libc::SYS_setsockopt,
+            vec![arg(1, Eq, libc::IPPROTO_TCP as u64)?, arg(2, Eq, 31)?],
+        )?;
+
         // `SOCK_STREAM` is not TCP: `hook_socket_connect` asks for `CONNECT_TCP` only where
         // `sk_is_tcp` holds — `sk_type == SOCK_STREAM && sk_protocol == IPPROTO_TCP`
         // (`include/net/sock.h`) — and returns 0, unrestricted, for every other socket. So

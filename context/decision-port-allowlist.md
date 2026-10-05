@@ -18,6 +18,12 @@ type & 0xf == SOCK_STREAM, domain not in {AF_UNIX, AF_INET, AF_INET6}  ◄──
 domain in {AF_INET, AF_INET6}, protocol not in {0, IPPROTO_TCP}        ◄──  2 rules
 ```
 
+on `setsockopt`, because the family is not fixed at `socket` time:
+
+```
+level == SOL_TCP, optname == TCP_ULP                                   ◄──  1 rule
+```
+
 and on `sendto`, `sendmsg` and `sendmmsg`:
 
 ```
@@ -47,6 +53,9 @@ the cost belongs next to the claim it buys:
 - MPTCP and SCTP, which are stream sockets the Landlock hooks do not police.
 - AF_VSOCK and AF_BLUETOOTH streams, caught by the family allowlist below.
 - TCP Fast Open, for any client that asks for it by flag.
+- Every TCP upper-layer protocol, since the `TCP_ULP` denial is the option and
+  not the ULP name — in practice in-process kTLS, which userspace TLS libraries
+  do not use, and `espintcp`.
 
 A bare `--allow-network` is unaffected by any of it.
 
@@ -130,6 +139,33 @@ argument as the type field, one layer up. It costs AF_VSOCK and AF_BLUETOOTH
 streams under an allowlist, which is the right side of the trade: a vsock to the
 hypervisor is egress the allowlist makes no promise about, and silently
 permitting it is the failure mode, not refusing it.
+
+### `socket` is not the only entrance
+
+The family rule guards `socket`, and a socket's family does not stay fixed there.
+`setsockopt(fd, SOL_TCP, TCP_ULP, "smc")` on an ordinary
+`socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)` — exactly the shape the allowlist is
+designed to permit — runs `smc_ulp_init`, which assigns
+`file->private_data = smcsock`. `sock_from_file` reads that field, so a later
+`connect` on the same descriptor dispatches to `smc_connect` and lands in the
+`kernel_connect` path above; `sk_is_tcp` is false for the `PF_SMC` sock, so
+Landlock's hook returns 0, meaning unrestricted. Nothing privileged is involved:
+`__tcp_ulp_find_autoload`'s `CAP_NET_ADMIN` check gates the module *autoload*,
+not the lookup of a ULP already resident, and `do_tcp_setsockopt`'s `TCP_ULP`
+case has no check of its own. The denial is therefore a second rule on a second
+syscall, not a wider version of the family rule.
+
+Only the option can be named, not the ULP: `optval` is a pointer, which is the
+same wall as a destination check. So `TCP_ULP` goes entirely, which is also the
+fail-closed shape — a ULP added to the kernel tomorrow is denied without an edit.
+
+The bypass is live from v6.14 on. Before it, `current_check_access_socket` gated
+on `sock->type != SOCK_STREAM` rather than `sk_is_tcp`, so a converted socket
+reached the `sa_family != skc_family` check and the connect failed with `-EINVAL`
+of its own accord. `BASELINE_ABI` is V5, which Linux 6.7 reports, so sandbx does
+run on kernels where this was already closed — the rule is unconditional
+regardless, since the policy may not depend on which side of that boundary the
+host is on.
 
 ## Why TCP Fast Open is denied
 
