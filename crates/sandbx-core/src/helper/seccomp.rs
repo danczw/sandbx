@@ -239,6 +239,38 @@ fn blocked_syscalls(
                 .or_default()
                 .push(SeccompRule::new(vec![not_unix, is_type]).map_err(seccomp_failed)?);
         }
+
+        // `SOCK_STREAM` is not the same thing as TCP, and Landlock knows the difference:
+        // `hook_socket_connect` asks for `CONNECT_TCP` only where `sk_is_tcp` holds, which
+        // is `sk_type == SOCK_STREAM && sk_protocol == IPPROTO_TCP` (`include/net/sock.h`),
+        // and returns 0 — unrestricted — for every other socket. So
+        // `socket(AF_INET, SOCK_STREAM, IPPROTO_MPTCP)`, or `IPPROTO_SCTP`, is a stream
+        // socket the port rules never see.
+        //
+        // Scoped per family instead of AND'ing `Ne AF_UNIX` like the rules above, because
+        // `sk_is_inet` is exactly these two: the claim is about IP egress, so AF_VSOCK and
+        // AF_BLUETOOTH streams, which no port rule speaks about either way, stay reachable.
+        for family in [libc::AF_INET, libc::AF_INET6] {
+            let is_family =
+                SeccompCondition::new(0, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, family as u64)
+                    .map_err(seccomp_failed)?;
+            // Protocol 0 is "this family's default for this type", which for a stream
+            // socket is TCP, so it has to pass alongside the explicit number.
+            let not_default =
+                SeccompCondition::new(2, SeccompCmpArgLen::Dword, SeccompCmpOp::Ne, 0)
+                    .map_err(seccomp_failed)?;
+            let not_tcp = SeccompCondition::new(
+                2,
+                SeccompCmpArgLen::Dword,
+                SeccompCmpOp::Ne,
+                libc::IPPROTO_TCP as u64,
+            )
+            .map_err(seccomp_failed)?;
+
+            rules.entry(libc::SYS_socket).or_default().push(
+                SeccompRule::new(vec![is_family, not_default, not_tcp]).map_err(seccomp_failed)?,
+            );
+        }
     }
 
     Ok(rules)
