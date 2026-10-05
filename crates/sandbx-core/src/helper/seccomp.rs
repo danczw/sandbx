@@ -168,10 +168,13 @@ fn blocked_syscalls(
             libc::AF_UNIX as u64,
         )
         .map_err(seccomp_failed)?;
-        rules.insert(
-            libc::SYS_socket,
-            vec![SeccompRule::new(vec![af_unix]).map_err(seccomp_failed)?],
-        );
+        // Appended, not inserted: `insert` would make a second producer of `SYS_socket`
+        // rules wipe this one with no trace, and rules for one syscall are OR'd, so
+        // appending is what "and also deny this" means.
+        rules
+            .entry(libc::SYS_socket)
+            .or_default()
+            .push(SeccompRule::new(vec![af_unix]).map_err(seccomp_failed)?);
     }
 
     Ok(rules)
