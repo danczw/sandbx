@@ -185,8 +185,8 @@ fn run_to_completion(
 /// A pipe for the helper to report degraded hardening on.
 ///
 /// The write end becomes the helper's stdin — the one descriptor std can hand a child
-/// without `unsafe`, which this crate forbids, at the cost of the stdin slot. Stage 1
-/// replaces it with `null` before spawning anything, so the command never holds it.
+/// without `unsafe`, which this crate forbids, at the cost of the stdin slot. Stage 2 takes
+/// it off fd 0 before becoming the command, so the command never holds it.
 fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), SandboxError> {
     std::io::pipe().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not open a channel for the sandbox helper's audit records",
@@ -268,24 +268,31 @@ fn run_with_deadline(
 
     let deadline = Instant::now() + limit;
     let finished = loop {
-        match child.try_wait().map_err(spawn_failed)? {
-            Some(status) => break Some(status),
-            None if Instant::now() >= deadline => break None,
-            None => std::thread::sleep(POLL_INTERVAL),
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(Some(status)),
+            Ok(None) if Instant::now() >= deadline => break Ok(None),
+            Ok(None) => std::thread::sleep(POLL_INTERVAL),
+            // Broken out rather than returned, so the kill below is not skipped: the caller
+            // reads the audit channel to an EOF only a dead helper gives.
+            Err(source) => break Err(spawn_failed(source)),
         }
     };
 
-    // On *both* paths, not just the timeout: a command may background work and exit well
-    // inside its deadline, and what it left behind inherited the pipe write-ends, so the
-    // readers would never see EOF.
+    // On *every* path out of the loop, not just the timeout: a command may background work
+    // and exit well inside its deadline, and what it left behind inherited the pipe
+    // write-ends, so the readers would never see EOF.
     kill_group(group);
 
     let status = match finished {
-        Some(status) => status,
-        None => {
+        Ok(Some(status)) => status,
+        // A refused `try_wait` and a timeout leave the same thing behind: no status, a child
+        // to reap and readers to let go.
+        outcome => {
             let _ = child.wait();
             settle(&out.0, &err.0);
-            return Err(SandboxError::TimedOut { after: limit });
+            return Err(outcome
+                .err()
+                .unwrap_or(SandboxError::TimedOut { after: limit }));
         }
     };
 
