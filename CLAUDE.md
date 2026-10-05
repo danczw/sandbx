@@ -27,26 +27,22 @@ instead.
 
 ## Before opening a PR
 
-Read every comment the branch added or touched against
+For a branch with a significant code change, in this order:
+
+1. `/code-review`
+2. `/security-review`
+3. the comment pass
+
+Code review first: it surfaces correctness problems that would otherwise show up
+as phantom security findings. The comment pass last: both reviews land fixes, and
+a fix rewords comments. Fix what each pass reports before moving to the next.
+Docs-only, comment-only, or test-rename branches need neither review — but the
+comment pass still applies to a comment-only branch, which is the one case where
+it is the whole diff.
+
+The comment pass: read every comment the branch added or touched against
 `context/guide-code-comments.md`, and trim what is over budget. Restatement,
 history, rejected alternatives, narration and prose that belongs in
 `context/*.md` come out; a kernel quirk, an ordering requirement or the origin of
 an ABI number stays, compressed to the load-bearing clause. A trim that deletes
 one of those has failed however much shorter it made the file.
-
-This runs before the PR exists, not after: review comments on wording that was
-about to be cut anyway cost two passes.
-
-## Review before merging
-
-For a PR with a significant code change, run both skills before merging, in this
-order:
-
-1. `/code-review`
-2. `/security-review`
-
-Code review first: it surfaces correctness problems that would otherwise show up
-as phantom security findings. Fix what each pass reports before moving to the
-next. Docs-only, comment-only, or test-rename PRs do not need either — but the
-comment pass above still applies to a comment-only PR, which is the one case
-where it is the whole diff.
