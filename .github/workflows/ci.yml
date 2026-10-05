@@ -72,14 +72,17 @@ jobs:
     # alone uncovers the x32 bypass. No floating arm label exists, so x86 floats
     # and arm is pinned. These names are the checks branch protection pins — a
     # rename blocks every merge on a status that will never report.
+    # `target` is the static-musl triple release.yml publishes for this arch.
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
             runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
           - arch: aarch64
             runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
     name: sandbox (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     steps:
@@ -89,7 +92,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: stable
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      # `ring` reaches the binary through `sandbx-providers` and its build.rs
+      # compiles C, so the musl run below needs a C compiler for that target.
+      # `musl-dev`, pulled in here, installs the `<arch>-linux-musl-gcc` name
+      # cc-rs looks for, so no `CC_*` override. Each leg is native.
+      - name: Install the musl C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
       # A property of the runner image, not the architecture: Landlock needs
       # kernel ABI 5 (6.10+), and unprivileged userns is sysctl-disabled on some
@@ -105,6 +118,15 @@ jobs:
       # check.
       - name: Test (sandbox enforcement)
         run: cargo test --workspace --features sandbox-integration
+
+      # The triple release.yml publishes. A static binary carries its own libc
+      # and loads no interpreter, so what a command needs granted before it can
+      # start is not what the gnu run above exercises. Both kept: gnu is what
+      # contributors build, musl is what ships.
+      - name: Test (sandbox enforcement, the published musl triple)
+        run: |
+          cargo test --workspace \
+            --features sandbox-integration --target ${{ matrix.target }}
 
   msrv:
     runs-on: ubuntu-latest

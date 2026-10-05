@@ -41,9 +41,9 @@ jobs:
       # No cache here, unlike ci.yml: this build is published, and a cache entry
       # any PR run could have written is attacker-influenced input to it.
 
-      # Nothing else checks this pairing, and the enforcement claim below rests on
-      # it: a mismatch would cross-compile and publish a green result proving
-      # nothing.
+      # Nothing else checks this pairing, and the enforcement gate and the musl
+      # compiler below both rest on it: a mismatch would cross-compile and
+      # publish a green result proving nothing.
       - name: Check the runner matches the target
         run: |
           case "${{ matrix.target }}" in
@@ -71,14 +71,23 @@ jobs:
             exit 1
           fi
 
-      # The binary's whole claim is that it sandboxes. Shipping one whose
-      # enforcement tests were never run is the specific failure this project
-      # cannot afford, so they gate the release rather than only the merge.
-      # Covers the architecture being published, not the artifact: with no
-      # `--target` this builds the host gnu triple while the binary ships static
-      # musl. See #130.
+      # `ring` reaches the binary through `sandbx-providers` and its build.rs
+      # compiles C, so both steps below need a C compiler for the musl target.
+      # `musl-dev`, pulled in here, installs the `<arch>-linux-musl-gcc` name
+      # cc-rs looks for, so no `CC_*` override. Native per the check above.
+      - name: Install the musl C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      # The binary's whole claim is that it sandboxes, so enforcement gates the
+      # release and not only the merge — against the published triple, the
+      # artifact being static musl that a host-gnu run says nothing about.
+      # `--locked`, so the graph tested is the graph the build below ships.
       - name: Test, including real sandbox enforcement
-        run: cargo test --workspace --features sandbox-integration
+        run: |
+          cargo test --workspace --locked \
+            --features sandbox-integration --target ${{ matrix.target }}
 
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} -p sandbx-cli
