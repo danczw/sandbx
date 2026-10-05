@@ -16,8 +16,10 @@ publish.workspace = true
 # without auto-picking a provider, so we can choose one explicitly below.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2", "stream", "json", "system-proxy"] }
 # Pulled in directly, not just transitively via reqwest, specifically to
-# select the `ring` crypto provider feature instead of the default
-# aws_lc_rs — ring is essentially pure Rust, no C/cmake/nasm build step.
+# select the `ring` crypto provider feature instead of the default aws_lc_rs:
+# no cmake and no nasm, its assembly being pre-generated. Its build.rs does
+# still compile C, so this crate needs a C compiler for the target — which is
+# why the musl builds install one.
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
