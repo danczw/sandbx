@@ -103,6 +103,33 @@ jobs:
       - name: Test (sandbox enforcement)
         run: cargo test --workspace --features sandbox-integration
 
+  # Additive, and never a replacement for the job above. `x32_gate` and the four
+  # tests that exercise it are `#[cfg(target_arch = "x86_64")]`, so enforcement
+  # running only on arm would leave the x32 bypass with no coverage at all.
+  sandbox-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Same probe as the x86 job, and the reason it matters more here: whether
+      # the sandbox can be enforced is a property of the runner image, not the
+      # architecture. Landlock needs ABI 5 (6.10+) and unprivileged userns can be
+      # off by sysctl; neither has ever been observed on this runner.
+      - name: Report kernel sandbox support
+        run: |
+          uname -r
+          echo "landlock LSM: $(cat /sys/kernel/security/lsm 2>/dev/null || echo unknown)"
+          echo "unprivileged_userns_clone: $(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo unset)"
+          echo "apparmor userns restriction: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo unset)"
+
+      # The first run of this suite on aarch64. The denylist is symbolic and the
+      # arch gate already has an aarch64 arm, so there is no known defect here —
+      # only no evidence either way until this job reports.
+      - name: Test (sandbox enforcement)
+        run: cargo test --workspace --features sandbox-integration
+
   msrv:
     runs-on: ubuntu-latest
     steps:
