@@ -197,9 +197,9 @@ fn compiled_filter(policy: &crate::SandboxPolicy) -> Result<seccompiler::BpfProg
 /// below are positional and of the same type, so swapping them yields a filter that
 /// allows the denylist and `EPERM`s everything else. Hence the named bindings.
 ///
-/// `seccomp/tests.rs` keeps a twin of this function with the two actions swapped, which is what
-/// proves those tests would notice. It only mutates the real path as long as this body
-/// does nothing but call `SeccompFilter::new` — if that changes, change the twin.
+/// `seccomp/tests/denylist.rs` keeps a twin of this function with the two actions swapped,
+/// which is what proves those tests would notice. It only mutates the real path as long as
+/// this body does nothing but call `SeccompFilter::new` — if that changes, change the twin.
 fn deny_with(
     rules: std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
     errno: libc::c_int,
