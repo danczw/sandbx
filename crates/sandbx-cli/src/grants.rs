@@ -337,8 +337,8 @@ mod tests {
         paths.iter().map(PathBuf::from).collect()
     }
 
-    fn root(cwd: &str, homes: &[PathBuf]) -> Result<PathBuf, PolicyError> {
-        vetted_root(Path::new(cwd), homes, Path::new(EXE), &granted()).map(Path::to_path_buf)
+    fn root(cwd: impl AsRef<Path>, homes: &[PathBuf]) -> Result<PathBuf, PolicyError> {
+        vetted_root(cwd.as_ref(), homes, Path::new(EXE), &granted()).map(Path::to_path_buf)
     }
 
     #[test]
@@ -474,16 +474,29 @@ mod tests {
     }
 
     /// Write here plus the execute every run already has is the pair `Axis::grants` keeps
-    /// apart. Both directions, since a merged-`/usr` host resolves `/bin` to `/usr/bin`.
+    /// apart. Both the path itself and a directory under it, since a merged-`/usr` host
+    /// resolves `/bin` to `/usr/bin` — which *holds* no granted path, and so passed when
+    /// the arm was tested one way round.
+    ///
+    /// Driven off `granted()` rather than a list of names: `allow_system_executables`
+    /// skips a path this host lacks, and arm64 has no `/lib64`.
     #[test]
     fn a_directory_overlapping_the_system_binaries_is_refused() {
-        for cwd in ["/usr", "/lib64", "/usr/bin", "/usr/lib", "/usr/src/app"] {
-            let error = root(cwd, &homes(&["/home/u"])).expect_err("a system executable path");
+        assert!(
+            !granted().is_empty(),
+            "no granted path to overlap with, so this test asserts nothing"
+        );
 
-            assert!(
-                matches!(error, PolicyError::SystemExecutables { .. }),
-                "{error} let {cwd} through as a writable root"
-            );
+        for path in granted() {
+            for cwd in [path.clone(), path.join("src/app")] {
+                let error = root(&cwd, &homes(&["/home/u"])).expect_err("a system path");
+
+                assert!(
+                    matches!(error, PolicyError::SystemExecutables { .. }),
+                    "{error} let {} through as a writable root",
+                    cwd.display()
+                );
+            }
         }
     }
 

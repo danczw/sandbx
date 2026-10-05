@@ -318,8 +318,12 @@ wrong twice: a single looping test could not tell "the location rule is gone" fr
 the middle one is the reproduced bug.
 
 Deleting the overlap arm and testing it one way round fail the same two tests,
-which is the signal being asked for — `/usr/bin` and `/usr/src/app` are both in the
-loop, so a one-way test is detected as the absence it is.
+which is the signal being asked for: the loop covers each granted path *and* a
+directory under it, so a one-way test is detected as the absence it is.
+
+That loop reads `granted()` rather than naming paths, because
+`allow_system_executables` skips a path the host lacks — `/lib64` is absent on
+arm64, which failed a hardcoded list on CI's aarch64 leg while passing x86_64.
 
 Two things the first mutation shows. Dropping the guard breaks tests in two
 suites that never mention the default — `each_allow_flag_widens_only_its_own_axis`
