@@ -10,6 +10,8 @@ clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
 .githooks/          pre-commit: fmt --check, clippy -D warnings, subject length
 .github/            CI and release workflows, their action pins, and dependabot
+.github/scripts/    what a workflow calls but must be runnable without one
+docs/release-notes/ one file per tag, which the release gates on; TEMPLATE.md
 SECURITY.md         the promise to users — the one doc that must never lag
 ```
 

@@ -14,6 +14,9 @@ env:
 
 jobs:
   build:
+    # Gated on `notes` so a malformed file fails in seconds rather than after
+    # two native legs, one of them a paid arm runner.
+    needs: notes
     # Native per target, not cross-compiled: the enforcement step below is the
     # gate, and run on x86 it proves nothing about an arm binary.
     strategy:
@@ -109,26 +112,62 @@ jobs:
           path: dist/*.tar.gz*
           if-no-files-found: error
 
+  # Committed rather than generated, so the prose is reviewed with the change.
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the release notes
+        run: |
+          .github/scripts/check-release-notes.sh \
+            "docs/release-notes/${GITHUB_REF_NAME}.md"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: notes
+          path: docs/release-notes/${{ github.ref_name }}.md
+          if-no-files-found: error
+
   # Separate so `gh release create` runs once whatever the matrix size, and so
   # `contents: write` is confined to a job that checks out no source.
   publish:
-    needs: build
+    needs: [build, notes]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # No checkout here, so `gh` has no git remote to infer the repo from.
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
           merge-multiple: true
 
+      # Not `--generate-notes`: gh documents prepending for `--notes` only.
+      - name: Compose the notes
+        run: |
+          # `-e` does not fire on a failed $(cat) below, so test for the file.
+          notes="dist/${GITHUB_REF_NAME}.md"
+          [ -f "$notes" ] || { echo "::error::$notes is missing"; exit 1; }
+          gh api --method POST "repos/$GH_REPO/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" --jq .body > generated.md
+          # --jq renders a 404 as the string `null` and an empty body as a
+          # newline, so a size test passes on both.
+          grep -q '[^[:space:]]' generated.md && ! grep -qx 'null' generated.md \
+            || { echo "::error::generate-notes returned no PR list"; exit 1; }
+          # $(cat) strips trailing newlines, so the join is exactly one blank
+          # line and `## What's Changed` cannot land mid-line.
+          printf '%s\n\n' "$(cat "$notes")" > notes.md
+          cat generated.md >> notes.md
+
       # A hyphenated tag is published as a pre-release, so the "latest" link
       # never points at one. An unsuffixed pre-1.0 tag is not covered (#142).
       - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # No checkout here, so `gh` has no git remote to infer the repo from.
-          GH_REPO: ${{ github.repository }}
         run: |
           prerelease=""
           case "$GITHUB_REF_NAME" in
@@ -136,7 +175,7 @@ jobs:
           esac
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file notes.md \
             $prerelease \
             dist/*.tar.gz \
             dist/*.tar.gz.sha256
