@@ -136,44 +136,32 @@ Three properties matter as much as the list:
   pid there to be named or signalled.
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges, not a tool's.
-- **A write grant over sandbx's own binary defeats the boundary.** The sandbox
-  helper is this binary re-executed, resolved through `current_exe()`, so a
-  policy granting write over the directory holding the installed `sandbx` is a
-  grant to replace the thing that does the enforcing — and the replacement runs
-  unsandboxed on the next spawn. The window is not a race: `current_exe()` is
-  resolved on *every* spawn rather than once, so within a single `agent-run` turn
-  one tool call can rename a replacement into place and the next call execs it,
-  choosing its own confinement. It is worth stating because `agent-run` is where
-  the grant stops being something only the operator acts on: the model chooses
-  the paths it writes to, within what was granted, and a prompt injection chooses
-  with it.
-
-  Reaching the enforcer therefore still takes an explicit `--allow-write`: the
-  working-directory default refuses to be rooted in any directory holding the
-  running `sandbx`, rather than granting the tree and carving the binary back
-  out. The carve-out is not available — a `SandboxPolicy` holds grants only,
-  matching is by path prefix, and Landlock composes rules by union with no
-  subtraction, so "this tree except that file" is not expressible on either
-  enforcement layer. A flag you type is still yours: the guard governs what
-  sandbx *derives*, and `--allow-write .` in a build tree does exactly what it
-  says.
+- **The sandbox helper is reached by inode, not by name.** sandbx re-execs itself
+  through `/proc/self/exe`, a link to the image this process is already running,
+  so a replacement renamed over the binary's path cannot redirect the next spawn
+  — and `ETXTBSY` stops it being overwritten in place while it runs. A write
+  grant over the directory holding the running `sandbx` therefore does not let
+  one tool call choose the confinement of the next, which is what it used to buy
+  inside a single `agent-run` turn. Two things this does not claim: a library
+  caller passing an explicit helper path to `SandboxedCommand::helper` gets a
+  path, with no inode behind it; and replacing the binary still reaches the
+  *next* invocation of `sandbx`, which is the bullet below.
 - **Write access to a project tree is write access to what you run in it next.**
   A granted tree — typed, or derived from the working directory — almost always
   holds files that execute outside the sandbox later, under your own account:
   `.git/hooks/*`, `.git/config`, `.cargo/config.toml`, `Makefile`, `package.json`
-  scripts, `rust-toolchain`. A sandboxed tool may rewrite any of them, and the
-  next ordinary `git commit` or `cargo build` runs the result unconfined. The
-  sandbox bounds the command it is given; it has no view of what you will run
-  afterwards.
+  scripts, `rust-toolchain` — and, in a build tree, `sandbx` itself. A sandboxed
+  tool may rewrite any of them, and the next ordinary `git commit` or `cargo
+  build` runs the result unconfined. The sandbox bounds the command it is given;
+  it has no view of what you will run afterwards.
 
-  Nothing here is refused, and the asymmetry with the bullet above is deliberate
-  rather than an oversight. sandbx's own binary is refused because that escape
-  fires unattended, inside one turn, through sandbx's own next spawn, and because
-  one path comparison detects it. "Any file the operator might later execute" is
-  neither bounded nor detectable: it waits for a human action, and enumerating the
-  candidates would be a denylist whose first omission is silent. So this is a
-  property of granting write at all, stated rather than guarded — if it matters
-  for a tree, grant read and keep write to a scratch directory.
+  Nothing here is refused, and nothing can be: it waits for a human action, and
+  enumerating the candidates would be a denylist whose first omission is silent.
+  The one case that *was* refused — a derived root holding the running `sandbx` —
+  is handled by the bullet above instead, by reaching the enforcer through its
+  inode rather than by guarding a path. So this is a property of granting write at
+  all, stated rather than guarded — if it matters for a tree, grant read and keep
+  write to a scratch directory.
 
   Standing in a system directory is the same property, not a further one. The
   derived default refuses the trees it grants execute on, but `/etc`, `/var`,

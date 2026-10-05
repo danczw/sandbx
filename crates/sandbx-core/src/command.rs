@@ -22,7 +22,8 @@ pub use dispatch::{
 /// into the second, which is therefore PID 1 of it and restricts itself before becoming the
 /// command — so the command and its descendants live in a namespace that ends when the call
 /// does (see `kill_group`). The helper defaults to this same executable re-run with
-/// [`HELPER_FLAG`]; [`SandboxedCommand::helper`] overrides that.
+/// [`HELPER_FLAG`], reached through `/proc/self/exe` so a rename over the binary cannot
+/// redirect it; [`SandboxedCommand::helper`] overrides that.
 #[derive(Debug, Clone)]
 pub struct SandboxedCommand {
     program: String,
@@ -73,7 +74,8 @@ impl SandboxedCommand {
 
     /// Use a specific helper executable instead of re-running this one.
     ///
-    /// Mainly for tests, whose harness `main` has no dispatch of its own.
+    /// Mainly for tests, whose harness `main` has no dispatch of its own. A path, not an
+    /// inode: a rename over it redirects the next spawn, which the default does not allow.
     #[must_use]
     pub fn helper(mut self, path: impl AsRef<Path>) -> Self {
         self.helper = Some(path.as_ref().to_path_buf());
@@ -93,13 +95,14 @@ impl SandboxedCommand {
     /// telling the helper its stdin is a channel to write audit records to, and only
     /// [`output`](Self::output) sets that pipe up. Give it a writable pipe on stdin and
     /// decode what comes back, or drop that argument — with fd 0 a terminal, a degradation
-    /// is written there as if the command had produced it.
+    /// is written there as if the command had produced it. Spawn it from this process: the
+    /// default helper path resolves against whichever process execs it.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
         // Explicit or re-exec'd, every helper speaks the same protocol; a second calling
         // convention would be a silent mismatch whenever a binary implemented the other.
         let helper = match &self.helper {
             Some(path) => path.clone(),
-            None => current_exe()?,
+            None => self_exe()?,
         };
         // Ahead of the policy, where `exec_sandboxed` splits it off before decoding, and
         // unconditional because both spawn paths below set the pipe up.
@@ -336,10 +339,18 @@ fn kill_group(group: u32) {
     }
 }
 
-/// Locate this executable, for re-running it in helper mode.
-pub(crate) fn current_exe() -> Result<PathBuf, SandboxError> {
-    std::env::current_exe().map_err(|source| SandboxError::SpawnFailed {
+const SELF_EXE: &str = "/proc/self/exe";
+
+/// The path to re-exec this process through, for running it in helper mode.
+///
+/// A link to the inode this process was loaded from rather than the install path, so a
+/// replacement renamed over the binary cannot redirect the next spawn. The `read_link`
+/// only proves `/proc` is mounted; the link itself is what gets exec'd.
+pub(crate) fn self_exe() -> Result<PathBuf, SandboxError> {
+    std::fs::read_link(SELF_EXE).map_err(|source| SandboxError::SpawnFailed {
         detail: "could not locate the running executable to re-exec as the sandbox helper",
         source,
-    })
+    })?;
+
+    Ok(PathBuf::from(SELF_EXE))
 }

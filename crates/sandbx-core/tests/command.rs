@@ -2,16 +2,27 @@
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 
-/// Re-running this executable with the dispatch flag is what lets a shipped sandbx
-/// need no second binary installed.
+/// Re-running this executable with the dispatch flag is what lets a shipped sandbx need
+/// no second binary installed, and reaching it by inode is what a rename cannot redirect.
 #[test]
-fn defaults_to_re_executing_the_current_binary() {
+fn defaults_to_re_executing_this_image_by_inode() {
+    use std::os::unix::fs::MetadataExt;
+
     let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
         .command_line()
         .unwrap();
 
-    assert_eq!(helper, std::env::current_exe().unwrap());
+    assert_eq!(helper, std::path::Path::new("/proc/self/exe"));
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
+
+    let link = std::fs::metadata(&helper).expect("/proc must be mounted for the re-exec");
+    let image = std::fs::metadata(std::env::current_exe().unwrap()).unwrap();
+
+    assert_eq!(
+        (link.dev(), link.ino()),
+        (image.dev(), image.ino()),
+        "the default helper path does not name the running image"
+    );
 }
 
 /// Without the flag the helper writes nothing and a weakened sandbox goes

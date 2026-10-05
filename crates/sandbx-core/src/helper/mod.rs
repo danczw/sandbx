@@ -92,9 +92,9 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
     // to the stage that enforces it.
     let request = HelperArgs::decode(argv)?;
 
-    // Resolved before the namespaces exist, so a failure to find our own binary
-    // happens while nothing has been changed yet.
-    let exe = crate::command::current_exe()?;
+    // Probed before the namespaces exist, so a failure happens while nothing has changed; the
+    // forked child resolves the link against the image it inherited, not by a second lookup.
+    let exe = crate::command::self_exe()?;
 
     let degraded = prepare_supervisor(&request.policy)?;
 

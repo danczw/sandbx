@@ -2,8 +2,7 @@
 //!
 //! Spawned rather than called, because the guard reads `getcwd` and `HOME` off the real
 //! process and `set_current_dir` is process-global — under parallel tests one case would
-//! decide another's verdict. `PolicyError::EnforcerInside` needs the binary *under* the
-//! test's cwd, which cargo's layout prevents, so it is covered inline in `grants.rs` only.
+//! decide another's verdict.
 // `Command::new` here spawns sandbx itself, never a command that bypasses it; the
 // workspace ban exists to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]

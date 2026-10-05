@@ -26,12 +26,6 @@ pub enum PolicyError {
         source: std::io::Error,
     },
 
-    /// The running `sandbx` could not be located, so the guard below it cannot run.
-    EnforcerUnknown {
-        /// The underlying OS failure.
-        source: std::io::Error,
-    },
-
     /// The working directory is the home directory, or holds it.
     HomeDirectory {
         /// The directory a default would have been rooted at.
@@ -62,25 +56,12 @@ pub enum PolicyError {
 
     /// The working directory is the filesystem root.
     FilesystemRoot,
-
-    /// The working directory holds the running `sandbx`, which a write grant replaces.
-    EnforcerInside {
-        /// The directory a default would have been rooted at.
-        cwd: PathBuf,
-        /// The binary doing the enforcing, found inside it.
-        exe: PathBuf,
-    },
 }
 
 impl std::fmt::Display for PolicyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unavailable { detail, source } => write!(f, "{detail}: {source} — {ADVICE}"),
-            // No `ADVICE`: a path flag skips this lookup, but `command_line()` makes the
-            // same call on every spawn, so the run would fail again a step later.
-            Self::EnforcerUnknown { source } => {
-                write!(f, "could not locate the running sandbx binary: {source}")
-            }
             Self::HomeParent { cwd } => write!(
                 f,
                 "refusing to derive a policy from {}, which is where home directories live \
@@ -117,13 +98,6 @@ impl std::fmt::Display for PolicyError {
                     "refusing to derive a policy from the filesystem root — {ADVICE}"
                 )
             }
-            Self::EnforcerInside { cwd, exe } => write!(
-                f,
-                "refusing to derive a policy from {}: it holds the running sandbx binary {}, \
-                 and write access there replaces the sandbox — {ADVICE}",
-                cwd.display(),
-                exe.display()
-            ),
         }
     }
 }
@@ -135,9 +109,8 @@ impl std::error::Error for PolicyError {
             | Self::HomeParent { .. }
             | Self::UnnamedHome { .. }
             | Self::SystemExecutables { .. }
-            | Self::FilesystemRoot
-            | Self::EnforcerInside { .. } => None,
-            Self::Unavailable { source, .. } | Self::EnforcerUnknown { source } => Some(source),
+            | Self::FilesystemRoot => None,
+            Self::Unavailable { source, .. } => Some(source),
         }
     }
 }
