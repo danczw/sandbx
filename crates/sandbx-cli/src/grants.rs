@@ -327,7 +327,7 @@ mod tests {
             allow_read: Vec::new(),
             allow_write: Vec::new(),
             allow_exec: Vec::new(),
-            allow_network: false,
+            allow_network: None,
             allow_unix_sockets: false,
             allow_env: Vec::new(),
         }
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn a_non_path_flag_leaves_the_default_alone() {
         let mut grants = bare();
-        grants.allow_network = true;
+        grants.allow_network = Some(vec![443]);
         grants.allow_unix_sockets = true;
         grants.allow_env.push("TERM".to_string());
 

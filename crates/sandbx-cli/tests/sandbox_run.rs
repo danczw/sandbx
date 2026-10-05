@@ -176,7 +176,9 @@ fn network_is_opt_in() {
 /// and reading it as an allowlist of none would confine a run the operator opened up.
 #[test]
 fn a_bare_network_flag_means_every_port() {
-    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert_eq!(*policy.network(), sandbx_core::NetworkPolicy::AnyPort);
 }
@@ -193,7 +195,8 @@ fn repeated_network_flags_collect_ports() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     assert_eq!(
         *policy.network(),
@@ -254,7 +257,8 @@ fn mixing_a_bare_flag_with_a_port_narrows_to_the_port() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     assert_eq!(
         *policy.network(),
