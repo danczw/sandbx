@@ -66,7 +66,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    helper/
       mod.rs         apply() — sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
-      seccomp.rs     BLOCKED_SYSCALLS (28), blocked_syscalls, compiled_filter
+      seccomp.rs     compiled_filter, clone3_filter, x32_gate,
+                     deny_dangerous_syscalls — how it reaches the kernel
+         rules.rs    BLOCKED_SYSCALLS (28), blocked_syscalls — what is denied
          tests/      unit tests: denylist, sockets, namespaces, arch; plus the
                      eval interpreter they are all read through
       ruleset/
