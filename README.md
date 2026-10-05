@@ -28,15 +28,46 @@ rather than degrading to unrestricted execution.
 before trusting an agent to it:
 
 ```sh
+sandbx sandbox-run -- cargo test                             # works: the project you are in
+sandbx sandbox-run -- cat /etc/shadow                        # permission denied
 sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt   # works
 sandbx sandbox-run --allow-read /srv -- cat /etc/shadow      # permission denied
 sandbx sandbox-run -- curl https://example.com               # no network at all
 ```
 
-Everything is denied unless a flag grants it. The one exception is what a command
-needs in order to start: read access to the system binaries and libraries — with
-nothing readable, not even `/bin/true` reaches `main` — and the handful of
-environment variables below.
+Everything is denied unless a flag grants it. Three things are granted without
+one. Two are what a command needs in order to start: read access to the system
+binaries and libraries — with nothing readable, not even `/bin/true` reaches
+`main` — and the handful of environment variables below. The third is the
+working directory.
+
+### The default policy
+
+With no path flag, `sandbx` grants read *and write* on the directory you ran it
+from, so working on the project you are standing in needs no flags at all. Giving
+any path flag — `--allow-read`, `--allow-write` or `--allow-exec` — replaces that
+default rather than adding to it, so `--allow-read /srv` is read on `/srv` and
+nothing else. That direction is deliberate: a policy narrower than you expected
+announces itself as a permission denial naming the path, while a wider one says
+nothing at all.
+
+Four working directories are refused rather than granted, because the tree would
+be far wider than you meant or would contain the enforcer itself:
+
+```console
+$ cd ~ && sandbx sandbox-run -- true
+sandbx: refusing to derive a policy from your home directory /home/you — pass --allow-read PATH and --allow-write PATH for the tree the command needs
+```
+
+The others are the filesystem root, any directory holding your home directory
+(`/home`, `/Users`), and any directory holding the running `sandbx` — a write
+grant there replaces the thing doing the enforcing. Each refusal names the flags
+to type instead, and passing them lifts it: the guard governs what `sandbx`
+derives, never what you ask for.
+
+Read [SECURITY.md](SECURITY.md) before relying on this: a write grant over a
+project tree also covers `.git/hooks`, `Makefile` and `.cargo/config.toml`, which
+run outside the sandbox the next time you build or commit.
 
 The environment is cleared too. A sandboxed command does not inherit the one
 `sandbx` was launched with, so a secret in your shell does not reach it; name a
@@ -73,6 +104,7 @@ permission denials the examples above are there to show.
 
 | flag | grants |
 |------|--------|
+| *(no path flag)*     | read and write on the working directory. Any path flag below replaces this |
 | `--allow-read PATH`  | read access to `PATH`. Repeatable |
 | `--allow-write PATH` | write access to `PATH`. Repeatable |
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
@@ -90,6 +122,14 @@ grants apply, and they are the only thing bounding what the agent reaches:
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-…
 
+sandbx agent-run -- "find the TODO comments under src and list them"
+```
+
+That grants the directory you ran it from, which is also the whole of what a
+prompt injection in a file the agent reads can reach. Name a narrower tree when
+the question needs less than the project:
+
+```sh
 sandbx agent-run \
   --allow-read  ./src \
   --allow-write ./src \

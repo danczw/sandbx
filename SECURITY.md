@@ -68,13 +68,25 @@ Three properties matter as much as the list:
   `RulesetStatus::FullyEnforced`. The earlier design asked for the newest ABI
   *best-effort* and refused only a ruleset enforced not at all, which meant
   every kernel older than that ABI ran `PartiallyEnforced` and was accepted.
-- **It is default-deny.** A policy grants nothing until something is added, and
-  that covers the environment too: `SandboxPolicy::default()` passes zero
-  variables. The `sandbx` CLI opts into the handful a command needs in order to
-  start, the same way it opts into the system binaries (see the flag table in the
-  README). Until #98 this was the one thing the sandbox did not bound at all —
-  not a policy that defaulted open, but an axis that did not exist — so a command
-  inherited the harness's entire environment.
+- **It is default-deny — at the library level, which is the level that is a
+  boundary.** A `SandboxPolicy` grants nothing until something is added, and that
+  covers the environment too: `SandboxPolicy::default()` passes zero variables.
+  Nothing an embedder constructs inherits a default from the CLI. Until #98 the
+  environment was the one thing the sandbox did not bound at all — not a policy
+  that defaulted open, but an axis that did not exist — so a command inherited the
+  harness's entire environment.
+
+  The `sandbx` CLI is the convenience layer on top, and it opts into three things
+  (see the `sandbox-run` flag table in the README). Two a command needs merely to
+  begin: read access to the system binaries and libraries, and the handful of
+  environment variables. The third is a real grant and worth reading twice — when
+  you give *no* path flag, the working directory becomes readable and writable, so
+  the common case costs no flags. Giving any path flag replaces that default
+  rather than adding to it, so an explicit policy is never widened behind you; and
+  the default refuses to be rooted at the filesystem root, at `$HOME`, in a
+  directory holding `$HOME`, or in one holding the running `sandbx`. What that
+  write grant means for files executed *later*, outside the sandbox, is a
+  non-claim of its own below.
 - **Grants do not widen each other, with one named exception.** Read access
   does not confer the right to execute what it can see, and write access confers
   neither read nor execute — a write-only drop directory stays unreadable, on
@@ -124,11 +136,40 @@ Three properties matter as much as the list:
   helper is this binary re-executed, resolved through `current_exe()`, so a
   policy granting write over the directory holding the installed `sandbx` is a
   grant to replace the thing that does the enforcing — and the replacement runs
-  unsandboxed on the next spawn. No default grant confers write, so this takes an
-  explicit `--allow-write`. It is worth stating because `agent-run` is where the
-  grant stops being something only the operator acts on: the model chooses the
-  paths it writes to, within what was granted, and a prompt injection chooses
+  unsandboxed on the next spawn. The window is not a race: `current_exe()` is
+  resolved on *every* spawn rather than once, so within a single `agent-run` turn
+  one tool call can rename a replacement into place and the next call execs it,
+  choosing its own confinement. It is worth stating because `agent-run` is where
+  the grant stops being something only the operator acts on: the model chooses
+  the paths it writes to, within what was granted, and a prompt injection chooses
   with it.
+
+  Reaching the enforcer therefore still takes an explicit `--allow-write`: the
+  working-directory default refuses to be rooted in any directory holding the
+  running `sandbx`, rather than granting the tree and carving the binary back
+  out. The carve-out is not available — a `SandboxPolicy` holds grants only,
+  matching is by path prefix, and Landlock composes rules by union with no
+  subtraction, so "this tree except that file" is not expressible on either
+  enforcement layer. A flag you type is still yours: the guard governs what
+  sandbx *derives*, and `--allow-write .` in a build tree does exactly what it
+  says.
+- **Write access to a project tree is write access to what you run in it next.**
+  A granted tree — typed, or derived from the working directory — almost always
+  holds files that execute outside the sandbox later, under your own account:
+  `.git/hooks/*`, `.git/config`, `.cargo/config.toml`, `Makefile`, `package.json`
+  scripts, `rust-toolchain`. A sandboxed tool may rewrite any of them, and the
+  next ordinary `git commit` or `cargo build` runs the result unconfined. The
+  sandbox bounds the command it is given; it has no view of what you will run
+  afterwards.
+
+  Nothing here is refused, and the asymmetry with the bullet above is deliberate
+  rather than an oversight. sandbx's own binary is refused because that escape
+  fires unattended, inside one turn, through sandbx's own next spawn, and because
+  one path comparison detects it. "Any file the operator might later execute" is
+  neither bounded nor detectable: it waits for a human action, and enumerating the
+  candidates would be a denylist whose first omission is silent. So this is a
+  property of granting write at all, stated rather than guarded — if it matters
+  for a tree, grant read and keep write to a scratch directory.
 - **The boundary is enforced by convention plus tooling**, not by a capability
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
@@ -296,11 +337,15 @@ These are documented behaviour, and reports of them will be closed as such:
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
-- A command *reading* a path you granted with `--allow-write` on the command
-  line. The `sandbx` CLI grants read alongside write, because a tool that can
-  rewrite a tree but not read it back is a trap rather than a safeguard. The
-  library keeps the two axes separate, so a genuinely write-only drop directory
-  is still expressible through `SandboxPolicy::allow_write`.
+- A command *reading* a path the `sandbx` CLI granted write on — whether you
+  typed `--allow-write` or the working-directory default derived it. The CLI
+  grants read alongside write either way, because a tool that can rewrite a tree
+  but not read it back is a trap rather than a safeguard. The library keeps the
+  two axes separate, so a genuinely write-only drop directory is still
+  expressible through `SandboxPolicy::allow_write`.
+- A command reading or writing the directory you ran `sandbx` from, when you
+  passed no path flag. That is the documented default — see *It is default-deny*
+  above for what it covers and what it refuses.
 - An agent running a tool call — one you approved, or, as things stand, any one the
   model asked for, since nothing gates them yet (see *Approval is not enforcement*
   above). That includes a call a prompt injection induced, and it includes one

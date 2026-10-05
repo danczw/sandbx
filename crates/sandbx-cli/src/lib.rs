@@ -38,17 +38,25 @@ pub struct Cli {
 pub enum Command {
     /// Run a command under the sandbox and report what it did.
     ///
-    /// Everything is denied unless a flag grants it, except what a command needs
-    /// in order to start: read access to the system binaries and libraries, and
-    /// a handful of environment variables. The rest of the environment is
-    /// cleared, so a secret in the shell that launched `sandbx` does not reach
-    /// the command. The command runs under Landlock, an empty network namespace
-    /// and a seccomp filter; on a kernel that cannot enforce those, it is
-    /// refused rather than run unrestricted.
+    /// With no path flag, the working directory is readable and writable, so
+    /// working on the project you are standing in needs no flags. A `--allow-…`
+    /// path flag replaces that default rather than adding to it. Standing at the
+    /// filesystem root, in your home directory, in a directory holding it, or in
+    /// one holding the running `sandbx` is refused rather than granted — pass
+    /// the flags for the tree you mean.
+    ///
+    /// Everything else is denied unless a flag grants it, except what a command
+    /// needs in order to start: read access to the system binaries and
+    /// libraries, and a handful of environment variables. The rest of the
+    /// environment is cleared, so a secret in the shell that launched `sandbx`
+    /// does not reach the command. The command runs under Landlock, an empty
+    /// network namespace and a seccomp filter; on a kernel that cannot enforce
+    /// those, it is refused rather than run unrestricted.
     ///
     /// Put the command after `--`:
     ///
     /// ```text
+    /// sandbx sandbox-run -- cargo test
     /// sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt
     /// ```
     SandboxRun(SandboxRun),
@@ -56,11 +64,16 @@ pub enum Command {
     /// Ask an agent one question, and let it use tools to answer.
     ///
     /// The prompt goes out, the answer streams back on stdout, and every tool
-    /// the model calls runs under the same boundary `sandbox-run` uses: denied
-    /// unless a flag grants it, refused rather than run unrestricted on a kernel
-    /// that cannot enforce it. Needs `ANTHROPIC_API_KEY` in the environment; no
-    /// tool sees it unless you pass that name to `--allow-env`, which hands over
-    /// the value in full.
+    /// the model calls runs under the same boundary `sandbox-run` uses, derived
+    /// from the same flags: denied unless a flag grants it, refused rather than
+    /// run unrestricted on a kernel that cannot enforce it. Needs
+    /// `ANTHROPIC_API_KEY` in the environment; no tool sees it unless you pass
+    /// that name to `--allow-env`, which hands over the value in full.
+    ///
+    /// That includes the working-directory default, which here is what a prompt
+    /// injection reaches: with no path flag the model may rewrite anything under
+    /// the directory you ran this from. Pass the flags for a narrower tree when
+    /// that is more than the question needs.
     ///
     /// Single-shot: one question, one answer, then the process ends. Nothing
     /// asks you before a tool call runs.
