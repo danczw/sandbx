@@ -62,6 +62,22 @@ pub(super) fn handled_access(abi: landlock::ABI) -> landlock::BitFlags<landlock:
     landlock::AccessFs::from_all(abi)
 }
 
+/// Every network right the kernel is asked to handle at `abi`, in one spelling.
+///
+/// [`handled_access`]'s counterpart, and the same argument: `from_all` so a right a future
+/// ABI adds is handled — and therefore denied unless a port rule permits it — rather than
+/// left unrestricted. At [`BASELINE_ABI`] that is `BindTcp | ConnectTcp`, both from ABI V4,
+/// which is below the floor, so the set is never empty here.
+///
+/// Whether the axis is handled *at all* is [`net_rules`](super::rights::net_rules)'s
+/// decision, not this function's: handling it with no port rule denies every TCP port,
+/// while not handling it leaves TCP unrestricted.
+pub(super) fn handled_net_access(abi: landlock::ABI) -> landlock::BitFlags<landlock::AccessNet> {
+    use landlock::Access;
+
+    landlock::AccessNet::from_all(abi)
+}
+
 /// Ask the kernel whether it will hard-require the whole of `abi`.
 ///
 /// The rung test behind [`negotiated_abi`], and the only part of the negotiation that
@@ -73,13 +89,22 @@ pub(super) fn handled_access(abi: landlock::ABI) -> landlock::BitFlags<landlock:
 /// wrapper — and a probe asking the same question the real call will ask cannot disagree
 /// with it, which [`handled_access`] keeps true by construction.
 ///
+/// Both axes, and policy-independent in both: the negotiated ABI stays a property of the
+/// kernel rather than of the run, so two commands on one host cannot settle on different
+/// ABIs. A probe that skipped the network axis would answer a question `apply` does not
+/// ask — picking a rung whose network rights `apply` then hard-requires and is refused
+/// for, with no step-down left to take.
+///
 /// The error is returned unwrapped: classifying it is [`negotiated_abi_from`]'s decision.
+/// Unsupported network rights arrive as the same `HandleAccesses` an unsupported
+/// filesystem right does, so that classification needs no new arm.
 fn kernel_probe(abi: landlock::ABI) -> Result<(), landlock::RulesetError> {
     use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr};
 
     Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(handled_access(abi))
+        .and_then(|ruleset| ruleset.handle_access(handled_net_access(abi)))
         .and_then(|ruleset| ruleset.create())
         .map(|_| ())
 }
