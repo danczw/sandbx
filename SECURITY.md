@@ -145,12 +145,17 @@ Three properties matter as much as the list:
   inside a single `agent-run` turn. Two things this does not claim: a library
   caller passing an explicit helper path to `SandboxedCommand::helper` gets a
   path, with no inode behind it; and replacing the binary still reaches the
-  *next* invocation of `sandbx`, which is the bullet below.
+  *next* invocation of `sandbx`, which is the bullet below. Nothing refuses to
+  derive a default in the directory holding the binary, so a no-flag run from a
+  user-level install prefix — `~/.cargo/bin`, `~/.local/bin` — grants write
+  there. A `/usr`-rooted prefix is still refused, as a path every command may
+  already execute.
 - **Write access to a project tree is write access to what you run in it next.**
   A granted tree — typed, or derived from the working directory — almost always
   holds files that execute outside the sandbox later, under your own account:
   `.git/hooks/*`, `.git/config`, `.cargo/config.toml`, `Makefile`, `package.json`
-  scripts, `rust-toolchain` — and, in a build tree, `sandbx` itself. A sandboxed
+  scripts, `rust-toolchain` — and, in a build tree or an install prefix, `sandbx`
+  itself. A sandboxed
   tool may rewrite any of them, and the next ordinary `git commit` or `cargo
   build` runs the result unconfined. The sandbox bounds the command it is given;
   it has no view of what you will run afterwards.
