@@ -9,7 +9,7 @@ this file is the bug.
 | Mechanism | Bounds | Where |
 |---|---|---|
 | Landlock | filesystem paths, and TCP ports | `helper/ruleset/rights.rs` |
-| seccomp-BPF | syscalls, down to a socket's domain, type and protocol | `helper/seccomp.rs` |
+| seccomp-BPF | syscalls, down to a socket's domain, type and protocol | `helper/seccomp/rules.rs` |
 | namespaces | network, PIDs, identity | `helper/hardening.rs` |
 
 ## Two layers, one table

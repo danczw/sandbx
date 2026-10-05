@@ -68,7 +68,7 @@ requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
                                                                       helper/ruleset/mod.rs
 ```
 
-The syscall list is in `helper/seccomp.rs`; `apply` in `helper/mod.rs`.
+The syscall list is in `helper/seccomp/rules.rs`; `apply` in `helper/mod.rs`.
 
 `abi` is a **parameter**, not ambient — that is what makes the mapping
 kernel-independent and testable at both ends of the range. The stronger form
