@@ -84,6 +84,99 @@ fn network_is_opt_in() {
     assert!(policy.allows_network());
 }
 
+/// The bare flag has to keep meaning every port: it is what it meant before ports existed,
+/// and reading it as an allowlist of none would confine a run the operator opened up.
+#[test]
+fn a_bare_network_flag_means_every_port() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
+
+    assert_eq!(*policy.network(), sandbx_core::NetworkPolicy::AnyPort);
+}
+
+#[test]
+fn repeated_network_flags_collect_ports() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-network",
+        "443",
+        "--allow-network",
+        "80",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    assert_eq!(
+        *policy.network(),
+        sandbx_core::NetworkPolicy::Ports(vec![443, 80])
+    );
+}
+
+/// The CLI refuses loudly where the library skips quietly, the same split `--allow-env`
+/// makes: a typo that silently granted nothing would leave whoever typed it believing the
+/// port had been allowlisted.
+///
+/// `65536` is the one that distinguishes a real range check from an `as` cast, which would
+/// truncate it to the port 0 beside it in the list.
+#[test]
+fn a_port_outside_the_range_is_a_usage_error() {
+    for port in ["0", "65536", "https", "443.0"] {
+        let error = Cli::try_parse_from([
+            "sandbx",
+            "sandbox-run",
+            "--allow-network",
+            port,
+            "--",
+            "true",
+        ])
+        .expect_err("a bad port was accepted");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::ValueValidation,
+            "{port} was refused for the wrong reason: {error}"
+        );
+    }
+
+    // A leading dash never reaches the value parser — clap reads it as a flag — so this
+    // one is refused a rung earlier. Still a refusal, which is the property that matters.
+    let error = Cli::try_parse_from([
+        "sandbx",
+        "sandbox-run",
+        "--allow-network",
+        "-1",
+        "--",
+        "true",
+    ])
+    .expect_err("a negative port was accepted");
+    assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+}
+
+/// A bare occurrence contributes no value to append, so it is the narrower spelling that
+/// wins. Fail-closed, which is why it is acceptable rather than a bug — but it is surprising
+/// enough to be worth stating.
+#[test]
+fn mixing_a_bare_flag_with_a_port_narrows_to_the_port() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-network",
+        "--allow-network",
+        "443",
+        "--",
+        "true",
+    ])
+    .policy();
+
+    assert_eq!(
+        *policy.network(),
+        sandbx_core::NetworkPolicy::Ports(vec![443]),
+        "a bare flag mixed with a port widened the policy past what every \
+         occurrence of it asked for"
+    );
+}
+
 #[test]
 fn the_command_keeps_its_own_arguments() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "ls", "-la", "/srv"]);
@@ -106,10 +199,24 @@ fn flags_after_the_separator_are_not_our_flags() {
     assert_eq!(args.arguments(), ["--allow-network"]);
 }
 
+/// Matched on the error *kind*, not on `is_err()`: `--allow-network` takes an optional
+/// value, so a usage error there would also make this pass while the missing-command check
+/// itself had gone.
 #[test]
 fn a_missing_command_is_rejected() {
-    assert!(Cli::try_parse_from(["sandbx", "sandbox-run"]).is_err());
-    assert!(Cli::try_parse_from(["sandbx", "sandbox-run", "--allow-network"]).is_err());
+    for argv in [
+        vec!["sandbx", "sandbox-run"],
+        vec!["sandbx", "sandbox-run", "--allow-network"],
+        vec!["sandbx", "sandbox-run", "--allow-network", "443"],
+    ] {
+        let error = Cli::try_parse_from(&argv).expect_err("a command was not required");
+
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::MissingRequiredArgument,
+            "{argv:?} was refused for something other than the missing command: {error}"
+        );
+    }
 }
 
 #[test]

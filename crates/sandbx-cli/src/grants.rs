@@ -32,11 +32,27 @@ pub struct Grants {
     #[arg(long = "allow-exec", value_name = "PATH")]
     allow_exec: Vec<PathBuf>,
 
-    /// Give a sandboxed command a network namespace with an interface.
+    /// Give a sandboxed command IP egress, on one TCP port or on all of them.
     ///
-    /// IP egress only; unix-domain sockets stay denied.
-    #[arg(long = "allow-network")]
-    allow_network: bool,
+    /// `--allow-network 443` allowlists a port and is repeatable; bare
+    /// `--allow-network` allows every port. A port allowlist also denies UDP
+    /// and raw sockets, without which it would not be an allowlist — so DNS
+    /// over UDP, QUIC and `ping` stop working, and a name has to resolve
+    /// through `/etc/hosts` or a TCP resolver.
+    ///
+    /// The allowlist is ports, not hosts: `--allow-network 443` reaches port
+    /// 443 on every routable host. Unix-domain sockets stay denied either way.
+    ///
+    /// `Option<Vec<u16>>` is what gives three states: absent, bare, and valued.
+    /// `Vec<Option<u16>>` would be the obvious spelling and clap_derive does not
+    /// support it.
+    #[arg(
+        long = "allow-network",
+        value_name = "PORT",
+        num_args = 0..=1,
+        value_parser = clap::value_parser!(u16).range(1..),
+    )]
+    allow_network: Option<Vec<u16>>,
 
     /// Let a sandboxed command open unix-domain sockets.
     ///
@@ -126,9 +142,23 @@ impl Grants {
             policy = policy.allow_env(name);
         }
 
-        if self.allow_network {
-            policy = policy.allow_network();
+        // The three states `--allow-network` can be in. An empty `Vec` is the bare flag:
+        // every occurrence of the flag was bare, so none contributed a port.
+        //
+        // Which makes `--allow-network --allow-network 443` an allowlist of 443 alone,
+        // because the bare occurrence contributes nothing to append to. Fail-closed — the
+        // broader spelling yields the narrower policy, never the reverse — and pinned by
+        // `mixing_a_bare_flag_with_a_port_narrows_to_the_port`.
+        match self.allow_network.as_deref() {
+            None => {}
+            Some([]) => policy = policy.allow_network(),
+            Some(ports) => {
+                for port in ports {
+                    policy = policy.allow_network_port(*port);
+                }
+            }
         }
+
         if self.allow_unix_sockets {
             policy = policy.allow_unix_sockets();
         }

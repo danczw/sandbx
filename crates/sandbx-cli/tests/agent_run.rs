@@ -71,7 +71,9 @@ fn the_policy_matches_what_sandbox_run_derives() {
         );
     }
     assert_eq!(agent.allowed_env(), sandbox.allowed_env());
-    assert_eq!(agent.allows_network(), sandbox.allows_network());
+    // `network()` and not `allows_network()`, which answers the same for an unrestricted
+    // grant as for an allowlist of one port.
+    assert_eq!(agent.network(), sandbox.network());
     assert_eq!(agent.allows_unix_sockets(), sandbox.allows_unix_sockets());
 }
 
