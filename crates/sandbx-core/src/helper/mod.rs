@@ -14,7 +14,7 @@ pub use seccomp::BLOCKED_SYSCALLS;
 use hardening::{
     bind_lifetime_to_supervisor, confirm_supervisor, prepare_supervisor, set_no_new_privs,
 };
-use ruleset::{Requested, enforcement_verdict, landlock_failed, requested};
+use ruleset::{Requested, RequestedNet, enforcement_verdict, landlock_failed, requested};
 use seccomp::deny_dangerous_syscalls;
 
 use crate::degradation::Degradation;
@@ -265,7 +265,8 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
-        CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
+        CompatLevel, Compatible, NetPort, PathBeneath, PathFd, Ruleset, RulesetAttr,
+        RulesetCreatedAttr,
     };
 
     // The namespaces and the capability drops already happened in the supervisor that
@@ -286,14 +287,32 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // happens inside `requested`, so no ABI is in scope here and the handled set cannot
     // be derived from a different one than the rules. Destructured for the reason
     // `Requested` gives.
-    let Requested { handled, rules } = requested(policy)?;
+    let Requested {
+        handled,
+        rules,
+        net,
+    } = requested(policy)?;
 
-    let mut ruleset = Ruleset::default()
+    // The one place that reads `net`. Landlock splits `handle_access`, which must precede
+    // `create`, from `add_rule`, which must follow it, so the decision is taken once here
+    // and both uses below are gated on the same `Option` — there is no path on which a
+    // port list is installed without the axis being handled, or the axis handled for a
+    // policy that asked for no ports.
+    let (net_rights, net_ports) = match net {
+        RequestedNet::Unhandled => (None, &[][..]),
+        RequestedNet::Ports { rights, ports } => (Some(rights), ports),
+    };
+
+    let mut builder = Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(handled)
-        .map_err(landlock_failed)?
-        .create()
         .map_err(landlock_failed)?;
+
+    if let Some(rights) = net_rights {
+        builder = builder.handle_access(rights).map_err(landlock_failed)?;
+    }
+
+    let mut ruleset = builder.create().map_err(landlock_failed)?;
 
     // `Requested` decides what to install; this loop only opens the paths. The axis is
     // for the tests that assert the mapping — the kernel is told the rights and nothing
@@ -303,6 +322,16 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))
             .map_err(landlock_failed)?;
+    }
+
+    // Under the `HardRequirement` set above, a port rule carrying a right the ruleset does
+    // not handle is an error rather than a right the kernel quietly drops.
+    if let Some(rights) = net_rights {
+        for port in net_ports {
+            ruleset = ruleset
+                .add_rule(NetPort::new(*port, rights))
+                .map_err(landlock_failed)?;
+        }
     }
 
     let status = ruleset.restrict_self().map_err(landlock_failed)?;

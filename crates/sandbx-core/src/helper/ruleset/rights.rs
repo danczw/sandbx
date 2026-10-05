@@ -107,3 +107,42 @@ pub(super) fn fs_rules(
         .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir(), abi)))
         .collect()
 }
+
+/// Whether [`apply`](crate::helper::apply) hands the network axis to Landlock at all, and
+/// on which ports.
+///
+/// Two of the three network states answer "not at all", for opposite reasons:
+///
+/// - [`Denied`] is confined by `CLONE_NEWNET` in [`isolate`], an empty network namespace
+///   with nothing routable in it. That is strictly stronger than any port list, and a
+///   belt-and-braces `Ports { ports: &[] }` here would cost the default run `bind` on
+///   loopback — which programs use for IPC — while buying nothing.
+/// - [`AnyPort`] is the flag's stated meaning. Handling the axis would narrow egress below
+///   what the operator asked for.
+///
+/// So "no port rules" is never the same thing as "an empty port list", and the two must not
+/// share a spelling: handling [`AccessNet`] with zero [`NetPort`] rules denies *every* TCP
+/// port, while leaving it unhandled leaves TCP unrestricted. [`RequestedNet`] is an enum
+/// rather than a `Vec` so that those two cannot be confused, and this is the only function
+/// that decides between them.
+///
+/// [`Denied`]: crate::NetworkPolicy::Denied
+/// [`AnyPort`]: crate::NetworkPolicy::AnyPort
+/// [`isolate`]: crate::helper::hardening
+/// [`AccessNet`]: landlock::AccessNet
+/// [`NetPort`]: landlock::NetPort
+/// [`RequestedNet`]: super::RequestedNet
+pub(super) fn net_rules(
+    policy: &crate::SandboxPolicy,
+    abi: landlock::ABI,
+) -> super::RequestedNet<'_> {
+    use crate::NetworkPolicy;
+
+    match policy.network() {
+        NetworkPolicy::Denied | NetworkPolicy::AnyPort => super::RequestedNet::Unhandled,
+        NetworkPolicy::Ports(ports) => super::RequestedNet::Ports {
+            rights: super::compat::handled_net_access(abi),
+            ports,
+        },
+    }
+}
