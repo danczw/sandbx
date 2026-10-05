@@ -54,7 +54,8 @@ and keeping its tests inside the crate is what lets it stay that way.
 ## Measuring
 
 ```sh
-for f in $(find crates -name '*.rs' -path '*/src/*' -not -path '*/tests/*'); do
+for f in $(find crates -name '*.rs' -path '*/src/*' \
+             -not -path '*/tests/*' -not -name 'tests.rs'); do
   cut=$(grep -n '#\[cfg(test)\]' "$f" | head -1 | cut -d: -f1)
   printf '%5d  %s\n' "$([ -n "$cut" ] && echo $((cut - 1)) || wc -l < "$f")" "$f"
 done | sort -rn | head -12
