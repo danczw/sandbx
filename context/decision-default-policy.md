@@ -189,6 +189,11 @@ gain. A failure to resolve it is a refusal, since core's own call would fail at 
 first spawn anyway — but the *canonicalization* of it falls back to the unresolved
 path, so a failure there cannot turn into a missing guard.
 
+The arm is load-bearing only because the helper is reached by *path*.
+[#149](https://github.com/danczw/sandbx/issues/149) would have core re-exec
+through `/proc/self/exe`, a link to the inode, which a rename-over cannot
+redirect — and the arm becomes a convenience worth reconsidering.
+
 ### The execute axis is not touched
 
 The default grants read and write and no execute, and
