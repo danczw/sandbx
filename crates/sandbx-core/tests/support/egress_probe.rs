@@ -37,8 +37,11 @@ fn bind(target: &str) -> std::process::ExitCode {
             }
             std::process::ExitCode::SUCCESS
         }
+        // The `ErrorKind` as well as the message: a caller testing a port it has just
+        // released cannot rule out another process having taken it, and
+        // `AddrInUse` is how that is told apart from the allowlist's own `PermissionDenied`.
         Err(error) => {
-            eprintln!("TCP BIND DENIED: {error}");
+            eprintln!("TCP BIND DENIED: {:?}: {error}", error.kind());
             std::process::ExitCode::FAILURE
         }
     }

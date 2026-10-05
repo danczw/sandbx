@@ -131,7 +131,13 @@ pub(super) fn net_rules(
     match policy.network() {
         NetworkPolicy::Denied | NetworkPolicy::AnyPort => super::RequestedNet::Unhandled,
         NetworkPolicy::Ports(ports) => super::RequestedNet::Ports {
-            rights: super::compat::handled_net_access(abi),
+            handled: super::compat::handled_net_access(abi),
+            // Named, where `handled` is `from_all`: the two directions are not symmetric.
+            // A right a future ABI adds has to be *handled*, or Landlock leaves it
+            // unrestricted everywhere — but granting it on every allowlisted port is how a
+            // UDP or raw right would arrive already permitted on the ports the policy named.
+            // These two are the whole of what an allowlist promises.
+            granted: landlock::AccessNet::BindTcp | landlock::AccessNet::ConnectTcp,
             ports,
         },
     }

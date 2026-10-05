@@ -168,16 +168,18 @@ fn bind_is_confined_to_the_allowlisted_ports() {
     let (port, accepting) = listener("UNUSED");
     drain(port, accepting);
 
-    // The listener is gone, so the port is free and a refusal is the allowlist's doing
-    // rather than `EADDRINUSE`.
     let policy = SandboxPolicy::default().allow_network_port(port);
     let listed = probe(policy.clone(), "bind", port);
     let ephemeral = probe(policy, "bind", 0);
 
+    // The listener is released before the probe runs, so the port is unreserved and any
+    // other process on the host — including a sibling test binary, this suite being
+    // multi-threaded — may take it first. `AddrInUse` is that race and not a refusal; what
+    // the allowlist would produce is `PermissionDenied`.
+    let refusal = String::from_utf8_lossy(&listed.stderr);
     assert!(
-        listed.status.success(),
-        "an allowlisted port could not be bound, so the allowlist grants nothing: {}",
-        String::from_utf8_lossy(&listed.stderr)
+        listed.status.success() || refusal.contains("AddrInUse"),
+        "an allowlisted port could not be bound, so the allowlist grants nothing: {refusal}"
     );
     assert!(
         !ephemeral.status.success(),
