@@ -23,9 +23,8 @@ list as one body.
 `ci.yml`'s own `notes` job runs the same script on each pull request — over
 every `docs/release-notes/v*.md`, and by name over the file for the version in
 the manifest, so a bump that forgets its notes fails at review time rather than
-with the tag already pushed. Run the script locally before tagging all the
-same: the job reports but does not block, so a red `notes` check is a signal,
-not a gate.
+with the tag already pushed. It is a required check on `main`, so a red `notes`
+blocks the merge and the tag cannot get ahead of the prose.
 
 ## The budget
 
