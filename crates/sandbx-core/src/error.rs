@@ -1,15 +1,51 @@
 use std::path::PathBuf;
 
+/// Which grant a path was checked against.
+///
+/// Carried by a refusal so it can name the grant that was missing. The guard keeps its
+/// root sets apart, so "outside every allowed root" would be false of a path that is
+/// inside one and was checked against the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    /// Checked against the readable roots.
+    Read,
+    /// Checked against the writable roots.
+    Write,
+}
+
+impl Access {
+    /// How the audit trail names the operation.
+    pub fn operation(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+        }
+    }
+
+    /// What a path this access refused is outside of.
+    ///
+    /// The one wording, read by both the audit record's reason and [`SandboxError`]'s
+    /// `Display`, so a record and the message a caller saw cannot disagree.
+    pub fn outside(self) -> &'static str {
+        match self {
+            Self::Read => "outside every readable root",
+            Self::Write => "outside every writable root",
+        }
+    }
+}
+
 /// Why a sandbox operation was refused.
 ///
 /// Every variant is a refusal; there is no "allowed with warning" case, because a caller
 /// that believes it is sandboxed and is not is worse off than one that gets an error.
 #[derive(Debug)]
 pub enum SandboxError {
-    /// The path is not inside any root the policy allows.
+    /// The path is not inside any root the policy allows for this access.
     PathNotAllowed {
         /// The path as the caller supplied it.
         requested: PathBuf,
+        /// The grant it was checked against, and so the one it lacked.
+        access: Access,
     },
 
     /// The path could not be resolved, so cannot be proven to be inside an allowed root —
@@ -93,12 +129,8 @@ pub enum SandboxError {
 impl std::fmt::Display for SandboxError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::PathNotAllowed { requested } => {
-                write!(
-                    f,
-                    "path is outside every allowed root: {}",
-                    requested.display()
-                )
+            Self::PathNotAllowed { requested, access } => {
+                write!(f, "path is {}: {}", access.outside(), requested.display())
             }
             Self::Unresolvable { requested, source } => {
                 write!(

@@ -7,7 +7,7 @@
 // ban on `Command::new` exists to stop.
 #![allow(clippy::disallowed_methods)]
 
-use sandbx_core::{FsGuard, SandboxPolicy};
+use sandbx_core::{Access, FsGuard, SandboxError, SandboxPolicy};
 
 #[test]
 fn read_inside_allowed_root_is_permitted() {
@@ -111,6 +111,74 @@ fn read_grant_does_not_imply_write() {
         guard.check_write(&file).is_err(),
         "read access must not grant write access"
     );
+}
+
+/// A refusal that names the wrong thing sends a caller after the wrong fix — and the
+/// agent loop hands the reason to a model, which relays it to whoever asked.
+#[test]
+fn a_refusal_names_the_grant_that_was_missing() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("notes.txt");
+    std::fs::write(&file, b"hello").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let error = guard.check_write(&file).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            SandboxError::PathNotAllowed {
+                access: Access::Write,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+
+    // The path is inside a root, so "every allowed root" would be false of it.
+    let message = error.to_string();
+    assert!(message.contains("outside every writable root"), "{message}");
+    assert!(!message.contains("allowed root"), "{message}");
+}
+
+#[test]
+fn a_read_refusal_names_the_readable_roots() {
+    let allowed = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.txt");
+    std::fs::write(&secret, b"secret").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+
+    let error = guard.check_read(&secret).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            SandboxError::PathNotAllowed {
+                access: Access::Read,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    assert!(
+        error.to_string().contains("outside every readable root"),
+        "{error}"
+    );
+}
+
+/// The audit record's reason and the message a caller saw come from one function, so a
+/// record cannot say a path was outside one set of roots while the error says another.
+#[test]
+fn the_record_and_the_error_cannot_disagree() {
+    for access in [Access::Read, Access::Write] {
+        let error = SandboxError::PathNotAllowed {
+            requested: std::path::PathBuf::from("/nowhere"),
+            access,
+        };
+
+        assert!(error.to_string().contains(access.outside()), "{error}");
+    }
 }
 
 #[test]

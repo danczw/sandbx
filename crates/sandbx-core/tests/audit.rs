@@ -65,12 +65,12 @@ fn records_an_allowed_execution() {
 #[test]
 fn records_a_refusal_with_its_reason() {
     let lines = capture(|| {
-        AuditEvent::denied("read", "/etc/shadow", "outside every allowed root").emit();
+        AuditEvent::denied("read", "/etc/shadow", "outside every readable root").emit();
     });
 
     let line = &lines[0];
     assert!(line.contains("decision=denied"), "got: {line}");
-    assert!(line.contains("outside every allowed root"), "got: {line}");
+    assert!(line.contains("outside every readable root"), "got: {line}");
 }
 
 /// Audit that only appears under `RUST_LOG=debug` is off for everyone who did

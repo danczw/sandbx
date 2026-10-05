@@ -129,7 +129,7 @@ fn audit_events_below_info_are_dropped() {
 #[test]
 fn the_output_carries_no_ansi_escapes() {
     let output = captured(|| {
-        AuditEvent::denied("write", "/etc/shadow", "outside every allowed root").emit()
+        AuditEvent::denied("write", "/etc/shadow", "outside every writable root").emit()
     });
 
     assert!(!output.is_empty(), "nothing was recorded");

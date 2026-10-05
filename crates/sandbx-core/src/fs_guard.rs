@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::{SandboxError, SandboxPolicy};
+use crate::{Access, SandboxError, SandboxPolicy};
 
 /// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them.
 ///
@@ -52,11 +52,11 @@ impl FsGuard {
     /// Permit reading `path`, which must already exist, returning its resolved location.
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         match canonicalize(path) {
-            Ok(resolved) => permit(resolved, &self.readable, path, "read"),
+            Ok(resolved) => permit(resolved, &self.readable, path, Access::Read),
             // Why a path failed to resolve is information: a caller that can probe
             // arbitrary paths reads ENOENT against EACCES back as a map of the host.
             Err(unresolved) => {
-                Err(self.conceal_unless_granted(path, unresolved, &self.readable, "read"))
+                Err(self.conceal_unless_granted(path, unresolved, &self.readable, Access::Read))
             }
         }
     }
@@ -71,7 +71,7 @@ impl FsGuard {
         requested: &Path,
         unresolved: SandboxError,
         roots: &[PathBuf],
-        operation: &str,
+        access: Access,
     ) -> SandboxError {
         let grants_area = requested
             .ancestors()
@@ -81,13 +81,14 @@ impl FsGuard {
 
         let subject = requested.display().to_string();
         if grants_area {
-            crate::AuditEvent::denied(operation, &subject, "path does not resolve").emit();
+            crate::AuditEvent::denied(access.operation(), &subject, "path does not resolve").emit();
             return unresolved;
         }
 
-        crate::AuditEvent::denied(operation, &subject, "outside every allowed root").emit();
+        crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
         SandboxError::PathNotAllowed {
             requested: requested.to_path_buf(),
+            access,
         }
     }
 
@@ -170,9 +171,9 @@ impl FsGuard {
                     };
                     if !within(&resolved, &self.readable) {
                         crate::AuditEvent::denied(
-                            "read",
+                            Access::Read.operation(),
                             &link.display().to_string(),
-                            "outside every allowed root",
+                            Access::Read.outside(),
                         )
                         .emit();
                         continue;
@@ -214,6 +215,7 @@ impl FsGuard {
             Err(_) => {
                 let not_allowed = || SandboxError::PathNotAllowed {
                     requested: path.to_path_buf(),
+                    access: Access::Write,
                 };
 
                 // `canonicalize` fails the same way on a nonexistent path and on a
@@ -221,9 +223,9 @@ impl FsGuard {
                 // link, whose write then follows it out of the root.
                 if path.symlink_metadata().is_ok_and(|m| m.is_symlink()) {
                     crate::AuditEvent::denied(
-                        "write",
+                        Access::Write.operation(),
                         &path.display().to_string(),
-                        "symlink leaf may resolve outside the allowed root",
+                        "symlink leaf may resolve outside the writable root",
                     )
                     .emit();
                     return Err(not_allowed());
@@ -239,7 +241,7 @@ impl FsGuard {
             }
         };
 
-        permit(resolved, &self.writable, path, "write")
+        permit(resolved, &self.writable, path, Access::Write)
     }
 }
 
@@ -269,21 +271,25 @@ fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
 }
 
 /// Allow `resolved` only if it sits inside one of `roots`, recording the verdict.
+///
+/// `roots` has to be the set `access` names: a denial reports the access, so handing it the
+/// other axis's roots would record a true verdict with a false reason.
 fn permit(
     resolved: PathBuf,
     roots: &[PathBuf],
     requested: &Path,
-    operation: &str,
+    access: Access,
 ) -> Result<PathBuf, SandboxError> {
     let subject = requested.display().to_string();
 
     if within(&resolved, roots) {
-        crate::AuditEvent::allowed(operation, &subject).emit();
+        crate::AuditEvent::allowed(access.operation(), &subject).emit();
         Ok(resolved)
     } else {
-        crate::AuditEvent::denied(operation, &subject, "outside every allowed root").emit();
+        crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
         Err(SandboxError::PathNotAllowed {
             requested: requested.to_path_buf(),
+            access,
         })
     }
 }
