@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 use sandbx_core::{Axis, SandboxPolicy};
 
+use crate::PolicyError;
+
 /// The `--allow-…` flags every subcommand that runs something accepts.
 #[derive(Debug, clap::Args)]
 pub struct Grants {
@@ -117,7 +119,7 @@ impl Grants {
     /// run at all: read on the system binaries and libraries, and the startup
     /// environment — `PATH` above all, since without it a program named without a
     /// leading `/` reaches only the C library's fallback (`/bin:/usr/bin` on glibc).
-    pub fn policy(&self) -> SandboxPolicy {
+    pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()
             .allow_standard_env();
@@ -158,6 +160,6 @@ impl Grants {
             policy = policy.allow_unix_sockets();
         }
 
-        policy
+        Ok(policy)
     }
 }

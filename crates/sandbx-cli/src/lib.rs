@@ -10,7 +10,7 @@ pub mod logging;
 mod sandbox;
 
 pub use agent::AgentRun;
-pub use error::AgentError;
+pub use error::{AgentError, PolicyError, SandboxRunError};
 pub use grants::Grants;
 pub use sandbox::SandboxRun;
 

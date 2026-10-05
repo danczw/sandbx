@@ -17,7 +17,9 @@ fn agent_run(argv: &[&str]) -> sandbx_cli::AgentRun {
 
 #[test]
 fn grants_only_what_a_tool_needs_to_start() {
-    let policy = agent_run(&["sandbx", "agent-run", "--", "hello"]).policy();
+    let policy = agent_run(&["sandbx", "agent-run", "--", "hello"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert_eq!(
         policy.readable_paths(),
@@ -57,9 +59,11 @@ fn the_policy_matches_what_sandbox_run_derives() {
     sandbox.extend(flags);
     sandbox.extend(["--", "true"]);
 
-    let agent = agent_run(&agent).policy();
+    let agent = agent_run(&agent)
+        .policy()
+        .expect("the flags describe a policy");
     let sandbox = match Cli::parse_from(&sandbox).command {
-        Command::SandboxRun(args) => args.policy(),
+        Command::SandboxRun(args) => args.policy().expect("the flags describe a policy"),
         other => panic!("{other:?} is not sandbox-run"),
     };
 
@@ -79,7 +83,9 @@ fn the_policy_matches_what_sandbox_run_derives() {
 
 #[test]
 fn a_write_grant_confers_read_here_too() {
-    let policy = agent_run(&["sandbx", "agent-run", "--allow-write", "/tmp", "--", "go"]).policy();
+    let policy = agent_run(&["sandbx", "agent-run", "--allow-write", "/tmp", "--", "go"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert!(
         policy
@@ -156,6 +162,7 @@ fn flags_after_the_separator_are_part_of_the_prompt() {
     assert_eq!(args.prompt(), "explain --allow-read /etc");
     assert!(
         args.policy()
+            .expect("the flags describe a policy")
             .readable_paths()
             .iter()
             .all(|path| path != std::path::Path::new("/etc")),

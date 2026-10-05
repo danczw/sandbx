@@ -15,7 +15,9 @@ fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
 
 #[test]
 fn grants_only_what_a_command_needs_to_start() {
-    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert_eq!(
         policy.readable_paths(),
@@ -38,7 +40,8 @@ fn each_allow_flag_widens_only_its_own_axis() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     assert!(
         policy
@@ -64,7 +67,8 @@ fn allow_flags_repeat_to_grant_several_paths() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     for granted in ["/a", "/b"] {
         assert!(
@@ -79,7 +83,9 @@ fn allow_flags_repeat_to_grant_several_paths() {
 
 #[test]
 fn network_is_opt_in() {
-    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert!(policy.allows_network());
 }
@@ -191,7 +197,10 @@ fn flags_after_the_separator_are_not_our_flags() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--allow-network"]);
 
     assert!(
-        !args.policy().allows_network(),
+        !args
+            .policy()
+            .expect("the flags describe a policy")
+            .allows_network(),
         "command argument widened the policy"
     );
     assert_eq!(args.program(), "printf");
@@ -243,7 +252,9 @@ fn a_timeout_after_the_separator_is_not_ours() {
 
 #[test]
 fn network_does_not_imply_unix_sockets() {
-    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert!(policy.allows_network());
     assert!(!policy.allows_unix_sockets());
@@ -258,8 +269,11 @@ fn unix_sockets_are_opt_in() {
         "--",
         "true",
     ])
-    .policy();
-    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+    .policy()
+    .expect("the flags describe a policy");
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert!(granted.allows_unix_sockets());
     assert!(!bare.allows_unix_sockets());
@@ -281,7 +295,8 @@ fn exec_grants_are_repeatable_and_separate_from_read() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     assert!(
         policy
@@ -311,7 +326,8 @@ fn nothing_user_supplied_is_executable_by_default() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     for path in policy.executable_paths() {
         assert!(
@@ -338,7 +354,8 @@ fn allow_write_also_grants_read_at_the_command_line() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     let srv = std::path::PathBuf::from("/srv");
     assert!(
@@ -364,8 +381,9 @@ fn every_path_flag_grants_only_its_own_axis() {
         ("--allow-write", Axis::Write),
         ("--allow-exec", Axis::ReadExecute),
     ] {
-        let policy =
-            sandbox_run(&["sandbx", "sandbox-run", flag, "/srv/subject", "--", "true"]).policy();
+        let policy = sandbox_run(&["sandbx", "sandbox-run", flag, "/srv/subject", "--", "true"])
+            .policy()
+            .expect("the flags describe a policy");
 
         for other in Axis::ALL {
             // `--allow-write` also grants read; nothing else widens.
@@ -385,7 +403,9 @@ fn every_path_flag_grants_only_its_own_axis() {
 /// fallback search path, so anything outside `/bin` and `/usr/bin` is not found.
 #[test]
 fn the_startup_environment_is_granted_anyway() {
-    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert_eq!(
         policy.allowed_env(),
@@ -406,8 +426,11 @@ fn passing_a_variable_is_opt_in() {
         "--",
         "true",
     ])
-    .policy();
-    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]).policy();
+    .policy()
+    .expect("the flags describe a policy");
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
 
     assert!(
         granted
@@ -436,7 +459,8 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
         "--",
         "true",
     ])
-    .policy();
+    .policy()
+    .expect("the flags describe a policy");
 
     for name in ["ONE", "TWO"] {
         assert!(
@@ -448,6 +472,7 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
         policy.readable_paths(),
         sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
             .policy()
+            .expect("the flags describe a policy")
             .readable_paths(),
         "an env grant widened the read axis"
     );

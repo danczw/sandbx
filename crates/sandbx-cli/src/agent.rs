@@ -12,7 +12,7 @@ use sandbx_providers::{
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::{AgentError, Grants};
+use crate::{AgentError, Grants, PolicyError};
 
 /// The model asked when `--model` is not given.
 ///
@@ -61,7 +61,7 @@ pub struct AgentRun {
 
 impl AgentRun {
     /// The policy these flags describe.
-    pub fn policy(&self) -> SandboxPolicy {
+    pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         self.grants.policy()
     }
 
@@ -94,8 +94,10 @@ impl AgentRun {
     ///
     /// # Errors
     ///
-    /// [`AgentError::EmptyPrompt`] and [`AgentError::Provider`] both land before any
-    /// request goes out; [`AgentError::Turn`] when the turn ends without an answer, and
+    /// [`AgentError::EmptyPrompt`], [`AgentError::Policy`] and [`AgentError::Provider`]
+    /// all land before any request goes out — the policy before the client, so a
+    /// refusal to derive one costs no round trip and leaks no key to a doomed run;
+    /// [`AgentError::Turn`] when the turn ends without an answer, and
     /// [`AgentError::Output`] when stdout would not take it. A tool that the policy
     /// refuses is none of them: it goes back to the model as a failed result, which is
     /// what lets it try something the policy allows.
@@ -107,11 +109,12 @@ impl AgentRun {
             return Err(AgentError::EmptyPrompt);
         }
 
-        let client = AnthropicClient::from_env()?;
-
         // No `with_helper`: the default path re-execs this binary, and `main` dispatches
         // helper mode before parsing, so the shipped binary is its own helper.
-        let ctx = ExecutionContext::new(self.policy());
+        // Derived before the client, so a policy this refuses never reads the key.
+        let ctx = ExecutionContext::new(self.policy()?);
+
+        let client = AnthropicClient::from_env()?;
 
         let history = [RequestMessage {
             role: Role::User,

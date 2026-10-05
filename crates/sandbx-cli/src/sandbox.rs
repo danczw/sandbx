@@ -2,9 +2,9 @@
 
 use std::io::Write;
 
-use sandbx_core::{SandboxError, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{SandboxPolicy, SandboxedCommand};
 
-use crate::Grants;
+use crate::{Grants, PolicyError, SandboxRunError};
 
 /// `sandbx sandbox-run [--allow-…] -- <command> [args…]`
 #[derive(Debug, clap::Args)]
@@ -28,7 +28,7 @@ pub struct SandboxRun {
 
 impl SandboxRun {
     /// The policy these flags describe.
-    pub fn policy(&self) -> SandboxPolicy {
+    pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         self.grants.policy()
     }
 
@@ -53,9 +53,9 @@ impl SandboxRun {
     }
 
     /// Run it, forward its output, and report the code to exit with.
-    pub fn execute(&self) -> Result<i32, SandboxError> {
+    pub fn execute(&self) -> Result<i32, SandboxRunError> {
         let mut command =
-            SandboxedCommand::new(self.program(), self.policy()).args(self.arguments());
+            SandboxedCommand::new(self.program(), self.policy()?).args(self.arguments());
         if let Some(limit) = self.timeout() {
             command = command.timeout(limit);
         }
