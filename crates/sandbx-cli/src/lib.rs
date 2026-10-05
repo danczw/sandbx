@@ -58,8 +58,9 @@ pub enum Command {
     /// The prompt goes out, the answer streams back on stdout, and every tool
     /// the model calls runs under the same boundary `sandbox-run` uses: denied
     /// unless a flag grants it, refused rather than run unrestricted on a kernel
-    /// that cannot enforce it. Needs `ANTHROPIC_API_KEY` in the environment; the
-    /// key is not passed to anything the agent runs.
+    /// that cannot enforce it. Needs `ANTHROPIC_API_KEY` in the environment; no
+    /// tool sees it unless you pass that name to `--allow-env`, which hands over
+    /// the value in full.
     ///
     /// Single-shot: one question, one answer, then the process ends. Nothing
     /// asks you before a tool call runs.

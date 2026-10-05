@@ -20,8 +20,12 @@ after two native legs. `publish` then fetches the PR list from
 `POST /repos/{owner}/{repo}/releases/generate-notes` and publishes prose plus
 list as one body.
 
-Run the script locally before tagging — the CI failure arrives after the tag is
-public.
+`ci.yml`'s own `notes` job runs the same script on each pull request — over
+every `docs/release-notes/v*.md`, and by name over the file for the version in
+the manifest, so a bump that forgets its notes fails at review time rather than
+with the tag already pushed. Run the script locally before tagging all the
+same: the job reports but does not block, so a red `notes` check is a signal,
+not a gate.
 
 ## The budget
 

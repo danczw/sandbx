@@ -120,9 +120,9 @@ the turn, with the reason on stderr.
 > the narrowest tree that lets the task finish, and read
 > [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
 >
-> `ANTHROPIC_API_KEY` is read by the harness and is *not* passed to anything the
-> agent runs. Naming it with `--allow-env` would hand it over, which is the one
-> flag to think twice about here.
+> `ANTHROPIC_API_KEY` is read by the harness, and no tool sees it unless you name
+> it to `--allow-env` — which hands over the value in full. That is the one flag
+> to think twice about here.
 
 ## Install
 
