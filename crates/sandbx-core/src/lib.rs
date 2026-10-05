@@ -30,7 +30,7 @@ pub use command::{
     HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, SandboxedCommand, dispatch_helper_mode,
     with_helper_dispatch,
 };
-pub use error::SandboxError;
+pub use error::{Access, SandboxError};
 pub use fs_guard::{FsGuard, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;

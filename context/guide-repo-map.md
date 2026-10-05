@@ -76,8 +76,13 @@ tests/support/       5 [[bin]] probes, required-features = ["sandbox-integration
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
-`HelperDispatch`, `SandboxError`, `FsGuard`, `ReadableWalk`, `BLOCKED_SYSCALLS`,
-`exit_code`, `HelperArgs`, `Axis`, `Grants`, `SandboxPolicy`.
+`HelperDispatch`, `SandboxError`, `Access`, `FsGuard`, `ReadableWalk`,
+`BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
+`SandboxPolicy`.
+
+`Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
+in-process meaning, and a refusal carries an `Access` so it can name the grant it
+lacked rather than implying none was given.
 
 Four per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` —
 the four sites that spawn, not the whole crate. The lint *is* the backstop: a CI
