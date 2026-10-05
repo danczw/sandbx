@@ -80,24 +80,12 @@ jobs:
         run: cargo doc --workspace --no-deps --document-private-items --all-features
 
   sandbox:
-    # One definition, both architectures, so the kernel probe and the test
-    # command cannot drift apart — two copies of this job did, within one PR.
-    #
-    # Additive on arm rather than a move: `x32_gate` and the four tests that
-    # exercise it are `#[cfg(target_arch = "x86_64")]`, so enforcement running
-    # only on arm would leave the x32 bypass with no coverage at all.
-    #
-    # The pair is asymmetric because there is no floating arm label to match
-    # `ubuntu-latest`. Deliberate rather than tidy: a sandbox wants to learn when
-    # a new runner kernel breaks enforcement, so x86 floats, and the cost is that
-    # the two legs are not always the same OS generation.
-    #
-    # Named by architecture, not by runner, because these are the check names
-    # branch protection pins. A matrix over bare labels names them after the
-    # image, so swapping a label would rename the check and silently stop
-    # protecting it — a required check that no longer exists blocks nothing.
-    #
-    # `fail-fast: false` so one architecture failing still reports the other.
+    # Arm is additive, not a move: `x32_gate` and its tests are
+    # `#[cfg(target_arch = "x86_64")]`, so arm alone uncovers the x32 bypass.
+    # No floating arm label exists, so x86 floats and arm is pinned; the legs are
+    # not always the same OS generation.
+    # Named by architecture because these are the check names branch protection
+    # pins, and a label swap would rename a check into silently not existing.
     strategy:
       fail-fast: false
       matrix:
@@ -114,10 +102,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # The sandbox is the point of this project, so verify the runner can
-      # actually enforce before trusting a green check. Whether it can is a
-      # property of the runner image rather than the architecture: Landlock needs
-      # kernel ABI 5 (6.10+), and unprivileged userns is disabled by sysctl on
-      # some hardened images.
+      # actually enforce before trusting a green check. A property of the runner
+      # image, not the architecture: Landlock needs kernel ABI 5 (6.10+), and
+      # unprivileged userns is disabled by sysctl on some hardened images.
       - name: Report kernel sandbox support
         run: |
           uname -rm
