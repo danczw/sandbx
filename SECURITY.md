@@ -109,6 +109,15 @@ Three properties matter as much as the list:
   pid there to be named or signalled.
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges, not a tool's.
+- **A write grant over sandbx's own binary defeats the boundary.** The sandbox
+  helper is this binary re-executed, resolved through `current_exe()`, so a
+  policy granting write over the directory holding the installed `sandbx` is a
+  grant to replace the thing that does the enforcing — and the replacement runs
+  unsandboxed on the next spawn. No default grant confers write, so this takes an
+  explicit `--allow-write`. It is worth stating because `agent-run` is where the
+  grant stops being something only the operator acts on: the model chooses the
+  paths it writes to, within what was granted, and a prompt injection chooses
+  with it.
 - **The boundary is enforced by convention plus tooling**, not by a capability
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
