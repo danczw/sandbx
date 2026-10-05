@@ -85,7 +85,8 @@ jobs:
     # No floating arm label exists, so x86 floats and arm is pinned; the legs are
     # not always the same OS generation.
     # Named by architecture because these are the check names branch protection
-    # pins, and a label swap would rename a check into silently not existing.
+    # pins: a label swap renames the check, and the old name then blocks every
+    # merge, waiting for a status that will never report.
     strategy:
       fail-fast: false
       matrix:
