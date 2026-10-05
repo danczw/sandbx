@@ -25,8 +25,12 @@ new.
 | latest pre-release | yes |
 | anything older | no |
 
-Pre-1.0, there are no backports. Fixes land on `main` and ship in the next
-tagged pre-release. If you are running an alpha, run the newest one.
+Pre-1.0, every tag that publishes publishes as a pre-release, suffixed or not, so
+"latest pre-release" means the highest version number on the
+[releases page](https://github.com/danczw/sandbx/releases) — GitHub's own
+"latest" link stays empty until 1.0. There are no backports: fixes land on `main`
+and ship in the next tagged pre-release. If you are running an alpha, run the
+newest one.
 
 The intended release rhythm was one per completed phase. In practice it has become
 one per security fix — alpha.4 and alpha.5 were both cut for a sandbox weakness
