@@ -11,13 +11,20 @@ Every grant was typed by hand, which made the common case — work on the projec
 am standing in — a wall of flags:
 
 ```sh
-sandbx sandbox-run --allow-read /home/me/proj --allow-write /home/me/proj -- cargo test
+sandbx sandbox-run --allow-read /home/me/proj --allow-write /home/me/proj -- grep -rn TODO .
 ```
 
 Box 1 of [#109](https://github.com/danczw/sandbx/issues/109) makes that the
 default. Exec and env were already unconditional (`allow_system_executables`,
 `allow_standard_env`), so what was left was the filesystem axes and the guards
 that make a *default-reachable write grant* safe to ship.
+
+What it does **not** reach is a toolchain installed under `$HOME`. `cargo test` is
+the example everyone reaches for and it is the wrong one: with rustup, `cargo` is
+`~/.cargo/bin/cargo` and needs `--allow-exec` plus read on `~/.cargo/registry` and
+`~/.rustup`, none of which a working-directory grant covers. The default removes
+the flags for the *directory*, not for the build. Examples in the README use
+commands from the system paths for that reason.
 
 It lives in `Grants`, which both subcommands flatten, so `sandbox-run` and
 `agent-run` cannot disagree about it. It lives in the CLI and nowhere lower:
@@ -45,7 +52,7 @@ the path the grant lacked. Narrow and loud beats wide and silent. It also adds n
 flag, and going the other way later stays available — unconditional-plus-opt-out
 is a strict widening of this, so nothing here forecloses it.
 
-## Four refusals, and the shape of the predicate
+## The refusals, and the shape of the predicate
 
 A derived write grant is reachable by accident in a way a typed one is not, so
 `vetted_root` refuses four roots outright rather than deriving a narrower one:
@@ -54,6 +61,7 @@ A derived write grant is reachable by accident in a way a typed one is not, so
 |---|---|
 | cwd is the filesystem root | `cwd.parent().is_none()` |
 | cwd is `$HOME`, or *holds* it | `homes.iter().any(\|h\| h.starts_with(cwd))` |
+| `$HOME` is unreadable and cwd could be a home | `looks_like_a_home(cwd)`, below |
 | the running `sandbx` is inside cwd | `exe.starts_with(cwd)` |
 
 One `starts_with` covers both home cases: it is true of equal paths, so "cwd is
@@ -82,13 +90,37 @@ starts a denylist whose first omission is silent, which is the shape
 `~/code/project` is the entire use case. What the guard is for is the no-flag run
 that happens *by accident*, and that is standing in `$HOME` itself.
 
-### `HOME` unset derives anyway
+### `HOME` unset derives anyway, but the home rule degrades rather than vanishing
 
-The guard degrades to the filesystem-root rule. Refusing would break the container
-case the default exists for — `HOME` unset, cwd `/app` — and an absent `HOME` does
-not make a directory more dangerous. This is the one constraint here a plausible
-edit would quietly reverse, which is why it is the sentence on `vetted_root`'s
-`///` as well as a line in this file.
+Refusing outright would break the container case the default exists for — `HOME`
+unset, cwd `/app` — so an unreadable `HOME` still yields a root. This is the one
+constraint here a plausible edit would quietly reverse, which is why it is the
+sentence on `vetted_root`'s `///` as well as a line in this file.
+
+The first draft stopped there, and that was a bug rather than a trade. With
+`homes` empty the home arm has nothing to compare, so it does not loosen — it
+stops existing, and `cd /home && env -u HOME sandbx sandbox-run -- true` derived
+read and write over every user's home. `HOME` is routinely unset under a systemd
+unit, cron, and `docker exec`, so this was not an exotic path.
+
+So the arm falls back to `HOME_PARENTS` — `/home`, `/Users`, `/var/home`, `/root`
+— and refuses a cwd that holds one, is one, or is a direct child of one. The third
+reading is what catches `/home/other`: without a `$HOME` naming it, a child of
+`/home` is indistinguishable from a home directory.
+
+This is a list of names, which the depth-rule section above rejects for exactly
+that reason, and the distinction is worth stating because it is thin. It is a
+*fallback for one specific test*, not a rule of its own: `$HOME` remains what
+identifies a home, and the list only supplies the answer the environment refused
+to give. An omission from it therefore degrades the degraded case back to what
+shipped first, rather than opening a hole in the mechanism. The fallback is gated
+on `homes.is_empty()` for the same reason — with a `$HOME` to compare, widening
+would refuse `/home/other` for an operator who has no business there but also no
+way to say so, and that is a usability cost paid for nothing.
+
+It is deliberately wider than the rule it stands in for: `/var` and `/root/work`
+are refused where an exact `$HOME` would allow them. Over-refusing is the right
+direction for a guess, and `--allow-read`/`--allow-write` lift it.
 
 ### Both spellings of `$HOME`
 
@@ -127,6 +159,18 @@ gain. A failure to resolve it is a refusal, since core's own call would fail at 
 first spawn anyway — but the *canonicalization* of it falls back to the unresolved
 path, so a failure there cannot turn into a missing guard.
 
+### The execute axis is not touched, which is not the same as not executable
+
+The default grants read and write and no execute, and
+`the_default_root_is_not_executable` pins that. It cannot pin more. Landlock rights
+cover a subtree, so a working directory *under* a granted system path is executable
+by way of `allow_system_executables` — `/usr/src/app` is the stock `WORKDIR` in the
+official Node images, which is exactly the container deployment the default is for.
+Nothing escapes there; the code still runs confined. But "the operator's own writes
+are not runnable" is a claim the CLI cannot make, so the test asserts the thing it
+can see — that the execute axis is byte-identical to `allow_system_executables`'s —
+and says why in its own `///`.
+
 ### What it does not reach
 
 Write on a project tree is write on whatever runs in that tree next:
@@ -164,6 +208,13 @@ got its own two-variant `SandboxRunError` for the same reason folding everything
 into one `CliError` was rejected — that would make `AgentError`'s provider and
 turn variants look reachable from `sandbox-run`.
 
+Every variant ends in one shared `ADVICE` const, so two refusals cannot name
+different flags — except `EnforcerUnknown`, which exists only to *not* carry it.
+That is the one case where the advice would be false: a path flag does skip
+`current_root()`, but `command_line()` calls `current_exe()` again on every spawn,
+so the run fails a step later with an unrelated message. An error whose suggestion
+cannot work is worse than one with no suggestion.
+
 ## The seam
 
 `vetted_root(cwd, homes, exe)` is pure, with all three inputs injected as values;
@@ -182,7 +233,7 @@ would decide another's verdict.
 
 ## The mutation check
 
-The same check `decision-axis-table.md` does for a table change. Four mutations,
+The same check `decision-axis-table.md` does for a table change. Six mutations,
 run rather than reasoned about:
 
 ```
@@ -206,7 +257,21 @@ enforcer arm deleted
 home arm narrowed from starts_with to equality
    ──► a_directory_holding_home_is_refused             fails
        a_refusal_names_the_flags_to_type_instead       fails
+
+HOME-unset fallback deleted
+   ──► an_unset_home_refuses_the_well_known_homes      fails
+       an_unset_home_still_derives_a_root              passes  ◄── /app is not on the list
+       a_named_home_leaves_a_neighbour_alone           passes
+
+the fallback keeps only the starts_with reading
+   ──► an_unset_home_refuses_a_child_of_one            fails
+       an_unset_home_refuses_the_well_known_homes      passes
 ```
+
+The last two are why the degraded fallback is two readings and the test is two
+tests: a single looping test could not tell "the fallback is gone" from "the
+fallback no longer sees `/home/other`", and the second is the reading that is easy
+to drop by accident.
 
 Two things the first mutation shows. Dropping the guard breaks tests in two
 suites that never mention the default — `each_allow_flag_widens_only_its_own_axis`

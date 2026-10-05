@@ -94,15 +94,21 @@ fn an_env_flag_keeps_the_working_directory() {
     );
 }
 
+/// The default adds no execute grant of its own. It cannot promise more than that: Landlock
+/// rights cover a subtree, so a working directory *under* a system path — `/usr/src/app`,
+/// the stock `WORKDIR` in the official Node images — is executable by way of
+/// `allow_system_executables`, and no CLI-level assertion can see that.
 #[test]
 fn the_default_root_is_not_executable() {
-    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
         .policy()
         .expect("the flags describe a policy");
+    let system = sandbx_core::SandboxPolicy::default().allow_system_executables();
 
-    assert!(
-        !policy.executable_paths().contains(&cwd()),
-        "the default made a tool's own writes runnable"
+    assert_eq!(
+        bare.executable_paths(),
+        system.executable_paths(),
+        "the default widened the execute axis beyond the system paths"
     );
 }
 
