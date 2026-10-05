@@ -49,6 +49,9 @@ fn block_on(
 ) -> Result<i32, sandbx_cli::AgentError> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()?
+        .build()
+        // Named at the one call site that can produce it rather than by a blanket
+        // `From`, which would label any later io error as this one.
+        .map_err(sandbx_cli::AgentError::Runtime)?
         .block_on(future)
 }
