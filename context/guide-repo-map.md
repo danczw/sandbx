@@ -157,22 +157,24 @@ tests/       turn_loop (16), turn_compaction (23),
 ```
 src/lib.rs      Cli, Command — the clap surface and nothing else
    grants.rs    Grants — the --allow-… flags, flattened into both subcommands,
-                and the policy they derive (unit-testable without a
-                sandbox-capable kernel)
+                the policy they derive, and the working-directory default a
+                no-flag run gets (unit-testable without a sandbox-capable
+                kernel)
    sandbox.rs   SandboxRun
    agent.rs     AgentRun — the turn loop's caller
-   error.rs     AgentError
+   error.rs     AgentError, SandboxRunError, PolicyError
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
-tests/          agent_run, audit_log, audit_log_install, name, sandbox_run
+tests/          agent_run, audit_log, audit_log_install, cwd_policy, name,
+                sandbox_run
 ```
 
 Lib `sandbx_cli`, bin `sandbx`. Two subcommands: `sandbox-run` and `agent-run`.
 
-`Grants` exists so the axis loop and the one widening it applies — a write grant
-confers read — are written once. Two copies would drift, and the drift would be a
-policy difference between two subcommands that users reasonably read as the same
-flags.
+`Grants` exists so the axis loop, the one widening it applies — a write grant
+confers read — and the working-directory default are written once. Two copies
+would drift, and the drift would be a policy difference between two subcommands
+that users reasonably read as the same flags.
 
 ## Reading order
 
@@ -182,12 +184,14 @@ flags.
 4. `decision-axis-table.md` — why there is one table
 5. `decision-environment-allowlist.md` — the one bound that is not path-keyed
 6. `decision-port-allowlist.md` — why a TCP port list costs UDP
-7. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+7. `decision-default-policy.md` — what a no-flag run grants, and the directories
+   it refuses instead
+8. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
    recorded, and how one made inside the helper gets out
-8. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-9. `decision-provider-seam.md` — why there is no provider trait, and what is still
-   vendor-shaped
-10. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+9. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+10. `decision-provider-seam.md` — why there is no provider trait, and what is still
+    vendor-shaped
+11. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

@@ -1,7 +1,8 @@
 //! The grant flags, and the policy they describe.
 //!
-//! Shared by every subcommand that runs something, so the axis loop and the one
-//! widening it applies exist once rather than once per subcommand.
+//! Shared by every subcommand that runs something, so the axis loop, the one widening it
+//! applies, and the working-directory default a no-flag run gets exist once rather than
+//! once per subcommand.
 
 use std::path::{Path, PathBuf};
 
@@ -13,6 +14,9 @@ use crate::PolicyError;
 #[derive(Debug, clap::Args)]
 pub struct Grants {
     /// Grant read access to a path. Repeatable.
+    ///
+    /// Giving any path flag replaces the working-directory default, so this
+    /// grant and its siblings become the whole of the filesystem policy.
     #[arg(long = "allow-read", value_name = "PATH")]
     allow_read: Vec<PathBuf>,
 
