@@ -106,6 +106,15 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
+    /// The sandboxed command could not be executed, so it never ran.
+    ///
+    /// Distinct from [`SpawnFailed`](Self::SpawnFailed): that is the harness failing to
+    /// start a *helper*, this is the innermost stage failing to become the command.
+    ExecFailed {
+        /// The underlying OS failure.
+        source: std::io::Error,
+    },
+
     /// A sandboxed process outran its time limit and was killed.
     ///
     /// Distinct from [`SpawnFailed`](Self::SpawnFailed), which would make a wedged command
@@ -151,6 +160,9 @@ impl std::fmt::Display for SandboxError {
             Self::SpawnFailed { detail, source } => {
                 write!(f, "{detail}: {source}")
             }
+            Self::ExecFailed { source } => {
+                write!(f, "could not execute the sandboxed command: {source}")
+            }
             Self::Landlock { detail } => {
                 write!(f, "kernel refused the Landlock ruleset: {detail}")
             }
@@ -178,7 +190,33 @@ impl std::error::Error for SandboxError {
             | Self::ProcessHardening { .. }
             | Self::TimedOut { .. }
             | Self::Seccomp { .. } => None,
-            Self::Unresolvable { source, .. } | Self::SpawnFailed { source, .. } => Some(source),
+            Self::Unresolvable { source, .. }
+            | Self::SpawnFailed { source, .. }
+            | Self::ExecFailed { source } => Some(source),
+        }
+    }
+}
+
+impl SandboxError {
+    /// A stable name for this refusal, which the audit trail is filtered by.
+    ///
+    /// Exhaustive, so a new variant has to decide what a trail calls it; `Display` carries
+    /// the prose and this carries the label.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::PathNotAllowed { .. } => "path_not_allowed",
+            Self::Unresolvable { .. } => "unresolvable",
+            Self::BadHelperArgs { .. } => "bad_helper_args",
+            Self::Landlock { .. } => "landlock",
+            Self::Seccomp { .. } => "seccomp",
+            Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
+            Self::ProcessHardening { .. } => "process_hardening",
+            Self::SpawnFailed { .. } => "spawn_failed",
+            Self::ExecFailed { .. } => crate::degradation::EXEC_FAILED,
+            // The word the operator typed and the docs use, so it is the word a trail
+            // reader greps for.
+            Self::TimedOut { .. } => "timeout",
+            Self::Unsupported { .. } => "unsupported",
         }
     }
 }

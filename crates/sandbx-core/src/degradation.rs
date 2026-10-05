@@ -1,10 +1,11 @@
-//! The channel a best-effort hardening step reports itself on, and its wire format.
+//! The channel the helper reports what the parent cannot see on, and its wire format.
 //!
-//! The helper's first stage installs no `tracing` subscriber and must not — its stderr is a
-//! pipe the parent replays verbatim, and the stage below becomes the sandboxed command. So
-//! the helper names what degraded, this module renders bytes, and the *parent* turns them
-//! back into audit events; what a degradation means is decided here, never by whatever wrote
-//! the line. See `context/decision-helper-audit-channel.md` for the stdin slot.
+//! The helper installs no `tracing` subscriber and must not — its stderr is a pipe the
+//! parent replays verbatim, and the stage below becomes the sandboxed command. So the helper
+//! names what degraded and what it could not `exec`, this module renders bytes, and the
+//! *parent* turns them back into audit events; what a record means is decided here, never by
+//! whatever wrote the line. See `context/decision-helper-audit-channel.md` for the stdin
+//! slot.
 
 use std::fmt::Write as _;
 
@@ -25,10 +26,31 @@ const DETAIL_LIMIT: usize = 256;
 
 /// How many records [`decode`] will accept from one channel.
 ///
-/// Each step reports at most once, so anything beyond this did not come from [`encode`], and
-/// refusing the excess keeps a malformed channel from growing the trail without bound. Not a
-/// trust boundary: by the time the command exists the write end is gone.
-const RECORD_LIMIT: usize = Degradation::ALL.len();
+/// Each step reports at most once and the refusal below at most once, so anything beyond
+/// this did not come from [`encode`], and refusing the excess keeps a malformed channel from
+/// growing the trail without bound. Not a trust boundary: by the time the command exists the
+/// write end is gone.
+const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
+
+/// The label a command that was never executed carries, on the wire and in the trail.
+///
+/// Spelled once, here: [`SandboxError::label`](crate::SandboxError::label) returns this for
+/// [`ExecFailed`](crate::SandboxError::ExecFailed), which is what the stage that could not
+/// `exec` puts on the channel.
+pub(crate) const EXEC_FAILED: &str = "exec_failed";
+
+/// What the helper reported on the channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Report<'a> {
+    /// A hardening step that did not take effect, and why.
+    Degraded(Degradation, &'a str),
+
+    /// The command was never executed, so the run's outcome is this and not an exit.
+    ///
+    /// Carried here because the parent cannot tell otherwise: a stage that fails to `exec`
+    /// exits non-zero, and that status reaches the parent as if the command itself had.
+    ExecFailed,
+}
 
 /// A best-effort hardening step that did not take effect.
 ///
@@ -88,17 +110,28 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
     out
 }
 
-/// Parse what the helper wrote back into steps and their details.
+/// Render the record a stage that could not `exec` reports.
+///
+/// No detail: the errno reaches the operator on the helper's own stderr, which the parent
+/// forwards verbatim, and the audit record carries the label alone.
+pub(crate) fn encode_exec_failure() -> String {
+    format!("{EXEC_FAILED}{SEPARATOR}\n")
+}
+
+/// Parse what the helper wrote back into the records it reported.
 ///
 /// Skips an unrecognised line rather than failing the run, this being the reporting path for
-/// a sandbox that already carried on. What it must not do is pass an unvalidated mechanism
-/// name to the trail, hence [`Degradation::from_label`].
-pub(crate) fn decode(channel: &str) -> Vec<(Degradation, &str)> {
+/// a sandbox that already carried on. What it must not do is pass an unvalidated label to
+/// the trail, hence the closed set [`Degradation::from_label`] and [`EXEC_FAILED`] are.
+pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
     channel
         .lines()
         .filter_map(|line| {
             let (label, detail) = line.split_once(SEPARATOR)?;
-            Some((Degradation::from_label(label)?, detail))
+            if label == EXEC_FAILED {
+                return Some(Report::ExecFailed);
+            }
+            Some(Report::Degraded(Degradation::from_label(label)?, detail))
         })
         .take(RECORD_LIMIT)
         .collect()
@@ -108,6 +141,17 @@ pub(crate) fn decode(channel: &str) -> Vec<(Degradation, &str)> {
 mod tests {
     use super::*;
 
+    /// Only the degradations in `channel`, for a test that is about those alone.
+    fn degraded(channel: &str) -> Vec<(Degradation, &str)> {
+        decode(channel)
+            .into_iter()
+            .filter_map(|report| match report {
+                Report::Degraded(step, detail) => Some((step, detail)),
+                Report::ExecFailed => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn every_step_survives_the_crossing_with_its_detail() {
         let records: Vec<_> = Degradation::ALL
@@ -116,7 +160,7 @@ mod tests {
             .collect();
 
         let channel = encode(&records);
-        let decoded = decode(&channel);
+        let decoded = degraded(&channel);
 
         assert_eq!(decoded.len(), records.len(), "a record was lost");
         for ((sent, detail), (got, got_detail)) in records.iter().zip(decoded) {
@@ -160,7 +204,10 @@ mod tests {
 
         assert_eq!(
             decode(&channel),
-            vec![(Degradation::CapabilityBoundingSet, "left as inherited")],
+            vec![Report::Degraded(
+                Degradation::CapabilityBoundingSet,
+                "left as inherited"
+            )],
             "a surviving record was dropped with the malformed ones"
         );
     }
@@ -175,7 +222,7 @@ mod tests {
             encoded.len()
         );
 
-        let decoded = decode(&encoded);
+        let decoded = degraded(&encoded);
         assert_eq!(decoded.len(), 1, "the capped record stopped decoding");
         assert_eq!(
             decoded[0].0,
@@ -194,7 +241,7 @@ mod tests {
             ),
         )]);
 
-        let decoded = decode(&encoded);
+        let decoded = degraded(&encoded);
 
         assert_eq!(decoded.len(), 1, "a detail split itself into two records");
         assert_eq!(
@@ -218,6 +265,32 @@ mod tests {
             decode(&channel).len(),
             RECORD_LIMIT,
             "the record cap did not hold"
+        );
+    }
+
+    #[test]
+    fn an_exec_failure_survives_the_round_trip() {
+        assert_eq!(
+            decode(&encode_exec_failure()),
+            vec![Report::ExecFailed],
+            "the refusal did not cross as itself"
+        );
+    }
+
+    /// The cap is one more than the steps for this record, so a channel carrying every
+    /// degradation still has room for the refusal behind them.
+    #[test]
+    fn the_record_cap_admits_a_refusal_too() {
+        let mut channel = encode(&Degradation::ALL.map(|step| (step, "degraded".to_string())));
+        channel.push_str(&encode_exec_failure());
+
+        let decoded = decode(&channel);
+
+        assert_eq!(decoded.len(), RECORD_LIMIT, "the cap dropped a record");
+        assert_eq!(
+            decoded.last(),
+            Some(&Report::ExecFailed),
+            "the refusal was capped away behind the degradations"
         );
     }
 

@@ -134,7 +134,7 @@ impl SandboxedCommand {
         // so nothing drains the pipe while the helper writes it. Read on the error paths
         // too: the hardening degraded before the command started, so it holds of the
         // attempt however it ended.
-        record_degradations(audit);
+        let _ = record_reports(audit);
 
         result
     }
@@ -183,24 +183,35 @@ fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), Sandbox
     })
 }
 
-/// Read what the helper reported and put it on the audit trail.
+/// Read what the helper reported, put the degradations on the audit trail, and return the
+/// reason the command never ran if the helper reported one.
 ///
 /// Emitted here because this is the process with a subscriber; the helper installs none, and
 /// cannot without writing sandbx's records into the command's own output. Reads to EOF with
 /// the helper already waited on, so nothing drains the pipe while it writes — safe only
 /// because `degradation::encode` bounds the records, a channel that could outgrow the pipe
 /// buffer deadlocking the run it reports on.
-fn record_degradations(mut audit: std::io::PipeReader) {
+fn record_reports(mut audit: std::io::PipeReader) -> Option<&'static str> {
     use std::io::Read;
 
     let mut records = String::new();
     if audit.read_to_string(&mut records).is_err() {
-        return;
+        return None;
     }
 
-    for (step, detail) in crate::degradation::decode(&records) {
-        crate::AuditEvent::degraded(step.label(), detail).emit();
+    let mut refused = None;
+    for report in crate::degradation::decode(&records) {
+        match report {
+            crate::degradation::Report::Degraded(step, detail) => {
+                crate::AuditEvent::degraded(step.label(), detail).emit();
+            }
+            crate::degradation::Report::ExecFailed => {
+                refused = Some(crate::degradation::EXEC_FAILED);
+            }
+        }
     }
+
+    refused
 }
 
 /// Spawn the helper and wait for it, giving up after `limit`.
