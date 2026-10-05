@@ -155,10 +155,9 @@ Three properties matter as much as the list:
   holds files that execute outside the sandbox later, under your own account:
   `.git/hooks/*`, `.git/config`, `.cargo/config.toml`, `Makefile`, `package.json`
   scripts, `rust-toolchain` — and, in a build tree or an install prefix, `sandbx`
-  itself. A sandboxed
-  tool may rewrite any of them, and the next ordinary `git commit` or `cargo
-  build` runs the result unconfined. The sandbox bounds the command it is given;
-  it has no view of what you will run afterwards.
+  itself. A sandboxed tool may rewrite any of them, and the next ordinary `git
+  commit` or `cargo build` runs the result unconfined. The sandbox bounds the
+  command it is given; it has no view of what you will run afterwards.
 
   Nothing here is refused, and nothing can be: it waits for a human action, and
   enumerating the candidates would be a denylist whose first omission is silent.
