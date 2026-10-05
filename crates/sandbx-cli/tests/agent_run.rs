@@ -22,18 +22,38 @@ fn grants_only_what_a_tool_needs_to_start() {
         .expect("the flags describe a policy");
 
     assert_eq!(
-        policy.readable_paths(),
+        policy.executable_paths(),
         SandboxPolicy::default()
             .allow_system_executables()
-            .readable_paths(),
-        "default read access is wider than the loader and system binaries"
+            .executable_paths(),
+        "default execute access is wider than the loader and system binaries"
     );
-    assert!(policy.writable_paths().is_empty(), "writable by default");
     assert!(!policy.allows_network(), "network on by default");
     assert!(
         !policy.allows_unix_sockets(),
         "unix sockets open by default"
     );
+}
+
+/// The derived default is the part nobody types, and so the part nobody checks. Pinning
+/// it across both subcommands is what keeps `Grants` one policy rather than two.
+#[test]
+fn the_default_matches_what_sandbox_run_derives() {
+    let agent = agent_run(&["sandbx", "agent-run", "--", "hello"])
+        .policy()
+        .expect("the flags describe a policy");
+    let sandbox = match Cli::parse_from(["sandbx", "sandbox-run", "--", "true"]).command {
+        Command::SandboxRun(args) => args.policy().expect("the flags describe a policy"),
+        other => panic!("{other:?} is not sandbox-run"),
+    };
+
+    for axis in sandbx_core::Axis::ALL {
+        assert_eq!(
+            agent.paths(axis),
+            sandbox.paths(axis),
+            "the two subcommands derive a different default for {axis:?}"
+        );
+    }
 }
 
 #[test]

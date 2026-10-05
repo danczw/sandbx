@@ -13,6 +13,15 @@ fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
     }
 }
 
+/// Where cargo runs an integration test: the package root, which is neither `$HOME` nor
+/// the filesystem root and holds no `sandbx` binary, so the default derives cleanly here.
+fn cwd() -> std::path::PathBuf {
+    std::env::current_dir()
+        .expect("a working directory")
+        .canonicalize()
+        .expect("an openable working directory")
+}
+
 #[test]
 fn grants_only_what_a_command_needs_to_start() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -20,14 +29,81 @@ fn grants_only_what_a_command_needs_to_start() {
         .expect("the flags describe a policy");
 
     assert_eq!(
-        policy.readable_paths(),
+        policy.executable_paths(),
         sandbx_core::SandboxPolicy::default()
             .allow_system_executables()
-            .readable_paths(),
-        "default read access is wider than the loader and system binaries"
+            .executable_paths(),
+        "default execute access is wider than the loader and system binaries"
     );
-    assert!(policy.writable_paths().is_empty(), "writable by default");
     assert!(!policy.allows_network(), "network on by default");
+    assert!(
+        !policy.allows_unix_sockets(),
+        "unix sockets open by default"
+    );
+}
+
+/// The point of the default: the common case costs no flags. It is a *write* grant the
+/// operator did not type, so the guards in `grants.rs` are what keep it narrow.
+#[test]
+fn the_working_directory_is_readable_and_writable() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert_eq!(
+        policy.readable_paths(),
+        [cwd()],
+        "the default read grant is not the working directory alone"
+    );
+    assert_eq!(
+        policy.writable_paths(),
+        [cwd()],
+        "the default write grant is not the working directory alone"
+    );
+}
+
+/// A path flag *replaces* the default rather than adding to it. The other way round, a
+/// deliberately tight `--allow-read /srv` would silently gain write over the whole tree.
+#[test]
+fn a_path_flag_replaces_the_working_directory() {
+    for flag in ["--allow-read", "--allow-write", "--allow-exec"] {
+        let policy = sandbox_run(&["sandbx", "sandbox-run", flag, "/srv", "--", "true"])
+            .policy()
+            .expect("the flags describe a policy");
+
+        for axis in sandbx_core::Axis::ALL {
+            assert!(
+                !policy.paths(axis).contains(&cwd()),
+                "{flag} left the working directory on the {axis:?} axis"
+            );
+        }
+    }
+}
+
+/// `--allow-env` names no path, so it must not be read as an explicit policy.
+#[test]
+fn an_env_flag_keeps_the_working_directory() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-env", "ONE", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert_eq!(
+        policy.writable_paths(),
+        [cwd()],
+        "a flag naming no path suppressed the working-directory default"
+    );
+}
+
+#[test]
+fn the_default_root_is_not_executable() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert!(
+        !policy.executable_paths().contains(&cwd()),
+        "the default made a tool's own writes runnable"
+    );
 }
 
 #[test]
@@ -468,15 +544,18 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
             "{name} was not granted"
         );
     }
-    assert_eq!(
-        policy.readable_paths(),
-        sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
-            .policy()
-            .expect("the flags describe a policy")
-            .readable_paths(),
-        "an env grant widened the read axis"
-    );
-    assert!(policy.writable_paths().is_empty(), "env implied write");
+    // Against the bare policy rather than against emptiness: the working-directory
+    // default means "widens nothing else" is no longer the same claim as "grants nothing".
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+    for axis in sandbx_core::Axis::ALL {
+        assert_eq!(
+            policy.paths(axis),
+            bare.paths(axis),
+            "an env grant widened the {axis:?} axis"
+        );
+    }
     assert!(!policy.allows_network(), "env implied network");
     assert!(!policy.allows_unix_sockets(), "env implied unix sockets");
 }
