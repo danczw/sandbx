@@ -92,6 +92,13 @@ Three properties matter as much as the list:
   and the audit record derive their per-axis loops from the same table, but their
   flag spellings and record fields are necessarily hand-written.
 
+  Those pinning tests run natively on both published architectures, x86_64 and
+  aarch64, and against the static-musl target the published binary *is* — not
+  only the host gnu triple it is built on. A static binary loads no interpreter,
+  so what a command needs granted before it can start differs between the two,
+  and enforcement is asserted under both at merge time and again before a
+  release is published.
+
 ## What sandbx does *not* claim
 
 - **Non-Linux is unsupported**, and refused at *compile* time rather than at
