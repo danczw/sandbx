@@ -11,7 +11,7 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 
 ## What is built
 
-`AuditEvent` in `sandbx-core/src/audit.rs` — four variants, all emitted at
+`AuditEvent` in `sandbx-core/src/audit.rs` — six variants, all emitted at
 `INFO`:
 
 | Variant | `decision` | Fields |
@@ -20,6 +20,8 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 | `Denied` | `denied` | `tool`, `subject`, `reason` |
 | `Degraded` | `degraded` | `mechanism`, `detail` |
 | `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env` |
+| `Exited` | `exited` | `program`, `code` |
+| `Failed` | `failed` | `program`, `reason` |
 
 **`INFO`, not `DEBUG`** — at `DEBUG` the trail would be absent for everyone who
 did not opt in, which is exactly when a record matters. `tests/audit.rs` pins
@@ -41,6 +43,20 @@ rather than going silently uncounted (#51).
 
 **Denials always carry a reason.** `Denied.reason` is non-optional; "denied"
 alone is not actionable.
+
+**A run is two records** (#96). `Spawned` is the policy, settled before the exec,
+so it stands for an attempt — including one that never starts. Exactly one
+`Exited` or `Failed` closes it, emitted by `SandboxedCommand::output` and nowhere
+else. Per run, in order: `spawned`, then zero or more `degraded`, then the one
+terminal record, then the command's own stdout and stderr — which come last
+because `output()` collects the command in full and `SandboxRun::execute`
+forwards the streams only after it returns.
+
+`Exited.code` is `exit_code`'s encoding, 128 + n for a signal, so the number on
+the trail is the number `sandbx` exits with rather than a second encoding of the
+same status. `Failed.reason` comes from `SandboxError::label` — exhaustive, so a
+new error variant has to decide what a trail calls it, and the trail cannot name
+a reason the error type does not define.
 
 ## The sink
 
@@ -70,7 +86,7 @@ still beats a run that does not happen. Installed *inside* the
 `with_helper_dispatch` closure — above it, the helper would write sandbx's own
 records into the output of the command being sandboxed.
 
-## The helper's degradations cross a channel
+## What the helper cannot see crosses a channel
 
 That placement leaves the helper with no subscriber at all, and both best-effort
 hardening steps run there. Emitting `Degraded` in the helper recorded nothing,
@@ -82,23 +98,29 @@ writes them to the pipe sandbx put in its **stdin** slot, and sandbx decodes the
 bytes and emits the audit events itself. One subscriber in the process tree, one
 timestamp source, and the command's own stdout and stderr stay byte-exact.
 
+A command the sandbox could not `exec` crosses the same channel, as the reserved
+label `exec_failed`, and becomes the run's terminal record. It has to: stage 2
+relays its own non-zero exit on the command's behalf, so the parent sees a status
+indistinguishable from a command that ran and exited 1.
+
 The stdin slot because fds 0/1/2 are the only descriptors `std` can hand a child
 without `unsafe`, which the workspace forbids — and 1/2 are the command's output.
-Stage 1 sets the inner stage's stdin to `Stdio::null()`, so the sandboxed command
-has no handle on the channel; `decode` also accepts only a closed set of mechanism
-labels, so nothing can name a mechanism sandbx did not define. Two costs are
-accepted: the slot is claimed (no interactive stdin for a sandboxed command later),
-and sandbx reads after waiting, so a `degraded` record is timestamped after
-`spawned`. See `decision-helper-audit-channel.md`.
+Stage 2 takes the channel off fd 0 into a close-on-exec duplicate and puts
+`/dev/null` in the slot before it becomes the command, so the sandboxed command
+has no handle on the channel and a successful `exec` closes the duplicate;
+`decode` also accepts only a closed set of labels, so nothing can name a
+mechanism sandbx did not define. Two costs are accepted: the slot is claimed (no
+interactive stdin for a sandboxed command later), and sandbx reads after waiting,
+so `degraded` and the terminal record are both timestamped after `spawned`. See
+`decision-helper-audit-channel.md`.
 
 ## What is not built
 
 | Missing | Consequence |
 |---|---|
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone. Zero emission sites in tools, agent, providers, tui, session |
-| session ids | no field carries one; there is no session concept in the workspace |
+| session ids | nothing ties a spawn to its outcome but `program`; a correlation id needs the session concept #108 owns, and becomes necessary once a streaming caller can interleave runs |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`, no XDG path resolution anywhere in `crates/` |
-| a terminal record | `Spawned` is emitted *before* the exec, so it appears for a command that then fails to start, and a `--timeout` kill records nothing. The record describes the policy, not the outcome |
 
 Libraries emit and never choose a sink — no emission site touches a file or a
 terminal. That part of the design holds; it is the sink that is absent.
