@@ -2,8 +2,7 @@
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 
-/// Re-running this executable with the dispatch flag is what lets a shipped sandbx need
-/// no second binary installed, and reaching it by inode is what a rename cannot redirect.
+/// What lets a shipped sandbx need no second binary installed.
 #[test]
 fn defaults_to_re_executing_this_image_by_inode() {
     let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
