@@ -21,6 +21,10 @@ jobs:
     # below is the gate: run on x86 it proves nothing about an arm binary.
     strategy:
       fail-fast: false
+      # musl, not gnu: a glibc build carries the build machine's glibc as a
+      # *minimum* version, so a binary built on the current runner refuses to
+      # start on any older distribution. v0.1.0-alpha.1 shipped that way and
+      # could not run on Ubuntu 22.04. Static musl has no such floor.
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
@@ -29,17 +33,15 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # musl, not gnu: a glibc build carries the build machine's glibc as a
-      # *minimum* version, so a binary built on the current runner refuses to
-      # start on any older distribution. v0.1.0-alpha.1 shipped that way and
-      # could not run on Ubuntu 22.04. Static musl has no such floor.
-      - uses: dtolnay/rust-toolchain@stable
+      # Same SHA as ci.yml's rust-toolchain steps; why `v1` and not `stable` is there.
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # Nothing else checks this pairing, and the enforcement claim below rests on
       # it: a mismatch would cross-compile and publish a green result proving
@@ -97,7 +99,7 @@ jobs:
           # Lets anyone verify the download matches what this run produced.
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.target }}
           path: dist/*.tar.gz*
@@ -111,7 +113,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           path: dist
           merge-multiple: true

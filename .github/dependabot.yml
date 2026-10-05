@@ -1,0 +1,40 @@
+# The actions in `workflows/` are pinned to full commit SHAs, which cannot move
+# under us but also cannot pick up a fix. This is the other half: it rewrites both
+# the SHA and the `# vX.Y.Z` comment beside it, so nothing may follow that comment
+# on the line — a version it cannot match is one it leaves stale.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # Must be `/` for this ecosystem; `.github/workflows` is found from there.
+    directory: /
+    # Monday, alongside the weekly `audit` cron in ci.yml, so supply-chain work
+    # arrives in one batch rather than twice.
+    schedule:
+      interval: weekly
+      day: monday
+    # Dependabot commits through the API, so .githooks/commit-msg never sees them;
+    # the prefix is what keeps a squash merge's subject conventional. No scope:
+    # every scope in this log names a crate.
+    commit-message:
+      prefix: ci
+    labels:
+      - ci
+    # Above anything six actions can generate. Reaching the limit stops new PRs
+    # without saying so, which is the rot the pins are meant to avoid.
+    open-pull-requests-limit: 10
+    # A compromised release is usually yanked within days, so wait before adopting
+    # one. `default-days` is the only cooldown key this ecosystem reads; the
+    # `semver-*-days` ones are inert here.
+    cooldown:
+      default-days: 7
+    # Patch and minor together; a major stays on its own. A major bump of the
+    # action that downloads what `gh release create` publishes is not reviewable
+    # alongside three patches.
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

@@ -9,6 +9,7 @@ Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
 .githooks/          pre-commit: fmt --check, clippy -D warnings, subject length
+.github/            CI and release workflows, their action pins, and dependabot
 SECURITY.md         the promise to users — the one doc that must never lag
 ```
 
