@@ -45,7 +45,7 @@ run through `SandboxedCommand`:
 | control | mechanism | covers |
 |---------|-----------|--------|
 | filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper/ruleset/compat.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
-| network | empty network namespace | IP egress, abstract unix sockets |
+| network | an empty network namespace, or — when a port allowlist is given — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets and non-TCP stream protocols | IP egress and abstract unix sockets when network is withheld; IP egress narrowed to the allowlisted TCP ports when it is granted per port |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create`. Namespace creation is denied on every route, not just `unshare`: `clone` is filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`. A foreign architecture is killed outright rather than refused per call — an i386 binary on x86\_64, or AArch32 on aarch64 — since its syscall numbers mean something else. On x86\_64 the x32 ABI is refused wholesale for the same reason, and needs a rule of its own because, unlike those, it shares the architecture the filter gates on |
@@ -171,6 +171,26 @@ Three properties matter as much as the list:
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   there is no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).
+- **A port allowlist is not a destination allowlist.** `--allow-network 443`
+  bounds egress to port 443 — on *every* routable host. Landlock's network rules
+  match the port and nothing else, and seccomp cannot read the `sockaddr` behind
+  `connect`'s pointer, so neither mechanism can see where a connection is going.
+  Per-host would mean terminating every connection in a userspace proxy, which
+  sandbx does not have
+  ([#145](https://github.com/danczw/sandbx/issues/145)). Treat the flag as a
+  reduction in blast radius, not as a destination control: it stops a command
+  reaching an SSH port or a database, not a command exfiltrating over HTTPS.
+
+  It also costs more than it looks. A port list claims egress reaches the ports
+  it names and nowhere else, which is only true if the transports Landlock
+  cannot police are shut: UDP, raw sockets, and stream sockets carrying a
+  protocol other than TCP (MPTCP, SCTP), all denied by seccomp while a port list
+  is in force. So **name resolution fails** under `--allow-network <port>` —
+  `getaddrinfo` can reach neither a UDP resolver nor `AF_NETLINK` — and so do
+  QUIC, HTTP/3 and `ping`. Until that is addressed
+  ([#147](https://github.com/danczw/sandbx/issues/147)), a command needing names
+  wants a bare `--allow-network`, or an address resolved before the run.
+  `context/decision-port-allowlist.md` records why the denial is not narrower.
 - **Unix sockets are all-or-nothing.** `--allow-unix-sockets` grants *every*
   pathname socket the filesystem policy can reach — an ssh-agent, a docker
   socket, the session bus — not a chosen one. seccomp compares register values
@@ -248,7 +268,10 @@ Track them with the [`security` label](https://github.com/danczw/sandbx/labels/s
 
 These are documented behaviour, and reports of them will be closed as such:
 
-- Network reachable after you passed `--allow-network`.
+- Network reachable after you passed `--allow-network`, including any host on an
+  allowlisted port after `--allow-network <port>` — see *A port allowlist is not
+  a destination allowlist* above — and including name resolution *failing* under
+  that form.
 - A command reading an environment variable you passed with `--allow-env`,
   including the startup set (`PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE`,
   `TZ`) the CLI grants so that a program named without a leading `/` is looked up

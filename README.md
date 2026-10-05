@@ -16,7 +16,8 @@ rather than degrading to unrestricted execution.
 > surface — no session, no history, no interrupt — and, more importantly, any
 > approval prompt: every tool call the model asks for runs, so the grants you pass
 > are the whole of what a prompt injection can reach. Enforced today on Linux 6.10+ with
-> unprivileged user namespaces: filesystem (Landlock), network (empty netns),
+> unprivileged user namespaces: filesystem (Landlock), network (empty netns, or
+> a TCP port allowlist),
 > dangerous syscalls (seccomp), process lifetime (PID namespace). Kernels that
 > cannot enforce are refused, never run unrestricted. Do not assume a version
 > sandboxes anything until it says so.
@@ -76,6 +77,7 @@ permission denials the examples above are there to show.
 | `--allow-write PATH` | write access to `PATH`. Repeatable |
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
 | `--allow-network`    | a network namespace with an interface. IP egress only |
+| `--allow-network PORT` | IP egress on `PORT` alone — on every host, since the kernel matches the port and not the destination. Denies UDP and raw sockets with it, so names stop resolving. Repeatable |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
 | `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. There is no way to set one from here. Repeatable |
 | `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |

@@ -8,8 +8,8 @@ this file is the bug.
 
 | Mechanism | Bounds | Where |
 |---|---|---|
-| Landlock | filesystem paths | `helper/ruleset/rights.rs` |
-| seccomp-BPF | syscalls | `helper/seccomp.rs` |
+| Landlock | filesystem paths, and TCP ports | `helper/ruleset/rights.rs` |
+| seccomp-BPF | syscalls, down to a socket's domain, type and protocol | `helper/seccomp.rs` |
 | namespaces | network, PIDs, identity | `helper/hardening.rs` |
 
 ## Two layers, one table
@@ -62,6 +62,21 @@ kernel-independent. Subtractions rather than enumerations: a new right added by
 a future ABI lands in `from_all` and is therefore denied by `allow_read`
 automatically, instead of being silently permitted until someone notices.
 
+The network axis is a separate set, `AccessNet`, and does not compose with the
+above — `BitFlags<AccessFs>` and `BitFlags<AccessNet>` are distinct types:
+
+```
+Denied    ──►  Unhandled              ◄── the empty netns confines it instead
+AnyPort   ──►  Unhandled              ◄── the flag's stated meaning
+Ports(p)  ──►  Ports { from_all(abi), p }
+```
+
+`Unhandled` is a named state and not an empty collection, which is the one thing
+in this file most worth not simplifying. Handling `AccessNet` with zero
+`NetPort` rules denies *all* TCP; not handling it leaves TCP *unrestricted*. So
+"no net rules" is two opposite behaviours, and an `Option` or a `Vec` would spell
+the fail-open one by default.
+
 ## Failure is closed
 
 One ABI, hard-required, or nothing:
@@ -107,9 +122,12 @@ the ladder walk in one process.
 ```
 set_no_new_privs()        ◄── seccomp will not install without it
 deny_dangerous_syscalls(policy)
-requested(policy)  ──► Requested { handled, rules }   ◄── negotiates internally
-  handle_access(handled) ──► create
+requested(policy)  ──► Requested { handled, rules, net }   ◄── negotiates internally
+  handle_access(handled)
+  net == Ports  ──► handle_access(rights)            ◄── both before create
+                                   create
   for rules: PathFd::new ──► add_rule
+  net == Ports  ──► for ports: NetPort::new ──► add_rule
 restrict_self()
 enforcement_verdict()
 ```
@@ -125,6 +143,14 @@ negotiates and returns both, so no ABI is in scope in `apply` at all and the
 divergence is unexpressible rather than merely commented against. `Access` and
 `AccessFs` dropped out of `apply`'s imports with it, so reintroducing the split
 means reintroducing two imports — visible in a diff.
+
+The network axis is split across `create` because Landlock is: `handle_access`
+exists only before it and `add_rule` only after. So `apply` destructures `net`
+once and gates both uses on the same `Option`, which is the whole of why there
+is no path that installs a port rule without handling the axis, or handles it
+for a policy that asked for no ports. Getting that wrong in the second direction
+is loud; getting it wrong in the first leaves TCP unrestricted while the CLI
+reports an allowlist, and only `tests/enforcement_network.rs` sees it.
 
 A dir-only right on a regular file **fails `add_rule`** under `HardRequirement` —
 so the `& from_file(abi)` narrowing is not a tidying step. Dropping it would
@@ -154,8 +180,13 @@ coupling to seccompiler's codegen is relocated into `eval`, not removed, and
 verdict (#99).
 
 `EPERM`, not kill — a denied syscall should look like a permission error to the
-program, not a crash. `socket(AF_UNIX)` is gated on `allows_unix_sockets()`,
-independently of `allows_network`; `socketpair` is left alone.
+program, not a crash. `socket` carries two independent families of rule, so both
+append with `entry().or_default()` rather than `insert` — rules for one syscall
+are OR'd, and an `insert` in either would wipe the other silently. The
+`AF_UNIX` denial is gated on `allows_unix_sockets()`, independently of
+`allows_network`; the type and protocol denials are gated on
+`NetworkPolicy::Ports` alone, and `context/decision-port-allowlist.md` is why.
+`socketpair` is left alone.
 
 ### Three filters, three actions
 
@@ -167,7 +198,7 @@ cannot loosen an earlier one.
 
 | Filter | Action | Why not `EPERM` |
 |---|---|---|
-| the 28 entries, `socket(AF_UNIX)`, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
+| the 28 entries, the conditional `socket` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
 | `clone3` | `ENOSYS` | glibc 2.34+ calls it from `pthread_create` and falls back to `clone` only on `ENOSYS`; `EPERM` breaks every threaded program instead of routing it onto the filtered `clone` |
 | any non-negative `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
 
@@ -202,7 +233,7 @@ only an x32 caller reaches for those numbers.
 
 | Step | Hard or best-effort | Note |
 |---|---|---|
-| `unshare(CLONE_NEWUSER\|CLONE_NEWPID[\|CLONE_NEWNET])` | **hard** — EPERM refuses | unconditional for every policy |
+| `unshare(CLONE_NEWUSER\|CLONE_NEWPID[\|CLONE_NEWNET])` | **hard** — EPERM refuses | unconditional for every policy; `CLONE_NEWNET` is dropped whenever network is granted *at all*, a bare grant and a port allowlist alike, because a port rule inside an empty netns has nothing to permit |
 | `no_new_privs` | **hard** | set in both stages |
 | effective/permitted/inheritable/ambient capsets | **hard** | |
 | `RLIMIT_CORE = 0` | **hard** | chosen over `PR_SET_DUMPABLE`: only the rlimit survives `execve` |
@@ -298,11 +329,17 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
 - **The policy is readable from inside.** Granted paths and allowlisted variable
   names cross as argv, and the command can read `/proc/self/cmdline`. Names only,
   never values — which is why there is no `--allow-env NAME=VALUE`.
+- **A port allowlist is not a destination allowlist.** Landlock matches the port
+  and nothing else, so `--allow-network 443` reaches port 443 on every routable
+  host. Per-host needs a userspace proxy (#145). Rationale, and the cost of the
+  UDP denial that makes the port claim true, in
+  `decision-port-allowlist.md`.
 
 ## Known gaps
 
 | Gap | State |
 |---|---|
+| Per-host egress | **open** (#145). Per-*port* is enforced — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets and non-TCP stream protocols — but no kernel mechanism can match the destination, so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution; #147 holds the options. |
 | Per-socket unix grants | **open**. Needs Landlock `ResolveUnix` (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. Today it is one all-or-nothing toggle. |
 | `FsGuard` TOCTOU | **mostly closed**. Tools take handles (`open_read`/`open_write`, `O_NOFOLLOW`), not resolved paths. Residual: a parent-directory swap mid-open, which needs full `openat`-chain resolution. `ls` still takes a path — `read_dir` has no handle form. |
 | Capability coverage | **closed**. `tests/capability_coverage.rs` reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |

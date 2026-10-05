@@ -232,8 +232,9 @@ fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
 ///
 /// Denying network means an empty one: a fresh netns has only a (down) loopback
 /// interface and no route anywhere, so there is no network to reach rather than a
-/// filtered one. Stronger than Landlock's network rules, which cover only TCP
-/// bind/connect and leave UDP and raw sockets untouched.
+/// filtered one. Stronger than a port allowlist, which reaches the named port on every
+/// host — and whose seccomp half has to deny UDP and raw sockets, because Landlock's
+/// network rules cover only TCP bind/connect.
 ///
 /// `CLONE_NEWUSER` is requested alongside because creating any other namespace otherwise
 /// needs `CAP_SYS_ADMIN`; a user namespace grants that capability *within the new

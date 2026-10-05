@@ -57,7 +57,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    fs_guard.rs       in-process path enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, the audit pipe, the kill chain
       dispatch.rs    HELPER_FLAG, HelperDispatch — the entry into helper mode
-   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx, --env
+   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx,
+                     --allow-network-port, --env
    audit.rs          AuditEvent, AUDIT_TARGET
    spawn.rs          spawn::command — the one Command::new; env_clear + allowlist
    error.rs
@@ -66,26 +67,29 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       mod.rs         apply() — sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
       seccomp.rs     BLOCKED_SYSCALLS (28), blocked_syscalls, compiled_filter
-         tests.rs    the denylist, the program, and the eval interpreter
+         tests/      unit tests: denylist, sockets, namespaces, arch; plus the
+                     eval interpreter they are all read through
       ruleset/
-         mod.rs      Requested { handled, rules } — requested, requested_at
-         compat.rs   handled_access, kernel_probe, negotiated_abi_from,
-                     negotiated_abi, enforcement_verdict
-         rights.rs   rights_for, fs_rules
-         tests/      unit tests: compat, grants, rules
+         mod.rs      Requested { handled, rules, net }, RequestedNet —
+                     requested, requested_at
+         compat.rs   handled_access, handled_net_access, kernel_probe,
+                     negotiated_abi_from, negotiated_abi, enforcement_verdict
+         rights.rs   rights_for, fs_rules, net_rules
+         tests/      unit tests: compat, grants, net, rules
 tests/               audit, capability_coverage, command, denylist,
                      enforcement (31 real-kernel tests, paths and grants),
                      enforcement_syscalls (8, calls Landlock cannot express),
+                     enforcement_network (5, the TCP ports it can),
                      fs_guard, helper_args, policy
-tests/support/       mod.rs — runtime_paths, allow_probe, run, shared by the two
-                     enforcement targets; plus 5 [[bin]] probes,
+tests/support/       mod.rs — runtime_paths, allow_probe, run, shared by the
+                     three enforcement targets; plus 6 [[bin]] probes,
                      required-features = ["sandbox-integration"]
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
 `HelperDispatch`, `SandboxError`, `Access`, `FsGuard`, `ReadableWalk`,
 `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
-`SandboxPolicy`.
+`NetworkPolicy`, `SandboxPolicy`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
 in-process meaning, and a refusal carries an `Access` so it can name the grant it
@@ -175,13 +179,14 @@ flags.
 3. `decision-enforcement-seam.md` — where policy becomes kernel state
 4. `decision-axis-table.md` — why there is one table
 5. `decision-environment-allowlist.md` — the one bound that is not path-keyed
-6. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+6. `decision-port-allowlist.md` — why a TCP port list costs UDP
+7. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
    recorded, and how one made inside the helper gets out
-7. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-8. `decision-provider-seam.md` — why there is no provider trait, and what is still
+8. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+9. `decision-provider-seam.md` — why there is no provider trait, and what is still
    vendor-shaped
-9. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
-   is not given
+10. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+    is not given
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
