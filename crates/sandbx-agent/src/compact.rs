@@ -424,6 +424,30 @@ mod tests {
         assert_eq!(plan_cut(&[], 6, Some(2), 0), None);
     }
 
+    /// A single-message history is the shape a one-shot caller builds, and the scans stop
+    /// short of `history.len()`, so there is no cut to find. Whatever a caller put in that
+    /// message therefore reaches every request of the turn — which is what lets a system
+    /// prompt and the first instruction be relied on rather than merely hoped for.
+    #[test]
+    fn a_lone_message_cannot_be_withheld() {
+        let history = vec![user_text("the whole instruction")];
+
+        for keep_recent in [None, Some(0), Some(1), Some(99)] {
+            for floor in [0, 1, 99] {
+                assert_eq!(
+                    plan_cut(&history, 0, keep_recent, floor),
+                    None,
+                    "keep_recent={keep_recent:?} floor={floor}"
+                );
+                assert_eq!(
+                    plan_cut(&history, 6, keep_recent, floor),
+                    None,
+                    "keep_recent={keep_recent:?} floor={floor}, with the turn's own messages"
+                );
+            }
+        }
+    }
+
     /// Monotonicity is what lets `run_turn` re-plan each measured round without ever
     /// re-showing the model history it had already withheld.
     #[test]
