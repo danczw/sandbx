@@ -133,7 +133,6 @@ fn looks_like_a_home(cwd: &Path) -> bool {
 fn vetted_root<'a>(
     cwd: &'a Path,
     homes: &[PathBuf],
-    exe: &Path,
     granted: &[PathBuf],
 ) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
@@ -174,13 +173,6 @@ fn vetted_root<'a>(
         });
     }
 
-    if exe.starts_with(cwd) {
-        return Err(PolicyError::EnforcerInside {
-            cwd: cwd.to_path_buf(),
-            exe: exe.to_path_buf(),
-        });
-    }
-
     Ok(cwd)
 }
 
@@ -200,12 +192,6 @@ fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
             source,
         })?;
 
-    // `command_line()` resolves this same path again on every spawn, which is what makes a
-    // write grant over it reach the enforcer mid-turn. Falling back to the unresolved path
-    // keeps a canonicalize failure from turning into a *missing* guard.
-    let exe = std::env::current_exe().map_err(|source| PolicyError::EnforcerUnknown { source })?;
-    let exe = exe.canonicalize().unwrap_or(exe);
-
     let mut homes = Vec::new();
     // Absolute only: an empty or relative `HOME` matches no resolved `getcwd`, so keeping it
     // would read as a home that settles the cwd while answering nothing.
@@ -221,7 +207,7 @@ fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
         homes.push(home);
     }
 
-    vetted_root(&cwd, &homes, &exe, granted).map(Path::to_path_buf)
+    vetted_root(&cwd, &homes, granted).map(Path::to_path_buf)
 }
 
 impl Grants {
@@ -312,8 +298,6 @@ impl Grants {
 mod tests {
     use super::*;
 
-    const EXE: &str = "/usr/local/bin/sandbx";
-
     /// What every run may already execute, which `policy()` passes from the live policy.
     fn granted() -> Vec<PathBuf> {
         SandboxPolicy::default()
@@ -338,7 +322,7 @@ mod tests {
     }
 
     fn root(cwd: impl AsRef<Path>, homes: &[PathBuf]) -> Result<PathBuf, PolicyError> {
-        vetted_root(cwd.as_ref(), homes, Path::new(EXE), &granted()).map(Path::to_path_buf)
+        vetted_root(cwd.as_ref(), homes, &granted()).map(Path::to_path_buf)
     }
 
     #[test]
@@ -534,39 +518,6 @@ mod tests {
     }
 
     #[test]
-    fn the_binary_inside_the_root_is_refused() {
-        let error = vetted_root(
-            Path::new("/home/u/sandbx"),
-            &homes(&["/home/u"]),
-            Path::new("/home/u/sandbx/target/debug/sandbx"),
-            &granted(),
-        )
-        .expect_err("the enforcer inside the root");
-
-        assert!(
-            matches!(error, PolicyError::EnforcerInside { .. }),
-            "{error} is not the enforcer refusal"
-        );
-    }
-
-    #[test]
-    fn a_sibling_named_like_the_root_is_allowed() {
-        let root = vetted_root(
-            Path::new("/home/u/project"),
-            &homes(&["/home/u"]),
-            Path::new("/home/u/project-tools/sandbx"),
-            &granted(),
-        )
-        .expect("a sibling directory is not inside the root");
-
-        assert_eq!(
-            root,
-            Path::new("/home/u/project"),
-            "prefix matching crossed a component boundary"
-        );
-    }
-
-    #[test]
     fn a_refusal_names_the_flags_to_type_instead() {
         let refusals = [
             root("/", &[]).expect_err("the filesystem root"),
@@ -575,13 +526,6 @@ mod tests {
             root("/home", &homes(&["/var/lib/svc"])).expect_err("a home parent"),
             root("/home/other", &[]).expect_err("something shaped like a home"),
             root("/usr", &homes(&["/home/u"])).expect_err("a system executable path"),
-            vetted_root(
-                Path::new("/home/u/sandbx"),
-                &homes(&["/home/u"]),
-                Path::new("/home/u/sandbx/sandbx"),
-                &granted(),
-            )
-            .expect_err("the enforcer inside the root"),
         ];
 
         for error in refusals {

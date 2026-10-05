@@ -1,7 +1,7 @@
 # The working-directory default policy
 
 Why a no-flag `sandbx sandbox-run` grants read and write on the directory it was
-run from, why a path flag *replaces* that rather than adding to it, and why four
+run from, why a path flag *replaces* that rather than adding to it, and why some
 working directories are refused instead. The mechanism is thirty lines of
 `crates/sandbx-cli/src/grants.rs`; this is what the choices were between.
 
@@ -64,7 +64,6 @@ A derived write grant is reachable by accident in a way a typed one is not, so
 | cwd is where homes live, or holds it | `holds_home_directories(cwd)`, below |
 | no usable `$HOME`, and cwd is shaped like a home | `looks_like_a_home(cwd)`, below |
 | cwd overlaps a path already granted execute | `granted.iter().any(\|p\| p.starts_with(cwd) \|\| cwd.starts_with(p))` |
-| the running `sandbx` is inside cwd | `exe.starts_with(cwd)` |
 
 One `starts_with` covers both `$HOME` cases: it is true of equal paths, so "cwd is
 `$HOME`" and "cwd is `/home`" fall out of the same test, and it is
@@ -159,40 +158,33 @@ The wrapper pushes raw `$HOME` *and* its canonical form. Fedora Silverblue ships
 `/home/u`; comparing one form is a bypass of the other. `HOME` unset falls out as
 an empty slice with no second code path.
 
-## The enforcer arm
+## The enforcer is reached by inode
 
-`exe.starts_with(cwd)` resolves the open question the issue left: refuse.
+The open question the issue left — whether a derived root may hold the running
+`sandbx` — is settled by not needing an answer. `command_line()` hands the kernel
+`/proc/self/exe`, a magic link to the image this process is running
+([#149](https://github.com/danczw/sandbx/issues/149)).
 
-The escape is live, not theoretical. `SandboxedCommand::command_line()` resolves
-`current_exe()` on **every** spawn, so between two tool calls in one turn an agent
-can rename a replacement over `target/debug/sandbx` and the next spawn execs it,
-choosing its own confinement. (`ETXTBSY` blocks overwriting in place; rename-over
-is what `cargo build` does.) Nothing asks the operator first, and it happens inside
-a single turn.
+What a path guard had to stop was live rather than theoretical. Resolved by path
+on **every** spawn, the helper could be swapped between two tool calls in one
+turn: rename a replacement over `target/debug/sandbx` and the next spawn execs
+it, choosing its own confinement, with nothing asking the operator first.
+(`ETXTBSY` blocks overwriting in place; rename-over is what `cargo build` does.)
+A link to the inode cannot be redirected, so the replacement lands and the
+running process execs what it was always going to exec.
 
-A carve-out — grant the tree except the binary — is **not expressible**.
-`SandboxPolicy` is grants-only, matching is prefix-only, and Landlock composes
-rules by union with no subtraction. It would be a new mechanism in core and in both
-enforcement layers, for one case.
+`exe.starts_with(cwd)` is therefore gone, with `PolicyError::EnforcerInside` and
+`EnforcerUnknown` — a guard that fired only on a locally-built binary, so an
+installed `/usr/local/bin/sandbx` never saw it, and that refused sandbx's own
+developers a no-flag run in their own repo. Any replacement for it would be
+comparing a name nothing is reached by. A carve-out — grant the tree except the
+binary — would not have helped either: `SandboxPolicy` is grants-only, matching
+is prefix-only, and Landlock composes rules by union with no subtraction.
 
-It is also consistent with the home arm, which is likewise defeated by typing
-`--allow-write ~`. The guard governs what sandbx *derives*; what an operator asks
-for in so many words stays theirs.
-
-Cost is bounded: the arm only fires for a locally-built binary, so an installed
-`/usr/local/bin/sandbx` never sees it. It does mean sandbx's own developers get the
-refusal in their own repo, one `--allow-write .` from working.
-
-`std::env::current_exe()` directly, rather than promoting core's `pub(crate)`
-wrapper, which would drag `SandboxError` into this crate's error mapping for no
-gain. A failure to resolve it is a refusal, since core's own call would fail at the
-first spawn anyway — but the *canonicalization* of it falls back to the unresolved
-path, so a failure there cannot turn into a missing guard.
-
-The arm is load-bearing only because the helper is reached by *path*.
-[#149](https://github.com/danczw/sandbx/issues/149) would have core re-exec
-through `/proc/self/exe`, a link to the inode, which a rename-over cannot
-redirect — and the arm becomes a convenience worth reconsidering.
+The residue is the *next* invocation of `sandbx`: a write grant over the binary
+replaces what runs then, by a human or a script. No guard reaches that, it is the
+same property as `.git/hooks/*` in a granted tree, and it stays a non-claim in
+`SECURITY.md`.
 
 ### The execute axis is not touched
 
@@ -210,12 +202,8 @@ scripts, `rust-toolchain`. Those execute *outside* the sandbox the next time the
 operator builds or commits, and no guard can fix it — it is what accepting the
 default means. It is a non-claim in `SECURITY.md` rather than a refusal here.
 
-The asymmetry with the enforcer arm is deliberate and worth stating, because
-otherwise that arm reads as theatre next to `.git/hooks`. The enforcer case fires
-unattended, inside one turn, through sandbx's own next spawn, and one path
-comparison detects it. "Any file the operator might later execute" is unbounded,
-undetectable, and enumerating candidates would be a denylist whose first omission
-is silent.
+Nothing in that list is refused, and nothing can be: it waits for a human action,
+and enumerating the candidates would be a denylist whose first omission is silent.
 
 ## Canonicalizing the working directory
 
@@ -240,15 +228,11 @@ into one `CliError` was rejected — that would make `AgentError`'s provider and
 turn variants look reachable from `sandbox-run`.
 
 Every variant ends in one shared `ADVICE` const, so two refusals cannot name
-different flags — except `EnforcerUnknown`, which exists only to *not* carry it.
-That is the one case where the advice would be false: a path flag does skip
-`current_root()`, but `command_line()` calls `current_exe()` again on every spawn,
-so the run fails a step later with an unrelated message. An error whose suggestion
-cannot work is worse than one with no suggestion.
+different flags.
 
 ## The seam
 
-`vetted_root(cwd, homes, exe)` is pure, with all three inputs injected as values;
+`vetted_root(cwd, homes, granted)` is pure, with all three inputs injected as values;
 `current_root()` is the thin wrapper that reads them off the process. Same split as
 `resolve_api_key(env_var, lookup)` / `anthropic_api_key()` in
 `crates/sandbx-providers/src/credentials.rs`, with values rather than a closure
@@ -264,8 +248,8 @@ would decide another's verdict.
 
 ## The mutation check
 
-The same check `decision-axis-table.md` does for a table change. Six mutations,
-run rather than reasoned about:
+The same check `decision-axis-table.md` does for a table change. Each mutation run
+rather than reasoned about:
 
 ```
 default becomes unconditional (drop the paths_given guard)
@@ -280,10 +264,6 @@ default removed entirely
        an_env_flag_keeps_the_working_directory         fails
        refuses_to_run_from_the_filesystem_root         fails
        refuses_to_run_from_the_home_directory          fails
-
-enforcer arm deleted
-   ──► the_binary_inside_the_root_is_refused           fails
-       a_refusal_names_the_flags_to_type_instead       fails
 
 home arm narrowed from starts_with to equality
    ──► a_directory_holding_home_is_refused             fails
