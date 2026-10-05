@@ -95,9 +95,8 @@ impl AgentRun {
     /// # Errors
     ///
     /// [`AgentError::EmptyPrompt`], [`AgentError::Policy`] and [`AgentError::Provider`]
-    /// all land before any request goes out — the policy before the client, so a
-    /// refusal to derive one costs no round trip and leaks no key to a doomed run;
-    /// [`AgentError::Turn`] when the turn ends without an answer, and
+    /// all land before any request goes out; [`AgentError::Turn`] when the turn ends
+    /// without an answer, and
     /// [`AgentError::Output`] when stdout would not take it. A tool that the policy
     /// refuses is none of them: it goes back to the model as a failed result, which is
     /// what lets it try something the policy allows.

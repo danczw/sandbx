@@ -6,18 +6,16 @@ use sandbx_agent::TurnError;
 use sandbx_core::SandboxError;
 use sandbx_providers::ProviderError;
 
-/// What to type instead, appended to every [`PolicyError`].
-///
-/// One `const` so a refusal cannot name different flags than its sibling does.
+/// What to type instead, appended to every [`PolicyError`] so two refusals cannot advise
+/// differently.
 const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
                       for the tree the command needs";
 
 /// Why no policy could be derived from the working directory.
 ///
-/// Every variant is a refusal rather than a narrower default, because the alternatives
-/// are worse: falling back to the system paths alone makes an ordinary command fail for
-/// a reason the message would not explain, and granting the directory anyway is the
-/// thing being refused.
+/// Every variant refuses rather than falling back to a narrower policy, which would make
+/// an ordinary command fail for a reason the message could not explain; see
+/// `context/decision-default-policy.md`.
 #[derive(Debug)]
 pub enum PolicyError {
     /// The process state the default is derived from could not be read.
