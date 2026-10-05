@@ -117,9 +117,8 @@ fn refuses_a_path_the_policy_omits() {
         .output()
         .unwrap();
 
-    // A helper that never execed also satisfies both assertions below, and a granted
-    // path absent on this distribution fails the ruleset build before the command runs.
-    // Rule that out first, or this passes without the kernel having been asked.
+    // A helper that never execed satisfies both assertions below, so this would
+    // pass without the kernel having been asked. Rule that out first.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !stderr.contains("sandbx-helper:"),

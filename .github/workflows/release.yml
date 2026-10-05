@@ -17,10 +17,8 @@ env:
 
 jobs:
   build:
-    # Each target builds on its own architecture rather than cross-compiling,
-    # because the enforcement step below is the gate: run on x86 it would prove
-    # nothing about the binary being shipped for arm. `fail-fast: false` so a
-    # failure on one architecture still reports the other's result.
+    # Native per target rather than cross-compiled, because the enforcement step
+    # below is the gate: run on x86 it proves nothing about an arm binary.
     strategy:
       fail-fast: false
       matrix:
@@ -43,10 +41,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The enforcement claim below rests entirely on this pairing, which nothing
-      # else checks: a target matched with the wrong runner would cross-compile,
-      # test the builder's architecture, and publish a green result proving
-      # nothing about the binary. Fail here instead.
+      # Nothing else checks this pairing, and the enforcement claim below rests on
+      # it: a mismatch would cross-compile and publish a green result proving
+      # nothing.
       - name: Check the runner matches the target
         run: |
           case "${{ matrix.target }}" in
@@ -63,8 +60,6 @@ jobs:
 
       # A tag claiming to be v0.1.0 that builds 0.2.0 would put the wrong
       # binary behind the right name, and nothing downstream would notice.
-      # Cheap enough to repeat per architecture, and repeating it means no
-      # architecture can be built from a mismatched tag.
       - name: Check the tag matches the crate version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -79,11 +74,9 @@ jobs:
       # The binary's whole claim is that it sandboxes. Shipping one whose
       # enforcement tests were never run is the specific failure this project
       # cannot afford, so they gate the release rather than only the merge.
-      # Native per matrix entry, so this is a claim about the architecture being
-      # published rather than the builder's. It is not a claim about the
-      # artifact: with no `--target` this builds the host gnu triple while the
-      # shipped binary is static musl, and testing musl here would need a musl C
-      # toolchain for the dev-dependency tree. See #130.
+      # Covers the architecture being published, not the artifact: with no
+      # `--target` this builds the host gnu triple while the binary ships static
+      # musl. See #130.
       - name: Test, including real sandbox enforcement
         run: cargo test --workspace --features sandbox-integration
 
@@ -110,10 +103,8 @@ jobs:
           path: dist/*.tar.gz*
           if-no-files-found: error
 
-  # A separate job so `gh release create` runs exactly once however many
-  # architectures are built, and so `contents: write` stays confined to the one
-  # job that needs it. `needs` also means a failed enforcement run on either
-  # architecture publishes nothing at all.
+  # Separate so `gh release create` runs once whatever the matrix size, and so
+  # `contents: write` is confined to a job that checks out no source.
   publish:
     needs: build
     runs-on: ubuntu-latest
@@ -130,8 +121,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-          # This job deliberately does not check out the tree, so `gh` has no
-          # git remote to infer the repository from.
+          # No checkout here, so `gh` has no git remote to infer the repo from.
           GH_REPO: ${{ github.repository }}
         run: |
           prerelease=""
