@@ -165,17 +165,19 @@ jobs:
           printf '%s\n\n' "$(cat "$notes")" > notes.md
           cat generated.md >> notes.md
 
-      # A hyphenated tag is published as a pre-release, so the "latest" link
-      # never points at one. An unsuffixed pre-1.0 tag is not covered (#142).
+      # Pre-1.0 every published tag is a pre-release; see SECURITY.md.
       - name: Publish
         run: |
-          prerelease=""
-          case "$GITHUB_REF_NAME" in
-            *-*) prerelease="--prerelease" ;;
-          esac
+          # Only an exact 1.0-or-later version may become "latest"; anything
+          # else, recognised or not, is a pre-release. Build metadata is matched
+          # explicitly, since a hyphen inside it is not a pre-release suffix.
+          prerelease=(--prerelease)
+          if [[ "${GITHUB_REF_NAME#v}" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            prerelease=()
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file notes.md \
-            $prerelease \
+            "${prerelease[@]}" \
             dist/*.tar.gz \
             dist/*.tar.gz.sha256
