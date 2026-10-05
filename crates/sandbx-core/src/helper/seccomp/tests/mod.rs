@@ -229,6 +229,18 @@ fn socket_verdict(program: seccompiler::BpfProgramRef<'_>, domain: u64) -> u32 {
     verdict_with_args(program, libc::SYS_socket, [domain, 0, 0, 0, 0, 0])
 }
 
+/// The verdict for `socket(domain, socket_type, 0)`.
+///
+/// Both arguments are wider than the `int`s the kernel reads, so a test can put something
+/// in the halves and the flag bits the comparisons must ignore.
+fn typed_socket_verdict(
+    program: seccompiler::BpfProgramRef<'_>,
+    domain: u64,
+    socket_type: u64,
+) -> u32 {
+    verdict_with_args(program, libc::SYS_socket, [domain, socket_type, 0, 0, 0, 0])
+}
+
 /// [`eval`] is itself untested code whose failure mode is the silent pass, so these
 /// cases cover the classic mis-implementations over hand-written programs rather than
 /// the compiled filter.

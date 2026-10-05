@@ -96,6 +96,14 @@ const NAMESPACE_CLONE_FLAGS: &[libc::c_int] = &[
     libc::CLONE_NEWNET,
 ];
 
+/// `SOCK_TYPE_MASK` from `include/linux/net.h`: `__sys_socket` reads the socket type as
+/// `type & 0xf` and takes the bits above it as `SOCK_NONBLOCK`/`SOCK_CLOEXEC`.
+///
+/// Which is why the rule below masks rather than compares: `SOCK_DGRAM | SOCK_CLOEXEC` is
+/// `0x8_0002`, so an `Eq` against `SOCK_DGRAM` never fires while the kernel still hands back
+/// a datagram socket.
+const SOCK_TYPE_MASK: u64 = 0xf;
+
 /// `__X32_SYSCALL_BIT` from `asm/unistd.h`: the bit an x32 syscall number carries.
 ///
 /// x32 reports `AUDIT_ARCH_X86_64`, so it passes the filter's architecture gate, but its
@@ -175,6 +183,62 @@ fn blocked_syscalls(
             .entry(libc::SYS_socket)
             .or_default()
             .push(SeccompRule::new(vec![af_unix]).map_err(seccomp_failed)?);
+    }
+
+    // A port allowlist claims egress reaches the ports it names and nowhere else. Landlock's
+    // network rules police TCP alone, so a command left holding a UDP or raw socket could
+    // carry traffic to any host on any port and the claim would be false — `SECURITY.md` may
+    // not overstate the sandbox, so the cheaper half of the promise is the one that goes.
+    //
+    // Matched exhaustively, and true for one state only. `Denied` is already in an empty
+    // netns, where a datagram has nowhere to go, and needs `AF_NETLINK` — a `SOCK_DGRAM`
+    // socket — for `getaddrinfo`. `AnyPort` asked for unrestricted egress, which this would
+    // narrow. `context/decision-port-allowlist.md` records what the denial costs.
+    let confine_to_tcp = match policy.network() {
+        crate::NetworkPolicy::Denied | crate::NetworkPolicy::AnyPort => false,
+        crate::NetworkPolicy::Ports(_) => true,
+    };
+
+    if confine_to_tcp {
+        // Every value of the 4-bit type field but `SOCK_STREAM`, rather than the two named
+        // constants: sixteen rules also close `SOCK_SEQPACKET` (SCTP, which `ConnectTcp`
+        // does not police), `SOCK_RDM`, `SOCK_PACKET` and whatever a future kernel assigns,
+        // where a denylist of `SOCK_DGRAM` and `SOCK_RAW` is a guess about what exists.
+        //
+        // `SOCK_RAW` also needs `CAP_NET_RAW`, which the supervisor drops, so it is mostly
+        // unreachable already — kept because the allowlist's integrity must not rest on
+        // another subsystem having succeeded.
+        for socket_type in 0..=SOCK_TYPE_MASK {
+            if socket_type == libc::SOCK_STREAM as u64 {
+                continue;
+            }
+
+            // Unix sockets are a separate axis, granted or withheld by the rule above.
+            // Without this condition a type denial aimed at IP egress would also refuse
+            // `socket(AF_UNIX, SOCK_DGRAM)`, silently narrowing a grant it never mentions.
+            let not_unix = SeccompCondition::new(
+                0,
+                SeccompCmpArgLen::Dword,
+                SeccompCmpOp::Ne,
+                libc::AF_UNIX as u64,
+            )
+            .map_err(seccomp_failed)?;
+            // `Dword` for the reason the `clone` rule above gives: `type` is an `int` and
+            // the kernel discards the register's high half, so a `Qword` compare misses
+            // `socket(AF_INET, 0x1_0000_0002, 0)`.
+            let is_type = SeccompCondition::new(
+                1,
+                SeccompCmpArgLen::Dword,
+                SeccompCmpOp::MaskedEq(SOCK_TYPE_MASK),
+                socket_type,
+            )
+            .map_err(seccomp_failed)?;
+
+            rules
+                .entry(libc::SYS_socket)
+                .or_default()
+                .push(SeccompRule::new(vec![not_unix, is_type]).map_err(seccomp_failed)?);
+        }
     }
 
     Ok(rules)

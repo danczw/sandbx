@@ -125,20 +125,30 @@ fn inverting_the_two_actions_inverts_every_verdict() {
 /// unnoticed. These checks close the rest, and every one is `bpf_check_classic()`
 /// restated rather than anything about seccompiler's codegen — the last-instruction
 /// check included.
+///
+/// Asked of the widest policy as well as the default one, because that is the one whose
+/// program grows: a port allowlist adds fifteen rules on `socket` alone, and the kernel
+/// refuses a filter over 4096 instructions.
 #[test]
 fn the_program_is_one_the_kernel_would_accept() {
-    let filters = installed_filters(&SandboxPolicy::default()).unwrap();
+    let widest = SandboxPolicy::default()
+        .allow_network_port(443)
+        .allow_unix_sockets();
 
-    // Or the loop below checks nothing, and `x32_gate` — the one hand-assembled
-    // program here, and so the one most likely to be malformed — goes unexamined.
-    assert_eq!(
-        filters.len(),
-        if cfg!(target_arch = "x86_64") { 3 } else { 2 },
-        "a filter was added or dropped without this test being told which"
-    );
+    for policy in [SandboxPolicy::default(), widest] {
+        let filters = installed_filters(&policy).unwrap();
 
-    for program in filters {
-        check_program_is_well_formed(&program);
+        // Or the loop below checks nothing, and `x32_gate` — the one hand-assembled
+        // program here, and so the one most likely to be malformed — goes unexamined.
+        assert_eq!(
+            filters.len(),
+            if cfg!(target_arch = "x86_64") { 3 } else { 2 },
+            "a filter was added or dropped without this test being told which"
+        );
+
+        for program in filters {
+            check_program_is_well_formed(&program);
+        }
     }
 }
 
