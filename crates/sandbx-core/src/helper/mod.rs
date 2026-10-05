@@ -287,7 +287,8 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 /// The duplicate is `F_DUPFD_CLOEXEC`, so a successful `exec` closes it; the command
 /// inherits `/dev/null`. Both halves matter — a command holding the write end could forge
 /// records, or hold the channel open and leave the parent waiting on an EOF that never
-/// comes. Pinned by `the_command_cannot_write_the_audit_channel`.
+/// comes. One half each: `the_command_cannot_write_the_audit_channel` pins the slot,
+/// `the_command_inherits_no_other_end_of_the_channel` the duplicate.
 ///
 /// Fails closed: becoming the command with the channel still on fd 0 is worse than any
 /// record it would have bought.
