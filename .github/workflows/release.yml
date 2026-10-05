@@ -16,10 +16,20 @@ env:
   CARGO_NET_RETRY: 0
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  build:
+    # Each target builds on its own architecture rather than cross-compiling,
+    # because the enforcement step below is the gate: run on x86 it would prove
+    # nothing about the binary being shipped for arm. `fail-fast: false` so a
+    # failure on one architecture still reports the other's result.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
@@ -29,12 +39,14 @@ jobs:
       # could not run on Ubuntu 22.04. Static musl has no such floor.
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-musl
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
 
       # A tag claiming to be v0.1.0 that builds 0.2.0 would put the wrong
       # binary behind the right name, and nothing downstream would notice.
+      # Cheap enough to repeat per architecture, and repeating it means no
+      # architecture can be built from a mismatched tag.
       - name: Check the tag matches the crate version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -49,18 +61,19 @@ jobs:
       # The binary's whole claim is that it sandboxes. Shipping one whose
       # enforcement tests were never run is the specific failure this project
       # cannot afford, so they gate the release rather than only the merge.
+      # Native per matrix entry, which is what makes this a claim about the
+      # architecture being published rather than about the builder's.
       - name: Test, including real sandbox enforcement
         run: cargo test --workspace --features sandbox-integration
 
       - name: Build
-        run: cargo build --release --locked --target x86_64-unknown-linux-musl -p sandbx-cli
+        run: cargo build --release --locked --target ${{ matrix.target }} -p sandbx-cli
 
       - name: Package
-        id: package
         run: |
-          name="sandbx-${GITHUB_REF_NAME}-x86_64-unknown-linux-musl"
+          name="sandbx-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp target/x86_64-unknown-linux-musl/release/sandbx README.md LICENSE "dist/$name/"
+          cp target/${{ matrix.target }}/release/sandbx README.md LICENSE "dist/$name/"
           # Static by construction, not by intention. If this ever reports a
           # dynamic executable, the archive would carry a hidden glibc floor
           # again and the check should stop the release.
@@ -69,13 +82,36 @@ jobs:
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           # Lets anyone verify the download matches what this run produced.
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
-          echo "archive=dist/$name.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.tar.gz*
+          if-no-files-found: error
+
+  # A separate job so `gh release create` runs exactly once however many
+  # architectures are built, and so `contents: write` stays confined to the one
+  # job that needs it. `needs` also means a failed enforcement run on either
+  # architecture publishes nothing at all.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
 
       # Pre-1.0 and alpha-suffixed versions are marked as pre-releases, so the
       # "latest" link never points at a build whose sandbox is still moving.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job deliberately does not check out the tree, so `gh` has no
+          # git remote to infer the repository from.
+          GH_REPO: ${{ github.repository }}
         run: |
           prerelease=""
           case "$GITHUB_REF_NAME" in
@@ -85,5 +121,5 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             $prerelease \
-            "${{ steps.package.outputs.archive }}" \
-            "${{ steps.package.outputs.archive }}.sha256"
+            dist/*.tar.gz \
+            dist/*.tar.gz.sha256
