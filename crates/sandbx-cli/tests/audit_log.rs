@@ -122,6 +122,30 @@ fn a_degraded_hardening_step_reaches_the_output() {
     assert!(output.contains("left as inherited"), "{output}");
 }
 
+/// The record closing a run goes through the same filter as the one opening it, so a trail
+/// cannot show every spawn and no result.
+#[test]
+fn an_exit_records_the_code_it_ended_with() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let clean = std::process::ExitStatus::from_raw(0);
+    let output = captured(|| AuditEvent::exited("/bin/true", &clean).emit());
+
+    assert!(output.contains(r#"decision="exited""#), "{output}");
+    assert!(output.contains(r#"program="/bin/true""#), "{output}");
+    assert!(output.contains("code=0"), "{output}");
+}
+
+/// The reason is rendered as a quoted label rather than prose, which is what a trail can
+/// be filtered by.
+#[test]
+fn a_failed_run_records_a_filterable_reason() {
+    let output = captured(|| AuditEvent::failed("/bin/sh", "timeout").emit());
+
+    assert!(output.contains(r#"decision="failed""#), "{output}");
+    assert!(output.contains(r#"reason="timeout""#), "{output}");
+}
+
 /// The target half of the filter: `INFO` on another target is what a bare
 /// `LevelFilter::INFO` would let through.
 #[test]
