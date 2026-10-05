@@ -94,10 +94,10 @@ fn an_env_flag_keeps_the_working_directory() {
     );
 }
 
-/// The default adds no execute grant of its own. It cannot promise more than that: Landlock
-/// rights cover a subtree, so a working directory *under* a system path — `/usr/src/app`,
-/// the stock `WORKDIR` in the official Node images — is executable by way of
-/// `allow_system_executables`, and no CLI-level assertion can see that.
+/// The default adds no execute grant of its own, and `vetted_root` refuses the one root
+/// that would have been executable without one — Landlock rights cover a subtree, so a
+/// working directory overlapping a system path inherits execute from
+/// `allow_system_executables`, which this assertion could not see.
 #[test]
 fn the_default_root_is_not_executable() {
     let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
