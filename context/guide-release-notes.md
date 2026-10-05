@@ -1,115 +1,71 @@
 # Release notes
 
-Extracted from `v0.1.0-alpha.3`, `.4` and `.5`, which already agree. This is the
-shape they share, written down so the next one does not have to re-derive it.
+A release body is two parts: one or two short paragraphs written by hand, and
+GitHub's generated list of merged PRs appended beneath them.
 
-The notes are a **claim about what changed**, in the same register as
-`SECURITY.md`: what was wrong, what is true now, and what the reader must do.
-Not a commit log — the commit log is generated and then thrown away.
+The prose is a **claim about what changed**, in the same register as
+`SECURITY.md`: what breaks, what is true now, and what the reader must do. The
+PR list already says what landed, so the prose never restates it.
 
-## Section order
+## Where it lives
 
-Order is load-bearing: the thing that breaks a reader goes first, before anything
-that merely interests them.
+One file per tag, `docs/release-notes/v<version>.md`, copied from
+`TEMPLATE.md` and committed with the change it describes — so the prose is
+reviewed before the tag exists, not written under time pressure after.
 
-| # | Section | When | Why there |
-|---|---|---|---|
-| 1 | Lead line, bold | always | One sentence naming the release's character: `**A correctness release.**`, `**The first release under the `sandbx` name.**` |
-| 2 | Upgrade hazard | when one exists | `## Read this first: …` or `## Upgrade from any earlier alpha`. A reader who stops here must still not be surprised |
-| 3 | Pre-alpha blockquote | always | `> Still pre-alpha…` — support scope, stated every time, never assumed known |
-| 4 | The substance | always | One `##` per theme, prose with `(#N)` refs. The *why*, not the diff |
-| 5 | `## Also in this release` | when there is a tail | Real but secondary work, still prose |
-| 6 | `## Smaller things` | when the tail is long | Bullets, one line each, `(#N)` |
-| 7 | `## Upgrading` | when anything moved | Split CLI surface from library callers — they break differently |
-| 8 | `## Verifying this build` | always | Commands the reader runs, not a claim they trust |
+`release.yml`'s `notes` job runs `.github/scripts/check-release-notes.sh`
+against it and the whole release gates on the result: no notes, no release.
+`build` waits on that job, so a malformed file fails in seconds rather than
+after two native legs. `publish` then fetches the PR list from
+`POST /repos/{owner}/{repo}/releases/generate-notes` and publishes prose plus
+list as one body.
 
-Omit a section rather than write it empty. `alpha.4` states *"no upgrade
-hazard"* in its lead line instead of carrying an empty section 2 — say it, then
-drop the heading.
+Run the script locally before tagging — the CI failure arrives after the tag is
+public.
 
-## Skeleton
+## The budget
 
-```markdown
-**<One sentence: the character of this release.>**
+Two paragraphs, twelve lines, no headings and no bullets. The checker enforces
+all of it. Anything longer belongs in `context/` or on an issue, linked from
+the prose.
 
-> Still pre-alpha. There is no agent yet, only the sandbox beneath it. Only the
-> latest pre-release is supported; there are no backports.
+The ceiling is the point. A reader who stops after the first sentence must not
+be surprised later, which is only achievable if there are few sentences.
 
-## Read this first: <the hazard>          ← only if one exists
+## What earns its place
 
-**<What breaks, in bold.>** <Why it breaks, what the old behaviour was, and the
-one command that tells the reader whether it affects them.>
+- **Bold the claim.** `**A write grant handed out read in the child.**` A reader
+  scanning bold text gets the release.
+- **The upgrade hazard, first.** If something breaks, it is the first sentence.
+  If nothing does, say so — absence of change is information.
+- **Quantify when it is load-bearing.** *"on a 6.18 kernel whose effective
+  Landlock ABI is V8, every run was partly enforced"*. A severity claim without
+  a number is an opinion.
+- **The consequence a reader would not predict.** PID namespaces: an unhandled
+  `SIGTERM` is ignored, and `/proc/self/stat` disagrees with `getpid()`. Neither
+  follows from "process lifetime is now enforced".
+- **An issue number per substantive item**, `(#50)`. The one place issue
+  archaeology belongs — `guide-code-comments.md` cuts it from code.
 
-## <Theme>
+Not: a per-PR summary, a theme-by-theme tour, a verification checklist, or
+anything the generated list carries.
 
-<Prose. What was claimed, what was actually true, what is true now. Name the
-mechanism and the issue: `Fixed in #76.` Behaviour changes get their own
-paragraph starting "Behaviour change worth knowing:".>
+## Verification, after the fact
 
-## Also in this release
-
-**<Short title>** (#N). <Two or three sentences.>
-
-## Upgrading
-
-**<What changes at the command line.>** <Usually: nothing.>
-
-<What changes for library callers, which is often where a tightening lands.>
-
-## Verifying this build
-
-```
-sha256sum -c sandbx-<tag>-<target>.tar.gz.sha256
-file sandbx            # static-pie linked, no glibc floor
-sandbx --version       # <version>
-```
-
-<One closing paragraph: still pre-1.0, no backports, SECURITY.md is the current
-statement of what is and is not claimed.>
-```
-
-## Rules the three releases already follow
-
-- **Bold the claim, not the heading.** `**A write grant handed out read in the
-  child**` then the explanation. A reader scanning bold text gets the release.
-- **An issue number per substantive item**, in parentheses: `(#50)`, `Fixed in
-  #76.` This is the one place issue archaeology belongs — unlike code comments,
-  where `context/guide-code-comments.md` cuts it.
-- **Quantify when it is load-bearing.** *"Measured on a 6.18 kernel whose
-  effective Landlock ABI is V8: **every run was partly enforced.**"* A severity
-  claim without a number is an opinion.
-- **Name the consequence a reader would not predict.** `alpha.3` on PID
-  namespaces: an unhandled `SIGTERM` is ignored, and `/proc/self/stat` disagrees
-  with `getpid()`. Neither follows from "process lifetime is now enforced".
-- **Say what did *not* change.** *"No change to the policy surface: the same
-  flags grant the same access."* Absence of change is information.
-- **Verification is commands, not assurances.** `alpha.4`'s *"## Verified"*
-  records that the published archive was downloaded and exercised for both
-  permits and denials — not that it was built green.
-
-## Mechanics
-
-`release.yml` publishes with `--generate-notes`, so the body starts as GitHub's
-`## What's Changed` list of merged PRs. That list is scaffolding:
-
-| Release | Generated list kept? |
-|---|---|
-| `alpha.3` | yes, appended below the prose |
-| `alpha.4` | no |
-| `alpha.5` | no |
-
-The later two are the pattern. Write the real notes, then replace the body:
+A claim that the published archive was downloaded and exercised has to be true
+when written, and the artifact does not exist until `publish` has run. So it is
+not in the committed file. Exercise the archive, then amend the published body:
 
 ```sh
 gh release edit <tag> --notes-file notes.md
 ```
 
-Curate **after** verifying the artifact, not before — `alpha.4`'s notes claim the
-archive was checked, and that claim has to be true when written.
+Two paragraphs still. A verification note that pushes the prose over budget is
+a sign it belongs on an issue.
 
 ## Two things that are not release notes
 
-- **A migration guide.** If upgrading needs more than a section, the hazard is
-  too large for an alpha's notes; say so and link an issue.
-- **A roadmap.** What is planned goes on an issue, on a milestone. Same rule as
-  everywhere else in this repo — see `CLAUDE.md`.
+- **A migration guide.** If upgrading needs more than a sentence or two, the
+  hazard is too large for an alpha's notes; say so and link an issue.
+- **A roadmap.** What is planned goes on an issue, on a milestone — see
+  `CLAUDE.md`.
