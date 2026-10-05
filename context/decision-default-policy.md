@@ -174,12 +174,19 @@ A link to the inode cannot be redirected, so the replacement lands and the
 running process execs what it was always going to exec.
 
 `exe.starts_with(cwd)` is therefore gone, with `PolicyError::EnforcerInside` and
-`EnforcerUnknown` — a guard that fired only on a locally-built binary, so an
-installed `/usr/local/bin/sandbx` never saw it, and that refused sandbx's own
-developers a no-flag run in their own repo. Any replacement for it would be
-comparing a name nothing is reached by. A carve-out — grant the tree except the
-binary — would not have helped either: `SandboxPolicy` is grants-only, matching
-is prefix-only, and Landlock composes rules by union with no subtraction.
+`EnforcerUnknown`. Any replacement for it would be comparing a name nothing is
+reached by. A carve-out — grant the tree except the binary — would not have
+helped either: `SandboxPolicy` is grants-only, matching is prefix-only, and
+Landlock composes rules by union with no subtraction.
+
+What that widens is worth naming rather than filing under "bounded cost". A
+`/usr`-rooted prefix is still refused, by the overlap arm and not by this one:
+`/usr/local/bin` holds `/usr`, which every command may already execute. The arm
+was the only thing refusing a *user-level* prefix, so a no-flag run from
+`~/.cargo/bin`, `~/.local/bin` or `/opt/x/bin` now derives read and write over
+the directory holding the installed binary. It also stopped refusing sandbx's own
+developers a no-flag run in their own repo, which is what made it the one arm
+that fired in ordinary use.
 
 The residue is the *next* invocation of `sandbx`: a write grant over the binary
 replaces what runs then, by a human or a script. No guard reaches that, it is the
