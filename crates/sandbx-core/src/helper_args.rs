@@ -1,6 +1,14 @@
-use crate::{Axis, SandboxError, SandboxPolicy};
+use crate::{Axis, NetworkPolicy, SandboxError, SandboxPolicy};
 
 const FLAG_NET: &str = "--allow-network";
+/// Introduces one allowlisted TCP port, and takes exactly one value.
+///
+/// Its own flag rather than an optional value on [`FLAG_NET`], which is how the CLI spells
+/// the same choice: [`decode`](HelperArgs::decode) walks argv a token at a time and refuses
+/// anything it does not recognise, so letting `FLAG_NET` optionally swallow the next token
+/// would put a "does this look like a port?" guess in the decoder that gates enforcement.
+/// `--env NAME` against the CLI's `--allow-env NAME` is the same divergence.
+const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Introduces the *name* of a variable the command may inherit. Never a value.
 const FLAG_ENV: &str = "--env";
@@ -54,8 +62,17 @@ impl HelperArgs {
             out.push(path_flag(axis).to_string());
             out.push(path.display().to_string());
         }
-        if policy.allows_network() {
-            out.push(FLAG_NET.to_string());
+        // Exhaustive, so a network state added to the policy is a compile error here rather
+        // than a grant that silently fails to cross into the stage that enforces it.
+        match policy.network() {
+            NetworkPolicy::Denied => {}
+            NetworkPolicy::AnyPort => out.push(FLAG_NET.to_string()),
+            NetworkPolicy::Ports(ports) => {
+                for port in ports {
+                    out.push(FLAG_NET_PORT.to_string());
+                    out.push(port.to_string());
+                }
+            }
         }
         if policy.allows_unix_sockets() {
             out.push(FLAG_UNIX.to_string());
@@ -96,6 +113,26 @@ impl HelperArgs {
                     break (program.clone(), rest.cloned().collect());
                 }
                 FLAG_NET => policy = policy.allow_network(),
+                FLAG_NET_PORT => {
+                    let port = rest.next().ok_or(SandboxError::BadHelperArgs {
+                        detail: "network port flag with no port after it",
+                    })?;
+                    // `parse::<u16>` is the range check: a number above 65535 and a token
+                    // that is not a number at all are the same refusal, with no `as` cast
+                    // in between to truncate one into the other.
+                    let port: u16 = port.parse().map_err(|_| SandboxError::BadHelperArgs {
+                        detail: "network port that is not a number in 1..=65535",
+                    })?;
+                    // Refused where `allow_network_port` skips it, for the reason the env
+                    // flag below gives: `encode` never emits 0, so a 0 here means the argv
+                    // speaks a different protocol.
+                    if port == 0 {
+                        return Err(SandboxError::BadHelperArgs {
+                            detail: "network port 0, which matches no port",
+                        });
+                    }
+                    policy = policy.allow_network_port(port);
+                }
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
                 FLAG_ENV => {
                     let name = rest.next().ok_or(SandboxError::BadHelperArgs {

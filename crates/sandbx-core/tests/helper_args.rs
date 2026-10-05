@@ -61,6 +61,124 @@ fn command_arguments_are_not_parsed_as_helper_flags() {
     );
 }
 
+/// Order and count both: Landlock installs one rule per port, so a port dropped in
+/// encoding is a port the command cannot reach while the CLI says it can.
+#[test]
+fn a_port_list_round_trips() {
+    use sandbx_core::NetworkPolicy;
+
+    let policy = SandboxPolicy::default()
+        .allow_network_port(443)
+        .allow_network_port(80)
+        .allow_read("/usr/lib");
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+    let decoded = HelperArgs::decode(&args).unwrap();
+
+    assert_eq!(decoded.policy, policy);
+    assert_eq!(
+        *decoded.policy.network(),
+        NetworkPolicy::Ports(vec![443, 80]),
+        "the port list came back as a different network state"
+    );
+}
+
+/// The wire for an unrestricted grant is unchanged, which is what keeps
+/// [`round_trips_paths_and_network`] asserting something: a bare flag must not start
+/// decoding as a port list of none, which is a narrower policy than it names.
+#[test]
+fn an_unrestricted_grant_round_trips_as_the_bare_flag() {
+    use sandbx_core::NetworkPolicy;
+
+    let args = HelperArgs::encode(&SandboxPolicy::default().allow_network(), "/bin/true", &[]);
+
+    assert!(
+        args.iter().any(|arg| arg == "--allow-network"),
+        "an unrestricted grant no longer crosses as the bare flag: {args:?}"
+    );
+    assert_eq!(
+        *HelperArgs::decode(&args).unwrap().policy.network(),
+        NetworkPolicy::AnyPort
+    );
+}
+
+/// The refusal reason is matched and not only the failure, because the token after the flag
+/// is consumed either way: without the check `--allow-network-port 65536` would be refused
+/// anyway, for the missing `--` that `65536` swallowed.
+///
+/// `65536` is the one that distinguishes `parse::<u16>` from a hand-rolled check with an
+/// `as` cast in it, which would truncate it to port 0.
+#[test]
+fn a_malformed_port_on_the_wire_is_refused() {
+    for port in ["", "https", "-1", "65536", "443.0", " 443", "0x1bb"] {
+        let args = vec![
+            "--allow-network-port".to_string(),
+            port.to_string(),
+            "--".to_string(),
+            "/bin/true".to_string(),
+        ];
+
+        let Err(refusal) = HelperArgs::decode(&args) else {
+            panic!("{port:?} was accepted as a port");
+        };
+
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("network port that is not a number")
+            ),
+            "{port:?} was refused for the wrong reason: {refusal:?}"
+        );
+    }
+}
+
+/// `allow_network_port` skips port 0; this seam refuses it, because `encode` never emits
+/// one — so a 0 here means the argv was built by something speaking another protocol.
+#[test]
+fn port_zero_on_the_wire_is_refused() {
+    let args = vec![
+        "--allow-network-port".to_string(),
+        "0".to_string(),
+        "--".to_string(),
+        "/bin/true".to_string(),
+    ];
+
+    let refusal = HelperArgs::decode(&args).expect_err("port 0 was accepted");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("network port 0")
+        ),
+        "refused for the wrong reason: {refusal:?}"
+    );
+}
+
+/// Carrying on would mean running under a policy other than the intended one.
+#[test]
+fn a_port_flag_without_a_port_is_refused() {
+    let emitted = HelperArgs::encode(
+        &SandboxPolicy::default().allow_network_port(443),
+        "/bin/true",
+        &[],
+    );
+    let flag = emitted[0].clone();
+
+    let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+        .expect_err("the port flag was accepted with no port after it");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("network port flag with no port")
+        ),
+        "{flag} was refused for the wrong reason: {refusal:?}"
+    );
+}
+
 #[test]
 fn missing_separator_is_rejected() {
     assert!(HelperArgs::decode(&["--ro".into(), "/usr".into()]).is_err());
