@@ -86,3 +86,8 @@ required-features = ["sandbox-integration"]
 name = "sandbx-pidns-probe"
 path = "tests/support/pidns_probe.rs"
 required-features = ["sandbox-integration"]
+
+[[bin]]
+name = "sandbx-egress-probe"
+path = "tests/support/egress_probe.rs"
+required-features = ["sandbox-integration"]
