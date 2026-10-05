@@ -92,11 +92,21 @@ jobs:
     # a new runner kernel breaks enforcement, so x86 floats, and the cost is that
     # the two legs are not always the same OS generation.
     #
+    # Named by architecture, not by runner, because these are the check names
+    # branch protection pins. A matrix over bare labels names them after the
+    # image, so swapping a label would rename the check and silently stop
+    # protecting it — a required check that no longer exists blocks nothing.
+    #
     # `fail-fast: false` so one architecture failing still reports the other.
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    name: sandbox (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
