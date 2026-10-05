@@ -1,7 +1,8 @@
 # The helper's audit channel
 
-Why a degradation detected inside the sandbox helper crosses back to sandbx as
-bytes in the **stdin slot** rather than being logged where it is found (#95).
+Why what the helper learns and sandbx cannot see — a degradation, and a command
+that could not be `exec`ed — crosses back as bytes in the **stdin slot** rather
+than being logged where it is found (#95, #96).
 
 ## The problem
 
@@ -57,14 +58,17 @@ io::pipe() ──┐
              └─ write ──►   stdin (fd 0)
                             │ capability_bounding_set\tleft as inherited: EPERM
                             ├─ drops its handle
-                            └─ spawns ────────────► stdin = Stdio::null()
-reads to EOF                                        (no path to the channel)
+                            └─ spawns ────────────► fd 0 ─► CLOEXEC duplicate
+                                                    /dev/null ─► fd 0
+                                                    exec ─┬─ ok: duplicate closed
+reads to EOF                                              └─ no: exec_failed\t
   └─ AuditEvent::degraded(..).emit()
+  └─ AuditEvent::exited(..) | ::failed(..)
 ```
 
 `hardening.rs` returns `Vec<(Degradation, String)>` instead of emitting;
-`degradation.rs` owns the format and both ends; `exec_sandboxed` performs the one
-write; `command.rs` reads, decodes and emits.
+`degradation.rs` owns the format and both ends; `exec_sandboxed` and
+`exec_inner` perform one write each; `command.rs` reads, decodes and emits.
 
 **sandbx emits, not the helper.** One subscriber in the process tree, one timestamp
 source, one format, and no `tracing-subscriber` dependency in the helper. This is
@@ -77,12 +81,26 @@ describes how to report, not what the command may do. Without the flag a helper 
 by hand writes audit text into whatever fd 0 happens to be — a terminal is
 writable, so the records would look like the command's own output, and a read-only
 pipe gives `EBADF`. `SandboxedCommand` always passes it because it always sets the
-pipe up.
+pipe up. Stage 1 hands the flag down to stage 2, which reports on the same
+channel.
 
-**`Stdio::null()` on the inner stage is the security line.** Stage 1 becomes
-nothing, but stage 2 becomes the sandboxed command, and an inherited write end
-would let it forge records on sandbx's audit trail — or hold the pipe open and
-leave sandbx waiting on an EOF that never comes.
+**Stage 2 claiming fd 0 is the security line.** Stage 1 becomes nothing, but
+stage 2 becomes the sandboxed command, and an inherited write end would let it
+forge records on sandbx's audit trail — or hold the pipe open and leave sandbx
+waiting on an EOF that never comes. So before `apply`, where no filter it is
+about to install can be what refuses the attempt, stage 2 duplicates fd 0 with
+`F_DUPFD_CLOEXEC` (`BorrowedFd::try_clone_to_owned`) and `dup2`s `/dev/null` into
+the slot. The command inherits a null stdin; the duplicate the kernel closes on a
+successful `exec` is the only live handle on the channel.
+
+Which is what makes the `exec_failed` record true rather than a guess: `exec`
+returns only on failure, so the write is reachable only in a world where the
+command does not exist. The alternative — a reserved exit code — would be
+forgeable by any command that chose to exit with it.
+
+Fail closed: either step failing is a `ProcessHardening` refusal, not a lost
+record. Becoming the command with a writable channel on fd 0 is worse than any
+record it would have bought.
 
 It is pinned by `the_command_cannot_write_the_audit_channel`, and the
 test was checked by removing the line: without it the command's `printf` lands on
@@ -100,9 +118,11 @@ there is nothing to protect, so stdin stays inherited — a hand-invoked
 unconditional `null` quietly took away.
 
 **Defence in depth behind that line.** `decode` accepts only labels in
-`Degradation::ALL`, so nothing can name a mechanism sandbx did not define; the
-record count is capped at the number of steps that exist; and `encode` strips the
-separator characters from a detail so one record cannot forge a second.
+`Degradation::ALL` plus the reserved `exec_failed`, so nothing can name a
+mechanism sandbx did not define; the record count is capped at the steps that
+exist plus the one refusal; and `encode` strips the separator characters from a
+detail so one record cannot forge a second. The refusal carries no detail at all
+— the errno reaches the operator on the helper's forwarded stderr.
 
 ## What this is not
 
@@ -114,35 +134,37 @@ barrier. The closed label set still bounds the *mechanism*, but `detail` is free
 text, so such a policy buys a forged detail on a real mechanism name.
 
 Left as a documented limit rather than closed, and the alternative was weighed:
-`nix::unistd::dup2_stdin` could point stage 1's fd 0 at `/dev/null` once the
-records are written, which would shut the window. It was not added, because it and
-the `Stdio::null()` above would mask each other — with both in place neither one's
-removal makes `the_command_cannot_write_the_audit_channel` fail, and the
-guard that matters would stop being the guard that is tested. One barrier on the
-path untrusted code actually takes, demonstrably load-bearing, beats two that each
-look optional. A policy granting `/proc` write hands the command worse than this
-anyway; `SECURITY.md` says not to.
+`nix::unistd::dup2_stdin` could point stage 1's fd 0 at `/dev/null` too, once its
+records are written. It was not added, because it would mask the barrier above —
+with both in place neither one's removal makes
+`the_command_cannot_write_the_audit_channel` fail, and the guard that matters
+would stop being the guard that is tested. One barrier on the path untrusted code
+actually takes, demonstrably load-bearing, beats two that each look optional.
+Stage 2's claim is on that path; stage 1's fd 0 is reachable only through a
+`/proc` write grant, which hands the command worse than this anyway, and
+`SECURITY.md` says not to.
 
 ## Accepted costs
 
 **The stdin slot is claimed.** A sandboxed command run through `SandboxedCommand`
 cannot later be given interactive stdin without moving this channel. Nothing
-regresses today: both spawn paths already passed `Stdio::null()`, and the
-hand-invoked helper keeps its inherited fd 0 because the `null` is gated on the
-flag. If interactive stdin is ever wanted here, the channel needs a different
-carrier — most likely a Unix socketpair, which would mean either `unsafe` or a
-dependency that encapsulates it.
+regresses today: the command still gets a null stdin, now from stage 2's `dup2`
+rather than from stage 1's `Stdio::null()`, and the hand-invoked helper keeps its
+inherited fd 0 because both are gated on the flag. If interactive stdin is ever
+wanted here, the channel needs a different carrier — most likely a Unix
+socketpair, which would mean either `unsafe` or a dependency that encapsulates it.
 
-**`degraded` is timestamped after `spawned`.** sandbx reads the channel only once
-the helper has been waited on, so the record lands after the command's own
-lifetime even though the degradation preceded it. The trail is complete but not in
-causal order. Reading earlier would mean a thread or a poll loop, which is a lot of
-machinery for a record emitted at most twice per run — and the fields say what
-happened; only the ordering is lossy.
+**Everything the channel carries is timestamped after `spawned`.** sandbx reads it
+only once the helper has been waited on, so a `degraded` record lands after the
+command's own lifetime even though the degradation preceded it, and the terminal
+record (#96) is emitted from the same read. The trail is complete but not in causal
+order. Reading earlier would mean a thread or a poll loop, which is a lot of
+machinery for a handful of records per run — and the fields say what happened;
+only the ordering is lossy.
 
-**Not blocking is structural, not lucky.** Nothing drains the pipe while stage 1
-writes, so a write that filled the buffer would deadlock the very run it is
-reporting on. Two mechanisms, each reporting at most once, with the detail capped
-at 256 characters, is two orders of magnitude inside the 64 KiB a Linux pipe
-holds — and the cap is unit-tested, so the bound is a property of the format
-rather than a hope about the length of errno strings.
+**Not blocking is structural, not lucky.** Nothing drains the pipe while the
+helper writes, so a write that filled the buffer would deadlock the very run it is
+reporting on. Two mechanisms and one detail-free refusal, each reported at most
+once, with the detail capped at 256 characters, is two orders of magnitude inside
+the 64 KiB a Linux pipe holds — and the cap is unit-tested, so the bound is a
+property of the format rather than a hope about the length of errno strings.

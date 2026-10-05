@@ -92,17 +92,26 @@ reason as the system binaries: `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`,
 up only in the C library's fallback (`/bin:/usr/bin`), so `cat` would still start
 but anything installed elsewhere would not be found.
 
-Each run also records the policy it was about to run under, on stderr:
+Each run also records the policy it ran under and how it ended, on stderr:
 
 ```console
 $ sandbx sandbox-run --allow-read /srv -- /bin/true
-2026-10-02T09:11:52.287465Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network=false unix_sockets=false env=7
+2026-10-05T20:37:54.124622Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7
+2026-10-05T20:37:54.130729Z  INFO sandbx::audit: decision="exited" program="/bin/true" code=0
 ```
 
-Read `spawned` as the intent to spawn, not its success: the record is written
-before the helper execs, so it appears for a command that then fails to start, and
-a run killed by `--timeout` gets no closing record. What the record is for is the
-policy — what the command was granted — and that is settled before it runs.
+Two records, and `program` ties them together. Read `spawned` as the intent to
+spawn, not its success: it is written before the helper execs, so it appears for a
+command that then fails to start. What it is for is the policy — what the command
+was granted — and that is settled before it runs.
+
+The second record says how the run ended, and every run gets exactly one.
+`exited` carries the code `sandbx` itself exits with, a signal as 128 + n, so a
+command the sandbox killed does not read as a success. A run with no status of its
+own is `failed` with a reason you can filter on: `reason="timeout"` for a
+`--timeout` kill, `reason="exec_failed"` for a program that could not be executed
+at all — which, without the record, would look like a command that ran and exited
+1.
 
 `env=7` is a count, not a list: a variable's *name* is not a secret, but its value
 routinely is, and a record that spelled out the names would invite the next change
@@ -112,7 +121,9 @@ nothing in `sandbx`'s own environment matches passes nothing, so on a host with 
 was granted.
 
 It is metadata only, never a command's output, and it never touches stdout: the
-command's own stdout is forwarded untouched, so piping it is unaffected. To keep
+command's own stdout is forwarded untouched, so piping it is unaffected. Both
+records are written before any of the command's own output, which `sandbx`
+forwards once the run is over. To keep
 only the record, `2>&1 >/dev/null | grep sandbx::audit`. Note that `2>/dev/null`
 discards the sandboxed command's own stderr along with the record — including the
 permission denials the examples above are there to show.
