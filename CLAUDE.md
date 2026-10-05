@@ -11,6 +11,7 @@ Where to look, and where to put something new:
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
 | how long a code comment may be, and what it must not say | `context/guide-code-comments.md` |
 | how long a name may be, and what to cut first | `context/guide-naming.md` |
+| how long a module may be, and where its tests belong | `context/guide-module-layout.md` |
 | what is claimed, and what is not | `SECURITY.md` |
 | what was planned and is still missing | an open issue, on a phase milestone |
 | when open work happens, and what it waits on | GitHub milestones, one per phase |
