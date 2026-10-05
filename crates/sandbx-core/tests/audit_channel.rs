@@ -164,6 +164,43 @@ fn the_command_cannot_write_the_audit_channel() {
     );
 }
 
+/// The other half of that guard: the inner stage keeps the channel across `apply` as a
+/// `F_DUPFD_CLOEXEC` duplicate, and a plain `dup` would leave the command holding it.
+///
+/// Its own test because fd 0 is `/dev/null` by the time the command runs, so the test above
+/// probes the slot and this one probes what survived the `exec` beside it. A range rather
+/// than fd 3, that being the lowest the duplicate can take and not the only one.
+#[test]
+fn the_command_inherits_no_other_end_of_the_channel() {
+    // Over fd 1 too, whose bytes have a known destination: a probe that reaches stdout is a
+    // probe that would have reached the channel, so the silence below is the sandbox's and
+    // not a broken script's.
+    let probes: String = (1..=9)
+        .map(|fd| format!(r"printf 'capability_bounding_set\tvia-fd-{fd}\n' >&{fd} || true; "))
+        .collect();
+
+    let (output, lines) = sandboxed(
+        // Trailing `true` so a closed descriptor is not what the run's status reports.
+        &format!("{probes}true"),
+        SandboxPolicy::default().allow_system_executables(),
+    );
+
+    assert!(
+        output.status.success(),
+        "the probe script did not run, so the trail says nothing about the duplicate: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("via-fd-1"),
+        "the probe never wrote anything, so it proves nothing: {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        !lines.iter().any(|line| line.contains("via-fd-")),
+        "the command inherited a descriptor onto sandbx's audit trail: {lines:?}"
+    );
+}
+
 /// A record interleaved into the command's own output is indistinguishable from
 /// bytes the command wrote, so both streams are compared byte-exact.
 #[test]
