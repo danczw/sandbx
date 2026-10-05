@@ -11,7 +11,9 @@ on:
 
 # Least privilege for GITHUB_TOKEN: declaring this replaces the broad repo
 # default with exactly what is listed. No job writes, so a compromised
-# third-party action cannot push commits or publish releases.
+# third-party action cannot push commits or publish releases. Nothing here needs
+# git credentials after the clone either, so every checkout drops the token
+# rather than leaving it in `.git/config` for a later step to find.
 permissions:
   contents: read
 
@@ -30,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # `v1`, not `stable`: `v1` tags master's head, while the `stable` branch is
       # regenerated as master plus one commit, so a SHA from it is reachable from
@@ -106,6 +110,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: stable
@@ -133,6 +139,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The floor is a claim the manifest makes, so read it from there rather than
       # pinning a version here: a second copy drifts the moment someone bumps
@@ -186,6 +194,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+
+      # The pins above are only as good as the next person's habit, so a loose
+      # ref added later fails here instead of rotting unnoticed. Runs as a plain
+      # command rather than zizmor's own action, which would add a third-party
+      # action to the surface this step exists to check, and need
+      # `security-events: write` to upload SARIF.
+      #
+      # The exact version is pinned for the reason the actions are: a new release
+      # can add an audit, and a gate that starts failing on its own schedule gets
+      # disabled rather than read. Dependabot does not track this one.
+      #
+      # `GH_TOKEN` is what enables the audits that resolve a ref against the
+      # upstream repo — `impostor-commit` above all, which is the one that catches
+      # a SHA that never belonged to the action it is written beside.
+      - name: Audit the workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pipx run zizmor==1.30.1 .
