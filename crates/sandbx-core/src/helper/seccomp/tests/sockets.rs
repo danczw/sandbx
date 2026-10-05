@@ -1,6 +1,6 @@
 //! The conditional rules on `socket`, the one syscall the policy both widens and narrows:
 //! the unix-socket axis lifts a rule on its `domain`, and a port allowlist adds rules on
-//! its `type`.
+//! its `type` and on its `protocol`.
 
 use super::*;
 
@@ -250,4 +250,101 @@ fn the_unix_and_type_rules_coexist_on_one_socket_entry() {
         EPERM,
         "the AF_UNIX denial replaced the rules confining IP egress to TCP"
     );
+}
+
+/// The hole the type rules alone leave open. Landlock asks for `CONNECT_TCP` only where
+/// `sk_is_tcp` holds — `SOCK_STREAM` *and* `IPPROTO_TCP` — so a stream socket carrying any
+/// other protocol number is egress no port rule ever sees.
+///
+/// MPTCP is the one that matters in practice: it is built into distribution kernels and
+/// needs no module to load.
+#[test]
+fn a_port_list_denies_stream_protocols_other_than_tcp() {
+    let program = compiled_filter(&port_list()).unwrap();
+
+    for domain in [libc::AF_INET, libc::AF_INET6] {
+        for protocol in [libc::IPPROTO_MPTCP, libc::IPPROTO_SCTP, libc::IPPROTO_DCCP] {
+            assert_eq!(
+                protocol_socket_verdict(
+                    &program,
+                    domain as u64,
+                    libc::SOCK_STREAM as u64,
+                    protocol as u64
+                ),
+                EPERM,
+                "a port allowlist permits protocol {protocol} over domain {domain}, a \
+                 stream socket Landlock's port rules do not police"
+            );
+        }
+    }
+}
+
+/// Both spellings of TCP have to pass, in both families: 0 is what every library writes and
+/// means the family's default for a stream socket, and `IPPROTO_TCP` is what the explicit
+/// callers write.
+#[test]
+fn a_port_list_permits_either_spelling_of_tcp() {
+    let program = compiled_filter(&port_list()).unwrap();
+
+    for domain in [libc::AF_INET, libc::AF_INET6] {
+        for protocol in [0, libc::IPPROTO_TCP] {
+            assert_eq!(
+                protocol_socket_verdict(
+                    &program,
+                    domain as u64,
+                    libc::SOCK_STREAM as u64,
+                    protocol as u64
+                ),
+                ALLOW,
+                "TCP written as protocol {protocol} is refused over domain {domain}, so \
+                 a port allowlist reaches nothing"
+            );
+        }
+    }
+}
+
+/// `protocol` is an `int`, so the kernel discards the register's high half before
+/// `inet_create` reads it — a `Qword` compare would miss the first case and refuse the
+/// second.
+#[test]
+fn the_protocol_rules_ignore_the_arguments_high_half() {
+    let program = compiled_filter(&port_list()).unwrap();
+    let high = 0xdead_beef_0000_0000u64;
+
+    assert_eq!(
+        protocol_socket_verdict(
+            &program,
+            libc::AF_INET as u64,
+            libc::SOCK_STREAM as u64,
+            high | libc::IPPROTO_SCTP as u64
+        ),
+        EPERM,
+        "SCTP passed by hiding the protocol number behind a high half the kernel drops"
+    );
+    assert_eq!(
+        protocol_socket_verdict(
+            &program,
+            libc::AF_INET as u64,
+            libc::SOCK_STREAM as u64,
+            high | libc::IPPROTO_TCP as u64
+        ),
+        ALLOW,
+        "a TCP socket was refused over bits the kernel never reads"
+    );
+}
+
+/// The protocol rules name `AF_INET` and `AF_INET6` instead of excluding `AF_UNIX` the way
+/// the type rules do, because those two are exactly `sk_is_inet`. A port allowlist makes no
+/// claim about a vsock or a Bluetooth stream, so it must not quietly refuse one.
+#[test]
+fn a_port_list_leaves_non_ip_stream_families_alone() {
+    let program = compiled_filter(&port_list()).unwrap();
+
+    for domain in [libc::AF_VSOCK, libc::AF_BLUETOOTH] {
+        assert_eq!(
+            protocol_socket_verdict(&program, domain as u64, libc::SOCK_STREAM as u64, 3),
+            ALLOW,
+            "domain {domain} was caught by a rule about IP egress"
+        );
+    }
 }
