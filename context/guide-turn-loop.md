@@ -21,7 +21,9 @@ is parameterised by what a request becomes, not by who produced it: no trait, no
 unnamed. The cost: a *generic* wrapper around `run_turn` cannot add its own `Send`
 bound, since there is no stable way to name that future. Concrete callers are
 unaffected — `documented_call_shape_stays_spawnable` pins that
-the future is still `Send`.
+the future is still `Send`, and `sandbx-cli`'s `agent-run` is that concrete
+caller, passing `|request| client.stream_chat(request)` exactly as the test shape
+predicts.
 
 `observe` stays generic for the mirror reason: `dyn FnMut` is not `Send`, so
 taking one would make the whole future non-`Send`.
@@ -213,6 +215,10 @@ filesystem still does not.
 > `Builder::new_*().enable_all()` enable it; `new_current_thread().enable_io().build()`
 > does not. The runtime flavour stays the binary's choice — the crate needs `rt`,
 > never `rt-multi-thread`.
+>
+> `sandbx-cli` makes that choice as `new_current_thread().enable_all()`:
+> `spawn_blocking` is all the loop asks of the scheduler, and `enable_all` rather
+> than `enable_time` because the provider's connector needs the IO driver too.
 
 ## The blocking boundary
 
