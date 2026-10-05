@@ -342,13 +342,13 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
 
 ## Known gaps
 
-| Gap | State |
+| Gap | Residual |
 |---|---|
-| Per-host egress | **not enforced** (#145). Per-*port* is — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — but no kernel mechanism can match the destination, so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution; #147 holds the options. |
-| Per-socket unix grants | **not expressible**. Needs Landlock `ResolveUnix` (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. Today it is one all-or-nothing toggle. |
-| `FsGuard` TOCTOU | **mostly closed**. Tools take handles (`open_read`/`open_write`, `O_NOFOLLOW`), not resolved paths. Residual: a parent-directory swap mid-open, which needs full `openat`-chain resolution. `ls` still takes a path — `read_dir` has no handle form. |
-| Capability coverage | **closed**. `tests/capability_coverage.rs` reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
-| `Degraded` raised by nothing a test enters | **closed**. Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted on any host; `tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |
+| Per-host egress | **No kernel mechanism matches a destination** (#145). Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution; #147 holds the options. |
+| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. It is one all-or-nothing toggle. |
+| `FsGuard` TOCTOU | **A parent-directory swap mid-open**, which needs full `openat`-chain resolution. `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. |
+| Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
+| `Degraded` raised by nothing a test enters | **Pinned on any host.** Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted anywhere; `tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |
 
 ## Host environment
 

@@ -4,8 +4,8 @@ Virtual Cargo workspace, `members = ["crates/*"]`, resolver 3, edition 2024.
 
 ```
 Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
-                    workspace-wide with no per-crate exemption — the one planned
-                    for sandbx-core was never needed; zero unsafe anywhere)
+                    workspace-wide with no per-crate exemption, sandbx-core
+                    included; zero unsafe anywhere)
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
 .githooks/          pre-commit: fmt --check, clippy -D warnings, subject length
@@ -35,8 +35,8 @@ sandbx-tui       placeholder
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
 | `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, tools |
-| `sandbx-session` | placeholder — nothing implemented | — |
-| `sandbx-tui` | placeholder — nothing implemented | — |
+| `sandbx-session` | placeholder (#108) | — |
+| `sandbx-tui` | placeholder (#133) | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -97,10 +97,10 @@ Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
 in-process meaning, and a refusal carries an `Access` so it can name the grant it
 lacked rather than implying none was given.
 
-Four per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` —
-the four sites that spawn, not the whole crate. The lint *is* the backstop: a CI
-grep for `Command::new` was planned as a second one and never added, because a
-lint that fails the build at the call site beats a grep that fails after it.
+One per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new`, in
+`spawn::command` — that site, not the whole crate. The lint *is* the backstop: a
+CI grep for `Command::new` would be a second one, but a lint that fails the build
+at the call site beats a grep that fails after it.
 
 ## `sandbx-tools`
 
