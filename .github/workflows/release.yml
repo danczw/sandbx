@@ -122,8 +122,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # So the "latest" link never points at a build whose sandbox is still
-      # moving.
+      # A hyphenated tag is published as a pre-release, so the "latest" link
+      # never points at one. An unsuffixed pre-1.0 tag is not covered (#142).
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

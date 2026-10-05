@@ -44,14 +44,16 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
+      # Both commands are byte-identical to `.githooks/pre-commit`; keep them so.
       # Default features: the pass that sees the crates as a consumer does, so
       # production code reaching a test-only item behind a feature
       # (`sandbx-providers`' MockProvider) fails here, not at tag time.
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # `mock` unlocks the test target `required-features` gates, which is what
-      # lets the Clippy pass above stay default-features. Excludes
+      # Default features plus `mock`, which unlocks the test target
+      # `sandbx-providers`' `[[test]] required-features` gates — that gating is
+      # what lets the passes above stay default-features. Excludes
       # sandbox-integration and the live-credential tests.
       - name: Test
         run: cargo test --workspace --features sandbx-providers/mock
@@ -123,9 +125,11 @@ jobs:
       # and loads no interpreter, so what a command needs granted before it can
       # start is not what the gnu run above exercises. Both kept: gnu is what
       # contributors build, musl is what ships.
+      # `--locked` unlike the gnu run, matching release.yml: this step exists so
+      # a musl break is found at merge time, and the release resolves nothing.
       - name: Test (sandbox enforcement, the published musl triple)
         run: |
-          cargo test --workspace \
+          cargo test --workspace --locked \
             --features sandbox-integration --target ${{ matrix.target }}
 
   msrv:
@@ -142,8 +146,9 @@ jobs:
       - name: Read the floor out of the manifest
         id: floor
         run: |
-          # `bash -e` without `pipefail`, so piping cargo into jq would take
-          # jq's exit status. Assigning first lets `-e` fail on cargo's error.
+          # Two statements, not one pipeline: the default shell is `bash -e`
+          # without `pipefail`, so piping cargo into jq would take jq's exit
+          # status. Assigning first lets `-e` fail on cargo's own error.
           metadata="$(cargo metadata --format-version 1 --no-deps)"
           floor="$(jq -r '
             [.packages[].rust_version] | unique
