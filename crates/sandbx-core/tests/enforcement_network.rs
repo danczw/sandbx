@@ -159,6 +159,33 @@ fn udp_is_refused_under_a_port_allowlist() {
     );
 }
 
+/// `handled_net_access` asks for `BindTcp` as well as `ConnectTcp`, so an allowlist bounds
+/// listening too. A cost rather than a feature — `bind(0)`, which is what a program wanting
+/// any free local port asks for, cannot be expressed by a port list and so is refused — and
+/// `SECURITY.md` says so because this test says so.
+#[test]
+fn bind_is_confined_to_the_allowlisted_ports() {
+    let (port, accepting) = listener("UNUSED");
+    drain(port, accepting);
+
+    // The listener is gone, so the port is free and a refusal is the allowlist's doing
+    // rather than `EADDRINUSE`.
+    let policy = SandboxPolicy::default().allow_network_port(port);
+    let listed = probe(policy.clone(), "bind", port);
+    let ephemeral = probe(policy, "bind", 0);
+
+    assert!(
+        listed.status.success(),
+        "an allowlisted port could not be bound, so the allowlist grants nothing: {}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert!(
+        !ephemeral.status.success(),
+        "bind(0) succeeded under a port allowlist, so the kernel chose a port the \
+         allowlist never named"
+    );
+}
+
 /// The denial belongs to the allowlist and not to network access: an operator who asked for
 /// unrestricted egress still gets datagrams, and `getaddrinfo` still has netlink.
 #[test]

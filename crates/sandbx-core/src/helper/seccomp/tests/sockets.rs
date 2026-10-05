@@ -1,6 +1,7 @@
 //! The conditional rules on `socket`, the one syscall the policy both widens and narrows:
-//! the unix-socket axis lifts a rule on its `domain`, and a port allowlist adds rules on
-//! its `type` and on its `protocol`.
+//! the unix-socket axis lifts a rule on its `domain`, and a port allowlist adds rules on its
+//! `domain`, `type` and `protocol` — plus the `MSG_FASTOPEN` rules on the send syscalls,
+//! which are here because they belong to the same claim.
 
 use super::*;
 
@@ -333,18 +334,114 @@ fn the_protocol_rules_ignore_the_arguments_high_half() {
     );
 }
 
-/// The protocol rules name `AF_INET` and `AF_INET6` instead of excluding `AF_UNIX` the way
-/// the type rules do, because those two are exactly `sk_is_inet`. A port allowlist makes no
-/// claim about a vsock or a Bluetooth stream, so it must not quietly refuse one.
+/// `AF_SMC` is the hole the type and protocol rules both miss: its type is `SOCK_STREAM` and
+/// its family is neither `AF_INET` nor `AF_INET6`, while `smc_connect` dials its inner TCP
+/// socket with `kernel_connect`, below the hook `ConnectTcp` lives on.
+///
+/// `AF_SMC` is 43 (`include/linux/socket.h`); `libc` does not name it.
 #[test]
-fn a_port_list_leaves_non_ip_stream_families_alone() {
+fn a_port_list_denies_stream_families_that_tunnel_ip() {
     let program = compiled_filter(&port_list()).unwrap();
+    const AF_SMC: u64 = 43;
+
+    for domain in [AF_SMC, libc::AF_TIPC as u64] {
+        assert_eq!(
+            protocol_socket_verdict(&program, domain, libc::SOCK_STREAM as u64, 0),
+            EPERM,
+            "a port allowlist permits a stream socket in domain {domain}, which carries \
+             IP traffic no Landlock port rule sees"
+        );
+    }
+}
+
+/// The same rule read from the other side: only the three families a port rule can speak
+/// about survive it, so a family added to the kernel tomorrow is denied without an edit here.
+#[test]
+fn a_port_list_permits_stream_sockets_only_in_the_ip_families() {
+    let program = compiled_filter(&port_list().allow_unix_sockets()).unwrap();
+
+    for domain in [libc::AF_INET, libc::AF_INET6, libc::AF_UNIX] {
+        assert_eq!(
+            protocol_socket_verdict(&program, domain as u64, libc::SOCK_STREAM as u64, 0),
+            ALLOW,
+            "a stream socket in domain {domain} was refused, so a port allowlist reaches \
+             nothing"
+        );
+    }
 
     for domain in [libc::AF_VSOCK, libc::AF_BLUETOOTH] {
         assert_eq!(
-            protocol_socket_verdict(&program, domain as u64, libc::SOCK_STREAM as u64, 3),
-            ALLOW,
-            "domain {domain} was caught by a rule about IP egress"
+            protocol_socket_verdict(&program, domain as u64, libc::SOCK_STREAM as u64, 0),
+            EPERM,
+            "a stream socket in domain {domain} escaped the family allowlist"
         );
     }
+}
+
+/// TCP Fast Open reaches a port without calling `connect`, so Landlock never sees it:
+/// `tcp_sendmsg_fastopen` connects via `__inet_stream_connect`, and `security_socket_connect`
+/// is only reached from `__sys_connect_file`.
+#[test]
+fn a_port_list_denies_tcp_fast_open_sends() {
+    let program = compiled_filter(&port_list()).unwrap();
+    let fastopen = libc::MSG_FASTOPEN as u64;
+
+    for (syscall, flags_arg) in [
+        (libc::SYS_sendto, 3),
+        (libc::SYS_sendmsg, 2),
+        (libc::SYS_sendmmsg, 3),
+    ] {
+        let mut args = [0; 6];
+        args[flags_arg] = fastopen | libc::MSG_NOSIGNAL as u64;
+
+        assert_eq!(
+            verdict_with_args(&program, syscall, args),
+            EPERM,
+            "syscall {syscall} accepts MSG_FASTOPEN, so a port allowlist can be reached \
+             past with a send that never calls connect"
+        );
+    }
+}
+
+/// The denial is the flag and not the syscall: an allowlisted TCP port is useless if nothing
+/// can be written to it.
+#[test]
+fn a_port_list_permits_an_ordinary_send() {
+    let program = compiled_filter(&port_list()).unwrap();
+
+    for (syscall, flags_arg) in [
+        (libc::SYS_sendto, 3),
+        (libc::SYS_sendmsg, 2),
+        (libc::SYS_sendmmsg, 3),
+    ] {
+        let mut args = [0; 6];
+        args[flags_arg] = libc::MSG_NOSIGNAL as u64;
+
+        assert_eq!(
+            verdict_with_args(&program, syscall, args),
+            ALLOW,
+            "syscall {syscall} is refused without MSG_FASTOPEN set, so an allowlisted \
+             port cannot be written to"
+        );
+    }
+}
+
+/// A conditional rule must never widen an unconditional denial. Asserted directly, because
+/// no production policy produces the collision: an empty rule vector means "match every
+/// call", so appending one condition to a syscall on [`BLOCKED_SYSCALLS`] would permit every
+/// call that fails the condition.
+#[test]
+fn a_conditional_rule_cannot_weaken_an_unconditional_denial() {
+    use seccompiler::{SeccompCmpArgLen, SeccompCmpOp, SeccompCondition};
+
+    let mut rules = std::collections::BTreeMap::from([(libc::SYS_socket, Vec::new())]);
+    let condition = SeccompCondition::new(0, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, 1).unwrap();
+
+    super::rules::deny_when(&mut rules, libc::SYS_socket, vec![condition]).unwrap();
+
+    assert!(
+        rules[&libc::SYS_socket].is_empty(),
+        "a condition was appended to an unconditional denial, so every call that fails \
+         it is now permitted"
+    );
 }

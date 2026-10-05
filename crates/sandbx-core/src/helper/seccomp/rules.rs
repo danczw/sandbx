@@ -102,6 +102,43 @@ pub(super) const NAMESPACE_CLONE_FLAGS: &[libc::c_int] = &[
 /// a datagram socket.
 pub(super) const SOCK_TYPE_MASK: u64 = 0xf;
 
+/// One comparison against one syscall argument.
+///
+/// Always `Dword`, because every argument the rules below examine is read by the kernel as a
+/// 32-bit value — `socket`'s three `int`s, `clone`'s flags through `lower_32_bits`,
+/// `sendmsg`'s `int flags`. A `Qword` compare would consult register bits no kernel check
+/// sees, so `socket(AF_INET, 0x1_0000_0002, 0)` would escape a rule that named `SOCK_DGRAM`.
+fn arg(
+    index: u8,
+    op: seccompiler::SeccompCmpOp,
+    value: u64,
+) -> Result<seccompiler::SeccompCondition, SandboxError> {
+    seccompiler::SeccompCondition::new(index, seccompiler::SeccompCmpArgLen::Dword, op, value)
+        .map_err(seccomp_failed)
+}
+
+/// Deny `syscall` for the calls matching all of `conditions`, unless it is already denied
+/// unconditionally.
+///
+/// Two things make the guard load-bearing. Rules for one syscall are OR'd, so `insert` would
+/// let a second producer wipe the first with no trace; and an empty rule vector means "match
+/// every call", so appending to one would turn a total denial into a partial one — the filter
+/// getting *weaker* because a number was added to [`BLOCKED_SYSCALLS`]. Skipping is the
+/// fail-closed answer: the unconditional denial already covers everything the rule would.
+pub(super) fn deny_when(
+    rules: &mut std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
+    syscall: libc::c_long,
+    conditions: Vec<seccompiler::SeccompCondition>,
+) -> Result<(), SandboxError> {
+    if rules.get(&syscall).is_some_and(Vec::is_empty) {
+        return Ok(());
+    }
+
+    let rule = seccompiler::SeccompRule::new(conditions).map_err(seccomp_failed)?;
+    rules.entry(syscall).or_default().push(rule);
+    Ok(())
+}
+
 /// The seccomp denylist [`super::deny_dangerous_syscalls`] will install, as data.
 ///
 /// Split out so it is assertable without a kernel. An empty rule vector means "match
@@ -112,7 +149,7 @@ pub(super) fn blocked_syscalls(
 ) -> Result<std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>, SandboxError> {
     use std::collections::BTreeMap;
 
-    use seccompiler::{SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompRule};
+    use seccompiler::SeccompCmpOp::{Eq, MaskedEq, Ne};
 
     let mut rules = BLOCKED_SYSCALLS
         .iter()
@@ -122,26 +159,15 @@ pub(super) fn blocked_syscalls(
 
     // One rule per flag, because rules for a syscall are OR'd while conditions inside a
     // rule are AND'd — a single `MaskedEq` over the union would only fire when *every*
-    // flag was set. `Dword`, like the socket rule below: `clone`'s flags live in the low
-    // half and the kernel ignores the high one, so a `Qword` compare would miss
-    // `clone(0x1_0000_0000 | CLONE_NEWUSER)`.
-    rules.insert(
-        libc::SYS_clone,
-        NAMESPACE_CLONE_FLAGS
-            .iter()
-            .map(|flag| {
-                let flag = *flag as u64;
-                let has_flag = SeccompCondition::new(
-                    0,
-                    SeccompCmpArgLen::Dword,
-                    SeccompCmpOp::MaskedEq(flag),
-                    flag,
-                )
-                .map_err(seccomp_failed)?;
-                SeccompRule::new(vec![has_flag]).map_err(seccomp_failed)
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    );
+    // flag was set.
+    for flag in NAMESPACE_CLONE_FLAGS {
+        let flag = *flag as u64;
+        deny_when(
+            &mut rules,
+            libc::SYS_clone,
+            vec![arg(0, MaskedEq(flag), flag)?],
+        )?;
+    }
 
     // Unix sockets are their own axis, not a sub-case of network. A netns isolates only
     // *abstract* unix sockets; pathname sockets live in the filesystem and cross it
@@ -158,19 +184,11 @@ pub(super) fn blocked_syscalls(
     // `socketpair` is left alone: an anonymous pair with no filesystem path cannot reach
     // a host daemon, and shells use it routinely.
     if !policy.allows_unix_sockets() {
-        let af_unix = SeccompCondition::new(
-            0,
-            SeccompCmpArgLen::Dword,
-            SeccompCmpOp::Eq,
-            libc::AF_UNIX as u64,
-        )
-        .map_err(seccomp_failed)?;
-        // Appended, not inserted: rules for one syscall are OR'd, and `insert` would make a
-        // second producer of `SYS_socket` rules wipe this one with no trace.
-        rules
-            .entry(libc::SYS_socket)
-            .or_default()
-            .push(SeccompRule::new(vec![af_unix]).map_err(seccomp_failed)?);
+        deny_when(
+            &mut rules,
+            libc::SYS_socket,
+            vec![arg(0, Eq, libc::AF_UNIX as u64)?],
+        )?;
     }
 
     // A port allowlist claims egress reaches the ports it names and nowhere else, and
@@ -184,6 +202,12 @@ pub(super) fn blocked_syscalls(
     };
 
     if confine_to_tcp {
+        // Unix sockets are a separate axis, granted or withheld by the rule above. Without
+        // this condition a denial aimed at IP egress would also refuse
+        // `socket(AF_UNIX, SOCK_DGRAM)`, silently narrowing a grant it never mentions.
+        let not_unix = arg(0, Ne, libc::AF_UNIX as u64)?;
+        let is_stream = arg(1, MaskedEq(SOCK_TYPE_MASK), libc::SOCK_STREAM as u64)?;
+
         // Every value of the 4-bit type field but `SOCK_STREAM`: fifteen rules also close
         // `SOCK_SEQPACKET` (SCTP, which `ConnectTcp` does not police), `SOCK_RDM`,
         // `SOCK_PACKET` and whatever a future kernel assigns, where a denylist of
@@ -195,61 +219,67 @@ pub(super) fn blocked_syscalls(
                 continue;
             }
 
-            // Unix sockets are a separate axis, granted or withheld by the rule above.
-            // Without this condition a type denial aimed at IP egress would also refuse
-            // `socket(AF_UNIX, SOCK_DGRAM)`, silently narrowing a grant it never mentions.
-            let not_unix = SeccompCondition::new(
-                0,
-                SeccompCmpArgLen::Dword,
-                SeccompCmpOp::Ne,
-                libc::AF_UNIX as u64,
-            )
-            .map_err(seccomp_failed)?;
-            // `Dword` for the reason the `clone` rule above gives: `type` is an `int` and
-            // the kernel discards the register's high half, so a `Qword` compare misses
-            // `socket(AF_INET, 0x1_0000_0002, 0)`.
-            let is_type = SeccompCondition::new(
-                1,
-                SeccompCmpArgLen::Dword,
-                SeccompCmpOp::MaskedEq(SOCK_TYPE_MASK),
-                socket_type,
-            )
-            .map_err(seccomp_failed)?;
-
-            rules
-                .entry(libc::SYS_socket)
-                .or_default()
-                .push(SeccompRule::new(vec![not_unix, is_type]).map_err(seccomp_failed)?);
+            let is_type = arg(1, MaskedEq(SOCK_TYPE_MASK), socket_type)?;
+            deny_when(
+                &mut rules,
+                libc::SYS_socket,
+                vec![not_unix.clone(), is_type],
+            )?;
         }
+
+        // A stream socket outside the IP families, because a family that tunnels IP dials its
+        // inner socket with `kernel_connect`, which calls `sock->ops->connect` without
+        // `security_socket_connect` — so no Landlock hook runs. `smc_connect`
+        // (`net/smc/af_smc.c`) is the reachable one: `socket(AF_SMC, SOCK_STREAM, …)` autoloads
+        // `net-pf-43` unprivileged and reaches any TCP port. AF_TIPC and AF_IB are the same
+        // shape, so this is an allowlist of the three families a port rule can speak about
+        // rather than a denylist of the ones known to tunnel.
+        deny_when(
+            &mut rules,
+            libc::SYS_socket,
+            vec![
+                is_stream.clone(),
+                not_unix.clone(),
+                arg(0, Ne, libc::AF_INET as u64)?,
+                arg(0, Ne, libc::AF_INET6 as u64)?,
+            ],
+        )?;
 
         // `SOCK_STREAM` is not TCP: `hook_socket_connect` asks for `CONNECT_TCP` only where
         // `sk_is_tcp` holds — `sk_type == SOCK_STREAM && sk_protocol == IPPROTO_TCP`
         // (`include/net/sock.h`) — and returns 0, unrestricted, for every other socket. So
         // `socket(AF_INET, SOCK_STREAM, IPPROTO_MPTCP)` is a stream socket no port rule sees.
-        //
-        // Scoped per family rather than AND'ing `Ne AF_UNIX` as above, because `sk_is_inet`
-        // is exactly these two: AF_VSOCK and AF_BLUETOOTH streams, which no port rule speaks
-        // about either way, stay reachable.
         for family in [libc::AF_INET, libc::AF_INET6] {
-            let is_family =
-                SeccompCondition::new(0, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, family as u64)
-                    .map_err(seccomp_failed)?;
-            // Protocol 0 is "this family's default for this type", which for a stream
-            // socket is TCP, so it has to pass alongside the explicit number.
-            let not_default =
-                SeccompCondition::new(2, SeccompCmpArgLen::Dword, SeccompCmpOp::Ne, 0)
-                    .map_err(seccomp_failed)?;
-            let not_tcp = SeccompCondition::new(
-                2,
-                SeccompCmpArgLen::Dword,
-                SeccompCmpOp::Ne,
-                libc::IPPROTO_TCP as u64,
-            )
-            .map_err(seccomp_failed)?;
+            deny_when(
+                &mut rules,
+                libc::SYS_socket,
+                vec![
+                    arg(0, Eq, family as u64)?,
+                    // Protocol 0 is "this family's default for this type", which for a stream
+                    // socket is TCP, so it has to pass alongside the explicit number.
+                    arg(2, Ne, 0)?,
+                    arg(2, Ne, libc::IPPROTO_TCP as u64)?,
+                ],
+            )?;
+        }
 
-            rules.entry(libc::SYS_socket).or_default().push(
-                SeccompRule::new(vec![is_family, not_default, not_tcp]).map_err(seccomp_failed)?,
-            );
+        // TCP Fast Open connects without `connect`: `tcp_sendmsg_locked` routes a send
+        // carrying `MSG_FASTOPEN` into `tcp_sendmsg_fastopen`, which calls
+        // `__inet_stream_connect` directly (`net/ipv4/tcp.c`). `security_socket_connect` is
+        // reached only from `__sys_connect_file`, so the port in `msg_name` is one Landlock
+        // never sees, and `net.ipv4.tcp_fastopen` has client mode on by default. The flag is
+        // a register value, so seccomp can refuse it; an ordinary send never sets it.
+        for (syscall, flags_arg) in [
+            (libc::SYS_sendto, 3),
+            (libc::SYS_sendmsg, 2),
+            (libc::SYS_sendmmsg, 3),
+        ] {
+            let fastopen = libc::MSG_FASTOPEN as u64;
+            deny_when(
+                &mut rules,
+                syscall,
+                vec![arg(flags_arg, MaskedEq(fastopen), fastopen)?],
+            )?;
         }
     }
 
