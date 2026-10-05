@@ -1,7 +1,12 @@
 //! The ABI ladder and the enforcement verdict — the two answers that depend on the
 //! kernel, asked without one.
 
-use super::{NEGOTIABLE_ABI, SandboxError, enforcement_verdict, negotiated_abi_from};
+use super::{BASELINE_ABI, NEGOTIABLE_ABI, SandboxError, enforcement_verdict, negotiated_abi_from};
+
+/// The kernel release [`BASELINE_ABI`] shipped in, which `landlock` does not carry. Lives
+/// here rather than beside the constant because production states it in prose only — in
+/// the refusal message and the docs — so this is the expectation those are checked against.
+const BASELINE_KERNEL: &str = "6.10";
 
 /// The error a kernel returns for an ABI it has only *part* of, and so the only one
 /// [`negotiated_abi_from`] steps down a rung on: under `CompatLevel::HardRequirement`,
@@ -189,13 +194,69 @@ fn a_kernel_below_the_baseline_is_unsupported() {
         Err(no_abi_at_all(abi))
     });
 
-    assert!(
-        matches!(outcome, Err(SandboxError::Unsupported { .. })),
-        "a kernel below the baseline was not refused as unsupported: got {outcome:?}"
-    );
+    let Err(SandboxError::Unsupported { detail }) = &outcome else {
+        panic!("a kernel below the baseline was not refused as unsupported: got {outcome:?}");
+    };
+
+    let abi = format!("ABI {}", BASELINE_ABI as i32);
+    for want in [abi.as_str(), BASELINE_KERNEL] {
+        assert!(
+            detail.contains(want),
+            "the refusal does not name the floor it is refusing for ({want}): {detail}"
+        );
+    }
+
     assert_eq!(
         asked, NEGOTIABLE_ABI,
         "the walk did not try every rung before refusing, so a kernel that has \
          the baseline could be turned away"
     );
+}
+
+/// A floor bump that misses a prose copy leaves `SECURITY.md` claiming enforcement the
+/// code does not provide — a defect in the claim rather than in the code.
+///
+/// Containment, not equality: this catches a file that never names the current floor, not
+/// one that also still names an older one.
+#[test]
+fn every_prose_copy_of_the_floor_is_current() {
+    let abi = format!("ABI {}", BASELINE_ABI as i32);
+    let both: &[&str] = &[abi.as_str(), BASELINE_KERNEL];
+    let kernel_only: &[&str] = &[BASELINE_KERNEL];
+
+    for (name, text, wanted) in [
+        (
+            "SECURITY.md",
+            include_str!("../../../../../../SECURITY.md"),
+            both,
+        ),
+        (
+            "README.md",
+            include_str!("../../../../../../README.md"),
+            kernel_only,
+        ),
+        (
+            ".github/workflows/ci.yml",
+            include_str!("../../../../../../.github/workflows/ci.yml"),
+            both,
+        ),
+        (
+            "sandbx-core/Cargo.toml",
+            include_str!("../../../../Cargo.toml"),
+            both,
+        ),
+        (
+            "tests/enforcement.rs",
+            include_str!("../../../../tests/enforcement.rs"),
+            both,
+        ),
+    ] {
+        for want in wanted {
+            assert!(
+                text.contains(want),
+                "{name} does not state the current floor ({want}); a bump to \
+                 BASELINE_ABI or BASELINE_KERNEL has left it behind"
+            );
+        }
+    }
 }
