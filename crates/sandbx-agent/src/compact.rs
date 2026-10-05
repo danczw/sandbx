@@ -59,8 +59,11 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// as the turn goes round again, and a turn can never be made to re-ask for a tool whose
 /// result it withheld from itself.
 ///
-/// `floor` is what the previous turn withheld, and the returned cut is never shallower
-/// than it, so the cut only ever deepens. Without that the mechanism oscillates and
+/// Two postconditions `run_turn` leans on: every `Some` satisfies [`opens_a_request`],
+/// and the cut is never shallower than a `floor` that is itself a legal boundary. A floor
+/// that is not one is met as closely as the law allows instead, which can land below it.
+///
+/// `floor` is what the previous turn withheld. Without it the mechanism oscillates and
 /// bounds nothing: the figure a caller measures is the cost of the *already compacted*
 /// request, so the turn after a successful compaction reads under budget, puts the whole
 /// history back, and sends more than the turn that just triggered. Carrying a count
@@ -73,9 +76,9 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// to run:
 ///
 /// 1. the shallowest legal cut at or after the target;
-/// 2. failing that, the deepest legal cut between the floor and the target — the long
-///    unbroken tool chain, where shedding less than asked still beats shedding nothing
-///    and the next turn re-measures;
+/// 2. failing that, the deepest legal cut below the target — the long unbroken tool
+///    chain, where shedding less than asked still beats shedding nothing and the next
+///    turn re-measures;
 /// 3. failing that, `None`: the request goes out uncompacted.
 ///
 /// Rung 3 rather than erroring, which would turn an opt-in optimisation into a
@@ -84,10 +87,12 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// compaction this naive, which sheds whole exchanges and so cannot shed a single
 /// enormous one at all.
 ///
-/// Reaching rung 3 with a non-zero `floor` means a caller threaded back a count its
-/// history no longer supports, having rewritten history rather than appended to it. The
-/// floor is dropped rather than forced and the request goes out whole: too large is
-/// recoverable where invalid is not.
+/// A `floor` no boundary can meet means a caller rewrote its history rather than
+/// appending to it. While it still names a message, rung 2 sheds to the deepest boundary
+/// below it rather than dropping it and sending the history whole, which would hand that
+/// caller `withheld: 0` and restart compaction from zero; it also pushes the target past
+/// every boundary, so the cut can keep less than `keep_recent` asked for. At or past the
+/// end of the history it is dropped instead — see the clamp below.
 pub(crate) fn plan_cut(
     history: &[RequestMessage],
     produced: usize,
@@ -98,7 +103,10 @@ pub(crate) fn plan_cut(
     // `produced[0]`, which `run_turn` always pushes as an assistant message, or on
     // nothing at all when the turn has produced nothing.
     let ceiling = history.len();
-    let floor = floor.min(ceiling);
+    // A floor at or past the end names no message, so there is nothing to meet. Clamping it
+    // onto the end would meet it from the deepest boundary in the transcript and withhold
+    // all but the newest exchange — permanently, since that cut becomes the next floor.
+    let floor = if floor >= ceiling { 0 } else { floor };
 
     let target = match keep_recent {
         // Saturating, so a `keep_recent` larger than the conversation lands on 0 and
@@ -118,9 +126,9 @@ pub(crate) fn plan_cut(
     (target..ceiling)
         .find(|&cut| opens_a_request(history, cut))
         .or_else(|| {
-            (floor.max(1)..target)
-                .rev()
-                .find(|&cut| opens_a_request(history, cut))
+            // From the target, not the floor: when the floor is not itself a legal
+            // boundary this is the only scan that can reach below it.
+            (1..target).rev().find(|&cut| opens_a_request(history, cut))
         })
 }
 
@@ -211,6 +219,21 @@ mod tests {
                     text: "done".to_string(),
                 }],
             },
+        ]
+    }
+
+    /// The shapes the sweeps run over: too short to cut, legal boundaries only, one
+    /// exchange, a caller's own malformed message, and two exchanges.
+    fn shapes() -> Vec<Vec<RequestMessage>> {
+        let mut long = exchange("a", "first");
+        long.extend(exchange("b", "second"));
+
+        vec![
+            vec![user_text("one")],
+            vec![user_text("one"), user_text("two")],
+            exchange("a", "first"),
+            vec![empty_user(), user_text("two")],
+            long,
         ]
     }
 
@@ -315,19 +338,9 @@ mod tests {
     /// Swept over the shapes that could break it.
     #[test]
     fn no_plan_ever_withholds_the_whole_history() {
-        let mut shapes = vec![
-            vec![user_text("one")],
-            vec![user_text("one"), user_text("two")],
-            exchange("a", "first"),
-            vec![empty_user(), user_text("two")],
-        ];
-        let mut long = exchange("a", "first");
-        long.extend(exchange("b", "second"));
-        shapes.push(long);
-
-        for history in shapes {
+        for history in shapes() {
             for produced in 0..4 {
-                for floor in 0..4 {
+                for floor in [0, 1, 2, 3, 4, 5, 99] {
                     for keep_recent in [None, Some(0), Some(1), Some(2), Some(3)] {
                         if let Some(cut) = plan_cut(&history, produced, keep_recent, floor) {
                             assert!(
@@ -411,8 +424,8 @@ mod tests {
         assert_eq!(plan_cut(&[], 6, Some(2), 0), None);
     }
 
-    /// Monotonicity is what lets `run_turn` freeze the cut for the whole turn; without
-    /// it the request's cached prefix would be rebuilt backwards each round.
+    /// Monotonicity is what lets `run_turn` re-plan each measured round without ever
+    /// re-showing the model history it had already withheld.
     #[test]
     fn a_growing_conversation_never_cuts_shallower() {
         let mut history = exchange("a", "first");
@@ -467,28 +480,113 @@ mod tests {
         assert_eq!(plan_cut(&history, 0, Some(3), 4), Some(8));
     }
 
-    /// Covers a floor landing mid-exchange; one carried in from a history that was only
-    /// appended to is legal already.
+    /// A floor carried in from a history that was only appended to is legal already, and
+    /// is held exactly rather than snapped anywhere.
     #[test]
-    fn an_illegal_floor_is_snapped_forward() {
+    fn a_legal_floor_is_met_exactly() {
         let mut history = exchange("a", "first");
         history.extend(exchange("b", "second"));
 
-        // Index 5 is an assistant turn and 6 a tool result; 4 is the prose boundary, so
-        // a floor of 5 can only be met by the next one up — of which there is none, and
-        // the request goes out whole rather than invalid.
         assert_eq!(plan_cut(&history, 0, None, 4), Some(4));
-        assert_eq!(plan_cut(&history, 0, None, 5), None);
     }
 
-    /// A caller that rewrote history rather than appending to it. Clamping rather than
-    /// slicing keeps this a declined compaction instead of a panic in `run_turn`.
+    /// Forward is still preferred for a floor landing mid-exchange: 5 is an assistant
+    /// turn, 6 a tool result, and 8 the next prose boundary.
     #[test]
-    fn a_floor_beyond_the_history_is_clamped() {
-        let history = exchange("a", "first");
+    fn an_illegal_floor_snaps_to_the_boundary_above() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+        history.extend(exchange("c", "third"));
 
-        assert_eq!(plan_cut(&history, 0, None, 99), None);
+        assert_eq!(plan_cut(&history, 0, None, 5), Some(8));
+    }
+
+    /// Dropping the floor instead would hand the caller `withheld: 0` and restart
+    /// compaction from zero — the re-growth the floor exists to prevent.
+    #[test]
+    fn an_illegal_floor_falls_back_below_itself() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+
+        // Nothing legal at or above 5, so the deepest below it: one boundary shallower
+        // than asked rather than the whole history.
+        assert_eq!(plan_cut(&history, 0, None, 5), Some(4));
+    }
+
+    /// A caller that rewrote history rather than appending to it. Dropped rather than
+    /// met from below: meeting it would withhold all but the newest exchange, and the
+    /// count it came from describes a history that no longer exists.
+    #[test]
+    fn a_floor_past_the_history_is_dropped() {
+        let cuttable = vec![user_text("one"), user_text("two"), user_text("three")];
+
+        assert_eq!(plan_cut(&cuttable, 0, None, 99), None);
+        assert_eq!(
+            plan_cut(&cuttable, 0, None, 3),
+            None,
+            "the end is past it too"
+        );
+        assert_eq!(plan_cut(&exchange("a", "first"), 0, None, 99), None);
         assert_eq!(plan_cut(&[], 0, None, 99), None);
+
+        // Dropped, not disabling: an over-budget turn still compacts on `keep_recent`.
+        assert_eq!(plan_cut(&cuttable, 0, Some(1), 99), Some(2));
+    }
+
+    /// An unmeetable floor pushes the target past every boundary, so what is left can be
+    /// less than `keep_recent` asked to keep. The floor outranks it.
+    #[test]
+    fn an_unmeetable_floor_can_outshed_keep_recent() {
+        let mut history = exchange("a", "first");
+        history.extend(exchange("b", "second"));
+        history.extend(exchange("c", "third"));
+
+        // Keep 11 of 12 ⇒ target 1 on its own; the floor of 10 is a tool result, and the
+        // deepest boundary below it is 8.
+        assert_eq!(plan_cut(&history, 0, Some(11), 10), Some(8));
+    }
+
+    /// The postcondition `run_turn`'s monotonicity rests on: a plan it can hand to the
+    /// API, whatever floor it was given.
+    #[test]
+    fn every_plan_opens_a_request() {
+        for history in shapes() {
+            for produced in 0..4 {
+                for floor in [0, 1, 2, 3, 4, 5, 99] {
+                    for keep_recent in [None, Some(0), Some(1), Some(2), Some(3)] {
+                        if let Some(cut) = plan_cut(&history, produced, keep_recent, floor) {
+                            assert!(
+                                opens_a_request(&history, cut),
+                                "cut {cut} of {history:?} at {keep_recent:?}/floor {floor}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The other half of the postcondition. An illegal floor is exempt — that is the one
+    /// case the cut may land below it.
+    #[test]
+    fn a_plan_is_never_shallower_than_a_legal_floor() {
+        for history in shapes() {
+            for produced in 0..4 {
+                for floor in 0..6 {
+                    if floor != 0 && !opens_a_request(&history, floor) {
+                        continue;
+                    }
+                    for keep_recent in [None, Some(0), Some(1), Some(2), Some(3)] {
+                        if let Some(cut) = plan_cut(&history, produced, keep_recent, floor) {
+                            assert!(
+                                cut >= floor,
+                                "cut {cut} under floor {floor} of {history:?} at {keep_recent:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Compaction on but never yet triggered: no floor, nothing to hold, and the

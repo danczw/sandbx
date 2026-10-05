@@ -31,7 +31,7 @@ taking one would make the whole future non-`Send`.
 ```
 ┌─ round (max_rounds = 8) ────────────────────────────────────┐
 │  request = history[cut..] ++ produced                       │
-│    cut: ≥ last turn's; once it lands it is final           │
+│    cut: ≥ last turn's; deepens, never reverses              │
 │  open(request)                     ◄── per-round timeout    │
 │  consume stream ──► flush text before ToolUse, keep Usage   │
 │  no ToolUse blocks?  ──► return TurnOutcome                 │
@@ -77,8 +77,9 @@ property below for why that is a weaker claim than "a conversation's first turn"
 
 **Both halves have to be threaded back, not just the usage.** `TurnOutcome::withheld`
 goes into the next `Turn::withheld`, where it is the *floor* for the next cut: this turn
-may withhold more, never less. Without that the mechanism bounds nothing, and the bug is
-not obvious from one turn:
+may withhold more, never less — unless the count has stopped naming a legal cut point, the
+one case below. Without that the mechanism bounds nothing, and the bug is not obvious from
+one turn:
 
 | | request sent | measured | this turn reads |
 |---|---|---|---|
@@ -92,8 +93,8 @@ sending more than the turn that triggered. Compaction fires on alternate turns w
 uncompacted leg grows without limit, which is the failure the whole feature exists to
 prevent. Carrying the count forward is safe only because a caller *appends* to history:
 appending does not move the indices of a prefix, so last turn's count still names the same
-messages. A caller that rewrites history instead is absorbed by dropping the floor rather
-than cutting blind.
+messages. A caller that rewrites history instead is absorbed by the second rung below,
+which cuts to the deepest boundary under the floor rather than dropping it.
 
 **The cut points are not arbitrary.** Dropping a prefix can only break the conversation
 at its new front, so the whole question is three conditions on what becomes the first
@@ -109,12 +110,24 @@ When nothing legal is deep enough, three rungs:
 | | |
 |---|---|
 | a legal cut at or after the target | take it; `keep_recent` honoured |
-| none that deep, one shallower | take the deepest one still at or above the floor — shed less than asked rather than nothing |
-| none at all | **send it uncompacted** |
+| none that deep, one shallower | take the deepest one below the target — shed less than asked rather than nothing |
+| no legal cut anywhere | **send it uncompacted** |
 
 The target is `max(total - keep_recent, floor)`, so a `keep_recent` asking for a
 shallower cut than the floor is overruled rather than honoured. Within budget there is no
 target at all and the floor is the whole answer.
+
+The second rung scans down from the target rather than from the floor, which is the one
+place the floor gives way: a floor that is not itself a legal boundary — a caller rewrote
+its history — is met from below, at the deepest boundary under it. The alternative is
+dropping the floor and sending the history whole, which hands the caller `withheld: 0` and
+restarts compaction from zero. Such a floor also pushes the target past every boundary, so
+the cut can keep less than `keep_recent` asked for; the floor outranks it by design.
+
+A floor at or past the *end* of the history is the one that is dropped rather than met.
+No cut ever reaches that far, so only a rewrite produces one, and the count describes a
+history that no longer exists. Meeting it from below would withhold all but the newest
+exchange — and permanently, since that cut becomes the next turn's floor.
 
 The last rung is deliberate. Erroring would turn an opt-in optimisation into a
 turn-killer, and cutting anyway converts a request that *might* be too long into one the
@@ -131,15 +144,23 @@ Three properties that are easier to state than to infer:
 - **It never reaches `produced`.** The planner is handed the count of the turn's own
   messages, not the messages, so no cut can withhold the tool result the model is waiting
   on. `TurnOutcome::withheld` reports what the last request left out.
-- **The cut only ever deepens.** Within a turn it goes `None` → `Some` at most once and
-  is then fixed — never `Some` → a different `Some`, however the measurement moves after
-  that. Across turns the previous cut is the floor. So the model is never re-shown history
-  it had lost, and the cached prefix is never rebuilt backwards.
+- **The cut only ever deepens.** Within a turn it moves at most once per round that
+  reported a figure, and only downward — never back toward history it has already
+  withheld, however the measurement moves after that. Across turns the previous cut is the
+  floor. So the model is never re-shown history it had lost.
 
-  The one `None` → `Some` move *does* narrow that prefix mid-turn, on the round after a
-  turn first measures itself over budget. It is also the only in-turn bound there is —
-  `produced` grows the request as the turn goes round — so a turn with nothing threaded in
-  still compacts on its own figure from round two. "No measurement means no compaction"
+  Once per *measured* round, not once per round: a round that reports no `Usage` leaves the
+  cut where it is rather than deepening again on a figure already acted on. Each deepening
+  costs twice — it withholds context the turn cannot get back, and it replaces the
+  request's leading prefix, so whatever prompt cache sits behind the provider seam has to
+  be written again rather than read. Withholding history mid-tool-chain is also one of the
+  things that confuses a model into the empty round below. The trade is taken because
+  bounding the request is the point: a turn that cannot shed dies on the provider's
+  context-length error, and a cache write costs less than a turn.
+
+  This is the only in-turn bound there is — `produced` grows the request as the turn goes
+  round — and it holds whatever was threaded in: a turn compacts on its own figure from
+  round two whether it was handed a floor or not. "No measurement means no compaction"
   therefore bounds a turn's **first round**, not the whole turn.
 
 `EndedMidToolUse` is unaffected: it reads `produced`, which compaction cannot reach. The

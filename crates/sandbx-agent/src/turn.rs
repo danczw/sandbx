@@ -30,8 +30,8 @@ pub struct Turn<'a> {
     ///
     /// Carried in because a turn's first round has to build its request before any figure
     /// for it exists. Half of what makes [`TurnLimits::compaction`] work; [`withheld`] is
-    /// the other half and neither works alone. `None` bounds only the first round — a
-    /// turn given `None` still compacts once it has measured itself.
+    /// the other half and neither works alone. `None` bounds only the first round: every
+    /// turn compacts on its own figures once it has one, whatever it was given here.
     ///
     /// [`withheld`]: Self::withheld
     pub observed: Option<PromptUsage>,
@@ -39,13 +39,15 @@ pub struct Turn<'a> {
     /// How many of `history`'s oldest messages the previous turn left out of its
     /// request. [`TurnOutcome::withheld`], threaded back unchanged.
     ///
-    /// A floor, not an instruction: this turn may withhold more, never less. Without it
+    /// A floor, not an instruction: this turn may withhold more, never less — unless the
+    /// count no longer names a legal cut point, in which case it withholds as much as the
+    /// law allows and [`TurnOutcome::withheld`] can come back smaller. Without the floor
     /// compaction bounds nothing, because [`observed`] measures the *already compacted*
     /// request — so the turn after a compaction reads under budget, puts the whole history
     /// back, and sends more than the turn that triggered. Carrying a count is exact only
     /// because appending to history does not move its prefix's indices; a caller that
-    /// rewrites history invalidates it, which `compact::plan_cut` absorbs by dropping the
-    /// floor rather than cutting blind.
+    /// rewrites history invalidates it, and `compact::plan_cut` absorbs that by cutting to
+    /// the deepest boundary below it, or dropping it once it is past the history's end.
     ///
     /// [`observed`]: Self::observed
     pub withheld: usize,
@@ -113,6 +115,9 @@ pub struct TurnOutcome {
     /// floor the next cut may deepen but not undo. `0` covers three cases a caller cannot
     /// tell apart: compaction off, on and under budget with nothing carried in, or over
     /// budget with nothing it could legally withhold.
+    ///
+    /// Smaller than the [`Turn::withheld`] that went in only when that count had stopped
+    /// naming a legal cut point, which takes a caller rewriting its history.
     pub withheld: usize,
 }
 
@@ -189,16 +194,16 @@ impl Default for TurnLimits {
 /// back: usage alone measures the already-compacted request and oscillates, see
 /// [`Turn::withheld`].
 ///
-/// The cut only ever deepens: within a turn it moves `None` to `Some` at most once and is
-/// then fixed, and across turns the previous cut is the floor for the next. So the model
-/// is never re-shown history it had lost and the request's cached prefix is never rebuilt
-/// backwards. That one move does narrow the prefix mid-turn, on the round after a turn
-/// first measures itself over budget — the only in-turn bound there is, since `produced`
-/// grows the request as the turn goes round. The cut can never reach the messages *this*
-/// turn produced, because `compact::plan_cut` is handed their count rather than the
-/// messages, so a turn cannot withhold the tool result it is waiting on. Whole exchanges
-/// are the only legal cut points, so a single enormous one is not compactable at all and
-/// the provider's context-length error stays the backstop.
+/// The cut only ever deepens: within a turn it moves at most once per round that reported
+/// a figure, and across turns the previous cut is the floor for the next. So the model is
+/// never re-shown history it had lost. It is the only in-turn bound there is, since
+/// `produced` grows the request as the turn goes round, and it is the reason a round that
+/// reports nothing re-sends the same cut rather than deepening on a figure already acted
+/// on. The cut can never reach the messages *this* turn produced, because
+/// `compact::plan_cut` is handed their count rather than the messages, so a turn cannot
+/// withhold the tool result it is waiting on. Whole exchanges are the only legal cut
+/// points, so a single enormous one is not compactable at all and the provider's
+/// context-length error stays the backstop.
 ///
 /// `BuiltinTool::execute` is synchronous and may sit in a `write`, a directory walk or a
 /// 90-second command, which on a current-thread runtime would freeze every other task, so
@@ -237,23 +242,31 @@ where
     // This turn's own latest, which is what comes back. Not seeded from `observed`: a
     // caller has to tell "reported nothing" from "reported what you already knew".
     let mut usage: Option<PromptUsage> = None;
-    // The `cut.is_none()` guard below keeps this monotone: some number of `None`s, then
-    // one fixed `Some`. A `None` plan is not a decision, so the next round asks again —
-    // which is how a turn with nothing threaded in reacts to its own first measurement.
-    let mut cut: Option<usize> = None;
+    // How much history this round leaves out; `measured` carries "a plan is due", so 0
+    // means only that nothing is withheld.
+    let mut cut = 0usize;
+    // The carried floor until this turn plans its own cut, then that cut: a floor no legal
+    // boundary could meet is not re-asked for every round.
+    let mut floor = turn.withheld;
+    // A figure no plan has acted on. The caller's counts as one, and so does its absence —
+    // planning on `None` is what holds the floor on a first round.
+    let mut measured = true;
 
     for _ in 0..turn.limits.max_rounds {
-        if cut.is_none()
-            && let Some(policy) = turn.limits.compaction
-        {
-            // Over budget asks to deepen; within budget asks only to hold what the
-            // previous turn withheld. `None` is not "do not compact" — a conversation
-            // already cut stays cut, or the cut it paid for is undone.
+        if measured && let Some(policy) = turn.limits.compaction {
+            // Over budget asks to deepen; within budget asks only to hold the floor.
+            // `None` is not "do not compact" — a conversation already cut stays cut, or
+            // the cut it paid for is undone.
             let keep_recent =
                 compact::over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
-            cut = compact::plan_cut(turn.history, produced.len(), keep_recent, turn.withheld);
+            // A plan always contains the previous cut, so `unwrap_or` is a belt: it is
+            // what would stop a declined plan from restoring history.
+            cut =
+                compact::plan_cut(turn.history, produced.len(), keep_recent, floor).unwrap_or(cut);
+            floor = cut;
+            measured = false;
         }
-        let withheld = cut.unwrap_or(0);
+        let withheld = cut;
 
         let mut messages = turn.history[withheld..].to_vec();
         messages.extend_from_slice(&produced);
@@ -284,6 +297,7 @@ where
         if let Some(reported) = round.usage {
             usage = Some(reported);
             observed = Some(reported);
+            measured = true;
         }
         let blocks = round.blocks;
 
