@@ -29,13 +29,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      # `v1`, not `stable`: `v1` tags master's head, while the `stable` branch is
+      # regenerated as master plus one commit, so a SHA from it is reachable from
+      # no ref the next time master moves. Master leaves `toolchain` required, so
+      # every call site names its channel.
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
+          toolchain: stable
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -98,9 +103,11 @@ jobs:
     name: sandbox (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # The sandbox is the point of this project, so verify the runner can
       # actually enforce before trusting a green check. A property of the runner
@@ -123,7 +130,7 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The floor is a claim the manifest makes, so read it from there rather than
       # pinning a version here: a second copy drifts the moment someone bumps
@@ -152,17 +159,11 @@ jobs:
           echo "floor=$floor" >> "$GITHUB_OUTPUT"
           echo "floor=$floor"
 
-      # @master, not @stable, because `with: toolchain` needs a ref that takes an
-      # argument. Not a weaker pin than the three jobs above: every ref this
-      # action publishes is mutable. Its version refs (`stable`, `1.88.0`) are
-      # branches, and its sole tag, `v1`, is a moving major that currently points
-      # at master anyway. Pinning all four jobs to a full SHA is the only real
-      # improvement here, and it is a change of its own.
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: ${{ steps.floor.outputs.floor }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # Both feature sets the stable jobs cover between them, in one run: the
       # `sandbox-integration` suite needs a Linux kernel with Landlock ABI 5
@@ -182,7 +183,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
