@@ -4,7 +4,9 @@ A module is read whole. Its length is the cost of holding it in your head before
 you can safely edit any line of it — so the figure that matters is the code, not
 the file. A thoroughly tested module is a long file and a short module.
 
-Count the lines above the first `#[cfg(test)]`.
+Count the lines above the inline `mod tests` block. A module whose tests were
+moved to `foo/tests.rs` or `foo/tests/` counts whole — what it declares is a
+line, not a suite.
 
 ## Budget
 
@@ -56,10 +58,16 @@ and keeping its tests inside the crate is what lets it stay that way.
 ```sh
 for f in $(find crates -name '*.rs' -path '*/src/*' \
              -not -path '*/tests/*' -not -name 'tests.rs'); do
-  cut=$(grep -n '#\[cfg(test)\]' "$f" | head -1 | cut -d: -f1)
-  printf '%5d  %s\n' "$([ -n "$cut" ] && echo $((cut - 1)) || wc -l < "$f")" "$f"
+  cut=$(grep -n '^mod tests {$' "$f" | head -1 | cut -d: -f1)
+  printf '%5d  %s\n' "$([ -n "$cut" ] && echo $((cut - 2)) || wc -l < "$f")" "$f"
 done | sort -rn | head -12
 ```
+
+It anchors on the block, not on `#[cfg(test)]`, because that attribute is not
+where the tests start. `#[cfg(test)] mod tests;` sits with the other `mod` lines
+at the top of a file, so cutting there reported `helper/ruleset/mod.rs` as 11
+lines; a `#[cfg(test)]` named inside a doc comment cut `anthropic.rs` to 37. Both
+under-reported, which is the direction that lets a module over budget go unseen.
 
 A hit is a judgement call, not a failure: read the module and decide whether it
 has two jobs. Do not turn this into a lint — the number needs a human to
