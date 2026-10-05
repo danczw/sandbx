@@ -293,11 +293,9 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
         net,
     } = requested(policy)?;
 
-    // The one place that reads `net`. Landlock splits `handle_access`, which must precede
-    // `create`, from `add_rule`, which must follow it, so the decision is taken once here
-    // and both uses below are gated on the same `Option` — there is no path on which a
-    // port list is installed without the axis being handled, or the axis handled for a
-    // policy that asked for no ports.
+    // Landlock splits `handle_access`, which must precede `create`, from `add_rule`, which
+    // must follow it. Decided once here so both uses below are gated on the same `Option`,
+    // and no path installs a port rule without handling the axis.
     let (net_rights, net_ports) = match net {
         RequestedNet::Unhandled => (None, &[][..]),
         RequestedNet::Ports { rights, ports } => (Some(rights), ports),

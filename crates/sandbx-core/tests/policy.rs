@@ -138,7 +138,7 @@ fn granting_network_does_not_grant_unix_sockets() {
 ///
 /// `hardening::isolate` reads `allows_network` to decide whether to unshare the network
 /// namespace. If a port grant answered no, the command would get an empty netns and the
-/// allowlist would permit nothing — a fail-closed bug, but a total one.
+/// allowlist would permit nothing.
 #[test]
 fn a_port_grant_allows_network() {
     let policy = SandboxPolicy::default().allow_network_port(443);

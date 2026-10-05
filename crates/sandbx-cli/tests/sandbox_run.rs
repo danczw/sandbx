@@ -153,9 +153,8 @@ fn a_port_outside_the_range_is_a_usage_error() {
     assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
 }
 
-/// A bare occurrence contributes no value to append, so it is the narrower spelling that
-/// wins. Fail-closed, which is why it is acceptable rather than a bug — but it is surprising
-/// enough to be worth stating.
+/// A bare occurrence contributes no value to append, so the narrower spelling wins.
+/// Fail-closed, which is why it is acceptable rather than a bug.
 #[test]
 fn mixing_a_bare_flag_with_a_port_narrows_to_the_port() {
     let policy = sandbox_run(&[

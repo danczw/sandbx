@@ -42,10 +42,8 @@ pub struct Grants {
     ///
     /// The allowlist is ports, not hosts: `--allow-network 443` reaches port
     /// 443 on every routable host. Unix-domain sockets stay denied either way.
-    ///
-    /// `Option<Vec<u16>>` is what gives three states: absent, bare, and valued.
-    /// `Vec<Option<u16>>` would be the obvious spelling and clap_derive does not
-    /// support it.
+    // `Option<Vec<u16>>` is what gives three states — absent, bare, valued.
+    // `Vec<Option<u16>>` is the obvious spelling and clap_derive rejects it.
     #[arg(
         long = "allow-network",
         value_name = "PORT",
@@ -142,12 +140,9 @@ impl Grants {
             policy = policy.allow_env(name);
         }
 
-        // The three states `--allow-network` can be in. An empty `Vec` is the bare flag:
-        // every occurrence of the flag was bare, so none contributed a port.
-        //
-        // Which makes `--allow-network --allow-network 443` an allowlist of 443 alone,
-        // because the bare occurrence contributes nothing to append to. Fail-closed — the
-        // broader spelling yields the narrower policy, never the reverse — and pinned by
+        // An empty `Vec` is the bare flag: every occurrence was bare, so none contributed a
+        // port. Which makes `--allow-network --allow-network 443` an allowlist of 443 alone
+        // — fail-closed, the broader spelling yielding the narrower policy, and pinned by
         // `mixing_a_bare_flag_with_a_port_narrows_to_the_port`.
         match self.allow_network.as_deref() {
             None => {}

@@ -165,38 +165,31 @@ pub(super) fn blocked_syscalls(
             libc::AF_UNIX as u64,
         )
         .map_err(seccomp_failed)?;
-        // Appended, not inserted: `insert` would make a second producer of `SYS_socket`
-        // rules wipe this one with no trace, and rules for one syscall are OR'd, so
-        // appending is what "and also deny this" means.
+        // Appended, not inserted: rules for one syscall are OR'd, and `insert` would make a
+        // second producer of `SYS_socket` rules wipe this one with no trace.
         rules
             .entry(libc::SYS_socket)
             .or_default()
             .push(SeccompRule::new(vec![af_unix]).map_err(seccomp_failed)?);
     }
 
-    // A port allowlist claims egress reaches the ports it names and nowhere else. Landlock's
-    // network rules police TCP alone, so a command left holding a UDP or raw socket could
-    // carry traffic to any host on any port and the claim would be false — `SECURITY.md` may
-    // not overstate the sandbox, so the cheaper half of the promise is the one that goes.
-    //
-    // Matched exhaustively, and true for one state only. `Denied` is already in an empty
-    // netns, where a datagram has nowhere to go, and needs `AF_NETLINK` — a `SOCK_DGRAM`
-    // socket — for `getaddrinfo`. `AnyPort` asked for unrestricted egress, which this would
-    // narrow. `context/decision-port-allowlist.md` records what the denial costs.
+    // A port allowlist claims egress reaches the ports it names and nowhere else, and
+    // Landlock polices TCP alone — a UDP or raw socket would carry traffic anywhere and make
+    // the claim false. True for `Ports` only: `Denied` is already in an empty netns and needs
+    // `AF_NETLINK`, a `SOCK_DGRAM` socket, for `getaddrinfo`; `AnyPort` asked for
+    // unrestricted egress. `context/decision-port-allowlist.md` records what this costs.
     let confine_to_tcp = match policy.network() {
         crate::NetworkPolicy::Denied | crate::NetworkPolicy::AnyPort => false,
         crate::NetworkPolicy::Ports(_) => true,
     };
 
     if confine_to_tcp {
-        // Every value of the 4-bit type field but `SOCK_STREAM`, rather than the two named
-        // constants: sixteen rules also close `SOCK_SEQPACKET` (SCTP, which `ConnectTcp`
-        // does not police), `SOCK_RDM`, `SOCK_PACKET` and whatever a future kernel assigns,
-        // where a denylist of `SOCK_DGRAM` and `SOCK_RAW` is a guess about what exists.
-        //
-        // `SOCK_RAW` also needs `CAP_NET_RAW`, which the supervisor drops, so it is mostly
-        // unreachable already — kept because the allowlist's integrity must not rest on
-        // another subsystem having succeeded.
+        // Every value of the 4-bit type field but `SOCK_STREAM`: fifteen rules also close
+        // `SOCK_SEQPACKET` (SCTP, which `ConnectTcp` does not police), `SOCK_RDM`,
+        // `SOCK_PACKET` and whatever a future kernel assigns, where a denylist of
+        // `SOCK_DGRAM` and `SOCK_RAW` is a guess about what exists. `SOCK_RAW` stays in
+        // despite needing a `CAP_NET_RAW` the supervisor drops: the allowlist's integrity
+        // must not rest on another subsystem having succeeded.
         for socket_type in 0..=SOCK_TYPE_MASK {
             if socket_type == libc::SOCK_STREAM as u64 {
                 continue;
@@ -229,16 +222,14 @@ pub(super) fn blocked_syscalls(
                 .push(SeccompRule::new(vec![not_unix, is_type]).map_err(seccomp_failed)?);
         }
 
-        // `SOCK_STREAM` is not the same thing as TCP, and Landlock knows the difference:
-        // `hook_socket_connect` asks for `CONNECT_TCP` only where `sk_is_tcp` holds, which
-        // is `sk_type == SOCK_STREAM && sk_protocol == IPPROTO_TCP` (`include/net/sock.h`),
-        // and returns 0 — unrestricted — for every other socket. So
-        // `socket(AF_INET, SOCK_STREAM, IPPROTO_MPTCP)`, or `IPPROTO_SCTP`, is a stream
-        // socket the port rules never see.
+        // `SOCK_STREAM` is not TCP: `hook_socket_connect` asks for `CONNECT_TCP` only where
+        // `sk_is_tcp` holds — `sk_type == SOCK_STREAM && sk_protocol == IPPROTO_TCP`
+        // (`include/net/sock.h`) — and returns 0, unrestricted, for every other socket. So
+        // `socket(AF_INET, SOCK_STREAM, IPPROTO_MPTCP)` is a stream socket no port rule sees.
         //
-        // Scoped per family instead of AND'ing `Ne AF_UNIX` like the rules above, because
-        // `sk_is_inet` is exactly these two: the claim is about IP egress, so AF_VSOCK and
-        // AF_BLUETOOTH streams, which no port rule speaks about either way, stay reachable.
+        // Scoped per family rather than AND'ing `Ne AF_UNIX` as above, because `sk_is_inet`
+        // is exactly these two: AF_VSOCK and AF_BLUETOOTH streams, which no port rule speaks
+        // about either way, stay reachable.
         for family in [libc::AF_INET, libc::AF_INET6] {
             let is_family =
                 SeccompCondition::new(0, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, family as u64)

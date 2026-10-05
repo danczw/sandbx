@@ -40,9 +40,9 @@ fn tcp(target: &str) -> std::process::ExitCode {
     }
 }
 
-/// `bind` is the assertion, not `send_to`: seccomp refuses the `socket` call itself, so
-/// there is never a socket to send from. A probe that only reported on the send would pass
-/// on a `UdpSocket::bind` that failed for some unrelated reason.
+/// The `bind` failure is reported apart from the send: seccomp refuses the `socket` call
+/// itself, so under a port allowlist there is never a socket to send from, and one message
+/// for both would hide which half refused.
 fn udp(target: &str) -> std::process::ExitCode {
     let socket = match std::net::UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => socket,

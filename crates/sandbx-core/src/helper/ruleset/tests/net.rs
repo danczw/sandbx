@@ -40,9 +40,9 @@ fn an_unrestricted_grant_does_not_handle_the_network_axis() {
     }
 }
 
-/// The direction that would fail *open*, and the one assertion in this file that a kernel-free
-/// test can make about it: taking `Unhandled` for a port list leaves TCP unrestricted while
-/// the CLI reports an allowlist. `tests/enforcement_network.rs` is where the kernel says so.
+/// The direction that would fail *open*: taking `Unhandled` for a port list leaves TCP
+/// unrestricted while the CLI reports an allowlist. `tests/enforcement_network.rs` is where
+/// a real kernel says so.
 #[test]
 fn a_port_list_handles_the_axis_and_carries_every_port() {
     let policy = SandboxPolicy::default()
@@ -67,12 +67,9 @@ fn a_port_list_handles_the_axis_and_carries_every_port() {
     }
 }
 
-/// The three states must not collapse into two: a mapping that answered the same thing for
-/// a port list as for one of the others would pass every test above that it was not the
-/// subject of.
-///
-/// Compared pairwise rather than against a table of expectations, so this stays an
-/// observation about the mapping rather than a restatement of it.
+/// The three states must not collapse into two. Compared pairwise rather than against a
+/// table of expectations, so this stays an observation about the mapping rather than a
+/// restatement of it.
 #[test]
 fn the_three_network_cases_map_to_distinct_requests() {
     let denied = SandboxPolicy::default();
@@ -94,12 +91,9 @@ fn the_three_network_cases_map_to_distinct_requests() {
 /// Spelled out rather than read from `handled_net_access`: a test deriving its expectation
 /// from the same call the code makes asserts only that the code is self-consistent.
 ///
-/// Both rights are needed and neither is enough. Without `ConnectTcp` an allowlisted port is
-/// unreachable; without `BindTcp` a command may listen on any port, which an allowlist of
-/// outbound ports would not have mentioned.
-///
-/// Asked at the floor, because that is the weakest kernel this build accepts — and both
-/// rights arrived in ABI V4, below it, so the set is never empty.
+/// Neither right is enough alone — without `ConnectTcp` an allowlisted port is unreachable,
+/// without `BindTcp` a command may listen on any port. Asked at the floor, the weakest
+/// kernel this build accepts, where both are still present because both arrived in ABI V4.
 #[test]
 fn the_baseline_abi_handles_both_tcp_rights() {
     let policy = SandboxPolicy::default().allow_network_port(443);

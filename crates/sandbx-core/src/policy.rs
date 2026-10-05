@@ -60,10 +60,9 @@ impl Axis {
 
 /// What IP egress a policy grants.
 ///
-/// Three states and no fourth: deliberately not `#[non_exhaustive]`, and nothing may match
-/// it with a `_` arm. `HelperArgs::encode`, `ruleset::rights::net_rules`,
-/// `seccomp::blocked_syscalls` and `Audit::spawned` each match exhaustively, so a state
-/// added here is a compile error at every site that would otherwise leave it unenforced.
+/// Not `#[non_exhaustive]`, and nothing matches it with a `_` arm: `HelperArgs::encode`,
+/// `net_rules`, `blocked_syscalls` and `AuditEvent::spawned` match exhaustively, so a fourth
+/// state is a compile error at every site that would otherwise leave it unenforced.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum NetworkPolicy {
     /// No IP egress at all; the command runs in an empty network namespace.
@@ -73,8 +72,8 @@ pub enum NetworkPolicy {
     AnyPort,
     /// TCP connect and bind on these ports only; UDP and raw sockets denied.
     ///
-    /// Ports and not destinations: Landlock's network rules match the port alone, so this
-    /// reaches the named ports on *every* routable host. `SECURITY.md` claims no more.
+    /// Ports and not destinations: Landlock matches the port alone, so this reaches the
+    /// named ports on *every* routable host.
     Ports(Vec<u16>),
 }
 
@@ -144,10 +143,9 @@ impl SandboxPolicy {
 
     /// Whether the process may reach the network *at all*.
     ///
-    /// A port allowlist answers yes: it is a narrowing of egress, not an absence of it, and
-    /// `hardening::isolate` reads this to decide whether to unshare the network namespace.
-    /// An allowlist inside an empty netns would allow nothing, so this must not narrow to
-    /// mean "unrestricted" — [`network`](Self::network) is how a caller tells the two apart.
+    /// A port allowlist answers yes — `hardening::isolate` reads this to decide whether to
+    /// unshare the network namespace, and an allowlist inside an empty netns would permit
+    /// nothing. [`network`](Self::network) is how a caller tells narrowed from unrestricted.
     pub fn allows_network(&self) -> bool {
         self.network != NetworkPolicy::Denied
     }
@@ -245,7 +243,7 @@ impl SandboxPolicy {
     /// Unix-domain sockets are a separate grant: a command that can dial
     /// `/run/user/$UID/bus` can ask systemd to start a process outside the sandbox.
     ///
-    /// Widens an existing port allowlist to every port, every grant here only adding reach.
+    /// Widens an existing port allowlist to every port.
     #[must_use]
     pub fn allow_network(mut self) -> Self {
         self.network = NetworkPolicy::AnyPort;
@@ -254,18 +252,14 @@ impl SandboxPolicy {
 
     /// Grant TCP connect and bind on `port`, and nothing else on the network.
     ///
-    /// Repeat to allowlist several; a port already granted is not added twice. UDP and raw
-    /// sockets are denied for as long as an allowlist is in force, because a command that
-    /// could send arbitrary datagrams would make the allowlist decorative — the cost is
-    /// that UDP DNS does not resolve inside the sandbox.
+    /// Repeat to allowlist several; duplicates collapse, and this cannot narrow
+    /// [`allow_network`](Self::allow_network)'s grant of every port. While an allowlist is in
+    /// force UDP and raw sockets are denied, or arbitrary datagrams would make it decorative,
+    /// and UDP DNS stops resolving — `context/decision-port-allowlist.md`.
     ///
-    /// Port 0 is skipped rather than refused, the way [`allow_env`](Self::allow_env) skips a
-    /// name it could not encode: `bind(0)` asks the kernel to pick a port, which an
-    /// allowlist cannot express, and a Landlock rule for port 0 matches nothing. `sandbx`'s
-    /// own `--allow-network` refuses it loudly instead.
-    ///
-    /// A no-op once [`allow_network`](Self::allow_network) has granted every port: a builder
-    /// only ever adds reach, so narrowing is not something a later call can do.
+    /// Port 0 is skipped, as [`allow_env`](Self::allow_env) skips a name it cannot encode:
+    /// `bind(0)` asks the kernel to choose a port, which an allowlist cannot express. The CLI
+    /// refuses it loudly.
     #[must_use]
     pub fn allow_network_port(mut self, port: u16) -> Self {
         if port == 0 {

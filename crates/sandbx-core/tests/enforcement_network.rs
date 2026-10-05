@@ -4,10 +4,9 @@
 //! states the kernel floor all three files run on; `enforcement_syscalls.rs` is the seccomp
 //! half, where a call that touches no path is refused.
 //!
-//! No external network is involved, and that is the design: under a port allowlist network
-//! is *allowed*, so there is no netns and the command shares the host's — which means it can
-//! reach a `127.0.0.1` listener this test binds itself. A test needing the internet would be
-//! a test that fails in CI for reasons other than the sandbox.
+//! No external network, by design: under a port allowlist network is *allowed*, so there is
+//! no netns and the command shares the host's — which is how it reaches a `127.0.0.1`
+//! listener this file binds itself.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 mod support;
