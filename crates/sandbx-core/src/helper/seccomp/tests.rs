@@ -2,7 +2,7 @@
 //! `eval` interpreter they are read through.
 //!
 //! Kernel-free — the program is evaluated here rather than installed, so these run
-//! anywhere. `tests/enforcement.rs` is where a live kernel refuses a call.
+//! anywhere. `tests/enforcement_syscalls.rs` is where a live kernel refuses a call.
 
 use super::*;
 use crate::SandboxPolicy;

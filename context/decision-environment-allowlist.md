@@ -198,7 +198,7 @@ new spawn site to narrow. The clippy ban covers most of that — a site that doe
 go through `spawn::command` does not compile — but a lint is not a proof that the
 factory narrows anything. What supplies that is `tests/enforcement.rs` running
 `/usr/bin/env` through the real helper and asserting on its stdout — the issue's own
-reproducer, inverted. It goes through the suite's `run()` helper, which spawns the
+reproducer, inverted. It goes through the suite's `support::run` helper, which spawns the
 helper *without* clearing anything first, so what it pins is the sandbox doing it on
 its own.
 

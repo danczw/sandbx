@@ -53,7 +53,8 @@ It also owns the tokio runtime, because the flavour is the binary's choice and
 src/lib.rs           re-exports; Linux-only, refused at compile time
    policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
    fs_guard.rs       in-process path enforcement (6 of 7 tools)
-   command.rs        SandboxedCommand, HelperDispatch, the kill chain
+   command.rs        SandboxedCommand, the audit pipe, the kill chain
+      dispatch.rs    HELPER_FLAG, HelperDispatch — the entry into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx, --env
    audit.rs          AuditEvent, AUDIT_TARGET
    spawn.rs          spawn::command — the one Command::new; env_clear + allowlist
@@ -63,6 +64,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       mod.rs         apply() — sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
       seccomp.rs     BLOCKED_SYSCALLS (28), blocked_syscalls, compiled_filter
+         tests.rs    the denylist, the program, and the eval interpreter
       ruleset/
          mod.rs      Requested { handled, rules } — requested, requested_at
          compat.rs   handled_access, kernel_probe, negotiated_abi_from,
@@ -70,9 +72,12 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          rights.rs   rights_for, fs_rules
          tests/      unit tests: compat, grants, rules
 tests/               audit, capability_coverage, command, denylist,
-                     enforcement (39 real-kernel tests), fs_guard,
-                     helper_args, policy
-tests/support/       5 [[bin]] probes, required-features = ["sandbox-integration"]
+                     enforcement (31 real-kernel tests, paths and grants),
+                     enforcement_syscalls (8, calls Landlock cannot express),
+                     fs_guard, helper_args, policy
+tests/support/       mod.rs — runtime_paths, allow_probe, run, shared by the two
+                     enforcement targets; plus 5 [[bin]] probes,
+                     required-features = ["sandbox-integration"]
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
@@ -130,9 +135,13 @@ deleted the one-variant `Provider` enum that used to sit in front of it.
 src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
                           PromptUsage, Compaction, run_turn
    turn.rs    run_turn — generic over a stream-opening closure
- compact.rs   which prefix of a history may be withheld (+ unit tests)
+      accumulate.rs  one round's message, rebuilt from deltas
+      tools.rs       what is offered, and the one spawn_blocking site
+ compact.rs   which prefix of a history may be withheld
+      tests.rs       the cut-point algebra
    error.rs   TurnError (6 variants)
-tests/turn_loop.rs
+tests/       turn_loop (16), turn_compaction (23),
+             support/mod.rs — the Script double and the request builders
 ```
 
 ## `sandbx-cli`

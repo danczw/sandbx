@@ -3,7 +3,8 @@
 //! verdict.
 //!
 //! All of them are kernel-free — no root, no network namespace, no Landlock-capable host
-//! — so they run anywhere. `tests/enforcement.rs` is where a live kernel is involved.
+//! — so they run anywhere. `tests/enforcement.rs` and `tests/enforcement_syscalls.rs` are
+//! where a live kernel is involved.
 
 mod compat;
 mod grants;
