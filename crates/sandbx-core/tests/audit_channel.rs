@@ -133,8 +133,9 @@ fn the_bounding_set_degrades_only_on_a_refused_drop() {
     }
 }
 
-/// Without the first helper stage replacing its stdin with `null`, the sandboxed
-/// command inherits a writable descriptor onto sandbx's own audit trail.
+/// Without the inner helper stage taking the channel off fd 0 and putting `/dev/null`
+/// there, the sandboxed command inherits a writable descriptor onto sandbx's own audit
+/// trail.
 ///
 /// The forged *detail* is the discriminator, not the mechanism name: a host
 /// refusing `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation
@@ -186,8 +187,8 @@ fn the_commands_own_output_carries_no_audit_records() {
 
 /// Shape, not count: how many records a clean run produces is the host's answer.
 /// A blank mechanism is what an empty channel decoding to a record looks like, a
-/// repeated one a re-sent short write, and a second spawn record
-/// `record_degradations` re-emitting on both the timeout and the ordinary path.
+/// repeated one a re-sent short write, and a second spawn record `record_reports`
+/// re-emitting on both the timeout and the ordinary path.
 #[test]
 fn every_record_names_a_real_mechanism_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
