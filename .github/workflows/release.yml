@@ -43,6 +43,24 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The enforcement claim below rests entirely on this pairing, which nothing
+      # else checks: a target matched with the wrong runner would cross-compile,
+      # test the builder's architecture, and publish a green result proving
+      # nothing about the binary. Fail here instead.
+      - name: Check the runner matches the target
+        run: |
+          case "${{ matrix.target }}" in
+            x86_64-*) want=x86_64 ;;
+            aarch64-*) want=aarch64 ;;
+            *) echo "::error::no architecture known for ${{ matrix.target }}"; exit 1 ;;
+          esac
+          got="$(uname -m)"
+          echo "target=${{ matrix.target }} want=$want uname=$got"
+          if [ "$got" != "$want" ]; then
+            echo "::error::${{ matrix.target }} needs a $want runner, but this is $got"
+            exit 1
+          fi
+
       # A tag claiming to be v0.1.0 that builds 0.2.0 would put the wrong
       # binary behind the right name, and nothing downstream would notice.
       # Cheap enough to repeat per architecture, and repeating it means no
@@ -61,8 +79,11 @@ jobs:
       # The binary's whole claim is that it sandboxes. Shipping one whose
       # enforcement tests were never run is the specific failure this project
       # cannot afford, so they gate the release rather than only the merge.
-      # Native per matrix entry, which is what makes this a claim about the
-      # architecture being published rather than about the builder's.
+      # Native per matrix entry, so this is a claim about the architecture being
+      # published rather than the builder's. It is not a claim about the
+      # artifact: with no `--target` this builds the host gnu triple while the
+      # shipped binary is static musl, and testing musl here would need a musl C
+      # toolchain for the dev-dependency tree. See #130.
       - name: Test, including real sandbox enforcement
         run: cargo test --workspace --features sandbox-integration
 
