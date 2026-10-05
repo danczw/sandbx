@@ -58,6 +58,26 @@ impl Axis {
     }
 }
 
+/// What IP egress a policy grants.
+///
+/// Three states and no fourth: deliberately not `#[non_exhaustive]`, and nothing may match
+/// it with a `_` arm. `HelperArgs::encode`, `ruleset::rights::net_rules`,
+/// `seccomp::blocked_syscalls` and `Audit::spawned` each match exhaustively, so a state
+/// added here is a compile error at every site that would otherwise leave it unenforced.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum NetworkPolicy {
+    /// No IP egress at all; the command runs in an empty network namespace.
+    #[default]
+    Denied,
+    /// Any TCP port, and UDP and raw sockets with it.
+    AnyPort,
+    /// TCP connect and bind on these ports only; UDP and raw sockets denied.
+    ///
+    /// Ports and not destinations: Landlock's network rules match the port alone, so this
+    /// reaches the named ports on *every* routable host. `SECURITY.md` claims no more.
+    Ports(Vec<u16>),
+}
+
 /// What a sandboxed process is allowed to do.
 ///
 /// Default-deny: construct with [`SandboxPolicy::default`] and widen, so forgetting to
@@ -67,7 +87,7 @@ pub struct SandboxPolicy {
     readable: Vec<PathBuf>,
     writable: Vec<PathBuf>,
     executable: Vec<PathBuf>,
-    network: bool,
+    network: NetworkPolicy,
     unix_sockets: bool,
     /// Variable *names*, never values; the value is read at spawn time from the harness.
     env: Vec<String>,
@@ -122,9 +142,19 @@ impl SandboxPolicy {
         self
     }
 
-    /// Whether the process may reach the network.
+    /// Whether the process may reach the network *at all*.
+    ///
+    /// A port allowlist answers yes: it is a narrowing of egress, not an absence of it, and
+    /// `hardening::isolate` reads this to decide whether to unshare the network namespace.
+    /// An allowlist inside an empty netns would allow nothing, so this must not narrow to
+    /// mean "unrestricted" — [`network`](Self::network) is how a caller tells the two apart.
     pub fn allows_network(&self) -> bool {
-        self.network
+        self.network != NetworkPolicy::Denied
+    }
+
+    /// What IP egress the process is granted.
+    pub fn network(&self) -> &NetworkPolicy {
+        &self.network
     }
 
     /// Whether the process may open unix-domain sockets.
@@ -210,13 +240,48 @@ impl SandboxPolicy {
             .fold(self, Self::allow_read_execute)
     }
 
-    /// Grant IP egress, and only that.
+    /// Grant IP egress on every port, and only that.
     ///
     /// Unix-domain sockets are a separate grant: a command that can dial
     /// `/run/user/$UID/bus` can ask systemd to start a process outside the sandbox.
+    ///
+    /// Widens an existing port allowlist to every port, every grant here only adding reach.
     #[must_use]
     pub fn allow_network(mut self) -> Self {
-        self.network = true;
+        self.network = NetworkPolicy::AnyPort;
+        self
+    }
+
+    /// Grant TCP connect and bind on `port`, and nothing else on the network.
+    ///
+    /// Repeat to allowlist several; a port already granted is not added twice. UDP and raw
+    /// sockets are denied for as long as an allowlist is in force, because a command that
+    /// could send arbitrary datagrams would make the allowlist decorative — the cost is
+    /// that UDP DNS does not resolve inside the sandbox.
+    ///
+    /// Port 0 is skipped rather than refused, the way [`allow_env`](Self::allow_env) skips a
+    /// name it could not encode: `bind(0)` asks the kernel to pick a port, which an
+    /// allowlist cannot express, and a Landlock rule for port 0 matches nothing. `sandbx`'s
+    /// own `--allow-network` refuses it loudly instead.
+    ///
+    /// A no-op once [`allow_network`](Self::allow_network) has granted every port: a builder
+    /// only ever adds reach, so narrowing is not something a later call can do.
+    #[must_use]
+    pub fn allow_network_port(mut self, port: u16) -> Self {
+        if port == 0 {
+            return self;
+        }
+
+        self.network = match self.network {
+            NetworkPolicy::Denied => NetworkPolicy::Ports(vec![port]),
+            NetworkPolicy::AnyPort => NetworkPolicy::AnyPort,
+            NetworkPolicy::Ports(mut ports) => {
+                if !ports.contains(&port) {
+                    ports.push(port);
+                }
+                NetworkPolicy::Ports(ports)
+            }
+        };
         self
     }
 

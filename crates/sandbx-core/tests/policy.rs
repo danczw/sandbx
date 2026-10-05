@@ -1,6 +1,6 @@
 //! Public contract of [`SandboxPolicy`].
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{NetworkPolicy, SandboxPolicy};
 
 /// If the default ever grants an access, a caller that forgets to configure the
 /// policy silently gets an unsandboxed agent.
@@ -25,6 +25,12 @@ fn default_policy_denies_everything() {
     assert!(
         !policy.allows_network(),
         "default policy must not grant network access"
+    );
+    assert_eq!(
+        *policy.network(),
+        NetworkPolicy::Denied,
+        "the default network state is not `Denied`, so a policy nobody configured \
+         reaches somewhere"
     );
     assert!(
         !policy.allows_unix_sockets(),
@@ -125,6 +131,74 @@ fn granting_network_does_not_grant_unix_sockets() {
     assert!(
         !policy.allows_unix_sockets(),
         "network granted unix sockets along with it"
+    );
+}
+
+/// A port allowlist is a narrowing of egress, not an absence of it.
+///
+/// `hardening::isolate` reads `allows_network` to decide whether to unshare the network
+/// namespace. If a port grant answered no, the command would get an empty netns and the
+/// allowlist would permit nothing — a fail-closed bug, but a total one.
+#[test]
+fn a_port_grant_allows_network() {
+    let policy = SandboxPolicy::default().allow_network_port(443);
+
+    assert!(
+        policy.allows_network(),
+        "a port grant reads as no network, so the command gets an empty netns and \
+         the allowlist reaches nothing"
+    );
+    assert_eq!(*policy.network(), NetworkPolicy::Ports(vec![443]));
+}
+
+/// Order is the caller's and duplicates are the caller's mistake, not a refusal: a script
+/// composing flags should get the policy it meant.
+#[test]
+fn ports_accumulate_and_deduplicate() {
+    let policy = SandboxPolicy::default()
+        .allow_network_port(443)
+        .allow_network_port(80)
+        .allow_network_port(443);
+
+    assert_eq!(*policy.network(), NetworkPolicy::Ports(vec![443, 80]));
+}
+
+/// Port 0 is skipped, not refused — `allow_env`'s precedent. `bind(0)` asks the kernel to
+/// choose a port, which an allowlist cannot express, and `NetPort::new(0, …)` matches
+/// nothing, so a rule for it would be a grant that grants nothing.
+#[test]
+fn port_zero_is_skipped() {
+    let only_zero = SandboxPolicy::default().allow_network_port(0);
+    assert_eq!(
+        *only_zero.network(),
+        NetworkPolicy::Denied,
+        "port 0 became a grant, so a policy that allowlists nothing reachable \
+         still leaves the netns unshared"
+    );
+
+    let alongside = SandboxPolicy::default()
+        .allow_network_port(443)
+        .allow_network_port(0);
+    assert_eq!(*alongside.network(), NetworkPolicy::Ports(vec![443]));
+}
+
+/// The builder only ever adds reach, so the broader grant wins whichever order they arrive
+/// in — a later call cannot narrow what an earlier one opened.
+#[test]
+fn an_unrestricted_grant_absorbs_a_port_grant() {
+    let port_then_any = SandboxPolicy::default()
+        .allow_network_port(443)
+        .allow_network();
+    assert_eq!(*port_then_any.network(), NetworkPolicy::AnyPort);
+
+    let any_then_port = SandboxPolicy::default()
+        .allow_network()
+        .allow_network_port(443);
+    assert_eq!(
+        *any_then_port.network(),
+        NetworkPolicy::AnyPort,
+        "a port grant narrowed an unrestricted one, so a policy reads tighter \
+         than the caller asked for"
     );
 }
 

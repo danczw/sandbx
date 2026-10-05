@@ -19,7 +19,7 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 | `Allowed` | `allowed` | `tool`, `subject` |
 | `Denied` | `denied` | `tool`, `subject`, `reason` |
 | `Degraded` | `degraded` | `mechanism`, `detail` |
-| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `unix_sockets` |
+| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env` |
 
 **`INFO`, not `DEBUG`** — at `DEBUG` the trail would be absent for everyone who
 did not opt in, which is exactly when a record matters. `tests/audit.rs` pins

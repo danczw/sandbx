@@ -34,4 +34,4 @@ pub use error::{Access, SandboxError};
 pub use fs_guard::{FsGuard, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;
-pub use policy::{Axis, Grants, SandboxPolicy};
+pub use policy::{Axis, Grants, NetworkPolicy, SandboxPolicy};
