@@ -33,7 +33,8 @@ sandbx ──argv──► helper stage 1 (supervisor) ──argv verbatim──
 |---|---|
 | Shape | `HelperArgs { policy, program, args }`, `encode` / `decode` |
 | Path flags | `--ro` / `--rw` / `--rx`, from the single `path_flag(axis)` match |
-| Other flags | `--allow-network`, `--allow-unix-sockets`, `--env NAME` (repeatable), `--` separator |
+| Other flags | `--allow-network`, `--allow-network-port N` (repeatable), `--allow-unix-sockets`, `--env NAME` (repeatable), `--` separator |
+| Wire ≠ CLI | the two spellings diverge where they must. `--allow-network-port` takes exactly one value, where the CLI's `--allow-network` takes an optional one: `decode` walks argv a token at a time and must refuse anything unrecognised, so an optional value would put a "does this look like a port?" lookahead in the decoder that gates enforcement. Same reason `--env NAME` is not spelled `--allow-env` here |
 | Why argv | the environment is now cleared at every stage (#98), so it cannot carry the policy — argv is the only channel left that survives the re-exec. It is not *private*: the command reads its own `/proc/self/cmdline`, so the rule is that argv carries variable **names**, never values |
 | Decode failure | always a refusal; an unrecognised flag is an error, never skipped |
 | Stage 1 → 2 | argv passed **verbatim**, not re-encoded — a re-encode is a second chance for the policy to drift on its way to the stage that enforces it |
@@ -153,11 +154,12 @@ power available in the negotiable range.
 | 2 | nothing asserted the axis→rights mapping | **done** |
 | 3 | nothing pinned the *exact* right set | **done** (#74) — `each_axis_confers_exactly_the_documented_set` pins every axis's whole `BitFlags` at `BASELINE_ABI` and `LATEST_ABI`, and asserts a row exists per `Axis::ALL` |
 | 4 | partial enforcement accepted | **done** (#76) — `enforcement_verdict` refuses it |
-| 5 | per-endpoint egress | **open** (#42) |
+| 5 | per-endpoint egress | **per-port done** (#42) — a TCP port allowlist, which is all the kernel can match on; per-host needs a userspace proxy and is **open** (#145) |
 
-39 real-kernel enforcement tests, split by what enforces them: 31 in
+44 real-kernel enforcement tests, split by what enforces them: 31 in
 `tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
-for the calls Landlock cannot express. Both files are
+for the calls Landlock cannot express, 5 in `tests/enforcement_network.rs` for
+the ports it does. All three files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 39 run or neither file compiles, and `cargo test`
-reports `0 ignored`. Nothing checks this number against the files.
+count is unconditional — all 44 run or none of the files compiles, and
+`cargo test` reports `0 ignored`. Nothing checks this number against the files.
