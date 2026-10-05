@@ -23,7 +23,7 @@ pub struct Grants {
     #[arg(long = "allow-write", value_name = "PATH")]
     allow_write: Vec<PathBuf>,
 
-    /// Let the command run programs under a path. Repeatable.
+    /// Let a sandboxed command run programs under a path. Repeatable.
     ///
     /// Grants read as well, because that is what the kernel gives: running a
     /// program needs execute on the binary and read on the libraries its loader
@@ -32,27 +32,27 @@ pub struct Grants {
     #[arg(long = "allow-exec", value_name = "PATH")]
     allow_exec: Vec<PathBuf>,
 
-    /// Give the command a network namespace with an interface.
+    /// Give a sandboxed command a network namespace with an interface.
     ///
     /// IP egress only; unix-domain sockets stay denied.
     #[arg(long = "allow-network")]
     allow_network: bool,
 
-    /// Let the command open unix-domain sockets.
+    /// Let a sandboxed command open unix-domain sockets.
     ///
     /// All of them, not a chosen one — the kernel cannot scope this per path
     /// below Landlock ABI V9. That includes an ssh-agent, a docker socket or
-    /// the session bus if the filesystem policy can reach them, so what the
-    /// command can read still bounds what it can dial.
+    /// the session bus if the filesystem policy can reach them, so what it can
+    /// read still bounds what it can dial.
     #[arg(long = "allow-unix-sockets")]
     allow_unix_sockets: bool,
 
-    /// Let the command inherit an environment variable. Repeatable.
+    /// Let a sandboxed command inherit an environment variable. Repeatable.
     ///
     /// Names a variable, and takes its value from `sandbx`'s own environment —
     /// there is no way to set one from here. Everything not named is dropped
-    /// before the command starts, so a secret in the shell that launched
-    /// `sandbx` does not reach it.
+    /// before it starts, so a secret in the shell that launched `sandbx` does
+    /// not reach it.
     ///
     /// The variables a command needs in order to start are granted anyway:
     /// `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE` and `TZ`.

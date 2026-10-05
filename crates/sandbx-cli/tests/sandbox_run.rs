@@ -9,6 +9,7 @@ use sandbx_cli::{Cli, Command};
 fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
     match Cli::parse_from(argv).command {
         Command::SandboxRun(args) => args,
+        other => panic!("{other:?} is not sandbox-run"),
     }
 }
 

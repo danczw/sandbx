@@ -18,10 +18,11 @@ SECURITY.md         the promise to users — the one doc that must never lag
 ```
 sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed to spawn
     └──► sandbx-tools ──┐
-                        ├──► sandbx-agent      turn loop
-sandbx-providers ───────┘
-sandbx-core ──► sandbx-cli                     clap, policy derivation
-sandbx-session   placeholder
+                        ├──► sandbx-agent ──┐  turn loop
+sandbx-providers ───────┘                   │
+         └──────────────────────────────────┼──► sandbx-cli   clap, policy
+sandbx-core ────────────────────────────────┘                 derivation, the
+sandbx-session   placeholder                                  turn loop's caller
 sandbx-tui       placeholder
 ```
 
@@ -31,15 +32,20 @@ sandbx-tui       placeholder
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation | core |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, tools |
 | `sandbx-session` | placeholder — nothing implemented | — |
 | `sandbx-tui` | placeholder — nothing implemented | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
-`sandbx-cli` does **not** depend on `sandbx-agent` — the turn loop is not
-reachable from the shipped binary.
+`sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
+`sandbx-providers` directly rather than through `sandbx-agent`, which re-exports
+none of it: `agent-run` builds the client and the first user turn itself, and
+renders the events the loop hands back.
+
+It also owns the tokio runtime, because the flavour is the binary's choice and
+`sandbx-agent` deliberately does not make it — see `guide-turn-loop.md`.
 
 ## `sandbx-core`
 
@@ -127,13 +133,24 @@ tests/turn_loop.rs
 ## `sandbx-cli`
 
 ```
-src/lib.rs    Cli, Command::SandboxRun, policy derivation (unit-testable
-              without a sandbox-capable kernel)
-src/main.rs
-tests/        name, sandbox_run
+src/lib.rs      Cli, Command — the clap surface and nothing else
+   grants.rs    Grants — the --allow-… flags, flattened into both subcommands,
+                and the policy they derive (unit-testable without a
+                sandbox-capable kernel)
+   sandbox.rs   SandboxRun
+   agent.rs     AgentRun — the turn loop's caller
+   error.rs     AgentError
+   logging.rs   the one subscriber
+src/main.rs     helper dispatch, the tokio runtime, exit codes
+tests/          agent_run, audit_log, audit_log_install, name, sandbox_run
 ```
 
-Lib `sandbx_cli`, bin `sandbx`. One subcommand: `sandbox-run`.
+Lib `sandbx_cli`, bin `sandbx`. Two subcommands: `sandbox-run` and `agent-run`.
+
+`Grants` exists so the axis loop and the one widening it applies — a write grant
+confers read — are written once. Two copies would drift, and the drift would be a
+policy difference between two subcommands that users reasonably read as the same
+flags.
 
 ## Reading order
 

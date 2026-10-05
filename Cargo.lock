@@ -1160,7 +1160,11 @@ name = "sandbx-cli"
 version = "0.1.0-alpha.6"
 dependencies = [
  "clap",
+ "sandbx-agent",
  "sandbx-core",
+ "sandbx-providers",
+ "sandbx-tools",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

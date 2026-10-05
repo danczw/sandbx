@@ -3,10 +3,14 @@
 //! Parsing and policy derivation live here, not in `main.rs`, so a unit test can answer
 //! what a flag grants on a machine with no sandbox-capable kernel.
 
+mod agent;
+mod error;
 mod grants;
 pub mod logging;
 mod sandbox;
 
+pub use agent::AgentRun;
+pub use error::AgentError;
 pub use grants::Grants;
 pub use sandbox::SandboxRun;
 
@@ -48,4 +52,22 @@ pub enum Command {
     /// sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt
     /// ```
     SandboxRun(SandboxRun),
+
+    /// Ask an agent one question, and let it use tools to answer.
+    ///
+    /// The prompt goes out, the answer streams back on stdout, and every tool
+    /// the model calls runs under the same boundary `sandbox-run` uses: denied
+    /// unless a flag grants it, refused rather than run unrestricted on a kernel
+    /// that cannot enforce it. Needs `ANTHROPIC_API_KEY` in the environment; the
+    /// key is not passed to anything the agent runs.
+    ///
+    /// Single-shot: one question, one answer, then the process ends. Nothing
+    /// asks you before a tool call runs.
+    ///
+    /// Put the prompt after `--`:
+    ///
+    /// ```text
+    /// sandbx agent-run --allow-read /srv -- "what is in /srv?"
+    /// ```
+    AgentRun(AgentRun),
 }

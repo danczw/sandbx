@@ -19,7 +19,27 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
+sandbx-agent = { path = "../sandbx-agent" }
 sandbx-core = { path = "../sandbx-core" }
+# Reached directly rather than through `sandbx-agent`, which re-exports none of
+# it: `agent-run` builds the client, the request message and the first user turn
+# itself, and renders the events the loop hands back.
+sandbx-providers = { path = "../sandbx-providers" }
+sandbx-tools = { path = "../sandbx-tools" }
+# The runtime flavour is the binary's call, which is why `sandbx-agent` takes
+# `rt` and stops there. `rt` is all `spawn_blocking` needs, so this is a
+# current-thread runtime and never `rt-multi-thread`.
+#
+# The other two features are not preferences. `time` carries `run_turn`'s
+# per-round timeout, which panics on the first round without a timer. `net` is
+# what makes `enable_all` callable at all, and reqwest's connector needs the IO
+# driver it switches on. Neither enables `process`, so clippy.toml's inert entry
+# for `tokio::process::Command::new` stays inert.
+tokio = { version = "1.53.1", default-features = false, features = [
+  "net",
+  "rt",
+  "time",
+] }
 # The audit trail is a product feature of `sandbx-core`, but `tracing` discards
 # every event when no subscriber is installed — which is what shipped until #89:
 # `RUST_LOG=trace sandbx sandbox-run …` printed nothing at all. A library cannot

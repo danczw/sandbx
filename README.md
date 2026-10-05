@@ -11,10 +11,11 @@ sandboxed tool execution as part of the harness itself: every command an agent
 runs goes through a Landlock + seccomp boundary, and the sandbox fails closed
 rather than degrading to unrestricted execution.
 
-> **Pre-alpha.** The turn loop exists, but nothing is wired to a UI yet: there is
-> no way to talk to an agent from the command line, and no approval prompt before a
-> tool runs. What works today is the sandbox beneath it, the tools that run inside
-> it, and a library-level loop over them. Enforced today on Linux 6.10+ with
+> **Pre-alpha.** You can ask an agent one question from the command line and
+> watch it use tools to answer. What is missing above that is the interactive
+> surface — no session, no history, no interrupt — and, more importantly, any
+> approval prompt: every tool call the model asks for runs, so the grants you pass
+> are the whole of what a prompt injection can reach. Enforced today on Linux 6.10+ with
 > unprivileged user namespaces: filesystem (Landlock), network (empty netns),
 > dangerous syscalls (seccomp), process lifetime (PID namespace). Kernels that
 > cannot enforce are refused, never run unrestricted. Do not assume a version
@@ -22,8 +23,8 @@ rather than degrading to unrestricted execution.
 
 ## Try the sandbox
 
-The agent is not built, but the boundary it will run behind is, and `sandbx`
-exposes it directly so you can check the enforcement by hand:
+`sandbx` exposes the boundary directly, so you can check the enforcement by hand
+before trusting an agent to it:
 
 ```sh
 sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt   # works
@@ -78,6 +79,45 @@ permission denials the examples above are there to show.
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
 | `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. There is no way to set one from here. Repeatable |
 | `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |
+
+## Try the agent
+
+`agent-run` asks one question and lets the model use tools to answer it. The same
+grants apply, and they are the only thing bounding what the agent reaches:
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-…
+
+sandbx agent-run \
+  --allow-read  ./src \
+  --allow-write ./src \
+  -- "find the TODO comments under src and list them"
+```
+
+The answer streams on stdout; which tool is running goes to stderr, so piping
+stdout gives you the answer alone. All seven tools are offered — `read`, `write`,
+`edit`, `ls`, `grep`, `find` and `bash` — and each runs through the same boundary,
+so a path you did not grant comes back to the model as a refusal for it to work
+around rather than a crash.
+
+| flag | |
+|------|--|
+| `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
+| `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
+| `--system TEXT`   | a system prompt. Unset sends none |
+
+It is single-shot on purpose: one question, one answer, then the process ends.
+There is no session to resume and no way to interrupt a turn mid-flight.
+
+> **Nothing asks you before a tool call runs.** The model chooses the calls and
+> they execute, which means a prompt injection in a file the agent reads can reach
+> anything the grants allow. The sandbox is the control, not the asking — so grant
+> the narrowest tree that lets the task finish, and read
+> [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
+>
+> `ANTHROPIC_API_KEY` is read by the harness and is *not* passed to anything the
+> agent runs. Naming it with `--allow-env` would hand it over, which is the one
+> flag to think twice about here.
 
 ## Install
 

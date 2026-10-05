@@ -9,8 +9,10 @@ Three tiers were planned. **Only tier 1 exists.**
 | 3 | `~/.config/sandbx/credentials.toml` at `0600` | deferred |
 
 Tiers 2 and 3 are deferred to whichever phase builds `sandbx auth login`. Neither
-is a prerequisite for anything shipped: no subcommand reads a credential today, so
-a missing keyring costs nothing yet.
+blocks anything shipped, but the cost is no longer zero: `agent-run` reads tier 1,
+so a user with no `ANTHROPIC_API_KEY` exported has no way to authenticate at all.
+That is the argument for tiers 2 and 3, and it did not exist before the turn loop
+had a caller.
 
 ## What this covers, and what it does not
 

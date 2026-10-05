@@ -115,11 +115,13 @@ Three properties matter as much as the list:
   can add raw syscalls.
 - **Approval is not enforcement, and there is no approval step yet.** The agent
   loop runs every tool call the model asks for — nothing sits between the model
-  requesting one and `sandbx-tools` executing it. The sandbox is the only thing
-  between a prompt-injected tool call and your files, which is why it is
-  default-deny. A gate is planned, and it will not change this bullet: a tool call
-  you approve runs. sandbx bounds what it can reach; it does not decide whether it
-  should run.
+  requesting one and `sandbx-tools` executing it. `sandbx agent-run` reaches that
+  loop, so this is what a prompt you type does, not only what the library would do:
+  the sandbox is the only thing between a prompt-injected tool call and your files,
+  which is why it is default-deny and why the grants you pass `agent-run` are the
+  whole of what a hijacked turn can touch. A gate will not change this bullet: a
+  tool call you approve runs. sandbx bounds what it can reach; it does not decide
+  whether it should run.
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
   an opt-in `--timeout`; that call always returns by then. The other six tools run
@@ -166,6 +168,11 @@ Three properties matter as much as the list:
   tool without exposing the value to the tool is a separate problem
   ([#41](https://github.com/danczw/sandbx/issues/41)) and is not solved here;
   until it is, name a variable only when the command genuinely needs its value.
+  The example is not hypothetical: `agent-run` reads `ANTHROPIC_API_KEY` from the
+  harness's own environment, so the harness holds a live key for the whole turn.
+  A tool the agent runs does not see it — the environment is cleared and only
+  what the policy names crosses — unless you name that variable, which hands the
+  key to a process a hijacked turn chose the arguments for.
 - **The policy itself is visible to the command.** It crosses into the helper as
   argv, and a process can read its own `/proc/self/cmdline`, so the granted paths
   and the allowlisted variable *names* are readable from inside the sandbox. Only
@@ -237,7 +244,9 @@ These are documented behaviour, and reports of them will be closed as such:
   is still expressible through `SandboxPolicy::allow_write`.
 - An agent running a tool call — one you approved, or, as things stand, any one the
   model asked for, since nothing gates them yet (see *Approval is not enforcement*
-  above). What bounds it is the sandbox, not the asking.
+  above). That includes a call a prompt injection induced, and it includes one
+  reached through `agent-run`, which is a real path and not a library-only one.
+  What bounds it is the sandbox, not the asking.
 - Refusal to run on a kernel older than 6.10, or on one with Landlock disabled at
   boot. That is fail-closed behaviour working as intended.
 - Failure to *build* for a non-Linux target. Also intended — see above.

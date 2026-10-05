@@ -22,13 +22,33 @@ fn main() -> std::process::ExitCode {
         }
 
         match Cli::parse().command {
-            Command::SandboxRun(args) => match args.execute() {
-                Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(1)),
-                Err(error) => {
-                    eprintln!("sandbx: {error}");
-                    std::process::ExitCode::FAILURE
-                }
-            },
+            Command::SandboxRun(args) => report(args.execute()),
+            Command::AgentRun(args) => report(block_on(args.execute())),
         }
     })
+}
+
+/// Turn what a subcommand reported into an exit code, saying why on the way out.
+fn report(result: Result<i32, impl std::fmt::Display>) -> std::process::ExitCode {
+    match result {
+        Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Err(error) => {
+            eprintln!("sandbx: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// Drive a turn to completion on a runtime built for it.
+///
+/// `new_current_thread` because `spawn_blocking` is all the loop asks of the scheduler;
+/// `enable_all` because it needs both drivers — the timer behind the per-round timeout,
+/// and the IO the provider's connector opens on.
+fn block_on(
+    future: impl Future<Output = Result<i32, sandbx_cli::AgentError>>,
+) -> Result<i32, sandbx_cli::AgentError> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(future)
 }
