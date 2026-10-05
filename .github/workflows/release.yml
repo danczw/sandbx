@@ -1,13 +1,10 @@
 name: Release
 
-# Tag-driven: pushing `v0.1.0-alpha.1` publishes that release. Nothing publishes
-# on a branch push, so a merge can never ship a binary by itself.
+# Nothing publishes on a branch push, so a merge cannot ship a binary by itself.
 on:
   push:
     tags: ["v*"]
 
-# Read-only by default; the one job that must create a release widens it for
-# itself alone.
 permissions:
   contents: read
 
@@ -17,14 +14,12 @@ env:
 
 jobs:
   build:
-    # Native per target rather than cross-compiled, because the enforcement step
-    # below is the gate: run on x86 it proves nothing about an arm binary.
+    # Native per target, not cross-compiled: the enforcement step below is the
+    # gate, and run on x86 it proves nothing about an arm binary.
     strategy:
       fail-fast: false
-      # musl, not gnu: a glibc build carries the build machine's glibc as a
-      # *minimum* version, so a binary built on the current runner refuses to
-      # start on any older distribution. v0.1.0-alpha.1 shipped that way and
-      # could not run on Ubuntu 22.04. Static musl has no such floor.
+      # musl, not gnu: a glibc build records the build machine's glibc as a
+      # *minimum* version, so it refuses to start on an older distribution.
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
@@ -43,9 +38,8 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      # No build cache here, unlike ci.yml: this build is what gets published, and
-      # a cache entry any PR run could have written is attacker-influenced input
-      # to it. The musl targets would mostly miss ci.yml's gnu entries anyway.
+      # No cache here, unlike ci.yml: this build is published, and a cache entry
+      # any PR run could have written is attacker-influenced input to it.
 
       # Nothing else checks this pairing, and the enforcement claim below rests on
       # it: a mismatch would cross-compile and publish a green result proving
@@ -64,8 +58,8 @@ jobs:
             exit 1
           fi
 
-      # A tag claiming to be v0.1.0 that builds 0.2.0 would put the wrong
-      # binary behind the right name, and nothing downstream would notice.
+      # A tag claiming v0.1.0 that builds 0.2.0 would publish the wrong binary
+      # behind the right name, and nothing downstream would notice.
       - name: Check the tag matches the crate version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -94,13 +88,10 @@ jobs:
           name="sandbx-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp target/${{ matrix.target }}/release/sandbx README.md LICENSE "dist/$name/"
-          # Static by construction, not by intention. If this ever reports a
-          # dynamic executable, the archive would carry a hidden glibc floor
-          # again and the check should stop the release.
+          # A dynamic executable here would mean a hidden glibc floor again.
           file "dist/$name/sandbx" | grep -q "statically linked\|static-pie" \
             || { echo "::error::binary is not statically linked"; exit 1; }
           tar -C dist -czf "dist/$name.tar.gz" "$name"
-          # Lets anyone verify the download matches what this run produced.
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -122,8 +113,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # Pre-1.0 and alpha-suffixed versions are marked as pre-releases, so the
-      # "latest" link never points at a build whose sandbox is still moving.
+      # So the "latest" link never points at a build whose sandbox is still
+      # moving.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
