@@ -1,23 +1,44 @@
-//! Tries to reach a `HOST:PORT` over TCP or UDP and reports which. Test-only.
+//! Tries to reach a `HOST:PORT` over TCP or UDP, or to listen on it, and reports which.
+//! Test-only.
 //!
-//! Two transports in one binary, because the port allowlist's claim is about both: Landlock
-//! permits the named TCP ports, and seccomp denies UDP outright, so a probe that could only
-//! speak TCP would leave half the promise unasserted.
+//! Three modes in one binary, because the port allowlist's claim is about all of them:
+//! Landlock permits connect *and* bind on the named TCP ports and refuses both elsewhere,
+//! and seccomp denies UDP outright. A probe that could only connect would leave most of the
+//! promise unasserted.
 
 use std::io::Read;
 
 fn main() -> std::process::ExitCode {
     let mut args = std::env::args().skip(1);
     let (Some(transport), Some(target)) = (args.next(), args.next()) else {
-        eprintln!("usage: egress-probe <tcp|udp> <HOST:PORT>");
+        eprintln!("usage: egress-probe <tcp|udp|bind> <HOST:PORT>");
         return std::process::ExitCode::FAILURE;
     };
 
     match transport.as_str() {
         "tcp" => tcp(&target),
         "udp" => udp(&target),
+        "bind" => bind(&target),
         other => {
             eprintln!("unknown transport {other}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// `BindTcp` is handled alongside `ConnectTcp`, so a port allowlist bounds which ports a
+/// command may *listen* on as well as which it may reach.
+fn bind(target: &str) -> std::process::ExitCode {
+    match std::net::TcpListener::bind(target) {
+        Ok(listener) => {
+            match listener.local_addr() {
+                Ok(address) => println!("TCP BIND SUCCEEDED: {address}"),
+                Err(error) => println!("TCP BIND SUCCEEDED: address unknown: {error}"),
+            }
+            std::process::ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("TCP BIND DENIED: {error}");
             std::process::ExitCode::FAILURE
         }
     }

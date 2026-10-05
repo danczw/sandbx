@@ -127,7 +127,7 @@ fn inverting_the_two_actions_inverts_every_verdict() {
 /// check included.
 ///
 /// Asked of the widest policy as well as the default one, because that is the one whose
-/// program grows: a port allowlist adds seventeen rules on `socket` alone, and the kernel
+/// program grows: a port allowlist adds eighteen rules on `socket` alone, and the kernel
 /// refuses a filter over 4096 instructions.
 #[test]
 fn the_program_is_one_the_kernel_would_accept() {
