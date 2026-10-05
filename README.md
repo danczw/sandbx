@@ -109,6 +109,11 @@ around rather than a crash.
 It is single-shot on purpose: one question, one answer, then the process ends.
 There is no session to resume and no way to interrupt a turn mid-flight.
 
+Exit `0` means the model finished its answer. Exit `2` means `--max-tokens` cut
+it off mid-sentence — what reached stdout is real but incomplete, which is worth
+distinguishing if a script is reading it. Anything else failed before or during
+the turn, with the reason on stderr.
+
 > **Nothing asks you before a tool call runs.** The model chooses the calls and
 > they execute, which means a prompt injection in a file the agent reads can reach
 > anything the grants allow. The sandbox is the control, not the asking — so grant
