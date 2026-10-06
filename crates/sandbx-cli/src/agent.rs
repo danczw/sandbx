@@ -189,7 +189,8 @@ impl AgentRun {
 
         // No `with_helper`: the default path re-execs this binary, and `main` dispatches
         // helper mode before parsing, so the shipped binary is its own helper.
-        // Derived before the client, so a policy this refuses never reads the key.
+        // Derived before the client, so a policy this refuses never reads the credential —
+        // neither the environment variable nor the file.
         let ctx = ExecutionContext::new(self.policy()?);
 
         eprintln!(
@@ -197,7 +198,7 @@ impl AgentRun {
             self.approved_tools().join(", ")
         );
 
-        let client = AnthropicClient::from_env()?;
+        let client = AnthropicClient::new(crate::auth::api_key()?)?;
 
         let history = [RequestMessage {
             role: Role::User,

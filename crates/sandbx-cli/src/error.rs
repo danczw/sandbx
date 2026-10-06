@@ -190,6 +190,128 @@ impl std::error::Error for PolicyError {
     }
 }
 
+/// What to do instead, appended to every [`AuthError`] about a credential that is not
+/// there, so two refusals cannot advise differently.
+const AUTH_ADVICE: &str = "run `sandbx auth login` or export ANTHROPIC_API_KEY";
+
+/// Why no credential was resolved, stored or removed.
+#[derive(Debug)]
+pub enum AuthError {
+    /// Neither source held a key.
+    NoCredential {
+        /// The file that was looked in, for the operator to act on.
+        path: PathBuf,
+    },
+
+    /// Neither `XDG_CONFIG_HOME` nor `HOME` named an absolute directory.
+    NoConfigHome,
+
+    /// The credential file is readable by more than its owner.
+    Permissions {
+        /// The file that was refused.
+        path: PathBuf,
+        /// The mode it carries, which the message prints in octal.
+        mode: u32,
+    },
+
+    /// The credential file is not valid TOML.
+    Malformed {
+        /// The file that could not be parsed.
+        path: PathBuf,
+        /// Where the parse failed.
+        source: toml::de::Error,
+    },
+
+    /// The credential file's `anthropic` key is something other than a table.
+    NotATable {
+        /// The file holding it.
+        path: PathBuf,
+    },
+
+    /// The credential file could not be read, written or removed.
+    Io {
+        /// What was being operated on.
+        path: PathBuf,
+        /// The underlying OS failure.
+        source: std::io::Error,
+    },
+
+    /// The rendered file could not be built.
+    Encode(toml::ser::Error),
+
+    /// The key could not be read from stdin.
+    Stdin(std::io::Error),
+
+    /// `auth login` was asked to read a key from a terminal.
+    TtyInput,
+
+    /// Stdin held nothing but whitespace.
+    BlankKey,
+}
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoCredential { path } => write!(
+                f,
+                "no API key: {} does not hold one and ANTHROPIC_API_KEY is unset — {AUTH_ADVICE}",
+                path.display()
+            ),
+            Self::NoConfigHome => write!(
+                f,
+                "no API key: neither XDG_CONFIG_HOME nor HOME names an absolute directory, \
+                 so there is nowhere to keep one — {AUTH_ADVICE}"
+            ),
+            // The mode, not just the fact: `chmod 600` is the fix, and seeing 644 is what
+            // tells an operator a umask or a copy did it rather than sandbx.
+            Self::Permissions { path, mode } => write!(
+                f,
+                "refusing to read {} at mode {mode:o}: a credential readable by anyone but \
+                 you is already disclosed — run `chmod 600 {}`",
+                path.display(),
+                path.display()
+            ),
+            Self::Malformed { path, source } => {
+                write!(f, "{} is not valid TOML: {source}", path.display())
+            }
+            Self::NotATable { path } => write!(
+                f,
+                "{} has an `anthropic` entry that is not a table, so sandbx will not \
+                 replace it — edit or remove it by hand",
+                path.display()
+            ),
+            Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
+            Self::Encode(source) => write!(f, "building the credential file: {source}"),
+            Self::Stdin(source) => write!(f, "reading the key from stdin: {source}"),
+            // Says what to type, because the refusal is otherwise indistinguishable from
+            // the command being broken.
+            Self::TtyInput => write!(
+                f,
+                "refusing to read a key from the terminal, which would echo it into your \
+                 scrollback — pipe it instead: read -rs KEY && printf %s \"$KEY\" | \
+                 sandbx auth login"
+            ),
+            Self::BlankKey => write!(f, "stdin held no key"),
+        }
+    }
+}
+
+impl std::error::Error for AuthError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NoCredential { .. }
+            | Self::NoConfigHome
+            | Self::Permissions { .. }
+            | Self::NotATable { .. }
+            | Self::TtyInput
+            | Self::BlankKey => None,
+            Self::Malformed { source, .. } => Some(source),
+            Self::Io { source, .. } | Self::Stdin(source) => Some(source),
+            Self::Encode(source) => Some(source),
+        }
+    }
+}
+
 /// Why `sandbox-run` did not run the command.
 ///
 /// Separate from [`SandboxError`], which `sandbx-core` owns: deriving a policy is the
@@ -251,7 +373,10 @@ pub enum AgentError {
     /// The answer could not be written out — a closed pipe, most often.
     Output(std::io::Error),
 
-    /// The provider client could not be constructed — no API key, most often.
+    /// No API key could be resolved from the environment or the credential file.
+    Credential(AuthError),
+
+    /// The provider client could not be constructed — a rejected base URL, most often.
     Provider(ProviderError),
 
     /// The turn itself ended without an answer.
@@ -261,6 +386,12 @@ pub enum AgentError {
 impl From<PolicyError> for AgentError {
     fn from(error: PolicyError) -> Self {
         Self::Policy(error)
+    }
+}
+
+impl From<AuthError> for AgentError {
+    fn from(error: AuthError) -> Self {
+        Self::Credential(error)
     }
 }
 
@@ -283,6 +414,7 @@ impl std::fmt::Display for AgentError {
             Self::Policy(error) => write!(f, "{error}"),
             Self::Runtime(error) => write!(f, "building the async runtime: {error}"),
             Self::Output(error) => write!(f, "writing the answer: {error}"),
+            Self::Credential(error) => write!(f, "{error}"),
             Self::Provider(error) => write!(f, "{error}"),
             Self::Turn(error) => write!(f, "{error}"),
         }
@@ -295,6 +427,7 @@ impl std::error::Error for AgentError {
             Self::EmptyPrompt => None,
             Self::Policy(error) => Some(error),
             Self::Runtime(error) | Self::Output(error) => Some(error),
+            Self::Credential(error) => Some(error),
             Self::Provider(error) => Some(error),
             Self::Turn(error) => Some(error),
         }
