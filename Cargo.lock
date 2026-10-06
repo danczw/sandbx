@@ -1253,6 +1253,10 @@ dependencies = [
 [[package]]
 name = "sandbx-session"
 version = "0.1.0-alpha.10"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "sandbx-tools"
