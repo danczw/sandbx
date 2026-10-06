@@ -60,11 +60,12 @@ instead and refuses a link outright, on both the read and the reopen for append.
 an operator may well have, still opens.
 
 Ownership is where the two diverge again: a transcript whose `st_uid` is not the
-running uid is refused, an API key file's is not read at all. Every path to a
-foreign-owned credentials file runs through an attacker-controlled `$HOME`, and
-root is trusted already, so the check would buy nothing there. It is not a gap
-to close by symmetry — the transcript check is cheap because the store's root is
-derived and not configurable.
+running uid is refused, an API key file's is not read at all. Reaching a
+foreign-owned `credentials.toml` means controlling `$HOME` or
+`$XDG_CONFIG_HOME`, by which point the attacker chooses the path and could as
+easily own the file; the check would not be the thing standing in the way. It is
+not an asymmetry to close by symmetry — the transcript check is there because it
+is free, the store's root being derived rather than configurable.
 
 The directory's mode is also not left to `DirBuilderExt::mode`, which is
 ignored outright for a directory that already exists — so a root somebody
