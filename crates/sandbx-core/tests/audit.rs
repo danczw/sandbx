@@ -116,7 +116,7 @@ fn records_the_policy_shape_of_a_spawn() {
         .allow_env("HOME");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy).emit();
+        AuditEvent::spawned("/bin/cat", &policy, false).emit();
     });
 
     let line = &lines[0];
@@ -128,6 +128,37 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("unix_sockets=true"), "got: {line}");
     assert!(line.contains("env=2"), "got: {line}");
     assert!(line.contains("dns_over_tcp=false"), "got: {line}");
+    assert!(line.contains("pinned=false"), "got: {line}");
+}
+
+/// A pin that matched leaves no other mark: the run succeeds exactly as an unpinned one
+/// does, so without this field an auditor cannot tell the checked run from the unchecked.
+#[test]
+fn records_whether_the_entry_point_was_pinned() {
+    for (pinned, recorded) in [(false, "pinned=false"), (true, "pinned=true")] {
+        let lines = capture(|| {
+            AuditEvent::spawned("/bin/cat", &SandboxPolicy::default(), pinned).emit();
+        });
+
+        let line = &lines[0];
+        assert!(line.contains(recorded), "got: {line}");
+    }
+}
+
+/// The digest itself is not a secret — it is in `/proc/self/cmdline` already — but the
+/// trail carries the boolean, so a record is the same width for every run.
+#[test]
+fn records_that_a_run_was_pinned_and_not_which_digest() {
+    let lines = capture(|| {
+        AuditEvent::spawned("/bin/cat", &SandboxPolicy::default(), true).emit();
+    });
+
+    let line = &lines[0];
+    assert!(line.contains("pinned=true"), "got: {line}");
+    assert!(
+        !line.contains("sha256") && !line.contains("digest"),
+        "the record named a digest: {line}"
+    );
 }
 
 /// Without this field the trail would under-report the environment: `env` does not count
@@ -142,7 +173,7 @@ fn records_whether_a_spawn_set_the_resolver_hint() {
         ),
     ] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", &policy).emit();
+            AuditEvent::spawned("/bin/cat", &policy, false).emit();
         });
 
         let line = &lines[0];
@@ -159,7 +190,7 @@ fn the_hint_is_not_counted_as_an_allowlisted_name() {
         .hint_dns_over_tcp();
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy).emit();
+        AuditEvent::spawned("/bin/cat", &policy, false).emit();
     });
 
     let line = &lines[0];
@@ -183,7 +214,7 @@ fn records_which_shape_of_network_grant_a_spawn_had() {
         ),
     ] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", &policy).emit();
+            AuditEvent::spawned("/bin/cat", &policy, false).emit();
         });
 
         let line = &lines[0];
@@ -202,7 +233,7 @@ fn records_how_many_variables_passed_not_which() {
     let policy = SandboxPolicy::default().allow_env("AWS_SECRET_ACCESS_KEY");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy).emit();
+        AuditEvent::spawned("/bin/cat", &policy, false).emit();
     });
 
     let line = &lines[0];
