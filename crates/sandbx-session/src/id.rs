@@ -48,7 +48,7 @@ pub(crate) fn clock_millis() -> Result<u64, SessionError> {
 impl std::str::FromStr for SessionId {
     type Err = SessionError;
 
-    /// Accepts one to [`MAX_LENGTH`] characters of `0-9` and `a-z`, and nothing else.
+    /// Accepts one to 32 characters of `0-9` and `a-z`, and nothing else.
     ///
     /// An allowlist rather than a search for `..`: an id becomes a path component, and a
     /// denylist's first omission is a traversal.
