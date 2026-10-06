@@ -6,28 +6,24 @@
 
 A security-first AI coding agent harness, written in Rust.
 
-Most agent harnesses delegate isolation to an external container. sandbx treats
-sandboxed tool execution as part of the harness itself: every command an agent
-runs goes through a Landlock + seccomp boundary, and the sandbox fails closed
-rather than degrading to unrestricted execution.
+Most agent harnesses delegate isolation to an external container. sandbx makes it
+part of the harness: every command an agent runs goes through a Landlock +
+seccomp boundary that fails closed rather than degrading to unrestricted
+execution. What it claims, and what it does not, is [SECURITY.md](SECURITY.md).
 
-> **Pre-alpha.** You can ask an agent one question from the command line and
-> watch it use tools to answer, saving the conversation to resume it later. What
-> is missing above that is the interactive surface — no live session, no
-> interrupt — and, more importantly, any per-call approval prompt: a tool is
+> **Pre-alpha.** One question from the command line, tools used to answer it, and
+> a conversation you can save and resume. Missing: the interactive surface (no
+> live session, no interrupt) and any per-call approval prompt — a tool is
 > approved for the whole run or not at all, so the grants you pass are the whole
 > of what a prompt injection reaches once it has a tool.
 >
-> Enforced today on Linux 6.10+ with unprivileged user namespaces: filesystem
-> (Landlock), network (empty netns, or a TCP port allowlist), dangerous syscalls
-> (seccomp), process lifetime (PID namespace). Kernels that cannot enforce are
-> refused, never run unrestricted. Do not assume a version sandboxes anything
-> until it says so.
+> Requires Linux 6.10+ with unprivileged user namespaces. Enforced today:
+> filesystem (Landlock), network (empty netns, or a TCP port allowlist),
+> dangerous syscalls (seccomp), process lifetime (PID namespace).
 
 ## Try the sandbox
 
-`sandbx` exposes the boundary directly, so you can check the enforcement by hand
-before trusting an agent to it:
+Check the enforcement by hand before trusting an agent to it:
 
 ```sh
 sandbx sandbox-run -- grep -rn TODO .                        # works: the project you are in
@@ -42,88 +38,98 @@ sandbx sandbox-run -- curl https://example.com               # no network at all
 Everything is denied unless a flag grants it. Three things are granted without
 one:
 
-- **read on the system binaries and libraries** — with nothing readable, not
-  even `/bin/true` reaches `main`;
+- **read on the system binaries and libraries** (`/usr`, `/bin`, `/lib`,
+  `/lib64`) — with nothing readable, not even `/bin/true` reaches `main`;
 - **seven environment variables** — see [The environment](#the-environment);
 - **read *and write* on the working directory**, so working on the project you
   are standing in needs no flags at all.
 
-Giving any path flag — `--allow-read`, `--allow-write` or `--allow-exec` —
-replaces that working-directory default rather than adding to it, so
-`--allow-read /srv` is read on `/srv` and nothing else. That direction is
-deliberate: a policy narrower than you expected announces itself as a permission
-denial naming the path, while a wider one says nothing at all.
+Any path flag — `--allow-read`, `--allow-write`, `--allow-exec` — *replaces* the
+working-directory default rather than adding to it, so `--allow-read /srv` is
+read on `/srv` and nothing else.
 
-It grants the *directory*, not your toolchain. A compiler or package manager
-installed under your home — rustup's `~/.cargo/bin`, nvm, pyenv — is outside the
-default, so `sandbx sandbox-run -- cargo test` fails with a permission denial
-until you add `--allow-exec ~/.cargo/bin` and read access to what it needs
-(`~/.cargo/registry`, `~/.rustup`). What works with no flags is a command from
-the system paths, which is why the examples above use `grep` and `cat`.
+That default grants the *directory*, not your toolchain: a compiler or package
+manager under your home (rustup's `~/.cargo/bin`, nvm, pyenv) is outside it. So
+`grep` and `cat` need no flags and `cargo test` needs five:
 
-Some working directories are refused rather than granted, because the tree would
-be far wider than you meant, would hold what every command already runs, or would
-hold the enforcer itself:
+```sh
+sandbx sandbox-run \
+  --allow-exec ~/.cargo/bin --allow-exec ~/.rustup \
+  --allow-write . --allow-exec . \
+  --allow-read /dev --allow-write /tmp \
+  -- cargo test --offline
+```
+
+- `~/.cargo/bin` is the shims, `~/.rustup` the toolchain they hand off to.
+- the working directory needs write for `target/` **and** execute for the test
+  binary it just built: write does not imply execute.
+- `/tmp` is the linker's temporary files.
+- `/dev` is the trap. cargo redirects a child's stdio to `/dev/null`, and without
+  it you get `could not execute process .../rustc -vV (never executed):
+  Permission denied` — which reads as a missing execute grant on a path you did
+  grant.
+- `--offline` because the network is denied. Resolving dependencies also needs
+  `--allow-network 443 --allow-read /etc`, which widens what a `build.rs`
+  reaches.
+
+Some working directories are refused rather than granted:
 
 ```console
 $ cd ~ && sandbx sandbox-run -- true
 sandbx: refusing to derive a policy from your home directory /home/you — pass --allow-read PATH and --allow-write PATH for the tree the command needs
 ```
 
-Refused roots are the filesystem root; `$HOME`; where home directories live
-(`/home`, `/Users`, `/var/home`, `/root`, or anything holding one); anything
-overlapping the system binaries, since `sandbx` already grants execute there and
-write beside it would let a command rewrite `/usr/bin/git`; and any directory
-holding the running `sandbx`, where a write grant replaces the thing doing the
-enforcing. Each refusal names the flags to type instead, and passing them lifts
-it: the guard governs what `sandbx` derives, never what you ask for.
+Refused as a derived root: the filesystem root; `$HOME`; where home directories
+live (`/home`, `/Users`, `/var/home`, `/root`, or anything holding one); anything
+overlapping the system binaries, which already have execute. With no usable
+`HOME` — unset, empty or pointing nowhere, as under a systemd unit, cron or
+`docker exec` — any *direct child* of those locations is refused too. Every
+refusal names the flags to type instead, and `--allow-read PATH` with
+`--allow-write PATH` lifts any of them: the guard governs what `sandbx` derives,
+never what you ask for.
 
-With no usable `HOME` — a systemd unit, cron, `docker exec`, or a `HOME` that is
-empty or points nowhere — `sandbx` cannot tell one person's home directory from
-another's, so it also refuses any direct child of those locations. That is wider
-than the rule it stands in for, which is the right direction for a guess.
+A directory holding the `sandbx` binary is *not* refused, so a no-flag run from
+an install prefix such as `~/.local/bin` grants write there. The helper is
+reached through `/proc/self/exe`, so a rename over the path cannot redirect the
+next spawn — but replacing the binary reaches the next `sandbx` you start
+yourself.
 
-Read [SECURITY.md](SECURITY.md) before relying on this: a write grant over a
-project tree also covers `.git/hooks`, `Makefile` and `.cargo/config.toml`, which
-run outside the sandbox the next time you build or commit.
+Read [SECURITY.md](SECURITY.md) before relying on any of this: a write grant over
+a project tree also covers `.git/hooks`, `Makefile` and `.cargo/config.toml`,
+which run outside the sandbox the next time you build or commit.
 
 ### Pinning the program
 
-An `--allow-exec` grant names a path, so it runs whatever is at that path when the
-command starts — not the binary you were looking at when you typed the flag. Where
-the command can also write the tree it runs from, which is the usual build-then-run
-pair, it can choose its own binary. `--pin-sha256` closes that by naming the bytes:
+`--allow-exec` names a path, so it runs whatever is there when the command
+starts — paired with write on the same tree, the command can choose its own
+binary. `--pin-sha256` closes that by naming the bytes:
 
 ```console
 $ sandbx sandbox-run --allow-exec /tmp/demo \
     --pin-sha256 "$(sandbx hash /tmp/demo/tool)" -- /tmp/demo/tool
 ```
 
-`sandbx hash PATH` prints a digest in the form the flag takes and confines nothing;
-it reads one file, as `sha256sum` does. If the bytes differ the run is refused
-before anything executes, with both digests on stderr. The flag grants nothing, so
-it neither widens a policy nor replaces the working-directory default, and it needs
-an absolute program path.
-
-It covers the one program you named and nothing that program then spawns itself: a
-pinned `/usr/bin/python3` is still arbitrary code. Two images it cannot pin, both
-refused rather than run unchecked — a `#!` script, since the kernel hands the
-interpreter the path `sandbx` exec'd, which by then names a closed descriptor, so
-pin the interpreter and pass the script as an argument; and a program you may
-execute but not read, since a pin has to read the file.
+- `sandbx hash PATH` prints a digest in the form the flag takes, and confines
+  nothing. A mismatch refuses the run before anything executes, with both digests
+  on stderr.
+- The flag grants nothing — it neither widens a policy nor replaces the
+  working-directory default — and the program path must be absolute.
+- It covers the one program you named, not what that program spawns: a pinned
+  `/usr/bin/python3` is still arbitrary code.
+- Two images are refused rather than run unchecked: a `#!` script (pin the
+  interpreter and pass the script as an argument) and a program you may execute
+  but not read.
 
 ### The environment
 
-The environment is cleared too. A sandboxed command does not inherit the one
-`sandbx` was launched with, so a secret in your shell does not reach it; name a
-variable with `--allow-env` to pass it through. Granted anyway, for the same
-reason as the system binaries: `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`,
-`LC_CTYPE` and `TZ`. `PATH` matters most: without it a bare program name is looked
-up only in the C library's fallback (`/bin:/usr/bin`), so `cat` would still start
-but anything installed elsewhere would not be found.
+The environment is cleared, so a secret in the shell `sandbx` was launched from
+does not reach the command. `--allow-env NAME` passes one through, with the value
+`sandbx` itself holds; `--dns-over-tcp` is the one flag that *sets* a value
+(`RES_OPTIONS=use-vc`).
 
-One variable `sandbx` sets rather than passes on, and the only exception:
-`--dns-over-tcp` puts the constant `RES_OPTIONS=use-vc` in the command.
+Granted anyway, for the same reason as the system binaries: `PATH`, `HOME`,
+`TERM`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`. Without `PATH` a bare program name is
+looked up only in the C library's fallback (`/bin:/usr/bin`).
 
 ### The audit trail
 
@@ -135,49 +141,43 @@ $ sandbx sandbox-run --allow-read /srv -- /bin/true
 2026-10-05T20:37:54.130729Z  INFO sandbx::audit: decision="exited" program="/bin/true" code=0
 ```
 
-Two records, and `program` ties them together. Read `spawned` as the intent to
-spawn, not its success: it is written before the helper execs, so it appears for a
-command that then fails to start. What it is for is the policy — what the command
-was granted — and that is settled before it runs.
+Two records per run, tied by `program`: one `spawned`, then exactly one of
+`exited` or `failed`.
 
-The second record says how the run ended, and every run gets exactly one.
-`exited` carries the code `sandbx` itself exits with, a signal as 128 + n, so a
-command the sandbox killed does not read as a success. A run with no status of its
-own is `failed` with a reason you can filter on:
+| field | reads |
+|---|---|
+| `decision="spawned"` | the *intent* to spawn, written before the helper execs — so it appears for a command that then fails to start — carrying the policy as settled |
+| `decision="exited"` | with `code=`, the code `sandbx` itself exits with; a signal as 128 + n, so a command the sandbox killed does not read as a success |
+| `decision="failed"` | with `reason=`, a run refused or cut short before it could exit on its own (table below) |
+| `decision="degraded"` | a hardening step the kernel would not allow, reported and carried on (see [SECURITY.md](SECURITY.md) on the capability bounding set) |
+| `decision="denied"` | a tool call refused by the in-process guard, with `tool=`, `subject=` and `reason=` |
+| `env=` | how many names were *granted* — not which, and not how many crossed: a name `sandbx`'s own environment does not hold passes nothing, so with no `TZ` set the run above sees fewer than seven |
+| `dns_over_tcp=` | its own field, not one of the counted names |
+| `pinned=` | whether a digest had to match before the exec, and the only place the trail says the entry point was checked at all. A matching pin leaves the run looking unpinned; a mismatch is already the `reason="pin_mismatch"` record closing it |
+
+Every `reason=` a `failed` record carries, exhaustively. Each of these would
+otherwise look like a command that ran and exited 1, the stage that refused
+having exited in the command's place:
 
 | `reason` | the run was refused or cut short by |
 |---|---|
 | `timeout` | a `--timeout` kill |
+| `spawn_failed` | a helper process that could not be started |
+| `bad_helper_args` | a helper invocation it would not parse best-effort |
+| `landlock` / `seccomp` | a kernel that would not accept the ruleset or the filter |
+| `unsupported` | a kernel that cannot enforce: too old, Landlock off at boot, or a ruleset accepted and not enforced |
+| `namespace_setup_failed` | a user, PID or network namespace that could not be created |
+| `process_hardening` | capabilities, core dumps or the environment not in the state the command may be born into |
+| `inner_stage_failed` | a helper stage that could not start the stage below it |
 | `exec_failed` | a program that could not be executed at all |
 | `pin_mismatch` | a program that is not the bytes it was pinned to |
 | `pin_unreadable` | a program a pin could not be checked against |
 | `pinned_script` | a `#!` script, which `--pin-sha256` cannot cover |
-| `landlock` / `seccomp` | a kernel that would not accept the sandbox |
 
-Each of those would otherwise look like a command that ran and exited 1, the
-stage that refused having exited in the command's place.
-
-`env=7` is a count, not a list: a variable's *name* is not a secret, but its value
-routinely is, and a record that spelled out the names would invite the next change
-to print values beside them. It counts the allowlist, not what crossed — a name
-nothing in `sandbx`'s own environment matches passes nothing, so on a host with no
-`TZ` set the command above sees fewer than seven. Like `readable`, it records what
-was granted. The one variable `sandbx` sets itself has its own field,
-`dns_over_tcp`, rather than being counted here as a name you passed.
-
-`pinned` says whether a digest had to match before the exec. A pin that matches
-leaves the run looking exactly like an unpinned one, so this is the only place the
-trail says the entry point was checked at all — a pin that does *not* match is
-already visible, as the `reason="pin_mismatch"` record that closes the run. The
-digest is not in the record: it is already in the command line you typed.
-
-It is metadata only, never a command's output, and it never touches stdout: the
-command's own stdout is forwarded untouched, so piping it is unaffected. Both
-records are written before any of the command's own output, which `sandbx`
-forwards once the run is over. To keep only the record,
-`2>&1 >/dev/null | grep sandbx::audit`. Note that `2>/dev/null` discards the
-sandboxed command's own stderr along with the record — including the permission
-denials the examples above are there to show.
+The trail is metadata only, never a command's output, and never on stdout, which
+is forwarded untouched. To keep only the record,
+`2>&1 >/dev/null | grep sandbx::audit`; a plain `2>/dev/null` discards the
+command's own stderr with it, including the permission denials.
 
 ### `sandbox-run` flags
 
@@ -198,9 +198,8 @@ denials the examples above are there to show.
 ### Resolving a name
 
 Resolution needs `--allow-read /etc` under *any* network policy, bare
-`--allow-network` included: `resolv.conf` and `nsswitch.conf` are not granted by
-anything else. Under a port allowlist it also needs TCP 53 and the resolver on
-TCP, which together are one line:
+`--allow-network` included: `resolv.conf` and `nsswitch.conf` are granted by
+nothing else. A port allowlist also needs TCP 53 and the resolver on TCP:
 
 ```console
 $ sandbx sandbox-run --dns-over-tcp \
@@ -208,21 +207,19 @@ $ sandbx sandbox-run --dns-over-tcp \
     -- curl -sSI https://example.com
 ```
 
-Two things that line does not say. `--allow-read` is a path flag, so it
-*replaces* the working-directory default — name the tree the command works on as
-well, or it loses the read and write it had. And where `resolv.conf` is a symlink
-out of `/etc`, which is the systemd-resolved default on most distributions, read
-the link target too: `--allow-read /run/systemd/resolve`.
-
-`--dns-over-tcp` is a request to the resolver inside the command, not something
-`sandbx` enforces: a command that ignores `RES_OPTIONS` is unaffected, and musl
-has no equivalent — a statically linked musl binary starts on UDP and falls back
-to TCP only on a truncated reply, so this route does not open it.
+- `--allow-read` is a path flag, so that line replaces the working-directory
+  default: name the command's own tree too, or it loses the read and write it had.
+- Where `resolv.conf` is a symlink out of `/etc` — the systemd-resolved default
+  on most distributions — read the target too:
+  `--allow-read /run/systemd/resolve`.
+- `--dns-over-tcp` is a request to the resolver inside the command, not something
+  `sandbx` enforces. A command that ignores `RES_OPTIONS` is unaffected, and musl
+  has no equivalent: a static musl binary starts on UDP and falls back to TCP
+  only on a truncated reply, so this route does not open it.
 
 ## Authenticate
 
-`agent-run` needs an Anthropic API key, from either of two places. The
-environment comes first:
+`agent-run` needs an Anthropic API key. The environment comes first:
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-…
@@ -236,21 +233,17 @@ sandbx auth status   # says which source answered, never prints the key
 sandbx auth logout
 ```
 
-`auth login` reads the key from stdin and will not prompt for it, so it is never
-echoed to your terminal, never in your shell's history, and never in argv where
-any process on the host could read it. It writes
+`auth login` reads the key from stdin and will not prompt, so it reaches neither
+your terminal, your shell's history nor argv. It writes
 `$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) with mode `0600` in
 a directory at `0700`, and later refuses to read the file if anyone but you can
-reach either — naming the `chmod` that fixes it rather than silently fixing it,
-because a credential that was readable needs rotating and not just narrowing.
-`auth status` exits 0 when it found a key, 1 when there is none, and 2 when it was
-refused, so a script can tell "log in" apart from "something is wrong".
+reach either, naming the `chmod` that fixes it rather than fixing it silently.
+`auth status` exits 0 when it found a key, 1 when there is none and 2 when one
+was refused, so a script can tell "log in" apart from "something is wrong".
 
 Exporting the variable wins over the stored key, so you can override it for one
-shell without logging out. The stored key is plaintext — the mode keeps it from
-other users on the host, not from anything running as you, and not from the agent
-if you grant it read access to your config directory. See
-[SECURITY.md](SECURITY.md).
+shell without logging out. The stored key is plaintext, and a read grant over
+your config directory reaches it — see [SECURITY.md](SECURITY.md).
 
 ## Try the agent
 
@@ -261,9 +254,9 @@ grants apply, and they are the only thing bounding what the agent reaches:
 sandbx agent-run -- "find the TODO comments under src and list them"
 ```
 
-That grants the directory you ran it from, which is also the whole of what a
-prompt injection in a file the agent reads can reach. Name a narrower tree when
-the question needs less than the project:
+That grants the directory you ran it from — also the whole of what a prompt
+injection in a file the agent reads can reach. Name a narrower tree when the
+question needs less:
 
 ```sh
 sandbx agent-run \
@@ -272,8 +265,8 @@ sandbx agent-run \
   -- "find the TODO comments under src and list them"
 ```
 
-Both of those answer by reading. Changing a file takes a second decision, because
-only the four read-only tools are approved by default:
+Both answer by reading. Changing a file takes a second decision, only the four
+read-only tools being approved by default:
 
 ```sh
 sandbx agent-run \
@@ -282,14 +275,20 @@ sandbx agent-run \
   -- "add a doc comment to every public fn under src"
 ```
 
-The answer streams on stdout; the approved set, and then which tool the gate ran
-and which it refused, goes to stderr — so piping stdout gives you the answer
-alone. Read that first line: it is what makes a misplaced `--` obvious, since
-`--allow-tool -- write the file` is the bare flag plus a prompt. All seven are
-offered to the model — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash` —
-and each one the gate approves still runs through the same boundary. A path you
-did not grant is refused there instead, which comes back to the model as a failed
-result for it to work around rather than a crash — and reaches stderr not at all.
+All seven tools are offered to the model — `read`, `write`, `edit`, `ls`, `grep`,
+`find`, `bash` — and each one the gate approves still runs through the same
+boundary. A path you did not grant is refused there instead, which reaches the
+model as a failed result to work around rather than a crash, and the trail as one
+record per refusal:
+
+```console
+2026-10-06T22:05:10.633436Z  INFO sandbx::audit: decision="denied" tool="write" subject="/tmp/outside-grant.txt" reason="outside every writable root"
+```
+
+The answer streams on stdout; the approved set, then which tool the gate ran and
+which it refused, goes to stderr. Read that first stderr line — it is what makes
+a misplaced `--` obvious, since `--allow-tool -- write the file` is the bare flag
+plus a prompt.
 
 | flag | |
 |------|--|
@@ -299,9 +298,8 @@ result for it to work around rather than a crash — and reaches stderr not at a
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
 | `--system TEXT`   | a system prompt. Unset sends none |
 
-Each run is still one question and one answer, then the process ends — there is
-no way to interrupt a turn mid-flight. `--session` is what carries a
-conversation across runs:
+Each run is one question and one answer, then the process ends; there is no way
+to interrupt a turn mid-flight. `--session` carries a conversation across runs:
 
 ```bash
 sandbx agent-run --session -- 'remember the number 41'
@@ -309,40 +307,36 @@ sandbx agent-run --session -- 'remember the number 41'
 sandbx agent-run --session 1z8k3p7q -- 'what number did I ask you to remember?'
 ```
 
-A session is a plaintext JSONL transcript under
-`$XDG_STATE_HOME/sandbx/sessions` (or `~/.local/state/sandbx/sessions`), created
-`0600` in a `0700` directory, and it holds whatever a tool read into the
-conversation. Resuming one that another user can write is refused; one they can
-only read resumes and says so on stderr. Nothing expires it and nothing
-redacts it — see [SECURITY.md](SECURITY.md).
+A session is a plaintext JSONL transcript under `$XDG_STATE_HOME/sandbx/sessions`
+(or `~/.local/state/sandbx/sessions`), created `0600` in a `0700` directory, and
+it holds whatever a tool read into the conversation. Resuming one another user
+can write is refused; one they can only read resumes and says so on stderr.
+Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 
-Exit `0` means the model finished its answer. Exit `2` means `--max-tokens` cut
-it off mid-sentence — what reached stdout is real but incomplete, which is worth
-distinguishing if a script is reading it. Anything else failed before or during
-the turn, with the reason on stderr.
+| `agent-run` exit | means |
+|---|---|
+| `0` | the model finished its answer |
+| `2` | `--max-tokens` cut it off mid-sentence: what reached stdout is real but incomplete |
+| anything else | it failed before or during the turn, with the reason on stderr |
 
 > **Nothing asks you before an approved tool call runs.** `--allow-tool` is a
 > decision per tool per run, not per call: approve `bash` and the model runs every
-> command it chooses to, which means a prompt injection in a file the agent reads
-> reaches anything the grants allow. The sandbox is the control, not the asking —
-> so approve the fewest tools the task needs, grant the narrowest tree that lets it
-> finish, and read [SECURITY.md](SECURITY.md) before pointing it at anything you
-> care about.
+> command it chooses. The sandbox is the control, not the asking — approve the
+> fewest tools the task needs, grant the narrowest tree that lets it finish, and
+> read [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
 >
-> The key is read by the harness — from `ANTHROPIC_API_KEY` or, failing that, from
-> the file `auth login` wrote. No tool sees an exported key unless you name it to
-> `--allow-env`, which hands over the value in full; that is the one flag to think
-> twice about here. A stored key is not in the harness's environment at all, so
-> there is nothing for that flag to pass through — but it is on disk under your
-> config directory, so a read grant covering it reaches the key instead.
+> No tool sees an exported API key unless you name it to `--allow-env`, which
+> hands over the value in full; that is the one flag to think twice about here. A
+> stored key is not in the harness's environment at all, but it is on disk under
+> your config directory, where a read grant reaches it instead.
 
 ## Install
 
 Prebuilt Linux binaries are attached to each
-[release](https://github.com/danczw/sandbx/releases); each archive ships with a
-`.sha256` beside it. They are statically linked (musl), so there is no minimum
-glibc and no runtime dependency beyond a Linux 6.10+ kernel with unprivileged
-user namespaces enabled. Or build from source:
+[release](https://github.com/danczw/sandbx/releases), each with a `.sha256`
+beside it. They are statically linked (musl): no minimum glibc, no runtime
+dependency beyond a Linux 6.10+ kernel with unprivileged user namespaces. Or
+build from source:
 
 ```sh
 cargo install --git https://github.com/danczw/sandbx sandbx-cli
@@ -362,12 +356,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 git config core.hooksPath .githooks                    # fmt + clippy on commit
 ```
 
-`unsafe` is forbidden in every crate, including `sandbx-core`, and spawning a
-subprocess outside `sandbx-core` is a clippy error — the sandbox boundary is
-enforced by the build, not by convention alone. Even the PID namespace needs no
-exemption: `unshare` leaves the caller behind and places its *children* in the
-new namespace, so re-execing the helper once more is enough and there is no
-`fork` to make safe.
+`unsafe` is forbidden in every crate and spawning a subprocess outside
+`sandbx-core` is a clippy error, so the boundary is enforced by the build.
+`context/guide-repo-map.md` says which crate owns what; the `context/guide-*.md`
+beside it, how each subsystem works.
 
 ## License
 
