@@ -16,8 +16,8 @@ use crate::SandboxPolicy;
 /// the harness gains variables. Allowlisted values are read out of *this* process as the
 /// command is built rather than carried on the policy, which crosses into the helper as
 /// argv — readable from inside the sandbox through `/proc/self/cmdline`. A name the harness
-/// does not hold is absent from the child rather than present and empty. An *imposed*
-/// variable is a compile-time constant, so it rides the policy with nothing to leak.
+/// does not hold is absent from the child rather than present and empty. An imposed value
+/// rides the policy instead, being a compile-time constant with nothing to leak.
 pub(crate) fn command(program: impl AsRef<OsStr>, policy: &SandboxPolicy) -> std::process::Command {
     // The one sanctioned `Command::new` in the workspace; see `clippy.toml`.
     #[allow(clippy::disallowed_methods)]

@@ -610,8 +610,7 @@ fn a_name_that_could_never_match_is_refused() {
     }
 }
 
-/// Through `parse_from`, so the flag's spelling is pinned here and not only in the
-/// struct: the helper argv seam uses the same one.
+/// Through `parse_from`, so this pins the flag's spelling, which the helper argv seam shares.
 #[test]
 fn the_resolver_hint_is_opt_in() {
     let hinted = sandbox_run(&["sandbx", "sandbox-run", "--dns-over-tcp", "--", "true"])
@@ -628,8 +627,8 @@ fn the_resolver_hint_is_opt_in() {
     );
 }
 
-/// The decision the flag exists to keep: it collapses the recipe to one token without
-/// granting a port, so the audit trail never reports one the operator did not name.
+/// The decision the flag exists to keep: the audit trail must never report a port the
+/// operator did not name.
 #[test]
 fn the_resolver_hint_allowlists_no_port() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--dns-over-tcp", "--", "true"])
@@ -650,9 +649,8 @@ fn the_resolver_hint_keeps_the_working_directory() {
     assert_eq!(policy.writable_paths(), [cwd()]);
 }
 
-/// Both flags claim `RES_OPTIONS` and disagree about its value. Refused rather than
-/// resolved, for the reason `a_name_with_a_value_is_refused_rather_than_dropped` gives:
-/// honouring the hint would drop the value the operator asked to pass, silently.
+/// Refused rather than resolved: honouring the hint would silently drop the value the
+/// operator asked to pass.
 #[test]
 fn the_hint_with_its_own_variable_is_refused() {
     let error = sandbox_run(&[
@@ -678,8 +676,7 @@ fn the_hint_with_its_own_variable_is_refused() {
     );
 }
 
-/// The library resolves what the CLI refuses, so a name the operator passes for its own
-/// sake is still dropped rather than inherited under the hint.
+/// The refusal matches the colliding name alone, not every name the hint sits beside.
 #[test]
 fn another_variable_survives_the_resolver_hint() {
     let policy = sandbox_run(&[

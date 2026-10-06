@@ -105,8 +105,7 @@ fn a_spawn_records_an_unrestricted_network_grant() {
     assert!(output.contains("network_ports=0"), "{output}");
 }
 
-/// The one variable the child holds that the `env` count cannot show, so the trail says
-/// whether it was set rather than leaving it to be inferred from the port list.
+/// The one variable the child holds that the `env` count cannot show.
 #[test]
 fn a_spawn_records_the_resolver_hint() {
     let policy = SandboxPolicy::default().hint_dns_over_tcp();

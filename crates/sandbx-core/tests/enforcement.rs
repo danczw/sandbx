@@ -834,9 +834,8 @@ fn granting_one_variable_passes_only_that_one() {
     );
 }
 
-/// One test for three seams at once: `spawn::command` injects the pair, `HelperArgs`
-/// carries the hint, and stage 2's inherited-environment check permits what the stage
-/// above put there. Drop any one and this fails — the last of them as a refusal to run.
+/// Three seams at once: `spawn::command` injects the pair, `HelperArgs` carries the hint,
+/// and stage 2's inherited-environment check permits what the stage above put there.
 #[test]
 fn the_resolver_hint_reaches_the_command() {
     let policy = runtime_paths(SandboxPolicy::default()).hint_dns_over_tcp();
@@ -855,7 +854,6 @@ fn the_resolver_hint_reaches_the_command() {
     );
 }
 
-/// The hint widens the environment by exactly one name, so the clear still clears.
 /// Names sorted: `Command` holds its environment in a map, not in insertion order.
 #[test]
 fn a_hinted_policy_still_drops_everything_else() {
@@ -879,10 +877,10 @@ fn a_hinted_policy_still_drops_everything_else() {
     );
 }
 
-/// `spawn::command` applies the allowlist and *then* the imposed table, so a name
-/// reached both ways arrives with the constant. Invoked with the variable planted on the
-/// spawning command, because `spawn::command` reads values from the live environment:
-/// without a harness value to lose, swapping the two `envs` calls would pass either way.
+/// `spawn::command` applies the allowlist and *then* the imposed table, so a name reached
+/// both ways arrives with the constant. The value is planted on the spawning command
+/// because values are read from the live environment: with none to lose, swapping the two
+/// `envs` calls would pass either way.
 #[test]
 fn an_imposed_value_beats_an_allowlisted_one() {
     let policy = runtime_paths(SandboxPolicy::default())

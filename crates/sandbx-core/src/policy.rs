@@ -94,8 +94,7 @@ pub struct SandboxPolicy {
     unix_sockets: bool,
     /// Variable *names*, never values; the value is read at spawn time from the harness.
     env: Vec<String>,
-    /// A value and not a name, which the other axis forbids: `use-vc` is a compile-time
-    /// constant, so argv carrying it would leak nothing.
+    /// Implies a value, unlike `env`, and only because that value is a compile-time constant.
     dns_over_tcp: bool,
 }
 

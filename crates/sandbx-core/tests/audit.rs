@@ -130,8 +130,8 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("dns_over_tcp=false"), "got: {line}");
 }
 
-/// The hint puts a variable in the child that the `env` count does not reach, so a
-/// trail without this field would under-report the environment the command saw.
+/// Without this field the trail would under-report the environment: `env` does not count
+/// an imposed variable.
 #[test]
 fn records_whether_a_spawn_set_the_resolver_hint() {
     for (policy, recorded) in [
@@ -151,7 +151,7 @@ fn records_whether_a_spawn_set_the_resolver_hint() {
 }
 
 /// `env` is the length of the allowlist, so counting an imposed variable there would
-/// report a name the operator never passed — and the name itself still never appears.
+/// report a name the operator never passed.
 #[test]
 fn the_hint_is_not_counted_as_an_allowlisted_name() {
     let policy = SandboxPolicy::default()
