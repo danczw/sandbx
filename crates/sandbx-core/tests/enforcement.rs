@@ -879,6 +879,35 @@ fn a_hinted_policy_still_drops_everything_else() {
     );
 }
 
+/// `spawn::command` applies the allowlist and *then* the imposed table, so a name
+/// reached both ways arrives with the constant. Invoked with the variable planted on the
+/// spawning command, because `spawn::command` reads values from the live environment:
+/// without a harness value to lose, swapping the two `envs` calls would pass either way.
+#[test]
+fn an_imposed_value_beats_an_allowlisted_one() {
+    let policy = runtime_paths(SandboxPolicy::default())
+        .allow_env("RES_OPTIONS")
+        .hint_dns_over_tcp();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
+        .arg(sandbx_core::HELPER_FLAG)
+        .args(HelperArgs::encode(&policy, "/usr/bin/env", &[]))
+        .env("RES_OPTIONS", "attempts:9")
+        .output()
+        .expect("helper should start");
+
+    assert!(
+        output.status.success(),
+        "env did not run: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "RES_OPTIONS=use-vc",
+        "the harness's own value reached the command"
+    );
+}
+
 /// Absent, not present and empty: a command branching on whether a variable is *set*
 /// reads a blank value as "configured, to nothing".
 #[test]

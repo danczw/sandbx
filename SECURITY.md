@@ -251,7 +251,9 @@ Three properties matter as much as the list:
   unaffected, and musl has no `RES_OPTIONS`, so a statically linked musl binary
   cannot resolve by this route at all. `--allow-read /etc` is needed for
   resolution under *any* network policy — nothing else grants `resolv.conf` and
-  `nsswitch.conf`.
+  `nsswitch.conf` — and, being a path flag, it replaces the working-directory
+  default. Where `resolv.conf` is a symlink out of `/etc`, the rule covers the
+  resolved target and the link target needs its own grant.
   `context/decision-port-allowlist.md` records why the denial is not narrower.
 
   **And it is not uniformly narrower than withholding network.** `bind` is

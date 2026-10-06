@@ -333,8 +333,8 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
   inherits it. Credential injection without exposing the value is #41.
 - **The policy is readable from inside.** Granted paths and allowlisted variable
   names cross as argv, and the command can read `/proc/self/cmdline`. Names only,
-  never values — which is why there is no `--allow-env NAME=VALUE`; the one value
-  that does cross is the `--dns-over-tcp` constant, which leaks nothing.
+  never values — which is why there is no `--allow-env NAME=VALUE`, and why
+  `--dns-over-tcp` crosses as a flag rather than as the pair it stands for.
 - **A port allowlist is not a destination allowlist.** Landlock matches the port
   and nothing else, so `--allow-network 443` reaches port 443 on every routable
   host. Per-host needs a userspace proxy (#145).
