@@ -110,9 +110,10 @@ pub enum Command {
     ///
     /// Two sources, in this order: `ANTHROPIC_API_KEY` from the environment, then a
     /// credential file at `$XDG_CONFIG_HOME/sandbx/credentials.toml` — or
-    /// `~/.config/sandbx/credentials.toml` — which `auth login` writes with mode 0600 and
-    /// which sandbx refuses to read if anyone but you can. So exporting the variable needs
-    /// no `auth login`, and `auth login` means you do not have to export anything.
+    /// `~/.config/sandbx/credentials.toml` — which `auth login` writes with mode 0600 in a
+    /// directory at 0700, and which sandbx refuses to read if anyone but you can reach
+    /// either. So exporting the variable needs no `auth login`, and `auth login` means you
+    /// do not have to export anything.
     ///
     /// `auth login` takes the key on stdin and will not prompt for it, so it is never
     /// echoed to your terminal and never lands in your shell's history:

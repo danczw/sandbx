@@ -9,13 +9,26 @@ did not exist before the turn loop had a caller (#109).
 |---|---|---|
 | 1 | `ANTHROPIC_API_KEY` from the environment, via `resolve_api_key` | `sandbx-providers/src/credentials.rs`, wrapped in `secrecy::SecretString` |
 | 2 | OS keyring | dropped, below |
-| 3 | `$XDG_CONFIG_HOME/sandbx/credentials.toml` at `0600` | `sandbx-cli/src/auth.rs` |
+| 3 | `$XDG_CONFIG_HOME/sandbx/credentials.toml` at `0600` | `sandbx-cli/src/auth.rs`, over `auth/store.rs` |
 
 The two live tiers are tried in that order, and the order is the point: exporting
 a variable overrides the stored key for one shell without an `auth logout` first.
-`auth status` names which answered. A tier-3 file is refused rather than read when
-its mode carries any group or other bit, because a file that was already disclosed
-cannot be undisclosed by using it.
+`auth status` names which answered, and spends three exit codes to do it — 0
+found, 1 neither source has one, 2 a source could not be read. The 1 and the 2 are
+deliberately different values: a script running `auth status || auth login` would
+otherwise log in over a credential it was merely refused.
+
+A tier-3 file is refused rather than read when any group or other bit is set on
+the file *or* on the directory holding it, because a file that was already
+disclosed cannot be undisclosed by using it, and a directory another user may
+write is one they can substitute a file in. Refused, never repaired: a mode sandbx
+quietly narrowed would hide that the key needs rotating. `auth logout` is the one
+command that tolerates a too-wide file, because refusing there would leave the
+exposed key on disk in order to protect it.
+
+A parse failure reports a line number and withholds the parser's own message.
+`toml::de::Error` quotes the line it failed on, and for a hand-written
+`api_key = sk-ant-…` missing its quotes that line is the key.
 
 `auth login` takes the key on stdin and refuses a tty rather than prompting. A
 prompt would echo the key into the terminal's scrollback, and the obvious

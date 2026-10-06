@@ -214,12 +214,23 @@ pub enum AuthError {
         mode: u32,
     },
 
+    /// The directory holding the credential file is reachable by more than its owner.
+    DirPermissions {
+        /// The directory that was refused.
+        path: PathBuf,
+        /// The mode it carries, which the message prints in octal.
+        mode: u32,
+    },
+
     /// The credential file is not valid TOML.
+    ///
+    /// Carries a position rather than the `toml` error, whose `Display` quotes the line it
+    /// failed on — for an unquoted `api_key` that line is the key.
     Malformed {
         /// The file that could not be parsed.
         path: PathBuf,
-        /// Where the parse failed.
-        source: toml::de::Error,
+        /// One-based line the parse failed on, or 0 when the parser reported no position.
+        line: usize,
     },
 
     /// The credential file's `anthropic` key is something other than a table.
@@ -271,9 +282,22 @@ impl std::fmt::Display for AuthError {
                 path.display(),
                 path.display()
             ),
-            Self::Malformed { path, source } => {
-                write!(f, "{} is not valid TOML: {source}", path.display())
-            }
+            // A directory another user may write is a substitution, not just a disclosure:
+            // they can rename their own 0600 file over the credential.
+            Self::DirPermissions { path, mode } => write!(
+                f,
+                "refusing to read a credential from {} at mode {mode:o}: another user could \
+                 replace the file in it — run `chmod 700 {}`",
+                path.display(),
+                path.display()
+            ),
+            Self::Malformed { path, line } => write!(
+                f,
+                "{} is not valid TOML at line {line} — the parser's own message is withheld \
+                 because it quotes that line, which may hold the key; fix it by hand, or run \
+                 `sandbx auth logout` to remove it",
+                path.display()
+            ),
             Self::NotATable { path } => write!(
                 f,
                 "{} has an `anthropic` entry that is not a table, so sandbx will not \
@@ -302,10 +326,12 @@ impl std::error::Error for AuthError {
             Self::NoCredential { .. }
             | Self::NoConfigHome
             | Self::Permissions { .. }
+            | Self::DirPermissions { .. }
             | Self::NotATable { .. }
             | Self::TtyInput
-            | Self::BlankKey => None,
-            Self::Malformed { source, .. } => Some(source),
+            | Self::BlankKey
+            // No source: the `toml` error it came from quotes the offending line.
+            | Self::Malformed { .. } => None,
             Self::Io { source, .. } | Self::Stdin(source) => Some(source),
             Self::Encode(source) => Some(source),
         }
