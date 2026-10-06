@@ -133,9 +133,8 @@ fn a_silent_success_is_reported_not_empty() {
 
 /// A default policy names no variables, so `bash` runs with an empty environment:
 /// `allow_system_executables()` alone gets a shell with no `PATH` and no `HOME`.
-///
-/// `PWD` is filtered out below because it is not inherited — the shell sets it from
-/// `getcwd` on startup, which `env -i /bin/sh -c env` shows outside any sandbox.
+/// `PWD` is filtered out below because the shell sets it from `getcwd` on startup
+/// rather than inheriting it.
 #[test]
 fn a_command_inherits_only_what_the_policy_names() {
     let ctx = context(SandboxPolicy::default().allow_system_executables());
@@ -159,8 +158,7 @@ fn a_command_inherits_only_what_the_policy_names() {
     );
 }
 
-/// The other half: without this, the empty case above would pass on a layer that
-/// never passes anything.
+/// Without this, the empty case above would pass on a layer that passes nothing.
 #[test]
 fn a_granted_variable_reaches_the_command() {
     let ctx = context(

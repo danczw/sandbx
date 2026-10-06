@@ -17,7 +17,7 @@ fn all_contains_every_variant() {
         BuiltinTool::Find,
     ] {
         // The match is what the compiler checks; the assert catches a variant that
-        // exists but was never listed in `ALL`.
+        // exists but was never listed.
         let listed = match tool {
             BuiltinTool::Read
             | BuiltinTool::Write
@@ -69,11 +69,9 @@ fn lookup_does_not_normalise_the_name() {
 
 /// A tool's name is its variant, lowercased.
 ///
-/// Nothing derives it, so swapping two names stays unique and still round-trips:
-/// `names_are_unique` sees only a half-swap, and the round-trip above is
-/// self-consistent either way. `Debug`'s spelling of the variant is the tie, which
-/// also makes a variant whose name is not its lowercased spelling (`MultiEdit`
-/// against `multi_edit`) fail here.
+/// `Debug`'s spelling of the variant is the tie: nothing derives the name, so a
+/// swapped pair stays unique and still round-trips. A variant whose name is not its
+/// lowercased spelling (`MultiEdit` against `multi_edit`) also fails here.
 #[test]
 fn every_tool_is_named_after_its_variant() {
     for tool in BuiltinTool::ALL {
@@ -87,11 +85,10 @@ fn every_tool_is_named_after_its_variant() {
 
 /// Every variant must advertise its own input struct.
 ///
-/// Nothing the compiler checks stops a module naming a neighbour's input struct, or
-/// a transposed `spec` arm. The tie is `title`, where schemars emits the struct's
-/// own name, so a struct renamed out of the `<Variant>Input` convention fails here.
-/// Comparing required properties instead would miss it: `ReadInput` and `LsInput`
-/// are both a lone `path`.
+/// Nothing the compiler checks stops a transposed `spec` arm, or a module naming a
+/// neighbour's input struct. The tie is schemars' `title`, the struct's own name, so
+/// a struct renamed out of the `<Variant>Input` convention fails too. Required
+/// properties would not do: `ReadInput` and `LsInput` are both a lone `path`.
 #[test]
 fn every_tool_advertises_its_own_input_struct() {
     for tool in BuiltinTool::ALL {
@@ -108,7 +105,7 @@ fn every_tool_advertises_its_own_input_struct() {
 /// Every tool must declare what it does beyond looking.
 ///
 /// Spelled out rather than read off `risk()`: an expectation derived from the same
-/// `SPEC`s moves with them, so a `bash` reclassified as read-only would still pass.
+/// `SPEC`s would pass a `bash` reclassified as read-only.
 #[test]
 fn the_risk_each_tool_carries_is_documented() {
     for tool in BuiltinTool::ALL {
@@ -134,11 +131,10 @@ fn the_risk_levels_order_least_to_most() {
 
 /// Every tool must carry its own model-facing prose.
 ///
-/// The description is the field the model steers on and the one of the four nothing
-/// can tie to its variant: no heuristic relates "List a directory's entries" to
-/// `ls`, and a description naming its own tool is false for `bash`, `edit`, `ls` and
-/// `grep`. Living beside the `execute` it describes is the whole mitigation; what is
-/// testable is distinctness, which catches the copied-from-a-neighbour case.
+/// The description is what the model steers on, and the one `SPEC` field nothing can
+/// tie to its variant: a description naming its own tool is false for `bash`, `edit`,
+/// `ls` and `grep`. Living beside the `execute` it describes is the mitigation; what
+/// is testable is distinctness, which catches a copy from a neighbour.
 #[test]
 fn every_tool_describes_itself_distinctly() {
     let mut seen = std::collections::BTreeMap::new();

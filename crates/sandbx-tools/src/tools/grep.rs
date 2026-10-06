@@ -61,7 +61,6 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
             break;
         }
 
-        // Before opening: `read_to_string` reads a binary whole, then fails.
         if file.metadata().is_ok_and(|m| m.len() > MAX_FILE_BYTES) {
             continue;
         }

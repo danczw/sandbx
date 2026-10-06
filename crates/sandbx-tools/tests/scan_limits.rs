@@ -50,8 +50,8 @@ fn grep_stops_at_the_file_scan_cap() {
     assert_eq!(hits, 5, "scan cap not applied:\n{}", out.content());
 }
 
-/// The marker matters as much as the cap: a model that cannot tell a complete search
-/// from an abandoned one concludes the symbol does not exist.
+/// A model that cannot tell a complete search from an abandoned one concludes the
+/// symbol does not exist.
 #[test]
 fn grep_reports_that_it_stopped_early() {
     let root = tree(50, "");
@@ -74,8 +74,7 @@ fn grep_reports_that_it_stopped_early() {
     );
 }
 
-/// Bytes, not just file count: a few large files cost as much to scan as many small
-/// ones, and only the byte budget sees it.
+/// Bytes, not just file count: a few large files cost as much as many small ones.
 #[test]
 fn grep_stops_at_the_byte_scan_budget() {
     let root = tree(50, &"filler\n".repeat(500));
@@ -104,8 +103,7 @@ fn grep_stops_at_the_byte_scan_budget() {
     );
 }
 
-/// `find` never reads a file, so only the walk's cap applies — but it must report
-/// the cut-off for the same reason `grep` does.
+/// `find` never reads a file, so only the walk's cap applies.
 #[test]
 fn find_reports_a_truncated_walk() {
     let root = tree(50, "");
@@ -128,8 +126,7 @@ fn find_reports_a_truncated_walk() {
     );
 }
 
-/// A marker on complete results is worse than none: it teaches the model to ignore
-/// it.
+/// A marker on complete results teaches the model to ignore it.
 #[test]
 fn a_search_within_the_budget_is_not_marked() {
     let root = tree(3, "");

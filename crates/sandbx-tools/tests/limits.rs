@@ -45,7 +45,6 @@ fn grep_caps_the_number_of_hits() {
     assert_eq!(hits, 10, "cap not applied:\n{}", out.content());
 }
 
-/// Invisible truncation leaves the model treating a partial list as complete.
 #[test]
 fn grep_says_when_it_truncated() {
     let root = tree_with_matches(50);
