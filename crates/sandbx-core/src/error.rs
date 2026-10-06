@@ -198,23 +198,25 @@ impl std::error::Error for SandboxError {
 }
 
 impl SandboxError {
-    /// Every label [`label`](Self::label) can return.
+    /// The refusals a helper stage can report on its audit channel, and so the closed set
+    /// the parent validates a label off that channel against.
     ///
-    /// The closed set the helper's audit channel is validated against: a helper stage
-    /// reports a refusal by label, and the parent must resolve it to one of ours rather
-    /// than put the bytes it read on the trail. A new variant goes here as well as in
-    /// `label`, which `labels_are_unique_and_every_variant_is_listed` pins.
-    pub(crate) const LABELS: [&str; 11] = [
-        "path_not_allowed",
-        "unresolvable",
+    /// A strict subset of what [`label`](Self::label) can return, not all of it. The four
+    /// it leaves out are decisions the parent and [`FsGuard`](crate::FsGuard) make for
+    /// themselves — `timeout`, `spawn_failed`, `path_not_allowed`, `unresolvable` — and a
+    /// record off the channel outranks the exit status, so admitting one would let a
+    /// forged line claim a kill that never happened and displace the real outcome.
+    ///
+    /// Hand-maintained against `label`, which the compiler cannot help with. A helper
+    /// refusal missing from here is dropped rather than mistrusted: the trail falls back
+    /// to the relayed exit status, which is what it said before #157.
+    pub(crate) const REPORTED_BY_HELPER: [&str; 7] = [
         "bad_helper_args",
         "landlock",
         "seccomp",
         "namespace_setup_failed",
         "process_hardening",
-        "spawn_failed",
         "exec_failed",
-        "timeout",
         "unsupported",
     ];
 
@@ -240,14 +242,16 @@ impl SandboxError {
         }
     }
 
-    /// The refusal `label` names, as our own `'static` copy of it, if it names one at all.
+    /// The helper-reportable refusal `label` names, as our own `'static` copy of it.
     ///
-    /// A lookup over [`LABELS`](Self::LABELS) rather than a second `match`, which could not
-    /// rebuild the variant anyway: a label carries no detail. The `'static` return is the
-    /// point — it is what lets a label read off the channel reach `AuditEvent::failed`
-    /// without the trail borrowing from the bytes.
-    pub(crate) fn label_from(label: &str) -> Option<&'static str> {
-        Self::LABELS.into_iter().find(|known| *known == label)
+    /// A lookup over [`REPORTED_BY_HELPER`](Self::REPORTED_BY_HELPER) rather than a second
+    /// `match`, which could not rebuild the variant anyway: a label carries no detail. The
+    /// `'static` return is the point — it is what lets a label read off the channel reach
+    /// `AuditEvent::failed` without the trail borrowing from the bytes.
+    pub(crate) fn reportable_label(label: &str) -> Option<&'static str> {
+        Self::REPORTED_BY_HELPER
+            .into_iter()
+            .find(|known| *known == label)
     }
 }
 
@@ -255,8 +259,10 @@ impl SandboxError {
 mod tests {
     use super::*;
 
-    /// One of every variant, so the labels can be checked against the closed set. The
-    /// `match` below is exhaustive, so a new variant fails to compile until it is listed.
+    /// One of every variant, so the labels can be checked against the channel's closed
+    /// set. The `match` below is exhaustive, so a new variant fails to compile here until
+    /// it is acknowledged — and whether it also belongs in `REPORTED_BY_HELPER` is the
+    /// question this list exists to put in front of whoever adds one.
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
@@ -311,16 +317,8 @@ mod tests {
     }
 
     #[test]
-    fn labels_are_unique_and_every_variant_is_listed() {
-        let variants = every_variant();
-
-        assert_eq!(
-            variants.len(),
-            SandboxError::LABELS.len(),
-            "a variant is missing from LABELS or from the sample list"
-        );
-
-        let mut labels: Vec<_> = variants.iter().map(SandboxError::label).collect();
+    fn no_two_variants_share_a_label() {
+        let mut labels: Vec<_> = every_variant().iter().map(SandboxError::label).collect();
         labels.sort_unstable();
         let total = labels.len();
         labels.dedup();
@@ -329,22 +327,41 @@ mod tests {
     }
 
     #[test]
-    fn every_label_round_trips_through_the_closed_set() {
-        for error in every_variant() {
+    fn every_helper_reportable_label_is_one_a_variant_returns() {
+        let labels: Vec<_> = every_variant().iter().map(SandboxError::label).collect();
+
+        for reportable in SandboxError::REPORTED_BY_HELPER {
+            assert!(
+                labels.contains(&reportable),
+                "{reportable} is on the channel's closed set but names no variant"
+            );
+        }
+    }
+
+    /// The channel's record outranks the relayed exit status, so a reason the parent or
+    /// `FsGuard` decides for itself must not be nameable on it: a forged `timeout` would
+    /// claim a kill that never happened and suppress the real outcome.
+    #[test]
+    fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
+        for label in [
+            "timeout",
+            "spawn_failed",
+            "path_not_allowed",
+            "unresolvable",
+        ] {
             assert_eq!(
-                SandboxError::label_from(error.label()),
-                Some(error.label()),
-                "{} is not in LABELS, so it could not cross the audit channel",
-                error.label()
+                SandboxError::reportable_label(label),
+                None,
+                "{label} is not a helper stage's to report, but the channel accepted it"
             );
         }
     }
 
     #[test]
     fn a_label_we_did_not_define_is_refused() {
-        for label in ["", "not_a_refusal", "timeout ", "TIMEOUT"] {
+        for label in ["", "not_a_refusal", "seccomp ", "SECCOMP"] {
             assert_eq!(
-                SandboxError::label_from(label),
+                SandboxError::reportable_label(label),
                 None,
                 "{label:?} was accepted as one of our labels"
             );

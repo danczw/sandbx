@@ -210,9 +210,13 @@ fn the_command_inherits_no_other_end_of_the_channel() {
 ///
 /// Driven by hand rather than through `SandboxedCommand`, which builds a well-formed argv
 /// and a live supervisor by construction: pid 1 is a supervisor claim no stage can legally
-/// receive, so `confirm_supervisor` refuses deterministically on every host. The flag and
-/// the label are spelled out for the reason `every_record_names_a_real_mechanism_once`
-/// gives — both are a compatibility surface.
+/// receive, so `confirm_supervisor` refuses deterministically on every host. `env_clear`
+/// because the inner stage refuses an environment the policy does not name, which would
+/// otherwise be a second reason this run could fail — and one that reports the same label
+/// through a different path. The stderr assertion is what makes the record attributable:
+/// three steps in this stage return `namespace_setup_failed`, and only this one says the
+/// supervisor is gone. The flag and the label are spelled out for the reason
+/// `every_record_names_a_real_mechanism_once` gives — both are a compatibility surface.
 #[test]
 fn a_refusal_before_the_exec_names_itself_on_the_channel() {
     use std::io::Read;
@@ -221,6 +225,7 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
 
     let mut helper = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
     helper
+        .env_clear()
         .args([sandbx_core::HELPER_INNER_FLAG, "1", "--sandbx-audit-stdin"])
         .args(HelperArgs::encode(
             &SandboxPolicy::default().allow_system_executables(),
@@ -240,14 +245,19 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
         .read_to_string(&mut records)
         .expect("the channel should be readable");
 
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
     assert!(
         !output.status.success(),
-        "the stage ran the command instead of refusing a foreign supervisor"
+        "the stage ran the command instead of refusing a foreign supervisor: {stderr}"
     );
     assert!(
-        records.contains("namespace_setup_failed\t"),
-        "a refused run named no reason on the channel: {records:?}\nstderr: {}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("the supervisor process is gone"),
+        "the stage refused for some other reason, so this says nothing about #157: {stderr}"
+    );
+    assert_eq!(
+        records, "namespace_setup_failed\t\n",
+        "a refused run named no reason on the channel\nstderr: {stderr}"
     );
 }
 
