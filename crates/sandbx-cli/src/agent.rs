@@ -4,16 +4,21 @@
 //! nobody to ask mid-turn: the approval gate is decided from argv before the first
 //! request goes out.
 
+mod render;
+
 use std::io::Write;
 
-use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, run_turn};
+use render::Render;
+use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, TurnOutcome, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
-    AgentEvent, AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError,
-    RequestMessage, Role, StopReason,
+    AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError, RequestMessage,
+    Role,
 };
+use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
 use sandbx_tools::{BuiltinTool, ExecutionContext, RiskLevel};
 
+use crate::session::{self, SessionChoice};
 use crate::{AgentError, Grants, PolicyError};
 
 /// The model asked when `--model` is not given.
@@ -79,6 +84,21 @@ pub struct AgentRun {
     )]
     allow_tool: Option<Vec<BuiltinTool>>,
 
+    /// Save the conversation, and resume one by id.
+    ///
+    /// Bare, it starts a session and prints the id to resume it with. With an id,
+    /// it sends that conversation's history ahead of the new prompt and appends the
+    /// answer. Absent, nothing is read and nothing is written.
+    ///
+    /// A transcript is plaintext under `$XDG_STATE_HOME/sandbx/sessions`, created
+    /// `0600`, and holds whatever a tool read into the conversation. Resuming one that
+    /// somebody else can write is refused; one they can only read resumes and says so.
+    // `Option<Option<_>>` and not `--allow-tool`'s `Option<Vec<_>>`: that flag is a
+    // growing set, this one names one session, and a `Vec` would take
+    // `--session a --session b` and quietly use one of them.
+    #[arg(long, value_name = "ID", num_args = 0..=1, value_parser = session_id)]
+    session: Option<Option<SessionId>>,
+
     /// The prompt to send.
     // `last` keeps the separator meaningful: a prompt beginning with `-` needs no
     // quoting trick. Not a `///`, which would reach `--help`.
@@ -105,6 +125,15 @@ impl AgentRun {
     /// The system prompt, or `None` to send none.
     pub fn system(&self) -> Option<&str> {
         self.system.as_deref()
+    }
+
+    /// What `--session` asked for.
+    pub fn session(&self) -> SessionChoice<'_> {
+        match &self.session {
+            None => SessionChoice::Off,
+            Some(None) => SessionChoice::New,
+            Some(Some(id)) => SessionChoice::Resume(id),
+        }
     }
 
     /// Whether the model may call `tool` in this run.
@@ -199,6 +228,10 @@ impl AgentRun {
             self.approved_tools().join(", ")
         );
 
+        // Opened before the client, so a refused mode, an unknown id or a torn
+        // transcript costs no request — the ordering the policy already has.
+        let session = session::open(self.session())?;
+
         let client = AnthropicClient::new(crate::auth::api_key()?)?;
 
         self.drive(
@@ -206,11 +239,13 @@ impl AgentRun {
             &ctx,
             prompt,
             std::io::stdout(),
+            session,
         )
         .await
     }
 
-    /// Run one turn against `open`, writing the answer to `out`.
+    /// Run one turn against `open`, writing the answer to `out` and saving it to
+    /// `session`.
     ///
     /// The stream opener and the sink are arguments rather than built here so a test can
     /// drive a canned turn and read back both what the request carried and what came out
@@ -221,11 +256,20 @@ impl AgentRun {
         ctx: &ExecutionContext,
         prompt: String,
         out: W,
+        session: Option<Session>,
     ) -> Result<i32, AgentError> {
-        let history = [RequestMessage {
+        let asked = RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],
-        }];
+        };
+
+        // The stored turns first, so the new prompt is the conversation's latest and not
+        // a request of its own.
+        let mut history = match &session {
+            Some(session) => session::request_history(session.messages()),
+            None => Vec::new(),
+        };
+        history.push(asked.clone());
 
         let turn = Turn {
             model: self.model.clone(),
@@ -234,9 +278,13 @@ impl AgentRun {
             tools: &BuiltinTool::ALL,
             history: &history,
             limits: TurnLimits::default(),
-            // Nothing to thread in: a single-shot turn has no previous one.
-            observed: None,
-            withheld: 0,
+            // What the resumed conversation last measured, so a continued one and a
+            // resumed one carry the same figures. Both are `None`/`0` without a session.
+            observed: session
+                .as_ref()
+                .and_then(Session::observed)
+                .map(session::request_usage),
+            withheld: session.as_ref().map_or(0, Session::withheld),
         };
 
         let mut render = Render::new(out);
@@ -252,8 +300,54 @@ impl AgentRun {
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
         let code = render.finish();
-        outcome?;
+        // Before the append, not after: a `TurnError` discards the turn's own messages,
+        // and a prompt persisted without its answer makes the next resume send two user
+        // turns in a row.
+        let outcome = outcome?;
+
+        if let Some(session) = session {
+            self.save(session, &asked, outcome)?;
+        }
+
+        // Last, so an append still happens for a turn whose stdout was a closed pipe:
+        // the transcript is the conversation, not what reached the terminal.
         code
+    }
+
+    /// Add the prompt and the finished turn to the transcript.
+    ///
+    /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
+    /// *produced*, so the caller's own prompt is not in it. A transcript built from the
+    /// outcome alone would hold assistant turns only, and the next resume would send the
+    /// model its own replies with nothing it was replying to.
+    fn save(
+        &self,
+        mut session: Session,
+        asked: &RequestMessage,
+        outcome: TurnOutcome,
+    ) -> Result<(), AgentError> {
+        let mut messages = session::stored_messages(std::slice::from_ref(asked));
+        messages.extend(session::stored_messages(&outcome.messages));
+        let turn = CompletedTurn {
+            messages: &messages,
+            observed: outcome.usage.map(session::stored_usage),
+            withheld: outcome.withheld,
+        };
+
+        match session.append(turn) {
+            Ok(()) => Ok(()),
+            // Not an error: the turn's own exit code already describes what happened,
+            // and a transcript that gained nothing is the correct outcome for a turn
+            // that produced no reply to gain.
+            Err(SessionError::IncompleteTurn) => {
+                eprintln!(
+                    "sandbx: the turn produced no reply; session {} is unchanged",
+                    session.id()
+                );
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 }
 
@@ -278,90 +372,21 @@ fn tool_name(value: &str) -> Result<BuiltinTool, String> {
     })
 }
 
-/// Writes a turn out: the answer on stdout, everything about it on stderr.
+/// Accept an id the store could look up, and refuse anything else.
 ///
-/// The split is what lets stdout be piped to something that wants the answer alone.
-struct Render<W> {
-    out: W,
-
-    /// Whether the last round stopped at `max_tokens`.
-    ///
-    /// Last-one-wins because every round ends with a `Stop` and only the final one says
-    /// how the *turn* ended — an intermediate one reports a round that then went on.
-    truncated: bool,
-
-    /// Whether stdout is part-way through a line, so it is terminated once and only if
-    /// the model did not terminate it already.
-    mid_line: bool,
-
-    /// The first write that failed, kept because `observe` has no way to end the turn.
-    failed: Option<std::io::Error>,
-}
-
-impl<W: Write> Render<W> {
-    fn new(out: W) -> Self {
-        Self {
-            out,
-            truncated: false,
-            mid_line: false,
-            failed: None,
-        }
-    }
-
-    /// Put one event where it belongs.
-    fn event(&mut self, event: &AgentEvent) {
-        match event {
-            AgentEvent::Text { delta } => {
-                self.write(delta.as_bytes());
-                if !delta.is_empty() {
-                    self.mid_line = !delta.ends_with('\n');
-                }
-            }
-            AgentEvent::Stop { reason } => {
-                self.truncated = matches!(reason, StopReason::MaxTokens);
-            }
-            // A requested call is announced by `AgentRun::gate`, which knows whether it
-            // ran. So the two refusals above the gate reach only the model (#169).
-            AgentEvent::ToolCallRequested { .. }
-            | AgentEvent::Thinking { .. }
-            | AgentEvent::Usage { .. } => {}
-        }
-    }
-
-    /// Close the answer off, and report what the way it ended means for the exit code.
-    fn finish(&mut self) -> Result<i32, AgentError> {
-        if self.mid_line {
-            self.write(b"\n");
-        }
-
-        if let Some(error) = self.failed.take() {
-            return Err(AgentError::Output(error));
-        }
-
-        if self.truncated {
-            // Otherwise a truncated answer reads as a complete one.
-            eprintln!("sandbx: answer truncated at --max-tokens");
-            return Ok(TRUNCATED);
-        }
-
-        Ok(0)
-    }
-
-    /// Flushed per call: a line-buffered stdout holds the answer back until the model
-    /// happens to emit a newline, which is the difference between streaming and not.
-    fn write(&mut self, bytes: &[u8]) {
-        if self.failed.is_some() {
-            return;
-        }
-
-        if let Err(error) = self.out.write_all(bytes).and_then(|()| self.out.flush()) {
-            self.failed = Some(error);
-        }
-    }
+/// At parse time rather than on open, so `--session ../../etc/passwd` is refused before
+/// any I/O happens at all — the same reason `tool_name` refuses an unknown tool.
+fn session_id(value: &str) -> Result<SessionId, String> {
+    value
+        .parse()
+        .map_err(|error: SessionError| error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
+    use sandbx_providers::{AgentEvent, StopReason};
+
+    use super::render::tests::{stop, text};
     use super::*;
 
     use clap::Parser;
@@ -497,92 +522,6 @@ mod tests {
         );
     }
 
-    fn text(delta: &str) -> AgentEvent {
-        AgentEvent::Text {
-            delta: delta.to_string(),
-        }
-    }
-
-    fn stop(reason: StopReason) -> AgentEvent {
-        AgentEvent::Stop { reason }
-    }
-
-    /// Writes nothing and fails every time, like a pipe whose reader has gone.
-    struct ClosedPipe;
-
-    impl Write for ClosedPipe {
-        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    /// Everything stdout received, and what the turn would have exited with.
-    fn rendered(events: &[AgentEvent]) -> (String, Result<i32, AgentError>) {
-        let mut render = Render::new(Vec::new());
-        for event in events {
-            render.event(event);
-        }
-
-        let code = render.finish();
-        (String::from_utf8(render.out).expect("utf-8"), code)
-    }
-
-    #[test]
-    fn a_rounds_stop_does_not_terminate_the_answer() {
-        let (written, code) = rendered(&[
-            text("looking"),
-            stop(StopReason::ToolUse),
-            text(" — found it"),
-            stop(StopReason::EndTurn),
-        ]);
-
-        // One trailing newline, not one per round.
-        assert_eq!(written, "looking — found it\n");
-        assert_eq!(code.expect("clean turn"), 0);
-    }
-
-    #[test]
-    fn only_the_last_stop_decides_whether_it_was_cut() {
-        let (_, intermediate) = rendered(&[
-            stop(StopReason::MaxTokens),
-            text("and then it went on"),
-            stop(StopReason::EndTurn),
-        ]);
-        assert_eq!(intermediate.expect("clean turn"), 0);
-
-        let (_, last) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
-        assert_eq!(last.expect("truncated turn"), TRUNCATED);
-    }
-
-    #[test]
-    fn an_answer_cut_short_mid_line_is_still_terminated() {
-        // No `Stop` at all: the shape of a turn that died mid-stream.
-        let (written, _) = rendered(&[text("partial answ")]);
-        assert_eq!(written, "partial answ\n");
-    }
-
-    #[test]
-    fn a_terminated_answer_is_not_terminated_twice() {
-        let (written, _) = rendered(&[text("hi\n"), stop(StopReason::EndTurn)]);
-        assert_eq!(written, "hi\n");
-    }
-
-    #[test]
-    fn an_empty_delta_leaves_the_line_where_it_was() {
-        let (written, _) = rendered(&[text("hi\n"), text(""), stop(StopReason::EndTurn)]);
-        assert_eq!(written, "hi\n");
-    }
-
-    #[test]
-    fn a_turn_that_wrote_nothing_adds_no_newline() {
-        let (written, _) = rendered(&[stop(StopReason::EndTurn)]);
-        assert_eq!(written, "");
-    }
-
     /// An `EventStream` that replays `events` and then ends.
     ///
     /// `fuse()` because `EventStream` promises a `FusedStream`: a caller may poll it
@@ -592,25 +531,29 @@ mod tests {
         Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)).fuse())
     }
 
+    /// A current-thread runtime rather than `#[tokio::test]`: `rt` is already on for the
+    /// binary, and `macros` is not. Timers are not optional — `run_turn` arms a
+    /// per-round timeout and panics without one.
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("a current-thread runtime")
+    }
+
     /// Drive one scripted round through `drive`, and report what was sent and written.
     fn one_round(
         args: &AgentRun,
         prompt: &str,
         events: Vec<AgentEvent>,
+        session: Option<Session>,
     ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
         let ctx = ExecutionContext::new(SandboxPolicy::default());
         let mut sent = Vec::new();
         let mut events = Some(events);
         let mut out = Vec::new();
 
-        // A current-thread runtime rather than `#[tokio::test]`: `rt` is already on for
-        // the binary, and `macros` is not. Timers are not optional — `run_turn` arms a
-        // per-round timeout and panics without one.
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .expect("a current-thread runtime");
-        let code = runtime.block_on(args.drive(
+        let code = runtime().block_on(args.drive(
             |request| {
                 sent.push(request);
                 let round = events.take().expect("a second round was asked for");
@@ -619,9 +562,38 @@ mod tests {
             &ctx,
             prompt.to_owned(),
             &mut out,
+            session,
         ));
 
         (sent, String::from_utf8(out).expect("utf-8"), code)
+    }
+
+    /// Drive a turn whose request never reaches a provider at all.
+    fn failed_round(args: &AgentRun, session: Option<Session>) -> Result<i32, AgentError> {
+        let ctx = ExecutionContext::new(SandboxPolicy::default());
+
+        runtime().block_on(args.drive(
+            |_| {
+                std::future::ready(Err(ProviderError::ApiError {
+                    status: Some(500),
+                    kind: "api_error".to_owned(),
+                    message: "overloaded".to_owned(),
+                    retry_after: None,
+                }))
+            },
+            &ctx,
+            "hi".to_owned(),
+            Vec::new(),
+            session,
+        ))
+    }
+
+    /// A store under a temporary directory, and one new session in it.
+    fn new_session() -> (tempfile::TempDir, sandbx_session::SessionStore, Session) {
+        let root = tempfile::tempdir().expect("a temp dir");
+        let store = sandbx_session::SessionStore::new(root.path().join("sessions"));
+        let session = store.create().expect("a new session");
+        (root, store, session)
     }
 
     #[test]
@@ -632,6 +604,7 @@ mod tests {
             &args,
             &args.prompt(),
             vec![text("etc"), stop(StopReason::EndTurn)],
+            None,
         );
 
         assert_eq!(written, "etc\n");
@@ -647,11 +620,136 @@ mod tests {
     }
 
     #[test]
-    fn a_turn_nothing_can_read_is_reported_not_swallowed() {
-        let mut render = Render::new(ClosedPipe);
-        render.event(&text("hi"));
-        render.event(&stop(StopReason::EndTurn));
+    fn a_resumed_history_precedes_the_new_prompt() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "and the second?"]);
+        let (_root, store, session) = new_session();
+        let id = {
+            let (_, _, code) = one_round(
+                &args,
+                "the first question",
+                vec![text("the first answer"), stop(StopReason::EndTurn)],
+                Some(session),
+            );
+            code.expect("clean turn");
+            // Found by reading the store back rather than kept from before the turn:
+            // what a resume gets is what reached disk.
+            only_session(&store)
+        };
 
-        assert!(matches!(render.finish(), Err(AgentError::Output(_))));
+        let (sent, _, code) = one_round(
+            &args,
+            &args.prompt(),
+            vec![text("the second answer"), stop(StopReason::EndTurn)],
+            Some(store.resume(&id).expect("the session resumes")),
+        );
+        code.expect("clean turn");
+
+        let body = serde_json::to_value(&sent).expect("a serializable request");
+        assert_eq!(
+            body[0]["messages"],
+            serde_json::json!([
+                { "role": "user", "content": [{ "type": "text", "text": "the first question" }] },
+                { "role": "assistant", "content": [{ "type": "text", "text": "the first answer" }] },
+                { "role": "user", "content": [{ "type": "text", "text": "and the second?" }] },
+            ])
+        );
+    }
+
+    #[test]
+    fn a_failed_turn_leaves_the_transcript_alone() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
+        let (_root, store, session) = new_session();
+        let before = std::fs::read(session.path()).expect("the transcript exists");
+
+        let error = failed_round(&args, Some(session)).expect_err("a turn that never opened");
+
+        assert!(matches!(error, AgentError::Turn(_)), "got {error:?}");
+        let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
+            .expect("the transcript exists");
+        // A prompt saved without its answer would make the next resume send two user
+        // turns in a row, which the API rejects.
+        assert_eq!(after, before);
+    }
+
+    /// Fires if anyone ever persists the request headers. Proves nothing about a key the
+    /// model itself typed into an answer — `guide-logging.md`'s register.
+    #[test]
+    fn a_transcript_holds_no_api_key_material() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
+        let (_root, store, session) = new_session();
+        let path = session.path().to_owned();
+
+        let (_, _, code) = one_round(
+            &args,
+            "remember sentinel-9f3a",
+            vec![text("noted, sentinel-9f3a"), stop(StopReason::EndTurn)],
+            Some(session),
+        );
+        code.expect("clean turn");
+
+        let body = std::fs::read_to_string(&path).expect("the transcript exists");
+        // Both halves present first, so the assertions below are known to be reading the
+        // file that holds the conversation.
+        assert_eq!(body.matches("sentinel-9f3a").count(), 2, "got {body}");
+        for secret in ["x-api-key", "authorization", "sk-ant-"] {
+            assert!(!body.contains(secret), "{secret} reached {path:?}");
+        }
+        assert_eq!(
+            store
+                .resume(&only_session(&store))
+                .unwrap()
+                .messages()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
+        let (_root, store, session) = new_session();
+
+        let (_, _, code) = one_round(
+            &args,
+            &args.prompt(),
+            vec![stop(StopReason::MaxTokens)],
+            Some(session),
+        );
+
+        // `IncompleteTurn` is a stderr line, not an error: the cut-short code is what a
+        // script consuming stdout has to see.
+        assert_eq!(code.expect("a reported turn"), TRUNCATED);
+        assert!(
+            store
+                .resume(&only_session(&store))
+                .unwrap()
+                .messages()
+                .is_empty()
+        );
+    }
+
+    /// The id of the one session in `store`.
+    fn only_session(store: &sandbx_session::SessionStore) -> sandbx_session::SessionId {
+        let mut ids: Vec<String> = std::fs::read_dir(store.root())
+            .expect("the store exists")
+            .map(|entry| {
+                entry
+                    .expect("a readable entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .trim_end_matches(".jsonl")
+                    .to_owned()
+            })
+            .collect();
+        ids.sort();
+        assert_eq!(ids.len(), 1, "expected one transcript, got {ids:?}");
+        ids[0].parse().expect("a stored name is a valid id")
+    }
+
+    #[test]
+    fn a_traversing_session_id_is_refused_at_parse_time() {
+        let message = session_id("../../etc/passwd").expect_err("a traversal was accepted");
+
+        assert!(message.contains("passwd"), "got {message}");
     }
 }

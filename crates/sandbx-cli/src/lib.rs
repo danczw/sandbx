@@ -10,6 +10,7 @@ mod grants;
 mod hash;
 pub mod logging;
 mod sandbox;
+mod session;
 
 pub use agent::AgentRun;
 pub use auth::Auth;
@@ -17,6 +18,7 @@ pub use error::{AgentError, AuthError, HashError, PolicyError, SandboxRunError};
 pub use grants::Grants;
 pub use hash::Hash;
 pub use sandbox::SandboxRun;
+pub use session::SessionChoice;
 
 #[derive(Debug, clap::Parser)]
 #[command(

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use sandbx_agent::TurnError;
 use sandbx_core::SandboxError;
 use sandbx_providers::ProviderError;
+use sandbx_session::SessionError;
 
 pub use auth::AuthError;
 
@@ -261,6 +262,13 @@ pub enum AgentError {
     /// The provider client could not be constructed — a rejected base URL, most often.
     Provider(ProviderError),
 
+    /// The session could not be opened, or the finished turn could not be saved.
+    ///
+    /// A failed save is an error and not a warning: persistence was asked for and did
+    /// not happen, and exiting 0 would leave the next `--session` resuming a
+    /// conversation missing its last turn.
+    Session(SessionError),
+
     /// The turn itself ended without an answer.
     Turn(TurnError),
 }
@@ -283,6 +291,12 @@ impl From<ProviderError> for AgentError {
     }
 }
 
+impl From<SessionError> for AgentError {
+    fn from(error: SessionError) -> Self {
+        Self::Session(error)
+    }
+}
+
 impl From<TurnError> for AgentError {
     fn from(error: TurnError) -> Self {
         Self::Turn(error)
@@ -298,6 +312,9 @@ impl std::fmt::Display for AgentError {
             Self::Output(error) => write!(f, "writing the answer: {error}"),
             Self::Credential(error) => write!(f, "{error}"),
             Self::Provider(error) => write!(f, "{error}"),
+            // Forwarded rather than prefixed: the session's own prose already names the
+            // path and carries the advice.
+            Self::Session(error) => write!(f, "{error}"),
             Self::Turn(error) => write!(f, "{error}"),
         }
     }
@@ -311,6 +328,7 @@ impl std::error::Error for AgentError {
             Self::Runtime(error) | Self::Output(error) => Some(error),
             Self::Credential(error) => Some(error),
             Self::Provider(error) => Some(error),
+            Self::Session(error) => Some(error),
             Self::Turn(error) => Some(error),
         }
     }
