@@ -5,9 +5,8 @@
 //! becomes the command. [`apply`] sequences [`ruleset`], [`seccomp`] and
 //! [`hardening`] in the order they have to happen in.
 //!
-//! Over the module budget by design: one irreducible syscall sequence, where every step
-//! is ordered against the ones around it, and splitting it would mean reading the halves
-//! together (`context/guide-module-layout.md`).
+//! Over the module budget: one syscall sequence whose steps are ordered against each
+//! other (`context/guide-module-layout.md`).
 
 mod hardening;
 mod ruleset;
@@ -219,11 +218,9 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         _ => (false, argv),
     };
 
-    // As early as the argv allows, so every refusal below is reportable, and before
-    // `apply`, so a seccomp filter or a Landlock ruleset cannot be what refuses the `dup`
-    // or `/dev/null`. Two refusals stay unreportable above it: a missing supervisor pid,
-    // which is read before the flag that says fd 0 is a channel at all, and this call's
-    // own failure, which is what produces the handle.
+    // Early, so every refusal below is reportable, and before `apply`, so no filter it
+    // installs can be what refuses the `dup` or `/dev/null`. Unreportable above here: a
+    // missing supervisor pid, and this call's own failure.
     let mut channel = match audit_on_stdin {
         true => Some(claim_audit_channel()?),
         false => None,
@@ -231,10 +228,9 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
     let refusal = restrict_and_exec(supervisor, argv);
 
-    // Any refusal, not just a failed `exec`: this stage exits non-zero and stage 1 relays
-    // that status on the command's behalf, so without this record the trail cannot tell a
-    // refusal from a command that ran and exited 1 (#157). Swallowed like a degradation —
-    // a lost record must not fail a run the parent was already told about.
+    // Without this the trail cannot tell a refusal from a command that ran and exited 1:
+    // this stage exits non-zero and stage 1 relays that status on the command's behalf.
+    // Swallowed — a lost record must not fail a run the parent was already told about.
     if let (Some(channel), Err(error)) = (&mut channel, &refusal) {
         use std::io::Write;
 
@@ -246,8 +242,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 
 /// Restrict this process and become the command, or say why it could not.
 ///
-/// Split out of [`exec_inner`] so that one site reports every refusal on the audit channel;
-/// the channel is claimed before this is called and nothing here may claim it again.
+/// The channel is claimed before this is called; nothing here may claim it again.
 fn restrict_and_exec(
     supervisor: &str,
     argv: &[String],
@@ -296,9 +291,8 @@ fn restrict_and_exec(
         let mut command = crate::spawn::command(&request.program, &request.policy);
         command.args(&request.args);
 
-        // `exec` returns only on failure and the channel duplicate is close-on-exec, so a
-        // record written past this point is reachable only in a world where the command
-        // does not exist — which is what makes it true rather than a guess.
+        // Returns only on failure, and the channel duplicate is close-on-exec, so the
+        // caller's record can only be written where the command does not exist.
         command.exec()
     };
 

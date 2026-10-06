@@ -36,13 +36,12 @@ pub(crate) enum Report<'a> {
     /// A hardening step that did not take effect, and why.
     Degraded(Degradation, &'a str),
 
-    /// The stage that would have become the command refused instead, so the run's outcome
-    /// is this and not an exit. Carries the refusal's
-    /// [`label`](crate::SandboxError::label).
+    /// The stage that would have become the command refused instead, carrying the
+    /// refusal's [`label`](crate::SandboxError::label).
     ///
     /// On the channel because that stage exits non-zero and the stage above relays the
-    /// status on the command's behalf, so it reaches the parent as if the command had run
-    /// and failed.
+    /// status on the command's behalf, so it would otherwise read as the command's own
+    /// exit.
     Failed(&'static str),
 }
 
@@ -106,11 +105,11 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
 
 /// Render the record a stage that refused rather than becoming the command reports.
 ///
-/// `label` is [`SandboxError::label`](crate::SandboxError::label); a label outside
-/// [`REPORTED_BY_HELPER`](crate::SandboxError::REPORTED_BY_HELPER) is written and then
-/// dropped by [`decode`], so the subset is enforced at the reading end. No detail: the
-/// reason reaches the operator on the helper's stderr, which the parent forwards verbatim.
-pub(crate) fn encode_refusal(label: &str) -> String {
+/// `'static` because this writes `label` as given, unlike [`encode`], so a `\t` in one
+/// would forge a second record; [`SandboxError::label`](crate::SandboxError::label) is the
+/// only source of one. No detail: the reason reaches the operator on the helper's stderr,
+/// which the parent forwards verbatim.
+pub(crate) fn encode_refusal(label: &'static str) -> String {
     format!("{label}{SEPARATOR}\n")
 }
 
@@ -119,9 +118,8 @@ pub(crate) fn encode_refusal(label: &str) -> String {
 /// Skips an unrecognised line rather than failing the run, this being the reporting path for
 /// a sandbox that already carried on. What it must not do is pass an unvalidated label to
 /// the trail, hence the two closed sets [`Degradation::from_label`] and
-/// [`SandboxError::reportable_label`](crate::SandboxError::reportable_label) — which
-/// `no_degradation_label_is_also_a_refusal` keeps disjoint, so the order of the two lookups
-/// cannot decide what a label means.
+/// [`SandboxError::reportable_label`](crate::SandboxError::reportable_label). They must stay
+/// disjoint, or the order of the lookups below decides what a label means.
 pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
     channel
         .lines()

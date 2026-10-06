@@ -82,7 +82,7 @@ is only reportable from a point where the channel is already in hand.
 
 Stage 1's own refusals are not on the channel, so they still reach the trail as
 `exited code=1` — it holds the write end for its whole lifetime and could report, and
-the parent has only its forwarded stderr. Same gap, one stage up.
+the parent has only its forwarded stderr. Same gap, one stage up (#160).
 
 **sandbx emits, not the helper.** One subscriber in the process tree, one timestamp
 source, one format, and no `tracing-subscriber` dependency in the helper. This is
