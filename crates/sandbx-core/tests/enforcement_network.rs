@@ -1,12 +1,9 @@
 //! Does the kernel refuse a port the allowlist does not name?
 //!
-//! The network half of the enforcement suite. `enforcement.rs` is the filesystem half and
-//! states the kernel floor all three files run on; `enforcement_syscalls.rs` is the seccomp
-//! half, where a call that touches no path is refused.
-//!
-//! No external network, by design: under a port allowlist network is *allowed*, so there is
-//! no netns and the command shares the host's — which is how it reaches a `127.0.0.1`
-//! listener this file binds itself.
+//! The network half of the enforcement suite; `enforcement.rs` states the kernel floor all
+//! three files run on. Under a port allowlist network is *allowed*, so there is no netns and
+//! the command shares the host's — which is how it reaches a `127.0.0.1` listener this file
+//! binds itself. No external network is needed.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 mod support;
@@ -14,12 +11,8 @@ mod support;
 use sandbx_core::SandboxPolicy;
 use support::{allow_probe, run, runtime_paths};
 
-/// A listener on an ephemeral loopback port, plus one thread that answers a single
-/// connection with `payload`.
-///
-/// The payload is what tells a *refused* connection from a connection to something else:
-/// the probe prints what it read, so the test can assert the bytes rather than the exit
-/// status alone.
+/// A listener on an ephemeral loopback port, answering one connection with `payload`. The
+/// probe prints what it read, so a test can assert the bytes and not the exit status alone.
 fn listener(payload: &'static str) -> (u16, std::thread::JoinHandle<()>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -40,7 +33,6 @@ fn drain(port: u16, accepting: std::thread::JoinHandle<()>) {
     let _ = accepting.join();
 }
 
-/// Run the probe against `127.0.0.1:port` under `policy`.
 fn probe(policy: SandboxPolicy, transport: &str, port: u16) -> std::process::Output {
     let probe = env!("CARGO_BIN_EXE_sandbx-egress-probe");
     let policy = allow_probe(runtime_paths(policy), probe);
@@ -48,9 +40,8 @@ fn probe(policy: SandboxPolicy, transport: &str, port: u16) -> std::process::Out
     run(&policy, probe, &[transport, &format!("127.0.0.1:{port}")])
 }
 
-/// Without this the refusal below could be the sandbox refusing everything — a port
-/// allowlist that reaches nothing is fail-closed but useless, and the two have to be told
-/// apart.
+/// Without it the refusal below could be the sandbox refusing everything: a port allowlist
+/// that reaches nothing is fail-closed but useless.
 #[test]
 fn an_allowlisted_port_is_reachable() {
     let (port, accepting) = listener("ALLOWLISTED-PORT-ANSWERED");
@@ -74,12 +65,9 @@ fn an_allowlisted_port_is_reachable() {
     );
 }
 
-/// The core claim of this feature, and the only test that detects it empirically: a port
-/// list that reached the kernel as "do not handle the network axis" would leave TCP
-/// completely unrestricted while the CLI reported an allowlist.
-///
-/// Two listeners, one allowlisted, so the refusal cannot be the sandbox having no network at
-/// all — the same run that is refused on one port succeeds on the other.
+/// A port list that reached the kernel as "do not handle the network axis" would leave TCP
+/// unrestricted while the CLI reported an allowlist, and nothing else detects that. Two
+/// listeners, one allowlisted, so the refusal cannot be a run with no network at all.
 #[test]
 fn a_port_outside_the_allowlist_is_refused() {
     let (allowed, allowed_thread) = listener("ALLOWED-PORT");
@@ -133,11 +121,8 @@ fn a_bare_network_grant_reaches_both_ports() {
 }
 
 /// Landlock's port rules police TCP alone, so without the seccomp denial a command
-/// allowlisted to one TCP port could still send datagrams to any host on any port — and the
-/// allowlist would be decorative.
-///
-/// Asked of the same policy that reaches its TCP port above, so this is the datagram being
-/// refused rather than the run having no network.
+/// allowlisted to one TCP port could still send datagrams anywhere. Asked of the same policy
+/// that reaches its TCP port, so this is the datagram refused and not a run with no network.
 #[test]
 fn udp_is_refused_under_a_port_allowlist() {
     let (port, accepting) = listener("TCP-STILL-WORKS");
@@ -160,9 +145,8 @@ fn udp_is_refused_under_a_port_allowlist() {
 }
 
 /// `handled_net_access` asks for `BindTcp` as well as `ConnectTcp`, so an allowlist bounds
-/// listening too. A cost rather than a feature — `bind(0)`, which is what a program wanting
-/// any free local port asks for, cannot be expressed by a port list and so is refused — and
-/// `SECURITY.md` says so because this test says so.
+/// listening too. A cost rather than a feature: `bind(0)`, what a program wanting any free
+/// local port asks for, cannot be expressed by a port list and so is refused.
 #[test]
 fn bind_is_confined_to_the_allowlisted_ports() {
     let (port, accepting) = listener("UNUSED");
@@ -172,10 +156,8 @@ fn bind_is_confined_to_the_allowlisted_ports() {
     let listed = probe(policy.clone(), "bind", port);
     let ephemeral = probe(policy, "bind", 0);
 
-    // The listener is released before the probe runs, so the port is unreserved and any
-    // other process on the host — including a sibling test binary, this suite being
-    // multi-threaded — may take it first. `AddrInUse` is that race and not a refusal; what
-    // the allowlist would produce is `PermissionDenied`.
+    // The listener is released before the probe runs, so another process may take the port
+    // first. `AddrInUse` is that race; the allowlist would produce `PermissionDenied`.
     let refusal = String::from_utf8_lossy(&listed.stderr);
     assert!(
         listed.status.success() || refusal.contains("AddrInUse"),

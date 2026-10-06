@@ -1,8 +1,8 @@
-//! Calls `truncate(2)` on a path; test-only
-//! (`required-features = ["sandbox-integration"]`). Not a shell one-liner:
-//! `: > file` and `truncate(1)` go through `open(O_TRUNC)`/`ftruncate`, covered
-//! by Landlock's `WriteFile`; only `truncate(2)` on a path exercises the
-//! `Truncate` right.
+//! Calls `truncate(2)` on a path. Test-only.
+//!
+//! Not a shell one-liner: `: > file` and `truncate(1)` go through
+//! `open(O_TRUNC)`/`ftruncate`, covered by Landlock's `WriteFile`; only `truncate(2)` on a
+//! path exercises the `Truncate` right.
 
 fn main() -> std::process::ExitCode {
     let Some(path) = std::env::args().nth(1) else {

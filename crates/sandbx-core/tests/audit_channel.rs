@@ -1,18 +1,15 @@
 //! The channel helper-side degradations cross, from the parent's side.
 //!
-//! Both hardening steps run in the re-exec'd helper, which installs no `tracing`
-//! subscriber, so a `Degraded` record crosses as bytes on a pipe in the helper's
-//! stdin slot and the parent emits it. Hence two properties a wire round-trip
-//! cannot check: the sandboxed command must not reach that pipe, and its own
-//! output must stay byte-exact. Whether a run degrades is the host's answer, so
-//! only the one test holding the host's answer in a predicate asserts a record is
-//! present or absent.
-//!
-//! Gated whole-file: every test spawns a real helper, so with the feature off
-//! `-D warnings` would reject the capture harness as dead code.
+//! The re-exec'd helper installs no `tracing` subscriber, so a `Degraded` record
+//! crosses as bytes on a pipe in the helper's stdin slot and the parent emits it —
+//! hence two properties a wire round-trip cannot check: the command must not reach
+//! that pipe, and its own output must stay byte-exact. Whether a run degrades is the
+//! host's answer, so only the test holding that answer in a predicate asserts a
+//! record is present or absent. Gated whole-file, not per test: with the feature off
+//! `-D warnings` rejects the capture harness as dead code.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
-// The one `Command::new` below spawns the sandbox helper itself, never a command that
-// bypasses it; the workspace ban exists to stop code executing *around* the sandbox.
+// Every `Command::new` below spawns the sandbox helper itself; the workspace ban exists
+// to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
 use std::sync::{Arc, Mutex};
@@ -21,10 +18,8 @@ use sandbx_core::{AUDIT_TARGET, HelperArgs, SandboxPolicy, SandboxedCommand};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
-/// Collects audit events so a test can assert on what was recorded.
-///
-/// Repeated from `audit.rs` rather than shared: cargo gives each `tests/*.rs` its
-/// own binary.
+/// Collects audit events; repeated from `audit.rs` because cargo gives each
+/// `tests/*.rs` its own binary.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
 
@@ -80,8 +75,7 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<
 }
 
 /// Can this machine drop the capability bounding set at all? Repeated from
-/// `enforcement.rs`, which documents the LSM behaviour behind it, because cargo
-/// gives each `tests/*.rs` its own binary. Keep the two copies identical.
+/// `enforcement.rs`, which documents the LSM behaviour; keep the two copies identical.
 fn bounding_set_is_droppable() -> bool {
     use std::os::unix::fs::MetadataExt;
 
@@ -97,20 +91,16 @@ fn bounding_set_is_droppable() -> bool {
         .unwrap_or(true)
 }
 
-/// The condition and not merely the call: a host whose LSM strips `CAP_SETPCAP`
-/// from a fresh user namespace refuses `PR_CAPBSET_DROP` for real, which is the
-/// case `SECURITY.md` promises a `degraded` record for.
-///
-/// Both branches assert, because returning early on one would report `ok` without
-/// checking anything — the argument
-/// `the_bounding_set_is_cleared_or_left_inherited` makes about the same
-/// two hosts.
+/// A host whose LSM strips `CAP_SETPCAP` from a fresh user namespace refuses
+/// `PR_CAPBSET_DROP` for real, which is the case `SECURITY.md` promises a `degraded`
+/// record for. Both branches assert: returning early on one would report `ok` without
+/// checking anything.
 #[test]
 fn the_bounding_set_degrades_only_on_a_refused_drop() {
     let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
-    // Without this the droppable branch passes on a run that never happened: a command
-    // the sandbox refused records no degradation either.
+    // A command the sandbox refused records no degradation either, so without this the
+    // droppable branch passes on a run that never happened.
     assert!(
         output.status.success(),
         "the probe command did not run, so the trail says nothing about the drop: {}",
@@ -136,16 +126,14 @@ fn the_bounding_set_degrades_only_on_a_refused_drop() {
     }
 }
 
-/// Without the inner helper stage taking the channel off fd 0 and putting `/dev/null`
-/// there, the sandboxed command inherits a writable descriptor onto sandbx's own audit
-/// trail.
+/// Without the inner stage taking the channel off fd 0 and putting `/dev/null` there,
+/// the command inherits a writable descriptor onto sandbx's own audit trail.
 ///
-/// The forged *detail* is the discriminator, not the mechanism name: a host
-/// refusing `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation
-/// on this very run. The tab must stay a `printf` escape — a literal tab is an
-/// `IFS` character, so the shell would split the word and the rejoined line would
-/// be rejected for having no separator while the sandbox had in fact let it
-/// through.
+/// The forged *detail* is the discriminator, not the mechanism name: a host refusing
+/// `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation on this run.
+/// The tab must stay a `printf` escape — a literal tab is an `IFS` character, so the
+/// shell would split the word and the rejoined line would be rejected for having no
+/// separator while the sandbox had in fact let it through.
 #[test]
 fn the_command_cannot_write_the_audit_channel() {
     let (output, lines) = sandboxed(
@@ -167,17 +155,15 @@ fn the_command_cannot_write_the_audit_channel() {
     );
 }
 
-/// The other half of that guard: the inner stage keeps the channel across `apply` as a
-/// `F_DUPFD_CLOEXEC` duplicate, and a plain `dup` would leave the command holding it.
-///
-/// Its own test because fd 0 is `/dev/null` by the time the command runs, so the test above
-/// probes the slot and this one probes what survived the `exec` beside it. A range rather
-/// than fd 3, that being the lowest the duplicate can take and not the only one.
+/// The inner stage keeps the channel across `apply` as a `F_DUPFD_CLOEXEC` duplicate; a
+/// plain `dup` would leave the command holding it. Its own test because fd 0 is
+/// `/dev/null` by the time the command runs, so the test above probes the slot and this
+/// one what survived the `exec` beside it. A range, fd 3 being the lowest the duplicate
+/// can take and not the only one.
 #[test]
 fn the_command_inherits_no_other_end_of_the_channel() {
-    // Over fd 1 too, whose bytes have a known destination: a probe that reaches stdout is a
-    // probe that would have reached the channel, so the silence below is the sandbox's and
-    // not a broken script's.
+    // Over fd 1 too: a probe that reaches stdout would have reached the channel, so the
+    // silence below is the sandbox's and not a broken script's.
     let probes: String = (1..=9)
         .map(|fd| format!(r"printf 'capability_bounding_set\tvia-fd-{fd}\n' >&{fd} || true; "))
         .collect();
@@ -205,11 +191,10 @@ fn the_command_inherits_no_other_end_of_the_channel() {
 }
 
 /// Driven by hand because `SandboxedCommand` builds a well-formed argv and a live
-/// supervisor by construction: pid 1 is a supervisor claim no stage can legally receive, so
-/// `confirm_supervisor` refuses on every host. `env_clear` removes the inner stage's
-/// environment check as a second reason this could fail, and the stderr assertion is what
-/// attributes the record — three steps here return `namespace_setup_failed`, and only one
-/// says the supervisor is gone.
+/// supervisor by construction: pid 1 is a supervisor claim no stage can legally receive,
+/// so `confirm_supervisor` refuses on every host. `env_clear` removes the inner stage's
+/// environment check as a second reason this could fail, and the stderr assertion
+/// attributes the record — three steps here return `namespace_setup_failed`.
 #[test]
 fn a_refusal_before_the_exec_names_itself_on_the_channel() {
     use std::io::Read;
@@ -230,8 +215,8 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
 
     let output = helper.output().expect("helper should start");
 
-    // Dropped before the read, and that ordering is what makes the read terminate: the
-    // `Command` owns this process's copy of the write end.
+    // Dropped before the read, which is what makes the read terminate: the `Command`
+    // owns this process's copy of the write end.
     drop(helper);
 
     let mut records = String::new();
@@ -256,9 +241,9 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
 }
 
 /// Driven by hand for the reason the stage 2 case is: `SandboxedCommand` builds a
-/// well-formed argv by construction, so an unrecognised flag is a refusal only a hand-built
-/// invocation reaches. The stderr assertion attributes the record, several steps here
-/// returning `bad_helper_args`.
+/// well-formed argv, so an unrecognised flag is a refusal only a hand-built invocation
+/// reaches. The stderr assertion attributes the record, several steps here returning
+/// `bad_helper_args`.
 #[test]
 fn stage_1_names_its_own_refusal_on_the_channel() {
     use std::io::Read;
@@ -276,8 +261,8 @@ fn stage_1_names_its_own_refusal_on_the_channel() {
 
     let output = helper.output().expect("helper should start");
 
-    // Dropped before the read, and that ordering is what makes the read terminate: the
-    // `Command` owns this process's copy of the write end.
+    // Dropped before the read, which is what makes the read terminate: the `Command`
+    // owns this process's copy of the write end.
     drop(helper);
 
     let mut records = String::new();
@@ -301,8 +286,8 @@ fn stage_1_names_its_own_refusal_on_the_channel() {
     );
 }
 
-/// A record interleaved into the command's own output is indistinguishable from
-/// bytes the command wrote, so both streams are compared byte-exact.
+/// A record interleaved into the command's own output is indistinguishable from bytes
+/// the command wrote.
 #[test]
 fn the_commands_own_output_carries_no_audit_records() {
     let (output, _) = sandboxed(
@@ -322,10 +307,10 @@ fn the_commands_own_output_carries_no_audit_records() {
     );
 }
 
-/// Shape, not count: how many records a clean run produces is the host's answer.
-/// A blank mechanism is what an empty channel decoding to a record looks like, a
-/// repeated one a re-sent short write, and a second spawn record `record_reports`
-/// re-emitting on both the timeout and the ordinary path.
+/// Shape, not count: how many records a clean run produces is the host's answer. A blank
+/// mechanism is what an empty channel decoding to a record looks like, a repeated one a
+/// re-sent short write, and a second spawn record `record_reports` re-emitting on both
+/// the timeout and the ordinary path.
 #[test]
 fn every_record_names_a_real_mechanism_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
@@ -368,7 +353,7 @@ fn every_record_names_a_real_mechanism_once() {
 }
 
 /// Without the label the trail cannot tell a refused pin from a command that ran and
-/// exited 1; the digests are not on it, reaching the operator on stderr instead.
+/// exited 1; the digests reach the operator on stderr instead.
 #[test]
 fn a_pin_refusal_names_itself_on_the_channel() {
     let dir = tempfile::tempdir().unwrap();

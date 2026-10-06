@@ -1,11 +1,10 @@
 //! How a real run ends, from the parent's side.
 //!
-//! The terminal record is the status the helper relayed and what crossed the audit channel
-//! together, which is why these tests need a real helper: stage 2 exits non-zero for a
-//! command it could not become, so only the channel tells that from an exit of 1.
-//!
-//! Gated whole-file: every test spawns a real helper, so with the feature off `-D warnings`
-//! would reject the capture harness as dead code.
+//! The terminal record is the relayed status and what crossed the audit channel together,
+//! which is why these tests need a real helper: stage 2 exits non-zero for a command it
+//! could not become, so only the channel tells that from an exit of 1. Gated whole-file,
+//! not per test: with the feature off `-D warnings` rejects the capture harness as dead
+//! code.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use std::sync::{Arc, Mutex};
@@ -15,10 +14,8 @@ use sandbx_core::{AUDIT_TARGET, SandboxError, SandboxPolicy, SandboxedCommand};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
-/// Collects audit events so a test can assert on what was recorded.
-///
-/// Repeated from `audit.rs` rather than shared: cargo gives each `tests/*.rs` its own
-/// binary.
+/// Collects audit events; repeated from `audit.rs` because cargo gives each `tests/*.rs`
+/// its own binary.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
 
@@ -124,7 +121,7 @@ fn a_timeout_records_a_failure_not_an_exit() {
     assert!(record.contains("reason=timeout"), "got: {record}");
 }
 
-/// #96's own reproducer, and the one case the relayed status cannot answer by itself.
+/// The one case the relayed status cannot answer by itself.
 #[test]
 fn a_program_that_does_not_exist_never_exits() {
     let (_, lines) = run(SandboxedCommand::new(
@@ -138,8 +135,7 @@ fn a_program_that_does_not_exist_never_exits() {
     assert!(record.contains("reason=exec_failed"), "got: {record}");
 }
 
-/// Two records would double-count the run in any aggregate; named so a second emit fails
-/// here rather than only inside `outcome`.
+/// Two records would double-count the run in any aggregate.
 #[test]
 fn a_run_records_exactly_one_outcome() {
     let (_, lines) = sandboxed("true");
@@ -155,8 +151,8 @@ fn a_run_records_exactly_one_outcome() {
     );
 }
 
-/// So a reader can stop at it. Any `degraded` record is written while the helper is still
-/// running, which is before the parent knows how the run ended, on every host.
+/// A `degraded` record is written while the helper is still running, which is before the
+/// parent knows how the run ended, on every host.
 #[test]
 fn the_outcome_is_the_last_record_of_a_run() {
     let (_, lines) = sandboxed("true");

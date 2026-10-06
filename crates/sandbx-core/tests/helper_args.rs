@@ -1,8 +1,7 @@
 //! The policy has to survive the trip to the helper process as argv.
 //!
-//! Round-tripping is a security property: a path dropped in encoding becomes a
-//! permission the helper never grants, and one wrongly added becomes one it grants
-//! by mistake.
+//! Round-tripping is a security property: a path dropped in encoding becomes a permission
+//! the helper never grants, and one wrongly added becomes one it grants by mistake.
 
 use sandbx_core::{HelperArgs, SandboxPolicy};
 
@@ -108,12 +107,9 @@ fn an_unrestricted_grant_round_trips_as_the_bare_flag() {
     );
 }
 
-/// The refusal reason is matched and not only the failure, because the token after the flag
-/// is consumed either way: without the check `--allow-network-port 65536` would be refused
-/// anyway, for the missing `--` that `65536` swallowed.
-///
-/// `65536` is the one that distinguishes `parse::<u16>` from a hand-rolled check with an
-/// `as` cast in it, which would truncate it to port 0.
+/// Matched on the reason: the token after the flag is consumed either way, so without the
+/// check `65536` would be refused anyway for the `--` it swallowed. That input is also the
+/// one distinguishing `parse::<u16>` from an `as` cast, which truncates it to port 0.
 #[test]
 fn a_malformed_port_on_the_wire_is_refused() {
     for port in ["", "https", "-1", "65536", "443.0", " 443", "0x1bb"] {
@@ -272,14 +268,12 @@ fn round_trips_an_env_allowlist() {
     assert_eq!(decoded.policy, policy);
 }
 
-/// argv is readable by the sandboxed command through its own
-/// `/proc/self/cmdline`, so a value here reaches the process the allowlist exists
-/// to keep it from.
+/// The sandboxed command can read argv through its own `/proc/self/cmdline`, so a value
+/// here reaches the process the allowlist exists to keep it from.
 #[test]
 fn the_wire_carries_the_name_and_not_the_value() {
     let args = HelperArgs::encode(
-        // Cargo sets `CARGO_MANIFEST_DIR` in this process, so the encoder had a
-        // value available to leak.
+        // Cargo sets this in the test process, so the encoder had a value to leak.
         &SandboxPolicy::default().allow_env("CARGO_MANIFEST_DIR"),
         "/bin/true",
         &[],
@@ -382,11 +376,10 @@ fn the_wire_names_no_resolver_value() {
     assert!(!args.iter().any(|arg| arg.contains("use-vc")), "{args:?}");
 }
 
-/// The digest an operator writes, in the one form [`sandbx_core::Sha256Digest`] accepts.
+/// The one form [`sandbx_core::Sha256Digest`] accepts: 64 lowercase hex characters.
 const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-/// It crosses beside the policy and not inside it, so this checks both: that it crosses at
-/// all, and that the policy came back unchanged next to it.
+/// The pin crosses beside the policy and not inside it, so both are asserted.
 #[test]
 fn round_trips_a_pinned_program() {
     let digest = sandbx_core::Sha256Digest::parse(DIGEST).expect("64 lowercase hex characters");
