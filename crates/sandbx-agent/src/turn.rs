@@ -215,20 +215,16 @@ impl Default for TurnLimits {
 /// context-length error stays the backstop.
 ///
 /// `approve` is asked once per resolved call, before it runs, and is the only thing
-/// between the model asking for a tool and `sandbx-tools` executing it. Mandatory rather
-/// than defaulted, so a caller cannot acquire a gate-less loop by omission; a closure for
-/// the same reason as `observe`. An [`ApprovalDecision::Deny`] answers the model with its
-/// `reason` as a `tool_result` marked `is_error` and runs nothing, so a refusal is
-/// recoverable — the model may answer in prose or try a tool the gate allows, within
-/// [`TurnLimits::max_rounds`]. A name no tool answers to never reaches it, and nor does
-/// one outside [`Turn::tools`]: both are refused above the gate, so a closure never has to
-/// invent a verdict for a call the caller never offered.
+/// between the model asking for a tool and `sandbx-tools` executing it. An
+/// [`ApprovalDecision::Deny`] answers the model with its `reason` as a `tool_result`
+/// marked `is_error` and runs nothing, so a refusal is recoverable within
+/// [`TurnLimits::max_rounds`]. Neither an unknown name nor one outside [`Turn::tools`]
+/// reaches it; both are refused above the gate.
 ///
-/// **`approve` must not wait.** It is called on the async task, with no `spawn_blocking`
-/// of its own, so a gate that waits — on an operator, a channel, a lock — stalls every
-/// other task on the runtime, and on a current-thread one deadlocks the turn it is
-/// deciding. A bounded write is not that. A decision that has to be awaited belongs to a
-/// caller that owns the runtime, made before `run_turn` is entered rather than inside it.
+/// It must not wait. Called on the async task with no `spawn_blocking` of its own, so
+/// waiting on an operator, a channel or a lock deadlocks the turn it is deciding on a
+/// current-thread runtime; a bounded write is not that. A decision that has to be awaited
+/// belongs before `run_turn` is entered — see `context/decision-approval-gate.md`.
 ///
 /// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future drops the
 /// `JoinHandle` while the blocking task runs to completion, so a turn abandoned mid-tool

@@ -32,9 +32,8 @@ const TRUNCATED: i32 = 2;
 
 /// The flag that lifts the default refusal.
 ///
-/// Named once because a refusal is read twice — by the operator on stderr and by the
-/// model in the `tool_result` — and two accounts of the same refusal must not advise
-/// differently.
+/// Named once because a refusal is read twice, on stderr and in the `tool_result`, and
+/// the two accounts must not advise differently.
 const ALLOW_TOOL: &str = "--allow-tool";
 
 /// `sandbx agent-run [--allow-…] -- <prompt>`
@@ -110,9 +109,7 @@ impl AgentRun {
     /// Whether the model may call `tool` in this run.
     ///
     /// Fail-closed, because there is no operator to ask: a tool that does more than read
-    /// runs only when a flag named it, or when the bare flag approved every tool. A read-
-    /// only tool is approved either way, so `--allow-tool write` does not have to re-list
-    /// the four it did not mean to withdraw.
+    /// runs only when a flag named it, or when the bare flag approved every tool.
     fn approves(&self, tool: BuiltinTool) -> bool {
         if tool.risk() == RiskLevel::ReadOnly {
             return true;
@@ -120,9 +117,9 @@ impl AgentRun {
 
         match self.allow_tool.as_deref() {
             None => false,
-            // An empty `Vec` is the bare flag: every occurrence was bare, so none named a
-            // tool. Which makes `--allow-tool --allow-tool write` an approval of `write`
-            // alone, the broader spelling yielding the narrower set, as `--allow-network`.
+            // An empty `Vec` is the bare flag, so `--allow-tool --allow-tool write`
+            // approves `write` alone: the broader spelling yields the narrower set, as
+            // `--allow-network`.
             Some([]) => true,
             Some(named) => named.contains(&tool),
         }
@@ -130,10 +127,9 @@ impl AgentRun {
 
     /// The tools this run approved, in `BuiltinTool::ALL` order.
     ///
-    /// Reported before the first request rather than left to the per-call lines, because
-    /// the fail-open spelling is a typo away: `--allow-tool -- write the file` puts the
-    /// separator in the wrong place, which clap reads as the bare flag plus a three-word
-    /// prompt, approving all seven. The gate would not say so until a `bash` ran.
+    /// Reported before the first request, because the fail-open spelling is a typo away:
+    /// clap reads `--allow-tool -- write the file` as the bare flag plus a prompt, and the
+    /// per-call lines would not say so until a `bash` ran.
     fn approved_tools(&self) -> Vec<&'static str> {
         BuiltinTool::ALL
             .iter()
@@ -145,7 +141,7 @@ impl AgentRun {
     /// The decision for one call, and the operator's line about it.
     ///
     /// The line is printed here and not from `observe`, which fires while the round is
-    /// still streaming — before this runs, so it would announce a call this then refuses.
+    /// still streaming and so would announce a call this then refuses.
     fn gate(&self, requested: ToolCall<'_>) -> ApprovalDecision {
         let name = requested.tool.name();
 
@@ -240,15 +236,13 @@ impl AgentRun {
 
 /// Accept a tool `--allow-tool` can actually approve, and refuse anything else.
 ///
-/// `BuiltinTool::from_name` is exact-match, so a near miss resolves to nothing: taking
-/// it would approve nothing and exit 0, leaving whoever typed `--allow-tool shell`
-/// believing `bash` was approved. The CLI refuses loudly, and names what to write, for
-/// the same reason `--allow-env` does.
+/// `BuiltinTool::from_name` is exact-match, so taking a near miss would approve nothing
+/// and exit 0, leaving whoever typed `--allow-tool shell` believing `bash` was approved.
+/// Same reason `--allow-env` refuses an unparsable name.
 fn tool_name(value: &str) -> Result<BuiltinTool, String> {
     BuiltinTool::from_name(value).ok_or_else(|| {
-        // Only the tools the flag can change are offered back. Listing all seven would
-        // invite `--allow-tool read`, which parses, approves what was approved anyway and
-        // leaves whoever typed it believing they had widened something.
+        // Only the tools the flag can change. Listing all seven would invite
+        // `--allow-tool read`, which parses and widens nothing.
         let names: Vec<&str> = BuiltinTool::ALL
             .iter()
             .filter(|tool| tool.risk() != RiskLevel::ReadOnly)
@@ -304,8 +298,7 @@ impl<W: Write> Render<W> {
                 self.truncated = matches!(reason, StopReason::MaxTokens);
             }
             // A requested call is announced by `AgentRun::gate`, which knows whether it
-            // ran. The cost is that the two refusals above the gate — an unknown name, a
-            // tool the turn did not offer — reach only the model (#169).
+            // ran. So the two refusals above the gate reach only the model (#169).
             AgentEvent::ToolCallRequested { .. }
             | AgentEvent::Thinking { .. }
             | AgentEvent::Usage { .. } => {}
@@ -357,13 +350,10 @@ mod tests {
         }
     }
 
-    /// The default nobody types, and so the one nobody checks: a `write`, an `edit` or a
-    /// `bash` the model asks for comes back refused, which is the only thing between a
-    /// prompt injection and a command running inside the boundary.
+    /// The default nobody types, and so the one nobody checks.
     ///
-    /// The seven verdicts are spelled out rather than compared against `risk()`, which is
-    /// the table `approves` itself reads: derived, this would assert only that the two
-    /// agree, and a `bash` reclassified as read-only would pass while running.
+    /// Spelled out rather than compared against `risk()`, the table `approves` itself
+    /// reads: derived, a `bash` reclassified as read-only would pass while running.
     #[test]
     fn the_read_only_tools_need_no_flag() {
         let args = agent_run(&["sandbx", "agent-run", "--", "hello"]);
@@ -399,8 +389,7 @@ mod tests {
         }
     }
 
-    /// The broader spelling yields the narrower set, as `--allow-network` does: the bare
-    /// flag beside a named one is read as the named one alone.
+    /// The broader spelling yields the narrower set, as `--allow-network` does.
     #[test]
     fn mixing_a_bare_flag_with_a_tool_narrows_to_the_tool() {
         let args = agent_run(&[
@@ -418,9 +407,8 @@ mod tests {
     }
 
     /// A misplaced `--` turns `--allow-tool write -- "…"` into the bare flag plus a
-    /// three-word prompt, which approves all seven. The operator is told the set before
-    /// the first request, so an accident of that shape is visible before a `bash` runs
-    /// rather than at the moment one does.
+    /// prompt, approving all seven — which the announced set makes visible before a
+    /// `bash` runs rather than at the moment one does.
     #[test]
     fn a_bare_flag_from_a_misplaced_separator_announces_all_seven() {
         let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "write", "it"]);
@@ -441,9 +429,7 @@ mod tests {
         assert_eq!(args.approved_tools(), ["read", "ls", "grep", "find"]);
     }
 
-    /// A refusal is read twice — by the operator on stderr and by the model in the
-    /// `tool_result` — and the model's copy is the only account it gets, so it has to name
-    /// the flag that would lift it rather than just saying no.
+    /// The `tool_result` is the only account the model gets, so saying no is not enough.
     #[test]
     fn a_refusal_tells_the_model_which_flag_would_lift_it() {
         let args = agent_run(&["sandbx", "agent-run", "--", "go"]);
@@ -474,8 +460,8 @@ mod tests {
         assert_eq!(decision, ApprovalDecision::Allow);
     }
 
-    /// `--allow-tool` can only ever widen, so offering a read-only name back would invite
-    /// a spelling that parses and changes nothing.
+    /// `--allow-tool` can only ever widen, so a read-only name back would invite a
+    /// spelling that parses and changes nothing.
     #[test]
     fn the_unknown_name_advice_lists_only_what_needs_approving() {
         let message = tool_name("shell").expect_err("a name no tool answers to was accepted");

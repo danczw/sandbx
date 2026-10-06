@@ -72,10 +72,8 @@ pub(crate) fn ctx(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
 }
 
-/// A gate that refuses nothing, for the tests whose subject is not the gate.
-///
-/// The policy in `ctx` is what scopes those; this leaves the loop as it behaves when
-/// every call is approved.
+/// A gate that refuses nothing, for the tests whose subject is not the gate: the policy
+/// in `ctx` is what scopes those.
 pub(crate) fn allow_all(_: ToolCall<'_>) -> ApprovalDecision {
     ApprovalDecision::Allow
 }
@@ -90,8 +88,8 @@ pub(crate) fn stop(reason: StopReason) -> AgentEvent {
     AgentEvent::Stop { reason }
 }
 
-/// The id `call` uses, which is all a one-call round needs. A round scripting two gives
-/// its own ids, so each result can be matched to the call it answers.
+/// All a one-call round needs. A round scripting two gives its own ids, so each result
+/// can be matched to the call it answers.
 const CALL_ID: &str = "call_1";
 
 pub(crate) fn call(name: &str, input: serde_json::Value) -> AgentEvent {

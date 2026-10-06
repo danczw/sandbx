@@ -107,9 +107,8 @@ fn every_tool_advertises_its_own_input_struct() {
 
 /// Every tool must declare what it does beyond looking.
 ///
-/// Spelled out here rather than read off `risk()`: an expectation derived from the same
-/// `SPEC`s moves with them, so a `bash` reclassified as read-only would still pass. An
-/// approval gate admitting everything at or below `ReadOnly` is what rests on this.
+/// Spelled out rather than read off `risk()`: an expectation derived from the same
+/// `SPEC`s moves with them, so a `bash` reclassified as read-only would still pass.
 #[test]
 fn the_risk_each_tool_carries_is_documented() {
     for tool in BuiltinTool::ALL {
@@ -125,9 +124,8 @@ fn the_risk_each_tool_carries_is_documented() {
     }
 }
 
-/// `RiskLevel` derives `Ord` so a gate can admit everything at or below a level, which
-/// makes the variant *order* load-bearing rather than cosmetic: alphabetising the enum
-/// would keep every other test green while inverting the meaning of each `<=`.
+/// A gate admits everything at or below a level, so alphabetising the enum would keep
+/// every other test green while inverting the meaning of each `<=`.
 #[test]
 fn the_risk_levels_order_least_to_most() {
     assert!(RiskLevel::ReadOnly < RiskLevel::Writes);
