@@ -198,18 +198,14 @@ impl std::error::Error for SandboxError {
 }
 
 impl SandboxError {
-    /// The refusals a helper stage can report on its audit channel, and so the closed set
-    /// the parent validates a label off that channel against.
+    /// The closed set a label off the helper's audit channel is validated against.
     ///
-    /// A strict subset of what [`label`](Self::label) can return, not all of it. The four
-    /// it leaves out are decisions the parent and [`FsGuard`](crate::FsGuard) make for
-    /// themselves — `timeout`, `spawn_failed`, `path_not_allowed`, `unresolvable` — and a
-    /// record off the channel outranks the exit status, so admitting one would let a
-    /// forged line claim a kill that never happened and displace the real outcome.
-    ///
-    /// Hand-maintained against `label`, which the compiler cannot help with. A helper
-    /// refusal missing from here is dropped rather than mistrusted: the trail falls back
-    /// to the relayed exit status, which is what it said before #157.
+    /// A strict subset of [`label`](Self::label): `timeout`, `spawn_failed`,
+    /// `path_not_allowed` and `unresolvable` are the parent's and
+    /// [`FsGuard`](crate::FsGuard)'s own decisions, and a channel record outranks the exit
+    /// status, so admitting one would let a forged line claim a kill that never happened
+    /// and displace the real outcome. Hand-maintained against `label`; an omission fails
+    /// safe, falling back to the relayed exit status.
     pub(crate) const REPORTED_BY_HELPER: [&str; 7] = [
         "bad_helper_args",
         "landlock",
@@ -244,10 +240,8 @@ impl SandboxError {
 
     /// The helper-reportable refusal `label` names, as our own `'static` copy of it.
     ///
-    /// A lookup over [`REPORTED_BY_HELPER`](Self::REPORTED_BY_HELPER) rather than a second
-    /// `match`, which could not rebuild the variant anyway: a label carries no detail. The
-    /// `'static` return is the point — it is what lets a label read off the channel reach
-    /// `AuditEvent::failed` without the trail borrowing from the bytes.
+    /// `'static` so a label read off the channel reaches `AuditEvent::failed` without the
+    /// trail borrowing from the bytes.
     pub(crate) fn reportable_label(label: &str) -> Option<&'static str> {
         Self::REPORTED_BY_HELPER
             .into_iter()
@@ -259,10 +253,8 @@ impl SandboxError {
 mod tests {
     use super::*;
 
-    /// One of every variant, so the labels can be checked against the channel's closed
-    /// set. The `match` below is exhaustive, so a new variant fails to compile here until
-    /// it is acknowledged — and whether it also belongs in `REPORTED_BY_HELPER` is the
-    /// question this list exists to put in front of whoever adds one.
+    /// One of every variant. The `match` below is exhaustive, so a new variant fails to
+    /// compile until someone decides whether it belongs in `REPORTED_BY_HELPER` too.
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
@@ -338,9 +330,7 @@ mod tests {
         }
     }
 
-    /// The channel's record outranks the relayed exit status, so a reason the parent or
-    /// `FsGuard` decides for itself must not be nameable on it: a forged `timeout` would
-    /// claim a kill that never happened and suppress the real outcome.
+    /// A forged one would outrank the exit status and claim a kill that never happened.
     #[test]
     fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
         for label in [

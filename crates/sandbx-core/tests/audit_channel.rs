@@ -204,19 +204,12 @@ fn the_command_inherits_no_other_end_of_the_channel() {
     );
 }
 
-/// A stage 2 refusal that is not a failed `exec` still names itself on the channel
-/// (#157). Without the record it reaches the parent as the relayed exit status of a
-/// command that ran and exited 1.
-///
-/// Driven by hand rather than through `SandboxedCommand`, which builds a well-formed argv
-/// and a live supervisor by construction: pid 1 is a supervisor claim no stage can legally
-/// receive, so `confirm_supervisor` refuses deterministically on every host. `env_clear`
-/// because the inner stage refuses an environment the policy does not name, which would
-/// otherwise be a second reason this run could fail — and one that reports the same label
-/// through a different path. The stderr assertion is what makes the record attributable:
-/// three steps in this stage return `namespace_setup_failed`, and only this one says the
-/// supervisor is gone. The flag and the label are spelled out for the reason
-/// `every_record_names_a_real_mechanism_once` gives — both are a compatibility surface.
+/// Driven by hand because `SandboxedCommand` builds a well-formed argv and a live
+/// supervisor by construction: pid 1 is a supervisor claim no stage can legally receive, so
+/// `confirm_supervisor` refuses on every host. `env_clear` removes the inner stage's
+/// environment check as a second reason this could fail, and the stderr assertion is what
+/// attributes the record — three steps here return `namespace_setup_failed`, and only one
+/// says the supervisor is gone.
 #[test]
 fn a_refusal_before_the_exec_names_itself_on_the_channel() {
     use std::io::Read;
