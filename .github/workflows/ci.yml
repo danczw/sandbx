@@ -90,8 +90,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      # A runner-image property, not an architecture one: Landlock needs kernel ABI
-      # 5 (6.10+), and unprivileged userns is sysctl-disabled on some hardened images.
+      # A runner-image property, not an architecture one: Landlock needs kernel
+      # ABI 5 (6.10+), and unprivileged userns is sysctl-disabled on some hardened
+      # images. `every_prose_copy_of_the_floor_is_current` greps this for "ABI 5".
       - name: Report kernel sandbox support
         run: |
           uname -rm
