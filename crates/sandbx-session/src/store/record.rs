@@ -57,14 +57,28 @@ pub(super) fn fold(
     let mut messages = Vec::new();
     let mut observed = None;
     let mut withheld = 0;
+    let mut headed = false;
+
+    // A last line with no newline after it is an append that did not finish — ENOSPC,
+    // most often. Only that one line may be dropped: it restores the state the file was
+    // last consistent in, where refusing would make one torn write cost the whole
+    // conversation. An interior line that will not parse still refuses, because it may be
+    // a message and skipping it would change what the model is replayed without saying so.
+    let torn = !body.ends_with('\n');
+    let last = body.lines().count().saturating_sub(1);
 
     for (index, text) in body.lines().enumerate() {
-        let record: Record =
-            serde_json::from_str(text).map_err(|source| SessionError::Malformed {
-                path: path.to_owned(),
-                line: index + 1,
-                source,
-            })?;
+        let record: Record = match serde_json::from_str(text) {
+            Ok(record) => record,
+            Err(_) if torn && index == last => break,
+            Err(source) => {
+                return Err(SessionError::Malformed {
+                    path: path.to_owned(),
+                    line: index + 1,
+                    source,
+                });
+            }
+        };
 
         match (index, record) {
             (0, Record::Header(header)) => {
@@ -74,6 +88,7 @@ pub(super) fn fold(
                         version: header.version,
                     });
                 }
+                headed = true;
             }
             (0, _) => {
                 return Err(SessionError::MissingHeader {
@@ -89,6 +104,13 @@ pub(super) fn fold(
             // say would change what is replayed.
             (_, Record::Header(_)) => {}
         }
+    }
+
+    // Reached when the only line was a torn one, so the header was never read.
+    if !headed {
+        return Err(SessionError::MissingHeader {
+            path: path.to_owned(),
+        });
     }
 
     Ok((messages, observed, withheld))

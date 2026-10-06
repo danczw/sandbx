@@ -159,3 +159,20 @@ fn a_symlinked_transcript_is_refused() {
 
     assert!(matches!(err, SessionError::Symlink { .. }), "got {err:?}");
 }
+
+/// A link here is narrowed, not merely read: without the refusal `create` `fchmod`s
+/// whatever it points at down to `0700`, which is a directory outside the store.
+#[test]
+fn a_symlinked_root_is_refused_not_narrowed() {
+    let root = tempfile::tempdir().unwrap();
+    let shared = root.path().join("shared");
+    std::fs::create_dir(&shared).unwrap();
+    chmod(&shared, 0o755);
+    std::os::unix::fs::symlink(&shared, root.path().join("sessions")).unwrap();
+
+    let store = SessionStore::new(root.path().join("sessions"));
+    let err = store.create().unwrap_err();
+
+    assert!(matches!(err, SessionError::Symlink { .. }), "got {err:?}");
+    assert_eq!(mode_of(&shared), 0o755, "the link's target was narrowed");
+}

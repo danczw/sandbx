@@ -57,7 +57,16 @@ parent at all — it checks its own root — so a link there would leave the rig
 directory vetted and the wrong file read. It opens the transcript `O_NOFOLLOW`
 instead and refuses a link outright, on both the read and the reopen for append.
 `O_NOFOLLOW` covers the last component only, so a symlinked state directory, which
-an operator may well have, still opens.
+an operator may well have, still opens; `$XDG_STATE_HOME` is the supported way to
+put the store elsewhere.
+
+The root gets the same treatment, and needs it more: its mode is not only read but
+*narrowed*, so following a link there would `fchmod` whatever it points at —
+a shared directory, if that is what it is — down to `0700`. It is opened without
+`O_DIRECTORY`, deliberately: paired with `O_NOFOLLOW` the kernel reports a
+symlinked directory as `ENOTDIR` rather than `ELOOP`, and a root that is a plain
+file reports `ENOTDIR` too, so the flag would merge two refusals worth keeping
+apart.
 
 Ownership is where the two diverge again: a transcript whose `st_uid` is not the
 running uid is refused, an API key file's is not read at all. Reaching a
@@ -115,10 +124,23 @@ parse instead of being skipped, while an unknown *field* is ignored — a line
 nobody can classify may be a message, and dropping it would alter the
 conversation without saying so.
 
-A transcript must be empty or end on an assistant message. Both `append` and
-`resume` check it: a transcript ending on a user turn makes the next request
-send two user turns in a row, which the API rejects — a session bricked by a run
-that exited zero.
+The one line that may be dropped is an unterminated last one. Every record is
+written with its newline, so a file not ending in one stopped mid-write —
+`ENOSPC`, usually. Dropping just that line restores the state the file was last
+consistent in; refusing it, as the first cut of this did, made one torn append
+cost the whole conversation, unresumable until somebody hand-edited it. A line
+that parses badly *with* a newline after it was written whole and still refuses.
+
+A transcript must be empty or end on an assistant message, and no two
+neighbouring messages may share a role. `append` checks the end, which is all it
+can break; `resume` checks the whole history, because a hand-edited file can hold
+a pair of user turns anywhere and the API rejects an interior pair exactly as it
+rejects a trailing one — a session otherwise bricked by a run that exited zero. A
+turn carrying *no* messages is neither of those things: it leaves the last role
+where it was, so it writes its accounting line and nothing else, which is what
+keeps the figure a blockless first round reported. A caller that prepends its own
+prompt — `agent-run` does — is refused instead, and re-measures the prompt when
+it is sent again.
 
 ## `observed` and `withheld` are stored before anything reads them
 
