@@ -168,10 +168,11 @@ src/lib.rs        re-exports
                   working directory
    message.rs     Message, Role, Content, Usage, CompletedTurn — the stored
                   shapes, declared rather than imported
-   store.rs       SessionStore, Session; the mode and ownership checks
+   store.rs       SessionStore, Session; which bit refuses and which reports
       record.rs   the three line kinds, and the fold that replays them
+      vet.rs      the modes, O_NOFOLLOW, and reading one off a descriptor
    error.rs       SessionError
-tests/            identifier, permissions, transcript
+tests/            identifier, permissions, recovery, transcript
 ```
 
 No internal dependency, and the stored types are its own rather than
