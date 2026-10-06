@@ -1,14 +1,10 @@
-# A direct spawn bypasses every Landlock/seccomp restriction sandbx applies.
-# Banned workspace-wide; `sandbx-core::spawn::command` carries the single
-# `#[allow(clippy::disallowed_methods)]` and narrows the environment as it builds
-# the `Command`, so the ban is also what keeps a new spawn from inheriting the
-# harness's environment. Enforced by the pre-commit hook.
+# A direct spawn bypasses every Landlock/seccomp restriction sandbx applies, and
+# the one exempt factory, `sandbx-core::spawn::command`, narrows the environment as
+# it builds the `Command`; see `context/decision-environment-allowlist.md`.
 disallowed-methods = [
     { path = "std::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
-    # Inert: nothing enables tokio's "process" feature, so this path resolves
-    # nowhere and clippy would warn on every crate without allow-invalid. That
-    # flag is per-entry, so a typo in *this* line is silent — hence it is scoped
-    # here and not to the std::process entry, which stays self-checking. Drop
-    # allow-invalid as soon as anything enables the feature.
+    # Inert until something enables tokio's "process" feature: the path resolves
+    # nowhere, which clippy warns about unless `allow-invalid` silences it — and
+    # that flag also silences a typo in this line, hence it is scoped to this entry.
     { path = "tokio::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied", allow-invalid = true },
 ]

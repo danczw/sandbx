@@ -14,11 +14,8 @@ env:
 
 jobs:
   build:
-    # Gated on `notes` so a malformed file fails in seconds rather than after
-    # two native legs, one of them a paid arm runner.
+    # Gated on `notes` so a malformed file fails before two native legs, one paid.
     needs: notes
-    # Native per target, not cross-compiled: the enforcement step below is the
-    # gate, and run on x86 it proves nothing about an arm binary.
     strategy:
       fail-fast: false
       # musl, not gnu: a glibc build records the build machine's glibc as a
@@ -44,9 +41,8 @@ jobs:
       # No cache here, unlike ci.yml: this build is published, and a cache entry
       # any PR run could have written is attacker-influenced input to it.
 
-      # Nothing else checks this pairing, and the enforcement gate and the musl
-      # compiler below both rest on it: a mismatch would cross-compile and
-      # publish a green result proving nothing.
+      # Nothing else checks this pairing, and the enforcement gate below rests on
+      # it: a mismatch would cross-compile and publish a green result proving nothing.
       - name: Check the runner matches the target
         run: |
           case "${{ matrix.target }}" in
@@ -61,8 +57,6 @@ jobs:
             exit 1
           fi
 
-      # A tag claiming v0.1.0 that builds 0.2.0 would publish the wrong binary
-      # behind the right name, and nothing downstream would notice.
       - name: Check the tag matches the crate version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -74,18 +68,13 @@ jobs:
             exit 1
           fi
 
-      # `ring` reaches the binary through `sandbx-providers` and its build.rs
-      # compiles C, so both steps below need a C compiler for the musl target.
-      # `musl-dev`, pulled in here, installs the `<arch>-linux-musl-gcc` name
-      # cc-rs looks for, so no `CC_*` override. Native per the check above.
+      # Same step as ci.yml's; why a musl C compiler is needed is there.
       - name: Install the musl C toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      # The binary's whole claim is that it sandboxes, so enforcement gates the
-      # release and not only the merge — against the published triple, the
-      # artifact being static musl that a host-gnu run says nothing about.
+      # Enforcement gates the release and not only the merge; see SECURITY.md.
       # `--locked`, so the graph tested is the graph the build below ships.
       - name: Test, including real sandbox enforcement
         run: |
@@ -100,7 +89,6 @@ jobs:
           name="sandbx-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp target/${{ matrix.target }}/release/sandbx README.md LICENSE "dist/$name/"
-          # A dynamic executable here would mean a hidden glibc floor again.
           file "dist/$name/sandbx" | grep -q "statically linked\|static-pie" \
             || { echo "::error::binary is not statically linked"; exit 1; }
           tar -C dist -czf "dist/$name.tar.gz" "$name"
@@ -112,7 +100,6 @@ jobs:
           path: dist/*.tar.gz*
           if-no-files-found: error
 
-  # Committed rather than generated, so the prose is reviewed with the change.
   notes:
     runs-on: ubuntu-latest
     outputs:
@@ -133,9 +120,8 @@ jobs:
           path: docs/release-notes/${{ github.ref_name }}.md
           if-no-files-found: error
 
-      # Here rather than in a job of its own: this one already has the repo, and
-      # `publish` checks nothing out. Not in `build`, which is a matrix — two
-      # legs writing one output map is last-writer-wins.
+      # Here and not in `build`, which is a matrix: two legs writing one output
+      # map is last-writer-wins.
       - name: Classify the tag
         id: classify
         run: |
@@ -168,23 +154,20 @@ jobs:
           [ -f "$notes" ] || { echo "::error::$notes is missing"; exit 1; }
           gh api --method POST "repos/$GH_REPO/releases/generate-notes" \
             -f tag_name="$GITHUB_REF_NAME" --jq .body > generated.md
-          # --jq renders a 404 as the string `null` and an empty body as a
-          # newline, so a size test passes on both.
+          # `--jq` renders a 404 as the string `null` and an empty body as a
+          # newline, so a size test would pass on both.
           grep -q '[^[:space:]]' generated.md && ! grep -qx 'null' generated.md \
             || { echo "::error::generate-notes returned no PR list"; exit 1; }
-          # $(cat) strips trailing newlines, so the join is exactly one blank
-          # line and `## What's Changed` cannot land mid-line.
+          # $(cat) strips trailing newlines, so the join is exactly one blank line.
           printf '%s\n\n' "$(cat "$notes")" > notes.md
           cat generated.md >> notes.md
 
-      # Pre-1.0 every published tag is a pre-release; see SECURITY.md.
       - name: Publish
         env:
           CHANNEL: ${{ needs.notes.outputs.channel }}
         run: |
-          # An empty `$CHANNEL` means the handoff broke, not that the tag was
-          # unrecognised — treating it as a pre-release would be right for every
-          # pre-1.0 tag and hide the break until the 1.0 release. So: abort.
+          # An empty `$CHANNEL` means the handoff broke, and defaulting it to
+          # pre-release would be right for every pre-1.0 tag and hide that until 1.0.
           prerelease=()
           case "$CHANNEL" in
             release) ;;
