@@ -1,5 +1,5 @@
-//! Public contract of [`AnthropicClient`], exercised over real HTTP against a
-//! local mock server — no live network access, no API key.
+//! Public contract of [`AnthropicClient`], over real HTTP against a local mock server
+//! — no live network access, no API key.
 
 use futures_util::StreamExt;
 use sandbx_providers::{
@@ -13,8 +13,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 fn client_for(server: &MockServer) -> AnthropicClient {
     AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
         .unwrap()
-        // wiremock binds loopback, which `with_base_url` allows over plain http
-        // precisely so this works without a TLS mock.
+        // wiremock binds loopback, which `with_base_url` allows over plain http so
+        // this needs no TLS mock.
         .with_base_url(server.uri())
         .unwrap()
 }
@@ -34,8 +34,7 @@ fn a_request() -> MessagesRequest {
     }
 }
 
-/// The full happy-path SSE body a real turn produces, including a tool call split
-/// across fragments.
+/// The SSE body a real turn produces, tool call split across fragments included.
 const FULL_TURN_SSE: &str = concat!(
     "event: message_start\n",
     "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n\n",
@@ -59,9 +58,8 @@ const FULL_TURN_SSE: &str = concat!(
     "data: {\"type\":\"message_stop\"}\n\n",
 );
 
-/// Asserts the *whole* request, body included: without a body matcher the suite would
-/// pass with `stream: true` dropped, or with `.json(&request)` swapped for a
-/// `.body(..)` that loses `content-type`.
+/// The body too: without a body matcher the suite passes with `stream: true` dropped,
+/// or with `.json(&request)` swapped for a `.body(..)` that loses `content-type`.
 #[tokio::test]
 async fn sends_the_right_headers_and_body() {
     let server = MockServer::start().await;
@@ -85,8 +83,8 @@ async fn sends_the_right_headers_and_body() {
     let stream = client.stream_chat(a_request()).await.unwrap();
     let _: Vec<_> = stream.collect().await;
 
-    // wiremock's `.expect(1)`, verified on drop, is the real assertion that every
-    // matcher above held.
+    // wiremock's `.expect(1)`, verified on drop, is the assertion that every matcher
+    // above held.
 }
 
 #[tokio::test]
@@ -196,8 +194,8 @@ async fn a_400_is_reported_with_the_vendor_envelope() {
     }
 }
 
-/// 529 is Anthropic's "overloaded", the one status a caller most wants to retry, and
-/// it falls outside the range `reqwest`'s own `status().is_server_error()` covers.
+/// 529 is Anthropic's non-standard "overloaded", so it has no `StatusCode` constant
+/// and is classified by the numeric range alone.
 #[tokio::test]
 async fn a_529_is_retryable_and_carries_its_retry_after() {
     let server = MockServer::start().await;
@@ -235,8 +233,8 @@ async fn a_529_is_retryable_and_carries_its_retry_after() {
     }
 }
 
-/// A mid-stream `error` event surfaces as an item in the stream, not the outer
-/// `Result`: by the time it arrives the response was already a 200.
+/// An item in the stream, not the outer `Result`: by the time it arrives the response
+/// was already a 200.
 #[tokio::test]
 async fn a_mid_stream_error_ends_the_stream_as_an_item() {
     let server = MockServer::start().await;
@@ -291,11 +289,9 @@ async fn a_close_before_message_stop_is_reported() {
     ));
 }
 
-/// The signature states the returned [`EventStream`]; that the *future* is `Send` it
-/// does not — that is inferred, so it can regress silently, and a non-`Send` future
-/// cannot be `tokio::spawn`ed. Compiled but never run, so needs no `MockServer`.
-///
-/// [`EventStream`]: sandbx_providers::EventStream
+/// The signature states the returned stream is `Send`; that the *future* is, it does
+/// not — that is inferred, so it can regress silently, and a non-`Send` future cannot
+/// be `tokio::spawn`ed. Compiled but never run, so it needs no `MockServer`.
 #[allow(dead_code)]
 fn client_future_stays_spawnable(client: &'static AnthropicClient) {
     fn assert_send<T: Send>(_: T) {}
@@ -303,9 +299,8 @@ fn client_future_stays_spawnable(client: &'static AnthropicClient) {
     assert_send(client.stream_chat(a_request()));
 }
 
-/// The API key rides in an `x-api-key` header, which reqwest does not scrub across
-/// hosts, so following a redirect would hand a live key to whatever `Location` names.
-/// The Messages API never legitimately redirects.
+/// reqwest does not scrub `x-api-key` across hosts, so following a redirect would hand
+/// a live key to whatever `Location` names; the Messages API never redirects.
 #[tokio::test]
 async fn a_redirect_is_not_followed() {
     let attacker = MockServer::start().await;
@@ -338,8 +333,8 @@ async fn a_redirect_is_not_followed() {
         ),
         "expected the 307 to surface as an error, got {error:?}"
     );
-    // `attacker`'s `.expect(0)`, verified on drop, is the real assertion: the key
-    // was never replayed to it.
+    // `attacker`'s `.expect(0)`, verified on drop, is the assertion: the key was never
+    // replayed to it.
 }
 
 #[test]
@@ -382,9 +377,9 @@ fn a_non_http_base_url_scheme_is_rejected() {
     );
 }
 
-/// `/v1/messages` is appended, which lands *before* a `?` or `#`, so either would
-/// post to a different URL than the operator read back; userinfo would put a second
-/// credential on the wire.
+/// `/v1/messages` is appended before any `?` or `#`, so either would post to a
+/// different URL than the operator read back; userinfo would put a second credential
+/// on the wire.
 #[test]
 fn a_query_fragment_or_credentials_is_rejected() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
@@ -401,9 +396,8 @@ fn a_query_fragment_or_credentials_is_rejected() {
     }
 }
 
-/// Every spelling of loopback counts, and an IPv6 literal arrives from
-/// `Url::host_str` still wrapped in brackets, which do not parse as part of an
-/// address.
+/// An IPv6 literal arrives from `Url::host_str` still wrapped in brackets, which do
+/// not parse as part of an address.
 #[test]
 fn every_loopback_spelling_is_accepted_cleartext() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();

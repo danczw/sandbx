@@ -1,5 +1,5 @@
-//! Token accounting: one `Usage` event per turn, carrying the last cumulative
-//! figure the API reported for each counter.
+//! Token accounting: one `Usage` per turn, carrying the last cumulative figure the
+//! API reported for each counter.
 
 use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
 
@@ -26,8 +26,8 @@ async fn start_and_delta_combine_into_one_usage_event() {
     );
 }
 
-/// The `message_delta` counts are cumulative, and server-side tool use inflates
-/// `input_tokens` mid-stream, so the delta's figures must win.
+/// Server-side tool use inflates `input_tokens` mid-stream, so the cumulative
+/// `message_delta` figures must win.
 #[tokio::test]
 async fn a_delta_restating_input_tokens_wins_over_start() {
     let out = ok_events(vec![
@@ -48,8 +48,8 @@ async fn a_delta_restating_input_tokens_wins_over_start() {
     );
 }
 
-/// Several `message_delta` events are documented, each restating the totals, so
-/// exactly one `Usage` must come out or a consumer summing them overcounts.
+/// Several `message_delta` events each restate the totals, so a consumer summing one
+/// `Usage` per frame would overcount.
 #[tokio::test]
 async fn several_deltas_produce_exactly_one_usage_event() {
     let out = ok_events(vec![
@@ -87,8 +87,7 @@ async fn a_turn_with_no_usage_reported_emits_no_usage_event() {
     assert_eq!(out, vec![stop(StopReason::EndTurn)]);
 }
 
-/// Both frames really ship without a `usage` key, and neither is worth ending a paid
-/// turn over.
+/// Both frames really ship without a `usage` key, and neither is worth ending a turn.
 #[tokio::test]
 async fn a_frame_with_no_usage_field_does_not_end_the_turn() {
     let out = ok_events(vec![

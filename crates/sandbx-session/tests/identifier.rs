@@ -1,7 +1,7 @@
 //! Public contract of [`SessionId`].
 //!
-//! An id becomes a path component under the session root, so these are the checks that
-//! stand between a `--session` argument and the filesystem.
+//! An id becomes a path component under the session root, so these checks stand between
+//! a `--session` argument and the filesystem.
 
 use std::str::FromStr;
 

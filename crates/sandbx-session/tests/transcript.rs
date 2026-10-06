@@ -151,9 +151,9 @@ fn a_turn_with_no_reply_is_refused_not_written() {
     let mut session = store.create().unwrap();
     let before = std::fs::read(session.path()).unwrap();
 
-    // A prompt with nothing answering it. Not the message-*less* turn, which leaves the
+    // A prompt with nothing answering it. Not the message-less turn, which leaves the
     // last role where it was and so keeps its accounting line — see
-    // `new_cases.rs::a_turn_with_no_messages_still_records_what_it_cost`.
+    // `recovery.rs::a_turn_with_no_messages_still_records_what_it_cost`.
     let err = session
         .append(CompletedTurn {
             messages: &[said(Role::User, "unanswered")],
@@ -254,9 +254,8 @@ fn an_unparsable_line_names_the_line_it_is_on() {
     let id = session.id().clone();
     let path = session.path().to_owned();
 
-    // Header, two messages, accounting, and then a fifth line that is not a record.
-    // Newline-terminated, so it was written whole and is simply unclassifiable — not the
-    // unfinished append `a_torn_final_line_is_dropped` covers, which is tolerated.
+    // Header, two messages, accounting, then a fifth line that is not a record. Newline-
+    // terminated, so it is not the tolerated torn append of `recovery.rs`.
     let whole = std::fs::read_to_string(&path).unwrap();
     std::fs::write(&path, format!("{whole}{{\"type\":\"mes\n")).unwrap();
 

@@ -1,8 +1,8 @@
 //! A session's name, and the one rule that makes it safe to put in a path.
 //!
 //! The inner `String` is private, so a `SessionId` cannot exist without having passed
-//! [`FromStr`](std::str::FromStr). That is what lets the store join one to a directory
-//! without a check of its own.
+//! [`FromStr`](std::str::FromStr) — which is what lets the store join one to a
+//! directory unchecked.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,17 +16,16 @@ const MAX_LENGTH: usize = 32;
 
 /// A session's name, and a legal path component by construction.
 ///
-/// Base36 of the millisecond it started. Not a sort key: base36 gains a digit as the
-/// clock grows and sorts by length first, so order a listing by the header's timestamp.
+/// Base36 of the millisecond it started, and not a sort key: it gains a digit as the
+/// clock grows and so sorts by length first. Order a listing by the header timestamp.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SessionId(String);
 
 impl SessionId {
     /// An id for a session starting now, distinguished from `attempt` earlier tries.
     ///
-    /// Two sessions in the same millisecond collide, which the store resolves by
-    /// retrying with the attempt count raised. It is added to the millisecond rather
-    /// than suffixed, so a retry is still one base36 number.
+    /// `attempt` is added to the millisecond rather than suffixed, so a retry after a
+    /// same-millisecond collision is still one base36 number.
     pub fn from_clock(attempt: u64) -> Result<Self, SessionError> {
         Ok(Self(base36(clock_millis()?.saturating_add(attempt))))
     }
@@ -34,9 +33,9 @@ impl SessionId {
 
 /// Milliseconds since the Unix epoch.
 ///
-/// `u64` rather than the `u128` the duration reports: a clock far enough in the future
-/// to overflow it is as broken as one before the epoch, and truncating would hand back
-/// an id that looks ordinary.
+/// `u64`, not the `u128` the duration reports: a clock far enough ahead to overflow it
+/// is as broken as one before the epoch, and truncating would yield an ordinary-looking
+/// id.
 pub(crate) fn clock_millis() -> Result<u64, SessionError> {
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -50,7 +49,7 @@ impl std::str::FromStr for SessionId {
 
     /// Accepts one to 32 characters of `0-9` and `a-z`, and nothing else.
     ///
-    /// An allowlist rather than a search for `..`: an id becomes a path component, and a
+    /// An allowlist, not a search for `..`: an id becomes a path component, and a
     /// denylist's first omission is a traversal.
     fn from_str(value: &str) -> Result<Self, SessionError> {
         let invalid = |reason| SessionError::InvalidIdentifier {
@@ -61,8 +60,8 @@ impl std::str::FromStr for SessionId {
         if value.is_empty() {
             return Err(invalid("it is empty"));
         }
-        // Bytes, not characters: the alphabet is ASCII, so a multi-byte string is over
-        // budget on either count.
+        // Bytes, not characters: the alphabet is ASCII, so a multi-byte string is out
+        // on either count.
         if value.len() > MAX_LENGTH {
             return Err(invalid("it is longer than 32 characters"));
         }

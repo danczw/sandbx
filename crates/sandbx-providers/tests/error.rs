@@ -1,7 +1,5 @@
-//! Public contract of [`ProviderError`].
-//!
-//! Every variant's `Display` must render something a user or log line can act on, and
-//! `source()` must be wired only where a variant carries an underlying error.
+//! Public contract of [`ProviderError`]: every variant's `Display` renders something
+//! actionable, and `source()` is wired only where a variant carries one.
 
 use sandbx_providers::ProviderError;
 
@@ -19,8 +17,8 @@ fn missing_credential_names_the_env_var() {
     assert!(source_of(&error).is_none());
 }
 
-/// The request never got far enough for a status code or vendor error body, so this is
-/// the only variant whose `source()` points at anything.
+/// The one variant carrying an underlying error, the request never having got far
+/// enough for a status code or vendor body.
 #[test]
 fn transport_carries_its_source() {
     let reqwest_error = reqwest_error_for_test();
@@ -53,8 +51,8 @@ fn api_error_with_a_status_reports_it() {
     assert!(source_of(&error).is_none());
 }
 
-/// `status: None` is how an in-band SSE `error` event, which carries no status code of
-/// its own, is distinguished from an HTTP-level failure.
+/// `status: None` is what separates an in-band SSE `error` event, which carries no
+/// status code, from an HTTP-level failure.
 #[test]
 fn api_error_without_a_status_still_reports_the_body() {
     let error = ProviderError::ApiError {
@@ -109,8 +107,7 @@ fn stream_ended_unexpectedly_renders() {
     assert!(source_of(&error).is_none());
 }
 
-/// `InvalidBaseUrl` is hit before any I/O, so its `Display` has to name the offending
-/// URL *and* say what was wrong with it.
+/// Hit before any I/O, so the message is all the operator gets: the URL and the rule.
 #[test]
 fn invalid_base_url_reports_the_url_and_reason() {
     let error = ProviderError::InvalidBaseUrl {
@@ -124,8 +121,7 @@ fn invalid_base_url_reports_the_url_and_reason() {
     assert!(source_of(&error).is_none());
 }
 
-/// A retry loop classifies by these two accessors rather than by matching the enum, so
-/// the classification is part of the public contract.
+/// A retry loop classifies by the accessors, not by matching the enum.
 #[test]
 fn transient_is_retryable_client_error_is_not() {
     let overloaded_http = ProviderError::ApiError {
@@ -197,8 +193,7 @@ fn transient_is_retryable_client_error_is_not() {
     );
 }
 
-/// A 429's `Retry-After` and a 5xx's are surfaced through one accessor, so a retry loop
-/// need not know which variant it holds.
+/// One accessor covers a 429's `Retry-After` and a 5xx's alike.
 #[test]
 fn retry_after_is_exposed_from_both_carrying_variants() {
     let two_secs = std::time::Duration::from_secs(2);

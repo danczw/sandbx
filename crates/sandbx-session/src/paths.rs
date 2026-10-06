@@ -1,9 +1,8 @@
 //! Where transcripts live.
 //!
-//! The lookup is injected rather than read from the process: `set_var` is `unsafe fn`
-//! under edition 2024 and the workspace forbids `unsafe_code`, so a test cannot drive a
-//! real environment. Matches `sandbx-cli`'s credential store, which resolves its own
-//! root the same way.
+//! The lookup is injected because `set_var` is `unsafe fn` under edition 2024 and the
+//! workspace forbids `unsafe_code`, so a test cannot drive a real environment; the
+//! credential store in `sandbx-cli` resolves its root the same way.
 
 use std::ffi::OsString;
 use std::path::PathBuf;

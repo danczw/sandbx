@@ -1,8 +1,7 @@
 //! Public contract of the Messages API request body.
 //!
-//! Exact wire shape matters, not just "does it parse": a wrong tag name or an extra
-//! field the API does not expect fails the real request, and no type system catches
-//! that.
+//! The exact wire shape, not just that it parses: a wrong tag name or an extra field
+//! fails the real request, and no type system catches that.
 
 use sandbx_providers::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
 use serde_json::json;

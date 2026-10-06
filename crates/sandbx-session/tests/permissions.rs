@@ -1,8 +1,8 @@
 //! What the store creates, and what it refuses to read back.
 //!
-//! The rule splits by bit: a transcript somebody else can *write* is refused, one they
-//! can only *read* resumes and reports. A foreign owner is refused too, but nothing here
-//! drives that arm — it needs a second uid, which a test running as one user cannot make.
+//! The rule splits by bit: a transcript somebody else can write is refused, one they can
+//! only read resumes and reports. A foreign owner is refused too, but no test here drives
+//! that arm, which needs a second uid.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
@@ -55,7 +55,7 @@ fn a_new_transcript_is_unwritable_to_others() {
     let session = store.create().unwrap();
 
     // Not `mode == 0o600`: `OpenOptionsExt::mode` is masked by the umask, which can only
-    // clear bits. The claim is that no group or other bit is set.
+    // clear bits, so the claim is that no group or other bit is set.
     assert_eq!(mode_of(session.path()) & 0o077, 0);
 }
 
@@ -74,8 +74,7 @@ fn a_directory_that_already_existed_wide_is_narrowed() {
     chmod(store.root(), 0o777);
 
     // `DirBuilderExt::mode` is ignored for a directory that already exists, so without an
-    // explicit narrowing every session after the first would be created in a world-
-    // writable directory and only refused later, on resume.
+    // explicit narrowing a session lands in a world-writable directory.
     store.create().unwrap();
 
     assert_eq!(mode_of(store.root()) & 0o077, 0);
@@ -156,8 +155,8 @@ fn a_symlinked_transcript_is_refused() {
     assert!(matches!(err, SessionError::Symlink { .. }), "got {err:?}");
 }
 
-/// A link here is narrowed, not merely read: without the refusal `create` `fchmod`s
-/// whatever it points at down to `0700`, which is a directory outside the store.
+/// A link here is narrowed, not merely read: without the refusal `create` `fchmod`s what
+/// it points at down to `0700`.
 #[test]
 fn a_symlinked_root_is_refused_not_narrowed() {
     let root = tempfile::tempdir().unwrap();

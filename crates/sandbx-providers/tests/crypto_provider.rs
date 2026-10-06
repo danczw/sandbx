@@ -1,8 +1,7 @@
 //! Public contract of [`ensure_crypto_provider_installed`].
 //!
-//! In `tests/` rather than a `#[cfg(test)] mod tests`, which also exercises the
-//! reason the function is `pub`: an integration test is a separate compiled crate,
-//! and building any `reqwest::Client` panics without a provider installed first.
+//! Here rather than in a `#[cfg(test)] mod tests` so it exercises the reason the
+//! function is `pub`: an integration test is a separate compiled crate.
 
 use sandbx_providers::ensure_crypto_provider_installed;
 

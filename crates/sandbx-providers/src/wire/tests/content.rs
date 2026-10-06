@@ -1,6 +1,6 @@
 //! Text and thinking blocks, which stream straight through, and the frames that must
 //! produce no event rather than ending the turn: pings, unmodeled tags at all three
-//! levels, and a payload-less heartbeat.
+//! levels, a payload-less heartbeat.
 
 use super::{AgentEvent, StopReason, ok_events, raw, stop};
 
@@ -55,7 +55,7 @@ async fn thinking_deltas_stream_immediately() {
 }
 
 /// A `signature_delta` accompanies a thinking block and has nowhere to go in
-/// `AgentEvent` yet, so it must be consumed rather than fail to parse.
+/// `AgentEvent`, so it is consumed rather than failing to parse.
 #[tokio::test]
 async fn signature_delta_is_accepted_and_produces_no_event() {
     let out = ok_events(vec![

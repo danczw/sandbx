@@ -16,14 +16,13 @@ pub(crate) struct RawSseEvent {
 
 /// Turn a byte stream into a stream of framed SSE events.
 ///
-/// `reqwest`'s `bytes_stream()` chunks bytes with no relation to line boundaries,
-/// and `data:` payloads can be multi-byte UTF-8. Bytes are buffered raw and decoded
-/// only once a range ends at a `\n`: splitting on the byte `0x0A` is safe mid
-/// sequence, because no UTF-8 continuation or lead byte takes that value.
+/// `bytes_stream()` chunks with no relation to line boundaries, and `data:` payloads
+/// can be multi-byte UTF-8, so bytes are buffered raw and decoded only once a range
+/// ends at a `\n`: splitting on `0x0A` is safe mid sequence, because no UTF-8
+/// continuation or lead byte takes that value.
 ///
 /// `Send` is stated rather than left to leak out of the opaque type, so a non-`Send`
-/// field added to the state below fails here rather than at the coercion in
-/// `AnthropicClient::stream_chat`.
+/// field added to the state below fails here, not at the coercion in `stream_chat`.
 pub(crate) fn tokenize(
     bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<RawSseEvent, ProviderError>> + Send {
@@ -42,17 +41,17 @@ pub(crate) fn tokenize(
 
 /// Cap on the bytes a single SSE event may occupy before it is rejected.
 ///
-/// Without one, `buf` grows unbounded whenever the stream never produces the byte
-/// the framing waits for — a gateway answering with a large non-SSE body containing
-/// no `\n` — and the process is OOM-killed with no diagnostic. 4 MiB is orders of
-/// magnitude above any real Anthropic frame.
+/// Without one, `buf` grows unbounded when the stream never produces the `\n` the
+/// framing waits for — a gateway answering with a large non-SSE body — and the
+/// process is OOM-killed with no diagnostic. 4 MiB is orders of magnitude above any
+/// real Anthropic frame.
 const MAX_EVENT_BYTES: usize = 4 * 1024 * 1024;
 
 struct TokenizerState<S> {
     bytes: S,
     buf: Vec<u8>,
-    /// How far into `buf` the search for the next `\n` has already looked; without
-    /// it every arriving chunk rescans from 0, quadratic in the length of a line.
+    /// How far into `buf` the search for the next `\n` has looked; without it every
+    /// arriving chunk rescans from 0, quadratic in the length of a line.
     scanned: usize,
     done: bool,
 }
@@ -64,8 +63,8 @@ where
     S: Stream<Item = reqwest::Result<Bytes>> + Unpin,
 {
     // Checked before anything is drained: `done` is set only just before a terminal
-    // item, so bytes buffered behind one belong to a stream that already ended, and
-    // draining them would emit frames after the error or EOF that ended it.
+    // item, so draining what is buffered behind one would emit frames after the error
+    // or EOF that ended the stream.
     if state.done {
         return None;
     }
@@ -104,15 +103,13 @@ where
             }
             lines.push(line);
         }
-        // Everything buffered has been examined and holds no newline.
         state.scanned = state.buf.len();
         if event_bytes + state.buf.len() > MAX_EVENT_BYTES {
             return Some((oversized(), ended(state)));
         }
 
-        // The stream ended on an earlier turn and the scan above has since decoded
-        // its unterminated tail. Return rather than poll again: `state.bytes` has
-        // already yielded `None`.
+        // The scan above has decoded the tail of a stream that ended on an earlier
+        // turn. Return rather than poll again: `state.bytes` already yielded `None`.
         if state.done {
             if lines.is_empty() {
                 return None; // clean EOF between events
@@ -135,11 +132,10 @@ where
             None => {
                 state.done = true;
                 // Whatever sits after the last `\n` is a line the sender never
-                // terminated, and the scan above only yields lines ending at a
-                // newline — so without this it is dropped, commonly the
-                // `message_stop` frame. Terminated here rather than decoded
-                // separately so one scan owns the UTF-8 decode, CR trim and cap
-                // check.
+                // terminated, and the scan above only yields lines ending at one — so
+                // without this it is dropped, commonly the `message_stop` frame.
+                // Terminated here, not decoded separately, so one scan owns the UTF-8
+                // decode, CR trim and cap check.
                 if !state.buf.is_empty() {
                     state.buf.push(b'\n');
                 }
@@ -172,9 +168,9 @@ fn parse_event(lines: &[String]) -> RawSseEvent {
         } else if let Some(rest) = line.strip_prefix("data:") {
             data_lines.push(rest.trim_start());
         }
-        // id:/retry:/`:`-comment lines are accepted and ignored — this crate never
-        // resumes a stream via Last-Event-ID. A frame built only from those yields
-        // an empty `data`, which `wire/accumulate.rs` skips.
+        // `id:`/`retry:`/`:`-comment lines are ignored; this crate never resumes via
+        // Last-Event-ID. A frame built only from those yields an empty `data`, which
+        // `wire/accumulate.rs` skips.
     }
     RawSseEvent {
         event,
@@ -268,8 +264,7 @@ mod tests {
         assert_eq!(events[0].as_ref().unwrap().data, "{}");
     }
 
-    /// A CDN or proxy heartbeat: still a frame, with an empty payload for
-    /// `wire/accumulate.rs` to skip.
+    /// A CDN or proxy heartbeat: still a frame, for `wire/accumulate.rs` to skip.
     #[tokio::test]
     async fn a_comment_only_frame_yields_an_empty_payload() {
         let events = tokenize_all(vec![b": keep-alive\n\ndata: {}\n\n"]).await;

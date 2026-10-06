@@ -1,9 +1,8 @@
 //! The shapes an Anthropic `data:` payload can take, and nothing that interprets
 //! them.
 //!
-//! Deserialization only: every type is a record of a frame as the API sends it,
-//! catch-all variants beside the tags they tolerate. Folding a sequence of these
-//! into [`AgentEvent`](crate::event::AgentEvent)s is [`super::accumulate`]'s job.
+//! Every type is a record of a frame as the API sends it, with a catch-all variant
+//! beside the tags it tolerates. Folding them is [`super::accumulate`]'s job.
 
 use serde::Deserialize;
 
@@ -28,8 +27,7 @@ pub(super) enum RawStreamEvent {
     MessageDelta {
         #[serde(default)]
         delta: RawMessageDelta,
-        // Absent in some documented frames; a missing count is not worth ending a
-        // turn over — see `RawUsage`.
+        // Absent in some documented frames, and not worth ending a turn over.
         #[serde(default)]
         usage: RawUsage,
     },
@@ -39,7 +37,6 @@ pub(super) enum RawStreamEvent {
         error: RawApiErrorBody,
     },
     /// Any `type` this file does not model — `server_tool_use` results, MCP events.
-    /// Ignored, not fatal; see the module doc.
     #[serde(other)]
     Unknown,
 }
@@ -50,16 +47,15 @@ pub(super) struct RawMessageStart {
     pub(super) usage: RawUsage,
 }
 
-/// Token counts, as reported by `message_start` *or* `message_delta`.
+/// Token counts, as reported by `message_start` or `message_delta`.
 ///
 /// One type for both: the shape is the same, and the `message_delta` counts are
-/// *cumulative*, restating `input_tokens` and the cache counters because
-/// server-side tool use inflates the input mid-stream. Taking input from
-/// `message_start` and only output from the delta undercounts.
+/// cumulative, restating `input_tokens` and the cache counters because server-side
+/// tool use inflates the input mid-stream. Taking input from `message_start` and only
+/// output from the delta undercounts.
 ///
 /// Every field is `Option` so a frame omitting one cannot end the turn, and so "not
-/// reported" stays distinguishable from a reported zero. No `#[serde(default)]`
-/// needed: serde resolves an absent `Option` field to `None`.
+/// reported" stays distinguishable from a reported zero.
 #[derive(Debug, Deserialize, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RawUsage {
     pub(super) input_tokens: Option<u32>,
@@ -86,14 +82,12 @@ pub(super) enum RawContentBlockStart {
         name: String,
     },
     /// A block type this file does not model — `server_tool_use`,
-    /// `web_search_tool_result`. Parsed rather than rejected so it does not fail the
-    /// turn; nothing accumulates, and its deltas and `content_block_stop` are
-    /// ignored in turn.
+    /// `web_search_tool_result`. Parsed rather than rejected, so nothing accumulates
+    /// and its deltas and `content_block_stop` are ignored in turn.
     #[serde(other)]
     Unknown,
 }
 
-// The `*Delta` variant names mirror the wire's own `*_delta` tag values exactly.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum RawDelta {
@@ -110,8 +104,7 @@ pub(super) enum RawDelta {
     InputJsonDelta {
         partial_json: String,
     },
-    /// A delta type this file does not model — `citations_delta`. Ignored, not
-    /// fatal.
+    /// A delta type this file does not model — `citations_delta`.
     #[serde(other)]
     Unknown,
 }
@@ -119,17 +112,14 @@ pub(super) enum RawDelta {
 #[derive(Debug, Deserialize, Default)]
 pub(super) struct RawMessageDelta {
     /// Nullable on the wire, and null does happen — hence
-    /// [`StopReason::Unspecified`](crate::event::StopReason::Unspecified) rather
-    /// than emitting no `Stop` at all.
+    /// [`StopReason::Unspecified`](crate::event::StopReason::Unspecified).
     pub(super) stop_reason: Option<String>,
 }
 
 /// The vendor's error body: `{"type": ..., "message": ...}`.
 ///
-/// An HTTP error response and an in-band SSE `error` event carry the same shape and
-/// both land in
-/// [`ProviderError::ApiError`](crate::error::ProviderError::ApiError), so one type
-/// serves `anthropic.rs`'s non-2xx mapping too.
+/// An HTTP error response and an in-band SSE `error` event carry the same shape, so
+/// one type serves `anthropic.rs`'s non-2xx mapping too.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawApiErrorBody {
     #[serde(rename = "type")]
@@ -138,8 +128,8 @@ pub(crate) struct RawApiErrorBody {
 }
 
 /// The envelope an HTTP error response wraps [`RawApiErrorBody`] in:
-/// `{"type":"error","error":{...}}`. The SSE `error` event uses the same
-/// envelope, destructured by [`RawStreamEvent::Error`] instead.
+/// `{"type":"error","error":{...}}`, which [`RawStreamEvent::Error`] destructures
+/// itself for the SSE `error` event.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawApiErrorEnvelope {
     pub(crate) error: RawApiErrorBody,

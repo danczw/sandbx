@@ -2,7 +2,7 @@
 //! [`AgentEvent`](crate::event::AgentEvent)s.
 //!
 //! Each `data:` payload is deserialized by its own `"type"` tag; the `event:` line
-//! is ignored, since it only restates that tag.
+//! only restates that tag, so it is ignored.
 
 mod accumulate;
 mod payload;

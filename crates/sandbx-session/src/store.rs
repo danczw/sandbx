@@ -1,9 +1,8 @@
 //! The store and a session: which files exist, who may read them, and where a write
 //! goes.
 //!
-//! Append-only, and not for tidiness: `withheld` is an index into the history, exact
-//! only while nothing moves a prefix. So every operation here reads the whole file or
-//! writes to its end.
+//! Append-only because `withheld` indexes the history, exact only while nothing moves a
+//! prefix, so every operation reads the whole file or writes to its end.
 
 mod record;
 mod vet;
@@ -23,9 +22,8 @@ use vet::{
 use crate::id::clock_millis;
 use crate::{CompletedTurn, Message, Role, SessionError, SessionId, Usage, sessions_directory};
 
-/// How many ids to try before concluding the clock is stuck.
-///
-/// Two sessions starting in the same millisecond is ordinary, so a taken id retries.
+/// How many ids to try before concluding the clock is stuck, two sessions starting in
+/// the same millisecond being ordinary.
 const ATTEMPTS: u64 = 1000;
 
 /// The directory transcripts live in.
@@ -52,7 +50,7 @@ impl SessionStore {
         &self.root
     }
 
-    /// Start a session, creating the root and the transcript.
+    /// Start a session, creating the root `0700` and the transcript `0600`.
     ///
     /// `create_new` is what makes the id unique: the filesystem, not a prior check,
     /// decides whether the name was free.
@@ -105,16 +103,15 @@ impl SessionStore {
 
     /// Reopen a session and read back everything it holds.
     ///
-    /// Refuses a transcript, or the directory holding it, that somebody else can write or
-    /// owns. The directory goes first: one another user may write lets them rename their
-    /// own `0600` file over the transcript, whatever mode it carries. Every mode and uid
-    /// is read through an open descriptor, so the file vetted is the file read.
+    /// Refuses a transcript, or its directory, somebody else can write or owns. The
+    /// directory goes first, since writing it allows a rename over the transcript
+    /// whatever its mode. Every mode and uid is read through an open descriptor, so the
+    /// file vetted is the file read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
         let path = self.path_for(id);
         let owner = nix::unistd::getuid().as_raw();
 
-        // No root at all means no session by that id: the operator asked about a session,
-        // not about a directory.
+        // No root at all means no session by that id: what was asked about.
         let directory = match open_root(&self.root) {
             Err(SessionError::Io { source, .. }) if source.kind() == ErrorKind::NotFound => {
                 return Err(SessionError::NotFound { id: id.clone() });
@@ -159,9 +156,8 @@ impl SessionStore {
             })?;
 
         let (messages, observed, withheld) = fold(&path, &body)?;
-        // The whole history, not just its end: an append can only break the last role,
-        // but a hand-edited file can hold a pair of user turns anywhere, which the API
-        // refuses the same way. No messages at all is a session not yet talked to.
+        // The whole history, not just its end: a hand-edited file can hold a pair of user
+        // turns anywhere. No messages at all is a session not yet talked to.
         if !messages.is_empty() {
             if !settled(&messages) {
                 return Err(SessionError::IncompleteTurn);
@@ -186,10 +182,8 @@ impl SessionStore {
 
     /// Bring the root down to `0700`, refusing one somebody else owns.
     ///
-    /// `DirBuilderExt::mode` is ignored outright for a directory that already exists, so
-    /// a `sessions/` somebody widened would otherwise stay wide for every session after
-    /// it. Narrowed here and refused by [`resume`](Self::resume): nothing is in the
-    /// directory yet that a refusal would protect.
+    /// `DirBuilderExt::mode` is ignored for a directory that already exists, so a widened
+    /// `sessions/` would stay wide. Narrowed, not refused: nothing is in it yet.
     fn narrow_root(&self) -> Result<(), SessionError> {
         let directory = open_root(&self.root)?;
         let (mode, uid) = ownership(&directory, &self.root)?;
@@ -204,8 +198,8 @@ impl SessionStore {
             return Ok(());
         }
 
-        // `fchmod` on the descriptor just stat'd, not `chmod` by path, for the reason
-        // every mode here is read that way.
+        // `fchmod` on the descriptor just stat'd, not `chmod` by path, so the directory
+        // narrowed is the one vetted.
         directory
             .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
             .map_err(|source| SessionError::Io {
@@ -214,8 +208,8 @@ impl SessionStore {
             })
     }
 
-    /// The transcript an id names. Needs no check of its own: a [`SessionId`] cannot
-    /// exist without having passed its own parser.
+    /// The transcript an id names. No check of its own: a [`SessionId`] cannot exist
+    /// without having passed its own parser.
     fn path_for(&self, id: &SessionId) -> PathBuf {
         self.root.join(format!("{id}.jsonl"))
     }
@@ -264,10 +258,8 @@ impl Session {
         self.withheld
     }
 
-    /// True when somebody else can read the transcript, which resumed anyway.
-    ///
-    /// Reported rather than refused: by the time it is known the conversation has already
-    /// been readable, and a transcript does not rotate the way a credential does.
+    /// True when somebody else can read the transcript, which resumed anyway: by the
+    /// time it is known the conversation has been readable, and it cannot be rotated.
     #[must_use]
     pub fn shared_read(&self) -> bool {
         self.shared_read
@@ -275,9 +267,9 @@ impl Session {
 
     /// Add a finished turn to the end of the transcript.
     ///
-    /// Refuses a turn not ending on an assistant message: the next resume would send two
-    /// user turns in a row. A turn with no messages leaves the last role where it was, so
-    /// it writes its accounting line and nothing else.
+    /// Refuses a turn not ending on an assistant message, since the next resume would
+    /// send two user turns in a row. A turn with no messages leaves the last role where
+    /// it was, so it writes its accounting line and nothing else.
     pub fn append(&mut self, turn: CompletedTurn<'_>) -> Result<(), SessionError> {
         if !turn.messages.is_empty() && !settled(turn.messages) {
             return Err(SessionError::IncompleteTurn);
@@ -289,7 +281,7 @@ impl Session {
             .map(|message| Record::Message(message.clone()))
             .collect();
         // Its own record, never folded onto a message line: a round that produced no
-        // content still reports what the prompt cost, and has no message to hang it on.
+        // content still reports what the prompt cost and has no message to hang it on.
         records.push(Record::Turn(Accounting {
             observed: turn.observed,
             withheld: turn.withheld,
@@ -309,8 +301,8 @@ impl Session {
     fn write(&mut self, records: &[Record]) -> Result<(), SessionError> {
         let mut lines = String::new();
         for record in records {
-            // Reported as an I/O failure rather than given a variant: nothing a record
-            // holds can fail to serialize, so there is no case for a caller to act on.
+            // An I/O failure, not a variant of its own: nothing a record holds can fail
+            // to serialize, so there is no case for a caller to act on.
             let line = serde_json::to_string(record).map_err(|error| SessionError::Io {
                 path: self.path.clone(),
                 source: std::io::Error::other(error),
@@ -328,18 +320,14 @@ impl Session {
     }
 }
 
-/// True when no two neighbouring messages carry the same role.
-///
-/// With two roles that is alternation, which together with [`settled`] also pins the first
-/// message as the user's: an alternating history ending on the model begins on them.
+/// True when no two neighbouring messages carry the same role, which together with
+/// [`settled`] also pins the first message as the user's.
 fn alternating(messages: &[Message]) -> bool {
     messages.windows(2).all(|pair| pair[0].role != pair[1].role)
 }
 
 /// True when the history ends where a conversation may be left: on the model's reply.
-///
-/// An empty history is not settled, which is what refuses a prompt with no answer behind
-/// it. A message-*less* turn is screened out before this is reached.
+/// An empty history is not settled, which refuses a prompt with no answer behind it.
 fn settled(messages: &[Message]) -> bool {
     messages.last().map(|message| message.role) == Some(Role::Assistant)
 }

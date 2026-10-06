@@ -1,8 +1,8 @@
 //! Folding a sequence of [`super::payload`] frames into [`AgentEvent`]s.
 //!
-//! Where two invariants are kept: an unmodeled tag is skipped rather than ending
-//! the stream, and a turn ends exactly once — with an [`AgentEvent::Stop`] at
-//! `message_stop`, or an `Err` if it never arrives.
+//! Two invariants live here: an unmodeled tag is skipped rather than ending the
+//! stream, and a turn ends exactly once — an [`AgentEvent::Stop`] at `message_stop`,
+//! or an `Err` if it never arrives.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -14,11 +14,8 @@ use crate::sse::RawSseEvent;
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 
-/// Per-index accumulation state for an in-flight `tool_use` block.
-///
-/// Only `tool_use` is tracked: it is the only block type whose deltas have to be
-/// accumulated to mean anything, since text and thinking deltas are emitted as they
-/// arrive and an unmodeled block has nothing to accumulate.
+/// Per-index accumulation state for an in-flight `tool_use` block, the only block
+/// type whose deltas mean nothing until they are buffered whole.
 struct ToolUseBlock {
     id: String,
     name: String,
@@ -27,13 +24,10 @@ struct ToolUseBlock {
 
 /// Map a stream of raw SSE frames into [`AgentEvent`]s.
 ///
-/// `Send` is stated rather than left to leak out of the opaque type, for the
-/// reason `sse::tokenize` gives.
+/// `Send` is stated, and the result fused, for the reasons `sse::tokenize` gives.
 pub(crate) fn event_stream(
     raw: impl Stream<Item = Result<RawSseEvent, ProviderError>> + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send {
-    // `.fuse()` for the same reason as `sse::tokenize`: `unfold` panics if polled
-    // once past its end.
     futures_util::StreamExt::fuse(futures_util::stream::unfold(
         WireState {
             raw: Box::pin(raw),
@@ -49,14 +43,14 @@ pub(crate) fn event_stream(
 
 struct WireState<S> {
     raw: std::pin::Pin<Box<S>>,
-    /// Keyed by block index. A `BTreeMap`, not a `HashMap`: blocks still open when
-    /// the turn ends are flushed in index order, which a randomized iteration order
-    /// would make unreproducible.
+    /// Keyed by block index. A `BTreeMap`, not a `HashMap`: blocks still open when the
+    /// turn ends flush in index order, which a randomized iteration order would make
+    /// unreproducible.
     blocks: BTreeMap<u32, ToolUseBlock>,
     /// The turn's counts so far, each field the most recent value reported for it.
     usage: RawUsage,
-    /// Held until `message_stop` decides the turn is over — `message_delta`
-    /// reporting a reason is not itself the end of the stream.
+    /// Held until `message_stop` — `message_delta` reporting a reason is not itself
+    /// the end of the stream.
     stop_reason: Option<StopReason>,
     pending: VecDeque<Result<AgentEvent, ProviderError>>,
     ended: bool,
@@ -64,8 +58,7 @@ struct WireState<S> {
 
 impl RawUsage {
     /// Overlay a newer report: each field it carries wins, each field it omits keeps
-    /// the value already held — `message_delta` restates the counts cumulatively, so
-    /// the turn reports the newest value seen per field.
+    /// the value held, since `message_delta` restates the counts cumulatively.
     fn absorb(&mut self, newer: Self) {
         self.input_tokens = newer.input_tokens.or(self.input_tokens);
         self.output_tokens = newer.output_tokens.or(self.output_tokens);
@@ -77,7 +70,7 @@ impl RawUsage {
             .or(self.cache_read_input_tokens);
     }
 
-    /// Whether the API reported any count at all; a turn that reported none emits no
+    /// Whether any count was reported; a turn with none emits no
     /// [`AgentEvent::Usage`] rather than one full of zeros.
     fn reported(&self) -> bool {
         *self != Self::default()
@@ -106,14 +99,11 @@ impl<S> WireState<S> {
 
     /// Queue every tool call still open when the turn ended.
     ///
-    /// Called from `message_stop` only: it covers a turn that ends properly with a
-    /// `tool_use` block whose `content_block_stop` went missing, where dropping the
-    /// call would leave `Stop { reason: ToolUse }` telling the caller to run a tool
-    /// it was never given.
-    ///
-    /// The paths that end a turn without `message_stop` do not flush: they emit an
-    /// `Err` rather than a `Stop`, and a genuinely truncated block's JSON is
-    /// incomplete, so flushing would put a `MalformedEvent` ahead of the honest
+    /// From `message_stop` only, covering a turn that ends properly with a `tool_use`
+    /// block whose `content_block_stop` went missing: dropping the call would leave
+    /// `Stop { reason: ToolUse }` telling the caller to run a tool it never got. The
+    /// paths that end without `message_stop` do not flush — a truncated block's JSON
+    /// is incomplete, so flushing would put a `MalformedEvent` ahead of the honest
     /// [`ProviderError::StreamEndedUnexpectedly`].
     fn flush_open_blocks(&mut self) {
         for (index, block) in std::mem::take(&mut self.blocks) {
@@ -133,10 +123,10 @@ fn tool_call_event(
     name: String,
     partial_json: &str,
 ) -> Result<AgentEvent, ProviderError> {
-    // A tool call taking no arguments sends no `input_json_delta` at all (or one
-    // carrying `""`), so an empty buffer means `{}`, not a parse failure. Reporting
-    // it as malformed would leave the caller a `Stop { ToolUse }` it cannot answer,
-    // and the API rejects the next request for an unanswered `tool_use`.
+    // A tool call taking no arguments sends no `input_json_delta`, or one carrying
+    // `""`, so an empty buffer means `{}` and not a parse failure. Reporting it as
+    // malformed would leave a `Stop { ToolUse }` the caller cannot answer, and the API
+    // rejects the next request for an unanswered `tool_use`.
     let input = if partial_json.trim().is_empty() {
         serde_json::Value::Object(serde_json::Map::new())
     } else {
@@ -186,9 +176,9 @@ where
             }
         };
 
-        // A frame with no `data:` line — a CDN or proxy heartbeat, which `sse.rs`
-        // reports as a frame with an empty payload. Treating `""` as malformed would
-        // end a healthy turn the moment an intermediary inserted one.
+        // A CDN or proxy heartbeat, which `sse.rs` reports as a frame with an empty
+        // payload. Treating `""` as malformed would end a healthy turn the moment an
+        // intermediary inserted one.
         if raw.data.trim().is_empty() {
             continue;
         }
@@ -212,13 +202,10 @@ where
                 index,
                 content_block,
             } => {
-                // Only `tool_use` opens accumulation state; the other kinds are
-                // parsed so they do not fail the turn, then have nothing to keep.
-                //
-                // A non-tool start still *clears* the index: a stream that reuses an
-                // index without closing it — `tool_use` at 0, then `text` at 0 —
-                // would otherwise accumulate the text deltas into the abandoned tool
-                // call and emit a `ToolCallRequested` the model never asked for.
+                // A non-tool start still clears the index: a stream that reuses one
+                // without closing it — `tool_use` at 0, then `text` at 0 — would
+                // otherwise accumulate the text deltas into the abandoned tool call
+                // and emit a `ToolCallRequested` the model never asked for.
                 match content_block {
                     RawContentBlockStart::ToolUse { id, name } => {
                         state.blocks.insert(
@@ -267,9 +254,8 @@ where
                 }
             }
             RawStreamEvent::MessageDelta { delta, usage } => {
-                // Recorded, not emitted: the counts are cumulative and there may be
-                // several of these, so one `Usage` is queued at the end of the turn
-                // rather than one per frame a consumer would double-count.
+                // Recorded, not emitted: the counts are cumulative and several of
+                // these arrive, so one `Usage` is queued at the end of the turn.
                 state.usage.absorb(usage);
                 if let Some(reason) = delta.stop_reason {
                     state.stop_reason = Some(StopReason::from_wire(&reason));
@@ -280,7 +266,7 @@ where
                 state.flush_open_blocks();
                 state.push_usage();
                 // Always a `Stop`, even when no frame named a reason: the alternative
-                // is a stream that runs out, indistinguishable from a truncated turn.
+                // is a stream that runs out, indistinguishable from a truncation.
                 state.pending.push_back(Ok(AgentEvent::Stop {
                     reason: state.stop_reason.take().unwrap_or(StopReason::Unspecified),
                 }));
