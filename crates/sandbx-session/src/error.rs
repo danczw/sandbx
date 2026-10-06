@@ -72,6 +72,37 @@ pub enum SessionError {
         source: serde_json::Error,
     },
 
+    /// The transcript can be written by somebody other than its owner.
+    ///
+    /// Refused rather than reported, unlike a merely readable one: a history another
+    /// user can edit is a history they choose, and the model it is replayed to calls
+    /// tools.
+    Writable {
+        /// The transcript that was refused.
+        path: PathBuf,
+        /// The mode it carries, which the message prints in octal.
+        mode: u32,
+    },
+
+    /// The directory holding transcripts can be written by somebody else.
+    ///
+    /// Stronger than the file's own mode: whoever may write the directory can rename
+    /// their own `0600` file over the transcript.
+    DirWritable {
+        /// The directory that was refused.
+        path: PathBuf,
+        /// The mode it carries, which the message prints in octal.
+        mode: u32,
+    },
+
+    /// The transcript, or the directory holding it, belongs to another user.
+    ForeignOwner {
+        /// What was refused.
+        path: PathBuf,
+        /// The uid that owns it.
+        uid: u32,
+    },
+
     /// The turn did not end with an assistant message.
     ///
     /// A transcript that ends on a user turn makes the next resume send two user turns
@@ -119,6 +150,25 @@ impl std::fmt::Display for SessionError {
                 "line {line} of {} is not a session record: {source}",
                 path.display()
             ),
+            Self::Writable { path, mode } => write!(
+                f,
+                "refusing to resume {} at mode {mode:o}: another user could choose what \
+                 this conversation says you asked for — run `chmod 600 {}`",
+                path.display(),
+                path.display()
+            ),
+            Self::DirWritable { path, mode } => write!(
+                f,
+                "refusing to resume a session from {} at mode {mode:o}: another user could \
+                 replace the transcript in it — run `chmod 700 {}`",
+                path.display(),
+                path.display()
+            ),
+            Self::ForeignOwner { path, uid } => write!(
+                f,
+                "refusing to resume {}: it belongs to uid {uid}, not to you",
+                path.display()
+            ),
             Self::IncompleteTurn => write!(
                 f,
                 "the turn did not end with an assistant reply, so there is nothing to append"
@@ -140,6 +190,9 @@ impl std::error::Error for SessionError {
             | Self::Collision { .. }
             | Self::MissingHeader { .. }
             | Self::UnsupportedVersion { .. }
+            | Self::Writable { .. }
+            | Self::DirWritable { .. }
+            | Self::ForeignOwner { .. }
             | Self::IncompleteTurn => None,
         }
     }
