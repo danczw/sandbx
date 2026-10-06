@@ -1,4 +1,4 @@
-use crate::{Axis, NetworkPolicy, SandboxError, SandboxPolicy};
+use crate::{Axis, NetworkPolicy, SandboxError, SandboxPolicy, Sha256Digest};
 
 const FLAG_NET: &str = "--allow-network";
 /// Introduces one allowlisted TCP port, and takes exactly one value.
@@ -13,6 +13,12 @@ const FLAG_ENV: &str = "--env";
 /// Carries the resolver hint and takes no value; the pair it stands for is a constant the
 /// policy owns.
 const FLAG_DNS_OVER_TCP: &str = "--dns-over-tcp";
+/// Introduces the SHA-256 the program must hash to, and takes exactly one value.
+///
+/// No path: the digest describes the one binary the helper is about to become, which
+/// `SEPARATOR` already names. Spelled the same here as on the CLI, unlike
+/// [`FLAG_NET_PORT`], there being no optional-value form to diverge from.
+const FLAG_PIN: &str = "--pin-sha256";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
 
@@ -52,11 +58,24 @@ pub struct HelperArgs {
     /// Arguments for `program`, already split into words; the helper execs directly, so no
     /// shell ever sees these.
     pub args: Vec<String>,
+    /// What `program` must hash to, when the caller pinned it.
+    ///
+    /// Beside `program` and not inside `policy`, for the reason the supervisor pid is a
+    /// token of its own: the policy says what the command may do, this says which image
+    /// may be it, so the policy grammar and its round-trip stay untouched.
+    pub pin: Option<Sha256Digest>,
 }
 
 impl HelperArgs {
     /// Render a policy and command as helper argv.
-    pub fn encode(policy: &SandboxPolicy, program: &str, args: &[String]) -> Vec<String> {
+    ///
+    /// `pin` is `None` for a command whose bytes the caller did not name.
+    pub fn encode(
+        policy: &SandboxPolicy,
+        program: &str,
+        args: &[String],
+        pin: Option<Sha256Digest>,
+    ) -> Vec<String> {
         let mut out = Vec::new();
 
         for (axis, path) in policy.granted_paths() {
@@ -85,6 +104,10 @@ impl HelperArgs {
             out.push(FLAG_ENV.to_string());
             out.push(name.clone());
         }
+        if let Some(digest) = pin {
+            out.push(FLAG_PIN.to_string());
+            out.push(digest.to_string());
+        }
 
         out.push(SEPARATOR.to_string());
         out.push(program.to_string());
@@ -98,6 +121,7 @@ impl HelperArgs {
     /// policy sandbx did not intend.
     pub fn decode(argv: &[String]) -> Result<Self, SandboxError> {
         let mut policy = SandboxPolicy::default();
+        let mut pin = None;
         let mut rest = argv.iter();
 
         // Split off where the separator is found, rather than by collecting the tail and
@@ -152,6 +176,24 @@ impl HelperArgs {
                     }
                     policy = policy.allow_env(name);
                 }
+                FLAG_PIN => {
+                    let hex = rest.next().ok_or(SandboxError::BadHelperArgs {
+                        detail: "pin flag with no digest after it",
+                    })?;
+                    // A digest the CLI already parsed once, so anything unparseable here
+                    // means the argv speaks a different protocol — as does a second one,
+                    // which last-wins would quietly resolve to whichever came later.
+                    let digest =
+                        Sha256Digest::parse(hex).map_err(|_| SandboxError::BadHelperArgs {
+                            detail: "pin digest that is not 64 lowercase hex characters",
+                        })?;
+                    if pin.replace(digest).is_some() {
+                        return Err(SandboxError::BadHelperArgs {
+                            detail: "more than one pin flag, which names two images for one \
+                                     program",
+                        });
+                    }
+                }
                 flag => {
                     // One lookup, then one grant: the axis carries which one it is, so no
                     // second match here decides it again.
@@ -170,6 +212,7 @@ impl HelperArgs {
             policy,
             program,
             args,
+            pin,
         })
     }
 }

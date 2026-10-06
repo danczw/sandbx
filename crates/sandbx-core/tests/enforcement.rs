@@ -188,7 +188,7 @@ fn the_inner_stage_refuses_an_unnarrowed_environment() {
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .arg(sandbx_core::HELPER_INNER_FLAG)
         .arg(std::process::id().to_string())
-        .args(HelperArgs::encode(&policy, "/bin/touch", &args))
+        .args(HelperArgs::encode(&policy, "/bin/touch", &args, None))
         .env("SANDBX_SHOULD_NOT_SURVIVE", "leaked-abc123")
         .output()
         .expect("helper should start");
@@ -889,7 +889,7 @@ fn an_imposed_value_beats_an_allowlisted_one() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .arg(sandbx_core::HELPER_FLAG)
-        .args(HelperArgs::encode(&policy, "/usr/bin/env", &[]))
+        .args(HelperArgs::encode(&policy, "/usr/bin/env", &[], None))
         .env("RES_OPTIONS", "attempts:9")
         .output()
         .expect("helper should start");

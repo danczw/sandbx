@@ -18,6 +18,7 @@ compile_error!(
 mod audit;
 mod command;
 mod degradation;
+mod digest;
 mod error;
 mod fs_guard;
 mod helper;
@@ -30,6 +31,7 @@ pub use command::{
     HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, SandboxedCommand, dispatch_helper_mode,
     with_helper_dispatch,
 };
+pub use digest::{DigestParseError, Sha256Digest};
 pub use error::{Access, SandboxError};
 pub use fs_guard::{FsGuard, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};

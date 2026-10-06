@@ -40,7 +40,7 @@ pub(crate) fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::
     let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .arg(sandbx_core::HELPER_FLAG)
-        .args(HelperArgs::encode(policy, program, &owned))
+        .args(HelperArgs::encode(policy, program, &owned, None))
         .output()
         .expect("helper should start")
 }

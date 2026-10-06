@@ -224,6 +224,7 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
             &SandboxPolicy::default().allow_system_executables(),
             "/bin/true",
             &[],
+            None,
         ))
         .stdin(std::process::Stdio::from(write_end));
 
