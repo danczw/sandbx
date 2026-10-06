@@ -95,6 +95,16 @@ pub enum SessionError {
         mode: u32,
     },
 
+    /// The transcript is a symbolic link.
+    ///
+    /// Following it would vet the wrong directory: the mode and owner come from the
+    /// target, while the directory checked is the one holding the link. Nothing the store
+    /// writes is ever a link, so this is somebody else's doing.
+    Symlink {
+        /// The link that was refused.
+        path: PathBuf,
+    },
+
     /// The transcript, or the directory holding it, belongs to another user.
     ForeignOwner {
         /// What was refused.
@@ -164,6 +174,12 @@ impl std::fmt::Display for SessionError {
                 path.display(),
                 path.display()
             ),
+            Self::Symlink { path } => write!(
+                f,
+                "refusing to resume {}: it is a symbolic link, so the transcript sandbx \
+                 would check is not the one it would read",
+                path.display()
+            ),
             Self::ForeignOwner { path, uid } => write!(
                 f,
                 "refusing to resume {}: it belongs to uid {uid}, not to you",
@@ -192,6 +208,7 @@ impl std::error::Error for SessionError {
             | Self::UnsupportedVersion { .. }
             | Self::Writable { .. }
             | Self::DirWritable { .. }
+            | Self::Symlink { .. }
             | Self::ForeignOwner { .. }
             | Self::IncompleteTurn => None,
         }

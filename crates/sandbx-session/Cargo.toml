@@ -8,9 +8,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# For `getuid` alone: std exposes none, and the alternative is `unsafe`, which the
-# workspace forbids. Already in the lock, through `sandbx-core`.
-nix = { version = "0.31.3", default-features = false, features = ["user"] }
+# For `getuid`, `O_NOFOLLOW` and `ELOOP`: std exposes no uid, and the other two reach
+# it only through unstable API. Already in the lock, through `sandbx-core`.
+nix = { version = "0.31.3", default-features = false, features = ["fs", "user"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 
