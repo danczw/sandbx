@@ -1,0 +1,18 @@
+fix(auth): judge the directory the key is in, not the one the link is in
+
+From the security review. `read` vetted `path.parent()`, which is lexical, so a
+symlinked `credentials.toml` had the directory holding the *link* checked and the
+directory holding the key never looked at — the half of the claim that is about
+substitution rather than disclosure, defeated while the file-mode check still
+passed. The parent now comes from `canonicalize`, and the regression test fails
+without it.
+
+Both directory modes are also read and set through a descriptor on the directory
+rather than by path, which is the rule the module already stated for the file and
+did not follow for its parent. `write` opens the directory once and both narrows
+and fsyncs through that one handle.
+
+Two other review candidates were refuted rather than fixed: ownership is not
+checked, but every path to it needs an attacker-controlled HOME and root is
+already trusted here; and a blank ANTHROPIC_API_KEY falling through to the file
+is pre-existing, documented and tested behaviour in sandbx-providers.

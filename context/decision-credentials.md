@@ -21,7 +21,9 @@ otherwise log in over a credential it was merely refused.
 A tier-3 file is refused rather than read when any group or other bit is set on
 the file *or* on the directory holding it, because a file that was already
 disclosed cannot be undisclosed by using it, and a directory another user may
-write is one they can substitute a file in. Refused, never repaired: a mode sandbx
+write is one they can substitute a file in. The directory is the canonicalised
+one, so a symlinked credential is judged by where the key actually sits rather
+than by where the link does. Refused, never repaired: a mode sandbx
 quietly narrowed would hide that the key needs rotating. `auth logout` is the one
 command that tolerates a too-wide file, because refusing there would leave the
 exposed key on disk in order to protect it.
