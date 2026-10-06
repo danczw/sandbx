@@ -44,7 +44,7 @@ schema (#54, #55, #88). Folding the executor in also puts the parse behind a
 type: each module's `run` parses into that module's own input struct, so a
 filesystem path that skips the parse is unwritable.
 
-Four tests in `tests/registry.rs` pin what co-location cannot:
+Five tests in `tests/registry.rs` pin what co-location cannot:
 
 - `every_tool_is_named_after_its_variant` — `name()` is `{variant:?}` lowercased.
   A symmetric swap of two names stays unique and still round-trips through
@@ -60,6 +60,10 @@ Four tests in `tests/registry.rs` pin what co-location cannot:
 - `the_risk_each_tool_carries_is_documented` — a hard-coded match naming each
   variant's expected level. Read off `risk()` it would assert only
   self-consistency, and a `bash` reclassified as read-only would still pass.
+- `the_risk_levels_order_least_to_most` — the `Ord` derive is what lets a gate
+  admit everything at or below a level, which makes the variant order
+  load-bearing: alphabetising the enum would keep the rest of the suite green
+  while inverting the meaning of every `<=`.
 
 Schemas are derived via `schema_for!`, never hand-written, and returned as
 `serde_json::Value`. The schema is a fn pointer rather than a value in the `SPEC`

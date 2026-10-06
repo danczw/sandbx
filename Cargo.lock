@@ -1164,6 +1164,7 @@ dependencies = [
  "sandbx-core",
  "sandbx-providers",
  "sandbx-tools",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing",

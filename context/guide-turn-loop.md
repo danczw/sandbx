@@ -34,6 +34,12 @@ taking one would make the whole future non-`Send`.
 mandatory, so a caller cannot acquire a gate-less loop by omitting an argument.
 See `decision-approval-gate.md` for why it is not a trait.
 
+It runs on the async task with no `spawn_blocking` of its own, so **it must not
+block** — a gate that waits on an operator, a channel or a lock stalls every
+other task on the runtime, and on a current-thread one deadlocks the turn it is
+deciding. That is a real bound on #165: a per-call prompt cannot be a blocking
+read from inside the gate.
+
 ## Round structure
 
 ```
@@ -44,7 +50,7 @@ See `decision-approval-gate.md` for why it is not a trait.
 │  consume stream ──► flush text before ToolUse, keep Usage   │
 │  no ToolUse blocks?  ──► return TurnOutcome                 │
 │  answer_calls (sequential)                                  │
-│    resolve name ──► approve(call) ──► spawn_blocking        │
+│    resolve ──► offered? ──► approve(call) ──► spawn_blocking│
 └─ loop ──────────────────────────────────────────────────────┘
 ```
 
@@ -180,8 +186,9 @@ model into an empty round, and that is where it lands.
 
 A failing tool comes back as a `tool_result` marked `is_error`, which is what
 lets the model try something else. An unknown tool name likewise —
-`unknown tool: {name}` with `is_error` — and so does a gate's
-`ApprovalDecision::Deny`, carrying its `reason` as the text. A refusal is
+`unknown tool: {name}` with `is_error` — and a name that resolves to a tool
+`Turn::tools` did not offer, which `from_name` alone would admit. And so does a
+gate's `ApprovalDecision::Deny`, carrying its `reason` as the text. A refusal is
 therefore recoverable within `max_rounds`, which is also what bounds a model that
 keeps retrying one.
 

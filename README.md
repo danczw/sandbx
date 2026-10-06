@@ -202,11 +202,12 @@ sandbx agent-run \
   -- "add a doc comment to every public fn under src"
 ```
 
-The answer streams on stdout; which tool ran, and which was refused, goes to
-stderr — so piping stdout gives you the answer alone. All seven tools are offered
-to the model — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash` — and each
-one the gate approves runs through the same boundary, so a path you did not grant
-comes back to the model as a refusal for it to work around rather than a crash.
+The answer streams on stdout; which tool the gate ran and which it refused goes
+to stderr — so piping stdout gives you the answer alone. All seven tools are
+offered to the model — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash` —
+and each one the gate approves still runs through the same boundary. A path you
+did not grant is refused there instead, which comes back to the model as a failed
+result for it to work around rather than a crash — and reaches stderr not at all.
 
 | flag | |
 |------|--|

@@ -7,14 +7,12 @@
 
 use sandbx_tools::BuiltinTool;
 
-/// A tool call the model asked for, resolved but not yet run.
-///
-/// Handed to the gate by value: three borrowed fields, and a `&ToolCall` bound would
-/// need naming the lifetime at every closure.
+/// A tool call the model asked for, resolved and offered but not yet run.
 #[derive(Debug, Clone, Copy)]
 pub struct ToolCall<'a> {
-    /// The tool, already resolved — a name no tool answers to never reaches a gate.
-    /// `BuiltinTool::risk` is what a gate deciding by category reads.
+    /// The tool, already resolved and known to be one the turn offered: neither an
+    /// unknown name nor an un-offered one reaches a gate. `BuiltinTool::risk` is what a
+    /// gate deciding by category reads.
     pub tool: BuiltinTool,
     /// The id the answer must carry back, unique within the round.
     pub id: &'a str,

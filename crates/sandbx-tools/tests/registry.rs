@@ -125,6 +125,15 @@ fn the_risk_each_tool_carries_is_documented() {
     }
 }
 
+/// `RiskLevel` derives `Ord` so a gate can admit everything at or below a level, which
+/// makes the variant *order* load-bearing rather than cosmetic: alphabetising the enum
+/// would keep every other test green while inverting the meaning of each `<=`.
+#[test]
+fn the_risk_levels_order_least_to_most() {
+    assert!(RiskLevel::ReadOnly < RiskLevel::Writes);
+    assert!(RiskLevel::Writes < RiskLevel::Executes);
+}
+
 /// Every tool must carry its own model-facing prose.
 ///
 /// The description is the field the model steers on and the one of the four nothing

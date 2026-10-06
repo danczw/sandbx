@@ -24,9 +24,8 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # *driver* is not equally free to choose: a runtime built without it panics on the
 # first round — see `run_turn`'s "What the runtime must provide".
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
-# Not a new crate in the tree — `ContentBlock::ToolUse` and `ToolSpec` are already
-# spelled in terms of it. Named here so `ToolCall` can hand a gate the arguments a
-# call carries; a gate blind to them could never show an operator what it would do.
+# Already in the tree, behind `ContentBlock::ToolUse`. Named here for `ToolCall::input`:
+# a gate blind to a call's arguments could never show an operator what it would do.
 serde_json = "1.0.151"
 
 [lints]

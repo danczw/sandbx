@@ -29,7 +29,7 @@ to the arguments could never show an operator what the call would do.
 
 ## Asked before the spawn, never racing it
 
-In `answer_calls`, between `BuiltinTool::from_name` and `spawn_blocking`.
+In `answer_calls`, between resolving the name and `spawn_blocking`.
 
 A blocking task cannot be cancelled (#26): dropping the `JoinHandle` leaves the
 task running to completion. So a gate consulted *concurrently* with the call —
@@ -37,9 +37,29 @@ task running to completion. So a gate consulted *concurrently* with the call —
 that had already landed. Before the spawn is the only position where a refusal
 means anything.
 
-The consequence worth knowing: a name no tool answers to is refused above the
-gate, so a caller's closure never sees one and never has to invent a verdict for
-it. `an_unknown_name_never_reaches_the_gate` pins that.
+Two refusals sit *above* the gate, so a caller's closure never sees either and
+never has to invent a verdict for one:
+
+| | |
+|---|---|
+| a name no tool answers to | `from_name` is exact-match, so a miss is a prompt or schema bug |
+| a tool `Turn::tools` did not offer | `from_name` resolves against every built-in, not against this turn's set |
+
+The second matters more than it looks. The offered set is the caller's declaration
+of what may run, and resolving alone would hand the gate a call that was never on
+the table — which an allow-all gate would then run. A caller offering `[Read, Ls]`
+would have had an injected `bash` execute. `an_unknown_name_never_reaches_the_gate`
+and `an_un_offered_tool_never_reaches_the_gate` pin both.
+
+**`approve` must not block.** It is called on the async task, with no
+`spawn_blocking` of its own. A gate that waits — on an operator, a channel, a lock
+— stalls every other task on the runtime, and on the current-thread runtime
+`sandbx-cli` builds it deadlocks the turn it is deciding. This is the sharp edge on
+#165: a per-call prompt cannot be a blocking read from inside the gate, because the
+escape hatch in the table above ("a caller that needs to await one owns the
+runtime") means *before* `run_turn` is entered, not inside it. `Handle::block_on`
+panics in a runtime thread and `blocking_recv` panics in async context, so neither
+is the way out.
 
 ## A refusal is a `tool_result`, not a `TurnError`
 
@@ -56,6 +76,11 @@ and the round limit arrives.
 No audit record either. `AuditEvent::Denied` records what the sandbox refused to
 let a *running* tool touch; a call that never ran touched nothing. The operator's
 record is the stderr line and the transcript's is the `tool_result`.
+
+The stderr line covers the gate's own verdict and nothing after it: a call the gate
+approves and the *policy* then refuses reads on stderr as a call that ran, and the
+two refusals above the gate reach stderr not at all. #169 holds that gap, which
+needs a seam `observe` does not currently have.
 
 ## Deny by default, and the honest claim
 
