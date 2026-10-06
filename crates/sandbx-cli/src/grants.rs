@@ -233,9 +233,10 @@ fn named_homes(home: Option<&Path>) -> Homes {
         paths.push(resolved.clone());
     }
 
-    // Resolving is not being a home: `HOME=/dev/null` is a service-account convention and
-    // Docker hands a UID with no passwd entry `HOME=/`. Both resolve, and match no cwd.
-    let usable = resolved.parent().is_some() && resolved.is_dir();
+    // Resolving is not being a home: `HOME=/dev/null` is a service-account convention,
+    // Docker hands a UID with no passwd entry `HOME=/`, and `HOME=/home` names where homes
+    // live rather than one of them. All resolve, and match no cwd.
+    let usable = resolved.is_dir() && !holds_home_directories(&resolved);
 
     Homes { paths, usable }
 }
@@ -573,6 +574,23 @@ mod tests {
             assert!(
                 matches!(error, PolicyError::UnnamedHome { .. }),
                 "{error} let /home/other through for $HOME={home}"
+            );
+        }
+    }
+
+    /// Being where homes live is not being one: `HOME=/home` satisfied the stand-in gate, and
+    /// `/home/other` then derived read and write over a neighbour's tree (#162).
+    #[test]
+    fn a_home_that_is_a_home_parent_refuses_a_child_of_one() {
+        // The two [`HOME_PARENTS`] a Linux host resolves, so the gate is really exercised.
+        for home in ["/home", "/root"] {
+            let homes = named_homes(Some(Path::new(home)));
+
+            let error = root(format!("{home}/other"), &homes)
+                .expect_err("something shaped like a home directory");
+            assert!(
+                matches!(error, PolicyError::UnnamedHome { .. }),
+                "{error} let {home}/other through for $HOME={home}"
             );
         }
     }
