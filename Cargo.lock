@@ -1254,6 +1254,7 @@ dependencies = [
 name = "sandbx-session"
 version = "0.1.0-alpha.10"
 dependencies = [
+ "nix",
  "serde",
  "serde_json",
  "tempfile",
