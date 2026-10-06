@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0-alpha.10"
+version = "0.1.0-alpha.11"
 edition = "2024"
 # Held up by two independent things: the let-chain in `helper`, and the `icu_*`
 # crates reached via reqwest -> url -> idna. Lowering it needs both changed.
