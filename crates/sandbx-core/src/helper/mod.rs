@@ -215,6 +215,38 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         _ => (false, argv),
     };
 
+    // Ahead of everything that can refuse, so every refusal below is reportable; before
+    // `apply`, so a seccomp filter or a Landlock ruleset cannot be what refuses the `dup`
+    // or `/dev/null`. Its own failure is the one that cannot be reported — it is what
+    // produces the handle.
+    let mut channel = match audit_on_stdin {
+        true => Some(claim_audit_channel()?),
+        false => None,
+    };
+
+    let refusal = restrict_and_exec(supervisor, argv);
+
+    // Any refusal, not just a failed `exec`: this stage exits non-zero and stage 1 relays
+    // that status on the command's behalf, so without this record the trail cannot tell a
+    // refusal from a command that ran and exited 1 (#157). Swallowed like a degradation —
+    // a lost record must not fail a run the parent was already told about.
+    if let (Some(channel), Err(error)) = (&mut channel, &refusal) {
+        use std::io::Write;
+
+        let _ = channel.write_all(crate::degradation::encode_refusal(error.label()).as_bytes());
+    }
+
+    refusal
+}
+
+/// Restrict this process and become the command, or say why it could not.
+///
+/// Split out of [`exec_inner`] so that one site reports every refusal on the audit channel;
+/// the channel is claimed before this is called and nothing here may claim it again.
+fn restrict_and_exec(
+    supervisor: &str,
+    argv: &[String],
+) -> Result<std::convert::Infallible, SandboxError> {
     let request = HelperArgs::decode(argv)?;
 
     bind_lifetime_to_supervisor()?;
@@ -245,13 +277,6 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         });
     }
 
-    // Before `apply`, so a seccomp filter or a Landlock ruleset cannot be what refuses the
-    // `dup` or `/dev/null` below.
-    let channel = match audit_on_stdin {
-        true => Some(claim_audit_channel()?),
-        false => None,
-    };
-
     apply(&request.policy)?;
 
     // After `apply`, so the command inherits the cage rather than escaping it: this
@@ -266,18 +291,11 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         let mut command = crate::spawn::command(&request.program, &request.policy);
         command.args(&request.args);
 
+        // `exec` returns only on failure and the channel duplicate is close-on-exec, so a
+        // record written past this point is reachable only in a world where the command
+        // does not exist — which is what makes it true rather than a guess.
         command.exec()
     };
-
-    // `exec` returns only on failure and the duplicate is close-on-exec, so this is
-    // reachable only where the command does not exist — which is what makes the record
-    // true rather than a guess. Swallowed like a degradation: a lost record must not fail
-    // a run the parent was already told about.
-    if let Some(mut channel) = channel {
-        use std::io::Write;
-
-        let _ = channel.write_all(crate::degradation::encode_exec_failure().as_bytes());
-    }
 
     Err(SandboxError::ExecFailed { source: error })
 }
