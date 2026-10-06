@@ -2,9 +2,20 @@
 
 use std::io::Write;
 
-use sandbx_core::{NetworkPolicy, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{NetworkPolicy, SandboxPolicy, SandboxedCommand, Sha256Digest};
 
 use crate::{Grants, PolicyError, SandboxRunError};
+
+/// Accept a digest `--pin-sha256` can carry, and refuse anything else.
+///
+/// In `Grants::variable_name`'s shape, and for its reason: the wire takes one spelling, so
+/// the CLI says what to write rather than leaving a pasted digest to be refused two
+/// processes later with no advice attached.
+fn pin_digest(value: &str) -> Result<Sha256Digest, String> {
+    Sha256Digest::parse(value).map_err(|error| {
+        format!("{error} — `sandbx hash <file>` prints one in the form this takes")
+    })
+}
 
 /// Whether the policy leaves a name no way to resolve.
 ///
@@ -47,6 +58,27 @@ pub struct SandboxRun {
     #[arg(long = "timeout", value_name = "SECONDS")]
     timeout: Option<u64>,
 
+    /// Refuse the run unless the program hashes to this SHA-256. Not repeatable.
+    ///
+    /// Covers the one binary named after `--` and nothing it goes on to run
+    /// itself, so `--allow-exec` still means "anything that appears under this
+    /// path later". `sandbx hash PATH` prints a digest in the form this takes.
+    ///
+    /// The program must be an absolute path, and an ELF binary rather than a
+    /// `#!` script: sandbx opens the file to hash it, so it resolves the name
+    /// itself, and a bare one would be resolved against the `PATH` the *policy*
+    /// gives the command rather than the one in your shell. Write
+    /// `$PWD/target/debug/mytool`.
+    ///
+    /// It is not a path flag, so it grants nothing and does not replace the
+    /// working-directory default.
+    // On this struct and not `Grants`, which `agent-run` flattens too: there the program
+    // is the agent's to choose, so the flag would parse, document a guarantee and pin
+    // nothing. `Vec` and not `Option` because clap's default action on an `Option` is
+    // last-wins, and two digests for one program is a mistake to report.
+    #[arg(long = "pin-sha256", value_name = "HEX", value_parser = pin_digest)]
+    pin_sha256: Vec<Sha256Digest>,
+
     /// The command to run, and its arguments.
     // `last` keeps the separator meaningful: everything past `--` is the command's,
     // including flags sandbx defines. Not a `///`, which would reach `--help`.
@@ -75,11 +107,16 @@ impl SandboxRun {
 
     /// The digest the program was pinned to, or why the pin cannot stand.
     ///
-    /// The absolute-path check is here and not in [`Grants`](crate::Grants), which never
-    /// sees the command: the helper refuses a relative one too, but only here is the
-    /// program in scope to name in the advice.
-    pub fn pin(&self) -> Result<Option<sandbx_core::Sha256Digest>, PolicyError> {
-        let pin = self.grants.pin()?;
+    /// Outside [`policy`](Self::policy), and outside `Grants` entirely: a pin grants
+    /// nothing, so it must neither widen a policy nor suppress the working-directory
+    /// default. The helper refuses a relative program too, but only here is the program in
+    /// scope to name in the advice.
+    pub fn pin(&self) -> Result<Option<Sha256Digest>, PolicyError> {
+        let pin = match self.pin_sha256.as_slice() {
+            [] => None,
+            [only] => Some(*only),
+            _ => return Err(PolicyError::RepeatedPin),
+        };
 
         if pin.is_some() && !std::path::Path::new(self.program()).is_absolute() {
             return Err(PolicyError::PinNeedsAbsoluteProgram {
@@ -132,6 +169,95 @@ mod tests {
 
     fn ported() -> SandboxPolicy {
         SandboxPolicy::default().allow_network_port(443)
+    }
+
+    /// A digest, as the parser would have produced it.
+    fn digest() -> Sha256Digest {
+        Sha256Digest::parse("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+            .expect("64 lowercase hex characters")
+    }
+
+    /// A run of `program`, pinned to `digests`.
+    fn pinned(program: &str, digests: &[Sha256Digest]) -> SandboxRun {
+        use clap::Parser as _;
+
+        let mut argv = vec!["sandbx".to_string(), "sandbox-run".to_string()];
+        for digest in digests {
+            argv.push("--pin-sha256".to_string());
+            argv.push(digest.to_string());
+        }
+        argv.push("--".to_string());
+        argv.push(program.to_string());
+
+        match crate::Cli::parse_from(argv).command {
+            crate::Command::SandboxRun(run) => run,
+            other => panic!("{other:?} is not sandbox-run"),
+        }
+    }
+
+    #[test]
+    fn a_single_pin_is_the_one_the_run_carries() {
+        let run = pinned("/bin/true", &[digest()]);
+
+        assert_eq!(run.pin().expect("one digest"), Some(digest()));
+    }
+
+    #[test]
+    fn no_pin_flag_leaves_the_run_unpinned() {
+        assert_eq!(pinned("/bin/true", &[]).pin().expect("no digest"), None);
+    }
+
+    /// Last-wins would quietly choose one of two images for one program.
+    #[test]
+    fn a_second_pin_is_refused() {
+        let run = pinned("/bin/true", &[digest(), digest()]);
+
+        assert!(
+            matches!(run.pin(), Err(PolicyError::RepeatedPin)),
+            "two digests were accepted"
+        );
+    }
+
+    /// sandbx opens the file itself, so a bare name would be resolved against the policy's
+    /// `PATH` — hashing one file and execing another.
+    #[test]
+    fn a_pin_on_a_relative_program_is_refused() {
+        let run = pinned("target/debug/mytool", &[digest()]);
+
+        let error = run
+            .pin()
+            .expect_err("a relative pinned program was accepted");
+
+        assert!(
+            error.to_string().contains("target/debug/mytool"),
+            "the refusal did not name the program: {error}"
+        );
+    }
+
+    /// An unpinned run keeps `execvp`'s own resolution, bare names included.
+    #[test]
+    fn a_relative_program_is_fine_unpinned() {
+        assert_eq!(pinned("mytool", &[]).pin().expect("no digest"), None);
+    }
+
+    /// The parser owns the spelling, so this is where the operator is told what to write.
+    #[test]
+    fn a_digest_the_wire_could_not_carry_is_refused() {
+        let good = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+        for value in [
+            "",
+            &good[..63],
+            &format!("{good}0")[..],
+            &good.to_uppercase(),
+        ] {
+            let message = pin_digest(value).expect_err("accepted as a digest");
+
+            assert!(
+                message.contains("sandbx hash"),
+                "{value:?} was refused without saying what to write: {message}"
+            );
+        }
     }
 
     /// Including the clause about the default a path flag replaces, which is the trap in

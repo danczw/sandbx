@@ -456,6 +456,41 @@ fn a_pin_digest_encode_could_not_emit_is_refused() {
     }
 }
 
+/// The CLI refuses this with advice, but a hand-built argv does not pass through the CLI —
+/// and the helper opens the program itself, so a bare name would be resolved against the
+/// `PATH` the policy imposes while `execve` resolved it a second time.
+#[test]
+fn a_pinned_program_that_is_not_an_absolute_path_is_refused() {
+    for program in ["mytool", "target/debug/mytool", "./mytool"] {
+        let args = vec![
+            "--pin-sha256".to_string(),
+            DIGEST.to_string(),
+            "--".to_string(),
+            program.to_string(),
+        ];
+
+        let refusal = HelperArgs::decode(&args).expect_err("accepted a pinned bare name");
+
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("not an absolute path")
+            ),
+            "{program} was refused for the wrong reason: {refusal:?}"
+        );
+    }
+}
+
+/// The same program unpinned keeps `execvp`'s resolution, which is what the guard above
+/// must not have taken away.
+#[test]
+fn an_unpinned_program_may_be_a_bare_name() {
+    let args = HelperArgs::encode(&SandboxPolicy::default(), "mytool", &[], None);
+
+    assert_eq!(HelperArgs::decode(&args).unwrap().program, "mytool");
+}
+
 /// Last-wins would quietly choose one of two images named for one program.
 #[test]
 fn a_second_pin_flag_is_refused() {
