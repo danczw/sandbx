@@ -10,9 +10,8 @@ use sandbx_tools::BuiltinTool;
 /// A tool call the model asked for, resolved and offered but not yet run.
 #[derive(Debug, Clone, Copy)]
 pub struct ToolCall<'a> {
-    /// The tool, already resolved and known to be one the turn offered: neither an
-    /// unknown name nor an un-offered one reaches a gate. `BuiltinTool::risk` is what a
-    /// gate deciding by category reads.
+    /// The tool, resolved and known to be one the turn offered. `BuiltinTool::risk` is
+    /// what a gate deciding by category reads.
     pub tool: BuiltinTool,
     /// The id the answer must carry back, unique within the round.
     pub id: &'a str,
@@ -27,8 +26,8 @@ pub enum ApprovalDecision {
     Allow,
     /// Do not run it, and tell the model why.
     Deny {
-        /// What the model is told, as the text of a `tool_result` marked `is_error`.
-        /// It is the only account it gets, so name what would lift the refusal.
+        /// The text of a `tool_result` marked `is_error`, and the only account the model
+        /// gets — so name what would lift the refusal.
         reason: String,
     },
 }

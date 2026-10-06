@@ -65,9 +65,8 @@ pub(crate) struct ToolSpec {
 
 /// What a tool does beyond looking, for a caller deciding whether to let it run.
 ///
-/// Ordered least to most, so a gate can admit everything at or below a level. A field
-/// of `ToolSpec` rather than a table here, so a new tool declares its own level or
-/// fails to compile instead of being silently absent from one.
+/// Ordered least to most, so a gate can admit everything at or below a level. A field of
+/// `ToolSpec`, so a new tool declares its own level or fails to compile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RiskLevel {
     /// Reads the filesystem and changes nothing.

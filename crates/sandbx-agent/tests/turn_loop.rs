@@ -396,9 +396,8 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
     assert_eq!(messages.len(), 3, "the turn should have carried on");
 }
 
-/// A refusal has to stop the call, not merely annotate it. The policy here allows the
-/// write, so the gate is the only thing refusing, and asserting on the `is_error` block
-/// alone would pass even if the file had been written.
+/// The policy allows the write, so asserting on the `is_error` block alone would pass
+/// even if the file had been written.
 #[tokio::test]
 async fn a_denied_call_never_reaches_the_tool() {
     let root = tempfile::tempdir().unwrap();
@@ -436,8 +435,7 @@ async fn a_denied_call_never_reaches_the_tool() {
     assert_eq!(result["content"], "write is not approved for this run");
 }
 
-/// A refusal is recoverable: the model may ask for something the gate allows, and the
-/// gate that refused once is asked again rather than latched shut.
+/// The gate that refused once is asked again rather than latched shut.
 #[tokio::test]
 async fn a_denial_never_ends_the_turn() {
     let root = tempfile::tempdir().unwrap();
@@ -497,9 +495,8 @@ async fn a_denial_never_ends_the_turn() {
     );
 }
 
-/// The gate is handed the call it decides on, and asked before the tool runs rather
-/// than alongside it: `spawn_blocking` cannot be cancelled, so a decision arriving
-/// late would refuse a call that had already happened (#26).
+/// Before, not alongside: `spawn_blocking` cannot be cancelled, so a late decision would
+/// refuse a call that had already happened (#26).
 #[tokio::test]
 async fn the_gate_sees_a_call_before_it_runs() {
     let root = tempfile::tempdir().unwrap();
@@ -538,8 +535,7 @@ async fn the_gate_sees_a_call_before_it_runs() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
 }
 
-/// A gate decides about tools, and an unresolved name is not one. It is answered above
-/// the gate, so a caller's closure never has to invent a verdict for it.
+/// A gate decides about tools, and an unresolved name is not one.
 #[tokio::test]
 async fn an_unknown_name_never_reaches_the_gate() {
     let mut script = Script::new([
@@ -566,9 +562,8 @@ async fn an_unknown_name_never_reaches_the_gate() {
     assert_eq!(tool_error(&messages)["is_error"], true);
 }
 
-/// A name resolves against every built-in, not against what this turn offered, so
-/// resolving alone would hand a gate a call the caller never put on the table — and an
-/// allow-all gate would then run it. Refused above the gate instead.
+/// `from_name` resolves against every built-in, not against what this turn offered, so
+/// resolving alone would let an allow-all gate run a call that was never on the table.
 #[tokio::test]
 async fn an_un_offered_tool_never_reaches_the_gate() {
     let root = tempfile::tempdir().unwrap();
@@ -587,8 +582,8 @@ async fn an_un_offered_tool_never_reaches_the_gate() {
     ]);
     let mut asked = 0usize;
 
-    // Only `ls` is offered, and the policy would let the write through, so the offered
-    // set is the single thing standing between the call and the file.
+    // The policy would let the write through, so the offered set is the single thing
+    // standing between the call and the file.
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Ls]),
@@ -608,9 +603,8 @@ async fn an_un_offered_tool_never_reaches_the_gate() {
     assert_eq!(tool_error(&messages)["is_error"], true);
 }
 
-/// One verdict per call, not one per round: the gate is asked again for the second call
-/// and each answer has to come back on its own `tool_use_id`, or the model reads the
-/// refusal as belonging to the call that succeeded.
+/// Each answer has to come back on its own `tool_use_id`, or the model reads the refusal
+/// as belonging to the call that succeeded.
 #[tokio::test]
 async fn a_round_of_two_calls_gets_a_verdict_each() {
     let root = tempfile::tempdir().unwrap();

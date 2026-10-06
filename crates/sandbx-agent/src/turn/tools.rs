@@ -41,20 +41,15 @@ where
         };
 
         if !offered.contains(&tool) {
-            // `from_name` resolves against every built-in, so resolving alone would let a
-            // call the caller never offered through to a gate that cannot tell. The offered
-            // set is the caller's declaration of what may run; a name outside it is refused
-            // without a verdict being asked for.
+            // `from_name` resolves against every built-in, so resolving alone would hand
+            // the gate a call the caller never offered — which an allow-all gate then runs.
             results.push(refused(id, format!("tool not offered this turn: {name}")));
             continue;
         }
 
         // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
-        // so a decision that arrived late would not stop the call it refused (#26).
-        //
-        // A `match` rather than `if let`: this is the one place a verdict can fail open,
-        // so a third variant has to be a compile error here rather than falling through
-        // to the spawn as approval.
+        // so a late decision would not stop the call it refused (#26). Exhaustive rather
+        // than `if let`, so a third verdict is a compile error here and not approval.
         match approve(ToolCall { tool, id, input }) {
             ApprovalDecision::Allow => {}
             ApprovalDecision::Deny { reason } => {
