@@ -106,6 +106,12 @@ an absolute program path.
 It covers the one program you named and nothing that program then spawns itself. A
 pinned `/usr/bin/python3` is still arbitrary code.
 
+Two things it cannot pin, both refused rather than run unchecked. A `#!` script:
+the kernel hands the interpreter the path `sandbx` exec'd, which by then names a
+closed descriptor, so pin the interpreter and pass the script as an argument. And
+a program you may execute but not read — a pin has to read the file, which an
+execute-only mode does not allow.
+
 The environment is cleared too. A sandboxed command does not inherit the one
 `sandbx` was launched with, so a secret in your shell does not reach it; name a
 variable with `--allow-env` to pass it through. Granted anyway, for the same
@@ -122,7 +128,7 @@ Each run also records the policy it ran under and how it ended, on stderr:
 
 ```console
 $ sandbx sandbox-run --allow-read /srv -- /bin/true
-2026-10-05T20:37:54.124622Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7 dns_over_tcp=false
+2026-10-05T20:37:54.124622Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7 dns_over_tcp=false pinned=false
 2026-10-05T20:37:54.130729Z  INFO sandbx::audit: decision="exited" program="/bin/true" code=0
 ```
 
@@ -137,7 +143,9 @@ command the sandbox killed does not read as a success. A run with no status of i
 own is `failed` with a reason you can filter on: `reason="timeout"` for a
 `--timeout` kill, `reason="exec_failed"` for a program that could not be executed
 at all, `reason="pin_mismatch"` for a program that is not the bytes it was pinned
-to, `reason="landlock"` or `reason="seccomp"` for a sandbox the kernel would not
+to, `reason="pin_unreadable"` for one a pin could not be checked against,
+`reason="pinned_script"` for a `#!` script, which `--pin-sha256` cannot cover, and
+`reason="landlock"` or `reason="seccomp"` for a sandbox the kernel would not
 accept. Each of those would otherwise look like a command that ran and exited
 1, the stage that refused having exited in the command's place.
 
@@ -148,6 +156,12 @@ nothing in `sandbx`'s own environment matches passes nothing, so on a host with 
 `TZ` set the command above sees fewer than seven. Like `readable`, it records what
 was granted. The one variable `sandbx` sets itself has its own field,
 `dns_over_tcp`, rather than being counted here as a name you passed.
+
+`pinned` says whether a digest had to match before the exec. A pin that matches
+leaves the run looking exactly like an unpinned one, so this is the only place the
+trail says the entry point was checked at all — a pin that does *not* match is
+already visible, as the `reason="pin_mismatch"` record that closes the run. The
+digest is not in the record: it is already in the command line you typed.
 
 It is metadata only, never a command's output, and it never touches stdout: the
 command's own stdout is forwarded untouched, so piping it is unaffected. Both
