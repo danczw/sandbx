@@ -169,16 +169,19 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    sandbox.rs   SandboxRun
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller, and the gate it answers with
-   error.rs     AgentError, SandboxRunError, PolicyError, HashError
+   auth.rs      Auth — where the provider key comes from: the environment, then
+                a 0600 file, and the login/logout/status that maintain it
+   error.rs     AgentError, SandboxRunError, PolicyError, HashError, AuthError
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
-tests/          agent_run, audit_log, audit_log_install, cwd_policy, hash,
-                name, sandbox_run
+tests/          agent_run, audit_log, audit_log_install, auth, auth_store,
+                cwd_policy, hash, name, sandbox_run
 ```
 
-Lib `sandbx_cli`, bin `sandbx`. Three subcommands: `sandbox-run`, `agent-run`
-and `hash`, the last of which runs no sandbox — it reads one file, so a digest can
-be taken before there is a policy to take it under.
+Lib `sandbx_cli`, bin `sandbx`. Four subcommands: `sandbox-run`, `agent-run`,
+`hash` and `auth`. The last two run no sandbox — `hash` reads one file, so a
+digest can be taken before there is a policy to take it under, and `auth` touches
+only the credential file.
 
 `Grants` exists so the axis loop, the one widening it applies — a write grant
 confers read — and the working-directory default are written once. Two copies

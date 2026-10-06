@@ -207,14 +207,41 @@ the link target too: `--allow-read /run/systemd/resolve`.
 has no equivalent — a statically linked musl binary starts on UDP and falls back
 to TCP only on a truncated reply, so this route does not open it.
 
+## Authenticate
+
+`agent-run` needs an Anthropic API key, from either of two places. The
+environment comes first:
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-…
+```
+
+Or store it once, and export nothing:
+
+```sh
+read -rs KEY && printf %s "$KEY" | sandbx auth login
+sandbx auth status   # says which source answered, never prints the key
+sandbx auth logout
+```
+
+`auth login` reads the key from stdin and will not prompt for it, so it is never
+echoed to your terminal, never in your shell's history, and never in argv where
+any process on the host could read it. It writes
+`$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) with mode `0600`,
+and refuses to read that file later if anyone but you can.
+
+Exporting the variable wins over the stored key, so you can override it for one
+shell without logging out. The stored key is plaintext — the mode keeps it from
+other users on the host, not from anything running as you, and not from the agent
+if you grant it read access to your config directory. See
+[SECURITY.md](SECURITY.md).
+
 ## Try the agent
 
 `agent-run` asks one question and lets the model use tools to answer it. The same
 grants apply, and they are the only thing bounding what the agent reaches:
 
 ```sh
-export ANTHROPIC_API_KEY=sk-ant-…
-
 sandbx agent-run -- "find the TODO comments under src and list them"
 ```
 
@@ -271,9 +298,12 @@ the turn, with the reason on stderr.
 > finish, and read [SECURITY.md](SECURITY.md) before pointing it at anything you
 > care about.
 >
-> `ANTHROPIC_API_KEY` is read by the harness, and no tool sees it unless you name
-> it to `--allow-env` — which hands over the value in full. That is the one flag
-> to think twice about here.
+> The key is read by the harness — from `ANTHROPIC_API_KEY` or, failing that, from
+> the file `auth login` wrote. No tool sees an exported key unless you name it to
+> `--allow-env`, which hands over the value in full; that is the one flag to think
+> twice about here. A stored key is not in the harness's environment at all, so
+> there is nothing for that flag to pass through — but it is on disk under your
+> config directory, so a read grant covering it reaches the key instead.
 
 ## Install
 

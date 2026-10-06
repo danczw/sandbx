@@ -303,11 +303,26 @@ Three properties matter as much as the list:
   tool without exposing the value to the tool is a separate problem
   ([#41](https://github.com/danczw/sandbx/issues/41)) and is not solved here:
   name a variable only when the command genuinely needs its value.
-  The example is not hypothetical: `agent-run` reads `ANTHROPIC_API_KEY` from the
-  harness's own environment, so the harness holds a live key for the whole turn.
-  A tool the agent runs does not see it — the environment is cleared and only
-  what the policy names crosses — unless you name that variable, which hands the
-  key to a process a hijacked turn chose the arguments for.
+  The example is not hypothetical: when `ANTHROPIC_API_KEY` is set, `agent-run`
+  reads it from the harness's own environment, so the harness holds a live key for
+  the whole turn. A tool the agent runs does not see it — the environment is
+  cleared and only what the policy names crosses — unless you name that variable,
+  which hands the key to a process a hijacked turn chose the arguments for.
+- **A stored credential is protected from other users, not from the agent.**
+  `sandbx auth login` writes the key to
+  `$XDG_CONFIG_HOME/sandbx/credentials.toml` with mode `0600` in a directory at
+  `0700`, and sandbx refuses to read that file rather than reading it when any
+  group or other bit is set. That bounds who *else* on the host can read it. It is
+  not encryption: the key is plaintext, readable by your own uid and by root, and
+  the process holding it is the harness, which is not sandboxed. Storing it does
+  remove one exposure — a key in the file is not in the harness's environment, so
+  `--allow-env ANTHROPIC_API_KEY` then has nothing to hand over. It adds another,
+  which is the one to plan around: the file lives under your config directory, so
+  a filesystem grant covering it — `--allow-read ~/.config` — reads the credential
+  into the agent's reach. The working-directory default refuses `$HOME` and the
+  directories holding it, so reaching the file takes an explicit flag; it takes
+  only one. An OS keyring would not change this, and is not offered — see
+  [context/decision-credentials.md](context/decision-credentials.md).
 - **The policy itself is visible to the command.** It crosses into the helper as
   argv, and a process can read its own `/proc/self/cmdline`, so the granted paths
   and the allowlisted variable *names* are readable from inside the sandbox. Only

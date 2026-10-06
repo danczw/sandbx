@@ -1,17 +1,50 @@
 # Decision: where a credential comes from
 
-Three tiers were designed; tier 1 is the one the code reads.
+Three tiers were designed and two are built. The argument for a second source is
+that `agent-run` once read the environment alone, so a user with no
+`ANTHROPIC_API_KEY` exported had no way to authenticate at all — an argument that
+did not exist before the turn loop had a caller (#109).
 
 | Tier | Source | Where |
 |---|---|---|
-| 1 | `ANTHROPIC_API_KEY` from the environment, via `anthropic_api_key` | `sandbx-providers/src/credentials.rs`, wrapped in `secrecy::SecretString` |
-| 2 | OS keyring | #109 |
-| 3 | `~/.config/sandbx/credentials.toml` at `0600` | #109 |
+| 1 | `ANTHROPIC_API_KEY` from the environment, via `resolve_api_key` | `sandbx-providers/src/credentials.rs`, wrapped in `secrecy::SecretString` |
+| 2 | OS keyring | dropped, below |
+| 3 | `$XDG_CONFIG_HOME/sandbx/credentials.toml` at `0600` | `sandbx-cli/src/auth.rs` |
 
-Tiers 2 and 3 belong with `sandbx auth login` (#109). The argument for them is
-that `agent-run` reads tier 1 alone, so a user with no `ANTHROPIC_API_KEY`
-exported has no way to authenticate at all — an argument that did not exist
-before the turn loop had a caller.
+The two live tiers are tried in that order, and the order is the point: exporting
+a variable overrides the stored key for one shell without an `auth logout` first.
+`auth status` names which answered. A tier-3 file is refused rather than read when
+its mode carries any group or other bit, because a file that was already disclosed
+cannot be undisclosed by using it.
+
+`auth login` takes the key on stdin and refuses a tty rather than prompting. A
+prompt would echo the key into the terminal's scrollback, and the obvious
+alternative — an argument — would publish it through `/proc/<pid>/cmdline` to
+every process on the host. Refusing a tty means the documented idiom is
+`read -rs KEY && printf %s "$KEY" | sandbx auth login`, which keeps the key out of
+scrollback, shell history and argv alike. The cost is that the tty refusal cannot
+be tested without a pty; it is not covered.
+
+## Why the keyring was dropped
+
+Tier 2 is not deferred and there is no issue for it. It would buy less than it
+costs:
+
+- The Linux backend is secret-service, which links a D-Bus client stack and
+  session crypto into the harness process. That collides with a rule
+  [SECURITY.md](../SECURITY.md) already states — anything linked into the binary
+  runs with the harness's privileges, not a tool's — making it the largest new
+  attack surface in the binary, guarding a secret a `0600` file also guards.
+- It is unavailable where sandbx runs. secret-service needs a session bus and an
+  unlocked collection: absent headless, in a container, in CI, over plain ssh. The
+  `linux-native` backend is the kernel keyutils session keyring, which is
+  memory-only and gone at logout, so it is not storage.
+- Release binaries are static musl, and `linux-native` wants libkeyutils (C).
+- "Keyring, else file" is a fail-open shape: misreading a locked collection as an
+  absent item authenticates with a different credential than the one stored.
+- Linux secret-service has no meaningful per-application ACL — any process running
+  as you can ask the daemon. Against a local attacker already running as your uid
+  both tiers fall, and the file is at least inspectable.
 
 ## What this covers, and what it does not
 
