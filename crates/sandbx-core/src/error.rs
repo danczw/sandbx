@@ -126,6 +126,18 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
+    /// The bytes at the program's path are not the ones the caller pinned, so it never ran.
+    ///
+    /// No warning mode: the bypass is omitting the digest.
+    PinMismatch {
+        /// The program as the caller named it.
+        program: String,
+        /// What the caller said the bytes would hash to.
+        expected: crate::Sha256Digest,
+        /// What they actually hashed to.
+        actual: crate::Sha256Digest,
+    },
+
     /// A sandboxed process outran its time limit and was killed.
     ///
     /// Distinct from [`SpawnFailed`](Self::SpawnFailed), which would make a wedged command
@@ -174,6 +186,19 @@ impl std::fmt::Display for SandboxError {
             Self::ExecFailed { source } => {
                 write!(f, "could not execute the sandboxed command: {source}")
             }
+            Self::PinMismatch {
+                program,
+                expected,
+                actual,
+            } => {
+                // Both digests, because only the pair tells the operator whether they
+                // pinned the wrong bytes or the bytes changed under them.
+                write!(
+                    f,
+                    "{program} is not the binary it was pinned to: expected {expected}, \
+                     found {actual}"
+                )
+            }
             Self::Landlock { detail } => {
                 write!(f, "kernel refused the Landlock ruleset: {detail}")
             }
@@ -200,6 +225,7 @@ impl std::error::Error for SandboxError {
             | Self::NamespaceSetupFailed { .. }
             | Self::ProcessHardening { .. }
             | Self::TimedOut { .. }
+            | Self::PinMismatch { .. }
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. }
             | Self::SpawnFailed { source, .. }
@@ -222,7 +248,7 @@ impl SandboxError {
     ///
     /// Hand-maintained against `label`; an omission fails safe, falling back to the relayed
     /// exit status.
-    pub(crate) const REPORTED_BY_HELPER: [&str; 8] = [
+    pub(crate) const REPORTED_BY_HELPER: [&str; 9] = [
         "bad_helper_args",
         "landlock",
         "seccomp",
@@ -230,6 +256,7 @@ impl SandboxError {
         "process_hardening",
         "inner_stage_failed",
         "exec_failed",
+        "pin_mismatch",
         "unsupported",
     ];
 
@@ -249,6 +276,7 @@ impl SandboxError {
             Self::SpawnFailed { .. } => "spawn_failed",
             Self::InnerStageFailed { .. } => "inner_stage_failed",
             Self::ExecFailed { .. } => "exec_failed",
+            Self::PinMismatch { .. } => "pin_mismatch",
             // The word the operator typed and the docs use, so it is the word a trail
             // reader greps for.
             Self::TimedOut { .. } => "timeout",
@@ -273,6 +301,15 @@ mod tests {
 
     /// One of every variant. The `match` below is exhaustive, so a new variant fails to
     /// compile until someone decides whether it belongs in `REPORTED_BY_HELPER` too.
+    /// A distinct digest per `seed`, so a mismatch sample really mismatches.
+    fn digest(seed: &str) -> crate::Sha256Digest {
+        let mut file = tempfile::NamedTempFile::new().expect("a temporary file");
+        std::io::Write::write_all(&mut file, seed.as_bytes()).expect("write");
+        let mut handle = std::fs::File::open(file.path()).expect("reopen");
+
+        crate::Sha256Digest::of_file(&mut handle).expect("hash")
+    }
+
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
@@ -305,6 +342,11 @@ mod tests {
                 source: io(),
             },
             SandboxError::ExecFailed { source: io() },
+            SandboxError::PinMismatch {
+                program: "/sample".to_string(),
+                expected: digest("a"),
+                actual: digest("b"),
+            },
             SandboxError::TimedOut {
                 after: std::time::Duration::from_secs(1),
             },
@@ -323,6 +365,7 @@ mod tests {
                 | SandboxError::SpawnFailed { .. }
                 | SandboxError::InnerStageFailed { .. }
                 | SandboxError::ExecFailed { .. }
+                | SandboxError::PinMismatch { .. }
                 | SandboxError::TimedOut { .. }
                 | SandboxError::Unsupported { .. } => {}
             }

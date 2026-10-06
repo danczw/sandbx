@@ -62,6 +62,53 @@ impl Sha256Digest {
     }
 }
 
+/// Open `program`, and hand back the descriptor only if its bytes are `expected`.
+///
+/// The returned handle is the whole point: it, and not the path, is what gets exec'd, so
+/// there is no second resolution between the check and the run for the file to be swapped
+/// in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
+///
+/// Follows symlinks, unlike `fs_guard`'s `open`. The proposition here is "the bytes
+/// `execve` would run hash to this", and `execve` follows them too; refusing a symlink
+/// would refuse `/usr/bin/python3` and buy nothing, the swap being closed by holding the
+/// inode rather than by how it was reached.
+pub(crate) fn open_verified(
+    program: &str,
+    expected: Sha256Digest,
+) -> Result<std::fs::File, crate::SandboxError> {
+    let mut file =
+        std::fs::File::open(program).map_err(|source| crate::SandboxError::ExecFailed {
+            // The same variant an unpinned run would fail with: under Landlock there is no
+            // path `execve` can run that `open` for reading cannot.
+            source,
+        })?;
+
+    let actual = Sha256Digest::of_file(&mut file)
+        .map_err(|source| crate::SandboxError::ExecFailed { source })?;
+
+    if actual != expected {
+        return Err(crate::SandboxError::PinMismatch {
+            program: program.to_string(),
+            expected,
+            actual,
+        });
+    }
+
+    Ok(file)
+}
+
+/// The path that execs `file` itself rather than whatever its name now points at.
+///
+/// Landlock dereferences this magic link, so the exec is still checked against the real
+/// path and a pinned run gains no right and needs no grant on `/proc`. `as_raw_fd` on a
+/// borrow is safe — only adopting a descriptor is not — and the number here is only
+/// formatted into a path.
+pub(crate) fn fd_path(file: &std::fs::File) -> std::path::PathBuf {
+    use std::os::fd::{AsFd, AsRawFd};
+
+    std::path::PathBuf::from(format!("/proc/self/fd/{}", file.as_fd().as_raw_fd()))
+}
+
 impl fmt::Display for Sha256Digest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0 {

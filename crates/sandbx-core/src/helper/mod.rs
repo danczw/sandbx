@@ -314,9 +314,25 @@ fn restrict_and_exec(
     // narrowing its environment here is what decides what the command can read out of its
     // own `environ`. Nothing here depends on the earlier stages having narrowed the same
     // environment; the check above is what reports a stage that stopped.
+    // After `apply` too, so the descriptor is provably one the policy authorizes: opening
+    // first would hash a file no grant covers, and report a mismatch where the honest
+    // answer is a denied read.
+    let image = request
+        .pin
+        .map(|expected| crate::digest::open_verified(&request.program, expected))
+        .transpose()?;
+
     let error = {
         use std::os::unix::process::CommandExt;
-        let mut command = crate::spawn::command(&request.program, &request.policy);
+        // The descriptor that was hashed, named so the kernel opens that same inode; the
+        // handle outlives the `exec` below, which is what keeps the name valid.
+        let program = image.as_ref().map(crate::digest::fd_path);
+        let program = program.as_deref().unwrap_or(request.program.as_ref());
+
+        let mut command = crate::spawn::command(program, &request.policy);
+        // Unconditional, so a matching pin changes nothing the command can observe: without
+        // it `$0` would be the procfs path, which `ps` and a multi-call binary both read.
+        command.arg0(&request.program);
         command.args(&request.args);
 
         // Returns only on failure, and the channel duplicate is close-on-exec, so the

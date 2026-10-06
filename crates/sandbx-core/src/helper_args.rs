@@ -208,6 +208,15 @@ impl HelperArgs {
             }
         };
 
+        // A pin means the helper opens the file itself, so it resolves the name instead of
+        // libc — and a bare name is resolved against a `PATH` the *policy* defines, which
+        // would have it hash one file and `execve` another. Refused rather than searched.
+        if pin.is_some() && !std::path::Path::new(&program).is_absolute() {
+            return Err(SandboxError::BadHelperArgs {
+                detail: "a pinned program that is not an absolute path",
+            });
+        }
+
         Ok(Self {
             policy,
             program,

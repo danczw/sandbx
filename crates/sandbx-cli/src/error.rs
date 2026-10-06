@@ -64,6 +64,15 @@ pub enum PolicyError {
         /// The variable both flags claim.
         name: String,
     },
+
+    /// `--pin-sha256` was given more than once.
+    RepeatedPin,
+
+    /// `--pin-sha256` was given for a program that is not an absolute path.
+    PinNeedsAbsoluteProgram {
+        /// The program as it was typed.
+        program: String,
+    },
 }
 
 impl std::fmt::Display for PolicyError {
@@ -124,6 +133,19 @@ impl std::fmt::Display for PolicyError {
                 "--dns-over-tcp sets {name} itself, so --allow-env {name} would be dropped \
                  rather than honoured — pass one of the two, not both"
             ),
+            // No `ADVICE` either, for the same reason, and both say what to write instead.
+            Self::RepeatedPin => write!(
+                f,
+                "one run execs one program, so there is one digest to pin — \
+                 pass --pin-sha256 once"
+            ),
+            Self::PinNeedsAbsoluteProgram { program } => write!(
+                f,
+                "--pin-sha256 needs an absolute program, and {program} is not one: sandbx \
+                 opens the file to hash it, while a bare name is resolved against the PATH \
+                 the policy gives the command — write `$PWD/{program}` or \
+                 `$(command -v {program})`"
+            ),
         }
     }
 }
@@ -136,7 +158,9 @@ impl std::error::Error for PolicyError {
             | Self::UnnamedHome { .. }
             | Self::SystemExecutables { .. }
             | Self::FilesystemRoot
-            | Self::ImposedVariable { .. } => None,
+            | Self::ImposedVariable { .. }
+            | Self::RepeatedPin
+            | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } => Some(source),
         }
     }

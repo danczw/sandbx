@@ -6,12 +6,14 @@
 mod agent;
 mod error;
 mod grants;
+mod hash;
 pub mod logging;
 mod sandbox;
 
 pub use agent::AgentRun;
 pub use error::{AgentError, PolicyError, SandboxRunError};
 pub use grants::Grants;
+pub use hash::{Hash, HashError};
 pub use sandbox::SandboxRun;
 
 #[derive(Debug, clap::Parser)]
@@ -86,4 +88,18 @@ pub enum Command {
     /// sandbx agent-run --allow-read /srv -- "what is in /srv?"
     /// ```
     AgentRun(AgentRun),
+
+    /// Print a file's SHA-256, in the form `--pin-sha256` takes.
+    ///
+    /// The only subcommand that runs nothing and confines nothing: it reads the
+    /// file in the harness, the way `sha256sum` does, because the digest has to
+    /// exist before there is a policy to pin anything under. The hex and a
+    /// newline, and nothing else, so it composes:
+    ///
+    /// ```text
+    /// sandbx sandbox-run --allow-exec "$PWD/target/debug/mytool" \
+    ///   --pin-sha256 "$(sandbx hash target/debug/mytool)" \
+    ///   -- "$PWD/target/debug/mytool"
+    /// ```
+    Hash(Hash),
 }
