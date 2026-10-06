@@ -63,6 +63,9 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # an integration test can only reach a dependency it names itself. No new crate
 # enters the tree.
 tracing = "0.1.44"
+# Likewise already in the tree, three crates over. The home derivation keeps both spellings
+# of a symlinked `$HOME`, and nothing but a real symlink exercises that.
+tempfile = "3.27.0"
 
 [lints]
 workspace = true

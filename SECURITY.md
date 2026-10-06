@@ -88,9 +88,12 @@ Three properties matter as much as the list:
   one), anywhere overlapping the system binaries the same default grants execute
   on, or in a directory holding the running `sandbx`. Only the `$HOME` arm depends
   on the environment, and only to name a directory the others already cover by
-  location; with no usable `HOME` the refusal widens to any direct child of those
-  locations rather than lapsing. What that write grant means for files executed
-  *later*, outside the sandbox, is a non-claim of its own below.
+  location; with no usable `HOME` — unset, or naming nothing that resolves to a
+  directory — the refusal widens to any direct child of those locations rather
+  than lapsing. It reaches no further than those locations, so a home root kept
+  somewhere else is covered by the `$HOME` arm alone and by nothing at all when
+  `HOME` is unusable; name it with a path flag. What that write grant means for
+  files executed *later*, outside the sandbox, is a non-claim of its own below.
 - **Grants do not widen each other, with one named exception.** Read access
   does not confer the right to execute what it can see, and write access confers
   neither read nor execute — a write-only drop directory stays unreadable, on

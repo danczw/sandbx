@@ -115,8 +115,31 @@ What that showed is that `$HOME` was carrying a decision it cannot carry. Nothin
 about the variable makes a root at `/home` narrower — it is write over every
 user's home however `HOME` is spelled — so the location rule stands on its own and
 `$HOME` only adds the one directory a location cannot name: `~/code` is fine,
-`~` is not. `current_root` also now keeps only an absolute `HOME`, since set but
-useless is the unset case.
+`~` is not.
+
+The same conflation then survived one layer in, on the *child* reading, which is
+the one arm `$HOME` legitimately gates — and it survived because `homes` was still
+answering two questions with one list. `homes.is_empty()` was reading as "no usable
+`$HOME`" off a list whose actual job is "paths a cwd is compared against", so any
+absolute path kept in it for comparison also silenced the stand-in. `HOME=/nonexistent`
+with cwd `/home/other` derived read and write over a neighbour's tree (#154), and so
+did `HOME=/dev/null` and the `HOME=/` Docker hands a UID with no passwd entry — the
+first names nothing, the other two resolve to something that is not a home, and all
+three matched no cwd while satisfying the gate.
+
+So the two signals are two fields. `Homes { paths, usable }`: `paths` holds every
+absolute spelling of `$HOME` worth comparing a cwd against, and `usable` says
+whether it resolved to a directory below the filesystem root. An unresolvable
+`$HOME` is still compared — `cd /srv/people` with `HOME=/srv/people/alice`
+unprovisioned is refused for *holding* a home, which a filter that dropped the path
+would have lost — and it never satisfies the stand-in gate. A fourth tightening of
+the one list would have kept failing in one direction or the other.
+
+What this costs, visibly: a cwd shaped like a home under `HOME_PARENTS` is now
+refused where an unusable `$HOME` previously derived. `HOME=/home/app` not yet
+provisioned and cwd `/home/builder` is the shape, and the refusal is the point —
+the two are indistinguishable without a home to compare — but it is a new refusal,
+and the flags lift it.
 
 This is a list of names, which the depth-rule section above rejects for exactly
 that reason, and the distinction is worth stating because it is thin. The depth
@@ -131,6 +154,16 @@ An unusable `HOME` still *derives* — refusing outright would break the contain
 case the default exists for, `HOME` unset and cwd `/app`. That is the one
 constraint here a plausible edit would quietly reverse, which is why it is the
 sentence on `vetted_root`'s `///` as well as a line in this file.
+
+Non-goal: a home root `HOME_PARENTS` does not list. With no usable `$HOME`, a site
+that keeps homes at `/srv/people` or behind autofs gets neither the child refusal
+nor the parent one, because both recognise a home by location and that location is
+not one they know — `$HOME` is the whole of the cover there, and an unusable one
+leaves none. Consulting `/etc/passwd` was considered and does not fix it: the
+layouts that need it are the LDAP and autofs ones `/etc/passwd` cannot see either,
+so it would move the omission rather than close it, at the cost of parsing a file
+inside the guard. This is the degradation the paragraph above accepts, and
+`--allow-read`/`--allow-write` are the answer for such a site either way.
 
 ### The system binaries are refused from both directions
 
@@ -153,10 +186,10 @@ than expected and hears about it immediately, by name, with the flags to type.
 
 ### Both spellings of `$HOME`
 
-The wrapper pushes raw `$HOME` *and* its canonical form. Fedora Silverblue ships
-`/home -> /var/home`, so `getcwd` says `/var/home/u` where `$HOME` says
-`/home/u`; comparing one form is a bypass of the other. `HOME` unset falls out as
-an empty slice with no second code path.
+`named_homes` keeps raw `$HOME` *and* its canonical form when they differ. Fedora
+Silverblue ships `/home -> /var/home`, so `getcwd` says `/var/home/u` where `$HOME`
+says `/home/u`; comparing one form is a bypass of the other. `HOME` unset falls out
+as an empty `paths` with no second code path.
 
 ## The enforcer is reached by inode
 
@@ -239,13 +272,14 @@ different flags.
 
 ## The seam
 
-`vetted_root(cwd, homes, granted)` is pure, with all three inputs injected as values;
-`current_root()` is the thin wrapper that reads them off the process. Same split as
+`vetted_root(cwd, homes, granted)` is pure, with all three inputs injected as values,
+and `named_homes(home) -> Homes` takes the one variable the same way; `current_root()`
+is the thin wrapper that reads both off the process. Same split as
 `resolve_api_key(env_var, lookup)` / `anthropic_api_key()` in
 `crates/sandbx-providers/src/credentials.rs`, with values rather than a closure
 since nothing is called twice.
 
-Both are private, and the tests for them are inline. Making the seam public so
+All three are private, and the tests for them are inline. Making the seam public so
 `tests/sandbox_run.rs` could drive the refusals is the trade
 `guide-module-layout.md` forbids — widening the API to suit a test. What the
 integration suite gets instead is the end-to-end refusals in `tests/cwd_policy.rs`,
@@ -291,7 +325,32 @@ that arm re-gated on homes.is_empty() (the draft-2 hole)
 
 the child reading deleted
    ──► an_unset_home_refuses_a_child_of_one                fails
+       an_unresolvable_home_refuses_a_child_of_one         fails
+       a_home_that_is_no_directory_refuses_a_child_of_one  fails
+       a_refusal_names_the_flags_to_type_instead           fails
        the_home_parents_are_refused_with_no_home_set       passes
+
+that gate re-read off the path list, !usable ──► paths.is_empty() (the #154 hole)
+   ──► an_unresolvable_home_refuses_a_child_of_one         fails
+       a_home_that_is_no_directory_refuses_a_child_of_one  fails
+       an_unset_home_refuses_a_child_of_one                passes  ◄── the gate is satisfied
+       refuses_to_run_from_home_whatever_home_names        passes  ◄── /home is a home parent
+
+usable stops asking for a directory below / (HOME=/dev/null, HOME=/)
+   ──► a_home_that_is_no_directory_refuses_a_child_of_one  fails
+       an_unresolvable_home_refuses_a_child_of_one         passes  ◄── it never resolved
+
+the written form dropped when $HOME does not resolve
+   ──► an_unresolvable_home_is_still_compared              fails
+       an_unresolvable_home_refuses_a_child_of_one         passes  ◄── the other field
+
+the Silverblue second spelling dropped
+   ──► a_symlinked_home_names_both_forms                   fails
+
+an unusable $HOME refused outright instead of deriving
+   ──► an_unresolvable_home_still_runs_from_a_project      fails
+       refuses_to_run_from_home_whatever_home_names        fails   ◄── the wrong refusal
+       an_unset_home_still_runs_from_a_project             passes  ◄── nothing to refuse on
 
 overlap arm deleted, or tested one way round
    ──► a_directory_overlapping_the_system_binaries_is_refused  fails
@@ -299,10 +358,12 @@ overlap arm deleted, or tested one way round
        a_directory_named_like_a_system_one_is_a_valid_root     passes
 ```
 
-The home arms are three tests rather than one loop because the gating is what went
-wrong twice: a single looping test could not tell "the location rule is gone" from
-"it is back behind `homes.is_empty()`" from "it no longer sees `/home/other`", and
-the middle one is the reproduced bug.
+The home arms are five tests rather than one loop because the gating is what went
+wrong three times: a single looping test could not tell "the location rule is gone"
+from "it is back behind the path list" from "it no longer sees `/home/other`" from
+"`/home/other` is seen but an unusable `$HOME` satisfies the gate", and the last is
+#154 in both its spellings — a `$HOME` that resolves to nothing, and one that
+resolves to something that is not a home.
 
 Deleting the overlap arm and testing it one way round fail the same two tests,
 which is the signal being asked for: the loop covers each granted path *and* a
@@ -321,12 +382,13 @@ comparison mutate together: that is the derived-expectation trap
 `decision-enforcement-seam.md` names, and it is why it is a cross-subcommand
 consistency test and not the one pinning what the default *is*.
 
-The gap the tests do not close: `current_root()`'s own lookups — the two spellings
-of `$HOME`, the `is_absolute` filter, the `canonicalize` fallbacks — are read off
-the live process and have no unit test, by construction. `tests/cwd_policy.rs`
-covers what it can by setting `HOME` on the spawned binary, which is how the
-empty-and-relative cases are pinned; the Silverblue double-push is argued above and
-tested only through `vetted_root`, which receives both forms as values. Note what
-this means for the filter: it is the arm that does *not* depend on it —
-`holds_home_directories` — carrying the security weight, and that is the reason to
-prefer it.
+The gap the tests do not close, narrowed by #154: the derivation is now
+`named_homes`, which takes `$HOME` as a value and is unit-tested over every shape —
+unset, empty, relative, unresolvable, resolving to a non-directory, resolving to
+`/`, resolving to a real home, and symlinked, that last against a `tempfile`
+symlink rather than argued from a Silverblue host. All that is left reading the
+live process is `current_root()`'s two lookups themselves, `getcwd` and
+`var_os("HOME")`; `tests/cwd_policy.rs` covers what it can of them by setting
+`HOME` on the spawned binary. Note what the history means: it is the arm that
+depends on `$HOME` not at all — `holds_home_directories` — that never had any of
+the three holes, and that is the reason to prefer it.
