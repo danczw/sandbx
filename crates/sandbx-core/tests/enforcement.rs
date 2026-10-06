@@ -1010,6 +1010,50 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
     );
 }
 
+/// The kernel hands the interpreter the path sandbx exec'd, and that path names a
+/// close-on-exec descriptor — so a pinned script would die as `cannot open
+/// /proc/self/fd/N` rather than run. Refused with a reason instead.
+///
+/// The script is its own pinned bytes, which is what makes this the script refusal and not
+/// a mismatch; the same file runs unpinned, so the refusal is the pin's and not the policy's.
+#[test]
+fn a_pinned_script_is_refused_rather_than_exec_d() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("script");
+    std::fs::write(&program, "#!/bin/sh\necho SCRIPT_RAN\n").unwrap();
+    std::fs::set_permissions(
+        &program,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let refused = run_pinned(
+        &policy,
+        program.to_str().unwrap(),
+        &[],
+        Some(digest_of(&program)),
+    );
+
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        !refused.status.success() && !stderr.contains("/proc/self/fd"),
+        "a pinned script was exec'd rather than refused: {stderr}"
+    );
+    assert!(
+        stderr.contains("#! script"),
+        "the refusal did not say the program is a script: {stderr}"
+    );
+
+    let ran = run(&policy, program.to_str().unwrap(), &[]);
+    assert_eq!(
+        String::from_utf8_lossy(&ran.stdout).trim(),
+        "SCRIPT_RAN",
+        "the script does not run unpinned either, so the refusal above proves nothing: {}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+}
+
 /// A matching pin must change nothing the command can observe about itself, and `$0` is
 /// the one thing exec'ing a descriptor would otherwise rewrite.
 #[test]
