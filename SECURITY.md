@@ -86,8 +86,8 @@ Three properties matter as much as the list:
   rather than adding to it, so an explicit policy is never widened behind you; and
   the default refuses to be rooted at the filesystem root, at `$HOME`, where home
   directories live (`/home`, `/Users`, `/var/home`, `/root`, or anything holding
-  one), anywhere overlapping the system binaries the same default grants execute
-  on, or in a directory holding the running `sandbx`. Only the `$HOME` arm depends
+  one), or anywhere overlapping the system binaries the same default grants
+  execute on. Only the `$HOME` arm depends
   on the environment, and only to name a directory the others already cover by
   location; with no usable `HOME` — unset, naming nothing that resolves to a
   directory, or naming a place homes live (`/home`, `/Users`, `/var/home`, or

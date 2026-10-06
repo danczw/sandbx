@@ -61,8 +61,7 @@ until you add `--allow-exec ~/.cargo/bin` and read access to what it needs
 the system paths, which is why the examples above use `grep` and `cat`.
 
 Some working directories are refused rather than granted, because the tree would
-be far wider than you meant, would hold what every command already runs, or would
-hold the enforcer itself:
+be far wider than you meant, or would hold what every command already runs:
 
 ```console
 $ cd ~ && sandbx sandbox-run -- true
@@ -70,12 +69,17 @@ sandbx: refusing to derive a policy from your home directory /home/you — pass 
 ```
 
 The rest are the filesystem root; where home directories live (`/home`, `/Users`,
-`/var/home`, `/root`, or anything holding one); anything overlapping the system
-binaries, since `sandbx` already grants execute there and write beside it would
-let a command rewrite `/usr/bin/git`; and any directory holding the running
-`sandbx`, where a write grant replaces the thing doing the enforcing. Each refusal
-names the flags to type instead, and passing them lifts it: the guard governs what
-`sandbx` derives, never what you ask for.
+`/var/home`, `/root`, or anything holding one); and anything overlapping the
+system binaries, since `sandbx` already grants execute there and write beside it
+would let a command rewrite `/usr/bin/git`. Each refusal names the flags to type
+instead, and passing them lifts it: the guard governs what `sandbx` derives,
+never what you ask for.
+
+A directory holding the running `sandbx` is *not* refused, so a no-flag run from
+an install prefix such as `~/.local/bin` grants write there. The helper is reached
+through `/proc/self/exe`, an inode no rename can redirect, so a replacement cannot
+choose the confinement of the next spawn — but it does reach the next invocation
+of `sandbx` you start yourself. See [SECURITY.md](SECURITY.md).
 
 With no usable `HOME` — a systemd unit, cron, `docker exec`, or a `HOME` that is
 empty or points nowhere — `sandbx` cannot tell one person's home directory from
