@@ -75,10 +75,14 @@ a Landlock ruleset the kernel will not take, a seccomp filter that will not inst
 supervisor already gone, an environment an earlier stage did not narrow — and each of
 those exits non-zero, which stage 1 relays on the command's behalf. So the record is
 `SandboxError::label` and the trail says `failed reason=<label>`; `exec_failed` is one
-member of that set rather than the only thing the channel can carry. That label set
-lives on `SandboxError`, which owns it because `label` is the exhaustive match a new
-variant has to pass through. The claim on fd 0 moves to the top of `exec_inner` for
-this: a refusal is only reportable from a point where the channel is already in hand.
+member of that set rather than the only thing the channel can carry. The set lives on
+`SandboxError`, which owns it because `label` is the exhaustive match a new variant has
+to pass through. The claim on fd 0 moves to the top of `exec_inner` for this: a refusal
+is only reportable from a point where the channel is already in hand.
+
+Stage 1's own refusals are not on the channel, so they still reach the trail as
+`exited code=1` — it holds the write end for its whole lifetime and could report, and
+the parent has only its forwarded stderr. Same gap, one stage up.
 
 **sandbx emits, not the helper.** One subscriber in the process tree, one timestamp
 source, one format, and no `tracing-subscriber` dependency in the helper. This is
@@ -129,12 +133,22 @@ there is nothing to protect, so stdin stays inherited — a hand-invoked
 unconditional `null` quietly took away.
 
 **Defence in depth behind that line.** `decode` accepts only labels in
-`Degradation::ALL` and `SandboxError::LABELS`, two closed sets kept disjoint by a
-test, so nothing can name a mechanism or a reason sandbx did not define; the record
-count is capped at the steps that exist plus the one refusal; and `encode` strips the
-separator characters from a detail so one record cannot forge a second. A refusal
-carries no detail at all — the reason reaches the operator on the helper's forwarded
-stderr.
+`Degradation::ALL` and `SandboxError::REPORTED_BY_HELPER`, two closed sets kept
+disjoint by a test, so nothing can name a mechanism or a reason sandbx did not
+define; the record count is capped at the steps that exist plus the one refusal; and
+`encode` strips the separator characters from a detail so one record cannot forge a
+second. A refusal carries no detail at all — the reason reaches the operator on the
+helper's forwarded stderr.
+
+`REPORTED_BY_HELPER` is a *subset* of what `SandboxError::label` can return, not all
+of it, and the four it leaves out are the point: `timeout`, `spawn_failed`,
+`path_not_allowed` and `unresolvable` are decisions sandbx and `FsGuard` make for
+themselves. A channel record outranks the exit status, so admitting `timeout` would
+let a forged line claim a kill that never happened *and* suppress the real outcome —
+on a trail whose whole purpose is that `reason="timeout"` can be filtered. The subset
+is hand-maintained against `label`, which the compiler cannot help with; a helper
+refusal missing from it is dropped rather than mistrusted, leaving the trail saying
+what it said before #157.
 
 ## What this is not
 

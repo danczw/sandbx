@@ -4,6 +4,10 @@
 //! across `exec`; stage 2 ([`exec_inner`]) is PID 1 of the new PID namespace and
 //! becomes the command. [`apply`] sequences [`ruleset`], [`seccomp`] and
 //! [`hardening`] in the order they have to happen in.
+//!
+//! Over the module budget by design: one irreducible syscall sequence, where every step
+//! is ordered against the ones around it, and splitting it would mean reading the halves
+//! together (`context/guide-module-layout.md`).
 
 mod hardening;
 mod ruleset;
@@ -215,10 +219,11 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         _ => (false, argv),
     };
 
-    // Ahead of everything that can refuse, so every refusal below is reportable; before
+    // As early as the argv allows, so every refusal below is reportable, and before
     // `apply`, so a seccomp filter or a Landlock ruleset cannot be what refuses the `dup`
-    // or `/dev/null`. Its own failure is the one that cannot be reported — it is what
-    // produces the handle.
+    // or `/dev/null`. Two refusals stay unreportable above it: a missing supervisor pid,
+    // which is read before the flag that says fd 0 is a channel at all, and this call's
+    // own failure, which is what produces the handle.
     let mut channel = match audit_on_stdin {
         true => Some(claim_audit_channel()?),
         false => None,
