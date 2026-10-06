@@ -1,34 +1,31 @@
 //! The channel the helper reports what the parent cannot see on, and its wire format.
 //!
 //! The helper installs no `tracing` subscriber and must not — its stderr is a pipe the
-//! parent replays verbatim — so it names what degraded and what it could not `exec`, and
-//! the *parent* decodes and emits. What a record means is decided here, never by whatever
-//! wrote the line. See `context/decision-helper-audit-channel.md` for the stdin slot.
+//! parent replays verbatim — so it names what degraded and what it could not `exec`, and the
+//! parent decodes and emits. What a record means is decided here, never by whatever wrote
+//! the line. `context/decision-helper-audit-channel.md` for the stdin slot.
 
 use std::fmt::Write as _;
 
 /// Separates a mechanism from its detail on the wire; records are newline-separated.
 ///
 /// A tab, because `detail` is prose built around `: ` and errno text. [`encode`] caps the
-/// detail rather than escaping it: a detail comes from an errno in this crate, never from
-/// input, so the cap is a bound rather than a sanitiser.
+/// detail rather than escaping it: a detail is errno text from this crate, never input.
 const SEPARATOR: char = '\t';
 
 /// How much of a detail crosses.
 ///
 /// The whole channel must fit a pipe buffer with nobody reading the other end — the parent
-/// reads only once the helper has been waited on, so a stage 1 blocked writing here would
-/// deadlock the run it is reporting on. Two records of this length sit two orders of
-/// magnitude inside the 64 KiB a Linux pipe holds by default.
+/// reads only once the helper has been waited on, so a stage blocked writing here would
+/// deadlock the run it reports on. [`RECORD_LIMIT`] records of this length sit well inside
+/// the 64 KiB a Linux pipe holds by default.
 const DETAIL_LIMIT: usize = 256;
 
 /// How many records [`decode`] will accept from one channel.
 ///
-/// Each step reports at most once, and one refusal at most crosses however many stages
-/// write: a stage reports only from a region where the stage below it does not yet exist.
-/// So anything beyond this did not come from [`encode`], and refusing the excess keeps a
-/// malformed channel from growing the trail without bound. Not a trust boundary: by the
-/// time the command exists the write end is gone.
+/// Each step reports at most once, and at most one refusal crosses however many stages
+/// write, a stage reporting only from a region where the stage below it does not yet exist.
+/// Anything beyond this did not come from [`encode`].
 const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
 
 /// What the helper reported on the channel.
@@ -40,8 +37,8 @@ pub(crate) enum Report<'a> {
     /// A helper stage refused rather than reaching the command, carrying the refusal's
     /// [`label`](crate::SandboxError::label).
     ///
-    /// On the channel because the stage exits non-zero and that status is relayed on the
-    /// command's behalf, so it would otherwise read as the command's own exit.
+    /// On the channel because the stage's non-zero exit is relayed on the command's behalf,
+    /// so it would otherwise read as the command's own.
     Failed(&'static str),
 }
 
@@ -61,8 +58,7 @@ pub(crate) enum Degradation {
 }
 
 impl Degradation {
-    /// Every step that can report on this channel; drives
-    /// [`from_label`](Self::from_label) and [`RECORD_LIMIT`].
+    /// Every step that can report here; drives `from_label` and [`RECORD_LIMIT`].
     pub(crate) const ALL: [Self; 2] = [Self::CapabilityBoundingSet, Self::UsernsIdentityMap];
 
     /// The stable name this step carries on the wire and in the audit trail.
@@ -105,10 +101,9 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
 
 /// Render the record a stage that refused rather than becoming the command reports.
 ///
-/// `'static` because this writes `label` as given, unlike [`encode`], so a `\t` in one
-/// would forge a second record; [`SandboxError::label`](crate::SandboxError::label) is the
-/// only source of one. No detail: the reason reaches the operator on the helper's stderr,
-/// which the parent forwards verbatim.
+/// `'static` because this writes `label` as given, unlike [`encode`], so a `\t` in one would
+/// forge a second record; [`SandboxError::label`](crate::SandboxError::label) is the only
+/// source of one. No detail: the reason reaches the operator on the helper's stderr.
 pub(crate) fn encode_refusal(label: &'static str) -> String {
     format!("{label}{SEPARATOR}\n")
 }
@@ -116,10 +111,8 @@ pub(crate) fn encode_refusal(label: &'static str) -> String {
 /// Parse what the helper wrote back into the records it reported.
 ///
 /// Skips an unrecognised line rather than failing the run, this being the reporting path for
-/// a sandbox that already carried on. What it must not do is pass an unvalidated label to
-/// the trail, hence the two closed sets [`Degradation::from_label`] and
-/// [`SandboxError::reportable_label`](crate::SandboxError::reportable_label). They must stay
-/// disjoint, or the order of the lookups below decides what a label means.
+/// a sandbox that already carried on. No label reaches the trail unvalidated, hence the two
+/// closed sets below; they must stay disjoint, or the lookup order decides what one means.
 pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
     channel
         .lines()

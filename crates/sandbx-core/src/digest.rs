@@ -1,8 +1,8 @@
 //! The SHA-256 of a binary, as an operator writes it and as the helper checks it.
 //!
-//! Bytes rather than a hex `String`, so a comparison cannot be decided by letter case or
-//! by a stray space. Parsing is the only way in, which leaves the 32-byte length to the
-//! type rather than to each caller. What uses one: a pinned entry point, in `helper`.
+//! Bytes rather than a hex `String`, so a comparison cannot be decided by letter case or by
+//! a stray space. Parsing is the only way in, which leaves the 32-byte length to the type.
+//! What uses one: a pinned entry point, in `helper`.
 
 use std::fmt;
 
@@ -41,9 +41,9 @@ impl Sha256Digest {
 
     /// Hash an already-open file.
     ///
-    /// Takes the handle and never a path: the caller hashes and then runs *this*
-    /// descriptor, and re-opening by path between the two is the swap the pin exists to
-    /// catch. Reads from wherever the handle is positioned, so it is `&mut`.
+    /// Takes the handle and never a path: the caller hashes and then runs this descriptor,
+    /// and re-opening by path between the two is the swap the pin exists to catch. Reads
+    /// from wherever the handle is positioned, so it is `&mut`.
     pub fn of_file(file: &mut std::fs::File) -> std::io::Result<Self> {
         use sha2::Digest as _;
         use std::io::Read as _;
@@ -68,12 +68,10 @@ impl Sha256Digest {
 
 /// Open `program`, and hand back the descriptor only if its bytes are `expected`.
 ///
-/// The returned handle is the whole point: it, and not the path, is what gets exec'd, so
-/// there is no second resolution between the check and the run for the file to be swapped
-/// in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
-///
-/// Follows symlinks, unlike `fs_guard`'s `open`: `execve` follows them too, and the swap
-/// is closed by holding the inode. See `context/decision-pinned-entry-point.md`.
+/// The handle and not the path is what gets exec'd, so nothing resolves a second time for a
+/// swap to land in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
+/// Follows symlinks, unlike `fs_guard`'s `open`, `execve` following them too.
+/// `context/decision-pinned-entry-point.md`.
 pub(crate) fn open_verified(
     program: &str,
     expected: Sha256Digest,

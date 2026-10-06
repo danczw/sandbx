@@ -12,16 +12,13 @@ use crate::SandboxError;
 /// before doing anything else and hands off to [`dispatch_helper_mode`].
 pub const HELPER_FLAG: &str = "--sandbx-core-exec";
 
-/// Argument that marks a process as the *inner* stage of helper mode.
+/// Argument that marks a process as the inner stage of helper mode.
 ///
-/// Internal protocol between the two helper stages: the supervisor started by
-/// [`HELPER_FLAG`] re-execs this binary with this flag once the namespaces exist, making
-/// that child PID 1 of the new PID namespace. Public only so a test can invoke the inner
-/// stage directly; elsewhere it runs a command without the namespaces confining it.
-///
-/// The check behind it is *liveness*, not authorization: the inner stage confirms the pid it
-/// was handed is still its parent, so someone is positioned to reap it, and a parent passing
-/// its own pid satisfies it. What confines the command is namespaces, seccomp and Landlock.
+/// Internal protocol: the supervisor started by [`HELPER_FLAG`] re-execs this binary with
+/// this flag once the namespaces exist, making that child PID 1 of the new PID namespace.
+/// Public only so a test can invoke the inner stage directly; elsewhere it runs a command
+/// without the namespaces confining it. The pid it carries is checked for liveness and not
+/// authorization — what confines the command is namespaces, seccomp and Landlock.
 pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
 
 /// What [`dispatch_helper_mode`] decided.
@@ -38,8 +35,7 @@ pub enum HelperDispatch {
     ///
     /// Usually the command never started, the restrictions being applied before the `exec`;
     /// the exception is a failure while waiting on the inner stage, where it may have run
-    /// but ran *with* them applied. Exit non-zero either way — falling through to run the
-    /// command from here is the exact failure the sandbox exists to prevent.
+    /// but ran with them applied. Exit non-zero either way.
     Failed(SandboxError),
 }
 
@@ -62,9 +58,6 @@ where
         return HelperDispatch::NotHelperMode;
     };
 
-    // Exhaustive `match` in each arm rather than `?`: the entry points return `Infallible`
-    // on success, so this cannot gain a path that returns without either running the
-    // command or reporting why not.
     match flag.as_str() {
         HELPER_FLAG => match crate::helper::exec_sandboxed(helper_args) {
             Err(error) => HelperDispatch::Failed(error),
@@ -78,9 +71,9 @@ where
 
 /// Dispatch helper mode first, then run `ordinary_main` if this was not one.
 ///
-/// The failure half is what a hand-written `main` gets wrong: printing the error but
-/// forgetting to return non-zero falls through to the ordinary path, and a fall-through here
-/// is a command that runs unrestricted. It cannot enforce being called *first*.
+/// Owns the failure half a hand-written `main` gets wrong: printing the error but returning
+/// zero falls through to the ordinary path, which is a command that runs unrestricted. It
+/// cannot enforce being called first.
 pub fn with_helper_dispatch<I, F>(argv: I, ordinary_main: F) -> std::process::ExitCode
 where
     I: IntoIterator<Item = OsString>,

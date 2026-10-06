@@ -10,23 +10,22 @@ const DNS_OVER_TCP_ENV: [(&str, &str); 1] = [("RES_OPTIONS", "use-vc")];
 
 /// A kind of access a policy can grant on a path.
 ///
-/// With [`Axis::grants`], the only statement of filesystem policy semantics in the
-/// workspace: the kernel layer, the guard, the helper argv and the audit record all derive.
+/// [`Axis::grants`] is the workspace's one statement of what each kind means; every
+/// consumer derives from it. See `context/decision-axis-table.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     /// See the path, and nothing more.
     Read,
     /// Change the path, without being able to read it back.
     Write,
-    /// See the path *and* run what is in it; the one axis that confers execute.
+    /// See the path and run what is in it; the one axis that confers execute.
     ReadExecute,
 }
 
 /// What an [`Axis`] confers, in terms no enforcement layer owns.
 ///
-/// Booleans rather than Landlock bits or `FsGuard` buckets, so this module depends neither
-/// on the `landlock` crate nor on how a child is invoked. Consumers destructure it, so a
-/// right added here fails to compile at each site that maps it.
+/// Booleans and not Landlock bits, so this module depends on no enforcement layer.
+/// Consumers destructure it, so a right added here fails to compile at every mapping site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grants {
     /// May see the path's contents.
@@ -43,10 +42,10 @@ impl Axis {
 
     /// What this axis grants; adding an axis is adding a row here.
     ///
-    /// The asymmetry runs one way and nothing but this table enforces it: `ReadExecute`
-    /// confers read, a program needing execute on the binary *and* read on the libraries its
+    /// Nothing but this table enforces the asymmetry `SECURITY.md` claims: `ReadExecute`
+    /// confers read, a program needing execute on the binary and read on the libraries its
     /// loader pulls in; no other grant confers execute, and write confers neither, so a
-    /// write-only drop directory stays unreadable. `SECURITY.md` claims this.
+    /// write-only drop directory stays unreadable.
     pub const fn grants(self) -> Grants {
         let (read, write, execute) = match self {
             Self::Read => (true, false, false),
@@ -64,9 +63,8 @@ impl Axis {
 
 /// What IP egress a policy grants.
 ///
-/// Not `#[non_exhaustive]`, and nothing matches it with a `_` arm: `HelperArgs::encode`,
-/// `net_rules`, `blocked_syscalls` and `AuditEvent::spawned` match exhaustively, so a fourth
-/// state is a compile error at every site that would otherwise leave it unenforced.
+/// Not `#[non_exhaustive]`, and no consumer matches it with a `_` arm, so a fourth state is
+/// a compile error at every site that would otherwise leave it unenforced.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum NetworkPolicy {
     /// No IP egress at all; the command runs in an empty network namespace.
@@ -76,8 +74,8 @@ pub enum NetworkPolicy {
     AnyPort,
     /// TCP connect and bind on these ports only; UDP and raw sockets denied.
     ///
-    /// Ports and not destinations: Landlock matches the port alone, so this reaches the
-    /// named ports on *every* routable host.
+    /// Landlock matches the port and not the destination, so this reaches the named ports on
+    /// every routable host.
     Ports(Vec<u16>),
 }
 
@@ -92,7 +90,7 @@ pub struct SandboxPolicy {
     executable: Vec<PathBuf>,
     network: NetworkPolicy,
     unix_sockets: bool,
-    /// Variable *names*, never values; the value is read at spawn time from the harness.
+    /// Variable names, never values; the value is read at spawn time from the harness.
     env: Vec<String>,
     /// Implies a value, unlike `env`, and only because that value is a compile-time constant.
     dns_over_tcp: bool,
@@ -109,13 +107,12 @@ impl SandboxPolicy {
         self.paths(Axis::Write)
     }
 
-    /// Paths the process may read *and* execute; no other grant confers execute.
+    /// Paths the process may read and execute; no other grant confers execute.
     pub fn executable_paths(&self) -> &[PathBuf] {
         self.paths(Axis::ReadExecute)
     }
 
-    /// Paths granted on `axis`; the named accessors are this with the axis fixed, and a
-    /// consumer that must treat every axis alike pairs it with [`Axis::ALL`].
+    /// Paths granted on `axis`; pair with [`Axis::ALL`] to treat every axis alike.
     pub fn paths(&self, axis: Axis) -> &[PathBuf] {
         match axis {
             Axis::Read => &self.readable,
@@ -147,11 +144,11 @@ impl SandboxPolicy {
         self
     }
 
-    /// Whether the process may reach the network *at all*.
+    /// Whether the process may reach the network at all.
     ///
-    /// A port allowlist answers yes — `hardening::isolate` reads this to decide whether to
+    /// A port allowlist answers yes: `hardening::isolate` reads this to decide whether to
     /// unshare the network namespace, and an allowlist inside an empty netns would permit
-    /// nothing. [`network`](Self::network) is how a caller tells narrowed from unrestricted.
+    /// nothing. [`network`](Self::network) tells narrowed from unrestricted.
     pub fn allows_network(&self) -> bool {
         self.network != NetworkPolicy::Denied
     }
@@ -164,7 +161,7 @@ impl SandboxPolicy {
     /// Whether the process may open unix-domain sockets.
     ///
     /// Separate from [`allows_network`](Self::allows_network): a socket in the filesystem is
-    /// not IP egress, and a network namespace isolates only *abstract* unix sockets.
+    /// not IP egress, and a network namespace isolates only abstract unix sockets.
     pub fn allows_unix_sockets(&self) -> bool {
         self.unix_sockets
     }
@@ -177,8 +174,8 @@ impl SandboxPolicy {
     /// Variables the policy sets in the child itself, as `(name, value)`.
     ///
     /// Values, where [`allowed_env`](Self::allowed_env) carries names: only compile-time
-    /// constants belong here, never anything read from the harness. Applied after the
-    /// allowlist, so a variable named both ways gets this value.
+    /// constants belong here. Applied after the allowlist, so a name carried both ways
+    /// arrives with this value.
     pub fn imposed_env(&self) -> &'static [(&'static str, &'static str)] {
         match self.dns_over_tcp {
             true => &DNS_OVER_TCP_ENV,
@@ -188,8 +185,8 @@ impl SandboxPolicy {
 
     /// Whether the child may hold a variable called `name`, allowlisted or imposed.
     ///
-    /// The one answer `spawn::command` and the helper's inherited-environment check both
-    /// use, so what one puts there cannot be what the other refuses.
+    /// The one answer `spawn::command` and the helper's inherited-environment check share,
+    /// so what one puts there cannot be what the other refuses.
     pub fn permits_env(&self, name: &OsStr) -> bool {
         self.env.iter().any(|allowed| name == OsStr::new(allowed))
             || self
@@ -205,10 +202,9 @@ impl SandboxPolicy {
 
     /// Let the process inherit the variable called `name`.
     ///
-    /// An empty name, or one containing `=` or a NUL, is skipped rather than refused, so
-    /// nothing `HelperArgs::encode` emits is something `decode` rejects; `sandbx`'s own
-    /// `--allow-env` refuses them instead. The value is read from the harness at spawn time,
-    /// so a name unset there contributes nothing rather than an empty value.
+    /// An empty name, or one containing `=` or a NUL, is skipped and not refused, so nothing
+    /// `HelperArgs::encode` emits is something `decode` rejects; `sandbx`'s `--allow-env`
+    /// refuses them instead. A name the harness does not hold contributes nothing at all.
     #[must_use]
     pub fn allow_env(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
@@ -220,11 +216,12 @@ impl SandboxPolicy {
 
     /// Let the process inherit the variables a command needs in order to start.
     ///
-    /// With an empty allowlist there is no `PATH`, and a program named without a leading `/`
-    /// is looked up in whatever fallback resolves it — `confstr(_CS_PATH)` under glibc's
-    /// `execvp`, the shell's wider compiled-in default under a shell — so `cat` starts and
-    /// `~/.cargo/bin/x` does not, naming neither cause nor fix. Nothing here conventionally
-    /// carries a credential; anything else goes through [`allow_env`](Self::allow_env).
+    /// With no `PATH`, a bare program name falls back to `confstr(_CS_PATH)` under glibc's
+    /// `execvp`, so `cat` starts and `~/.cargo/bin/x` does not, naming neither cause nor fix.
+    /// A shell falls back to its own wider default instead
+    /// (`context/decision-environment-allowlist.md`).
+    /// Nothing here conventionally carries a credential; anything else needs
+    /// [`allow_env`](Self::allow_env).
     #[must_use]
     pub fn allow_standard_env(self) -> Self {
         STANDARD_ENV_NAMES
@@ -239,16 +236,14 @@ impl SandboxPolicy {
         self.grant(Axis::Read, path)
     }
 
-    /// Grant write access to `path`, and nothing else.
-    ///
-    /// Neither read nor execute comes with it, so a drop directory granted here cannot be
-    /// read back; the `sandbx` CLI grants read alongside write for `--allow-write`.
+    /// Grant write access to `path`, and nothing else — a drop directory granted here cannot
+    /// be read back. The `sandbx` CLI's `--allow-write` grants read alongside it.
     #[must_use]
     pub fn allow_write(self, path: impl AsRef<Path>) -> Self {
         self.grant(Axis::Write, path)
     }
 
-    /// Grant read *and* execute access to `path`.
+    /// Grant read and execute access to `path`.
     ///
     /// The only grant that confers execute, and it confers read too (see [`Axis::grants`]).
     /// A directory granted here can run anything that appears in it later.
@@ -259,11 +254,9 @@ impl SandboxPolicy {
 
     /// Grant read and execute access to the paths a command needs to start.
     ///
-    /// Nothing runs without its loader and shared libraries: with a bare policy even
-    /// `/bin/true` dies before `main`. System binaries and libraries only — not `/etc`,
-    /// never write. A path absent on this system is skipped, because distributions
-    /// disagree about `/lib64` and Landlock rejects a rule for a path that does not exist,
-    /// which would turn that disagreement into a failure to sandbox at all.
+    /// Nothing runs without its loader and shared libraries; with a bare policy even
+    /// `/bin/true` dies before `main`. An absent path is skipped: Landlock rejects a rule for
+    /// one that does not exist, so a host without `/lib64` would fail to sandbox at all.
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS
@@ -275,10 +268,9 @@ impl SandboxPolicy {
 
     /// Grant IP egress on every port, and only that.
     ///
-    /// Unix-domain sockets are a separate grant: a command that can dial
-    /// `/run/user/$UID/bus` can ask systemd to start a process outside the sandbox.
-    ///
-    /// Widens an existing port allowlist to every port.
+    /// Widens an existing port allowlist. Unix-domain sockets stay a separate grant: a
+    /// command that can dial `/run/user/$UID/bus` can ask systemd to start a process outside
+    /// the sandbox.
     #[must_use]
     pub fn allow_network(mut self) -> Self {
         self.network = NetworkPolicy::AnyPort;
@@ -290,9 +282,7 @@ impl SandboxPolicy {
     /// Repeat to allowlist several; duplicates collapse, and this cannot narrow
     /// [`allow_network`](Self::allow_network). An allowlist also denies UDP and raw sockets,
     /// and `bind` on every port it does not name — `context/decision-port-allowlist.md`.
-    ///
-    /// Port 0 is skipped, as [`allow_env`](Self::allow_env) skips a name it cannot encode:
-    /// `bind(0)` asks the kernel to choose a port, which an allowlist cannot express.
+    /// Port 0 is skipped: `bind(0)` asks the kernel to choose, which cannot be allowlisted.
     #[must_use]
     pub fn allow_network_port(mut self, port: u16) -> Self {
         if port == 0 {
@@ -326,9 +316,9 @@ impl SandboxPolicy {
 
     /// Ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc` in the child.
     ///
-    /// A hint to the resolver inside the command and not a restriction sandbx applies: musl
-    /// has no equivalent, and a command ignoring `RES_OPTIONS` is unaffected. Allowlists no
-    /// port — TCP 53 still needs [`allow_network_port`](Self::allow_network_port).
+    /// A hint and not a restriction: musl has no equivalent, and a command ignoring
+    /// `RES_OPTIONS` is unaffected. Allowlists no port — TCP 53 still needs
+    /// [`allow_network_port`](Self::allow_network_port).
     #[must_use]
     pub fn hint_dns_over_tcp(mut self) -> Self {
         self.dns_over_tcp = true;
