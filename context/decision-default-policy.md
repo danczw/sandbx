@@ -130,11 +130,19 @@ three matched no cwd while satisfying the gate.
 
 So the two signals are two fields. `Homes { paths, usable }`: `paths` holds every
 absolute spelling of `$HOME` worth comparing a cwd against, and `usable` says
-whether it resolved to a directory below the filesystem root. An unresolvable
-`$HOME` is still compared — `cd /srv/people` with `HOME=/srv/people/alice`
-unprovisioned is refused for *holding* a home, which a filter that dropped the path
-would have lost — and it never satisfies the stand-in gate. A fourth tightening of
-the one list would have kept failing in one direction or the other.
+whether it resolved to a directory that is not itself a place homes live. An
+unresolvable `$HOME` is still compared — `cd /srv/people` with
+`HOME=/srv/people/alice` unprovisioned is refused for *holding* a home, which a
+filter that dropped the path would have lost — and it never satisfies the stand-in
+gate. A fourth tightening of the one list would have kept failing in one direction
+or the other.
+
+`usable` asks the second half of that question because resolving to a directory is
+not being somebody's home either. `HOME=/home` resolves and is a directory, and it
+is the one place on the system that holds homes rather than being one — it named a
+usable home, and `/home/other` then derived read and write over a neighbour's tree
+(#162). So `holds_home_directories` tests the resolved `$HOME` as well as the cwd,
+which also subsumes the `HOME=/` Docker case: `/` holds every home there is.
 
 What this costs, visibly: a cwd shaped like a home under `HOME_PARENTS` is now
 refused where an unusable `$HOME` previously derived. `HOME=/home/app` not yet
@@ -160,7 +168,11 @@ Non-goal: a home root `HOME_PARENTS` does not list. With no usable `$HOME`, a si
 that keeps homes at `/srv/people` or behind autofs gets neither the child refusal
 nor the parent one, because both recognise a home by location and that location is
 not one they know — `$HOME` is the whole of the cover there, and an unusable one
-leaves none. Consulting `/etc/passwd` was considered and does not fix it: the
+leaves none. The same shape is what a `$HOME` outside the list leaves standing:
+`HOME=/tmp` with cwd `/home/other` still derives, because a real directory
+somewhere the list does not name is exactly what a legitimate non-standard home
+looks like, and nothing in the path tells the two apart. Consulting `/etc/passwd`
+was considered and does not fix it: the
 layouts that need it are the LDAP and autofs ones `/etc/passwd` cannot see either,
 so it would move the omission rather than close it, at the cost of parsing a file
 inside the guard. This is the degradation the paragraph above accepts, and
@@ -339,9 +351,14 @@ that gate re-read off the path list, !usable ──► paths.is_empty() (the #15
        an_unset_home_refuses_a_child_of_one                passes  ◄── the gate is satisfied
        refuses_to_run_from_home_whatever_home_names        passes  ◄── /home is a home parent
 
-usable stops asking for a directory below / (HOME=/dev/null, HOME=/)
+usable stops asking for a directory (HOME=/dev/null)
    ──► a_home_that_is_no_directory_refuses_a_child_of_one  fails
        an_unresolvable_home_refuses_a_child_of_one         passes  ◄── it never resolved
+
+usable stops asking that $HOME is no home parent (HOME=/home, the #162 hole)
+   ──► a_home_that_is_a_home_parent_refuses_a_child_of_one  fails
+       a_home_that_is_no_directory_refuses_a_child_of_one   fails   ◄── HOME=/ is a home parent
+       an_unresolvable_home_refuses_a_child_of_one          passes  ◄── it never resolved
 
 the written form dropped when $HOME does not resolve
    ──► an_unresolvable_home_is_still_compared              fails
@@ -385,13 +402,14 @@ comparison mutate together: that is the derived-expectation trap
 `decision-enforcement-seam.md` names, and it is why it is a cross-subcommand
 consistency test and not the one pinning what the default *is*.
 
-The gap the tests do not close, narrowed by #154: the derivation is now
+The gap the tests do not close, narrowed by #154 and #162: the derivation is now
 `named_homes`, which takes `$HOME` as a value and is unit-tested over every shape —
 unset, empty, relative, unresolvable, resolving to a non-directory, resolving to
-`/`, resolving to a real home, and symlinked, that last against a `tempfile`
-symlink rather than argued from a Silverblue host. All that is left reading the
-live process is `current_root()`'s two lookups themselves, `getcwd` and
-`var_os("HOME")`; `tests/cwd_policy.rs` covers what it can of them by setting
-`HOME` on the spawned binary. Note what the history means: it is the arm that
-depends on `$HOME` not at all — `holds_home_directories` — that never had any of
-the three holes, and that is the reason to prefer it.
+`/`, resolving to a place homes live, resolving to a real home, and symlinked, that
+last against a `tempfile` symlink rather than argued from a Silverblue host. All
+that is left reading the live process is `current_root()`'s two lookups
+themselves, `getcwd` and `var_os("HOME")`; `tests/cwd_policy.rs` covers what it
+can of them by setting `HOME` on the spawned binary. Note what the history means:
+it is the arm that depends on `$HOME` not at all — `holds_home_directories` —
+that never had any of the four holes, and that is the reason to prefer it, and the
+reason #162 was closed by putting that arm to work on `$HOME` too.
