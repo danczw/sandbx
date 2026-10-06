@@ -4,7 +4,7 @@ members = ["crates/*"]
 
 # Member crates inherit these with `field.workspace = true`.
 [workspace.package]
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 edition = "2024"
 # Set at 1.88 by two independent things: the let-chain in `helper`, and the
 # `icu_*` crates reached via reqwest -> url -> idna. Lowering it means deleting
