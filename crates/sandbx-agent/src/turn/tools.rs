@@ -6,9 +6,10 @@
 use sandbx_providers::{ContentBlock, ToolDefinition};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::TurnError;
+use crate::{ApprovalDecision, ToolCall, TurnError};
 
-/// Run and answer every tool call in `blocks`, in the order the model asked for them.
+/// Ask `approve`, then run and answer every tool call in `blocks`, in the order the
+/// model asked for them.
 ///
 /// Sequential: concurrency would need the ordering semantics of two tools sharing one
 /// `ExecutionContext` settled first (#26).
@@ -16,10 +17,14 @@ use crate::TurnError;
 /// `BuiltinTool::execute` may sit in a `write`, a directory walk or a 90-second command,
 /// which on a current-thread runtime would freeze every other task — hence
 /// `spawn_blocking`, whose uncancellability `run_turn` documents for callers.
-pub(super) async fn answer_calls(
+pub(super) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
-) -> Result<Vec<ContentBlock>, TurnError> {
+    approve: &mut G,
+) -> Result<Vec<ContentBlock>, TurnError>
+where
+    G: FnMut(ToolCall<'_>) -> ApprovalDecision,
+{
     let mut results = Vec::new();
 
     for block in blocks {
@@ -33,6 +38,13 @@ pub(super) async fn answer_calls(
             results.push(refused(id, format!("unknown tool: {name}")));
             continue;
         };
+
+        // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
+        // so a decision that arrived late would not stop the call it refused (#26).
+        if let ApprovalDecision::Deny { reason } = approve(ToolCall { tool, id, input }) {
+            results.push(refused(id, reason));
+            continue;
+        }
 
         // Cloned because `spawn_blocking` needs `'static`, once per call because the
         // closure consumes it. An `Arc` would pay off only if `ExecutionContext` grew

@@ -5,7 +5,7 @@
 
 use std::collections::VecDeque;
 
-use sandbx_agent::{Turn, TurnLimits};
+use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, StopReason,
@@ -70,6 +70,14 @@ pub(crate) fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) 
 
 pub(crate) fn ctx(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
+}
+
+/// A gate that refuses nothing, for the tests whose subject is not the gate.
+///
+/// The policy in `ctx` is what scopes those; this leaves the loop as it behaves when
+/// every call is approved.
+pub(crate) fn allow_all(_: ToolCall<'_>) -> ApprovalDecision {
+    ApprovalDecision::Allow
 }
 
 pub(crate) fn text(delta: &str) -> AgentEvent {

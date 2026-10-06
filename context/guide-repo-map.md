@@ -107,7 +107,8 @@ at the call site beats a grep that fails after it.
 ## `sandbx-tools`
 
 ```
-src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolSpec, ToolOutput
+src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolSpec, ToolOutput,
+                  RiskLevel
    context.rs     ExecutionContext — policy is PRIVATE (#56)
    limits.rs      ToolLimits
    error.rs       ToolError: Denied | BadInput | Failed | TimedOut
@@ -143,14 +144,16 @@ deleted the one-variant `Provider` enum that used to sit in front of it.
 
 ```
 src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
-                          PromptUsage, Compaction, run_turn
+                          PromptUsage, Compaction, ToolCall, ApprovalDecision,
+                          run_turn
    turn.rs    run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
-      tools.rs       what is offered, and the one spawn_blocking site
+      tools.rs       what is offered, the gate, and the one spawn_blocking site
+ approval.rs  what a gate is asked, and the two answers it may give
  compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
    error.rs   TurnError (6 variants)
-tests/       turn_loop (16), turn_compaction (23),
+tests/       turn_loop (20), turn_compaction (23),
              support/mod.rs — the Script double and the request builders
 ```
 
@@ -163,7 +166,7 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
                 no-flag run gets (unit-testable without a sandbox-capable
                 kernel)
    sandbox.rs   SandboxRun
-   agent.rs     AgentRun — the turn loop's caller
+   agent.rs     AgentRun — the turn loop's caller, and the gate it answers with
    error.rs     AgentError, SandboxRunError, PolicyError
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
@@ -193,7 +196,9 @@ that users reasonably read as the same flags.
 9. `guide-tools.md`, `guide-turn-loop.md` — the layers above
 10. `decision-provider-seam.md` — why there is no provider trait, and what is still
     vendor-shaped
-11. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+11. `decision-approval-gate.md` — what sits between the model and a tool, and how
+    much it claims
+12. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

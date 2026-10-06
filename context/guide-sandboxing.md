@@ -324,8 +324,9 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
   privilege. Do not rely on `CapBnd` being empty.
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges.
-- **No approval step exists.** The sandbox is the only thing between a
-  prompt-injected tool call and your files.
+- **Approval is per tool per run.** The gate narrows which tools a hijacked turn
+  can use; once one is approved, the sandbox is the only thing between a
+  prompt-injected call to it and your files. No per-call prompt (#165).
 - **`unsafe` is forbidden workspace-wide** and spawning outside `sandbx-core` is
   a clippy error, but convention plus tooling is not a capability system.
 - **A variable passed through is passed whole.** The environment allowlist is by

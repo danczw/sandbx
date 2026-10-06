@@ -8,7 +8,7 @@ use sandbx_providers::{
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::{Compaction, TurnError, compact};
+use crate::{ApprovalDecision, Compaction, ToolCall, TurnError, compact};
 
 mod accumulate;
 mod tools;
@@ -214,9 +214,18 @@ impl Default for TurnLimits {
 /// points, so a single enormous one is not compactable at all and the provider's
 /// context-length error stays the backstop.
 ///
+/// `approve` is asked once per resolved call, before it runs, and is the only thing
+/// between the model asking for a tool and `sandbx-tools` executing it. Mandatory rather
+/// than defaulted, so a caller cannot acquire a gate-less loop by omission; a closure for
+/// the same reason as `observe`. An [`ApprovalDecision::Deny`] answers the model with its
+/// `reason` as a `tool_result` marked `is_error` and runs nothing, so a refusal is
+/// recoverable — the model may answer in prose or try a tool the gate allows, within
+/// [`TurnLimits::max_rounds`]. A name no tool answers to never reaches it.
+///
 /// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future drops the
 /// `JoinHandle` while the blocking task runs to completion, so a turn abandoned mid-tool
-/// still applies the `write`, recorded only in the audit trail (#26).
+/// still applies the `write`, recorded only in the audit trail (#26). That is also why
+/// `approve` is consulted before the spawn rather than racing it.
 ///
 /// Needs a tokio runtime with the time driver enabled: the per-round bound is
 /// `tokio::time::timeout`, which panics with "there is no timer running" otherwise.
@@ -229,15 +238,17 @@ impl Default for TurnLimits {
 /// `StopReason::Unspecified`, and keying off the reason would drop them silently. A tool
 /// that fails does not end the turn — it comes back as a `tool_result` marked `is_error`;
 /// see [`TurnError`] for where the line is drawn.
-pub async fn run_turn<F, O>(
+pub async fn run_turn<F, O, G>(
     mut open: F,
     turn: Turn<'_>,
     ctx: &ExecutionContext,
     mut observe: O,
+    mut approve: G,
 ) -> Result<TurnOutcome, TurnError>
 where
     F: AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
+    G: FnMut(ToolCall<'_>) -> ApprovalDecision,
 {
     // Built once: the offered set does not change between rounds.
     let definitions: Vec<ToolDefinition> = turn.tools.iter().copied().map(definition).collect();
@@ -326,7 +337,7 @@ where
 
         // Answered before the assistant turn is pushed: answering borrows the blocks and
         // pushing moves them.
-        let results = answer_calls(&blocks, ctx).await?;
+        let results = answer_calls(&blocks, ctx, &mut approve).await?;
 
         produced.push(RequestMessage {
             role: Role::Assistant,

@@ -4,42 +4,47 @@ The seven built-ins, and the shape of the layer around them.
 
 ## The set
 
-| Tool | Input | Confined by |
-|---|---|---|
-| `read` | `{ path }` | `FsGuard::open_read` |
-| `write` | `{ path, content }` | `FsGuard::open_write` |
-| `edit` | `{ path, old, new }` | `open_read` + `open_write` |
-| `ls` | `{ path }` | `FsGuard::check_read` |
-| `grep` | `{ path, pattern }` | `open_read` + `walk_readable` |
-| `find` | `{ path, name }` | `walk_readable` |
-| `bash` | `{ command }` | the helper — Landlock + seccomp + netns |
+| Tool | Input | Confined by | Risk |
+|---|---|---|---|
+| `read` | `{ path }` | `FsGuard::open_read` | `ReadOnly` |
+| `write` | `{ path, content }` | `FsGuard::open_write` | `Writes` |
+| `edit` | `{ path, old, new }` | `open_read` + `open_write` | `Writes` |
+| `ls` | `{ path }` | `FsGuard::check_read` | `ReadOnly` |
+| `grep` | `{ path, pattern }` | `open_read` + `walk_readable` | `ReadOnly` |
+| `find` | `{ path, name }` | `walk_readable` | `ReadOnly` |
+| `bash` | `{ command }` | the helper — Landlock + seccomp + netns | `Executes` |
 
 `bash` is the only tool that spawns. The other six run in-process.
+
+`RiskLevel` is what a gate deciding by category reads, and it is `Ord` so a
+caller can admit everything at or below a level. It is a field of each tool's own
+`SPEC` rather than a table here: a new tool declares its level or fails to
+compile, where a denylist would have been silently missing it.
 
 ## Dispatch: an enum, not a trait object
 
 ```rust
 pub enum BuiltinTool { Read, Write, Edit, Ls, Grep, Find, Bash }  // fieldless, Copy
 pub const ALL: [Self; 7] = [..];                                   // this is the registry
-struct ToolSpec { name, description, schema, run }                 // one per tool, in its module
+struct ToolSpec { name, description, risk, schema, run }           // one per tool, in its module
 ```
 
 No `Tool` trait, no `ToolRegistry` type, no `dyn`. The set is closed at compile
 time and nothing picks a tool at runtime that is not in it, so the flexibility a
 trait object buys would be unused. `from_name` is exact-match —
-`from_name("Read")` is `None`. `ToolSpec` is two `&'static str`s and two fn
-pointers reached only through an exhaustive match on that closed enum: a table,
-not a vtable with an open set behind it.
+`from_name("Read")` is `None`. `ToolSpec` is two `&'static str`s, a `RiskLevel`
+and two fn pointers reached only through an exhaustive match on that closed enum:
+a table, not a vtable with an open set behind it.
 
-`name`, `description`, `input_schema` and the executor are **one `SPEC` per
-tool**, in the tool's own module beside its input struct and its `execute`.
+`name`, `description`, `risk`, `input_schema` and the executor are **one `SPEC`
+per tool**, in the tool's own module beside its input struct and its `execute`.
 `BuiltinTool` reaches them through a single match, so a transposed arm relabels a
 variant consistently instead of handing the model one tool's name with another's
 schema (#54, #55, #88). Folding the executor in also puts the parse behind a
 type: each module's `run` parses into that module's own input struct, so a
 filesystem path that skips the parse is unwritable.
 
-Three tests in `tests/registry.rs` pin what co-location cannot:
+Four tests in `tests/registry.rs` pin what co-location cannot:
 
 - `every_tool_is_named_after_its_variant` — `name()` is `{variant:?}` lowercased.
   A symmetric swap of two names stays unique and still round-trips through
@@ -52,6 +57,9 @@ Three tests in `tests/registry.rs` pin what co-location cannot:
   nothing catches: no content heuristic relates "List a directory's entries" to
   `ls`, and the obvious one — a description names its own tool — is false for
   `bash`, `edit`, `ls` and `grep`. Co-location is the whole mitigation.
+- `the_risk_each_tool_carries_is_documented` — a hard-coded match naming each
+  variant's expected level. Read off `risk()` it would assert only
+  self-consistency, and a `bash` reclassified as read-only would still pass.
 
 Schemas are derived via `schema_for!`, never hand-written, and returned as
 `serde_json::Value`. The schema is a fn pointer rather than a value in the `SPEC`
@@ -132,7 +140,7 @@ bodies that do blocking I/O anyway.
 | bounded in time | `bash` only |
 | bounded in work | all six in-process searches |
 | cancellable from outside | **partly** — the turn can be abandoned; the running tool still completes (#26) |
-| approval gate | **none exists.** Nothing sits between the model asking and the tool running |
+| approval gate | **per tool per run** — `run_turn`'s `approve` closure, asked before the spawn; no per-call prompt (#165) |
 
 ## The split that matters
 

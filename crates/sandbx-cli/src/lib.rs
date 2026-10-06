@@ -76,7 +76,9 @@ pub enum Command {
     /// that is more than the question needs.
     ///
     /// Single-shot: one question, one answer, then the process ends. Nothing
-    /// asks you before a tool call runs.
+    /// asks you before a tool call runs, so which tools may run is settled
+    /// before the question goes out — see `--allow-tool`, which denies a
+    /// `write`, an `edit` and a `bash` until you name one.
     ///
     /// Put the prompt after `--`:
     ///

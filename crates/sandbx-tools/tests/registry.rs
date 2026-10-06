@@ -1,7 +1,7 @@
 //! The set of tools an agent can be offered, and lookup by the name the model
 //! calls back with.
 
-use sandbx_tools::BuiltinTool;
+use sandbx_tools::{BuiltinTool, RiskLevel};
 
 /// Exhaustive by construction: a variant missing from `ALL` fails here, not at
 /// runtime in front of a model.
@@ -102,6 +102,26 @@ fn every_tool_advertises_its_own_input_struct() {
             Some(expected.as_str()),
             "{tool:?} advertises a schema for the wrong input struct"
         );
+    }
+}
+
+/// Every tool must declare what it does beyond looking.
+///
+/// Spelled out here rather than read off `risk()`: an expectation derived from the same
+/// `SPEC`s moves with them, so a `bash` reclassified as read-only would still pass. An
+/// approval gate admitting everything at or below `ReadOnly` is what rests on this.
+#[test]
+fn the_risk_each_tool_carries_is_documented() {
+    for tool in BuiltinTool::ALL {
+        let expected = match tool {
+            BuiltinTool::Read | BuiltinTool::Ls | BuiltinTool::Grep | BuiltinTool::Find => {
+                RiskLevel::ReadOnly
+            }
+            BuiltinTool::Write | BuiltinTool::Edit => RiskLevel::Writes,
+            BuiltinTool::Bash => RiskLevel::Executes,
+        };
+
+        assert_eq!(tool.risk(), expected, "{tool:?} is classified wrongly");
     }
 }
 

@@ -2,12 +2,13 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
+use crate::{ExecutionContext, RiskLevel, ToolError, ToolOutput, ToolSpec};
 
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "grep",
     description: "Search file contents beneath a directory for a literal string. \
                   Not a regular expression.",
+    risk: RiskLevel::ReadOnly,
     schema,
     run,
 };

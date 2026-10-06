@@ -184,18 +184,21 @@ Three properties matter as much as the list:
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
   can add raw syscalls.
-- **Approval is not enforcement, and nothing gates a tool call**
-  ([#106](https://github.com/danczw/sandbx/issues/106)). The agent loop runs every
-  tool call the model asks for — nothing sits between the model requesting one and
-  `sandbx-tools` executing it. `sandbx agent-run` reaches that
-  loop, so this is what a prompt you type does, not only what the library would do:
-  the sandbox is the only thing between a prompt-injected tool call and your files,
-  which is why it is default-deny and why the policy `agent-run` derives is the
-  whole of what a hijacked turn can touch. Size that policy before you trust it:
-  with no path flag it is read *and write* over the directory you ran the command
-  from, so a hijacked turn there reaches your whole project. The flags you pass
-  replace that, which is the way to make the blast radius smaller than a tree. A
-  gate will not change this bullet: a tool call you approve runs. sandbx bounds
+- **Approval is not enforcement, and it is per tool per run**
+  ([#165](https://github.com/danczw/sandbx/issues/165)). A gate sits between the
+  model asking for a tool and `sandbx-tools` running it, and `sandbx agent-run`
+  answers it from the flags you typed: the four read-only tools run, and a `write`,
+  an `edit` or a `bash` comes back to the model refused until `--allow-tool` names
+  it. Nothing asks you in between, so once a tool is approved every call to it in
+  that turn runs — including one a prompt injection induced. The gate narrows
+  *which* tools a hijacked turn can use; the sandbox is still the only thing
+  bounding *where* an approved one reaches, which is why it is default-deny and why
+  the policy `agent-run` derives is the whole of what an approved call can touch.
+  Size that policy before you trust it: with no path flag it is read *and write*
+  over the directory you ran the command from, so an approved `write` hijacked
+  there reaches your whole project. The flags you pass replace that, which is the
+  way to make the blast radius smaller than a tree. The gate did not change the
+  commitment underneath this bullet: a tool call you approve runs. sandbx bounds
   what it can reach; it does not decide whether it should run.
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
@@ -368,11 +371,11 @@ These are documented behaviour, and reports of them will be closed as such:
 - A command reading or writing the directory you ran `sandbx` from, when you
   passed no path flag. That is the documented default — see *It is default-deny*
   above for what it covers and what it refuses.
-- An agent running a tool call — one you approved, or, as things stand, any one the
-  model asked for, since nothing gates them yet (see *Approval is not enforcement*
-  above). That includes a call a prompt injection induced, and it includes one
-  reached through `agent-run`, which is a real path and not a library-only one.
-  What bounds it is the sandbox, not the asking.
+- An agent running a tool call the gate approved — which, as things stand, means
+  any call to a tool approved for the run rather than that one call (see *Approval
+  is not enforcement* above). That includes a call a prompt injection induced, and
+  it includes one reached through `agent-run`, which is a real path and not a
+  library-only one. What bounds it is the sandbox, not the asking.
 - Refusal to run on a kernel older than 6.10, or on one with Landlock disabled at
   boot. That is fail-closed behaviour working as intended.
 - Failure to *build* for a non-Linux target. Also intended — see above.

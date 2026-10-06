@@ -11,7 +11,7 @@ use sandbx_tools::BuiltinTool;
 
 mod support;
 
-use support::{Script, call, ctx, stop, text, turn, wire};
+use support::{Script, allow_all, call, ctx, stop, text, turn, wire};
 
 /// A measurement large enough to put any test over the budgets used below.
 fn measured(input: u32) -> AgentEvent {
@@ -109,6 +109,7 @@ async fn the_outcome_carries_the_last_reported_usage() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -137,6 +138,7 @@ async fn a_round_with_no_usage_leaves_the_outcome_empty() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -163,6 +165,7 @@ async fn compaction_cannot_fire_on_a_turns_first_round() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -200,6 +203,7 @@ async fn a_first_turn_compacts_after_it_measures_itself() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -235,6 +239,7 @@ async fn a_turn_under_budget_sends_the_whole_history() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -265,6 +270,7 @@ async fn a_turn_over_budget_sends_only_the_recent_messages() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -299,6 +305,7 @@ async fn the_turn_after_a_compaction_keeps_the_cut() {
         first,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -327,6 +334,7 @@ async fn the_turn_after_a_compaction_keeps_the_cut() {
         second,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -365,6 +373,7 @@ async fn a_turn_still_over_budget_deepens_the_cut() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -401,6 +410,7 @@ async fn a_carried_floor_deepens_on_the_turns_own_figure() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -439,6 +449,7 @@ async fn an_illegal_carried_floor_still_compacts() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -476,6 +487,7 @@ async fn a_floor_past_the_history_sends_it_whole() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -511,6 +523,7 @@ async fn a_round_with_no_usage_leaves_the_cut_alone() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -550,6 +563,7 @@ async fn a_cut_already_taken_is_never_undone() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -583,6 +597,7 @@ async fn compaction_never_shortens_the_transcript() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -618,6 +633,7 @@ async fn a_compacted_request_opens_with_a_user_message() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -653,6 +669,7 @@ async fn compaction_keeps_a_tool_result_with_its_call() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -705,6 +722,7 @@ async fn an_unbreakable_history_is_sent_oversized() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -745,6 +763,7 @@ async fn a_cut_is_reused_by_every_later_round() {
         turn,
         &ctx(SandboxPolicy::default().allow_read(root.path())),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -791,6 +810,7 @@ async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
         turn,
         &ctx(SandboxPolicy::default().allow_read(root.path())),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -835,6 +855,7 @@ async fn a_keep_recent_under_the_turns_output_sends_it() {
         turn,
         &ctx(SandboxPolicy::default().allow_read(root.path())),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -871,6 +892,7 @@ async fn a_budget_of_zero_compacts_every_measured_turn() {
         turn,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -912,6 +934,7 @@ async fn a_compacted_turn_ending_mid_tool_use_is_an_error() {
         turn,
         &ctx(SandboxPolicy::default().allow_read(root.path())),
         |_| {},
+        allow_all,
     )
     .await
     .expect_err("a compacted turn ending on an unanswered tool_result is not a turn");

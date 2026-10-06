@@ -2,11 +2,12 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
+use crate::{ExecutionContext, RiskLevel, ToolError, ToolOutput, ToolSpec};
 
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "read",
     description: "Read a file's contents. Takes an absolute path.",
+    risk: RiskLevel::ReadOnly,
     schema,
     run,
 };
