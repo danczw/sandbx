@@ -39,7 +39,8 @@ the cost belongs next to the claim it buys:
   `AF_NETLINK`, which glibc opens as a `SOCK_RAW` socket, so it cannot enumerate
   interfaces either. This is the big one, and the usual way the allowlist first
   surprises someone: `--allow-network 443 -- curl https://example.com` fails at
-  resolution, not at connect. Tracked as #147.
+  resolution, not at connect. `--dns-over-tcp` is the way out, and it does not
+  reach every command: see *Resolving anyway, over TCP* below.
 - **`bind` fails on every port the list does not name**, including `bind(port 0)`
   — the ephemeral port a program asks for when it wants a local listener, which
   an allowlist cannot express. `handled_net_access` hands Landlock `BindTcp`
@@ -58,6 +59,31 @@ the cost belongs next to the claim it buys:
   do not use, and `espintcp`.
 
 A bare `--allow-network` is unaffected by any of it.
+
+## Resolving anyway, over TCP
+
+DNS has a TCP transport, and TCP 53 is a port a Landlock rule can name. glibc's
+stub resolver takes it when `RES_OPTIONS` contains `use-vc`, so the whole cliff
+comes down to one environment variable:
+
+```
+--dns-over-tcp --allow-network 53 --allow-network 443 --allow-read /etc
+```
+
+`--allow-read /etc` is part of it, and is needed under *any* network policy: `/etc`
+is not in `SYSTEM_EXECUTABLE_PATHS`, and nothing else grants `resolv.conf` or
+`nsswitch.conf`. The flag is why it is one line and not an incantation nobody
+finds.
+
+Two things it is not. It **grants no port**: the operator still writes
+`--allow-network 53`, because a flag that opened a port of its own would put a
+port on the audit trail that nobody named — the same defect as reporting a count
+the policy does not hold. And it is a **hint, not enforcement**: the API spells it
+`hint_dns_over_tcp` rather than `allow_`, because what happens next is the
+resolver's choice. A command carrying its own resolver ignores `RES_OPTIONS`
+entirely, and musl has no equivalent — it starts on UDP and falls back to TCP only
+on a truncated reply, so a statically linked musl binary does not resolve by this
+route at all. Enforcing it would mean a resolver proxy, which is #145.
 
 ## The host network namespace is shared, not narrowed
 
@@ -190,8 +216,14 @@ defers the handshake but still goes through the `connect` syscall, so
 
 **Allowing UDP on port 53 only.** The obvious fix for the DNS cliff, and it is
 not expressible. seccomp gates the `socket` call, where no port exists yet, and
-`connect`'s `sockaddr` is behind a pointer the filter cannot follow. #147 holds
-the options that are expressible.
+`connect`'s `sockaddr` is behind a pointer the filter cannot follow. What is
+expressible is TCP 53, which is what `--dns-over-tcp` is for.
+
+**Setting `RES_OPTIONS=use-vc` whenever a port list is in force.** It would make
+the common case work with no flag, and sandbx would be reaching into the
+command's configuration without being asked — invisibly overriding a
+`resolv.conf` option the operator may have set deliberately. Explicit, or not at
+all.
 
 **Narrowing the denial to `connect`/`sendto` rather than `socket`.** Same wall,
 one syscall later: the destination is always behind a pointer.

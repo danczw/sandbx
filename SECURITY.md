@@ -243,9 +243,15 @@ Three properties matter as much as the list:
   denied by seccomp while a port list is in force. So **name resolution fails**
   under `--allow-network <port>` — `getaddrinfo` can reach neither a UDP resolver
   nor `AF_NETLINK` — and so do QUIC, HTTP/3, `ping` and in-process kTLS.
-  [#147](https://github.com/danczw/sandbx/issues/147) holds the options; a command
-  needing names wants a bare `--allow-network`, or an address resolved before the
-  run.
+  A name can still be resolved, over TCP: `--dns-over-tcp` sets
+  `RES_OPTIONS=use-vc`, which asks glibc's stub resolver to query over TCP 53 — a
+  port a Landlock rule can name — so `--dns-over-tcp --allow-network 53
+  --allow-network 443 --allow-read /etc` resolves and connects. A glibc property
+  sandbx asks for and does not enforce: a command with a resolver of its own is
+  unaffected, and musl has no `RES_OPTIONS`, so a statically linked musl binary
+  cannot resolve by this route at all. `--allow-read /etc` is needed for
+  resolution under *any* network policy — nothing else grants `resolv.conf` and
+  `nsswitch.conf`.
   `context/decision-port-allowlist.md` records why the denial is not narrower.
 
   **And it is not uniformly narrower than withholding network.** `bind` is

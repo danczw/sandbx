@@ -36,8 +36,8 @@ the strict thing, the CLI opts in.
 ## A path flag suppresses it
 
 Any of `--allow-read`, `--allow-write`, `--allow-exec` present ⇒ no default. None
-⇒ derive. `--allow-env`, `--allow-network` and `--allow-unix-sockets` name no path
-and change nothing. The predicate runs over `Axis::ALL`, so a fourth path flag
+⇒ derive. `--allow-env`, `--allow-network`, `--allow-unix-sockets` and
+`--dns-over-tcp` name no path and change nothing. The predicate runs over `Axis::ALL`, so a fourth path flag
 joins the rule rather than being forgotten into a default that widens it.
 
 The alternative was an unconditional default plus a `--no-default-policy` opt-out,
@@ -267,8 +267,10 @@ got its own two-variant `SandboxRunError` for the same reason folding everything
 into one `CliError` was rejected — that would make `AgentError`'s provider and
 turn variants look reachable from `sandbox-run`.
 
-Every variant ends in one shared `ADVICE` const, so two refusals cannot name
-different flags.
+Every variant about the working directory ends in one shared `ADVICE` const, so
+two refusals cannot name different flags. `ImposedVariable` is the one that does
+not: it is about neither a path nor the working directory, and path-flag advice
+on it would answer a question nobody asked.
 
 ## The seam
 
