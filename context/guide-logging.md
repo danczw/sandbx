@@ -19,7 +19,7 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 | `Allowed` | `allowed` | `tool`, `subject` |
 | `Denied` | `denied` | `tool`, `subject`, `reason` |
 | `Degraded` | `degraded` | `mechanism`, `detail` |
-| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env` |
+| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env`, `dns_over_tcp`, `pinned` |
 | `Exited` | `exited` | `program`, `code` |
 | `Failed` | `failed` | `program`, `reason` |
 
@@ -40,6 +40,14 @@ proposition from storing what the file contained; output is where secrets live.
 `Spawned` records *counts, not paths* for the same reason — and derives them
 through an exhaustive `match` on `Axis::ALL`, so a new axis fails to compile
 rather than going silently uncounted (#51).
+
+`Spawned.pinned` is the one field not derived from the policy, a digest not being
+policy (`decision-pinned-entry-point.md`), so `spawned` takes it as a parameter.
+It is there because a matching pin is otherwise invisible: the run proceeds as any
+unpinned run does, and a trail that omitted the boolean could not tell an
+`--pin-sha256` run from one that named no digest at all. The boolean and not the
+digest — the digest crosses on argv already, and a record of fixed width is one a
+filter can rely on (#146).
 
 **Denials always carry a reason.** `Denied.reason` is non-optional; "denied"
 alone is not actionable.

@@ -141,7 +141,7 @@ impl SandboxedCommand {
         let (helper, argv) = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
 
-        crate::AuditEvent::spawned(&self.program, &self.policy).emit();
+        crate::AuditEvent::spawned(&self.program, &self.policy, self.pin.is_some()).emit();
 
         let result = match self.timeout {
             None => run_to_completion(&helper, &argv, &self.policy, write_end),

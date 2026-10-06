@@ -74,6 +74,10 @@ pub enum AuditEvent<'a> {
         env: usize,
         /// Whether the resolver hint was set — one variable in the child `env` does not count.
         dns_over_tcp: bool,
+        /// Whether a digest had to match before the exec. Not the digest: it is already in
+        /// `/proc/self/cmdline`, and what an auditor cannot otherwise recover is that a
+        /// successful run was checked at all.
+        pinned: bool,
     },
 
     /// A sandboxed process ended, and with what status.
@@ -121,7 +125,10 @@ impl<'a> AuditEvent<'a> {
     /// `tracing` needs static field names, so these cannot be derived from [`Axis::ALL`] the
     /// way the enforcement layers derive their rules; the exhaustive match is what makes an
     /// added axis a compile error.
-    pub fn spawned(program: &'a str, policy: &SandboxPolicy) -> Self {
+    ///
+    /// `pinned` is a parameter and not read off the policy because a digest is not policy —
+    /// see `context/decision-pinned-entry-point.md`.
+    pub fn spawned(program: &'a str, policy: &SandboxPolicy, pinned: bool) -> Self {
         let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
         for axis in Axis::ALL {
@@ -149,6 +156,7 @@ impl<'a> AuditEvent<'a> {
             unix_sockets: policy.allows_unix_sockets(),
             env: policy.allowed_env().len(),
             dns_over_tcp: policy.hints_dns_over_tcp(),
+            pinned,
         }
     }
 
@@ -214,6 +222,7 @@ impl<'a> AuditEvent<'a> {
                 unix_sockets,
                 env,
                 dns_over_tcp,
+                pinned,
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "spawned",
@@ -226,6 +235,7 @@ impl<'a> AuditEvent<'a> {
                 unix_sockets,
                 env,
                 dns_over_tcp,
+                pinned,
             ),
             Self::Exited { program, code } => tracing::info!(
                 target: AUDIT_TARGET,

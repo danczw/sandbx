@@ -68,7 +68,7 @@ fn a_spawn_records_the_policy_shape() {
         .allow_unix_sockets()
         .allow_standard_env();
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
 
     assert!(output.contains(r#"decision="spawned""#), "{output}");
     assert!(output.contains(r#"program="/bin/true""#), "{output}");
@@ -87,7 +87,7 @@ fn a_spawn_records_the_shape_of_a_port_allowlist() {
         .allow_network_port(443)
         .allow_network_port(80);
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
 
     assert!(output.contains(r#"network="ports""#), "{output}");
     assert!(output.contains("network_ports=2"), "{output}");
@@ -99,7 +99,7 @@ fn a_spawn_records_the_shape_of_a_port_allowlist() {
 fn a_spawn_records_an_unrestricted_network_grant() {
     let policy = SandboxPolicy::default().allow_network();
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
 
     assert!(output.contains(r#"network="any""#), "{output}");
     assert!(output.contains("network_ports=0"), "{output}");
@@ -110,7 +110,7 @@ fn a_spawn_records_an_unrestricted_network_grant() {
 fn a_spawn_records_the_resolver_hint() {
     let policy = SandboxPolicy::default().hint_dns_over_tcp();
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
 
     assert!(output.contains("dns_over_tcp=true"), "{output}");
     assert!(
