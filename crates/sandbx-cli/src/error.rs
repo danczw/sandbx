@@ -6,12 +6,12 @@ use sandbx_agent::TurnError;
 use sandbx_core::SandboxError;
 use sandbx_providers::ProviderError;
 
-/// What to type instead, appended to every [`PolicyError`] so two refusals cannot advise
-/// differently.
+/// What to type instead, appended to every [`PolicyError`] about the working directory so
+/// two refusals cannot advise differently.
 const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
                       for the tree the command needs";
 
-/// Why no policy could be derived from the working directory.
+/// Why the flags described no policy.
 ///
 /// Every variant refuses rather than falling back to a narrower policy, which would make
 /// an ordinary command fail for a reason the message could not explain; see
@@ -56,6 +56,12 @@ pub enum PolicyError {
 
     /// The working directory is the filesystem root.
     FilesystemRoot,
+
+    /// `--allow-env` named a variable the policy sets itself.
+    ImposedVariable {
+        /// The variable both flags claim.
+        name: String,
+    },
 }
 
 impl std::fmt::Display for PolicyError {
@@ -98,6 +104,12 @@ impl std::fmt::Display for PolicyError {
                     "refusing to derive a policy from the filesystem root — {ADVICE}"
                 )
             }
+            // No `ADVICE`: this refusal is about neither a path nor the working directory.
+            Self::ImposedVariable { name } => write!(
+                f,
+                "--dns-over-tcp sets {name} itself, so --allow-env {name} would be dropped \
+                 rather than honoured — pass one of the two, not both"
+            ),
         }
     }
 }
@@ -109,7 +121,8 @@ impl std::error::Error for PolicyError {
             | Self::HomeParent { .. }
             | Self::UnnamedHome { .. }
             | Self::SystemExecutables { .. }
-            | Self::FilesystemRoot => None,
+            | Self::FilesystemRoot
+            | Self::ImposedVariable { .. } => None,
             Self::Unavailable { source, .. } => Some(source),
         }
     }

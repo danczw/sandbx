@@ -105,6 +105,21 @@ fn a_spawn_records_an_unrestricted_network_grant() {
     assert!(output.contains("network_ports=0"), "{output}");
 }
 
+/// The one variable the child holds that the `env` count cannot show, so the trail says
+/// whether it was set rather than leaving it to be inferred from the port list.
+#[test]
+fn a_spawn_records_the_resolver_hint() {
+    let policy = SandboxPolicy::default().hint_dns_over_tcp();
+
+    let output = captured(|| AuditEvent::spawned("/bin/true", &policy).emit());
+
+    assert!(output.contains("dns_over_tcp=true"), "{output}");
+    assert!(
+        !output.contains("RES_OPTIONS"),
+        "the trail named the variable: {output}"
+    );
+}
+
 /// `Degraded` is emitted at `INFO` so this filter admits it. Its emitters run in the
 /// re-exec'd helper, where no subscriber is installed, so passing the filter is
 /// necessary but not sufficient.

@@ -609,3 +609,96 @@ fn a_name_that_could_never_match_is_refused() {
         );
     }
 }
+
+/// Through `parse_from`, so the flag's spelling is pinned here and not only in the
+/// struct: the helper argv seam uses the same one.
+#[test]
+fn the_resolver_hint_is_opt_in() {
+    let hinted = sandbox_run(&["sandbx", "sandbox-run", "--dns-over-tcp", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert!(hinted.hints_dns_over_tcp());
+    assert!(
+        !bare.hints_dns_over_tcp(),
+        "the resolver hint arrived without being asked for"
+    );
+}
+
+/// The decision the flag exists to keep: it collapses the recipe to one token without
+/// granting a port, so the audit trail never reports one the operator did not name.
+#[test]
+fn the_resolver_hint_allowlists_no_port() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--dns-over-tcp", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert!(!policy.allows_network(), "the hint granted IP egress");
+    assert_eq!(policy.network(), &sandbx_core::NetworkPolicy::Denied);
+}
+
+/// Names no path, so it must not be read as an explicit filesystem policy.
+#[test]
+fn the_resolver_hint_keeps_the_working_directory() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--dns-over-tcp", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert_eq!(policy.writable_paths(), [cwd()]);
+}
+
+/// Both flags claim `RES_OPTIONS` and disagree about its value. Refused rather than
+/// resolved, for the reason `a_name_with_a_value_is_refused_rather_than_dropped` gives:
+/// honouring the hint would drop the value the operator asked to pass, silently.
+#[test]
+fn the_hint_with_its_own_variable_is_refused() {
+    let error = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--dns-over-tcp",
+        "--allow-env",
+        "RES_OPTIONS",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect_err("two flags claiming one variable");
+
+    assert!(
+        matches!(error, sandbx_cli::PolicyError::ImposedVariable { .. }),
+        "{error} is not the collision refusal"
+    );
+    let message = error.to_string();
+    assert!(
+        message.contains("--dns-over-tcp") && message.contains("--allow-env RES_OPTIONS"),
+        "the refusal does not name both flags: {message}"
+    );
+}
+
+/// The library resolves what the CLI refuses, so a name the operator passes for its own
+/// sake is still dropped rather than inherited under the hint.
+#[test]
+fn another_variable_survives_the_resolver_hint() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--dns-over-tcp",
+        "--allow-env",
+        "GIT_AUTHOR_NAME",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("the flags describe a policy");
+
+    assert!(
+        policy
+            .allowed_env()
+            .iter()
+            .any(|name| name == "GIT_AUTHOR_NAME")
+    );
+    assert!(policy.hints_dns_over_tcp());
+}

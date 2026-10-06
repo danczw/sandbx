@@ -10,6 +10,9 @@ const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Introduces the *name* of a variable the command may inherit. Never a value.
 const FLAG_ENV: &str = "--env";
+/// Carries the resolver hint, taking no value — so unlike [`FLAG_NET_PORT`] it can be
+/// spelled as the CLI spells it; the pair it stands for is a constant the policy owns.
+const FLAG_DNS_OVER_TCP: &str = "--dns-over-tcp";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
 
@@ -75,6 +78,9 @@ impl HelperArgs {
         if policy.allows_unix_sockets() {
             out.push(FLAG_UNIX.to_string());
         }
+        if policy.hints_dns_over_tcp() {
+            out.push(FLAG_DNS_OVER_TCP.to_string());
+        }
         for name in policy.allowed_env() {
             out.push(FLAG_ENV.to_string());
             out.push(name.clone());
@@ -131,6 +137,7 @@ impl HelperArgs {
                     policy = policy.allow_network_port(port);
                 }
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
+                FLAG_DNS_OVER_TCP => policy = policy.hint_dns_over_tcp(),
                 FLAG_ENV => {
                     let name = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "env flag with no variable name after it",
