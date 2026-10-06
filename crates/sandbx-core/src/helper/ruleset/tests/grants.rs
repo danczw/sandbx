@@ -43,8 +43,7 @@ fn rights_for_narrows_a_regular_file() {
         let on_dir = rights_for(axis, true, LATEST_ABI);
         let on_file = rights_for(axis, false, LATEST_ABI);
 
-        // Narrowing is an intersection, so a file can never end up with more than the
-        // directory case.
+        // An intersection, so a file can never hold more than the directory case.
         assert!(
             on_dir.contains(on_file),
             "{axis:?} on a file gained a right the directory case did not have"
@@ -85,14 +84,13 @@ fn rights_for_narrows_a_regular_file() {
     }
 }
 
-/// Reading must never confer the right to *run* what it can see: `AccessFs::from_read`
-/// bundles `Execute` with `ReadFile`/`ReadDir`, so this is a subtraction that has to
-/// happen rather than a default.
+/// Reading must never confer the right to *run* what it can see: `AccessFs::from_read` bundles
+/// `Execute` with `ReadFile`/`ReadDir`, so this is a subtraction that has to happen rather
+/// than a default.
 ///
-/// Not an instance of `rights_follow_the_axis_table`: that one reads its expectation out
-/// of [`Axis::grants`], so flipping `Axis::Write` to confer execute still passes it. This,
-/// the two below and `rules::no_combination_of_grants_confers_execute` hard-code the
-/// answer and are the whole of that coverage.
+/// Not an instance of `rights_follow_the_axis_table`, which reads its expectation out of
+/// [`Axis::grants`] and so still passes with `Axis::Write` flipped to confer execute. This,
+/// the two below and `rules::no_combination_of_grants_confers_execute` are that coverage.
 ///
 /// [`Axis::grants`]: crate::Axis::grants
 #[test]
@@ -113,7 +111,6 @@ fn only_the_execute_axis_carries_execute() {
     assert!(rights.contains(AccessFs::Execute));
     // Read comes with it by design — see `SandboxPolicy::executable_paths`.
     assert!(rights.contains(AccessFs::ReadFile));
-    // But not write.
     assert!(!rights.contains(AccessFs::WriteFile));
 }
 
@@ -122,17 +119,16 @@ fn only_the_execute_axis_carries_execute() {
 /// [`Axis::grants`](crate::Axis::grants) has a word for; `AccessFs` has seventeen
 /// variants, so twelve would otherwise be pinned by nothing.
 ///
-/// `write` is the sharpest case, being defined by subtraction — `from_all` minus
-/// `from_read` — so every right a new ABI adds to the write half joins every
-/// `--allow-write` grant. At `LATEST_ABI` that is already two rights beyond writing bytes:
-/// `IoctlDev` (device ioctls on a node beneath the path) and `ResolveUnix` (`connect(2)`
-/// to a pathname socket beneath it, which `SECURITY.md` treats as seccomp's business).
-/// Pinning `ABI::V1` once left `truncate(2)` unguarded on every file regardless of policy.
+/// `write` is the sharpest case, being defined by subtraction — `from_all` minus `from_read` —
+/// so every right a new ABI adds to the write half joins every `--allow-write` grant. At
+/// `LATEST_ABI` that is already two rights beyond writing bytes: `IoctlDev` (device ioctls on
+/// a node beneath the path) and `ResolveUnix` (`connect(2)` to a pathname socket beneath it,
+/// which `SECURITY.md` treats as seccomp's business).
 ///
-/// Spelled out rather than derived from `from_all`/`from_read`, which would move with the
-/// bump it is meant to catch. Both ends are pinned because both are claims — [`BASELINE_ABI`]
-/// is what sandbx refuses to run below, [`LATEST_ABI`] the ceiling it negotiates up to —
-/// and in one test, so an intentional bump has one place to edit.
+/// Spelled out rather than derived from `from_all`/`from_read`, which would move with the bump
+/// it is meant to catch. Both ends are claims — [`BASELINE_ABI`] is what sandbx refuses to run
+/// below, [`LATEST_ABI`] the ceiling it negotiates up to — and both in one test, so an
+/// intentional bump has one place to edit.
 #[test]
 fn each_axis_confers_exactly_the_documented_set() {
     // Only the write axis differs across the range: `ResolveUnix` arrives in V9, and it
@@ -178,10 +174,9 @@ fn each_axis_confers_exactly_the_documented_set() {
     }
 }
 
-/// `SandboxPolicy::writable_paths` promises "writable does not imply readable". `from_all`
-/// includes `ReadFile`/`ReadDir`, so subtracting only `Execute` left the kernel layer
-/// granting read where `FsGuard` refused it; subtracting the whole read set makes a
-/// write-only drop directory unreadable on both layers.
+/// `SandboxPolicy::writable_paths` promises "writable does not imply readable", and `from_all`
+/// includes `ReadFile`/`ReadDir` — so subtracting only `Execute` grants read at the kernel
+/// where `FsGuard` refuses it. See `rights_for`.
 #[test]
 fn a_write_grant_carries_neither_read_nor_execute() {
     let rights = rights_for(crate::Axis::Write, true, LATEST_ABI);

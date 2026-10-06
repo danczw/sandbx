@@ -1,8 +1,8 @@
-//! Unit tests for the syscall filter, split by what they gate on; this module holds
-//! the `eval` interpreter they are all read through, and its own tests.
+//! Unit tests for the syscall filter, split by what they gate on; this module holds the
+//! `eval` interpreter they are all read through, and its own tests.
 //!
-//! Kernel-free — the program is evaluated here rather than installed, so these run
-//! anywhere. `tests/enforcement_syscalls.rs` is where a live kernel refuses a call.
+//! Kernel-free — the program is evaluated here rather than installed, so these run anywhere.
+//! `tests/enforcement_syscalls.rs` is where a live kernel refuses a call.
 
 use super::rules::NAMESPACE_CLONE_FLAGS;
 use super::*;
@@ -13,23 +13,20 @@ mod denylist;
 mod namespaces;
 mod sockets;
 
-// The three verdicts this filter can produce, taken from `libc` and not from
-// `u32::from(SeccompAction::…)`, which would leave expected and actual sharing a
-// source. These are kernel ABI and cannot move with the thing under test.
+// The verdicts this filter can produce, taken from `libc` and not from
+// `u32::from(SeccompAction::…)`, which would leave expected and actual sharing a source.
 const ALLOW: u32 = libc::SECCOMP_RET_ALLOW;
 const EPERM: u32 = libc::SECCOMP_RET_ERRNO | libc::EPERM as u32;
 const ENOSYS: u32 = libc::SECCOMP_RET_ERRNO | libc::ENOSYS as u32;
 const KILL: u32 = libc::SECCOMP_RET_KILL_PROCESS;
 
-// The classic-BPF opcodes `compiled_filter`'s program is built from, composed from
-// `libc`'s field constants rather than written as folded literals.
+// The classic-BPF opcodes `compiled_filter`'s program is built from, composed from `libc`'s
+// field constants rather than written as folded literals.
 //
-// `BPF_LD`, `BPF_W`, `BPF_K` and `BPF_JA` are all `0x00`, so composing cannot catch a
-// dropped zero-valued term. It does catch a *wrong* term — `BPF_LDX` is `0x01`,
-// `BPF_X` is `0x08` — which produces a value no instruction matches, so `eval` hits
-// its panic arm loudly instead of mis-evaluating.
-//
-// This set is closed only as long as seccompiler's codegen is; see `eval`.
+// `BPF_LD`, `BPF_W`, `BPF_K` and `BPF_JA` are all `0x00`, so composing cannot catch a dropped
+// zero-valued term. It does catch a *wrong* term — `BPF_LDX` is `0x01`, `BPF_X` is `0x08` —
+// which produces a value no instruction matches, so `eval` hits its panic arm loudly instead
+// of mis-evaluating. The set is closed only as long as seccompiler's codegen is; see `eval`.
 const LD_W_ABS: u16 = (libc::BPF_LD | libc::BPF_W | libc::BPF_ABS) as u16;
 const ALU_AND_K: u16 = (libc::BPF_ALU | libc::BPF_AND | libc::BPF_K) as u16;
 const JA: u16 = (libc::BPF_JMP | libc::BPF_JA) as u16;
@@ -41,15 +38,14 @@ const RET_K: u16 = (libc::BPF_RET | libc::BPF_K) as u16;
 /// Every opcode [`eval`] implements, for the structural check in [`denylist`].
 const KNOWN_OPCODES: &[u16] = &[LD_W_ABS, ALU_AND_K, JA, JEQ_K, JGT_K, JGE_K, RET_K];
 
-// `AUDIT_ARCH_*` for the architecture the test runs on: the `EM_*` machine number
-// from `linux/elf-em.h`, or'd with `__AUDIT_ARCH_64BIT` and `__AUDIT_ARCH_LE` from
-// `linux/audit.h`. Transcribed because `libc` does not export these and seccompiler
-// keeps its own copies private (`backend/bpf.rs`).
+// `AUDIT_ARCH_*` for the architecture the test runs on: the `EM_*` machine number from
+// `linux/elf-em.h`, or'd with `__AUDIT_ARCH_64BIT` and `__AUDIT_ARCH_LE` from `linux/audit.h`.
+// Transcribed because `libc` does not export these and seccompiler keeps its own copies
+// private (`backend/bpf.rs`).
 //
 // The transcription cannot pass silently: the filter's first act is to compare
-// `seccomp_data.arch` and kill on a mismatch, so a wrong value turns every verdict
-// these modules take into a loud failure, and
-// `the_filter_gates_on_the_arch_this_test_models` names the drift.
+// `seccomp_data.arch` and kill on a mismatch, so a wrong value turns every verdict these
+// modules take into a loud failure, named by `the_filter_gates_on_the_arch_this_test_models`.
 #[cfg(target_arch = "x86_64")]
 const AUDIT_ARCH: u32 = 62 | 0x8000_0000 | 0x4000_0000;
 #[cfg(target_arch = "aarch64")]
@@ -78,27 +74,24 @@ fn insn(code: u16, jt: u8, jf: u8, k: u32) -> seccompiler::sock_filter {
     seccompiler::sock_filter { code, jt, jf, k }
 }
 
-/// `struct seccomp_data` as the sixteen 32-bit words a `BPF_LD | BPF_W | BPF_ABS`
-/// instruction addresses.
+/// `struct seccomp_data` as the sixteen 32-bit words a `BPF_LD | BPF_W | BPF_ABS` instruction
+/// addresses.
 ///
 /// 64 bytes: `nr` at 0, `arch` at 4, `instruction_pointer` at 8, `args[6]` at 16
-/// (`seccompiler/backend/bpf.rs`). Each argument's *least* significant half sits at
-/// the lower offset, so word `4 + 2 * i` is `args[i]`'s low word and `5 + 2 * i` its
-/// high word.
+/// (`seccompiler/backend/bpf.rs`). Each argument's *least* significant half sits at the lower
+/// offset, so word `4 + 2 * i` is `args[i]`'s low word and `5 + 2 * i` its high word.
 ///
-/// Little-endian, and worth pinning, because it is the claim a reader is most likely
-/// to "fix" wrongly: in *socket* classic BPF an absolute word load is a big-endian
-/// packet read, but in *seccomp* it is not. `seccomp_check_filter()` rewrites every
-/// `BPF_LD | BPF_W | BPF_ABS` to `BPF_LDX | BPF_MEM | BPF_W` before the program runs,
-/// making it a plain native-endian field read out of the struct. A `[u32; 16]` is
-/// therefore the right model — and only because every architecture seccompiler
-/// supports is little-endian.
+/// Little-endian, and worth pinning, because it is the claim a reader is most likely to "fix"
+/// wrongly: in *socket* classic BPF an absolute word load is a big-endian packet read, but in
+/// *seccomp* it is not. `seccomp_check_filter()` rewrites every `BPF_LD | BPF_W | BPF_ABS` to
+/// `BPF_LDX | BPF_MEM | BPF_W` before the program runs, making it a plain native-endian field
+/// read out of the struct. A `[u32; 16]` is the right model only because every architecture
+/// seccompiler supports is little-endian.
 fn seccomp_data(nr: libc::c_long, args: [u64; 6]) -> [u32; 16] {
     let mut data = [0u32; 16];
 
-    // Not `u32::try_from(nr).unwrap()`: `nr` is a signed `int`, every comparison the
-    // filter makes against it is `jeq` and so sign-agnostic, and `syscall(-1)` is a
-    // legal thing for a process to pass.
+    // Not `u32::try_from(nr).unwrap()`: `nr` is a signed `int`, every comparison the filter
+    // makes against it is `jeq` and so sign-agnostic, and `syscall(-1)` is legal to pass.
     data[0] = nr as u32;
     data[1] = AUDIT_ARCH;
     // `instruction_pointer` stays zero; no rule sandbx builds looks at it.
@@ -112,25 +105,22 @@ fn seccomp_data(nr: libc::c_long, args: [u64; 6]) -> [u32; 16] {
 
 /// Run `program` over `data` and return the verdict it yields.
 ///
-/// Evaluating rather than asserting over the program's instruction *layout*: the
-/// layout is seccompiler's codegen rather than ABI, and a layout check sees that
-/// instructions exist, not that control flow reaches them, so a wrong jump offset
-/// passes.
+/// Evaluating rather than asserting over the program's instruction *layout*: the layout is
+/// seccompiler's codegen rather than ABI, and a layout check sees that instructions exist, not
+/// that control flow reaches them, so a wrong jump offset passes.
 ///
-/// The codegen coupling is relocated here, not eliminated: the opcode set above is
-/// closed only as long as seccompiler's codegen is. What keeps that honest is the
-/// panic at the bottom — an unimplemented opcode must never produce a verdict, because
-/// a mis-evaluation returning `ALLOW` would be worse than the layout coupling it
-/// replaces.
+/// The codegen coupling is relocated, not eliminated: the opcode set above is closed only as
+/// long as seccompiler's codegen is. What keeps that honest is the panic at the bottom — an
+/// unimplemented opcode must never produce a verdict, a mis-evaluation returning `ALLOW` being
+/// worse than the layout coupling it replaces.
 ///
 /// Takes `BpfProgramRef` rather than `&BpfProgram`, which is a `&Vec` and trips
 /// `clippy::ptr_arg`; it is also what `apply_filter` takes.
 ///
-/// This loop cannot spin, so it carries no guard: every arm derives its target as
-/// `pc + 1 + <unsigned offset>`, so `pc` strictly increases and the `get` at the top
-/// panics by name once it reaches `program.len()`. An arm that *could* jump backwards
-/// would have to subtract — which is where to put a check if a future opcode needs
-/// one.
+/// The loop cannot spin, so it carries no guard: every arm derives its target as
+/// `pc + 1 + <unsigned offset>`, so `pc` strictly increases and the `get` at the top panics by
+/// name once it reaches `program.len()`. An arm that *could* jump backwards would have to
+/// subtract — which is where to put a check if a future opcode needs one.
 fn eval(program: seccompiler::BpfProgramRef<'_>, data: &[u32; 16]) -> u32 {
     let mut acc = 0u32;
     let mut pc = 0usize;
@@ -144,15 +134,14 @@ fn eval(program: seccompiler::BpfProgramRef<'_>, data: &[u32; 16]) -> u32 {
         });
         let next = pc + 1;
 
-        // Compared with `==`, not matched: in a pattern, an uppercase path that fails
-        // to resolve to a constant becomes a fresh binding rather than an error, so
-        // the first arm would swallow every opcode and the only signal would be
-        // `unreachable_patterns` — a warning. `==` makes that a type error.
+        // Compared with `==`, not matched: in a pattern, an uppercase path that fails to
+        // resolve to a constant becomes a fresh binding rather than an error, so the first arm
+        // would swallow every opcode and the only signal would be `unreachable_patterns`.
         let target = if insn.code == LD_W_ABS {
             let offset = usize::try_from(insn.k)
                 .unwrap_or_else(|_| panic!("load offset {} does not fit a usize", insn.k));
-            // `seccomp_check_filter()` refuses a filter whose absolute load is
-            // unaligned or outside `struct seccomp_data`; restated here.
+            // `seccomp_check_filter()` refuses a filter whose absolute load is unaligned or
+            // outside `struct seccomp_data`; restated here.
             assert_eq!(
                 offset % 4,
                 0,
@@ -204,9 +193,9 @@ fn verdict(program: seccompiler::BpfProgramRef<'_>, nr: libc::c_long) -> u32 {
 
 /// The verdict for `nr` called with `args`.
 ///
-/// Every test goes through this rather than touching a word index, because `data[4]`
-/// is `args[0]`'s low half while `data[5]` is its high half and `data[6]` is `args[1]`
-/// — an off-by-one would silently assert about the wrong field.
+/// Every test goes through this rather than touching a word index, because `data[4]` is
+/// `args[0]`'s low half while `data[5]` is its high half and `data[6]` is `args[1]` — an
+/// off-by-one would silently assert about the wrong field.
 fn verdict_with_args(
     program: seccompiler::BpfProgramRef<'_>,
     nr: libc::c_long,
@@ -224,8 +213,8 @@ fn verdict_from_arch(program: seccompiler::BpfProgramRef<'_>, nr: libc::c_long, 
 
 /// The verdict for `socket(domain, 0, 0)`.
 ///
-/// `domain` is wider than the `int` the kernel reads, so a test can put something in
-/// the half the comparison must ignore.
+/// `domain` is wider than the `int` the kernel reads, so a test can put something in the half
+/// the comparison must ignore.
 fn socket_verdict(program: seccompiler::BpfProgramRef<'_>, domain: u64) -> u32 {
     protocol_socket_verdict(program, domain, 0, 0)
 }
@@ -241,8 +230,8 @@ fn typed_socket_verdict(
 
 /// The verdict for `socket(domain, socket_type, protocol)`.
 ///
-/// All three are wider than the `int`s the kernel reads, so a test can put something in
-/// the halves and the flag bits the comparisons must ignore.
+/// All three are wider than the `int`s the kernel reads, so a test can put something in the
+/// halves and the flag bits the comparisons must ignore.
 fn protocol_socket_verdict(
     program: seccompiler::BpfProgramRef<'_>,
     domain: u64,
@@ -256,19 +245,18 @@ fn protocol_socket_verdict(
     )
 }
 
-/// [`eval`] is itself untested code whose failure mode is the silent pass, so these
-/// cases cover the classic mis-implementations over hand-written programs rather than
-/// the compiled filter.
+/// [`eval`] is itself untested code whose failure mode is the silent pass, so these cases
+/// cover the classic mis-implementations over hand-written programs rather than the compiled
+/// filter.
 ///
-/// Only `JGT` is unreachable from the installed filters now: the `clone` rules are
-/// `MaskedEq`, which seccompiler compiles to `ALU|AND` plus `jeq`, and `x32_gate`
-/// hand-writes a `JGE`. It is implemented anyway, because the alternative is an arm
-/// that panics on a program seccompiler can legitimately emit.
+/// Only `JGT` is unreachable from the installed filters now: the `clone` rules are `MaskedEq`,
+/// which seccompiler compiles to `ALU|AND` plus `jeq`, and `x32_gate` hand-writes a `JGE`. It
+/// is implemented anyway, the alternative being an arm that panics on a program seccompiler
+/// can legitimately emit.
 #[test]
 fn eval_implements_the_opcodes_seccompiler_can_emit() {
-    // Every program loads word 0, `nr`, so the case's `nr` is what the comparison
-    // sees. `jt`, `jf` and `JA`'s `k` are offsets from the *following* instruction,
-    // so 1 skips exactly one.
+    // Every program loads word 0, `nr`, so the case's `nr` is what the comparison sees. `jt`,
+    // `jf` and `JA`'s `k` are offsets from the *following* instruction, so 1 skips one.
     let cases: &[(&str, Vec<seccompiler::sock_filter>, libc::c_long, u32)] = &[
         (
             "jgt is strict, so an equal value does not take the greater branch",
@@ -304,8 +292,7 @@ fn eval_implements_the_opcodes_seccompiler_can_emit() {
             EPERM,
         ),
         (
-            // An `i32` interpretation inverts this one: -1 is not > 1 signed, but
-            // 0xffff_ffff is unsigned, and the kernel compares unsigned.
+            // An `i32` interpretation inverts this one: -1 is not > 1 signed, 0xffff_ffff is.
             "the comparison is unsigned",
             vec![
                 insn(LD_W_ABS, 0, 0, 0),
@@ -317,8 +304,7 @@ fn eval_implements_the_opcodes_seccompiler_can_emit() {
             EPERM,
         ),
         (
-            // Without the mask 0x19 does not equal 0x10 and this falls to ALLOW,
-            // so the case discriminates.
+            // Without the mask 0x19 does not equal 0x10 and this falls to ALLOW.
             "alu-and masks the accumulator before the comparison",
             vec![
                 insn(LD_W_ABS, 0, 0, 0),
@@ -331,8 +317,7 @@ fn eval_implements_the_opcodes_seccompiler_can_emit() {
             EPERM,
         ),
         (
-            // Reading the offset from `jt` (0) instead of `k` lands on ALLOW, so
-            // the case discriminates.
+            // Reading the offset from `jt` (0) instead of `k` lands on ALLOW.
             "an unconditional jump takes its offset from k",
             vec![
                 insn(LD_W_ABS, 0, 0, 0),
@@ -355,11 +340,10 @@ fn eval_implements_the_opcodes_seccompiler_can_emit() {
     }
 }
 
-/// `expected` is not optional: without it the test also passes on the off-the-end
-/// panic, on the alignment assertion, or on an `unwrap` elsewhere in the body — any of
-/// which would leave the panic arm itself unexercised. The opcode is one seccompiler
-/// could plausibly grow into (`BPF_LDX | BPF_MEM | BPF_W`, a scratch-memory load)
-/// rather than a value no BPF dialect uses.
+/// `expected` is not optional: without it the test also passes on the off-the-end panic, on
+/// the alignment assertion, or on an `unwrap` elsewhere in the body — any of which would leave
+/// the panic arm itself unexercised. The opcode is one seccompiler could plausibly grow into
+/// (`BPF_LDX | BPF_MEM | BPF_W`, a scratch-memory load), not a value no BPF dialect uses.
 #[test]
 #[should_panic(expected = "does not implement")]
 fn eval_refuses_an_opcode_it_does_not_implement() {
@@ -371,18 +355,16 @@ fn eval_refuses_an_opcode_it_does_not_implement() {
     );
 }
 
-/// Nothing else here would notice if [`seccomp_data`] misplaced a field: every other
-/// test passes all-zero arguments or a value in `args[0]` alone, and the array starts
-/// zeroed — so the stride `4 + 2 * i` could map arguments 1 through 5 onto each
-/// other's words with all of them still passing.
+/// Nothing else here would notice if [`seccomp_data`] misplaced a field: every other test
+/// passes all-zero arguments or values the rules compare one at a time, so the stride
+/// `4 + 2 * i` could map arguments onto each other's words with all of them still passing.
 ///
-/// That matters for the next rule rather than today's: sandbx gates only on `socket`'s
-/// argument 0, but `clone`'s flags, `socket`'s `type` and an `ioctl` request all sit
-/// above index zero (#118), and a rule on one of those would be evaluated against the
-/// wrong word.
+/// Live, not latent: the rules gate on `socket`'s `type` and `protocol`, `setsockopt`'s level
+/// and option and `sendmsg`'s flags, all above index zero, and a rule on one of those would
+/// be evaluated against the wrong word.
 ///
-/// Each half is checked separately, with distinct values, because an argument written
-/// as one 64-bit store to the right *pair* in the wrong order would otherwise pass.
+/// Each half is checked separately, with distinct values, because an argument written as one
+/// 64-bit store to the right *pair* in the wrong order would otherwise pass.
 #[test]
 fn seccomp_data_puts_each_field_where_the_kernel_does() {
     let args = std::array::from_fn::<u64, 6, _>(|i| {
@@ -391,9 +373,8 @@ fn seccomp_data_puts_each_field_where_the_kernel_does() {
     });
     let data = seccomp_data(libc::SYS_socket, args);
 
-    // Byte offsets read off `struct seccomp_data`'s definition rather than off
-    // `seccomp_data`'s own arithmetic: `nr` @0, `arch` @4, the 64-bit
-    // `instruction_pointer` @8, `args[6]` @16.
+    // Byte offsets read off `struct seccomp_data`'s definition, not off `seccomp_data`'s own
+    // arithmetic: `nr` @0, `arch` @4, the 64-bit `instruction_pointer` @8, `args[6]` @16.
     let mut fields = vec![
         ("nr".to_owned(), 0, libc::SYS_socket as u32),
         ("arch".to_owned(), 4, AUDIT_ARCH),
@@ -406,9 +387,9 @@ fn seccomp_data_puts_each_field_where_the_kernel_does() {
     }
 
     for (field, offset, expected) in fields {
-        // `eval` has no way to return the accumulator — `BPF_RET | BPF_A` is not an
-        // opcode seccompiler emits — so the comparison is the program: load the
-        // field, return `ALLOW` only if it holds what it should.
+        // `eval` has no way to return the accumulator — `BPF_RET | BPF_A` is not an opcode
+        // seccompiler emits — so the comparison is the program: load the field, return `ALLOW`
+        // only if it holds what it should.
         let program = [
             insn(LD_W_ABS, 0, 0, u32::try_from(offset).unwrap()),
             insn(JEQ_K, 0, 1, expected),

@@ -67,9 +67,8 @@ fn a_port_list_handles_the_axis_and_carries_every_port() {
     }
 }
 
-/// The three states must not collapse into two. Compared pairwise rather than against a
-/// table of expectations, so this stays an observation about the mapping rather than a
-/// restatement of it.
+/// The three states must not collapse into two. Compared pairwise rather than against a table
+/// of expectations, so this stays an observation about the mapping, not a restatement of it.
 #[test]
 fn the_three_network_cases_map_to_distinct_requests() {
     let denied = SandboxPolicy::default();
@@ -92,8 +91,8 @@ fn the_three_network_cases_map_to_distinct_requests() {
 /// from the same call the code makes asserts only that the code is self-consistent.
 ///
 /// Neither right is enough alone — without `ConnectTcp` an allowlisted port is unreachable,
-/// without `BindTcp` a command may listen on any port. Asked at the floor, the weakest
-/// kernel this build accepts, where both are still present because both arrived in ABI V4.
+/// without `BindTcp` a command may listen on any port. Asked at the floor, where both are
+/// present because both arrived in ABI V4.
 #[test]
 fn a_port_rule_grants_both_tcp_rights_and_nothing_else() {
     let policy = SandboxPolicy::default().allow_network_port(443);
@@ -109,14 +108,14 @@ fn a_port_rule_grants_both_tcp_rights_and_nothing_else() {
     );
 }
 
-/// The asymmetry `net_rules` exists to keep: the handled set is `from_all`, so a network
-/// right a future ABI adds is policed, while the port rules grant a fixed pair, so that
-/// right arrives permitted on no port. Taking `handled` for both would hand a UDP or raw
-/// right to every port the operator allowlisted, which is the direction that fails open.
+/// The asymmetry `net_rules` exists to keep: the handled set is `from_all`, so a network right
+/// a future ABI adds is policed, while the port rules grant a fixed pair, so that right
+/// arrives permitted on no port. Taking `handled` for both would hand a UDP or raw right to
+/// every port the operator allowlisted — the direction that fails open.
 ///
-/// Asserted as a subset relation rather than against two literals, because the claim is
-/// about which way they may differ, not about today's values — and Landlock refuses a rule
-/// carrying a right the ruleset does not handle, so the inclusion is also a precondition.
+/// A subset relation rather than two literals, because the claim is about which way they may
+/// differ, not about today's values — and Landlock refuses a rule carrying a right the ruleset
+/// does not handle, so the inclusion is also a precondition.
 #[test]
 fn a_port_rule_grants_no_more_than_the_kernel_is_told_to_police() {
     let policy = SandboxPolicy::default().allow_network_port(443);
