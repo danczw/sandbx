@@ -1,8 +1,8 @@
 //! Compaction's wiring: that the trigger reads a measurement, that the measurement gets
 //! out of the turn, and that what reaches the API is a conversation it would accept.
 //!
-//! The planner's own algebra is unit-tested beside the private `plan_cut`, in
-//! `src/compact/tests.rs`. What is asserted here is `Script::sent` — the request itself.
+//! The planner's own algebra is unit-tested beside the private `plan_cut`. What is
+//! asserted here is `Script::sent` — the request itself.
 
 use sandbx_agent::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
@@ -13,7 +13,7 @@ mod support;
 
 use support::{Script, allow_all, call, ctx, stop, text, turn, wire};
 
-/// A measurement large enough to put any test over the budgets used below.
+/// Large enough to put any test over the budgets used below.
 fn measured(input: u32) -> AgentEvent {
     AgentEvent::Usage {
         input_tokens: Some(input),
@@ -90,16 +90,14 @@ fn sent(script: &Script, round: usize) -> serde_json::Value {
     serde_json::to_value(&script.sent[round]).unwrap()["messages"].clone()
 }
 
-/// Pinned literally rather than read off the type, because the value is the claim: on by
-/// default would silently send a model less than it was given, against a context window
-/// this crate cannot know.
+/// Pinned literally because the value is the claim: on by default would silently send a
+/// model less than it was given, against a window this crate cannot know.
 #[test]
 fn the_default_limits_leave_compaction_off() {
     assert!(TurnLimits::default().compaction.is_none());
 }
 
-/// The feedback loop the whole feature hangs on: without the counts leaving the turn
-/// there is nothing for a policy to read.
+/// Without the counts leaving the turn there is nothing for a policy to read.
 #[tokio::test]
 async fn the_outcome_carries_the_last_reported_usage() {
     let mut script = Script::new([vec![text("hi"), measured(4_000), stop(StopReason::EndTurn)]]);
@@ -127,8 +125,8 @@ async fn the_outcome_carries_the_last_reported_usage() {
     assert_eq!(outcome.usage.unwrap().prompt_tokens(), 4_000);
 }
 
-/// `None` has to stay distinguishable from a reported zero, or a caller cannot tell
-/// whether to keep the figure it already had or believe a new one.
+/// `None` has to stay distinct from a reported zero, or a caller cannot tell whether to
+/// keep the figure it already had.
 #[tokio::test]
 async fn a_round_with_no_usage_leaves_the_outcome_empty() {
     let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
@@ -148,7 +146,7 @@ async fn a_round_with_no_usage_leaves_the_outcome_empty() {
 }
 
 /// Guessing would compact a conversation that may be two messages long. Only the first
-/// round: see [`a_first_turn_compacts_after_it_measures_itself`].
+/// round — see [`a_first_turn_compacts_after_it_measures_itself`].
 #[tokio::test]
 async fn compaction_cannot_fire_on_a_turns_first_round() {
     let history = conversation();
@@ -174,10 +172,9 @@ async fn compaction_cannot_fire_on_a_turns_first_round() {
     assert_eq!(outcome.withheld, 0);
 }
 
-/// Nothing threaded in: the turn measures itself on round one and acts on round two,
-/// the only in-turn bound there is, since `produced` grows the request as the turn goes
-/// round. Without it a turn whose tool results balloon the request re-sends it for all
-/// eight rounds.
+/// Nothing threaded in: the turn measures itself on round one and acts on round two, the
+/// only in-turn bound there is. Without it a turn whose tool results balloon the request
+/// re-sends it for all eight rounds.
 #[tokio::test]
 async fn a_first_turn_compacts_after_it_measures_itself() {
     let history = conversation();
@@ -248,8 +245,8 @@ async fn a_turn_under_budget_sends_the_whole_history() {
     assert_eq!(outcome.withheld, 0);
 }
 
-/// The feature end to end. Asserted on what the script received rather than the return
-/// value: the request is the only thing the API can reject.
+/// Asserted on what the script received: the request is the only thing the API can
+/// reject.
 #[tokio::test]
 async fn a_turn_over_budget_sends_only_the_recent_messages() {
     let history = conversation();
@@ -279,10 +276,9 @@ async fn a_turn_over_budget_sends_only_the_recent_messages() {
     assert_eq!(sent(&script, 0), wire(&history[2..]));
 }
 
-/// `outcome.usage` measures the request that was *already* compacted, so a caller
-/// threading only that reads the next turn as under budget, puts the whole — now longer —
-/// history back, and sends more than the turn that triggered. Two real turns, because the
-/// failure lives entirely in the hand-off: either one in isolation looks correct.
+/// `outcome.usage` measures the *already compacted* request, so a caller threading only
+/// that puts the whole, now longer history back. Two real turns, because the failure lives
+/// in the hand-off: either one in isolation looks correct.
 #[tokio::test]
 async fn the_turn_after_a_compaction_keeps_the_cut() {
     let policy = Compaction {
@@ -350,8 +346,7 @@ async fn the_turn_after_a_compaction_keeps_the_cut() {
     assert_eq!(sent(&second_script, 0), wire(&second_history[2..]));
 }
 
-/// A conversation that has grown back over budget since the last cut has to be cut
-/// deeper, or it is bounded exactly once and then never again.
+/// A conversation back over budget has to be cut deeper, or it is bounded exactly once.
 #[tokio::test]
 async fn a_turn_still_over_budget_deepens_the_cut() {
     let history = long_conversation();
@@ -382,8 +377,8 @@ async fn a_turn_still_over_budget_deepens_the_cut() {
     assert_eq!(sent(&script, 0), wire(&history[6..]));
 }
 
-/// Every turn after a successful compaction carries a floor, so a floor that froze the
-/// cut would leave the in-turn bound working only for the one case that does not need it.
+/// Every turn after a compaction carries a floor, so a floor that froze the cut would
+/// leave the in-turn bound working only where it is not needed.
 #[tokio::test]
 async fn a_carried_floor_deepens_on_the_turns_own_figure() {
     let history = long_conversation();
@@ -400,8 +395,7 @@ async fn a_carried_floor_deepens_on_the_turns_own_figure() {
         budget_tokens: 100,
         keep_recent: 2,
     });
-    // The steady state after a compaction: a floor to hold, and no figure of this turn's
-    // own yet, so round one is under budget and holds the floor exactly.
+    // The steady state after a compaction: a floor to hold and no figure of its own yet.
     turn.observed = None;
     turn.withheld = 2;
 
@@ -423,9 +417,8 @@ async fn a_carried_floor_deepens_on_the_turns_own_figure() {
     assert_eq!(&kept[..2], &wire(&history[6..]).as_array().unwrap()[..]);
 }
 
-/// A caller that rewrites history rather than appending to it carries back a count that
-/// no longer names a boundary. Dropping the floor would hand it `withheld: 0` and restart
-/// compaction from zero.
+/// A caller that rewrites history carries back a count that no longer names a boundary.
+/// Dropping the floor would hand it `withheld: 0` and restart from zero.
 #[tokio::test]
 async fn an_illegal_carried_floor_still_compacts() {
     let history = tool_chain();
@@ -440,8 +433,8 @@ async fn an_illegal_carried_floor_still_compacts() {
         cache_read_input_tokens: None,
         cache_creation_input_tokens: None,
     });
-    // Index 4 is an assistant turn and nothing above it is legal, so the floor can only
-    // be met from below: 3, one boundary shallower than asked.
+    // Index 4 is an assistant turn, nothing above it is legal, so the floor is met from
+    // below at 3.
     turn.withheld = 4;
 
     let outcome = run_turn(
@@ -463,9 +456,8 @@ async fn an_illegal_carried_floor_still_compacts() {
     );
 }
 
-/// A count larger than the history it names, which only a caller rewriting history can
-/// produce. The floor is dropped, not clamped onto the end: clamping would both withhold
-/// all but the newest exchange and leave `run_turn` slicing past its own history.
+/// Dropped, not clamped onto the end: clamping would withhold all but the newest exchange
+/// and leave `run_turn` slicing past its own history.
 #[tokio::test]
 async fn a_floor_past_the_history_sends_it_whole() {
     let history = long_conversation();
@@ -496,8 +488,8 @@ async fn a_floor_past_the_history_sends_it_whole() {
     assert_eq!(sent(&script, 0), wire(&history));
 }
 
-/// `Usage` is nullable on the wire. Deepening on a figure already acted on would shed
-/// context the turn cannot get back, and the turn would do it once per round.
+/// `Usage` is nullable on the wire, and deepening on a figure already acted on would shed
+/// context the turn cannot get back, once per round.
 #[tokio::test]
 async fn a_round_with_no_usage_leaves_the_cut_alone() {
     let history = long_conversation();
@@ -506,8 +498,8 @@ async fn a_round_with_no_usage_leaves_the_cut_alone() {
         vec![text("done"), stop(StopReason::EndTurn)],
     ]);
     let mut turn = turn(&history, &[BuiltinTool::Write]);
-    // `keep_recent: 6` is what makes the difference visible: the target tracks `produced`,
-    // so a re-plan on round two would reach index 4.
+    // `keep_recent: 6` makes the difference visible: the target tracks `produced`, so a
+    // re-plan on round two would reach index 4.
     turn.limits.compaction = Some(Compaction {
         budget_tokens: 100,
         keep_recent: 6,
@@ -534,8 +526,7 @@ async fn a_round_with_no_usage_leaves_the_cut_alone() {
     assert_eq!(&kept[..6], &wire(&history[2..]).as_array().unwrap()[..]);
 }
 
-/// The same setup, with round one reporting: the cut deepens rather than reversing, so
-/// the model is never re-shown history it had lost.
+/// The same setup with round one reporting: the cut deepens rather than reversing.
 #[tokio::test]
 async fn a_cut_already_taken_is_never_undone() {
     let history = long_conversation();
@@ -575,8 +566,8 @@ async fn a_cut_already_taken_is_never_undone() {
     assert_eq!(&kept[..4], &wire(&history[4..]).as_array().unwrap()[..]);
 }
 
-/// Compaction narrows the request, not `TurnOutcome::messages`: a caller appends those
-/// to its stored history, so a loss there would be permanent and compound every turn.
+/// Compaction narrows the request, not `TurnOutcome::messages`: a caller appends those to
+/// its stored history, so a loss there compounds every turn.
 #[tokio::test]
 async fn compaction_never_shortens_the_transcript() {
     let history = conversation();
@@ -611,8 +602,8 @@ async fn compaction_never_shortens_the_transcript() {
     );
 }
 
-/// The API rejects a conversation that does not open on a user turn, and index 1 of this
-/// history is the assistant's.
+/// The API rejects a conversation that does not open on a user turn; index 1 here is the
+/// assistant's.
 #[tokio::test]
 async fn a_compacted_request_opens_with_a_user_message() {
     let history = conversation();
@@ -646,8 +637,7 @@ async fn a_compacted_request_opens_with_a_user_message() {
     );
 }
 
-/// An orphaned `tool_result` — one whose `tool_use` was withheld — is rejected outright,
-/// and in a tool-heavy transcript most indices are one.
+/// An orphaned `tool_result` is rejected outright, and most indices here are one.
 #[tokio::test]
 async fn compaction_keeps_a_tool_result_with_its_call() {
     let history = tool_chain();
@@ -682,8 +672,8 @@ async fn compaction_keeps_a_tool_result_with_its_call() {
     );
 }
 
-/// Rung 3 of the fallback ladder: cutting anyway would turn a request that *might* be
-/// too long into one the API is certain to reject.
+/// Rung 3: cutting anyway turns a request that *might* be too long into one the API is
+/// certain to reject.
 #[tokio::test]
 async fn an_unbreakable_history_is_sent_oversized() {
     let mut history = vec![said("only prose turn")];
@@ -731,8 +721,7 @@ async fn an_unbreakable_history_is_sent_oversized() {
     assert_eq!(sent(&script, 0), wire(&history));
 }
 
-/// A cut survives the rounds that follow it: nothing re-sends history the model has
-/// already been denied, however `produced` grows behind it.
+/// A cut survives the rounds after it, however `produced` grows behind it.
 #[tokio::test]
 async fn a_cut_is_reused_by_every_later_round() {
     let root = tempfile::tempdir().unwrap();
@@ -769,15 +758,13 @@ async fn a_cut_is_reused_by_every_later_round() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 2);
-    // Round two carries the same withheld prefix, with this turn's own work after it.
     assert_eq!(sent(&script, 0), wire(&history[2..]));
     assert_eq!(sent(&script, 1)[0], wire(&history[2..])[0]);
     assert_eq!(sent(&script, 1)[1], wire(&history[2..])[1]);
 }
 
-/// The oscillation case. Round one's own measurement comes back *under* budget, so
-/// round two re-plans with nothing asking to deepen — and the cut it already took is its
-/// floor, which is what stops it putting the dropped history back.
+/// Round one's own measurement comes back *under* budget, so round two re-plans with
+/// nothing asking to deepen — and the cut it already took is its floor.
 #[tokio::test]
 async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
     let root = tempfile::tempdir().unwrap();
@@ -821,10 +808,9 @@ async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
     assert_eq!(outcome.usage.unwrap().prompt_tokens(), 1);
 }
 
-/// `produced` is handed to the planner as a count, never a slice, so a `keep_recent`
-/// smaller than this turn's own output cannot force that output out. Withholding the
-/// tool result the model is waiting on would be API-valid and useless — the turn would
-/// loop until it ran out of rounds.
+/// `produced` reaches the planner as a count, never a slice, so a `keep_recent` under
+/// this turn's own output cannot force it out. Withholding the tool result the model
+/// awaits would be API-valid and useless: the turn would loop out its rounds.
 #[tokio::test]
 async fn a_keep_recent_under_the_turns_output_sends_it() {
     let root = tempfile::tempdir().unwrap();
@@ -860,8 +846,8 @@ async fn a_keep_recent_under_the_turns_output_sends_it() {
     .await
     .unwrap();
 
-    // Round two's request is built from the two messages round one produced — the call
-    // and its result — whatever was withheld in front of them. They are the tail.
+    // Round two's request ends in the two messages round one produced, the call and its
+    // result, whatever was withheld in front of them.
     let second = sent(&script, 1);
     let own = wire(&outcome.messages[..2]);
     let count = second.as_array().unwrap().len();
@@ -870,8 +856,7 @@ async fn a_keep_recent_under_the_turns_output_sends_it() {
     assert_eq!(second[count - 1], own[1], "got {second:?}");
 }
 
-/// The degenerate configuration, given defined behaviour rather than rejected at
-/// construction: `Compaction` has public fields and no constructor to validate in.
+/// Defined rather than rejected: `Compaction` has public fields and no constructor.
 #[tokio::test]
 async fn a_budget_of_zero_compacts_every_measured_turn() {
     let history = conversation();
@@ -900,9 +885,8 @@ async fn a_budget_of_zero_compacts_every_measured_turn() {
     assert_eq!(outcome.withheld, 2);
 }
 
-/// `EndedMidToolUse` reads `produced`, which compaction cannot reach, so the check is
-/// unchanged with it on. The coupling runs the other way: withholding history is one of
-/// the things that can confuse a model into an empty round.
+/// `EndedMidToolUse` reads `produced`, which compaction cannot reach. The coupling runs
+/// the other way: withholding history can confuse a model into an empty round.
 #[tokio::test]
 async fn a_compacted_turn_ending_mid_tool_use_is_an_error() {
     let root = tempfile::tempdir().unwrap();
