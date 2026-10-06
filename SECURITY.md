@@ -89,9 +89,11 @@ Three properties matter as much as the list:
   on, or in a directory holding the running `sandbx`. Only the `$HOME` arm depends
   on the environment, and only to name a directory the others already cover by
   location; with no usable `HOME` — unset, naming nothing that resolves to a
-  directory, or naming one of those locations rather than a directory inside one
-  — the refusal widens to any direct child of those locations rather than
-  lapsing. It reaches no further than those locations, so a home root kept
+  directory, or naming a place homes live (`/home`, `/Users`, `/var/home`, or
+  anything holding one, such as `/` or `/var`) rather than a home inside one —
+  the refusal widens to any direct child of those locations rather than lapsing.
+  `HOME=/root` is a home and not such a place, since root's home is `/root`
+  itself. It reaches no further than those locations, so a home root kept
   somewhere else is covered by the `$HOME` arm alone and by nothing at all when
   `HOME` is unusable; name it with a path flag. What that write grant means for
   files executed *later*, outside the sandbox, is a non-claim of its own below.

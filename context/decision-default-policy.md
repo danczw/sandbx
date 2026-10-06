@@ -139,10 +139,19 @@ or the other.
 
 `usable` asks the second half of that question because resolving to a directory is
 not being somebody's home either. `HOME=/home` resolves and is a directory, and it
-is the one place on the system that holds homes rather than being one — it named a
-usable home, and `/home/other` then derived read and write over a neighbour's tree
-(#162). So `holds_home_directories` tests the resolved `$HOME` as well as the cwd,
-which also subsumes the `HOME=/` Docker case: `/` holds every home there is.
+is a place that holds homes rather than being one — it named a usable home, and
+`/home/other` then derived read and write over a neighbour's tree (#162). So the
+resolved `$HOME` is tested by location too, which also subsumes the `HOME=/` Docker
+case: `/` holds every home there is.
+
+That test reads `SHARED_HOME_PARENTS`, three of the four names, and the one it
+leaves out is why there are two lists rather than one. `/root` is in
+`HOME_PARENTS` because a root *at* `/root` is write over root's home, and it is
+that home — so `HOME=/root` names a home, where `HOME=/home` names none. Testing
+all four would refuse `HOME=/root` with cwd `/root/app`, the conventional root
+container, saying "no usable HOME" of a `$HOME` that is set, resolvable and names
+exactly the home it should. The cwd arms still read all four: a cwd *at* `/root`
+is refused whatever `$HOME` says, which is the asymmetry the two lists encode.
 
 What this costs, visibly: a cwd shaped like a home under `HOME_PARENTS` is now
 refused where an unusable `$HOME` previously derived. `HOME=/home/app` not yet
@@ -172,11 +181,11 @@ leaves none. The same shape is what a `$HOME` outside the list leaves standing:
 `HOME=/tmp` with cwd `/home/other` still derives, because a real directory
 somewhere the list does not name is exactly what a legitimate non-standard home
 looks like, and nothing in the path tells the two apart. Consulting `/etc/passwd`
-was considered and does not fix it: the
-layouts that need it are the LDAP and autofs ones `/etc/passwd` cannot see either,
-so it would move the omission rather than close it, at the cost of parsing a file
-inside the guard. This is the degradation the paragraph above accepts, and
-`--allow-read`/`--allow-write` are the answer for such a site either way.
+was considered and does not fix it: the layouts that need it are the LDAP and
+autofs ones `/etc/passwd` cannot see either, so it would move the omission rather
+than close it, at the cost of parsing a file inside the guard. This is the
+degradation the paragraph above accepts, and `--allow-read`/`--allow-write` are
+the answer for such a site either way.
 
 ### The system binaries are refused from both directions
 
@@ -355,10 +364,14 @@ usable stops asking for a directory (HOME=/dev/null)
    ──► a_home_that_is_no_directory_refuses_a_child_of_one  fails
        an_unresolvable_home_refuses_a_child_of_one         passes  ◄── it never resolved
 
-usable stops asking that $HOME is no home parent (HOME=/home, the #162 hole)
-   ──► a_home_that_is_a_home_parent_refuses_a_child_of_one  fails
-       a_home_that_is_no_directory_refuses_a_child_of_one   fails   ◄── HOME=/ is a home parent
-       an_unresolvable_home_refuses_a_child_of_one          passes  ◄── it never resolved
+usable stops asking that $HOME holds no homes (HOME=/home, the #162 hole)
+   ──► a_home_that_holds_homes_refuses_a_child_of_one      fails
+       a_home_that_is_no_directory_refuses_a_child_of_one  fails   ◄── HOME=/ holds homes
+       an_unresolvable_home_refuses_a_child_of_one         passes  ◄── it never resolved
+
+that test widened from SHARED_HOME_PARENTS to all four (HOME=/root)
+   ──► a_root_home_still_derives_under_itself             fails   ◄── /root/app refuses
+       a_home_that_holds_homes_refuses_a_child_of_one      passes  ◄── /home is in both
 
 the written form dropped when $HOME does not resolve
    ──► an_unresolvable_home_is_still_compared              fails
@@ -412,4 +425,4 @@ themselves, `getcwd` and `var_os("HOME")`; `tests/cwd_policy.rs` covers what it
 can of them by setting `HOME` on the spawned binary. Note what the history means:
 it is the arm that depends on `$HOME` not at all — `holds_home_directories` —
 that never had any of the four holes, and that is the reason to prefer it, and the
-reason #162 was closed by putting that arm to work on `$HOME` too.
+reason the `$HOME` arm now tests by location too (#162).
