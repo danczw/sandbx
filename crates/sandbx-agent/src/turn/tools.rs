@@ -51,9 +51,16 @@ where
 
         // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
         // so a decision that arrived late would not stop the call it refused (#26).
-        if let ApprovalDecision::Deny { reason } = approve(ToolCall { tool, id, input }) {
-            results.push(refused(id, reason));
-            continue;
+        //
+        // A `match` rather than `if let`: this is the one place a verdict can fail open,
+        // so a third variant has to be a compile error here rather than falling through
+        // to the spawn as approval.
+        match approve(ToolCall { tool, id, input }) {
+            ApprovalDecision::Allow => {}
+            ApprovalDecision::Deny { reason } => {
+                results.push(refused(id, reason));
+                continue;
+            }
         }
 
         // Cloned because `spawn_blocking` needs `'static`, once per call because the

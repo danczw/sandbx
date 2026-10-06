@@ -128,6 +128,20 @@ impl AgentRun {
         }
     }
 
+    /// The tools this run approved, in `BuiltinTool::ALL` order.
+    ///
+    /// Reported before the first request rather than left to the per-call lines, because
+    /// the fail-open spelling is a typo away: `--allow-tool -- write the file` puts the
+    /// separator in the wrong place, which clap reads as the bare flag plus a three-word
+    /// prompt, approving all seven. The gate would not say so until a `bash` ran.
+    fn approved_tools(&self) -> Vec<&'static str> {
+        BuiltinTool::ALL
+            .iter()
+            .filter(|tool| self.approves(**tool))
+            .map(|tool| tool.name())
+            .collect()
+    }
+
     /// The decision for one call, and the operator's line about it.
     ///
     /// The line is printed here and not from `observe`, which fires while the round is
@@ -181,6 +195,11 @@ impl AgentRun {
         // helper mode before parsing, so the shipped binary is its own helper.
         // Derived before the client, so a policy this refuses never reads the key.
         let ctx = ExecutionContext::new(self.policy()?);
+
+        eprintln!(
+            "sandbx: tools approved: {}",
+            self.approved_tools().join(", ")
+        );
 
         let client = AnthropicClient::from_env()?;
 
@@ -396,6 +415,30 @@ mod tests {
 
         assert!(args.approves(BuiltinTool::Write));
         assert!(!args.approves(BuiltinTool::Bash));
+    }
+
+    /// A misplaced `--` turns `--allow-tool write -- "…"` into the bare flag plus a
+    /// three-word prompt, which approves all seven. The operator is told the set before
+    /// the first request, so an accident of that shape is visible before a `bash` runs
+    /// rather than at the moment one does.
+    #[test]
+    fn a_bare_flag_from_a_misplaced_separator_announces_all_seven() {
+        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "write", "it"]);
+
+        assert_eq!(args.prompt(), "write it");
+        assert_eq!(
+            args.approved_tools(),
+            ["read", "write", "bash", "edit", "ls", "grep", "find"],
+            "the bare flag approved something other than every tool"
+        );
+    }
+
+    /// The line a default run prints: the four that need no flag, and nothing else.
+    #[test]
+    fn the_announced_set_is_the_read_only_four_by_default() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "go"]);
+
+        assert_eq!(args.approved_tools(), ["read", "ls", "grep", "find"]);
     }
 
     /// A refusal is read twice — by the operator on stderr and by the model in the

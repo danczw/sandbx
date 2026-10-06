@@ -51,10 +51,13 @@ the table — which an allow-all gate would then run. A caller offering `[Read, 
 would have had an injected `bash` execute. `an_unknown_name_never_reaches_the_gate`
 and `an_un_offered_tool_never_reaches_the_gate` pin both.
 
-**`approve` must not block.** It is called on the async task, with no
+**`approve` must not wait.** It is called on the async task, with no
 `spawn_blocking` of its own. A gate that waits — on an operator, a channel, a lock
 — stalls every other task on the runtime, and on the current-thread runtime
-`sandbx-cli` builds it deadlocks the turn it is deciding. This is the sharp edge on
+`sandbx-cli` builds it deadlocks the turn it is deciding. A bounded write is not
+that: `AgentRun::gate` prints a line with `eprintln!`, as `Render` already writes
+stdout from `observe`. The rule is about an unbounded wait, not about touching a
+file descriptor. This is the sharp edge on
 #165: a per-call prompt cannot be a blocking read from inside the gate, because the
 escape hatch in the table above ("a caller that needs to await one owns the
 runtime") means *before* `run_turn` is entered, not inside it. `Handle::block_on`
@@ -101,6 +104,17 @@ approving nothing quietly — `BuiltinTool::from_name` is exact-match, so
 `--allow-tool shell` would otherwise exit 0 having approved nothing while whoever
 typed it believed `bash` was allowed. Same reasoning as `--allow-env`'s
 `variable_name`.
+
+`agent-run` still offers the model all seven, and lets the gate do the narrowing.
+The offered set would have been a second, independent refusal — `answer_calls`
+enforces it above the gate — so declining it means one mistake in `approves` or in
+a tool's declared `RiskLevel` is enough for a `bash` to run. Taken deliberately:
+the refusal is what tells the operator which flag to pass, which a tool the model
+was never offered cannot do. A live run is the evidence — asked to write a file
+with no flag, the model tried `bash`, read the refusal, and switched to `write`.
+Narrowing the offered set buys defence in depth and costs that, so the trade is
+worth revisiting if a second caller appears; `the_risk_each_tool_carries_is_documented`
+is what currently holds the classification a mistake would have to get past.
 
 `RiskLevel` is a field of each tool's own `SPEC` rather than a table in the gate,
 so a new tool declares its level or fails to compile. A denylist in the CLI would
