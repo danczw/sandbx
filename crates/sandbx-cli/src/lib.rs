@@ -11,9 +11,9 @@ pub mod logging;
 mod sandbox;
 
 pub use agent::AgentRun;
-pub use error::{AgentError, PolicyError, SandboxRunError};
+pub use error::{AgentError, HashError, PolicyError, SandboxRunError};
 pub use grants::Grants;
-pub use hash::{Hash, HashError};
+pub use hash::Hash;
 pub use sandbox::SandboxRun;
 
 #[derive(Debug, clap::Parser)]

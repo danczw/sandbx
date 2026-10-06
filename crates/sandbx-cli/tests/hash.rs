@@ -1,7 +1,11 @@
 //! `sandbx hash`, whose only job is to print something `--pin-sha256` will accept.
 //!
-//! So the two are asserted together: a digest this prints and the flag refuses would be a
-//! subcommand that reads correctly and composes with nothing.
+//! So the two are asserted together, over the real binary's stdout: a digest this prints
+//! and the flag refuses would be a subcommand that reads correctly and composes with
+//! nothing.
+// The `Command::new` below runs sandbx itself to read what it wrote to stdout; the
+// workspace ban exists to stop code executing *around* the sandbox.
+#![allow(clippy::disallowed_methods)]
 
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
@@ -13,25 +17,41 @@ fn hash(argv: &[&str]) -> sandbx_cli::Hash {
     }
 }
 
-#[test]
-fn the_digest_is_the_one_the_library_takes() {
-    let mut file = tempfile::NamedTempFile::new().expect("a temporary file");
-    std::io::Write::write_all(&mut file, b"pinned bytes").expect("write");
+/// What the subcommand wrote to stdout, and the digest the library takes for the same
+/// bytes.
+fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("program");
+    std::fs::write(&path, contents).expect("write");
 
-    let mut handle = std::fs::File::open(file.path()).expect("reopen");
-    let expected = sandbx_core::Sha256Digest::of_file(&mut handle).expect("hash");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx"))
+        .args(["hash", path.to_str().unwrap()])
+        .output()
+        .expect("sandbx should run");
 
-    // `execute` prints rather than returning the digest, so the assertion is that the
-    // digest it would print is one `--pin-sha256` accepts for the same bytes.
-    assert_eq!(
-        sandbx_core::Sha256Digest::parse(&expected.to_string()).expect("the printed form"),
-        expected
+    assert!(
+        output.status.success(),
+        "hashing a readable file failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
+
+    let mut file = std::fs::File::open(&path).expect("reopen");
+    let digest = sandbx_core::Sha256Digest::of_file(&mut file).expect("hash");
+
+    (String::from_utf8(output.stdout).expect("utf-8"), digest)
+}
+
+/// The exact bytes, because the composition `--pin-sha256 "$(sandbx hash …)"` is what this
+/// subcommand exists for: a prefix, a different case or a second field all break it while
+/// leaving a laxer assertion green.
+#[test]
+fn the_printed_digest_is_the_one_the_flag_accepts() {
+    let (stdout, digest) = printed(b"pinned bytes");
+
+    assert_eq!(stdout, format!("{digest}\n"));
     assert_eq!(
-        hash(&["sandbx", "hash", file.path().to_str().unwrap()])
-            .execute()
-            .expect("the file is readable"),
-        0
+        sandbx_core::Sha256Digest::parse(stdout.trim_end()).expect("the printed form"),
+        digest
     );
 }
 
