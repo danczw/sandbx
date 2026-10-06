@@ -282,7 +282,12 @@ alone. Read that first line: it is what makes a misplaced `--` obvious, since
 offered to the model — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash` —
 and each one the gate approves still runs through the same boundary. A path you
 did not grant is refused there instead, which comes back to the model as a failed
-result for it to work around rather than a crash — and reaches stderr not at all.
+result for it to work around rather than a crash, and reaches stderr as an audit
+record naming the tool, the path and why:
+
+```console
+2026-10-06T22:05:10.633436Z  INFO sandbx::audit: decision="denied" tool="write" subject="/tmp/outside-grant.txt" reason="outside every writable root"
+```
 
 | flag | |
 |------|--|
