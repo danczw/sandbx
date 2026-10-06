@@ -24,18 +24,11 @@ const DETAIL_LIMIT: usize = 256;
 
 /// How many records [`decode`] will accept from one channel.
 ///
-/// Each step reports at most once and the refusal below at most once, so anything beyond
-/// this did not come from [`encode`], and refusing the excess keeps a malformed channel from
-/// growing the trail without bound. Not a trust boundary: by the time the command exists the
-/// write end is gone.
+/// Each step reports at most once and a refusal at most once, so anything beyond this did
+/// not come from [`encode`], and refusing the excess keeps a malformed channel from growing
+/// the trail without bound. Not a trust boundary: by the time the command exists the write
+/// end is gone.
 const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
-
-/// The label a command that was never executed carries, on the wire and in the trail.
-///
-/// Spelled once: [`SandboxError::label`](crate::SandboxError::label) returns it for
-/// [`ExecFailed`](crate::SandboxError::ExecFailed), and the stage that could not `exec`
-/// writes it.
-pub(crate) const EXEC_FAILED: &str = "exec_failed";
 
 /// What the helper reported on the channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,11 +36,14 @@ pub(crate) enum Report<'a> {
     /// A hardening step that did not take effect, and why.
     Degraded(Degradation, &'a str),
 
-    /// The command was never executed, so the run's outcome is this and not an exit.
+    /// The stage that would have become the command refused instead, so the run's outcome
+    /// is this and not an exit. Carries the refusal's
+    /// [`label`](crate::SandboxError::label).
     ///
-    /// On the channel because a stage that fails to `exec` exits non-zero, which reaches
-    /// the parent as if the command had.
-    ExecFailed,
+    /// On the channel because that stage exits non-zero and the stage above relays the
+    /// status on the command's behalf, so it reaches the parent as if the command had run
+    /// and failed.
+    Failed(&'static str),
 }
 
 /// A best-effort hardening step that did not take effect.
@@ -108,28 +104,32 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
     out
 }
 
-/// Render the record a stage that could not `exec` reports.
+/// Render the record a stage that refused rather than becoming the command reports.
 ///
-/// No detail: the errno reaches the operator on the helper's stderr, which the parent
-/// forwards verbatim.
-pub(crate) fn encode_exec_failure() -> String {
-    format!("{EXEC_FAILED}{SEPARATOR}\n")
+/// `label` is [`SandboxError::label`](crate::SandboxError::label), which is the closed set
+/// [`decode`] resolves against. No detail: the reason reaches the operator on the helper's
+/// stderr, which the parent forwards verbatim.
+pub(crate) fn encode_refusal(label: &str) -> String {
+    format!("{label}{SEPARATOR}\n")
 }
 
 /// Parse what the helper wrote back into the records it reported.
 ///
 /// Skips an unrecognised line rather than failing the run, this being the reporting path for
 /// a sandbox that already carried on. What it must not do is pass an unvalidated label to
-/// the trail, hence the closed set [`Degradation::from_label`] and [`EXEC_FAILED`] are.
+/// the trail, hence the two closed sets [`Degradation::from_label`] and
+/// [`SandboxError::label_from`](crate::SandboxError::label_from) — which
+/// `no_degradation_label_is_also_a_refusal` keeps disjoint, so the order of the two lookups
+/// cannot decide what a label means.
 pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
     channel
         .lines()
         .filter_map(|line| {
             let (label, detail) = line.split_once(SEPARATOR)?;
-            if label == EXEC_FAILED {
-                return Some(Report::ExecFailed);
+            if let Some(step) = Degradation::from_label(label) {
+                return Some(Report::Degraded(step, detail));
             }
-            Some(Report::Degraded(Degradation::from_label(label)?, detail))
+            Some(Report::Failed(crate::SandboxError::label_from(label)?))
         })
         .take(RECORD_LIMIT)
         .collect()
@@ -145,7 +145,7 @@ mod tests {
             .into_iter()
             .filter_map(|report| match report {
                 Report::Degraded(step, detail) => Some((step, detail)),
-                Report::ExecFailed => None,
+                Report::Failed(_) => None,
             })
             .collect()
     }
@@ -267,12 +267,38 @@ mod tests {
     }
 
     #[test]
-    fn an_exec_failure_survives_the_round_trip() {
-        assert_eq!(
-            decode(&encode_exec_failure()),
-            vec![Report::ExecFailed],
-            "the refusal did not cross as itself"
+    fn every_refusal_survives_the_round_trip() {
+        for label in crate::SandboxError::LABELS {
+            assert_eq!(
+                decode(&encode_refusal(label)),
+                vec![Report::Failed(label)],
+                "{label} did not cross as itself"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refusal_we_did_not_define_is_not_a_record() {
+        let decoded = decode("not_a_refusal\t\n");
+
+        assert!(
+            decoded.is_empty(),
+            "an unknown refusal reached the trail: {decoded:?}"
         );
+    }
+
+    /// The two lookups in `decode` run in sequence, so a shared label would make the order
+    /// decide whether it is a mechanism or an outcome.
+    #[test]
+    fn no_degradation_label_is_also_a_refusal() {
+        for step in Degradation::ALL {
+            assert_eq!(
+                crate::SandboxError::label_from(step.label()),
+                None,
+                "{} names both a degradation and a refusal",
+                step.label()
+            );
+        }
     }
 
     /// The cap is one more than the steps for this record, so a channel carrying every
@@ -280,14 +306,14 @@ mod tests {
     #[test]
     fn the_record_cap_admits_a_refusal_too() {
         let mut channel = encode(&Degradation::ALL.map(|step| (step, "degraded".to_string())));
-        channel.push_str(&encode_exec_failure());
+        channel.push_str(&encode_refusal("process_hardening"));
 
         let decoded = decode(&channel);
 
         assert_eq!(decoded.len(), RECORD_LIMIT, "the cap dropped a record");
         assert_eq!(
             decoded.last(),
-            Some(&Report::ExecFailed),
+            Some(&Report::Failed("process_hardening")),
             "the refusal was capped away behind the degradations"
         );
     }

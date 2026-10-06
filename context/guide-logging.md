@@ -98,10 +98,13 @@ writes them to the pipe sandbx put in its **stdin** slot, and sandbx decodes the
 bytes and emits the audit events itself. One subscriber in the process tree, one
 timestamp source, and the command's own stdout and stderr stay byte-exact.
 
-A command the sandbox could not `exec` crosses the same channel, as the reserved
-label `exec_failed`, and becomes the run's terminal record. It has to: stage 2
-relays its own non-zero exit on the command's behalf, so the parent sees a status
-indistinguishable from a command that ran and exited 1.
+A stage 2 that refused rather than becoming the command crosses the same channel,
+as its `SandboxError::label` — `exec_failed` for a command that does not exist,
+`namespace_setup_failed` for a supervisor already gone, and so on — and that
+becomes the run's terminal record. It has to: stage 1 relays stage 2's non-zero
+exit on the command's behalf, so the parent sees a status indistinguishable from a
+command that ran and exited 1 (#96, #157). Stage 1's own refusals are not on the
+channel, so they still read as `exited code=1`.
 
 The stdin slot because fds 0/1/2 are the only descriptors `std` can hand a child
 without `unsafe`, which the workspace forbids — and 1/2 are the command's output.

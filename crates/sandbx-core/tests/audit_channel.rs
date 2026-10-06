@@ -11,10 +11,13 @@
 //! Gated whole-file: every test spawns a real helper, so with the feature off
 //! `-D warnings` would reject the capture harness as dead code.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+// The one `Command::new` below spawns the sandbox helper itself, never a command that
+// bypasses it; the workspace ban exists to stop code executing *around* the sandbox.
+#![allow(clippy::disallowed_methods)]
 
 use std::sync::{Arc, Mutex};
 
-use sandbx_core::{AUDIT_TARGET, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{AUDIT_TARGET, HelperArgs, SandboxPolicy, SandboxedCommand};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -198,6 +201,53 @@ fn the_command_inherits_no_other_end_of_the_channel() {
     assert!(
         !lines.iter().any(|line| line.contains("via-fd-")),
         "the command inherited a descriptor onto sandbx's audit trail: {lines:?}"
+    );
+}
+
+/// A stage 2 refusal that is not a failed `exec` still names itself on the channel
+/// (#157). Without the record it reaches the parent as the relayed exit status of a
+/// command that ran and exited 1.
+///
+/// Driven by hand rather than through `SandboxedCommand`, which builds a well-formed argv
+/// and a live supervisor by construction: pid 1 is a supervisor claim no stage can legally
+/// receive, so `confirm_supervisor` refuses deterministically on every host. The flag and
+/// the label are spelled out for the reason `every_record_names_a_real_mechanism_once`
+/// gives — both are a compatibility surface.
+#[test]
+fn a_refusal_before_the_exec_names_itself_on_the_channel() {
+    use std::io::Read;
+
+    let (mut channel, write_end) = std::io::pipe().expect("a channel for the helper");
+
+    let mut helper = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
+    helper
+        .args([sandbx_core::HELPER_INNER_FLAG, "1", "--sandbx-audit-stdin"])
+        .args(HelperArgs::encode(
+            &SandboxPolicy::default().allow_system_executables(),
+            "/bin/true",
+            &[],
+        ))
+        .stdin(std::process::Stdio::from(write_end));
+
+    let output = helper.output().expect("helper should start");
+
+    // Dropped before the read, and that ordering is what makes the read terminate: the
+    // `Command` owns this process's copy of the write end.
+    drop(helper);
+
+    let mut records = String::new();
+    channel
+        .read_to_string(&mut records)
+        .expect("the channel should be readable");
+
+    assert!(
+        !output.status.success(),
+        "the stage ran the command instead of refusing a foreign supervisor"
+    );
+    assert!(
+        records.contains("namespace_setup_failed\t"),
+        "a refused run named no reason on the channel: {records:?}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

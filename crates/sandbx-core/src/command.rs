@@ -138,7 +138,7 @@ impl SandboxedCommand {
 
         // Exactly one of these per `spawned`: nothing between the two emits returns early,
         // and no other site builds either record. The channel outranks the status, a
-        // command that was never executed having exited as the helper rather than as
+        // command that never ran having exited as the helper that refused rather than as
         // itself.
         match (&result, refused) {
             (_, Some(reason)) => crate::AuditEvent::failed(&self.program, reason),
@@ -216,8 +216,8 @@ fn record_reports(mut audit: std::io::PipeReader) -> Option<&'static str> {
             crate::degradation::Report::Degraded(step, detail) => {
                 crate::AuditEvent::degraded(step.label(), detail).emit();
             }
-            crate::degradation::Report::ExecFailed => {
-                refused = Some(crate::degradation::EXEC_FAILED);
+            crate::degradation::Report::Failed(reason) => {
+                refused = Some(reason);
             }
         }
     }
@@ -396,4 +396,48 @@ pub(crate) fn self_exe() -> Result<PathBuf, SandboxError> {
     })?;
 
     Ok(PathBuf::from(SELF_EXE))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What `record_reports` makes of a channel, without a helper to write one. The write
+    /// end is dropped before the read, which is what makes the read terminate.
+    fn reported(channel: &str) -> Option<&'static str> {
+        use std::io::Write;
+
+        let (read, mut write) = std::io::pipe().expect("a pipe for the channel");
+        write.write_all(channel.as_bytes()).expect("the channel");
+        drop(write);
+
+        record_reports(read)
+    }
+
+    #[test]
+    fn a_refusal_on_the_channel_becomes_the_runs_reason() {
+        assert_eq!(
+            reported("process_hardening\t\n"),
+            Some("process_hardening"),
+            "a stage that refused did not name its reason"
+        );
+    }
+
+    #[test]
+    fn a_degradation_alone_is_not_a_refusal() {
+        assert_eq!(
+            reported("capability_bounding_set\tleft as inherited\n"),
+            None,
+            "a degraded run was reported as one that never started"
+        );
+    }
+
+    #[test]
+    fn an_unknown_reason_does_not_reach_the_trail() {
+        assert_eq!(
+            reported("not_a_refusal\t\n"),
+            None,
+            "the channel named a reason sandbx does not define"
+        );
+    }
 }

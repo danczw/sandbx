@@ -110,8 +110,9 @@ The second record says how the run ended, and every run gets exactly one.
 command the sandbox killed does not read as a success. A run with no status of its
 own is `failed` with a reason you can filter on: `reason="timeout"` for a
 `--timeout` kill, `reason="exec_failed"` for a program that could not be executed
-at all — which, without the record, would look like a command that ran and exited
-1.
+at all, `reason="landlock"` or `reason="seccomp"` for a sandbox the kernel would
+not accept. Each of those would otherwise look like a command that ran and exited
+1, the stage that refused having exited in the command's place.
 
 `env=7` is a count, not a list: a variable's *name* is not a secret, but its value
 routinely is, and a record that spelled out the names would invite the next change

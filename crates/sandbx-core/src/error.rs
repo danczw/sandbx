@@ -198,6 +198,26 @@ impl std::error::Error for SandboxError {
 }
 
 impl SandboxError {
+    /// Every label [`label`](Self::label) can return.
+    ///
+    /// The closed set the helper's audit channel is validated against: a helper stage
+    /// reports a refusal by label, and the parent must resolve it to one of ours rather
+    /// than put the bytes it read on the trail. A new variant goes here as well as in
+    /// `label`, which `labels_are_unique_and_every_variant_is_listed` pins.
+    pub(crate) const LABELS: [&str; 11] = [
+        "path_not_allowed",
+        "unresolvable",
+        "bad_helper_args",
+        "landlock",
+        "seccomp",
+        "namespace_setup_failed",
+        "process_hardening",
+        "spawn_failed",
+        "exec_failed",
+        "timeout",
+        "unsupported",
+    ];
+
     /// A stable name for this refusal, which the audit trail is filtered by.
     ///
     /// Exhaustive, so a new variant has to decide what a trail calls it; `Display` carries
@@ -212,11 +232,122 @@ impl SandboxError {
             Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
             Self::ProcessHardening { .. } => "process_hardening",
             Self::SpawnFailed { .. } => "spawn_failed",
-            Self::ExecFailed { .. } => crate::degradation::EXEC_FAILED,
+            Self::ExecFailed { .. } => "exec_failed",
             // The word the operator typed and the docs use, so it is the word a trail
             // reader greps for.
             Self::TimedOut { .. } => "timeout",
             Self::Unsupported { .. } => "unsupported",
+        }
+    }
+
+    /// The refusal `label` names, as our own `'static` copy of it, if it names one at all.
+    ///
+    /// A lookup over [`LABELS`](Self::LABELS) rather than a second `match`, which could not
+    /// rebuild the variant anyway: a label carries no detail. The `'static` return is the
+    /// point — it is what lets a label read off the channel reach `AuditEvent::failed`
+    /// without the trail borrowing from the bytes.
+    pub(crate) fn label_from(label: &str) -> Option<&'static str> {
+        Self::LABELS.into_iter().find(|known| *known == label)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One of every variant, so the labels can be checked against the closed set. The
+    /// `match` below is exhaustive, so a new variant fails to compile until it is listed.
+    fn every_variant() -> Vec<SandboxError> {
+        let io = || std::io::Error::other("sample");
+
+        let all = vec![
+            SandboxError::PathNotAllowed {
+                requested: PathBuf::from("/sample"),
+                access: Access::Read,
+            },
+            SandboxError::Unresolvable {
+                requested: PathBuf::from("/sample"),
+                source: io(),
+            },
+            SandboxError::BadHelperArgs { detail: "sample" },
+            SandboxError::Landlock {
+                detail: "sample".to_string(),
+            },
+            SandboxError::Seccomp {
+                detail: "sample".to_string(),
+            },
+            SandboxError::NamespaceSetupFailed { detail: "sample" },
+            SandboxError::ProcessHardening {
+                detail: "sample".to_string(),
+            },
+            SandboxError::SpawnFailed {
+                detail: "sample",
+                source: io(),
+            },
+            SandboxError::ExecFailed { source: io() },
+            SandboxError::TimedOut {
+                after: std::time::Duration::from_secs(1),
+            },
+            SandboxError::Unsupported { detail: "sample" },
+        ];
+
+        for error in &all {
+            match error {
+                SandboxError::PathNotAllowed { .. }
+                | SandboxError::Unresolvable { .. }
+                | SandboxError::BadHelperArgs { .. }
+                | SandboxError::Landlock { .. }
+                | SandboxError::Seccomp { .. }
+                | SandboxError::NamespaceSetupFailed { .. }
+                | SandboxError::ProcessHardening { .. }
+                | SandboxError::SpawnFailed { .. }
+                | SandboxError::ExecFailed { .. }
+                | SandboxError::TimedOut { .. }
+                | SandboxError::Unsupported { .. } => {}
+            }
+        }
+
+        all
+    }
+
+    #[test]
+    fn labels_are_unique_and_every_variant_is_listed() {
+        let variants = every_variant();
+
+        assert_eq!(
+            variants.len(),
+            SandboxError::LABELS.len(),
+            "a variant is missing from LABELS or from the sample list"
+        );
+
+        let mut labels: Vec<_> = variants.iter().map(SandboxError::label).collect();
+        labels.sort_unstable();
+        let total = labels.len();
+        labels.dedup();
+
+        assert_eq!(labels.len(), total, "two variants share a label");
+    }
+
+    #[test]
+    fn every_label_round_trips_through_the_closed_set() {
+        for error in every_variant() {
+            assert_eq!(
+                SandboxError::label_from(error.label()),
+                Some(error.label()),
+                "{} is not in LABELS, so it could not cross the audit channel",
+                error.label()
+            );
+        }
+    }
+
+    #[test]
+    fn a_label_we_did_not_define_is_refused() {
+        for label in ["", "not_a_refusal", "timeout ", "TIMEOUT"] {
+            assert_eq!(
+                SandboxError::label_from(label),
+                None,
+                "{label:?} was accepted as one of our labels"
+            );
         }
     }
 }

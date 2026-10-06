@@ -60,8 +60,8 @@ io::pipe() ──┐
                             ├─ drops its handle
                             └─ spawns ────────────► fd 0 ─► CLOEXEC duplicate
                                                     /dev/null ─► fd 0
-                                                    exec ─┬─ ok: duplicate closed
-reads to EOF                                              └─ no: exec_failed\t
+                                                    restrict, exec ─┬─ ok: closed
+reads to EOF                        namespace_setup_failed\t  ◄─────┘ no: refused
   └─ AuditEvent::degraded(..).emit()
   └─ AuditEvent::exited(..) | ::failed(..)
 ```
@@ -69,6 +69,16 @@ reads to EOF                                              └─ no: exec_failed
 `hardening.rs` returns `Vec<(Degradation, String)>` instead of emitting;
 `degradation.rs` owns the format and both ends; `exec_sandboxed` and
 `exec_inner` perform one write each; `command.rs` reads, decodes and emits.
+
+**Stage 2 reports any refusal, not only a failed `exec`** (#157). It can also refuse
+a Landlock ruleset the kernel will not take, a seccomp filter that will not install, a
+supervisor already gone, an environment an earlier stage did not narrow — and each of
+those exits non-zero, which stage 1 relays on the command's behalf. So the record is
+`SandboxError::label` and the trail says `failed reason=<label>`; `exec_failed` is one
+member of that set rather than the only thing the channel can carry. That label set
+lives on `SandboxError`, which owns it because `label` is the exhaustive match a new
+variant has to pass through. The claim on fd 0 moves to the top of `exec_inner` for
+this: a refusal is only reportable from a point where the channel is already in hand.
 
 **sandbx emits, not the helper.** One subscriber in the process tree, one timestamp
 source, one format, and no `tracing-subscriber` dependency in the helper. This is
@@ -94,9 +104,10 @@ the slot. The command inherits a null stdin; the duplicate the kernel closes on 
 successful `exec` is the only live handle on the channel.
 
 Which is what makes the `exec_failed` record true rather than a guess: `exec`
-returns only on failure, so the write is reachable only in a world where the
-command does not exist. The alternative — a reserved exit code — would be
-forgeable by any command that chose to exit with it.
+returns only on failure, so a write past it is reachable only in a world where the
+command does not exist. Every other refusal is written before the `exec` is even
+attempted, so the same holds for it by position. The alternative — a reserved exit
+code — would be forgeable by any command that chose to exit with it.
 
 Fail closed: either step failing is a `ProcessHardening` refusal, not a lost
 record. Becoming the command with a writable channel on fd 0 is worse than any
@@ -118,11 +129,12 @@ there is nothing to protect, so stdin stays inherited — a hand-invoked
 unconditional `null` quietly took away.
 
 **Defence in depth behind that line.** `decode` accepts only labels in
-`Degradation::ALL` plus the reserved `exec_failed`, so nothing can name a
-mechanism sandbx did not define; the record count is capped at the steps that
-exist plus the one refusal; and `encode` strips the separator characters from a
-detail so one record cannot forge a second. The refusal carries no detail at all
-— the errno reaches the operator on the helper's forwarded stderr.
+`Degradation::ALL` and `SandboxError::LABELS`, two closed sets kept disjoint by a
+test, so nothing can name a mechanism or a reason sandbx did not define; the record
+count is capped at the steps that exist plus the one refusal; and `encode` strips the
+separator characters from a detail so one record cannot forge a second. A refusal
+carries no detail at all — the reason reaches the operator on the helper's forwarded
+stderr.
 
 ## What this is not
 
@@ -168,3 +180,5 @@ reporting on. Two mechanisms and one detail-free refusal, each reported at most
 once, with the detail capped at 256 characters, is two orders of magnitude inside
 the 64 KiB a Linux pipe holds — and the cap is unit-tested, so the bound is a
 property of the format rather than a hope about the length of errno strings.
+Widening the refusal's label set does not widen the bound: stage 2 returns at most
+one error, so it writes at most one such record.
