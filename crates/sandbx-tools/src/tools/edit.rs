@@ -2,13 +2,14 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
+use crate::{ExecutionContext, RiskLevel, ToolError, ToolOutput, ToolSpec};
 
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "edit",
     description: "Replace one exact occurrence of a string in a file. The text \
                   must appear exactly once — an absent or ambiguous match is an \
                   error, not a guess.",
+    risk: RiskLevel::Writes,
     schema,
     run,
 };

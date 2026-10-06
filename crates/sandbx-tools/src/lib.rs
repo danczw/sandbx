@@ -58,8 +58,24 @@ const EMPTY_OUTPUT: &str = "(no output)";
 pub(crate) struct ToolSpec {
     name: &'static str,
     description: &'static str,
+    risk: RiskLevel,
     schema: fn() -> serde_json::Value,
     run: fn(serde_json::Value, &ExecutionContext) -> Result<ToolOutput, ToolError>,
+}
+
+/// What a tool does beyond looking, for a caller deciding whether to let it run.
+///
+/// Ordered least to most, so a gate can admit everything at or below a level. A field
+/// of `ToolSpec` rather than a table here, so a new tool declares its own level or
+/// fails to compile instead of being silently absent from one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RiskLevel {
+    /// Reads the filesystem and changes nothing.
+    ReadOnly,
+    /// Creates or rewrites a file.
+    Writes,
+    /// Runs a program.
+    Executes,
 }
 
 /// The tools an agent may call.
@@ -99,9 +115,9 @@ impl BuiltinTool {
         Self::ALL.into_iter().find(|tool| tool.name() == name)
     }
 
-    /// The four facts about this tool, from the module that holds them.
+    /// The five facts about this tool, from the module that holds them.
     ///
-    /// One match rather than four: a transposed arm cannot hand the model one tool's
+    /// One match rather than five: a transposed arm cannot hand the model one tool's
     /// name with another's schema.
     fn spec(&self) -> ToolSpec {
         match self {
@@ -125,6 +141,11 @@ impl BuiltinTool {
     /// the behaviour.
     pub fn description(&self) -> &'static str {
         self.spec().description
+    }
+
+    /// What this tool does beyond looking, declared in its own `SPEC`.
+    pub fn risk(&self) -> RiskLevel {
+        self.spec().risk
     }
 
     /// JSON schema of this tool's arguments, derived from its input struct — a

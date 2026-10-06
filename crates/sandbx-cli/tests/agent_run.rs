@@ -7,6 +7,7 @@
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
 use sandbx_core::SandboxPolicy;
+use sandbx_tools::{BuiltinTool, RiskLevel};
 
 fn agent_run(argv: &[&str]) -> sandbx_cli::AgentRun {
     match Cli::parse_from(argv).command {
@@ -194,6 +195,77 @@ fn flags_after_the_separator_are_part_of_the_prompt() {
 fn a_missing_prompt_is_rejected() {
     assert!(Cli::try_parse_from(["sandbx", "agent-run"]).is_err());
     assert!(Cli::try_parse_from(["sandbx", "agent-run", "--allow-read", "/srv"]).is_err());
+}
+
+/// The default nobody types, and so the one nobody checks: a `write`, an `edit` or a
+/// `bash` the model asks for is refused, which is the only thing between a prompt
+/// injection and a command running inside the boundary.
+#[test]
+fn the_read_only_tools_need_no_flag() {
+    let args = agent_run(&["sandbx", "agent-run", "--", "hello"]);
+
+    for tool in BuiltinTool::ALL {
+        assert_eq!(
+            args.approves(tool),
+            tool.risk() == RiskLevel::ReadOnly,
+            "{tool:?} is approved wrongly with no flag"
+        );
+    }
+}
+
+#[test]
+fn a_named_tool_is_the_only_one_lifted() {
+    let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "write", "--", "go"]);
+
+    assert!(args.approves(BuiltinTool::Write));
+    assert!(!args.approves(BuiltinTool::Edit));
+    assert!(!args.approves(BuiltinTool::Bash));
+    assert!(args.approves(BuiltinTool::Read), "a read was withdrawn");
+}
+
+#[test]
+fn a_bare_allow_tool_approves_every_tool() {
+    let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "go"]);
+
+    for tool in BuiltinTool::ALL {
+        assert!(
+            args.approves(tool),
+            "{tool:?} is refused under the bare flag"
+        );
+    }
+}
+
+/// The broader spelling yields the narrower set, as `--allow-network` does: the bare
+/// flag beside a named one is read as the named one alone.
+#[test]
+fn mixing_a_bare_flag_with_a_tool_narrows_to_the_tool() {
+    let args = agent_run(&[
+        "sandbx",
+        "agent-run",
+        "--allow-tool",
+        "--allow-tool",
+        "write",
+        "--",
+        "go",
+    ]);
+
+    assert!(args.approves(BuiltinTool::Write));
+    assert!(!args.approves(BuiltinTool::Bash));
+}
+
+/// An unknown name resolves to no tool, so taking it would approve nothing and exit 0
+/// — leaving whoever wrote `--allow-tool shell` believing `bash` would run.
+#[test]
+fn an_unknown_tool_name_is_refused_loudly() {
+    let error = Cli::try_parse_from(["sandbx", "agent-run", "--allow-tool", "shell", "--", "go"])
+        .expect_err("a name no tool answers to was accepted");
+
+    let message = error.to_string();
+    assert!(message.contains("shell"), "got {message}");
+    assert!(
+        message.contains("bash"),
+        "the names were not listed: {message}"
+    );
 }
 
 #[test]

@@ -6,11 +6,13 @@ run any tools it asked for, and go round again until it stops asking.
 ## The seam
 
 ```rust
-pub async fn run_turn<F, O>(open: F, turn: Turn<'_>, ctx: &ExecutionContext, observe: O)
-    -> Result<TurnOutcome, TurnError>
+pub async fn run_turn<F, O, G>(
+    open: F, turn: Turn<'_>, ctx: &ExecutionContext, observe: O, approve: G,
+) -> Result<TurnOutcome, TurnError>
 where
     F: AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
+    G: FnMut(ToolCall<'_>) -> ApprovalDecision,
 ```
 
 Generic over a **closure that opens a stream**, not over a provider. So the loop
@@ -28,6 +30,10 @@ predicts.
 `observe` stays generic for the mirror reason: `dyn FnMut` is not `Send`, so
 taking one would make the whole future non-`Send`.
 
+`approve` is the third closure for the same two reasons, plus a third: it is
+mandatory, so a caller cannot acquire a gate-less loop by omitting an argument.
+See `decision-approval-gate.md` for why it is not a trait.
+
 ## Round structure
 
 ```
@@ -37,7 +43,8 @@ taking one would make the whole future non-`Send`.
 │  open(request)                     ◄── per-round timeout    │
 │  consume stream ──► flush text before ToolUse, keep Usage   │
 │  no ToolUse blocks?  ──► return TurnOutcome                 │
-│  answer_calls (sequential, spawn_blocking)                  │
+│  answer_calls (sequential)                                  │
+│    resolve name ──► approve(call) ──► spawn_blocking        │
 └─ loop ──────────────────────────────────────────────────────┘
 ```
 
@@ -173,7 +180,10 @@ model into an empty round, and that is where it lands.
 
 A failing tool comes back as a `tool_result` marked `is_error`, which is what
 lets the model try something else. An unknown tool name likewise —
-`unknown tool: {name}` with `is_error`.
+`unknown tool: {name}` with `is_error` — and so does a gate's
+`ApprovalDecision::Deny`, carrying its `reason` as the text. A refusal is
+therefore recoverable within `max_rounds`, which is also what bounds a model that
+keeps retrying one.
 
 `TurnError` is only for what *ends* the turn:
 
@@ -233,7 +243,9 @@ applies the `write`, or lets `bash` run out its timeout, after the caller stoppe
 waiting. The transcript naming that call goes with the dropped future; only the
 audit trail records the side effect.
 
-This is why an outer deadline is not a substitute for real cancellation (#26).
+This is why an outer deadline is not a substitute for real cancellation (#26),
+and why `approve` is asked **before** the spawn rather than racing it: a decision
+that arrived late would not stop the call it refused.
 
 ## Test suite
 

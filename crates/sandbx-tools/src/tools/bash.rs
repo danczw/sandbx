@@ -1,11 +1,12 @@
 use serde::Deserialize;
 
-use crate::{ExecutionContext, ToolError, ToolOutput, ToolSpec};
+use crate::{ExecutionContext, RiskLevel, ToolError, ToolOutput, ToolSpec};
 
 pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "bash",
     description: "Run a shell command. Use it for what the other tools do not \
                   cover; prefer a dedicated tool wherever one fits.",
+    risk: RiskLevel::Executes,
     schema,
     run,
 };

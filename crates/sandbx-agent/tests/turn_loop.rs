@@ -4,14 +4,14 @@
 //! `support::Script` on the other side, so the suite needs no network and no API key.
 //! Assertions go through `serde_json::to_value`: `ContentBlock` has no `PartialEq`.
 
-use sandbx_agent::{TurnError, TurnLimits, run_turn};
+use sandbx_agent::{ApprovalDecision, ToolCall, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{AgentEvent, EventStream, RequestMessage, Role, StopReason};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 mod support;
 
-use support::{Script, call, ctx, stop, text, turn, wire};
+use support::{Script, allow_all, call, ctx, stop, text, turn, wire};
 
 /// The single `tool_result` block a scripted call produced.
 fn tool_error(messages: &[RequestMessage]) -> serde_json::Value {
@@ -27,6 +27,7 @@ async fn text_deltas_accumulate_into_one_block() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -60,6 +61,7 @@ async fn thinking_reaches_the_observer_not_the_replay() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |event: &AgentEvent| seen.push(event.clone()),
+        allow_all,
     )
     .await
     .unwrap()
@@ -97,6 +99,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |event: &AgentEvent| seen.push(event.clone()),
+        allow_all,
     )
     .await
     .unwrap();
@@ -115,6 +118,7 @@ async fn a_round_that_produced_nothing_appends_no_message() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -135,6 +139,7 @@ async fn a_stream_that_never_reports_a_stop_is_an_error() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .expect_err("a stream with no Stop event must not succeed");
@@ -160,6 +165,7 @@ async fn a_definition_per_offered_tool_reaches_the_request() {
         turn(&history, &[BuiltinTool::Read]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap();
@@ -202,6 +208,7 @@ async fn a_tool_result_is_fed_into_the_next_round() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -260,6 +267,7 @@ async fn a_tool_call_runs_without_a_stop_reason() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -298,6 +306,7 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -341,6 +350,7 @@ async fn bad_tool_arguments_are_reported_as_an_error() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -371,6 +381,7 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .unwrap()
@@ -383,6 +394,176 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
         "got {result:?}"
     );
     assert_eq!(messages.len(), 3, "the turn should have carried on");
+}
+
+/// A refusal has to stop the call, not merely annotate it. The policy here allows the
+/// write, so the gate is the only thing refusing, and asserting on the `is_error` block
+/// alone would pass even if the file had been written.
+#[tokio::test]
+async fn a_denied_call_never_reaches_the_tool() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("note.txt");
+    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            call(
+                "write",
+                serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("Understood."), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx,
+        |_| {},
+        |_| ApprovalDecision::Deny {
+            reason: "write is not approved for this run".to_string(),
+        },
+    )
+    .await
+    .unwrap()
+    .messages;
+
+    assert!(!file.exists(), "a refused call must not have run");
+
+    let result = tool_error(&messages);
+    assert_eq!(result["is_error"], true);
+    assert_eq!(result["content"], "write is not approved for this run");
+}
+
+/// A refusal is recoverable: the model may ask for something the gate allows, and the
+/// gate that refused once is asked again rather than latched shut.
+#[tokio::test]
+async fn a_denial_never_ends_the_turn() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default()
+        .allow_read(root.path())
+        .allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            call(
+                "write",
+                serde_json::json!({
+                    "path": root.path().join("x").to_str().unwrap(),
+                    "content": "x",
+                }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("Listed instead."), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Write, BuiltinTool::Ls]),
+        &ctx,
+        |_| {},
+        |requested: ToolCall<'_>| match requested.tool {
+            BuiltinTool::Write => ApprovalDecision::Deny {
+                reason: "write is not approved".to_string(),
+            },
+            _ => ApprovalDecision::Allow,
+        },
+    )
+    .await
+    .unwrap()
+    .messages;
+
+    assert_eq!(
+        script.sent.len(),
+        3,
+        "the turn should have re-entered twice"
+    );
+
+    // The second call's result: the same gate, asked again, let this one through.
+    let listed = wire(&messages)[3]["content"][0].clone();
+    assert_eq!(
+        listed["is_error"],
+        serde_json::Value::Null,
+        "got {listed:?}"
+    );
+}
+
+/// The gate is handed the call it decides on, and asked before the tool runs rather
+/// than alongside it: `spawn_blocking` cannot be cancelled, so a decision arriving
+/// late would refuse a call that had already happened (#26).
+#[tokio::test]
+async fn the_gate_sees_a_call_before_it_runs() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("note.txt");
+    let input = serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" });
+    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![call("write", input.clone()), stop(StopReason::ToolUse)],
+        vec![text("Done."), stop(StopReason::EndTurn)],
+    ]);
+    let mut seen = Vec::new();
+
+    run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx,
+        |_| {},
+        |requested: ToolCall<'_>| {
+            seen.push((
+                requested.tool,
+                requested.id.to_string(),
+                requested.input.clone(),
+                file.exists(),
+            ));
+            ApprovalDecision::Allow
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        seen,
+        vec![(BuiltinTool::Write, "call_1".to_string(), input, false)]
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
+}
+
+/// A gate decides about tools, and an unresolved name is not one. It is answered above
+/// the gate, so a caller's closure never has to invent a verdict for it.
+#[tokio::test]
+async fn an_unknown_name_never_reaches_the_gate() {
+    let mut script = Script::new([
+        vec![call("rm", serde_json::json!({})), stop(StopReason::ToolUse)],
+        vec![text("Using a real tool."), stop(StopReason::EndTurn)],
+    ]);
+    let mut asked = 0usize;
+
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Write]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        |_| {
+            asked += 1;
+            ApprovalDecision::Allow
+        },
+    )
+    .await
+    .unwrap()
+    .messages;
+
+    assert_eq!(asked, 0, "a name no tool answers to reached the gate");
+    assert_eq!(tool_error(&messages)["is_error"], true);
 }
 
 /// A model that keeps asking for tools — looping on its own, or steered into it by
@@ -410,9 +591,15 @@ async fn a_turn_ends_once_it_runs_out_of_rounds() {
         ..TurnLimits::default()
     };
 
-    let error = run_turn(async |r| script.open(r).await, asking_forever, &ctx, |_| {})
-        .await
-        .expect_err("a turn that never stops asking must not run forever");
+    let error = run_turn(
+        async |r| script.open(r).await,
+        asking_forever,
+        &ctx,
+        |_| {},
+        allow_all,
+    )
+    .await
+    .expect_err("a turn that never stops asking must not run forever");
 
     assert!(
         matches!(error, TurnError::RoundLimit { rounds: 3 }),
@@ -456,6 +643,7 @@ async fn a_round_that_never_finishes_streaming_times_out() {
         stalling,
         &ctx(SandboxPolicy::default()),
         |_| {},
+        allow_all,
     )
     .await
     .expect_err("a stream that never finishes must not hold the turn open");
@@ -493,6 +681,7 @@ fn documented_call_shape_stays_spawnable(
         turn(&[], &[]),
         ctx,
         |_| {},
+        allow_all,
     ));
 }
 
@@ -521,6 +710,7 @@ async fn an_empty_round_mid_tool_use_is_an_error() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
+        allow_all,
     )
     .await
     .expect_err("a transcript ending in an unanswered tool_result is not a turn");

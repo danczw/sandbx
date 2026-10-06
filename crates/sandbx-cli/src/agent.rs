@@ -1,16 +1,17 @@
 //! `agent-run`: one prompt, one streamed answer, tool calls through the boundary.
 //!
-//! Single-shot and non-interactive, so there is nothing to persist between turns and no
-//! operator to ask before a tool runs.
+//! Single-shot and non-interactive, so there is nothing to persist between turns and
+//! nobody to ask mid-turn: the approval gate is decided from argv before the first
+//! request goes out.
 
 use std::io::Write;
 
-use sandbx_agent::{Turn, TurnLimits, run_turn};
+use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, AnthropicClient, ContentBlock, RequestMessage, Role, StopReason,
 };
-use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_tools::{BuiltinTool, ExecutionContext, RiskLevel};
 
 use crate::{AgentError, Grants, PolicyError};
 
@@ -28,6 +29,13 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// Neither success nor failure: what reached stdout is a real answer and an incomplete
 /// one, which a script consuming it has to be able to tell apart.
 const TRUNCATED: i32 = 2;
+
+/// The flag that lifts the default refusal.
+///
+/// Named once because a refusal is read twice — by the operator on stderr and by the
+/// model in the `tool_result` — and two accounts of the same refusal must not advise
+/// differently.
+const ALLOW_TOOL: &str = "--allow-tool";
 
 /// `sandbx agent-run [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]
@@ -51,6 +59,25 @@ pub struct AgentRun {
     /// Unset sends none, so the model is told only what the tools' own descriptions say.
     #[arg(long, value_name = "TEXT")]
     system: Option<String>,
+
+    /// Let the model call a tool that does more than read. Repeatable.
+    ///
+    /// Without it only the read-only tools run — `read`, `ls`, `grep` and
+    /// `find`. A `write`, an `edit` or a `bash` goes back to the model refused,
+    /// which it is told about and may work around. Name a tool to approve it,
+    /// or pass the flag bare to approve all seven.
+    ///
+    /// Approval is for the run, not for the call: `--allow-tool bash` lets the
+    /// model run every command it chooses to, and nothing asks you in between.
+    /// The policy flags are still what bounds where an approved call can reach.
+    // `Option<Vec<_>>` is what gives three states, as on `--allow-network`.
+    #[arg(
+        long = "allow-tool",
+        value_name = "TOOL",
+        num_args = 0..=1,
+        value_parser = tool_name,
+    )]
+    allow_tool: Option<Vec<BuiltinTool>>,
 
     /// The prompt to send.
     // `last` keeps the separator meaningful: a prompt beginning with `-` needs no
@@ -78,6 +105,48 @@ impl AgentRun {
     /// The system prompt, or `None` to send none.
     pub fn system(&self) -> Option<&str> {
         self.system.as_deref()
+    }
+
+    /// Whether the model may call `tool` in this run.
+    ///
+    /// Fail-closed, because there is no operator to ask: a tool that does more than read
+    /// runs only when a flag named it, or when the bare flag approved every tool. A read-
+    /// only tool is approved either way, so `--allow-tool write` does not have to re-list
+    /// the four it did not mean to withdraw.
+    pub fn approves(&self, tool: BuiltinTool) -> bool {
+        if tool.risk() == RiskLevel::ReadOnly {
+            return true;
+        }
+
+        match self.allow_tool.as_deref() {
+            None => false,
+            // An empty `Vec` is the bare flag: every occurrence was bare, so none named a
+            // tool. Which makes `--allow-tool --allow-tool write` an approval of `write`
+            // alone, the broader spelling yielding the narrower set, as `--allow-network`.
+            Some([]) => true,
+            Some(named) => named.contains(&tool),
+        }
+    }
+
+    /// The decision for one call, and the operator's line about it.
+    ///
+    /// The line is printed here and not from `observe`, which fires while the round is
+    /// still streaming — before this runs, so it would announce a call this then refuses.
+    fn gate(&self, requested: ToolCall<'_>) -> ApprovalDecision {
+        let name = requested.tool.name();
+
+        if self.approves(requested.tool) {
+            eprintln!("sandbx: running {name}");
+            return ApprovalDecision::Allow;
+        }
+
+        eprintln!("sandbx: refused {name}, which needs `{ALLOW_TOOL} {name}`");
+        ApprovalDecision::Deny {
+            reason: format!(
+                "the `{name}` tool is not approved for this run: \
+                 it runs only when sandbx is started with `{ALLOW_TOOL} {name}`"
+            ),
+        }
     }
 
     /// The prompt, as one string.
@@ -138,6 +207,7 @@ impl AgentRun {
             turn,
             &ctx,
             |event| render.event(event),
+            |requested| self.gate(requested),
         )
         .await;
 
@@ -147,6 +217,22 @@ impl AgentRun {
         outcome?;
         code
     }
+}
+
+/// Accept a tool `--allow-tool` can actually approve, and refuse anything else.
+///
+/// `BuiltinTool::from_name` is exact-match, so a near miss resolves to nothing: taking
+/// it would approve nothing and exit 0, leaving whoever typed `--allow-tool shell`
+/// believing `bash` was approved. The CLI refuses loudly, and names what to write, for
+/// the same reason `--allow-env` does.
+fn tool_name(value: &str) -> Result<BuiltinTool, String> {
+    BuiltinTool::from_name(value).ok_or_else(|| {
+        let names: Vec<&str> = BuiltinTool::ALL.iter().map(|tool| tool.name()).collect();
+        format!(
+            "no tool is called `{value}`; the tools are {}",
+            names.join(", ")
+        )
+    })
 }
 
 /// Writes a turn out: the answer on stdout, everything about it on stderr.
@@ -188,11 +274,14 @@ impl<W: Write> Render<W> {
                     self.mid_line = !delta.ends_with('\n');
                 }
             }
-            AgentEvent::ToolCallRequested { name, .. } => eprintln!("sandbx: running {name}"),
             AgentEvent::Stop { reason } => {
                 self.truncated = matches!(reason, StopReason::MaxTokens);
             }
-            AgentEvent::Thinking { .. } | AgentEvent::Usage { .. } => {}
+            // A requested call is announced by `AgentRun::gate`, which knows whether it
+            // ran. The cost is that a name no tool answers to reaches only the model.
+            AgentEvent::ToolCallRequested { .. }
+            | AgentEvent::Thinking { .. }
+            | AgentEvent::Usage { .. } => {}
         }
     }
 

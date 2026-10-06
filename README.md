@@ -14,8 +14,9 @@ rather than degrading to unrestricted execution.
 > **Pre-alpha.** You can ask an agent one question from the command line and
 > watch it use tools to answer. What is missing above that is the interactive
 > surface — no session, no history, no interrupt — and, more importantly, any
-> approval prompt: every tool call the model asks for runs, so the grants you pass
-> are the whole of what a prompt injection can reach. Enforced today on Linux 6.10+ with
+> per-call approval prompt: a tool is approved for the whole run or not at all, so
+> the grants you pass are the whole of what a prompt injection reaches once it has
+> a tool. Enforced today on Linux 6.10+ with
 > unprivileged user namespaces: filesystem (Landlock), network (empty netns, or
 > a TCP port allowlist),
 > dangerous syscalls (seccomp), process lifetime (PID namespace). Kernels that
@@ -191,14 +192,25 @@ sandbx agent-run \
   -- "find the TODO comments under src and list them"
 ```
 
-The answer streams on stdout; which tool is running goes to stderr, so piping
-stdout gives you the answer alone. All seven tools are offered — `read`, `write`,
-`edit`, `ls`, `grep`, `find` and `bash` — and each runs through the same boundary,
-so a path you did not grant comes back to the model as a refusal for it to work
-around rather than a crash.
+Both of those answer by reading. Changing a file takes a second decision, because
+only the four read-only tools are approved by default:
+
+```sh
+sandbx agent-run \
+  --allow-write ./src \
+  --allow-tool  edit \
+  -- "add a doc comment to every public fn under src"
+```
+
+The answer streams on stdout; which tool ran, and which was refused, goes to
+stderr — so piping stdout gives you the answer alone. All seven tools are offered
+to the model — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash` — and each
+one the gate approves runs through the same boundary, so a path you did not grant
+comes back to the model as a refusal for it to work around rather than a crash.
 
 | flag | |
 |------|--|
+| `--allow-tool [TOOL]` | approve a tool that does more than read. Repeatable; bare approves all seven |
 | `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
 | `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
 | `--system TEXT`   | a system prompt. Unset sends none |
@@ -211,11 +223,13 @@ it off mid-sentence — what reached stdout is real but incomplete, which is wor
 distinguishing if a script is reading it. Anything else failed before or during
 the turn, with the reason on stderr.
 
-> **Nothing asks you before a tool call runs.** The model chooses the calls and
-> they execute, which means a prompt injection in a file the agent reads can reach
-> anything the grants allow. The sandbox is the control, not the asking — so grant
-> the narrowest tree that lets the task finish, and read
-> [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
+> **Nothing asks you before an approved tool call runs.** `--allow-tool` is a
+> decision per tool per run, not per call: approve `bash` and the model runs every
+> command it chooses to, which means a prompt injection in a file the agent reads
+> reaches anything the grants allow. The sandbox is the control, not the asking —
+> so approve the fewest tools the task needs, grant the narrowest tree that lets it
+> finish, and read [SECURITY.md](SECURITY.md) before pointing it at anything you
+> care about.
 >
 > `ANTHROPIC_API_KEY` is read by the harness, and no tool sees it unless you name
 > it to `--allow-env` — which hands over the value in full. That is the one flag
