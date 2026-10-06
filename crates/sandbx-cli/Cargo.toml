@@ -25,6 +25,7 @@ sandbx-core = { path = "../sandbx-core" }
 # it: `agent-run` builds the client, the request message and the first user turn
 # itself, and renders the events the loop hands back.
 sandbx-providers = { path = "../sandbx-providers" }
+sandbx-session = { path = "../sandbx-session" }
 sandbx-tools = { path = "../sandbx-tools" }
 # The runtime flavour is the binary's call, which is why `sandbx-agent` takes
 # `rt` and stops there. `rt` is all `spawn_blocking` needs, so this is a

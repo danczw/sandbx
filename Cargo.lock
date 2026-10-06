@@ -1210,6 +1210,7 @@ dependencies = [
  "sandbx-agent",
  "sandbx-core",
  "sandbx-providers",
+ "sandbx-session",
  "sandbx-tools",
  "secrecy",
  "serde_json",
