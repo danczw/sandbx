@@ -6,6 +6,9 @@
 /// Why a session could not be named, read, or written.
 #[derive(Debug)]
 pub enum SessionError {
+    /// Neither `$XDG_STATE_HOME` nor `$HOME` names an absolute directory.
+    NoStateHome,
+
     /// The id is not one a session can be called.
     InvalidIdentifier {
         /// What was offered, quoted back so a typo is visible.
@@ -21,6 +24,10 @@ pub enum SessionError {
 impl std::fmt::Display for SessionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::NoStateHome => write!(
+                f,
+                "no absolute $XDG_STATE_HOME or $HOME, so there is nowhere to keep sessions"
+            ),
             Self::InvalidIdentifier { value, reason } => {
                 write!(f, "`{value}` is not a session id: {reason}")
             }
@@ -35,7 +42,7 @@ impl std::fmt::Display for SessionError {
 impl std::error::Error for SessionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::InvalidIdentifier { .. } | Self::Clock => None,
+            Self::NoStateHome | Self::InvalidIdentifier { .. } | Self::Clock => None,
         }
     }
 }
