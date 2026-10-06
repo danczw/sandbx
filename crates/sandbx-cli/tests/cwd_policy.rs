@@ -115,6 +115,19 @@ fn an_unset_home_still_runs_from_a_project() {
     );
 }
 
+/// An unusable `HOME` derives like an unset one, which a stricter-looking edit would reverse.
+#[test]
+fn an_unresolvable_home_still_runs_from_a_project() {
+    // Outside `PACKAGE`, or the cwd would *hold* this home and be refused for that.
+    let missing = format!("{}/no-such-home", env!("CARGO_TARGET_TMPDIR"));
+    let (_, stderr) = run(PACKAGE, &missing, &[]);
+
+    assert!(
+        !stderr.contains("refusing to derive"),
+        "a HOME that resolves to nothing refused an ordinary project directory: {stderr}"
+    );
+}
+
 /// The guard must fire on the derived default and never on an explicit one, or adding it
 /// made a hand-written policy unrunnable from `$HOME`. Asserts only the refusal's absence:
 /// whether the run then succeeds is kernel-dependent, which is the sandbox suite's

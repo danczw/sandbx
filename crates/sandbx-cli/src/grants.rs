@@ -126,13 +126,23 @@ fn looks_like_a_home(cwd: &Path) -> bool {
         .any(|known| cwd.parent() == Some(Path::new(known)))
 }
 
+/// The spellings of `$HOME` a cwd is compared against, and whether it names a home at all.
+///
+/// Two fields because the two questions have different answers: an unresolvable `$HOME` is
+/// still a path a cwd can hold, and still no usable home for the stand-in to defer to.
+#[derive(Debug, PartialEq, Eq)]
+struct Homes {
+    paths: Vec<PathBuf>,
+    usable: bool,
+}
+
 /// `cwd` itself, or why no default may be rooted there.
 ///
-/// An empty `homes` means `HOME` named no usable directory, leaving the exact home rule
-/// nothing to compare — so [`looks_like_a_home`] stands in for it rather than being skipped.
+/// An unusable `$HOME` leaves the exact home rule nothing to compare — so
+/// [`looks_like_a_home`] stands in for it rather than being skipped.
 fn vetted_root<'a>(
     cwd: &'a Path,
-    homes: &[PathBuf],
+    homes: &Homes,
     granted: &[PathBuf],
 ) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
@@ -142,7 +152,7 @@ fn vetted_root<'a>(
     // `starts_with` is true of equal paths, so one test covers both "cwd *is* $HOME" and
     // "cwd holds it", and it is whole-component, so `/home/u/project-tools` is not inside
     // `/home/u/project`.
-    if let Some(home) = homes.iter().find(|home| home.starts_with(cwd)) {
+    if let Some(home) = homes.paths.iter().find(|home| home.starts_with(cwd)) {
         return Err(PolicyError::HomeDirectory {
             cwd: cwd.to_path_buf(),
             home: home.clone(),
@@ -155,7 +165,7 @@ fn vetted_root<'a>(
         });
     }
 
-    if homes.is_empty() && looks_like_a_home(cwd) {
+    if !homes.usable && looks_like_a_home(cwd) {
         return Err(PolicyError::UnnamedHome {
             cwd: cwd.to_path_buf(),
         });
@@ -176,6 +186,38 @@ fn vetted_root<'a>(
     Ok(cwd)
 }
 
+/// What `$HOME` names, resolved and as written.
+///
+/// Absolute only: an empty or relative `HOME` matches no resolved `getcwd`, so keeping it
+/// would read as a home that settles the cwd while answering nothing.
+fn named_homes(home: Option<&Path>) -> Homes {
+    let Some(home) = home.filter(|home| home.is_absolute()) else {
+        return Homes {
+            paths: Vec::new(),
+            usable: false,
+        };
+    };
+
+    let mut paths = vec![home.to_path_buf()];
+    let Ok(resolved) = home.canonicalize() else {
+        return Homes {
+            paths,
+            usable: false,
+        };
+    };
+    // Both forms, because Fedora Silverblue ships `/home -> /var/home`: `getcwd` says
+    // `/var/home/u` where `$HOME` says `/home/u`, and comparing one bypasses the other.
+    if resolved != home {
+        paths.push(resolved.clone());
+    }
+
+    // Resolving is not being a home: `HOME=/dev/null` is a service-account convention and
+    // Docker hands a UID with no passwd entry `HOME=/`. Both resolve, and match no cwd.
+    let usable = resolved.parent().is_some() && resolved.is_dir();
+
+    Homes { paths, usable }
+}
+
 /// [`vetted_root`] over this process's own state.
 fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
     let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
@@ -192,20 +234,8 @@ fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
             source,
         })?;
 
-    let mut homes = Vec::new();
-    // Absolute only: an empty or relative `HOME` matches no resolved `getcwd`, so keeping it
-    // would read as a home that settles the cwd while answering nothing.
-    if let Some(home) = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .filter(|home| home.is_absolute())
-    {
-        // Both forms, because Fedora Silverblue ships `/home -> /var/home`: `getcwd` says
-        // `/var/home/u` where `$HOME` says `/home/u`, and comparing one bypasses the other.
-        if let Ok(resolved) = home.canonicalize() {
-            homes.push(resolved);
-        }
-        homes.push(home);
-    }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let homes = named_homes(home.as_deref());
 
     vetted_root(&cwd, &homes, granted).map(Path::to_path_buf)
 }
@@ -317,11 +347,33 @@ mod tests {
         }
     }
 
-    fn homes(paths: &[&str]) -> Vec<PathBuf> {
-        paths.iter().map(PathBuf::from).collect()
+    /// A `$HOME` that named these and resolved to a directory.
+    fn homes(paths: &[&str]) -> Homes {
+        Homes {
+            paths: paths.iter().map(PathBuf::from).collect(),
+            usable: true,
+        }
     }
 
-    fn root(cwd: impl AsRef<Path>, homes: &[PathBuf]) -> Result<PathBuf, PolicyError> {
+    /// A `$HOME` that named these and resolved to nothing a home can be.
+    fn unusable(paths: &[&str]) -> Homes {
+        Homes {
+            usable: false,
+            ..homes(paths)
+        }
+    }
+
+    /// No `$HOME` at all.
+    fn no_home() -> Homes {
+        unusable(&[])
+    }
+
+    /// An absolute path guaranteed absent, where `/nonexistent` is only a convention.
+    fn missing() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-directory")
+    }
+
+    fn root(cwd: impl AsRef<Path>, homes: &Homes) -> Result<PathBuf, PolicyError> {
         vetted_root(cwd.as_ref(), homes, &granted()).map(Path::to_path_buf)
     }
 
@@ -402,7 +454,7 @@ mod tests {
 
     #[test]
     fn an_unset_home_still_refuses_the_root() {
-        let error = root("/", &[]).expect_err("the filesystem root");
+        let error = root("/", &no_home()).expect_err("the filesystem root");
 
         assert!(
             matches!(error, PolicyError::FilesystemRoot),
@@ -415,7 +467,7 @@ mod tests {
     #[test]
     fn the_home_parents_are_refused_with_no_home_set() {
         for cwd in ["/home", "/Users", "/var/home", "/root", "/var"] {
-            let error = root(cwd, &[]).expect_err("a well-known home location");
+            let error = root(cwd, &no_home()).expect_err("a well-known home location");
 
             assert!(
                 matches!(error, PolicyError::HomeParent { .. }),
@@ -444,7 +496,7 @@ mod tests {
     #[test]
     fn an_unset_home_refuses_a_child_of_one() {
         for cwd in ["/home/other", "/Users/other", "/root/work"] {
-            let error = root(cwd, &[]).expect_err("something shaped like a home directory");
+            let error = root(cwd, &no_home()).expect_err("something shaped like a home directory");
 
             assert!(
                 matches!(error, PolicyError::UnnamedHome { .. }),
@@ -455,6 +507,111 @@ mod tests {
                 "{error} does not say why {cwd} could not be told apart"
             );
         }
+    }
+
+    /// A `$HOME` that resolves to nothing must not satisfy the stand-in gate (#154).
+    #[test]
+    fn an_unresolvable_home_refuses_a_child_of_one() {
+        let homes = named_homes(Some(&missing()));
+
+        for cwd in ["/home/other", "/Users/other", "/root/work"] {
+            let error = root(cwd, &homes).expect_err("something shaped like a home directory");
+
+            assert!(
+                matches!(error, PolicyError::UnnamedHome { .. }),
+                "{error} let {cwd} through for a $HOME that resolves to nothing"
+            );
+        }
+    }
+
+    /// Resolving is not being a home: `/dev/null` and `/` both do, and neither names one.
+    #[test]
+    fn a_home_that_is_no_directory_refuses_a_child_of_one() {
+        for home in ["/dev/null", "/"] {
+            let homes = named_homes(Some(Path::new(home)));
+
+            let error =
+                root("/home/other", &homes).expect_err("something shaped like a home directory");
+            assert!(
+                matches!(error, PolicyError::UnnamedHome { .. }),
+                "{error} let /home/other through for $HOME={home}"
+            );
+        }
+    }
+
+    /// The comparison outlives the usability verdict: an unprovisioned home is still a path
+    /// the cwd can hold, and outside [`HOME_PARENTS`] no other arm covers it.
+    #[test]
+    fn an_unresolvable_home_is_still_compared() {
+        let homes = named_homes(Some(Path::new("/srv/people/alice")));
+
+        let error = root("/srv/people", &homes).expect_err("a directory holding a home");
+        assert!(
+            matches!(error, PolicyError::HomeDirectory { .. }),
+            "{error} let /srv/people through while $HOME named a home under it"
+        );
+    }
+
+    #[test]
+    fn an_absolute_home_that_resolves_is_usable() {
+        let real = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .canonicalize()
+            .expect("the package directory this test is compiled from");
+
+        assert_eq!(
+            named_homes(Some(&real)),
+            homes(&[real.to_str().expect("a UTF-8 package path")]),
+            "a resolved $HOME did not name itself as a usable home"
+        );
+    }
+
+    /// Fedora Silverblue ships `/home -> /var/home`, and comparing one spelling of a
+    /// symlinked home bypasses the other.
+    #[test]
+    fn a_symlinked_home_names_both_forms() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let real = directory.path().join("var-home");
+        let link = directory.path().join("home");
+        std::fs::create_dir(&real).expect("a home to link to");
+        std::os::unix::fs::symlink(&real, &link).expect("a symlinked home");
+
+        let named = named_homes(Some(&link));
+
+        assert!(named.usable, "a symlinked home resolved to no usable home");
+        assert!(
+            named.paths.contains(&link) && named.paths.contains(&real),
+            "{named:?} does not hold both spellings of the symlinked home"
+        );
+    }
+
+    #[test]
+    fn an_unresolvable_home_is_not_usable() {
+        let named = named_homes(Some(&missing()));
+
+        assert!(
+            !named.usable,
+            "{named:?} called a home it cannot resolve usable"
+        );
+    }
+
+    #[test]
+    fn a_relative_or_empty_home_names_nothing() {
+        for home in ["relative/path", ""] {
+            assert_eq!(
+                named_homes(Some(Path::new(home))),
+                no_home(),
+                "{home:?} named a home that settles no resolved cwd"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unset_home_names_nothing() {
+        assert_eq!(
+            named_homes(None),
+            no_home(),
+            "an unset HOME named a home anyway"
+        );
     }
 
     /// Write here plus the execute every run already has is the pair `Axis::grants` keeps
@@ -511,7 +668,7 @@ mod tests {
     #[test]
     fn an_unset_home_still_derives_a_root() {
         assert_eq!(
-            root("/app", &[]).expect("a container working directory"),
+            root("/app", &no_home()).expect("a container working directory"),
             Path::new("/app"),
             "an unset HOME refused an ordinary directory"
         );
@@ -520,11 +677,11 @@ mod tests {
     #[test]
     fn a_refusal_names_the_flags_to_type_instead() {
         let refusals = [
-            root("/", &[]).expect_err("the filesystem root"),
+            root("/", &no_home()).expect_err("the filesystem root"),
             root("/home/u", &homes(&["/home/u"])).expect_err("home as a root"),
             root("/home", &homes(&["/home/u"])).expect_err("a parent of home"),
             root("/home", &homes(&["/var/lib/svc"])).expect_err("a home parent"),
-            root("/home/other", &[]).expect_err("something shaped like a home"),
+            root("/home/other", &no_home()).expect_err("something shaped like a home"),
             root("/usr", &homes(&["/home/u"])).expect_err("a system executable path"),
         ];
 
