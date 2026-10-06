@@ -1,8 +1,8 @@
 //! Printing the digest `--pin-sha256` takes.
 //!
 //! The one subcommand that confines nothing: it reads a file in the harness, the way
-//! `sha256sum` does, because a pin has to be taken *before* there is a policy to take it
-//! under. Nothing it reads crosses into a sandbox.
+//! `sha256sum` does, because a pin has to be taken before there is a policy to take it
+//! under.
 
 use std::path::PathBuf;
 

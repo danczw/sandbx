@@ -22,9 +22,7 @@ const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
 /// through are the same answer to the operator, and the errno distinguishes them.
 #[derive(Debug)]
 pub struct HashError {
-    /// The file as it was named.
     pub(crate) path: PathBuf,
-    /// The underlying OS failure.
     pub(crate) source: std::io::Error,
 }
 
@@ -264,9 +262,8 @@ pub enum AgentError {
 
     /// The session could not be opened, or the finished turn could not be saved.
     ///
-    /// A failed save is an error and not a warning: persistence was asked for and did
-    /// not happen, and exiting 0 would leave the next `--session` resuming a
-    /// conversation missing its last turn.
+    /// A failed save is an error, not a warning: exiting 0 would leave the next
+    /// `--session` resuming a conversation missing its last turn.
     Session(SessionError),
 
     /// The turn itself ended without an answer.

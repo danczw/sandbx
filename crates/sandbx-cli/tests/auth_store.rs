@@ -4,7 +4,7 @@
 //! `ANTHROPIC_API_KEY` off the real process, and edition 2024 makes setting a variable
 //! `unsafe` — which this workspace forbids.
 // `Command::new` here spawns sandbx itself, never a command that bypasses it; the
-// workspace ban exists to stop code executing *around* the sandbox.
+// workspace ban exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
 
 use std::io::Write;

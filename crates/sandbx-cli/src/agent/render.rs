@@ -1,8 +1,8 @@
 //! Where a turn's output goes: the answer on stdout, everything about it on stderr.
 //!
-//! Its own module because it changes for a different reason than the rest of
-//! `agent-run` does: how an answer is presented, rather than what was asked or what the
-//! turn was allowed to do. It knows nothing of flags, policies or sessions.
+//! Its own module because it changes for a different reason than the rest of `agent-run`:
+//! how an answer is presented, not what was asked or allowed. It knows nothing of flags,
+//! policies or sessions.
 
 use std::io::Write;
 
@@ -11,16 +11,13 @@ use sandbx_providers::{AgentEvent, StopReason};
 use super::TRUNCATED;
 use crate::AgentError;
 
-/// Writes a turn out: the answer on stdout, everything about it on stderr.
-///
-/// The split is what lets stdout be piped to something that wants the answer alone.
+/// Writes a turn out, split so stdout can be piped to something that wants the answer
+/// alone.
 pub(super) struct Render<W> {
     out: W,
 
-    /// Whether the last round stopped at `max_tokens`.
-    ///
-    /// Last-one-wins because every round ends with a `Stop` and only the final one says
-    /// how the *turn* ended — an intermediate one reports a round that then went on.
+    /// Whether the last round stopped at `max_tokens`. Last-one-wins: every round ends
+    /// with a `Stop`, and only the final one says how the turn ended.
     truncated: bool,
 
     /// Whether stdout is part-way through a line, so it is terminated once and only if

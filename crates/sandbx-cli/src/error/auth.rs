@@ -27,9 +27,6 @@ pub enum AuthError {
     },
 
     /// The directory holding the credential file is reachable by more than its owner.
-    ///
-    /// A directory another user may write is a substitution and not just a disclosure:
-    /// they can rename their own `0600` file over the credential.
     DirPermissions {
         /// The directory that was refused.
         path: PathBuf,
@@ -38,9 +35,6 @@ pub enum AuthError {
     },
 
     /// The credential file is not valid TOML.
-    ///
-    /// Carries a position rather than the `toml` error, whose `Display` quotes the line it
-    /// failed on — for an unquoted `api_key` that line is the key.
     Malformed {
         /// The file that could not be parsed.
         path: PathBuf,

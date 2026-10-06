@@ -21,8 +21,8 @@ const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 /// The credential file, below whichever config home is in play.
 const FILE: &str = "sandbx/credentials.toml";
 
-/// `auth status` found no credential. Not a failure to report, but not success either: a
-/// script asking whether this host is authenticated reads the code, not the line.
+/// `auth status` found no credential: neither a failure nor success, since a script asks
+/// by reading the code.
 ///
 /// Distinct from the 2 an `AuthError` exits with, so `auth status || auth login` cannot
 /// read a refused file as an absent one.
@@ -161,9 +161,8 @@ fn env_key(lookup: &impl Fn(&str) -> Option<OsString>) -> Option<SecretString> {
 
 /// Where the credential file is, from `$XDG_CONFIG_HOME` or `$HOME`.
 ///
-/// Both are required to be absolute. XDG says a relative `$XDG_CONFIG_HOME` is to be
-/// ignored, and joining one to the working directory would put a credential in whatever
-/// tree the agent was pointed at.
+/// Both must be absolute. XDG says a relative `$XDG_CONFIG_HOME` is to be ignored, and
+/// joining one to the cwd would put a credential in whatever tree the agent was pointed at.
 fn config_file(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, AuthError> {
     if let Some(dir) = lookup("XDG_CONFIG_HOME").map(PathBuf::from)
         && dir.is_absolute()
@@ -182,8 +181,7 @@ fn config_file(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, Au
 /// The key from `input`, refusing a tty rather than prompting for it.
 ///
 /// Trimmed and blank-checked like [`env_key`]: a `printf` without `%s`, or a `$(cat key)`,
-/// carries a newline that `HeaderValue` would reject much later as an opaque transport
-/// error.
+/// carries a newline `HeaderValue` would later reject as an opaque transport error.
 fn read_key(mut input: impl Read, tty: bool) -> Result<SecretString, AuthError> {
     if tty {
         return Err(AuthError::TtyInput);
@@ -220,10 +218,8 @@ mod tests {
         }
     }
 
-    /// A credential file holding `key`, written the way `login` writes one.
-    ///
-    /// Through [`store::store`] rather than `fs::write`, so the fixture carries the modes
-    /// [`resolve`] insists on and not the `tempdir`'s own.
+    /// A credential file holding `key`, through [`store::store`] rather than `fs::write`
+    /// so the fixture carries the modes [`resolve`] insists on and not the `tempdir`'s own.
     fn stored_key(dir: &std::path::Path, key: &str) {
         store::store(&dir.join(FILE), &SecretString::from(key.to_string())).unwrap();
     }

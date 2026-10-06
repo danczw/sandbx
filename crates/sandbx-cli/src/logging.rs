@@ -12,9 +12,9 @@ use tracing_subscriber::util::SubscriberInitExt;
 ///
 /// Generic over its writer so a test can drive the real subscriber over an in-memory
 /// sink. Admits `AUDIT_TARGET` at `INFO` and nothing else, both halves load-bearing: the
-/// target keeps `sandbx-core`'s own `debug!` out, the level keeps anything below `INFO`
-/// that merely borrowed the target out. Returns `impl SubscriberInitExt` to keep
-/// `tracing` off this crate's dependency list.
+/// target keeps `sandbx-core`'s own `debug!` out, the level keeps out anything below
+/// `INFO` that borrowed the target. `impl SubscriberInitExt` keeps `tracing` a
+/// dev-dependency.
 pub fn subscriber<W>(writer: W) -> impl SubscriberInitExt
 where
     W: for<'writer> tracing_subscriber::fmt::MakeWriter<'writer> + Send + Sync + 'static,
@@ -23,9 +23,9 @@ where
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(writer)
-                // Forced off, not left to the default, which keys off the `ansi`
-                // feature — unstable across profiles, since `cargo test --workspace`
-                // unifies it on through a dev-dependency. This stream gets grepped.
+                // Forced off: the default keys off the `ansi` feature, which
+                // `cargo test --workspace` unifies on through a dev-dependency. This
+                // stream gets grepped.
                 .with_ansi(false),
         )
         // A global filter rather than a per-layer `with_filter`: same effect with one
@@ -38,8 +38,8 @@ where
 ///
 /// Stderr, not the stdout `tracing_subscriber::fmt` defaults to: `SandboxRun::execute`
 /// forwards the sandboxed command's output over stdout, so a record interleaved there
-/// would corrupt whatever is piping it. `try_init` rather than `init`: losing the audit
-/// trail is worth reporting, but the process can still sandbox a command.
+/// would corrupt whatever is piping it. `try_init` because losing the audit trail is
+/// worth reporting but still leaves a process that can sandbox a command.
 pub fn init() -> Result<(), tracing_subscriber::util::TryInitError> {
     subscriber(std::io::stderr as fn() -> std::io::Stderr).try_init()
 }
