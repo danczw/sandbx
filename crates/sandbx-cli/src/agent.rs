@@ -228,11 +228,14 @@ impl AgentRun {
             self.approved_tools().join(", ")
         );
 
-        // Opened before the client, so a refused mode, an unknown id or a torn
-        // transcript costs no request — the ordering the policy already has.
-        let session = session::open(self.session())?;
-
+        // Before the session, which the credential chain is allowed to pre-empt: it makes
+        // no request but can fail for want of a key, and a session opened first would
+        // leave a header-only transcript behind every time, which nothing deletes. Still
+        // before the first request, so a refused mode or an unknown id costs nothing —
+        // the ordering the policy already has.
         let client = AnthropicClient::new(crate::auth::api_key()?)?;
+
+        let session = session::open(self.session())?;
 
         self.drive(
             |request| client.stream_chat(request),

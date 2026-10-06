@@ -95,11 +95,12 @@ pub enum SessionError {
         mode: u32,
     },
 
-    /// The transcript is a symbolic link.
+    /// The transcript, or the directory holding it, is a symbolic link.
     ///
-    /// Following it would vet the wrong directory: the mode and owner come from the
-    /// target, while the directory checked is the one holding the link. Nothing the store
-    /// writes is ever a link, so this is somebody else's doing.
+    /// For a transcript, following it would vet the wrong directory: the mode and owner
+    /// come from the target while the directory checked holds the link. For the root it is
+    /// worse — the mode is not only read but narrowed, so following one would `chmod` a
+    /// directory outside the store. Neither is ever a link when the store made it.
     Symlink {
         /// The link that was refused.
         path: PathBuf,
@@ -111,6 +112,15 @@ pub enum SessionError {
         path: PathBuf,
         /// The uid that owns it.
         uid: u32,
+    },
+
+    /// The history holds two turns of the same role in a row.
+    ///
+    /// Only a hand-edited transcript gets here: an append refuses a turn that would break
+    /// the alternation, so the store cannot write one.
+    Disordered {
+        /// The transcript that was refused.
+        path: PathBuf,
     },
 
     /// The turn did not end with an assistant message.
@@ -176,13 +186,19 @@ impl std::fmt::Display for SessionError {
             ),
             Self::Symlink { path } => write!(
                 f,
-                "refusing to resume {}: it is a symbolic link, so the transcript sandbx \
-                 would check is not the one it would read",
+                "refusing to use {}: it is a symbolic link, so what sandbx would check \
+                 is not what it would read or write",
                 path.display()
             ),
             Self::ForeignOwner { path, uid } => write!(
                 f,
                 "refusing to resume {}: it belongs to uid {uid}, not to you",
+                path.display()
+            ),
+            Self::Disordered { path } => write!(
+                f,
+                "{} holds two turns of the same role in a row, which the API rejects — \
+                 it has been edited since sandbx wrote it",
                 path.display()
             ),
             Self::IncompleteTurn => write!(
@@ -210,6 +226,7 @@ impl std::error::Error for SessionError {
             | Self::DirWritable { .. }
             | Self::Symlink { .. }
             | Self::ForeignOwner { .. }
+            | Self::Disordered { .. }
             | Self::IncompleteTurn => None,
         }
     }

@@ -9,7 +9,7 @@ mod record;
 
 use std::ffi::OsString;
 use std::fs::{DirBuilder, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -136,7 +136,14 @@ impl SessionStore {
         let path = self.path_for(id);
         let owner = nix::unistd::getuid().as_raw();
 
-        let directory = open(&self.root, id)?;
+        // No root at all means no session by that id, which is the more useful of the two
+        // things to say: the operator asked about a session, not about a directory.
+        let directory = match open_root(&self.root) {
+            Err(SessionError::Io { source, .. }) if source.kind() == ErrorKind::NotFound => {
+                return Err(SessionError::NotFound { id: id.clone() });
+            }
+            other => other?,
+        };
         let (mode, uid) = ownership(&directory, &self.root)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::DirWritable {
@@ -175,24 +182,27 @@ impl SessionStore {
             })?;
 
         let (messages, observed, withheld) = fold(&path, &body)?;
-        // Re-checked on the way in, not just on the way out: a hand-edited transcript
-        // ending on a user turn would take a provider 400 on the next request. A
-        // transcript with no messages at all is fine — that is a session created and
-        // not yet talked to.
-        if !messages.is_empty() && !settled(&messages) {
-            return Err(SessionError::IncompleteTurn);
+        // Checked over the whole history, not just its end: an append can only break the
+        // last role, but a hand-edited file can hold a pair of user turns anywhere, and
+        // the request is refused for an interior pair exactly as for a trailing one. A
+        // transcript with no messages at all is fine — a session created and not yet
+        // talked to.
+        if !messages.is_empty() {
+            if !settled(&messages) {
+                return Err(SessionError::IncompleteTurn);
+            }
+            if !alternating(&messages) {
+                return Err(SessionError::Disordered { path: path.clone() });
+            }
         }
 
         // `O_NOFOLLOW` again, not just on the read: a link planted between the two opens
         // would make the appended-to file a different one than the vetted descriptor.
         let file = OpenOptions::new()
             .append(true)
-            .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
+            .custom_flags(no_follow())
             .open(&path)
-            .map_err(|source| SessionError::Io {
-                path: path.clone(),
-                source,
-            })?;
+            .map_err(|source| opening(&path, source))?;
 
         Ok(Session {
             id: id.clone(),
@@ -211,12 +221,10 @@ impl SessionStore {
     /// directory already exists, so a `sessions/` somebody widened — or created before
     /// the first run — would stay wide for every session after it. Narrowing rather than
     /// refusing because nothing is in the directory yet that a refusal would protect;
-    /// [`resume`](Self::resume) refuses instead, where there is.
+    /// [`resume`](Self::resume) refuses instead, where there is. A root that is itself a
+    /// link is refused either way — see [`open_root`].
     fn narrow_root(&self) -> Result<(), SessionError> {
-        let directory = File::open(&self.root).map_err(|source| SessionError::Io {
-            path: self.root.clone(),
-            source,
-        })?;
+        let directory = open_root(&self.root)?;
         let (mode, uid) = ownership(&directory, &self.root)?;
 
         if uid != nix::unistd::getuid().as_raw() {
@@ -302,9 +310,11 @@ impl Session {
     /// Add a finished turn to the end of the transcript.
     ///
     /// Refuses a turn that does not end on an assistant message, because the next
-    /// resume would send two user turns in a row.
+    /// resume would send two user turns in a row. A turn with no messages at all is not
+    /// that: it leaves the last role where it was, so it writes its accounting line and
+    /// nothing else.
     pub fn append(&mut self, turn: CompletedTurn<'_>) -> Result<(), SessionError> {
-        if !settled(turn.messages) {
+        if !turn.messages.is_empty() && !settled(turn.messages) {
             return Err(SessionError::IncompleteTurn);
         }
 
@@ -313,8 +323,10 @@ impl Session {
             .iter()
             .map(|message| Record::Message(message.clone()))
             .collect();
-        // Always its own record, never folded onto a message line: a first round that
-        // produced no content still reports what the prompt cost.
+        // Always its own record, never folded onto a message line: a round that produced
+        // no content still reports what the prompt cost. A caller that prepends its own
+        // prompt — `agent-run` does — is refused above instead, and re-measures it when
+        // the prompt is sent again.
         records.push(Record::Turn(Accounting {
             observed: turn.observed,
             withheld: turn.withheld,
@@ -329,7 +341,8 @@ impl Session {
         Ok(())
     }
 
-    /// Append records as lines, in one write, so a short write tears at most one turn.
+    /// Append records as lines, in one write, so a torn write lands at the end of the
+    /// file, where [`fold`] can drop the partial line rather than refuse the transcript.
     fn write(&mut self, records: &[Record]) -> Result<(), SessionError> {
         let mut lines = String::new();
         for record in records {
@@ -352,50 +365,65 @@ impl Session {
     }
 }
 
-/// Open `path`, reading an absent one as the session not existing.
+/// `O_NOFOLLOW`, so the leaf of a path this store vets is never a symbolic link.
 ///
-/// A directory opens read-only on Linux, which is all a `fstat` of it needs.
-fn open(path: &Path, id: &SessionId) -> Result<File, SessionError> {
-    File::open(path).map_err(|source| {
-        if source.kind() == std::io::ErrorKind::NotFound {
-            SessionError::NotFound { id: id.clone() }
-        } else {
-            SessionError::Io {
-                path: path.to_owned(),
-                source,
-            }
-        }
-    })
+/// Only the last component is unfollowed, so an ancestor may still be a link — a
+/// symlinked `~/.local/state` is an operator's business, and `$XDG_STATE_HOME` is the
+/// supported way to put the store somewhere else.
+fn no_follow() -> i32 {
+    nix::fcntl::OFlag::O_NOFOLLOW.bits()
+}
+
+/// Translate an open failure, naming a link that [`no_follow`] refused.
+///
+/// By errno and not `ErrorKind::FilesystemLoop`, which is unstable. `ELOOP` from these
+/// opens can only be the leaf, every component above it having been followed normally.
+fn opening(path: &Path, source: std::io::Error) -> SessionError {
+    if source.raw_os_error() == Some(nix::errno::Errno::ELOOP as i32) {
+        return SessionError::Symlink {
+            path: path.to_owned(),
+        };
+    }
+
+    SessionError::Io {
+        path: path.to_owned(),
+        source,
+    }
+}
+
+/// Open the directory holding transcripts, refusing one that is a symbolic link.
+///
+/// A link here is worse than a link to a transcript: [`narrow_root`](SessionStore::narrow_root)
+/// `fchmod`s this descriptor to `0700`, so following one would narrow whatever the link
+/// points at — a directory outside the store, possibly a shared one.
+///
+/// No `O_DIRECTORY`: paired with `O_NOFOLLOW` the kernel reports a symlinked directory as
+/// `ENOTDIR` rather than `ELOOP`, which a root that is a plain file reports too, and the
+/// two are worth telling apart.
+fn open_root(root: &Path) -> Result<File, SessionError> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(no_follow())
+        .open(root)
+        .map_err(|source| opening(root, source))
 }
 
 /// Open a transcript, refusing one that is a symbolic link.
 ///
-/// `O_NOFOLLOW` because every check below is on the descriptor, and a link makes the
-/// descriptor a different file than the path that was vetted: the mode and owner would
-/// come from the target while the directory refused for being writable is the one holding
-/// the link. It applies to the last component only, so a symlinked state directory — which
-/// an operator may well have — still opens.
+/// Every check is on the descriptor, and a link makes the descriptor a different file
+/// than the path that was vetted: the mode and owner would come from the target while the
+/// directory refused for being writable is the one holding the link.
 fn open_transcript(path: &Path, id: &SessionId) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
-        .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
+        .custom_flags(no_follow())
         .open(path)
         .map_err(|source| {
             if source.kind() == std::io::ErrorKind::NotFound {
                 return SessionError::NotFound { id: id.clone() };
             }
-            // By errno and not `ErrorKind::FilesystemLoop`, which is unstable. `ELOOP` is
-            // what `O_NOFOLLOW` reports for a link, and the only thing that produces it
-            // here: no component above the last one is followed by this open.
-            if source.raw_os_error() == Some(nix::errno::Errno::ELOOP as i32) {
-                return SessionError::Symlink {
-                    path: path.to_owned(),
-                };
-            }
-            SessionError::Io {
-                path: path.to_owned(),
-                source,
-            }
+
+            opening(path, source)
         })
 }
 
@@ -409,6 +437,14 @@ fn ownership(file: &File, path: &Path) -> Result<(u32, u32), SessionError> {
     // Masked to the permission bits: the raw mode carries the file type too, which no
     // message should print as part of an octal mode.
     Ok((metadata.permissions().mode() & 0o7777, metadata.uid()))
+}
+
+/// True when no two neighbouring messages carry the same role.
+///
+/// With only two roles that is alternation, and together with [`settled`] it also pins the
+/// first message as the user's: an alternating history ending on the model begins on them.
+fn alternating(messages: &[Message]) -> bool {
+    messages.windows(2).all(|pair| pair[0].role != pair[1].role)
 }
 
 /// True when the history ends where a conversation may be left: on the model's reply.
