@@ -1,10 +1,9 @@
 //! `sandbx hash`, whose only job is to print something `--pin-sha256` will accept.
 //!
 //! So the two are asserted together, over the real binary's stdout: a digest this prints
-//! and the flag refuses would be a subcommand that reads correctly and composes with
-//! nothing.
+//! and the flag refuses would compose with nothing.
 // The `Command::new` below runs sandbx itself to read what it wrote to stdout; the
-// workspace ban exists to stop code executing *around* the sandbox.
+// workspace ban exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
 
 use clap::Parser;
@@ -17,8 +16,7 @@ fn hash(argv: &[&str]) -> sandbx_cli::Hash {
     }
 }
 
-/// What the subcommand wrote to stdout, and the digest the library takes for the same
-/// bytes.
+/// What the subcommand wrote to stdout, and the library's digest for the same bytes.
 fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let path = dir.path().join("program");
@@ -42,7 +40,7 @@ fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
 }
 
 /// The exact bytes: a prefix, a different case or a second field all break
-/// `--pin-sha256 "$(sandbx hash …)"` while leaving a laxer assertion green.
+/// `--pin-sha256 "$(sandbx hash …)"`.
 #[test]
 fn the_printed_digest_is_the_one_the_flag_accepts() {
     let (stdout, digest) = printed(b"pinned bytes");

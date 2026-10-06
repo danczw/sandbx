@@ -1,8 +1,8 @@
 //! `agent-run`: one prompt, one streamed answer, tool calls through the boundary.
 //!
-//! Single-shot and non-interactive, so there is nobody to ask mid-turn: the approval
-//! gate is decided from argv before the first request goes out. `--session` carries a
-//! conversation between runs, which is a transcript on disk and not a live session.
+//! Single-shot and non-interactive, so there is nobody to ask mid-turn: the approval gate
+//! is decided from argv before the first request goes out. `--session` carries a
+//! conversation between runs as a transcript on disk, not a live session.
 
 mod render;
 
@@ -23,8 +23,8 @@ use crate::{AgentError, Grants, PolicyError};
 
 /// The model asked when `--model` is not given.
 ///
-/// The default lives here because `Turn::model` is a freeform string with no
-/// context-window table behind it, so no layer below has an opinion to inherit.
+/// Here because `Turn::model` is a freeform string with no context-window table behind
+/// it, so no layer below has an opinion to inherit.
 const DEFAULT_MODEL: &str = "claude-sonnet-5";
 
 /// The output ceiling for one turn when `--max-tokens` is not given.
@@ -33,12 +33,12 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// The exit code for an answer `--max-tokens` cut short.
 ///
 /// Neither success nor failure: what reached stdout is a real answer and an incomplete
-/// one, which a script consuming it has to be able to tell apart.
+/// one, which a script consuming it has to tell apart.
 const TRUNCATED: i32 = 2;
 
 /// The flag that lifts the default refusal.
 ///
-/// Named once because a refusal is read twice, on stderr and in the `tool_result`, and
+/// Named once because a refusal is read twice — on stderr and in the `tool_result` — and
 /// the two accounts must not advise differently.
 const ALLOW_TOOL: &str = "--allow-tool";
 
@@ -93,9 +93,8 @@ pub struct AgentRun {
     /// A transcript is plaintext under `$XDG_STATE_HOME/sandbx/sessions`, created
     /// `0600`, and holds whatever a tool read into the conversation. Resuming one that
     /// somebody else can write is refused; one they can only read resumes and says so.
-    // `Option<Option<_>>` and not `--allow-tool`'s `Option<Vec<_>>`: that flag is a
-    // growing set, this one names one session, and a `Vec` would take
-    // `--session a --session b` and quietly use one of them.
+    // `Option<Option<_>>` and not `--allow-tool`'s `Option<Vec<_>>`: this flag names one
+    // session, and a `Vec` would take `--session a --session b` and quietly use one.
     #[arg(long, value_name = "ID", num_args = 0..=1, value_parser = session_id)]
     session: Option<Option<SessionId>>,
 
@@ -138,8 +137,8 @@ impl AgentRun {
 
     /// Whether the model may call `tool` in this run.
     ///
-    /// Fail-closed, because there is no operator to ask: a tool that does more than read
-    /// runs only when a flag named it, or when the bare flag approved every tool.
+    /// Fail-closed, there being no operator to ask: a tool that does more than read runs
+    /// only when a flag named it, or when the bare flag approved every tool.
     fn approves(&self, tool: BuiltinTool) -> bool {
         if tool.risk() == RiskLevel::ReadOnly {
             return true;
@@ -148,8 +147,7 @@ impl AgentRun {
         match self.allow_tool.as_deref() {
             None => false,
             // An empty `Vec` is the bare flag, so `--allow-tool --allow-tool write`
-            // approves `write` alone: the broader spelling yields the narrower set, as
-            // `--allow-network`.
+            // approves `write` alone: the broader spelling yields the narrower set.
             Some([]) => true,
             Some(named) => named.contains(&tool),
         }
@@ -157,9 +155,9 @@ impl AgentRun {
 
     /// The tools this run approved, in `BuiltinTool::ALL` order.
     ///
-    /// Reported before the first request, because the fail-open spelling is a typo away:
-    /// clap reads `--allow-tool -- write the file` as the bare flag plus a prompt, and the
-    /// per-call lines would not say so until a `bash` ran.
+    /// Reported before the first request, the fail-open spelling being a typo away: clap
+    /// reads `--allow-tool -- write the file` as the bare flag plus a prompt, which the
+    /// per-call lines would not show until a `bash` ran.
     fn approved_tools(&self) -> Vec<&'static str> {
         BuiltinTool::ALL
             .iter()
@@ -170,8 +168,8 @@ impl AgentRun {
 
     /// The decision for one call, and the operator's line about it.
     ///
-    /// The line is printed here and not from `observe`, which fires while the round is
-    /// still streaming and so would announce a call this then refuses.
+    /// Printed here and not from `observe`, which fires while the round is still streaming
+    /// and so would announce a call this then refuses.
     fn gate(&self, requested: ToolCall<'_>) -> ApprovalDecision {
         let name = requested.tool.name();
 
@@ -204,23 +202,20 @@ impl AgentRun {
     /// # Errors
     ///
     /// [`AgentError::EmptyPrompt`], [`AgentError::Policy`] and [`AgentError::Provider`]
-    /// all land before any request goes out; [`AgentError::Turn`] when the turn ends
-    /// without an answer, and
-    /// [`AgentError::Output`] when stdout would not take it. A tool that the policy
-    /// refuses is none of them: it goes back to the model as a failed result, which is
-    /// what lets it try something the policy allows.
+    /// all land before any request goes out. A tool the policy refuses is not an error
+    /// here: it goes back to the model as a failed result, which is what lets it try
+    /// something the policy allows.
     pub async fn execute(&self) -> Result<i32, AgentError> {
         let prompt = self.prompt();
-        // Caught here because the API rejects an empty text block with a 400, so letting
-        // it through buys a round trip to be told what was knowable before it.
+        // The API rejects an empty text block with a 400, so letting it through buys a
+        // round trip to be told what was knowable before it.
         if prompt.trim().is_empty() {
             return Err(AgentError::EmptyPrompt);
         }
 
         // No `with_helper`: the default path re-execs this binary, and `main` dispatches
-        // helper mode before parsing, so the shipped binary is its own helper.
-        // Derived before the client, so a policy this refuses never reads the credential —
-        // neither the environment variable nor the file.
+        // helper mode before parsing, so the shipped binary is its own helper. Derived
+        // before the client, so a refused policy never reads the credential.
         let ctx = ExecutionContext::new(self.policy()?);
 
         eprintln!(
@@ -228,9 +223,8 @@ impl AgentRun {
             self.approved_tools().join(", ")
         );
 
-        // Before the session: the credential chain makes no request but can fail for want
-        // of a key, and a session opened first would leave a header-only transcript behind
-        // every time, which nothing deletes.
+        // Before the session: the credential chain can fail for want of a key, and a
+        // session opened first would leave a header-only transcript nothing deletes.
         let client = AnthropicClient::new(crate::auth::api_key()?)?;
 
         let session = session::open(self.session())?;
@@ -249,8 +243,7 @@ impl AgentRun {
     /// `session`.
     ///
     /// The stream opener and the sink are arguments so a test can drive a canned turn and
-    /// read back what the request carried and what came out of it, which is the only way
-    /// to check either without a key and a network.
+    /// read back what the request carried — the only way to check either without a key.
     async fn drive<W: Write>(
         &self,
         open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
@@ -317,8 +310,8 @@ impl AgentRun {
     /// Add the prompt and the finished turn to the transcript.
     ///
     /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
-    /// *produced*, so the caller's own prompt is not in it, and a transcript built from
-    /// the outcome alone would hold the model's replies with nothing it replied to.
+    /// produced, so a transcript built from the outcome alone would hold the model's
+    /// replies with nothing it replied to.
     fn save(
         &self,
         mut session: Session,
@@ -353,10 +346,9 @@ impl AgentRun {
 ///
 /// `BuiltinTool::from_name` is exact-match, so taking a near miss would approve nothing
 /// and exit 0, leaving whoever typed `--allow-tool shell` believing `bash` was approved.
-/// Same reason `--allow-env` refuses an unparsable name.
 fn tool_name(value: &str) -> Result<BuiltinTool, String> {
     BuiltinTool::from_name(value).ok_or_else(|| {
-        // Only the tools the flag can change. Listing all seven would invite
+        // Only the tools the flag can change: listing all seven would invite
         // `--allow-tool read`, which parses and widens nothing.
         let names: Vec<&str> = BuiltinTool::ALL
             .iter()
@@ -373,7 +365,7 @@ fn tool_name(value: &str) -> Result<BuiltinTool, String> {
 /// Accept an id the store could look up, and refuse anything else.
 ///
 /// At parse time rather than on open, so `--session ../../etc/passwd` is refused before
-/// any I/O happens at all — the same reason `tool_name` refuses an unknown tool.
+/// any I/O happens at all.
 fn session_id(value: &str) -> Result<SessionId, String> {
     value
         .parse()
@@ -396,8 +388,6 @@ mod tests {
         }
     }
 
-    /// The default nobody types, and so the one nobody checks.
-    ///
     /// Spelled out rather than compared against `risk()`, the table `approves` itself
     /// reads: derived, a `bash` reclassified as read-only would pass while running.
     #[test]
@@ -453,8 +443,7 @@ mod tests {
     }
 
     /// A misplaced `--` turns `--allow-tool write -- "…"` into the bare flag plus a
-    /// prompt, approving all seven — which the announced set makes visible before a
-    /// `bash` runs rather than at the moment one does.
+    /// prompt, approving all seven — which the announced set shows before a `bash` runs.
     #[test]
     fn a_bare_flag_from_a_misplaced_separator_announces_all_seven() {
         let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "write", "it"]);
@@ -506,7 +495,7 @@ mod tests {
         assert_eq!(decision, ApprovalDecision::Allow);
     }
 
-    /// `--allow-tool` can only ever widen, so a read-only name back would invite a
+    /// `--allow-tool` can only widen, so offering a read-only name back would invite a
     /// spelling that parses and changes nothing.
     #[test]
     fn the_unknown_name_advice_lists_only_what_needs_approving() {
@@ -629,8 +618,8 @@ mod tests {
                 Some(session),
             );
             code.expect("clean turn");
-            // Found by reading the store back rather than kept from before the turn:
-            // what a resume gets is what reached disk.
+            // Read back from the store rather than kept from before the turn: what a
+            // resume gets is what reached disk.
             only_session(&store)
         };
 

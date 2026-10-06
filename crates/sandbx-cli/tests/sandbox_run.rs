@@ -13,8 +13,8 @@ fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
     }
 }
 
-/// Where cargo runs an integration test: the package root, which is neither `$HOME` nor
-/// the filesystem root and holds no `sandbx` binary, so the default derives cleanly here.
+/// The package root, where cargo runs an integration test: neither `$HOME` nor the
+/// filesystem root, so the default derives cleanly here.
 fn cwd() -> std::path::PathBuf {
     std::env::current_dir()
         .expect("a working directory")
@@ -42,8 +42,7 @@ fn grants_only_what_a_command_needs_to_start() {
     );
 }
 
-/// The point of the default: the common case costs no flags. It is a *write* grant the
-/// operator did not type, so the guards in `grants.rs` are what keep it narrow.
+/// A write grant the operator did not type, which is what `grants.rs` guards.
 #[test]
 fn the_working_directory_is_readable_and_writable() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -62,8 +61,8 @@ fn the_working_directory_is_readable_and_writable() {
     );
 }
 
-/// A path flag *replaces* the default rather than adding to it. The other way round, a
-/// deliberately tight `--allow-read /srv` would silently gain write over the whole tree.
+/// Not additive: a deliberately tight `--allow-read /srv` would otherwise gain write
+/// over the working directory too.
 #[test]
 fn a_path_flag_replaces_the_working_directory() {
     for flag in ["--allow-read", "--allow-write", "--allow-exec"] {
@@ -94,10 +93,9 @@ fn an_env_flag_keeps_the_working_directory() {
     );
 }
 
-/// The default adds no execute grant of its own, and `vetted_root` refuses the one root
-/// that would have been executable without one — Landlock rights cover a subtree, so a
-/// working directory overlapping a system path inherits execute from
-/// `allow_system_executables`, which this assertion could not see.
+/// Landlock rights cover a subtree, so a working directory overlapping a system path
+/// would inherit execute from `allow_system_executables` — the root `vetted_root` refuses,
+/// and the one case this assertion could not see.
 #[test]
 fn the_default_root_is_not_executable() {
     let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -172,8 +170,8 @@ fn network_is_opt_in() {
     assert!(policy.allows_network());
 }
 
-/// The bare flag has to keep meaning every port: it is what it meant before ports existed,
-/// and reading it as an allowlist of none would confine a run the operator opened up.
+/// Reading the bare flag as an allowlist of no ports would confine a run the operator
+/// opened up.
 #[test]
 fn a_bare_network_flag_means_every_port() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--allow-network", "--", "true"])
@@ -204,10 +202,6 @@ fn repeated_network_flags_collect_ports() {
     );
 }
 
-/// The CLI refuses loudly where the library skips quietly, the same split `--allow-env`
-/// makes: a typo that silently granted nothing would leave whoever typed it believing the
-/// port had been allowlisted.
-///
 /// `65536` is the one that distinguishes a real range check from an `as` cast, which would
 /// truncate it to the port 0 beside it in the list.
 #[test]
@@ -244,8 +238,8 @@ fn a_port_outside_the_range_is_a_usage_error() {
     assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
 }
 
-/// A bare occurrence contributes no value to append, so the narrower spelling wins.
-/// Fail-closed, which is why it is acceptable rather than a bug.
+/// A bare occurrence contributes no value to append, so the narrower spelling wins —
+/// fail-closed, and so acceptable rather than a bug.
 #[test]
 fn mixing_a_bare_flag_with_a_port_narrows_to_the_port() {
     let policy = sandbox_run(&[
@@ -276,8 +270,8 @@ fn the_command_keeps_its_own_arguments() {
     assert_eq!(args.arguments(), ["-la", "/srv"]);
 }
 
-/// Swallowing a flag sandbx also defines would let the sandboxed command's arguments
-/// widen the policy meant to confine it.
+/// Swallowing a flag sandbx also defines would let the command's own arguments widen the
+/// policy confining it.
 #[test]
 fn flags_after_the_separator_are_not_our_flags() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "printf", "--allow-network"]);
@@ -293,9 +287,8 @@ fn flags_after_the_separator_are_not_our_flags() {
     assert_eq!(args.arguments(), ["--allow-network"]);
 }
 
-/// Matched on the error *kind*, not on `is_err()`: `--allow-network` takes an optional
-/// value, so a usage error there would also make this pass while the missing-command check
-/// itself had gone.
+/// On the error kind, not `is_err()`: `--allow-network` takes an optional value, so a
+/// usage error there would pass this too with the missing-command check gone.
 #[test]
 fn a_missing_command_is_rejected() {
     for argv in [
@@ -320,8 +313,7 @@ fn timeout_parses_as_seconds() {
     assert_eq!(args.timeout(), Some(std::time::Duration::from_secs(5)));
 }
 
-/// No limit, matching a plain shell: a default would kill long interactive runs nobody
-/// asked to bound.
+/// No limit, like a plain shell: a default would kill long runs nobody asked to bound.
 #[test]
 fn without_the_flag_there_is_no_timeout() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--", "true"]);
@@ -365,8 +357,8 @@ fn unix_sockets_are_opt_in() {
     assert!(!bare.allows_unix_sockets());
 }
 
-/// `--allow-exec` is the only way to run a binary that is not a system one, so a read
-/// grant leaking onto the execute axis would silently widen it.
+/// `--allow-exec` is the only way to run a non-system binary, so a read grant leaking
+/// onto the execute axis would silently widen it.
 #[test]
 fn exec_grants_are_repeatable_and_separate_from_read() {
     let policy = sandbox_run(&[
@@ -429,7 +421,7 @@ fn nothing_user_supplied_is_executable_by_default() {
 
 /// The library keeps the two axes separate so a caller can build a write-only drop
 /// directory; at the command line that is a trap, since `--allow-write ~/project` would
-/// let a tool write a tree it cannot `cat` back. The narrow form stays on the API.
+/// let a tool write a tree it cannot `cat` back.
 #[test]
 fn allow_write_also_grants_read_at_the_command_line() {
     let policy = sandbox_run(&[
@@ -454,8 +446,7 @@ fn allow_write_also_grants_read_at_the_command_line() {
     );
 }
 
-/// Stated over the axis table rather than flag by flag, including the CLI's one
-/// widening.
+/// Stated over the axis table rather than flag by flag, including the CLI's one widening.
 #[test]
 fn every_path_flag_grants_only_its_own_axis() {
     use sandbx_core::Axis;
@@ -485,8 +476,7 @@ fn every_path_flag_grants_only_its_own_axis() {
     }
 }
 
-/// `PATH` above all: without it a bare program name reaches only the C library's
-/// fallback search path, so anything outside `/bin` and `/usr/bin` is not found.
+/// `PATH` above all: without it a bare name reaches only glibc's `/bin:/usr/bin` fallback.
 #[test]
 fn the_startup_environment_is_granted_anyway() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -570,15 +560,9 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
     assert!(!policy.allows_unix_sockets(), "env implied unix sockets");
 }
 
-/// The flag names a variable; it does not set one — `NAME=VALUE` would put the value in
-/// helper argv, which the sandboxed command reads back out of its own
-/// `/proc/self/cmdline`.
-///
-/// Refused rather than dropped: `SandboxPolicy::allow_env` skips a name it cannot
-/// encode, which would leave `--allow-env TOKEN=hunter2` exiting 0 having passed
-/// nothing, and the person who typed it believing the secret crossed. Only the *name*
-/// is asserted; clap's refusal echoes the value, which `ps` and the shell history
-/// already have.
+/// `NAME=VALUE` would put the value in helper argv, which the sandboxed command reads
+/// back out of its own `/proc/self/cmdline`. Only the name is asserted: clap's refusal
+/// echoes the value, which `ps` and the shell history already have.
 #[test]
 fn a_name_with_a_value_is_refused_rather_than_dropped() {
     let refusal = Cli::try_parse_from([
@@ -627,8 +611,7 @@ fn the_resolver_hint_is_opt_in() {
     );
 }
 
-/// The decision the flag exists to keep: the audit trail must never report a port the
-/// operator did not name.
+/// The audit trail must never report a port the operator did not name.
 #[test]
 fn the_resolver_hint_allowlists_no_port() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--dns-over-tcp", "--", "true"])
@@ -649,8 +632,8 @@ fn the_resolver_hint_keeps_the_working_directory() {
     assert_eq!(policy.writable_paths(), [cwd()]);
 }
 
-/// Refused rather than resolved: honouring the hint would silently drop the value the
-/// operator asked to pass.
+/// Refused rather than resolved: honouring the hint would drop the value the operator
+/// asked to pass.
 #[test]
 fn the_hint_with_its_own_variable_is_refused() {
     let error = sandbox_run(&[
@@ -700,7 +683,6 @@ fn another_variable_survives_the_resolver_hint() {
     assert!(policy.hints_dns_over_tcp());
 }
 
-/// A digest in the one form the flag takes.
 const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 #[test]

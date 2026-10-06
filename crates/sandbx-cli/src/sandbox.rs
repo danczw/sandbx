@@ -8,8 +8,8 @@ use crate::{Grants, PolicyError, SandboxRunError};
 
 /// Accept a digest `--pin-sha256` can carry, and refuse anything else.
 ///
-/// Here rather than at the wire, in `Grants::variable_name`'s shape, so a pasted digest is
-/// refused with the advice attached rather than two processes later without it.
+/// Here rather than at the wire, so a pasted digest is refused with the advice attached
+/// rather than two processes later without it.
 fn pin_digest(value: &str) -> Result<Sha256Digest, String> {
     Sha256Digest::parse(value).map_err(|error| {
         format!("{error} — `sandbx hash <file>` prints one in the form this takes")
@@ -18,8 +18,8 @@ fn pin_digest(value: &str) -> Result<Sha256Digest, String> {
 
 /// Whether the policy leaves a name no way to resolve.
 ///
-/// A port list denying UDP *and* not naming TCP 53, which is the one shape where the
-/// advice below names something the policy is actually missing.
+/// A port list denying UDP and not naming TCP 53 — the one shape where the advice below
+/// names something the policy is actually missing.
 fn cannot_resolve(policy: &SandboxPolicy) -> bool {
     let unnamed = match policy.network() {
         NetworkPolicy::Ports(ports) => !ports.contains(&53),
@@ -30,8 +30,8 @@ fn cannot_resolve(policy: &SandboxPolicy) -> bool {
 
 /// What such a run most likely needed, once it has failed.
 ///
-/// Hedged, and it has to be: sandbx cannot see the command's own `getaddrinfo`, so a
-/// failure for any other reason gets this too.
+/// Hedged: sandbx cannot see the command's own `getaddrinfo`, so a failure for any other
+/// reason gets this too.
 fn resolver_advice(cannot_resolve: bool, code: i32) -> Option<&'static str> {
     match cannot_resolve && code != 0 {
         true => Some(
@@ -71,10 +71,9 @@ pub struct SandboxRun {
     ///
     /// It is not a path flag, so it grants nothing and does not replace the
     /// working-directory default.
-    // On this struct and not `Grants`, which `agent-run` flattens too: there the program
-    // is the agent's to choose, so the flag would parse, document a guarantee and pin
-    // nothing. `Vec` and not `Option` because clap's default action on an `Option` is
-    // last-wins, and two digests for one program is a mistake to report.
+    // Here and not on `Grants`, which `agent-run` flattens too: there the program is the
+    // agent's to choose, so the flag would parse and pin nothing. `Vec` and not `Option`
+    // because clap's action on an `Option` is last-wins, and two digests is a mistake.
     #[arg(long = "pin-sha256", value_name = "HEX", value_parser = pin_digest)]
     pin_sha256: Vec<Sha256Digest>,
 
@@ -106,10 +105,9 @@ impl SandboxRun {
 
     /// The digest the program was pinned to, or why the pin cannot stand.
     ///
-    /// Outside [`policy`](Self::policy), and outside `Grants` entirely: a pin grants
-    /// nothing, so it must neither widen a policy nor suppress the working-directory
-    /// default. The helper refuses a relative program too, but only here is the program in
-    /// scope to name in the advice.
+    /// Outside [`policy`](Self::policy) and outside `Grants`: a pin grants nothing, so it
+    /// must neither widen a policy nor suppress the working-directory default. The helper
+    /// refuses a relative program too, but only here is it in scope to name in the advice.
     pub fn pin(&self) -> Result<Option<Sha256Digest>, PolicyError> {
         let pin = match self.pin_sha256.as_slice() {
             [] => None,
@@ -217,8 +215,8 @@ mod tests {
         );
     }
 
-    /// sandbx opens the file itself, so a bare name would be resolved against the policy's
-    /// `PATH` — hashing one file and execing another.
+    /// sandbx opens the file itself, so a bare name resolves against the policy's `PATH` —
+    /// hashing one file and execing another.
     #[test]
     fn a_pin_on_a_relative_program_is_refused() {
         let run = pinned("target/debug/mytool", &[digest()]);
@@ -259,8 +257,8 @@ mod tests {
         }
     }
 
-    /// Including the clause about the default a path flag replaces, which is the trap in
-    /// the three flags it names.
+    /// Including the clause about the default a path flag replaces, the trap in the three
+    /// flags it names.
     #[test]
     fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
         let advice = resolver_advice(true, 6).expect("a failure with no way to resolve");

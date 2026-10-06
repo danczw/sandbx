@@ -4,7 +4,7 @@
 //! process and `set_current_dir` is process-global — under parallel tests one case would
 //! decide another's verdict.
 // `Command::new` here spawns sandbx itself, never a command that bypasses it; the
-// workspace ban exists to stop code executing *around* the sandbox.
+// workspace ban exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
 
 use std::process::Command;
@@ -66,9 +66,8 @@ fn refuses_to_run_from_the_home_directory() {
     );
 }
 
-/// The reproducers. Each leaves the exact home rule nothing under `/home` to match, and
-/// each derived read and write over every user's home before the refusal stopped depending
-/// on `$HOME` — the last being the ordinary case of a service account.
+/// Each leaves the exact home rule nothing under `/home` to match; the last is the
+/// ordinary case of a service account.
 #[test]
 fn refuses_to_run_from_home_whatever_home_names() {
     let cases = [
@@ -103,8 +102,8 @@ fn refuses_to_run_from_the_system_binaries() {
     }
 }
 
-/// The container case, through the real binary: an unset `HOME` must not refuse an ordinary
-/// directory, or the fallback above has broken the deployment the default exists for.
+/// The container case, through the real binary: an unset `HOME` must not refuse an
+/// ordinary directory.
 #[test]
 fn an_unset_home_still_runs_from_a_project() {
     let (_, stderr) = run_without_home(PACKAGE, &[]);
@@ -118,7 +117,7 @@ fn an_unset_home_still_runs_from_a_project() {
 /// An unusable `HOME` derives like an unset one, which a stricter-looking edit would reverse.
 #[test]
 fn an_unresolvable_home_still_runs_from_a_project() {
-    // Outside `PACKAGE`, or the cwd would *hold* this home and be refused for that.
+    // Outside `PACKAGE`, or the cwd would hold this home and be refused for that instead.
     let missing = format!("{}/no-such-home", env!("CARGO_TARGET_TMPDIR"));
     let (_, stderr) = run(PACKAGE, &missing, &[]);
 
@@ -128,10 +127,8 @@ fn an_unresolvable_home_still_runs_from_a_project() {
     );
 }
 
-/// The guard must fire on the derived default and never on an explicit one, or adding it
-/// made a hand-written policy unrunnable from `$HOME`. Asserts only the refusal's absence:
-/// whether the run then succeeds is kernel-dependent, which is the sandbox suite's
-/// question.
+/// Asserts only the refusal's absence: whether the run then succeeds is kernel-dependent,
+/// which is the sandbox suite's question.
 #[test]
 fn a_path_flag_runs_from_the_home_directory() {
     let (_, stderr) = run(PACKAGE, PACKAGE, &["--allow-read", "/usr"]);

@@ -1,8 +1,7 @@
 //! The grant flags, and the policy they describe.
 //!
 //! Shared by every subcommand that runs something, so the axis loop, the one widening it
-//! applies, and the working-directory default a no-flag run gets exist once rather than
-//! once per subcommand.
+//! applies, and the working-directory default exist once rather than once per subcommand.
 
 use std::path::{Path, PathBuf};
 
@@ -104,10 +103,8 @@ pub struct Grants {
 
 /// Accept a name `--allow-env` can actually pass, and refuse anything else.
 ///
-/// `SandboxPolicy::allow_env` *skips* a name it cannot encode, which here would exit 0
-/// having passed nothing, leaving whoever typed `--allow-env TOKEN=secret` believing the
-/// secret crossed. So the CLI refuses loudly where the library skips quietly, and says
-/// what to write instead.
+/// `SandboxPolicy::allow_env` skips a name it cannot encode, so `--allow-env TOKEN=secret`
+/// would exit 0 having passed nothing: the CLI refuses where the library skips.
 fn variable_name(value: &str) -> Result<String, String> {
     if let Some((name, _)) = value.split_once('=') {
         return Err(format!(
@@ -130,8 +127,8 @@ const HOME_PARENTS: [&str; 4] = ["/home", "/Users", "/var/home", "/root"];
 
 /// Whether `cwd` is one of [`HOME_PARENTS`] or holds one.
 ///
-/// Not gated on `$HOME`: a root at `/home` is write over every user's home whatever the
-/// variable names, and a service account's `HOME=/var/lib/svc` would let it through.
+/// Not gated on `$HOME`: a service account's `HOME=/var/lib/svc` would let `/home` through,
+/// where a root there is write over every user's home whatever the variable names.
 fn holds_home_directories(cwd: &Path) -> bool {
     HOME_PARENTS
         .into_iter()
@@ -153,8 +150,8 @@ fn holds_other_homes(home: &Path) -> bool {
 
 /// Whether `cwd` is a direct child of one of [`HOME_PARENTS`], and so shaped like a home.
 ///
-/// Only with no `$HOME` to compare: `/home/other` is then indistinguishable from a home
-/// directory, where a readable `HOME` makes it a neighbour's and the operator's business.
+/// Only with no `$HOME` to compare, which leaves `/home/other` indistinguishable from a
+/// home directory; a readable `HOME` makes it a neighbour's and the operator's business.
 fn looks_like_a_home(cwd: &Path) -> bool {
     HOME_PARENTS
         .into_iter()
@@ -163,8 +160,8 @@ fn looks_like_a_home(cwd: &Path) -> bool {
 
 /// The spellings of `$HOME` a cwd is compared against, and whether it names a home at all.
 ///
-/// Two fields because the two questions have different answers: an unresolvable `$HOME` is
-/// still a path a cwd can hold, and still no usable home for the stand-in to defer to.
+/// Two fields because an unresolvable `$HOME` is still a path a cwd can hold, and still no
+/// usable home for the stand-in to defer to.
 #[derive(Debug, PartialEq, Eq)]
 struct Homes {
     paths: Vec<PathBuf>,
@@ -185,9 +182,8 @@ fn vetted_root<'a>(
         return Err(PolicyError::FilesystemRoot);
     }
 
-    // `starts_with` is true of equal paths, so one test covers both "cwd *is* $HOME" and
-    // "cwd holds it", and it is whole-component, so `/home/u/project-tools` is not inside
-    // `/home/u/project`.
+    // `starts_with` is true of equal paths, so one test covers "cwd is $HOME" and "cwd
+    // holds it", and whole-component, so `/home/u/project-tools` is outside `/home/u/project`.
     if let Some(home) = homes.paths.iter().find(|home| home.starts_with(cwd)) {
         return Err(PolicyError::HomeDirectory {
             cwd: cwd.to_path_buf(),
@@ -263,9 +259,9 @@ fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
         detail: "could not read the working directory to derive a policy from",
         source,
     })?;
-    // `getcwd` already resolves, so this is for what `canonicalize` else proves: the
-    // directory is still openable, which `PathFd::new` requires and which
-    // `fs_guard::canonical_roots` answers by dropping the root rather than refusing.
+    // `getcwd` already resolves; this is for the one thing `canonicalize` else proves — the
+    // directory is still openable, which `PathFd::new` requires and `canonical_roots` would
+    // answer by dropping the root rather than refusing.
     let cwd = cwd
         .canonicalize()
         .map_err(|source| PolicyError::Unavailable {
@@ -283,7 +279,7 @@ impl Grants {
     /// Whether any path flag was given, in which case no default is derived.
     ///
     /// Over [`Axis::ALL`] so a new path flag joins the rule rather than being left behind a
-    /// default that then widens it.
+    /// default that widens it.
     fn paths_given(&self) -> bool {
         Axis::ALL
             .into_iter()
@@ -292,8 +288,7 @@ impl Grants {
 
     /// The paths given for `axis`, whichever flag collects them.
     ///
-    /// One exhaustive match, so a new axis is a compile error here rather than a flag
-    /// that parses and grants nothing.
+    /// Exhaustive, so a new axis is a compile error rather than a flag that grants nothing.
     fn paths(&self, axis: Axis) -> &[PathBuf] {
         match axis {
             Axis::Read => &self.allow_read,
@@ -304,21 +299,20 @@ impl Grants {
 
     /// The policy these flags describe, or why none could be derived.
     ///
-    /// Starts from [`SandboxPolicy::default`], which grants nothing. Two unconditional
-    /// grants on top, without which nothing can be run at all: read on the system
-    /// binaries and libraries, and the startup environment — `PATH` above all, since
-    /// without it a program named without a leading `/` reaches only the C library's
-    /// fallback (`/bin:/usr/bin` on glibc). Then read and write on the working directory,
-    /// but *only* when no path flag was given — a path flag replaces that default rather
-    /// than adding to it, so an explicit policy is never widened silently.
+    /// From [`SandboxPolicy::default`], which grants nothing, plus the two grants without
+    /// which nothing starts: read on the system binaries and libraries, and the startup
+    /// environment — `PATH` above all, since without it a program named without a leading
+    /// `/` reaches only glibc's `/bin:/usr/bin` fallback. Then read and write on the
+    /// working directory, but only when no path flag was given: a path flag *replaces*
+    /// that default rather than adding to it.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()
             .allow_standard_env();
 
         if !self.paths_given() {
-            // Looked up inside the branch, not above it: an invocation that typed its own
-            // flags depends on neither `getcwd` nor `HOME`, so must not be refused for them.
+            // Inside the branch, not above it: an invocation that typed its own flags
+            // depends on neither `getcwd` nor `HOME`, so must not be refused for them.
             let root = current_root(policy.executable_paths())?;
             policy = policy.allow_read(&root).allow_write(&root);
         }
@@ -327,10 +321,9 @@ impl Grants {
             for path in self.paths(axis) {
                 policy = policy.grant(axis, path);
 
-                // The one place this CLI grants more than the flag's own axis: the
-                // library keeps write and read apart, but a tree a tool can rewrite and
-                // not `cat` back is a trap. Keyed to what the axis *confers*, not to the
-                // `Write` variant, so a second write-conferring axis inherits it.
+                // The one place this CLI grants more than the flag's own axis: a tree a
+                // tool can rewrite and not `cat` back is a trap. Keyed to what the axis
+                // confers, not to `Write`, so a second write-conferring axis inherits it.
                 if axis.grants().write {
                     policy = policy.grant(Axis::Read, path);
                 }
@@ -341,10 +334,9 @@ impl Grants {
             policy = policy.allow_env(name);
         }
 
-        // An empty `Vec` is the bare flag: every occurrence was bare, so none contributed a
-        // port. Which makes `--allow-network --allow-network 443` an allowlist of 443 alone
-        // — fail-closed, the broader spelling yielding the narrower policy, and pinned by
-        // `mixing_a_bare_flag_with_a_port_narrows_to_the_port`.
+        // An empty `Vec` is the bare flag: no occurrence contributed a port. So
+        // `--allow-network --allow-network 443` allowlists 443 alone — fail-closed, the
+        // broader spelling yielding the narrower policy.
         match self.allow_network.as_deref() {
             None => {}
             Some([]) => policy = policy.allow_network(),
@@ -451,7 +443,7 @@ mod tests {
         );
     }
 
-    /// A no-flag run from `$HOME` hands the command `~/.ssh` and every dotfile, which for
+    /// A no-flag run from `$HOME` hands over `~/.ssh` and every dotfile, which for
     /// `agent-run` is a prompt injection's blast radius.
     #[test]
     fn the_home_directory_is_refused_as_a_root() {
@@ -517,8 +509,7 @@ mod tests {
         );
     }
 
-    /// `HOME` is routinely unset under a systemd unit, cron, or `docker exec`, and before
-    /// this `/home` derived read and write over every user's home.
+    /// `HOME` is routinely unset under a systemd unit, cron, or `docker exec`.
     #[test]
     fn the_home_parents_are_refused_with_no_home_set() {
         for cwd in ["/home", "/Users", "/var/home", "/root", "/var"] {
@@ -532,7 +523,7 @@ mod tests {
     }
 
     /// The gap the exact rule leaves: a service account's `HOME=/var/lib/svc` matches
-    /// nothing under `/home`, so gating this arm on a *set* `HOME` let `/home` through.
+    /// nothing under `/home`, so gating this arm on a set `HOME` lets `/home` through.
     #[test]
     fn the_home_parents_are_refused_when_home_is_elsewhere() {
         for cwd in ["/home", "/Users", "/var/home", "/root"] {
@@ -546,8 +537,8 @@ mod tests {
         }
     }
 
-    /// The reading the arm above cannot give: with no `$HOME` naming it, a child of
-    /// `/home` is indistinguishable from a home directory whatever it is called.
+    /// With no `$HOME` naming it, a child of `/home` is indistinguishable from a home
+    /// directory whatever it is called.
     #[test]
     fn an_unset_home_refuses_a_child_of_one() {
         for cwd in ["/home/other", "/Users/other", "/root/work"] {
@@ -637,8 +628,8 @@ mod tests {
         );
     }
 
-    /// The comparison outlives the usability verdict: an unprovisioned home is still a path
-    /// the cwd can hold, and outside [`HOME_PARENTS`] no other arm covers it.
+    /// An unprovisioned home is still a path the cwd can hold, and outside
+    /// [`HOME_PARENTS`] no other arm covers it.
     #[test]
     fn an_unresolvable_home_is_still_compared() {
         let homes = named_homes(Some(Path::new("/srv/people/alice")));
@@ -663,8 +654,6 @@ mod tests {
         );
     }
 
-    /// Fedora Silverblue ships `/home -> /var/home`, and comparing one spelling of a
-    /// symlinked home bypasses the other.
     #[test]
     fn a_symlinked_home_names_both_forms() {
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -714,11 +703,9 @@ mod tests {
 
     /// Write here plus the execute every run already has is the pair `Axis::grants` keeps
     /// apart. Both the path itself and a directory under it, since a merged-`/usr` host
-    /// resolves `/bin` to `/usr/bin` — which *holds* no granted path, and so passed when
-    /// the arm was tested one way round.
-    ///
-    /// Driven off `granted()` rather than a list of names: `allow_system_executables`
-    /// skips a path this host lacks, and arm64 has no `/lib64`.
+    /// resolves `/bin` to `/usr/bin`, which holds no granted path. Driven off `granted()`
+    /// rather than a list of names: `allow_system_executables` skips a path this host
+    /// lacks, and arm64 has no `/lib64`.
     #[test]
     fn a_directory_overlapping_the_system_binaries_is_refused() {
         assert!(
@@ -751,8 +738,8 @@ mod tests {
         }
     }
 
-    /// The degraded rule must not widen the exact one: with a `$HOME` to compare, standing
-    /// in a neighbour's directory is the operator's business and not sandbx's to guess at.
+    /// With a `$HOME` to compare, standing in a neighbour's directory is the operator's
+    /// business and not sandbx's to guess at.
     #[test]
     fn a_named_home_leaves_a_neighbour_alone() {
         assert_eq!(
@@ -796,8 +783,8 @@ mod tests {
     fn a_path_flag_suppresses_the_default() {
         for axis in Axis::ALL {
             let mut grants = bare();
-            // Matched rather than pushed into one field, so a new path flag fails to
-            // compile here too rather than quietly keeping the default.
+            // Matched, not pushed into one field, so a new path flag fails to compile here
+            // too rather than quietly keeping the default.
             match axis {
                 Axis::Read => grants.allow_read.push(PathBuf::from("/srv")),
                 Axis::Write => grants.allow_write.push(PathBuf::from("/srv")),

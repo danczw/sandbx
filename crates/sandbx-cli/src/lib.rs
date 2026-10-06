@@ -25,9 +25,8 @@ pub use session::SessionChoice;
     name = "sandbx",
     version,
     about = "A security-first AI coding agent harness",
-    // Without this, clap derives the long help from the doc comment below and
-    // prints its second paragraph — a note about test visibility — to anyone
-    // running `sandbx --help`. `None` falls back to `about` for both forms.
+    // Or clap derives the long help from the doc comment below and prints its note
+    // about test visibility; `None` falls back to `about` for both forms.
     long_about = None
 )]
 /// A parsed `sandbx` invocation.

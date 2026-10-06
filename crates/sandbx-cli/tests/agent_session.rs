@@ -52,8 +52,7 @@ fn the_id_reaches_the_command_as_given() {
     assert_eq!(id.to_string(), "mux5s96i");
 }
 
-/// Refused by clap, so the traversal never reaches a `File::open` at all — the same
-/// guarantee `--allow-tool` gets from `tool_name`.
+/// Refused by clap, so the traversal never reaches a `File::open` at all.
 #[test]
 fn a_traversing_id_is_refused_at_parse_time() {
     for value in ["../../etc/passwd", "..", ".", "/etc/passwd", "a/b", "UPPER"] {
@@ -67,8 +66,7 @@ fn a_traversing_id_is_refused_at_parse_time() {
     }
 }
 
-/// `--session` after `--` is part of the prompt, not a flag, so a bare one followed by
-/// words does not quietly resume a session named after the first word.
+/// Or a bare `--session` followed by words would resume one named after the first word.
 #[test]
 fn a_session_flag_in_the_prompt_is_prompt_text() {
     let args = agent_run(&["sandbx", "agent-run", "--", "--session", "mux5s96i"]);

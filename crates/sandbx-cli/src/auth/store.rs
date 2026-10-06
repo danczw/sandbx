@@ -29,8 +29,7 @@ const SHARED_BITS: u32 = 0o077;
 enum Shared {
     /// Refuse it — a key another user could have substituted is what the check prevents.
     Refuse,
-    /// Read it anyway: refusing `logout` would leave a disclosed key on disk in order to
-    /// protect it, which makes the check protect the attacker.
+    /// Read it anyway: refusing `logout` would leave a disclosed key on disk.
     Tolerate,
 }
 
@@ -53,10 +52,8 @@ pub(super) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
 ///
 /// Refuses a file, or the directory holding it, with any group or other bit set, unless
 /// `shared` tolerates it: a writable directory is one another user can rename their own
-/// `0600` file into, which this would then read as the operator's.
-///
-/// Both modes come from a descriptor rather than a path — a mode checked before the open
-/// vets one file and reads another.
+/// `0600` file into. Both modes come from a descriptor rather than a path — a mode checked
+/// before the open vets one file and reads another.
 fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
     let mut file = match std::fs::File::open(path) {
         Ok(file) => file,
@@ -136,8 +133,8 @@ fn dir_mode_of(dir: &Path) -> Result<u32, AuthError> {
 
 /// The one-based line `error` points at, or 0 when it carries no span.
 ///
-/// The position is extracted here and the `toml` error dropped, because its `Display`
-/// quotes the line it failed on — which for an unquoted `api_key` is the key itself.
+/// The `toml` error is dropped because its `Display` quotes the line it failed on — which
+/// for an unquoted `api_key` is the key itself.
 fn line_of(text: &str, error: &toml::de::Error) -> usize {
     error.span().map_or(0, |span| {
         text[..span.start.min(text.len())].lines().count().max(1)
@@ -208,9 +205,9 @@ pub(super) fn discard(path: &Path) -> Result<bool, AuthError> {
 /// Render `table` over `path` at [`OWNER_ONLY`], creating the directory at
 /// [`DIR_OWNER_ONLY`].
 ///
-/// Through a temporary file in the same directory, then a rename. `OpenOptionsExt::mode`
-/// applies only at creation, so truncating an existing file would keep its old mode; the
-/// rename also leaves nothing half-written behind a failure.
+/// Through a temporary file in the same directory, then a rename: `OpenOptionsExt::mode`
+/// applies only at creation, so truncating an existing file would keep its old mode, and
+/// the rename leaves nothing half-written behind a failure.
 fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
     let text = toml::to_string(table).map_err(AuthError::Encode)?;
 
@@ -239,8 +236,8 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
     };
 
     let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(io)?;
-    // Not assumed: `NamedTempFile` is 0600 on unix, but this file's guarantee is stated
-    // here rather than in a dependency's documentation.
+    // `NamedTempFile` is 0600 on unix, but this file's guarantee is not a dependency's to
+    // make.
     temp.as_file()
         .set_permissions(std::fs::Permissions::from_mode(OWNER_ONLY))
         .map_err(io)?;
@@ -376,8 +373,8 @@ mod tests {
         );
     }
 
-    /// Narrowing is unreachable ([`read`] refuses a wider file first), so the bar is that a
-    /// rewrite does not *widen* one.
+    /// Narrowing is unreachable ([`read`] refuses a wider file first), so the bar is that
+    /// a rewrite does not widen one.
     #[test]
     fn a_rewrite_leaves_the_mode_owner_only() {
         let dir = tempfile::tempdir().unwrap();

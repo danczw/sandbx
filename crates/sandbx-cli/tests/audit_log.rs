@@ -1,8 +1,7 @@
 //! What the shipped subscriber records, and what it drops.
 //!
 //! These drive the real subscriber from `sandbx_cli::logging` over an in-memory sink, so
-//! the filter — which decides what a user sees and what stays internal — is pinned
-//! without spawning the binary or capturing a file descriptor.
+//! the filter is pinned without spawning the binary or capturing a file descriptor.
 
 use std::sync::{Arc, Mutex};
 
@@ -11,10 +10,10 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 /// An in-memory stand-in for stderr.
 ///
-/// Cloneable over a shared buffer because the applicable `MakeWriter` impl is the one
-/// for `Fn() -> impl io::Write`, and the test still has to read back what the writers
-/// that factory produced wrote. A bare `Arc<Mutex<Vec<u8>>>` cannot stand in: that impl
-/// needs `&Mutex<Vec<u8>>: io::Write`, which it is not.
+/// Cloneable over a shared buffer because the applicable `MakeWriter` impl is the one for
+/// `Fn() -> impl io::Write`, and the test still has to read back what its writers wrote. A
+/// bare `Arc<Mutex<Vec<u8>>>` cannot stand in: that impl needs `&Mutex<Vec<u8>>:
+/// io::Write`, which it is not.
 #[derive(Clone, Default)]
 struct Sink(Arc<Mutex<Vec<u8>>>);
 
@@ -37,9 +36,8 @@ impl std::io::Write for Sink {
 
 /// Run `f` under the shipped subscriber and return everything it wrote.
 ///
-/// `set_default` rather than `try_init`: it is scoped to this thread, and cargo runs
-/// these tests on several threads of one process, where a global subscriber can only be
-/// installed once.
+/// `set_default` rather than `try_init`: scoped to this thread, and cargo runs these on
+/// several threads of one process, where a global subscriber installs only once.
 fn captured(f: impl FnOnce()) -> String {
     let sink = Sink::default();
     let writer = sink.clone();
@@ -93,8 +91,7 @@ fn a_spawn_records_the_shape_of_a_port_allowlist() {
     assert!(output.contains("network_ports=2"), "{output}");
 }
 
-/// `any` and `ports` are distinguishable on the trail: without the label, a reader could
-/// not tell an unrestricted grant from an allowlisted one.
+/// Without the label a reader could not tell an unrestricted grant from an allowlisted one.
 #[test]
 fn a_spawn_records_an_unrestricted_network_grant() {
     let policy = SandboxPolicy::default().allow_network();
@@ -136,8 +133,8 @@ fn a_degraded_hardening_step_reaches_the_output() {
     assert!(output.contains("left as inherited"), "{output}");
 }
 
-/// The record closing a run goes through the same filter as the one opening it, so a trail
-/// cannot show every spawn and no result.
+/// The closing record goes through the same filter as the opening one, so a trail cannot
+/// show every spawn and no result.
 #[test]
 fn an_exit_records_the_code_it_ended_with() {
     use std::os::unix::process::ExitStatusExt;
@@ -150,8 +147,7 @@ fn an_exit_records_the_code_it_ended_with() {
     assert!(output.contains("code=0"), "{output}");
 }
 
-/// The reason is rendered as a quoted label rather than prose, which is what a trail can
-/// be filtered by.
+/// A quoted label rather than prose, which is what a trail can be filtered by.
 #[test]
 fn a_failed_run_records_a_filterable_reason() {
     let output = captured(|| AuditEvent::failed("/bin/sh", "timeout").emit());
@@ -160,8 +156,7 @@ fn a_failed_run_records_a_filterable_reason() {
     assert!(output.contains(r#"reason="timeout""#), "{output}");
 }
 
-/// The target half of the filter: `INFO` on another target is what a bare
-/// `LevelFilter::INFO` would let through.
+/// The target half of the filter: a bare `LevelFilter::INFO` would let these through.
 #[test]
 fn diagnostics_from_other_targets_are_dropped() {
     let output = captured(|| {
@@ -175,8 +170,7 @@ fn diagnostics_from_other_targets_are_dropped() {
     );
 }
 
-/// The level half of the filter: below `INFO` on the audit target is a diagnostic that
-/// borrowed the target, not a decision.
+/// The level half: below `INFO` on the audit target is a diagnostic that borrowed it.
 #[test]
 fn audit_events_below_info_are_dropped() {
     let output = captured(|| tracing::debug!(target: AUDIT_TARGET, "a best-effort note"));
@@ -187,9 +181,8 @@ fn audit_events_below_info_are_dropped() {
     );
 }
 
-/// Asserted rather than inferred from the feature list: the fmt layer's ANSI default
-/// keys off the `ansi` feature, which feature unification turns on under
-/// `cargo test --workspace` and not under `cargo build`.
+/// Asserted rather than inferred from the feature list: the fmt layer's ANSI default keys
+/// off the `ansi` feature, which unification turns on under `cargo test --workspace`.
 #[test]
 fn the_output_carries_no_ansi_escapes() {
     let output = captured(|| {

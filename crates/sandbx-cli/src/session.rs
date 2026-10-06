@@ -3,9 +3,7 @@
 //! `sandbx-session` keeps shapes of its own, so this module is the seam. Every match
 //! below destructures by field name with no `_` arm: a new [`ContentBlock`] variant is a
 //! compile error here rather than a block silently missing from a saved conversation.
-//!
-//! Free functions and not `From` impls — both types are foreign to this crate, so a
-//! `From` is a coherence error.
+//! Free functions and not `From` impls, both types being foreign to this crate.
 
 use sandbx_agent::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
@@ -33,8 +31,7 @@ pub enum SessionChoice<'a> {
 ///
 /// # Errors
 ///
-/// Every [`SessionError`] the store can raise: no state home, a transcript somebody else
-/// can write or owns, an unknown id, or a torn line.
+/// Every [`SessionError`] the store can raise.
 pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> {
     let session = match choice {
         SessionChoice::Off => return Ok(None),

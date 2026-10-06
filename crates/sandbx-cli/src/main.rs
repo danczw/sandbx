@@ -13,10 +13,9 @@ fn main() -> std::process::ExitCode {
     sandbx_core::with_helper_dispatch(std::env::args_os(), || {
         // Inside the closure, never above it: in helper mode this process becomes the
         // sandboxed command, whose stderr the parent forwards verbatim, so a subscriber
-        // installed above would write sandbx's own records into the sandboxed command's
-        // output. Helper mode has no subscriber; the hardening steps there report what
-        // degraded back over a pipe for `SandboxedCommand` to emit against this one.
-        // Warn and carry on: an unrecorded run still beats no run.
+        // installed above would write sandbx's records into that output. Helper mode has
+        // no subscriber; its hardening steps report what degraded back over a pipe for
+        // `SandboxedCommand` to emit against this one.
         if let Err(error) = sandbx_cli::logging::init() {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }
@@ -49,8 +48,8 @@ fn report(result: Result<i32, impl std::fmt::Display>, failure: u8) -> std::proc
 /// Drive a turn to completion on a runtime built for it.
 ///
 /// `new_current_thread` because `spawn_blocking` is all the loop asks of the scheduler;
-/// `enable_all` because it needs both drivers — the timer behind the per-round timeout,
-/// and the IO the provider's connector opens on.
+/// `enable_all` for both drivers — the timer behind the per-round timeout, and the IO the
+/// provider's connector opens on.
 fn block_on(
     future: impl Future<Output = Result<i32, sandbx_cli::AgentError>>,
 ) -> Result<i32, sandbx_cli::AgentError> {

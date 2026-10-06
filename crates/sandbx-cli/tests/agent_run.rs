@@ -35,8 +35,7 @@ fn grants_only_what_a_tool_needs_to_start() {
     );
 }
 
-/// The derived default is the part nobody types, and so the part nobody checks. Pinning
-/// it across both subcommands is what keeps `Grants` one policy rather than two.
+/// Pinning the derived default across both subcommands keeps `Grants` one policy, not two.
 #[test]
 fn the_default_matches_what_sandbox_run_derives() {
     let agent = agent_run(&["sandbx", "agent-run", "--", "hello"])
@@ -196,8 +195,7 @@ fn a_missing_prompt_is_rejected() {
     assert!(Cli::try_parse_from(["sandbx", "agent-run", "--allow-read", "/srv"]).is_err());
 }
 
-/// An unknown name resolves to no tool, so taking it would approve nothing and exit 0
-/// — leaving whoever wrote `--allow-tool shell` believing `bash` would run.
+/// An unknown name resolves to no tool, so taking it would approve nothing and exit 0.
 #[test]
 fn an_unknown_tool_name_is_refused_loudly() {
     let error = Cli::try_parse_from(["sandbx", "agent-run", "--allow-tool", "shell", "--", "go"])
