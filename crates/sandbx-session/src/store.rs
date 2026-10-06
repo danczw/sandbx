@@ -36,6 +36,12 @@ const WRITABLE_BITS: u32 = 0o022;
 /// The bits that let somebody else read, which resume and report.
 const READABLE_BITS: u32 = 0o044;
 
+/// Every bit outside the owner's, which the root is narrowed to shed.
+///
+/// Wider than [`WRITABLE_BITS`] because a transcript's name is clock-derived and so
+/// guessable: group/other execute alone lets somebody else traverse to one.
+const DIR_SHARED_BITS: u32 = 0o077;
+
 /// How many ids to try before concluding the clock is stuck.
 ///
 /// Two sessions starting in the same millisecond is ordinary, so a taken id is a retry
@@ -79,6 +85,7 @@ impl SessionStore {
                 path: self.root.clone(),
                 source,
             })?;
+        self.narrow_root()?;
 
         for attempt in 0..ATTEMPTS {
             let id = SessionId::from_clock(attempt)?;
@@ -193,6 +200,40 @@ impl SessionStore {
             withheld,
             shared_read,
         })
+    }
+
+    /// Bring the root down to `0700`, refusing one somebody else owns.
+    ///
+    /// `DirBuilderExt::mode` does not cover this: the mode is ignored outright when the
+    /// directory already exists, so a `sessions/` somebody widened — or created before
+    /// the first run — would stay wide for every session after it. Narrowing rather than
+    /// refusing because nothing is in the directory yet that a refusal would protect;
+    /// [`resume`](Self::resume) refuses instead, where there is.
+    fn narrow_root(&self) -> Result<(), SessionError> {
+        let directory = File::open(&self.root).map_err(|source| SessionError::Io {
+            path: self.root.clone(),
+            source,
+        })?;
+        let (mode, uid) = ownership(&directory, &self.root)?;
+
+        if uid != nix::unistd::getuid().as_raw() {
+            return Err(SessionError::ForeignOwner {
+                path: self.root.clone(),
+                uid,
+            });
+        }
+        if mode & DIR_SHARED_BITS == 0 {
+            return Ok(());
+        }
+
+        // Through the descriptor just stat'd — `fchmod`, not `chmod` by path — for the
+        // reason every other mode here is read that way.
+        directory
+            .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
+            .map_err(|source| SessionError::Io {
+                path: self.root.clone(),
+                source,
+            })
     }
 
     /// The transcript an id names. Needs no check of its own: a [`SessionId`] cannot

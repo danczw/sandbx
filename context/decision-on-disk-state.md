@@ -48,6 +48,24 @@ a home directory for, and it is the stronger of the two checks. Every mode is
 read through an open descriptor (`File::metadata`, so `fstat`), never by path:
 checking the mode first and opening second vets one file and reads another.
 
+The directory's mode is also not left to `DirBuilderExt::mode`, which is
+ignored outright for a directory that already exists — so a root somebody
+widened, or that predates the first run, would stay wide for every session
+after it. Both crates narrow it with an explicit `fchmod`. The session store
+narrows on `create` and *refuses* on `resume`, which is not an inconsistency:
+at create time the directory holds nothing a refusal would protect, and at
+resume time it holds the transcript about to be replayed to the model.
+
+### What a parse failure is allowed to say
+
+A torn transcript line reports `serde_json`'s own error as its `source`, where
+the credential file deliberately drops `toml`'s — `toml` quotes the whole
+failing line, which for a malformed `credentials.toml` is the key itself.
+`serde_json` quotes at most the one offending token (`Unexpected::Str` formats
+as `string "…"`), never the surrounding line, and the reader it reaches is the
+owner of the transcript on their own terminal. Dropping it would cost the line
+and column that are the only useful thing to say about a torn file.
+
 ## The gap the mode check cannot close
 
 A tool running inside your own `agent-run`, granted write over the session root,

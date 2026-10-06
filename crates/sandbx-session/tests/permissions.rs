@@ -72,6 +72,20 @@ fn the_sessions_directory_is_owner_only() {
 }
 
 #[test]
+fn a_directory_that_already_existed_wide_is_narrowed() {
+    let (_root, store) = store();
+    std::fs::create_dir_all(store.root()).unwrap();
+    chmod(store.root(), 0o777);
+
+    // `DirBuilderExt::mode` is ignored for a directory that already exists, so without an
+    // explicit narrowing every session after the first would be created in a world-
+    // writable directory and only refused later, on resume.
+    store.create().unwrap();
+
+    assert_eq!(mode_of(store.root()) & 0o077, 0);
+}
+
+#[test]
 fn a_writable_transcript_is_refused() {
     let (_root, store) = store();
     let id = spoken_to(&store);
