@@ -1,7 +1,7 @@
 //! What both halves of the turn-loop suite drive `run_turn` with.
 //!
 //! Kept to the intersection the two share: `dead_code` is computed per test crate, so a
-//! helper only one of them uses warns in the other, and belongs in that file instead.
+//! helper only one of them uses warns in the other.
 
 use std::collections::VecDeque;
 
@@ -14,9 +14,9 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 /// Scripts one canned round per call, and records what was sent.
 ///
-/// Not built on `sandbx-providers`' `MockProvider`: borrowing the one line it would
-/// save costs a `mock` feature, a `required-features` test target and a CI command
-/// naming both, and the recording has to live here anyway since it discards its own.
+/// Not built on `sandbx-providers`' `MockProvider`, which would cost a `mock` feature, a
+/// `required-features` target and a CI command naming both to borrow one line; see
+/// `context/guide-turn-loop.md`.
 pub(crate) struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
     pub(crate) sent: Vec<MessagesRequest>,
@@ -35,9 +35,8 @@ impl Script {
         request: MessagesRequest,
     ) -> Result<EventStream, ProviderError> {
         self.sent.push(request.clone());
-        // Not `unwrap_or_default`: an empty round surfaces as
-        // `StreamEndedWithoutStop`, so a miscounted script would fail with a
-        // misleading cause instead of naming itself.
+        // Not `unwrap_or_default`: an empty round surfaces as `StreamEndedWithoutStop`,
+        // so a miscounted script would fail with a misleading cause.
         let events = self
             .rounds
             .pop_front()
@@ -48,8 +47,8 @@ impl Script {
 
 /// An `EventStream` that replays `events` and then ends.
 ///
-/// `fuse()` because `EventStream` promises a `FusedStream`: a caller may poll it past
-/// its end without panicking.
+/// `fuse()` because `EventStream` promises a `FusedStream`: polling past the end must
+/// not panic.
 fn canned(events: Vec<AgentEvent>) -> EventStream {
     use futures_util::StreamExt;
     Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)).fuse())
@@ -72,8 +71,7 @@ pub(crate) fn ctx(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
 }
 
-/// A gate that refuses nothing, for the tests whose subject is not the gate: the policy
-/// in `ctx` is what scopes those.
+/// For the tests whose subject is not the gate: the policy in `ctx` scopes those.
 pub(crate) fn allow_all(_: ToolCall<'_>) -> ApprovalDecision {
     ApprovalDecision::Allow
 }
@@ -88,8 +86,7 @@ pub(crate) fn stop(reason: StopReason) -> AgentEvent {
     AgentEvent::Stop { reason }
 }
 
-/// All a one-call round needs. A round scripting two gives its own ids, so each result
-/// can be matched to the call it answers.
+/// All a one-call round needs; a round scripting two gives its own ids.
 const CALL_ID: &str = "call_1";
 
 pub(crate) fn call(name: &str, input: serde_json::Value) -> AgentEvent {

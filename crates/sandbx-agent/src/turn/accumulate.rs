@@ -1,7 +1,7 @@
 //! Rebuilding one round's assistant message from the deltas it arrives as.
 //!
 //! Content comes off the wire as increments, so the blocks here are assembled rather than
-//! received. The ordering that matters is text before the tool call it introduced.
+//! received.
 
 use futures_util::StreamExt;
 use sandbx_providers::{AgentEvent, ContentBlock, EventStream};
@@ -11,9 +11,7 @@ use crate::TurnError;
 
 /// What one round of streaming came to.
 pub(super) struct Round {
-    /// The content blocks the stream described.
     pub(super) blocks: Vec<ContentBlock>,
-    /// What it reported the request cost, if it reported anything.
     pub(super) usage: Option<PromptUsage>,
 }
 
@@ -23,9 +21,8 @@ pub(super) struct Round {
 /// on every `message_delta`, so adding them up would multiply the figure.
 ///
 /// Depends on `Usage` arriving before `Stop`, since the `Stop` arm returns and anything
-/// behind it is never seen. `sandbx-providers` guarantees the order and its
-/// `wire/tests/usage.rs` pins it; the failure would be silent, the counts always `None`
-/// and compaction never firing.
+/// behind it is never seen. `sandbx-providers`' `wire/tests/usage.rs` pins that order; the
+/// failure would be silent, the counts always `None` and compaction never firing.
 pub(super) async fn accumulate<O>(
     stream: &mut EventStream,
     observe: &mut O,
@@ -53,8 +50,7 @@ where
                 input_tokens,
                 cache_read_input_tokens,
                 cache_creation_input_tokens,
-                // The reply, not the request. Compaction asks how large the request was,
-                // and `observe` saw the whole event above.
+                // The reply, not the request; `observe` saw the whole event above.
                 output_tokens: _,
             } => {
                 usage = Some(PromptUsage {
@@ -75,7 +71,6 @@ where
     Err(TurnError::StreamEndedWithoutStop)
 }
 
-/// Move buffered text into a block of its own, if there is any to move.
 fn flush(text: &mut String, blocks: &mut Vec<ContentBlock>) {
     if !text.is_empty() {
         blocks.push(ContentBlock::Text {

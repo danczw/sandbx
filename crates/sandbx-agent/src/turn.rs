@@ -16,10 +16,7 @@ mod tools;
 use accumulate::accumulate;
 use tools::{answer_calls, definition};
 
-/// What to ask the model for.
-///
-/// Borrows the history: [`run_turn`] hands back the turns it produced rather than
-/// appending to a caller's list.
+/// What to ask the model for. Borrows the history, which [`run_turn`] never appends to.
 pub struct Turn<'a> {
     /// The model to ask. A freeform string, as `MessagesRequest` takes it.
     pub model: String,
@@ -37,26 +34,18 @@ pub struct Turn<'a> {
     /// What the previous turn's request cost: [`TurnOutcome::usage`] threaded back as
     /// `observed = outcome.usage.or(observed)`.
     ///
-    /// Carried in because a turn's first round has to build its request before any figure
-    /// for it exists. Half of what makes [`TurnLimits::compaction`] work; [`withheld`] is
-    /// the other half and neither works alone. `None` bounds only the first round: every
-    /// turn compacts on its own figures once it has one, whatever it was given here.
-    ///
-    /// [`withheld`]: Self::withheld
+    /// `None` bounds only the first round, which has to build its request before any
+    /// figure for it exists.
     pub observed: Option<PromptUsage>,
 
     /// How many of `history`'s oldest messages the previous turn left out of its
     /// request. [`TurnOutcome::withheld`], threaded back unchanged.
     ///
     /// A floor, not an instruction: this turn may withhold more, never less — unless the
-    /// count no longer names a legal cut point, in which case it withholds as much as the
-    /// law allows and [`TurnOutcome::withheld`] can come back smaller. Without the floor
-    /// compaction bounds nothing, because [`observed`] measures the *already compacted*
-    /// request — so the turn after a compaction reads under budget, puts the whole history
-    /// back, and sends more than the turn that triggered. Carrying a count is exact only
-    /// because appending to history does not move its prefix's indices; a caller that
-    /// rewrites history invalidates it, and `compact::plan_cut` absorbs that by cutting to
-    /// the deepest boundary below it, or dropping it once it is past the history's end.
+    /// count no longer names a legal cut point, the one case [`TurnOutcome::withheld`] can
+    /// come back smaller. Without it compaction bounds nothing, because [`observed`]
+    /// measures the *already compacted* request; see `context/guide-turn-loop.md`. Exact
+    /// only because appending to history does not move its prefix's indices.
     ///
     /// [`observed`]: Self::observed
     pub withheld: usize,
@@ -64,8 +53,7 @@ pub struct Turn<'a> {
 
 /// The prompt-side token counters of the last `AgentEvent::Usage` a turn reported.
 ///
-/// Every field is `Option` because the API may omit any of them, and `None` means "not
-/// reported", which stays distinguishable from a reported zero. `output_tokens` is
+/// `None` means "not reported", distinguishable from a reported zero. `output_tokens` is
 /// absent: compaction asks how large the *request* was, and `observe` sees the whole
 /// event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,11 +70,10 @@ impl PromptUsage {
     /// The whole prompt, as the provider counted it.
     ///
     /// All three counters summed: a cache read is a real prompt token charged against the
-    /// context window, so `input_tokens` alone would under-read a cached conversation by
-    /// an order of magnitude. `u64` because three saturated counters overflow a `u32` and
-    /// these figures come off the wire. An unreported counter sums as zero, since the API
-    /// omits the cache fields when no cache was involved and reading that as "unknown"
-    /// would disable compaction for every uncached request.
+    /// context window. `u64` because three saturated counters overflow a `u32`. An
+    /// unreported counter sums as zero — the API omits the cache fields when no cache was
+    /// involved, and reading that as "unknown" would disable compaction for every
+    /// uncached request.
     #[must_use]
     pub fn prompt_tokens(&self) -> u64 {
         u64::from(self.input_tokens.unwrap_or(0))
@@ -95,45 +82,36 @@ impl PromptUsage {
     }
 }
 
-/// What one turn came to: its messages, what the request cost, and whether anything
-/// had to be left out to fit.
+/// What one turn came to, and what the next one has to be told about it.
 #[derive(Debug)]
 pub struct TurnOutcome {
-    /// The turns this call produced, oldest first, to be appended to the caller's
-    /// history.
+    /// The turns this call produced, oldest first, to be appended to the caller's history.
     ///
-    /// Always complete. Compaction narrows the *request*, never this: a caller whose
-    /// stored history lost whatever the model was not shown would compound that loss
-    /// every turn.
+    /// Always complete: compaction narrows the *request*, never this, since a loss in a
+    /// caller's stored history would compound every turn.
     pub messages: Vec<RequestMessage>,
 
     /// What this turn's last round reported, or `None` if no round reported anything.
     ///
-    /// Thread it into the next turn's [`Turn::observed`] with
-    /// `observed = outcome.usage.or(observed)`. Not pre-merged with what was passed in, so
-    /// "reported nothing" stays distinct from "reported what you already knew". Not enough
-    /// on its own: once compaction has fired it measures the compacted request, so
-    /// [`withheld`] has to be threaded back too.
+    /// Not pre-merged with what was passed in, so "reported nothing" stays distinct from
+    /// "reported what you already knew", and not enough on its own — [`withheld`] has to
+    /// be threaded back too.
     ///
     /// [`withheld`]: Self::withheld
     pub usage: Option<PromptUsage>,
 
     /// How many of the oldest history messages the last request left out.
     ///
-    /// Thread it into the next turn's [`Turn::withheld`] unchanged, where it becomes the
-    /// floor the next cut may deepen but not undo. `0` covers three cases a caller cannot
-    /// tell apart: compaction off, on and under budget with nothing carried in, or over
-    /// budget with nothing it could legally withhold.
-    ///
-    /// Smaller than the [`Turn::withheld`] that went in only when that count had stopped
-    /// naming a legal cut point, which takes a caller rewriting its history.
+    /// `0` covers three cases a caller cannot tell apart: compaction off, on and under
+    /// budget with nothing carried in, or over budget with nothing it could legally
+    /// withhold.
     pub withheld: usize,
 }
 
 /// The bounds one turn runs within.
 ///
-/// Both defaults sit at the tighter end of plausible: too tight announces itself the
-/// first time real work dies, too loose silently fails to catch the runaway.
+/// The two numeric defaults sit at the tighter end of plausible: too tight announces
+/// itself the first time real work dies, too loose silently fails to catch the runaway.
 #[derive(Debug, Clone, Copy)]
 pub struct TurnLimits {
     /// How many times the model may be asked within one turn.
@@ -145,25 +123,20 @@ pub struct TurnLimits {
 
     /// How long one round may spend streaming before the turn is abandoned.
     ///
-    /// Bounds the *consumption* of one round, which `sandbx-providers` leaves to a caller:
-    /// its own read timeout bounds inactivity between chunks and resets on every one, so a
-    /// connection that stays warm while producing nothing is not bounded by it.
+    /// Bounds one round's *consumption*, which `sandbx-providers` leaves to a caller: its
+    /// own read timeout resets on every chunk, so a connection that stays warm while
+    /// producing nothing is not bounded by it.
     ///
-    /// Nothing bounds a tool call in wall-clock terms, so a turn has no total time bound.
-    /// `ExecutionContext::timeout` covers `bash`, where the sandbox spawns a process, and
-    /// none of the six in-process tools; those are bounded by *work* instead, `ToolLimits`
-    /// capping files walked and bytes read. An outer deadline would not help: tools run on
-    /// `spawn_blocking`, which cannot be cancelled, so the work continues after the future
-    /// is dropped (#26).
+    /// Not a bound on the turn: nothing bounds a tool call in wall-clock terms, and an
+    /// outer deadline would not help, since `spawn_blocking` cannot be cancelled (#26).
     pub stream_timeout: std::time::Duration,
 
     /// Whether to withhold the oldest history from a request that has outgrown a
     /// budget, and how much to keep.
     ///
     /// Off by default, and the only bound here that is lossy: the others refuse to go on
-    /// when hit, where this one quietly sends the model less than it was given. See
-    /// [`Compaction`] for why the budget is a caller's to set. `None` means a long
-    /// conversation eventually dies on the provider's own context-length error.
+    /// when hit, where this one quietly sends the model less. `None` means a long
+    /// conversation eventually dies on the provider's context-length error.
     pub compaction: Option<Compaction>,
 }
 
@@ -173,7 +146,6 @@ impl Default for TurnLimits {
             max_rounds: 8,
             // The pressure point is a long extended-thinking generation.
             stream_timeout: std::time::Duration::from_secs(300),
-            // Lossy, and model-specific. See the field.
             compaction: None,
         }
     }
@@ -181,67 +153,38 @@ impl Default for TurnLimits {
 
 /// Run one turn, accumulating its event stream into replayable messages.
 ///
-/// `open` is a closure that opens a stream rather than a provider, so this is generic
-/// over the *stream shape* and not over which client produced it: the real call is
-/// `run_turn(|request| client.stream_chat(request), ..)`, and a test passes one that
-/// replays canned events. `AsyncFnMut` leaves the returned future unnamed, so a *generic*
-/// wrapper around `run_turn` cannot add its own `Send` bound to it. `observe` is a
-/// generic for the mirror reason: `dyn FnMut` is not `Send`, so taking one would make
-/// this future unspawnable.
+/// The loop itself is `context/guide-turn-loop.md`; below is what the signature does not
+/// show. All three closures are generics rather than `dyn`, which is not `Send` and would
+/// make this future unspawnable; `AsyncFnMut` then leaves the future unnamed, so a
+/// *generic* wrapper cannot add its own `Send` bound to it.
 ///
 /// Every event reaches `observe` in arrival order before being accumulated, so one pass
 /// serves both a renderer's increments and the replayable form. `AgentEvent::Thinking`
-/// reaches `observe` but never the returned messages: `ContentBlock` has no thinking
-/// variant and the signature needed to replay one is discarded upstream (#85).
-/// `AgentEvent::Usage` is accounting rather than content, so its counts come back on
-/// [`TurnOutcome::usage`] instead of in the rebuilt history.
+/// reaches `observe` but never the returned messages: the signature needed to replay one
+/// is discarded upstream (#85). Re-entry keys off the *presence* of tool calls, never
+/// `StopReason::ToolUse`, which is nullable on the wire.
 ///
-/// Compaction is off unless [`TurnLimits::compaction`] says otherwise. When the last
-/// *measured* prompt was over budget the oldest history is left out of the request —
-/// never out of [`TurnOutcome::messages`], which is always the whole turn. It needs both
+/// Compaction is off unless [`TurnLimits::compaction`] says otherwise, and needs both
 /// `observed = outcome.usage.or(observed)` *and* `withheld = outcome.withheld` threaded
-/// back: usage alone measures the already-compacted request and oscillates, see
-/// [`Turn::withheld`].
+/// back. It narrows the request, never [`TurnOutcome::messages`].
 ///
-/// The cut only ever deepens: within a turn it moves at most once per round that reported
-/// a figure, and across turns the previous cut is the floor for the next. So the model is
-/// never re-shown history it had lost. It is the only in-turn bound there is, since
-/// `produced` grows the request as the turn goes round, and it is the reason a round that
-/// reports nothing re-sends the same cut rather than deepening on a figure already acted
-/// on. The cut can never reach the messages *this* turn produced, because
-/// `compact::plan_cut` is handed their count rather than the messages, so a turn cannot
-/// withhold the tool result it is waiting on. Whole exchanges are the only legal cut
-/// points, so a single enormous one is not compactable at all and the provider's
-/// context-length error stays the backstop.
+/// `approve` is the only thing between the model asking for a tool and `sandbx-tools`
+/// executing it, asked once per resolved call, before it runs. Neither an unknown name nor
+/// one outside [`Turn::tools`] reaches it; both are refused above the gate, and an
+/// [`ApprovalDecision::Deny`] is recoverable within [`TurnLimits::max_rounds`] rather than
+/// a [`TurnError`]. It must not wait: it runs on the async task with no `spawn_blocking` of
+/// its own, so waiting on an operator, a channel or a lock deadlocks the turn it is
+/// deciding on a current-thread runtime. See `context/decision-approval-gate.md`.
 ///
-/// `approve` is asked once per resolved call, before it runs, and is the only thing
-/// between the model asking for a tool and `sandbx-tools` executing it. An
-/// [`ApprovalDecision::Deny`] answers the model with its `reason` as a `tool_result`
-/// marked `is_error` and runs nothing, so a refusal is recoverable within
-/// [`TurnLimits::max_rounds`]. Neither an unknown name nor one outside [`Turn::tools`]
-/// reaches it; both are refused above the gate.
-///
-/// It must not wait. Called on the async task with no `spawn_blocking` of its own, so
-/// waiting on an operator, a channel or a lock deadlocks the turn it is deciding on a
-/// current-thread runtime; a bounded write is not that. A decision that has to be awaited
-/// belongs before `run_turn` is entered — see `context/decision-approval-gate.md`.
-///
-/// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future drops the
-/// `JoinHandle` while the blocking task runs to completion, so a turn abandoned mid-tool
-/// still applies the `write`, recorded only in the audit trail (#26). That is also why
-/// `approve` is consulted before the spawn rather than racing it.
+/// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future still
+/// lets the blocking task run to completion, so a turn abandoned mid-tool applies the
+/// `write` anyway, recorded only in the audit trail (#26).
 ///
 /// Needs a tokio runtime with the time driver enabled: the per-round bound is
 /// `tokio::time::timeout`, which panics with "there is no timer running" otherwise.
 /// `#[tokio::main]` and `Builder::new_*().enable_all()` enable it,
-/// `Builder::new_current_thread().enable_io().build()` does not; the flavour is free,
+/// `Builder::new_current_thread().enable_io().build()` does not. The flavour is free,
 /// since `spawn_blocking` needs only `rt`.
-///
-/// The turn re-enters on the *presence* of tool calls, never on `StopReason::ToolUse`: a
-/// stop reason is nullable on the wire, so a round can arrive with tool calls and
-/// `StopReason::Unspecified`, and keying off the reason would drop them silently. A tool
-/// that fails does not end the turn — it comes back as a `tool_result` marked `is_error`;
-/// see [`TurnError`] for where the line is drawn.
 pub async fn run_turn<F, O, G>(
     mut open: F,
     turn: Turn<'_>,
@@ -260,28 +203,25 @@ where
 
     // The freshest measurement, the caller's until this turn makes one of its own.
     let mut observed = turn.observed;
-    // This turn's own latest, which is what comes back. Not seeded from `observed`: a
-    // caller has to tell "reported nothing" from "reported what you already knew".
+    // What comes back, not seeded from `observed`: a caller has to tell "reported nothing"
+    // from "reported what you already knew".
     let mut usage: Option<PromptUsage> = None;
-    // How much history this round leaves out; `measured` carries "a plan is due", so 0
-    // means only that nothing is withheld.
     let mut cut = 0usize;
-    // The carried floor until this turn plans its own cut, then that cut: a floor no legal
-    // boundary could meet is not re-asked for every round.
+    // The carried floor until this turn plans its own cut, then that cut, so a floor no
+    // legal boundary could meet is not re-asked for every round.
     let mut floor = turn.withheld;
-    // A figure no plan has acted on. The caller's counts as one, and so does its absence —
-    // planning on `None` is what holds the floor on a first round.
+    // A figure no plan has acted on — the caller's absent one included, which is what
+    // holds the floor on a first round.
     let mut measured = true;
 
     for _ in 0..turn.limits.max_rounds {
         if measured && let Some(policy) = turn.limits.compaction {
-            // Over budget asks to deepen; within budget asks only to hold the floor.
-            // `None` is not "do not compact" — a conversation already cut stays cut, or
-            // the cut it paid for is undone.
+            // Within budget asks only to hold the floor; `None` would undo the cut
+            // already paid for.
             let keep_recent =
                 compact::over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
-            // A plan always contains the previous cut, so `unwrap_or` is a belt: it is
-            // what would stop a declined plan from restoring history.
+            // A plan always contains the previous cut, so `unwrap_or` is the belt that
+            // would stop a declined plan from restoring history.
             cut =
                 compact::plan_cut(turn.history, produced.len(), keep_recent, floor).unwrap_or(cut);
             floor = cut;
@@ -302,8 +242,8 @@ where
 
         let mut stream = open(request).await.map_err(TurnError::Provider)?;
 
-        // Only the consumption is wrapped. Opening the stream is the provider's own
-        // request, already bounded by its connect and read timeouts.
+        // Only the consumption: opening the stream is bounded by the provider's own
+        // connect and read timeouts.
         let round = tokio::time::timeout(
             turn.limits.stream_timeout,
             accumulate(&mut stream, &mut observe),
@@ -313,8 +253,8 @@ where
             after: turn.limits.stream_timeout,
         })??;
 
-        // Recorded before any exit below: a round's counts are worth reporting even when
-        // that round is the one that ends the turn.
+        // Before any exit below: a round's counts are worth reporting even when that
+        // round is the one that ends the turn.
         if let Some(reported) = round.usage {
             usage = Some(reported);
             observed = Some(reported);
@@ -322,12 +262,10 @@ where
         }
         let blocks = round.blocks;
 
-        // The API rejects an empty content array, so a round that produced nothing appends
-        // nothing: a blockless message would invalidate every later request.
+        // The API rejects an empty content array, and a blockless message would
+        // invalidate every later request.
         if blocks.is_empty() {
-            // Unless a `tool_result` is waiting to be answered. Handing that back as a
-            // finished turn breaks the request *after* this one: a caller appends its own
-            // user message, and the API rejects two consecutive user turns.
+            // Unless a `tool_result` is waiting to be answered; see `EndedMidToolUse`.
             if matches!(produced.last(), Some(last) if matches!(last.role, Role::User)) {
                 return Err(TurnError::EndedMidToolUse);
             }
@@ -339,8 +277,8 @@ where
             });
         }
 
-        // Answered before the assistant turn is pushed: answering borrows the blocks and
-        // pushing moves them.
+        // Before the assistant turn is pushed: answering borrows the blocks, pushing
+        // moves them.
         let results = answer_calls(&blocks, ctx, turn.tools, &mut approve).await?;
 
         produced.push(RequestMessage {
@@ -362,8 +300,8 @@ where
         });
     }
 
-    // Still wanting tools run. `produced` is dropped rather than returned: it ends in
-    // a tool_result the model never answered, which would read as a finished turn.
+    // `produced` is dropped rather than returned: it ends in a `tool_result` the model
+    // never answered, which would read as a finished turn.
     Err(TurnError::RoundLimit {
         rounds: turn.limits.max_rounds,
     })

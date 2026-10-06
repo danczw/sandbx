@@ -12,11 +12,9 @@ use crate::{ApprovalDecision, ToolCall, TurnError};
 /// model asked for them.
 ///
 /// Sequential: concurrency would need the ordering semantics of two tools sharing one
-/// `ExecutionContext` settled first (#26).
-///
-/// `BuiltinTool::execute` may sit in a `write`, a directory walk or a 90-second command,
-/// which on a current-thread runtime would freeze every other task — hence
-/// `spawn_blocking`, whose uncancellability `run_turn` documents for callers.
+/// `ExecutionContext` settled first (#26). `BuiltinTool::execute` may sit in a `write`, a
+/// directory walk or a 90-second command, which on a current-thread runtime would freeze
+/// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
 pub(super) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
@@ -49,7 +47,7 @@ where
 
         // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
         // so a late decision would not stop the call it refused (#26). Exhaustive rather
-        // than `if let`, so a third verdict is a compile error here and not approval.
+        // than `if let`, so a third verdict is a compile error and not approval.
         match approve(ToolCall { tool, id, input }) {
             ApprovalDecision::Allow => {}
             ApprovalDecision::Deny { reason } => {
@@ -60,7 +58,7 @@ where
 
         // Cloned because `spawn_blocking` needs `'static`, once per call because the
         // closure consumes it. An `Arc` would pay off only if `ExecutionContext` grew
-        // something costlier than a few path lists.
+        // costlier than a few path lists.
         let input = input.clone();
         let context = ctx.clone();
         let outcome = tokio::task::spawn_blocking(move || tool.execute(input, &context))
@@ -82,7 +80,6 @@ where
     Ok(results)
 }
 
-/// A tool result the model should read as a failure.
 fn refused(id: &str, content: String) -> ContentBlock {
     ContentBlock::ToolResult {
         tool_use_id: id.to_string(),
@@ -93,8 +90,8 @@ fn refused(id: &str, content: String) -> ContentBlock {
 
 /// Bridge a built-in into the shape a provider request wants.
 ///
-/// No table of its own: `name`, `description` and `input_schema` come from one `SPEC`
-/// per tool in `sandbx-tools`, beside the behaviour they describe.
+/// No table of its own: all three fields come from one `SPEC` per tool in `sandbx-tools`,
+/// beside the behaviour they describe.
 pub(super) fn definition(tool: BuiltinTool) -> ToolDefinition {
     ToolDefinition {
         name: tool.name().to_string(),
