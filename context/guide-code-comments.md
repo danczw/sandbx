@@ -1,16 +1,13 @@
 # Code comments
 
-Keep the knowledge next to the code. Keep it short.
+Keep the knowledge next to the code. Write none where none is needed.
 
-The tree had grown essays: multi-paragraph rationale on public items, rejected
-alternatives, issue archaeology, restatements of what the item is named. The
-problem is length, not location. A fact that explains an enforcement decision
-belongs three lines above that decision, where the next person to edit it cannot
-miss it — compressed to the clause that is load-bearing, not expanded into prose.
-
-So: cut words, keep facts. A pass that deletes a kernel quirk, an ordering
-requirement, or a "this does not imply that" has failed, however much shorter it
-made the file.
+A comment earns its line by carrying a fact the code cannot: a kernel quirk, an
+ordering requirement, where an ABI number came from. Everything else is cost,
+paid on every read — so the default is nothing, and for most public items the one
+mandatory `///` is the whole budget. But cut words, keep facts: a pass that
+deletes a quirk, an ordering requirement or a "this does not imply that" has
+failed, however much shorter it made the file.
 
 ## Budget
 
@@ -24,23 +21,37 @@ made the file.
 | inline `//` | one or two lines, where the *why* is not derivable from the line |
 | module `//!` | five lines: what the module owns, and the one thing a reader must know before editing it |
 
-Anything over budget is a rewrite, not a deletion: find the sentence doing the
-work and keep that one.
+Over budget is a rewrite, not a deletion: find the sentence doing the work and
+keep that one. Where there is no such sentence the comment goes whole — the
+common case, not the exception.
 
-## Cut
+## Zero is the budget
 
-- **Restatement.** `/// Read a file.` on `BuiltinTool::Read`. Variant and field
-  names are the documentation; a `///` that paraphrases them is noise.
+Over budget at one line, because the line says what the reader already had:
+
+- **A restated name.** `/// Read a file.` on `BuiltinTool::Read`; `/// Decode the
+  argv.` on `HelperArgs::decode`. Names are the documentation.
+- **A type the signature names.** `/// Returns a SecretString, or a
+  ProviderError on failure.` on `anthropic_api_key`.
+- **Narration.** A `//` restating the line under it — `// Open the transcript,
+  then check its mode.` above the open and the check — or the branch beside it:
+  `// If no port is allowed, deny the axis.` above `if ports.is_empty()`.
+- **A banner.** `// ---- helpers ----`, `// === seccomp ===`. Sections are what
+  modules are for.
+- **An echo of the `//!`** three lines above it.
+- **A getter's `///`.** `/// Returns the guard.` on `guard()`.
+
+Then cut:
+
 - **History.** "which produced #49", "was first proposed as", "used to be",
   "added in the commit that split the helper". `git log` and the issue tracker
   hold this and stay accurate. An issue number is allowed when the reader needs
   it to find the work; the issue carries its own status, so the comment does not.
 - **Rejected alternatives**, unless the rejection is a trap someone will
-  re-propose next month. Then one sentence: what fails, not the full argument.
+  re-propose next month. Then one sentence: what fails, not the argument.
 - **Rhetoric and emphasis.** `**The table.**`, "deliberately", "irreducible
   residue", "which is worse than a flat failure would be". A doc comment is a
   reference entry.
-- **Narration.** A `//` that says what the next line does.
 - **Prose already in `context/*.md` or `SECURITY.md`** — but leave the one-line
   claim in the code and point: `` // Landlock has no path-scoped unix socket
   right before ABI V9; see `context/guide-sandboxing.md`. ``
@@ -55,14 +66,14 @@ work and keep that one.
   nothing confers execute).
 - A workaround and the condition that would let it go.
 
-Two kinds of doc comment are not commentary at all and are out of scope: the ones
-clap renders into `--help` (`sandbx-cli/src/lib.rs`) and the ones schemars turns
-into a tool's JSON-schema `description` (`sandbx-tools/src/tools/*.rs`). Those
-are user- and model-facing text. Leave them, and exclude them when reading a
-crate's density.
-
+Compress these to the load-bearing clause; do not delete them to hit a number.
 Expect `sandbx-core/src/helper/` to shrink by rewording rather than by deleting,
 and prefer one terse sentence to none on any enforcement path.
+
+Out of scope, because they are not commentary: the doc comments clap renders
+into `--help` (`sandbx-cli/src/lib.rs`) and the ones schemars turns into a tool's
+JSON-schema `description` (`sandbx-tools/src/tools/*.rs`). Leave them, and
+exclude them when reading a crate's density.
 
 ## Before and after
 
@@ -94,8 +105,8 @@ Four facts in, four facts out, a third of the lines.
 
 ## Verifying a pass
 
-The target is under 15% comment lines (`///`, `//!`, `//`) as a share of all
-lines in a crate. It is a smell test, not a quota, and it is read per crate:
+Under 15% comment lines (`///`, `//!`, `//`) as a share of all lines, read per
+crate. A smell test, not a quota:
 
 ```sh
 find crates/<crate> -name '*.rs' | xargs grep -hcE '^\s*(///|//!|//([^/!]|$))'
@@ -103,18 +114,13 @@ find crates/<crate> -name '*.rs' | xargs grep -hcE '^\s*(///|//!|//([^/!]|$))'
 
 ### The floor
 
-No file goes under its floor, which is one mandatory `///` per public item,
-field and variant over its non-comment lines. `missing_docs = "warn"` fires on
-fields and variants too, so a crate that is mostly public API has a high floor
-with *no* explanation left in it, and a short file has a higher one still — a
-five-line module doc is a large share of a thirty-line file on its own.
-
-Two things are exempt by nature rather than by arithmetic:
-`sandbx-core/src/helper/`, which is enforcement rationale end to end, and any
-file whose comments *are* the content, such as a syscall denylist's group labels.
-
-Count the floor for the file in front of you before chasing the target. Below it,
-a pass is deleting facts.
+One mandatory `///` per public item, field and variant over the file's
+non-comment lines. A crate that is mostly public API has a high floor with *no*
+explanation left in it, and a short file a higher one still. Exempt by nature:
+`sandbx-core/src/helper/`, enforcement rationale end to end, and any file whose
+comments *are* the content, such as a syscall denylist's group labels. Count the
+floor for the file in front of you before chasing the target; below it, a pass is
+deleting facts.
 
 ### Checks
 
