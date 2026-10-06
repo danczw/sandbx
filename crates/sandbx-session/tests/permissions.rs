@@ -139,3 +139,23 @@ fn an_owner_only_transcript_reports_nothing() {
 
     assert!(!store.resume(&id).unwrap().shared_read());
 }
+
+/// Without `O_NOFOLLOW` this resumes: the link's own directory is the vetted 0700 one,
+/// and the mode and owner come from a target the check never looks at.
+#[test]
+fn a_symlinked_transcript_is_refused() {
+    let (root, store) = store();
+    let id = spoken_to(&store);
+    let path = store.root().join(format!("{id}.jsonl"));
+
+    let elsewhere = root.path().join("elsewhere");
+    std::fs::create_dir(&elsewhere).unwrap();
+    let target = elsewhere.join("planted.jsonl");
+    std::fs::rename(&path, &target).unwrap();
+    std::os::unix::fs::symlink(&target, &path).unwrap();
+    chmod(&elsewhere, 0o757);
+
+    let err = store.resume(&id).unwrap_err();
+
+    assert!(matches!(err, SessionError::Symlink { .. }), "got {err:?}");
+}

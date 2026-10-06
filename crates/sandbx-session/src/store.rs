@@ -151,7 +151,7 @@ impl SessionStore {
             });
         }
 
-        let mut file = open(&path, id)?;
+        let mut file = open_transcript(&path, id)?;
         let (mode, uid) = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::Writable {
@@ -183,8 +183,11 @@ impl SessionStore {
             return Err(SessionError::IncompleteTurn);
         }
 
+        // `O_NOFOLLOW` again, not just on the read: a link planted between the two opens
+        // would make the appended-to file a different one than the vetted descriptor.
         let file = OpenOptions::new()
             .append(true)
+            .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
             .open(&path)
             .map_err(|source| SessionError::Io {
                 path: path.clone(),
@@ -363,6 +366,37 @@ fn open(path: &Path, id: &SessionId) -> Result<File, SessionError> {
             }
         }
     })
+}
+
+/// Open a transcript, refusing one that is a symbolic link.
+///
+/// `O_NOFOLLOW` because every check below is on the descriptor, and a link makes the
+/// descriptor a different file than the path that was vetted: the mode and owner would
+/// come from the target while the directory refused for being writable is the one holding
+/// the link. It applies to the last component only, so a symlinked state directory — which
+/// an operator may well have — still opens.
+fn open_transcript(path: &Path, id: &SessionId) -> Result<File, SessionError> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
+        .open(path)
+        .map_err(|source| {
+            if source.kind() == std::io::ErrorKind::NotFound {
+                return SessionError::NotFound { id: id.clone() };
+            }
+            // By errno and not `ErrorKind::FilesystemLoop`, which is unstable. `ELOOP` is
+            // what `O_NOFOLLOW` reports for a link, and the only thing that produces it
+            // here: no component above the last one is followed by this open.
+            if source.raw_os_error() == Some(nix::errno::Errno::ELOOP as i32) {
+                return SessionError::Symlink {
+                    path: path.to_owned(),
+                };
+            }
+            SessionError::Io {
+                path: path.to_owned(),
+                source,
+            }
+        })
 }
 
 /// The permission bits and owner of an open file, from the descriptor.
