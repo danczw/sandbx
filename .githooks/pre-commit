@@ -1,13 +1,5 @@
 #!/bin/sh
-# Pre-commit hook: formatting + lints must pass before a commit is recorded.
-#
-# Enable once per clone:
-#     git config core.hooksPath .githooks
-#
-# Uses git's native hooksPath rather than a hook-manager crate, so this adds no
-# dependency to Cargo.toml.
-#
-# Bypass in an emergency with `git commit --no-verify` (then fix it immediately).
+# Both commands are byte-identical to ci.yml's Format and Clippy steps.
 
 set -e
 

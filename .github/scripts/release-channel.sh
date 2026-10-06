@@ -1,19 +1,12 @@
 #!/bin/sh
-# Print which GitHub release channel a tag publishes to: `release` or `prerelease`.
-#
-#     .github/scripts/release-channel.sh v0.1.0-alpha.7
-#     .github/scripts/release-channel.sh --self-test
-#
-# A script, not an inline `run:` block, so the table below gates the decision at
-# merge time — otherwise which tag becomes "latest" is observable only once a
-# tag is public, and a mis-marked release cannot be un-pushed. The support
-# policy it implements is in SECURITY.md.
+# Implements the support policy in SECURITY.md. A script so the self-test can gate
+# the decision at merge time — a mis-marked release cannot be un-pushed.
 
 set -eu
 
 # Only an exact 1.0-or-later version may become "latest"; anything else,
-# recognised or not, is a pre-release. Build metadata is matched explicitly,
-# since a hyphen inside it is not a pre-release suffix.
+# recognised or not, is a pre-release. Build metadata is matched explicitly, since
+# a hyphen inside it is not a pre-release suffix.
 channel() {
   num='(0|[1-9][0-9]*)'
   if printf '%s' "${1#v}" \

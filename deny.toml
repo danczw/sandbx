@@ -1,14 +1,10 @@
-# Run via `cargo deny check` (CI job + on demand). Covers advisories, licensing
-# and dependency hygiene in one tool, so there is no separate `cargo audit` step.
-
 [advisories]
 version = 2
 yanked = "deny"
 
 [licenses]
 version = 2
-# Permissive licenses only. Copyleft (GPL/AGPL) would impose obligations on
-# anything linking sandbx; flag it rather than discover it at release time.
+# Copyleft (GPL/AGPL) would impose obligations on anything linking sandbx.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -20,25 +16,23 @@ allow = [
     "Zlib",
 ]
 
-# CDLA-Permissive-2.0 is a permissive *data* license, not a code one, and covers
-# only webpki-root-certs' bundled Mozilla CA roots. An exception rather than an
-# `allow` entry, so the next crate arriving under it is considered on its own.
+# CDLA-Permissive-2.0 is a permissive *data* license, covering only this crate's
+# bundled Mozilla CA roots. An exception, not an `allow`, so the next crate
+# arriving under it is considered on its own.
 [[licenses.exceptions]]
 name = "webpki-root-certs"
 allow = ["CDLA-Permissive-2.0"]
 
 [bans]
-# Duplicate versions of the same crate bloat the binary and mean two copies of
-# any vulnerability. Warn rather than deny: transitive deps often force these.
+# Warn, not deny: a duplicate means two copies of any vulnerability, but
+# transitive deps often force one.
 multiple-versions = "warn"
-# `foo = "*"` accepts whatever the registry serves. A path dependency resolves to
-# a directory in this repo instead, and workspace crates carry no version, so the
-# wildcard is allowed exactly where it is one by construction.
+# Workspace crates carry no version, so a path dependency is a wildcard by
+# construction — the only place one is allowed.
 wildcards = "deny"
 allow-wildcard-paths = true
 
 [sources]
-# Only crates.io; a git or alternate-registry dependency fails the build.
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
