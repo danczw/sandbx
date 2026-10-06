@@ -202,8 +202,10 @@ sandbx agent-run \
   -- "add a doc comment to every public fn under src"
 ```
 
-The answer streams on stdout; which tool the gate ran and which it refused goes
-to stderr — so piping stdout gives you the answer alone. All seven tools are
+The answer streams on stdout; the approved set, and then which tool the gate ran
+and which it refused, goes to stderr — so piping stdout gives you the answer
+alone. Read that first line: it is what makes a misplaced `--` obvious, since
+`--allow-tool -- write the file` is the bare flag plus a prompt. All seven are
 offered to the model — `read`, `write`, `edit`, `ls`, `grep`, `find` and `bash` —
 and each one the gate approves still runs through the same boundary. A path you
 did not grant is refused there instead, which comes back to the model as a failed

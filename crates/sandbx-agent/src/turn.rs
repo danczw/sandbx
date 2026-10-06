@@ -224,11 +224,11 @@ impl Default for TurnLimits {
 /// one outside [`Turn::tools`]: both are refused above the gate, so a closure never has to
 /// invent a verdict for a call the caller never offered.
 ///
-/// **`approve` must not block.** It is called on the async task, with no `spawn_blocking`
+/// **`approve` must not wait.** It is called on the async task, with no `spawn_blocking`
 /// of its own, so a gate that waits — on an operator, a channel, a lock — stalls every
 /// other task on the runtime, and on a current-thread one deadlocks the turn it is
-/// deciding. A decision that has to be awaited belongs to a caller that owns the runtime,
-/// made before `run_turn` is entered rather than inside it.
+/// deciding. A bounded write is not that. A decision that has to be awaited belongs to a
+/// caller that owns the runtime, made before `run_turn` is entered rather than inside it.
 ///
 /// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future drops the
 /// `JoinHandle` while the blocking task runs to completion, so a turn abandoned mid-tool

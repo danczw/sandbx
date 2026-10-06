@@ -35,10 +35,11 @@ mandatory, so a caller cannot acquire a gate-less loop by omitting an argument.
 See `decision-approval-gate.md` for why it is not a trait.
 
 It runs on the async task with no `spawn_blocking` of its own, so **it must not
-block** — a gate that waits on an operator, a channel or a lock stalls every
+wait** — a gate that waits on an operator, a channel or a lock stalls every
 other task on the runtime, and on a current-thread one deadlocks the turn it is
-deciding. That is a real bound on #165: a per-call prompt cannot be a blocking
-read from inside the gate.
+deciding. A bounded write is not that; `agent-run`'s gate prints a line. That is
+a real bound on #165: a per-call prompt cannot be a blocking read from inside the
+gate.
 
 ## Round structure
 
