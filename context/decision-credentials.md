@@ -61,6 +61,11 @@ costs:
   as you can ask the daemon. Against a local attacker already running as your uid
   both tiers fall, and the file is at least inspectable.
 
+Where the credential file lives, what mode it is created with and why its mode
+rule differs from a session transcript's is in
+[decision-on-disk-state.md](decision-on-disk-state.md), which covers both of
+sandbx's on-disk roots.
+
 ## What this covers, and what it does not
 
 This is the *harness's own* provider call — sandbx authenticating to Anthropic. It
