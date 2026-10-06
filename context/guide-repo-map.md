@@ -12,6 +12,7 @@ deny.toml           cargo-deny
                     Conventional Commits and a 72-character subject
 .github/            CI and release workflows, their action pins, and dependabot
 .github/scripts/    what a workflow calls but must be runnable without one
+                    ◄── all three: guide-ci.md
 docs/release-notes/ one file per tag, which the release gates on; TEMPLATE.md
 SECURITY.md         the promise to users — the one doc that must never lag
 ```

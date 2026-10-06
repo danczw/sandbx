@@ -10,6 +10,7 @@ Where to look, and where to put something new:
 | how a subsystem works | `context/guide-*.md` |
 | why a design went the way it did | `context/decision-*.md` |
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
+| what runs before a push, and what runs after | `context/guide-ci.md` |
 | how long a code comment may be, and what it must not say | `context/guide-code-comments.md` |
 | how long a name may be, and what to cut first | `context/guide-naming.md` |
 | how long a module may be, and where its tests belong | `context/guide-module-layout.md` |
