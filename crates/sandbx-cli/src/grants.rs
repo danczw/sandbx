@@ -319,9 +319,8 @@ impl Grants {
 
     /// The digest the program was pinned to, or why no single one was given.
     ///
-    /// Deliberately outside [`paths_given`](Self::paths_given) and [`policy`](Self::policy):
-    /// a pin grants nothing, so it must neither widen a policy nor suppress the
-    /// working-directory default.
+    /// Deliberately outside `paths_given` and [`policy`](Self::policy): a pin grants nothing,
+    /// so it must neither widen a policy nor suppress the working-directory default.
     pub fn pin(&self) -> Result<Option<Sha256Digest>, PolicyError> {
         match self.pin_sha256.as_slice() {
             [] => Ok(None),

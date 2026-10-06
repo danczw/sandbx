@@ -15,7 +15,7 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 
 mod support;
 
-use support::{allow_probe, run, runtime_paths};
+use support::{allow_probe, run, run_pinned, runtime_paths};
 
 /// Baseline: without it the denials below would pass on a sandbox that broke
 /// everything indiscriminately.
@@ -923,5 +923,109 @@ fn granting_what_the_harness_lacks_passes_nothing() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "",
         "an unset name produced an entry"
+    );
+}
+
+/// The digest of a file on disk, taken the way an operator would before the run.
+fn digest_of(path: &std::path::Path) -> sandbx_core::Sha256Digest {
+    let mut file = std::fs::File::open(path).expect("the program should be readable");
+
+    sandbx_core::Sha256Digest::of_file(&mut file).expect("hash")
+}
+
+/// Without this the refusal below would pass on a pin that refused everything.
+#[test]
+fn a_matching_pin_runs_the_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("tool");
+    std::fs::copy("/bin/true", &program).unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let output = run_pinned(
+        &policy,
+        program.to_str().unwrap(),
+        &[],
+        Some(digest_of(&program)),
+    );
+
+    assert!(
+        output.status.success(),
+        "a program that is its own pinned bytes was refused: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Issue #146's demonstration, as a test: the path is granted, the bytes behind it are
+/// not the ones that were named, and Landlock cannot tell the difference.
+#[test]
+fn a_binary_swapped_behind_its_pin_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("tool");
+    std::fs::copy("/bin/true", &program).unwrap();
+    let pinned = digest_of(&program);
+
+    // The swap, after the digest was taken and before the run.
+    std::fs::copy("/bin/id", &program).unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let output = run_pinned(&policy, program.to_str().unwrap(), &[], Some(pinned));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "the swapped binary ran: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).is_empty(),
+        "the swapped binary produced output, so it ran before being refused"
+    );
+    // Both digests, which is what tells the operator the bytes changed rather than that
+    // they pinned the wrong ones.
+    assert!(
+        stderr.contains(&pinned.to_string()) && stderr.contains("is not the binary"),
+        "the refusal did not name the digests: {stderr}"
+    );
+}
+
+/// The pin runs `/proc/self/fd/N`, and a path rule has to be what bounds that — otherwise
+/// pinning would be a way to execute a binary the policy only granted read on.
+#[test]
+fn a_pin_grants_no_execute_a_read_grant_withheld() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("tool");
+    std::fs::copy("/bin/true", &program).unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(dir.path());
+    let output = run_pinned(
+        &policy,
+        program.to_str().unwrap(),
+        &[],
+        Some(digest_of(&program)),
+    );
+
+    assert!(
+        !output.status.success(),
+        "a matching pin executed a binary the policy granted read on only"
+    );
+}
+
+/// A matching pin must change nothing the command can observe about itself, and `$0` is
+/// the one thing exec'ing a descriptor would otherwise rewrite.
+#[test]
+fn a_pinned_program_keeps_the_name_it_was_given() {
+    let policy = runtime_paths(SandboxPolicy::default());
+    let output = run_pinned(
+        &policy,
+        "/bin/sh",
+        &["-c", "echo $0"],
+        Some(digest_of(std::path::Path::new("/bin/sh"))),
+    );
+
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "/bin/sh",
+        "a pinned run saw a procfs path as its own name: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }

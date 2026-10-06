@@ -366,3 +366,40 @@ fn every_record_names_a_real_mechanism_once() {
         "expected exactly one spawn record: {lines:?}"
     );
 }
+
+/// Without the label the trail cannot tell a refused pin from a command that ran and
+/// exited 1; the digests are not on it, reaching the operator on stderr instead.
+#[test]
+fn a_pin_refusal_names_itself_on_the_channel() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("tool");
+    std::fs::copy("/bin/true", &program).unwrap();
+
+    let mut file = std::fs::File::open(&program).expect("readable");
+    let pinned = sandbx_core::Sha256Digest::of_file(&mut file).expect("hash");
+    std::fs::copy("/bin/false", &program).unwrap();
+
+    let policy = SandboxPolicy::default()
+        .allow_system_executables()
+        .allow_read_execute(dir.path());
+
+    let (result, lines) = capture(|| {
+        SandboxedCommand::new(program.to_str().unwrap(), policy)
+            .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+            .pin_sha256(pinned)
+            .output()
+    });
+    let output = result.expect("the helper should have run");
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("decision=failed") && line.contains("pin_mismatch")),
+        "a refused pin left no record naming itself: {lines:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(&pinned.to_string()),
+        "the expected digest did not reach the operator: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

@@ -37,10 +37,20 @@ pub(crate) fn allow_probe(policy: SandboxPolicy, probe: &str) -> SandboxPolicy {
 }
 
 pub(crate) fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+    run_pinned(policy, program, args, None)
+}
+
+/// [`run`], with the program's bytes named as well.
+pub(crate) fn run_pinned(
+    policy: &SandboxPolicy,
+    program: &str,
+    args: &[&str],
+    pin: Option<sandbx_core::Sha256Digest>,
+) -> std::process::Output {
     let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .arg(sandbx_core::HELPER_FLAG)
-        .args(HelperArgs::encode(policy, program, &owned, None))
+        .args(HelperArgs::encode(policy, program, &owned, pin))
         .output()
         .expect("helper should start")
 }
