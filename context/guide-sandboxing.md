@@ -28,6 +28,11 @@ The asymmetry runs one way: `ReadExecute` confers read (a program needs the
 binary *and* the libraries its loader pulls in), no grant confers execute, and
 write confers neither.
 
+`--pin-sha256` is deliberately not a row. It grants nothing and neither layer
+derives anything from it — it narrows which bytes one `execve` may run, checked in
+`digest.rs` against a descriptor rather than by the kernel. Why, in
+`context/decision-pinned-entry-point.md`.
+
 **Which layer sees which tool:**
 
 ```

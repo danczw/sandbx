@@ -58,7 +58,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    command.rs        SandboxedCommand, the audit pipe, the kill chain
       dispatch.rs    HELPER_FLAG, HelperDispatch — the entry into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx,
-                     --allow-network-port, --env, --dns-over-tcp
+                     --allow-network-port, --env, --dns-over-tcp, --pin-sha256
+   digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
    audit.rs          AuditEvent, AUDIT_TARGET
    spawn.rs          spawn::command — the one Command::new; env_clear, then
                      the allowlist and the policy's own constants
@@ -81,19 +82,19 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          tests/      unit tests: compat, grants, net, rules
 tests/               audit, audit_channel, audit_outcome (6, how a real run
                      ends), capability_coverage, command, denylist,
-                     enforcement (31 real-kernel tests, paths and grants),
+                     enforcement (38 real-kernel tests, paths and grants),
                      enforcement_syscalls (8, calls Landlock cannot express),
                      enforcement_network (5, the TCP ports it can),
                      fs_guard, helper_args, policy
-tests/support/       mod.rs — runtime_paths, allow_probe, run, shared by the
-                     three enforcement targets; plus 6 [[bin]] probes,
+tests/support/       mod.rs — runtime_paths, allow_probe, run, run_pinned,
+                     shared by the three enforcement targets; plus 6 [[bin]] probes,
                      required-features = ["sandbox-integration"]
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
 `HelperDispatch`, `SandboxError`, `Access`, `FsGuard`, `ReadableWalk`,
 `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
-`NetworkPolicy`, `SandboxPolicy`.
+`NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
 in-process meaning, and a refusal carries an `Access` so it can name the grant it
@@ -166,15 +167,18 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
                 no-flag run gets (unit-testable without a sandbox-capable
                 kernel)
    sandbox.rs   SandboxRun
+   hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller, and the gate it answers with
-   error.rs     AgentError, SandboxRunError, PolicyError
+   error.rs     AgentError, SandboxRunError, PolicyError, HashError
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
-tests/          agent_run, audit_log, audit_log_install, cwd_policy, name,
-                sandbox_run
+tests/          agent_run, audit_log, audit_log_install, cwd_policy, hash,
+                name, sandbox_run
 ```
 
-Lib `sandbx_cli`, bin `sandbx`. Two subcommands: `sandbox-run` and `agent-run`.
+Lib `sandbx_cli`, bin `sandbx`. Three subcommands: `sandbox-run`, `agent-run`
+and `hash`, the last of which runs no sandbox — it reads one file, so a digest can
+be taken before there is a policy to take it under.
 
 `Grants` exists so the axis loop, the one widening it applies — a write grant
 confers read — and the working-directory default are written once. Two copies
@@ -191,14 +195,16 @@ that users reasonably read as the same flags.
 6. `decision-port-allowlist.md` — why a TCP port list costs UDP
 7. `decision-default-policy.md` — what a no-flag run grants, and the directories
    it refuses instead
-8. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+8. `decision-pinned-entry-point.md` — why a grant names a path and one flag names
+   bytes instead
+9. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
    recorded, and how one made inside the helper gets out
-9. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-10. `decision-provider-seam.md` — why there is no provider trait, and what is still
+10. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+11. `decision-provider-seam.md` — why there is no provider trait, and what is still
     vendor-shaped
-11. `decision-approval-gate.md` — what sits between the model and a tool, and how
+12. `decision-approval-gate.md` — what sits between the model and a tool, and how
     much it claims
-12. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+13. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

@@ -85,6 +85,27 @@ Read [SECURITY.md](SECURITY.md) before relying on this: a write grant over a
 project tree also covers `.git/hooks`, `Makefile` and `.cargo/config.toml`, which
 run outside the sandbox the next time you build or commit.
 
+### Pinning the program
+
+An `--allow-exec` grant names a path, so it runs whatever is at that path when the
+command starts — not the binary you were looking at when you typed the flag. Where
+the command can also write the tree it runs from, which is the usual build-then-run
+pair, it can choose its own binary. `--pin-sha256` closes that by naming the bytes:
+
+```console
+$ sandbx sandbox-run --allow-exec /tmp/demo \
+    --pin-sha256 "$(sandbx hash /tmp/demo/tool)" -- /tmp/demo/tool
+```
+
+`sandbx hash PATH` prints a digest in the form the flag takes and confines nothing;
+it reads one file, as `sha256sum` does. If the bytes differ the run is refused
+before anything executes, with both digests on stderr. The flag grants nothing, so
+it neither widens a policy nor replaces the working-directory default, and it needs
+an absolute program path.
+
+It covers the one program you named and nothing that program then spawns itself. A
+pinned `/usr/bin/python3` is still arbitrary code.
+
 The environment is cleared too. A sandboxed command does not inherit the one
 `sandbx` was launched with, so a secret in your shell does not reach it; name a
 variable with `--allow-env` to pass it through. Granted anyway, for the same
@@ -115,8 +136,9 @@ The second record says how the run ended, and every run gets exactly one.
 command the sandbox killed does not read as a success. A run with no status of its
 own is `failed` with a reason you can filter on: `reason="timeout"` for a
 `--timeout` kill, `reason="exec_failed"` for a program that could not be executed
-at all, `reason="landlock"` or `reason="seccomp"` for a sandbox the kernel would
-not accept. Each of those would otherwise look like a command that ran and exited
+at all, `reason="pin_mismatch"` for a program that is not the bytes it was pinned
+to, `reason="landlock"` or `reason="seccomp"` for a sandbox the kernel would not
+accept. Each of those would otherwise look like a command that ran and exited
 1, the stage that refused having exited in the command's place.
 
 `env=7` is a count, not a list: a variable's *name* is not a secret, but its value
@@ -141,6 +163,7 @@ permission denials the examples above are there to show.
 | `--allow-read PATH`  | read access to `PATH`. Repeatable |
 | `--allow-write PATH` | write access to `PATH`. Repeatable |
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
+| `--pin-sha256 HEX`   | refuse the run unless the program named after `--` hashes to `HEX`. Grants nothing, needs an absolute path, once per run |
 | `--allow-network`    | IP egress on any TCP port, with UDP and raw sockets. Shares the host's network namespace |
 | `--allow-network PORT` | IP connect and bind on `PORT` alone — on every host, since the kernel matches the port and not the destination. Denies UDP and raw sockets with it, so names resolve only over TCP (see `--dns-over-tcp`), and shares the host's network namespace. Repeatable |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |

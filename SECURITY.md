@@ -45,6 +45,7 @@ run through `SandboxedCommand`:
 | control | mechanism | covers |
 |---------|-----------|--------|
 | filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper/ruleset/compat.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
+| entry point | SHA-256 over the descriptor the helper execs, when `--pin-sha256` names a digest (`SandboxedCommand::pin_sha256`) | the bytes of the one program sandbx itself executes, and nothing that program then spawns — the file is opened once after the policy is applied, hashed through that handle, and run as `/proc/self/fd/N`, so no path is re-resolved between the check and the `execve`. A mismatch refuses the run before anything executes; see the non-claim below |
 | network | an empty network namespace, or — when a port allowlist is given — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when it is granted per port |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
@@ -172,6 +173,19 @@ Three properties matter as much as the list:
   inode rather than by guarding a path. So this is a property of granting write at
   all, stated rather than guarded — if it matters for a tree, grant read and keep
   write to a scratch directory.
+- **A pin covers the entry point, not the code the run executes.** `--pin-sha256`
+  names the bytes of the one program sandbx `execve`s, which closes the case it was
+  built for ([#146](https://github.com/danczw/sandbx/issues/146)): an `--allow-exec`
+  grant names a path, so paired with write on the same tree it lets the command
+  choose its own binary between the policy being written and the program starting.
+  What it does not do is bound what runs after that `execve`. A pinned program may
+  spawn anything the filesystem policy permits, including every binary under the
+  `/usr`, `/bin`, `/lib` and `/lib64` floor the CLI grants by default — thousands of
+  them, and not an operator's choice — and nothing of sandbx's is in those `execve`
+  calls to check. A pinned interpreter is the plain case: the digest fixes which
+  `/usr/bin/python3` runs and says nothing about the script it is handed. So read a
+  pin as naming one image, never as a promise that a pinned run executes only pinned
+  code. There is no warning mode and no bypass; the bypass is omitting the digest.
 
   Standing in a system directory is the same property, not a further one. The
   derived default refuses the trees it grants execute on, but `/etc`, `/var`,
@@ -327,7 +341,10 @@ Three properties matter as much as the list:
   to match on, but that is a denial of one route, not a guarantee about file
   descriptors in general: a descriptor obtained some other way can still be run
   via `/proc/self/fd/N` with an ordinary `execve`. What bounds that is Landlock's
-  path rules — execute comes only from `allow_read_execute` — not seccomp.
+  path rules — execute comes only from `allow_read_execute` — not seccomp. sandbx
+  relies on exactly that for a pinned run: Landlock dereferences the magic link, so
+  execing the hashed descriptor is still checked against the program's real path and
+  needs no grant on `/proc`.
 - **The sandboxed command is not marked non-dumpable.** `PR_SET_DUMPABLE=0`
   was investigated for #39 and found ineffective for this design: the kernel
   resets that flag to dumpable on every `execve` of an ordinary binary, so
