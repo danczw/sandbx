@@ -39,7 +39,8 @@ So `env_clear()` then re-add, rather than removing known-bad names.
 ## Names on the wire, values from the live environment
 
 The policy carries `Vec<String>` of **names**. Values are read with
-`std::env::var_os` at the moment the `Command` is built.
+`std::env::var_os` at the moment the `Command` is built. One variable is set from
+a constant instead; *One variable sandbx sets itself* has it.
 
 Two reasons, and the first is the hard one. The policy crosses into the helper as
 argv, and argv is not private: the sandboxed command reads its own
@@ -102,7 +103,7 @@ is never anywhere it does not need to be.
 ## Stage 2 checks as well, and refuses
 
 Stage 2 does one more thing: before applying anything it looks at the environment
-it *inherited* and refuses if a variable is outside the allowlist. The factory is
+it *inherited* and refuses if the policy permits no variable of that name. The factory is
 what the command relies on; this is what says whether the stage above actually went
 through it. Narrowing again instead would answer the same question with silence.
 
@@ -162,6 +163,36 @@ round-tripping — nothing `encode` can emit is something `decode` rejects. But 
 argv *containing* such a name cannot have come from `encode`, so the seam is
 looking at a protocol it does not speak, and this file's rule is that every decode
 failure is a refusal rather than a guess.
+
+## One variable sandbx sets itself
+
+`--dns-over-tcp` puts `RES_OPTIONS=use-vc` in the command (why:
+`decision-port-allowlist.md`). A *value*, on the axis that carries only names —
+so the rule it lives under is narrow: only a compile-time constant may be
+imposed, never anything read from the harness. The argv argument above does not
+apply to a constant, because a value the sandboxed command can already read in
+the binary it is about to exec is not a disclosure. `DNS_OVER_TCP_ENV` is the
+whole table, and the policy crosses the seam carrying a valueless
+`--dns-over-tcp` rather than the pair, so the wire still names no value and
+`decision-enforcement-seam.md` stays true as written.
+
+Two accessors keep the two halves from disagreeing. `imposed_env()` is what
+`spawn::command` applies, *after* the allowlist, so a name reached both ways
+arrives with the policy's value. `permits_env()` is the union of allowlist and
+imposed table, and is the single predicate both `spawn::command` and stage 2's
+inherited-environment check consult — because stage 2 refuses, a variable the
+factory imposes and the check did not know about would kill every hinted run.
+That is the one coupling here that is load-bearing rather than tidy.
+
+Where the two names collide the library resolves it and the CLI refuses it,
+which is *skip at the gate, refuse at the seam* in its other direction.
+`allow_env("RES_OPTIONS")` on a hinted policy is quietly overridden, keeping the
+builder total. But `--dns-over-tcp --allow-env RES_OPTIONS` is two flags
+disagreeing about one variable, and honouring both would drop the operator's
+value in silence — so `PolicyError::ImposedVariable`, the same answer
+`variable_name` gives `NAME=VALUE`. The refusal matches against `imposed_env`
+rather than the literal name, so the CLI never spells `RES_OPTIONS` and a second
+imposed variable inherits the check.
 
 ## The mutation check
 

@@ -267,6 +267,7 @@ SandboxPolicy { env: Vec<String> }        names only, never values
                  Command::new(program)                     the only one in the workspace
                  env_clear()
                  envs(allowed_env ∩ live environment)      unset name ⇒ absent
+                 envs(imposed_env)                         constants, and the last word
 ```
 
 Not applied *at* the four spawn sites — it is what builds them. All four get their
@@ -291,8 +292,10 @@ helper invoked **directly**, with no `sandbx` above it, is sanitised rather than
 trusted.
 
 Stage 2 is the one that does not trust its input: before applying anything it
-refuses outright if it finds a variable the policy does not name in the environment
-it *inherited*, because on every supported path stage 1 has already cleared it. So a
+refuses outright if it finds a variable the policy neither names nor imposes in the
+environment it *inherited*, because on every supported path stage 1 has already
+cleared it. Both sides ask `permits_env`, so what the factory puts there cannot be
+what this refuses. So a
 *direct* stage-2 invocation is refused rather than sanitised — the one place the two
 stages differ, and what makes the clear something a test can catch the absence of
 rather than merely something the code does.
@@ -330,7 +333,8 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
   inherits it. Credential injection without exposing the value is #41.
 - **The policy is readable from inside.** Granted paths and allowlisted variable
   names cross as argv, and the command can read `/proc/self/cmdline`. Names only,
-  never values — which is why there is no `--allow-env NAME=VALUE`.
+  never values — which is why there is no `--allow-env NAME=VALUE`; the one value
+  that does cross is the `--dns-over-tcp` constant, which leaks nothing.
 - **A port allowlist is not a destination allowlist.** Landlock matches the port
   and nothing else, so `--allow-network 443` reaches port 443 on every routable
   host. Per-host needs a userspace proxy (#145).
@@ -344,7 +348,7 @@ Matches `SECURITY.md`'s known-weaknesses table. The short form:
 
 | Gap | Residual |
 |---|---|
-| Per-host egress | **No kernel mechanism matches a destination** (#145). Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution; #147 holds the options. |
+| Per-host egress | **No kernel mechanism matches a destination** (#145). Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have. The UDP denial breaks name resolution, which `--dns-over-tcp` routes around under glibc and not under musl. |
 | Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. It is one all-or-nothing toggle. |
 | `FsGuard` TOCTOU | **A parent-directory swap mid-open**, which needs full `openat`-chain resolution. `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. |
 | Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |

@@ -92,11 +92,15 @@ reason as the system binaries: `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`,
 up only in the C library's fallback (`/bin:/usr/bin`), so `cat` would still start
 but anything installed elsewhere would not be found.
 
+One variable `sandbx` sets rather than passes on: `--dns-over-tcp` puts
+`RES_OPTIONS=use-vc` in the command. That is a constant, not something read from
+your shell, and it is the only exception.
+
 Each run also records the policy it ran under and how it ended, on stderr:
 
 ```console
 $ sandbx sandbox-run --allow-read /srv -- /bin/true
-2026-10-05T20:37:54.124622Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7
+2026-10-05T20:37:54.124622Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7 dns_over_tcp=false
 2026-10-05T20:37:54.130729Z  INFO sandbx::audit: decision="exited" program="/bin/true" code=0
 ```
 
@@ -119,7 +123,8 @@ routinely is, and a record that spelled out the names would invite the next chan
 to print values beside them. It counts the allowlist, not what crossed — a name
 nothing in `sandbx`'s own environment matches passes nothing, so on a host with no
 `TZ` set the command above sees fewer than seven. Like `readable`, it records what
-was granted.
+was granted. The one variable `sandbx` sets itself has its own field,
+`dns_over_tcp`, rather than being counted here as a name you passed.
 
 It is metadata only, never a command's output, and it never touches stdout: the
 command's own stdout is forwarded untouched, so piping it is unaffected. Both
@@ -136,10 +141,27 @@ permission denials the examples above are there to show.
 | `--allow-write PATH` | write access to `PATH`. Repeatable |
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
 | `--allow-network`    | IP egress on any TCP port, with UDP and raw sockets. Shares the host's network namespace |
-| `--allow-network PORT` | IP connect and bind on `PORT` alone — on every host, since the kernel matches the port and not the destination. Denies UDP and raw sockets with it, so names stop resolving, and shares the host's network namespace. Repeatable |
+| `--allow-network PORT` | IP connect and bind on `PORT` alone — on every host, since the kernel matches the port and not the destination. Denies UDP and raw sockets with it, so names resolve only over TCP (see `--dns-over-tcp`), and shares the host's network namespace. Repeatable |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
-| `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. There is no way to set one from here. Repeatable |
+| `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. No flag sets a value, bar the one below. Repeatable |
+| `--dns-over-tcp`     | ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc`. Allowlists no port of its own |
 | `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |
+
+Resolving a name needs `--allow-read /etc` under *any* network policy, bare
+`--allow-network` included: `resolv.conf` and `nsswitch.conf` are not granted by
+anything else. Under a port allowlist it also needs TCP 53 and the resolver on
+TCP, which together are one line:
+
+```console
+$ sandbx sandbox-run --dns-over-tcp \
+    --allow-network 53 --allow-network 443 --allow-read /etc \
+    -- curl -sSI https://example.com
+```
+
+`--dns-over-tcp` is a request to the resolver inside the command, not something
+`sandbx` enforces: a command that ignores `RES_OPTIONS` is unaffected, and musl
+has no equivalent — a statically linked musl binary starts on UDP and falls back
+to TCP only on a truncated reply, so this route does not open it.
 
 ## Try the agent
 

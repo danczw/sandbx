@@ -58,9 +58,10 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    command.rs        SandboxedCommand, the audit pipe, the kill chain
       dispatch.rs    HELPER_FLAG, HelperDispatch — the entry into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx,
-                     --allow-network-port, --env
+                     --allow-network-port, --env, --dns-over-tcp
    audit.rs          AuditEvent, AUDIT_TARGET
-   spawn.rs          spawn::command — the one Command::new; env_clear + allowlist
+   spawn.rs          spawn::command — the one Command::new; env_clear, then
+                     the allowlist and the policy's own constants
    error.rs
    bin/sandbx-helper.rs
    helper/
