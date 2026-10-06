@@ -20,7 +20,6 @@ use hardening::{
 use ruleset::{Requested, RequestedNet, enforcement_verdict, landlock_failed, requested};
 use seccomp::deny_dangerous_syscalls;
 
-use crate::degradation::Degradation;
 use crate::{HelperArgs, SandboxError};
 
 /// Argument telling a helper stage that its stdin is the audit channel.
@@ -31,25 +30,23 @@ use crate::{HelperArgs, SandboxError};
 /// read-only pipe gives `EBADF`. A degradation then goes unrecorded, which is the honest
 /// outcome when there is nowhere to record it.
 ///
-/// Stage 1 passes it on to stage 2, which reports what it could not `exec` on the same
-/// channel.
+/// Stage 1 passes it on to stage 2, both stages reporting their own refusals on it.
 pub(crate) const AUDIT_STDIN_FLAG: &str = "--sandbx-audit-stdin";
 
-/// Write what degraded to the parent, on the pipe it put in our stdin slot.
+/// Write already-encoded records to the parent, on the pipe it put in our stdin slot.
 ///
-/// Every failure is swallowed: this reports that the sandbox is *weaker* than advertised,
-/// and a channel that cannot be written is a lost record rather than a reason to refuse a
-/// command the parent has already been told is running.
+/// Every failure is swallowed: a channel that cannot be written is a lost record rather
+/// than a reason to refuse a command the parent has already been told is running — a
+/// refusal included, the parent still having the relayed exit status.
 ///
 /// The write end arrives in the stdin slot because it is the only descriptor std can hand
 /// a child without `unsafe`, which this crate forbids. `try_clone_to_owned` turns the
 /// inherited fd into something writable — `Stdin` is a reader, but the descriptor was
 /// opened for writing. See `context/decision-helper-audit-channel.md`.
-fn report_degradations(degraded: &[(Degradation, String)]) {
+fn report(records: &str) {
     use std::io::Write;
     use std::os::fd::AsFd;
 
-    let records = crate::degradation::encode(degraded);
     if records.is_empty() {
         return;
     }
@@ -61,6 +58,65 @@ fn report_degradations(degraded: &[(Degradation, String)]) {
     // One `write_all` for the whole batch: a short write would split a record across
     // two, and the parent skips a line it cannot parse.
     let _ = std::fs::File::from(channel).write_all(records.as_bytes());
+}
+
+/// Narrow this process into the supervisor and start the stage below it, or say why it
+/// could not.
+///
+/// One region, so one site reports every refusal of stage 1's (#160). Both its edges are
+/// load bearing: stage 2 does not exist anywhere inside here, so at most one refusal is
+/// ever on the channel, and every refusal inside here is one
+/// [`REPORTED_BY_HELPER`](SandboxError::REPORTED_BY_HELPER) admits, so the write needs no
+/// second check.
+fn start_inner_stage(
+    exe: std::path::PathBuf,
+    argv: &[String],
+    audit_on_stdin: bool,
+) -> Result<std::process::Child, SandboxError> {
+    // Decoded for this stage's own use: it needs to know whether the policy grants
+    // network before choosing the unshare flags. The argv it was given is passed on
+    // verbatim — a re-encode would be a second chance for the policy to drift on its way
+    // to the stage that enforces it.
+    let request = HelperArgs::decode(argv)?;
+
+    let degraded = prepare_supervisor(&request.policy)?;
+
+    // Before the spawn below, so this stage's records are on the channel ahead of anything
+    // the stage below reports. Nothing is read back: a best-effort channel carrying a
+    // best-effort record must not be able to fail a run that is otherwise fine.
+    if audit_on_stdin {
+        report(&crate::degradation::encode(&degraded));
+    }
+
+    // This same binary in inner mode, which restricts itself before becoming the command.
+    // `spawn::command` narrows its environment as it builds it: ordinarily a no-op, since
+    // sandbx already narrowed ours, and load-bearing for the helper invoked directly,
+    // which has no sandbx above it to have done that.
+    let mut inner = crate::spawn::command(exe, &request.policy);
+    inner
+        .arg(crate::HELPER_INNER_FLAG)
+        // So the inner stage can confirm we are still here before it hands control
+        // to the command. Host numbering, which is what it reads back from `/proc`.
+        .arg(std::process::id().to_string());
+
+    // Handed down rather than nulled here: a command that could not be `exec`ed is a fact
+    // only the stage below has, so taking fd 0 away from the command is its job now — see
+    // `claim_audit_channel`. Without the flag stdin stays inherited, which a hand-invoked
+    // `sandbx-helper` needs for a command that reads its own input.
+    if audit_on_stdin {
+        inner.arg(AUDIT_STDIN_FLAG);
+    }
+
+    inner.args(argv);
+
+    // Not `SpawnFailed`, which the channel does not admit: two callers return it, so it
+    // names no single decider.
+    inner
+        .spawn()
+        .map_err(|source| SandboxError::InnerStageFailed {
+            detail: "could not start the inner sandbox stage",
+            source,
+        })
 }
 
 /// Supervise a sandboxed command: build the namespaces, then run the inner stage
@@ -92,51 +148,23 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
         _ => (false, argv),
     };
 
-    // Decoded for this stage's own use: it needs to know whether the policy grants
-    // network before choosing the unshare flags. The argv it was given is passed on
-    // verbatim — a re-encode would be a second chance for the policy to drift on its way
-    // to the stage that enforces it.
-    let request = HelperArgs::decode(argv)?;
-
-    // Probed before the namespaces exist, so a failure happens while nothing has changed; the
-    // forked child resolves the link against the image it inherited, not by a second lookup.
+    // Before anything has changed, and outside the region that reports: its `spawn_failed`
+    // is a label the channel does not admit. The forked child resolves the link against the
+    // image it inherited, not by a second lookup.
     let exe = crate::command::self_exe()?;
 
-    let degraded = prepare_supervisor(&request.policy)?;
+    let started = start_inner_stage(exe, argv, audit_on_stdin);
 
-    // Before the spawn below, so this stage's records are on the channel ahead of anything
-    // the stage below reports. Nothing is read back: a best-effort channel carrying a
-    // best-effort record must not be able to fail a run that is otherwise fine.
-    if audit_on_stdin {
-        report_degradations(&degraded);
+    // Without this the trail cannot tell a refusal from a command that ran and exited 1:
+    // this stage exits non-zero and the parent has only that status (#160).
+    if let (true, Err(error)) = (audit_on_stdin, &started) {
+        report(&crate::degradation::encode_refusal(error.label()));
     }
 
-    // This same binary in inner mode, which restricts itself before becoming the command.
-    // `spawn::command` narrows its environment as it builds it: ordinarily a no-op, since
-    // sandbx already narrowed ours, and load-bearing for the helper invoked directly,
-    // which has no sandbx above it to have done that.
-    let mut inner = crate::spawn::command(exe, &request.policy);
-    inner
-        .arg(crate::HELPER_INNER_FLAG)
-        // So the inner stage can confirm we are still here before it hands control
-        // to the command. Host numbering, which is what it reads back from `/proc`.
-        .arg(std::process::id().to_string());
+    let mut child = started?;
 
-    // Handed down rather than nulled here: a command that could not be `exec`ed is a fact
-    // only the stage below has, so taking fd 0 away from the command is its job now — see
-    // `claim_audit_channel`. Without the flag stdin stays inherited, which a hand-invoked
-    // `sandbx-helper` needs for a command that reads its own input.
-    if audit_on_stdin {
-        inner.arg(AUDIT_STDIN_FLAG);
-    }
-
-    inner.args(argv);
-
-    let mut child = inner.spawn().map_err(|source| SandboxError::SpawnFailed {
-        detail: "could not start the inner sandbox stage",
-        source,
-    })?;
-
+    // Off the channel: stage 2 exists by now and may have reported its own, more specific
+    // refusal, and the parent's last record wins — so a record here would displace it.
     let status = child.wait().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not wait for the sandboxed command",
         source,

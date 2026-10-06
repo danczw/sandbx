@@ -106,6 +106,17 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
+    /// The supervisor stage could not start the stage below it.
+    ///
+    /// Separate from [`SpawnFailed`](Self::SpawnFailed) because one site returns this, and a
+    /// single decider is what the helper's audit channel admits a label on.
+    InnerStageFailed {
+        /// What failed, for the operator to act on.
+        detail: &'static str,
+        /// The underlying OS failure.
+        source: std::io::Error,
+    },
+
     /// The innermost stage could not become the command, so it never ran.
     ///
     /// Distinct from [`SpawnFailed`](Self::SpawnFailed), which is a *helper* that did not
@@ -157,7 +168,7 @@ impl std::fmt::Display for SandboxError {
             Self::BadHelperArgs { detail } => {
                 write!(f, "malformed sandbox helper arguments: {detail}")
             }
-            Self::SpawnFailed { detail, source } => {
+            Self::SpawnFailed { detail, source } | Self::InnerStageFailed { detail, source } => {
                 write!(f, "{detail}: {source}")
             }
             Self::ExecFailed { source } => {
@@ -192,6 +203,7 @@ impl std::error::Error for SandboxError {
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. }
             | Self::SpawnFailed { source, .. }
+            | Self::InnerStageFailed { source, .. }
             | Self::ExecFailed { source } => Some(source),
         }
     }
@@ -204,14 +216,19 @@ impl SandboxError {
     /// `path_not_allowed` and `unresolvable` are the parent's and
     /// [`FsGuard`](crate::FsGuard)'s own decisions, and a channel record outranks the exit
     /// status, so admitting one would let a forged line claim a kill that never happened
-    /// and displace the real outcome. Hand-maintained against `label`; an omission fails
-    /// safe, falling back to the relayed exit status.
-    pub(crate) const REPORTED_BY_HELPER: [&str; 7] = [
+    /// and displace the real outcome. The criterion is a single decider, not what failed:
+    /// `inner_stage_failed` is in and `spawn_failed` is out although both name a process
+    /// that would not start.
+    ///
+    /// Hand-maintained against `label`; an omission fails safe, falling back to the relayed
+    /// exit status.
+    pub(crate) const REPORTED_BY_HELPER: [&str; 8] = [
         "bad_helper_args",
         "landlock",
         "seccomp",
         "namespace_setup_failed",
         "process_hardening",
+        "inner_stage_failed",
         "exec_failed",
         "unsupported",
     ];
@@ -230,6 +247,7 @@ impl SandboxError {
             Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
             Self::ProcessHardening { .. } => "process_hardening",
             Self::SpawnFailed { .. } => "spawn_failed",
+            Self::InnerStageFailed { .. } => "inner_stage_failed",
             Self::ExecFailed { .. } => "exec_failed",
             // The word the operator typed and the docs use, so it is the word a trail
             // reader greps for.
@@ -282,6 +300,10 @@ mod tests {
                 detail: "sample",
                 source: io(),
             },
+            SandboxError::InnerStageFailed {
+                detail: "sample",
+                source: io(),
+            },
             SandboxError::ExecFailed { source: io() },
             SandboxError::TimedOut {
                 after: std::time::Duration::from_secs(1),
@@ -299,6 +321,7 @@ mod tests {
                 | SandboxError::NamespaceSetupFailed { .. }
                 | SandboxError::ProcessHardening { .. }
                 | SandboxError::SpawnFailed { .. }
+                | SandboxError::InnerStageFailed { .. }
                 | SandboxError::ExecFailed { .. }
                 | SandboxError::TimedOut { .. }
                 | SandboxError::Unsupported { .. } => {}

@@ -57,18 +57,21 @@ sandbx                      stage 1                 stage 2 / command
 io::pipe() ──┐
              └─ write ──►   stdin (fd 0)
                             │ capability_bounding_set\tleft as inherited: EPERM
+                            │ decode, harden ─┬─ ok
+             bad_helper_args\t  ◄─────────────┘ no: refused
                             ├─ drops its handle
-                            └─ spawns ────────────► fd 0 ─► CLOEXEC duplicate
-                                                    /dev/null ─► fd 0
-                                                    restrict, exec ─┬─ ok: closed
-reads to EOF                        namespace_setup_failed\t  ◄─────┘ no: refused
+                            └─ spawns ──────────► fd 0 ─► CLOEXEC duplicate
+                                                 /dev/null ─► fd 0
+                                                 restrict, exec ─┬─ ok: closed
+reads to EOF                     namespace_setup_failed\t  ◄─────┘ no: refused
   └─ AuditEvent::degraded(..).emit()
   └─ AuditEvent::exited(..) | ::failed(..)
 ```
 
 `hardening.rs` returns `Vec<(Degradation, String)>` instead of emitting;
-`degradation.rs` owns the format and both ends; `exec_sandboxed` and
-`exec_inner` perform one write each; `command.rs` reads, decodes and emits.
+`degradation.rs` owns the format and both ends; `exec_sandboxed` writes its
+degradations or its one refusal and `exec_inner` writes its one refusal;
+`command.rs` reads, decodes and emits.
 
 **Stage 2 reports any refusal, not only a failed `exec`** (#157). It can also refuse
 a Landlock ruleset the kernel will not take, a seccomp filter that will not install, a
@@ -80,9 +83,31 @@ member of that set rather than the only thing the channel can carry. The set liv
 to pass through. The claim on fd 0 moves to the top of `exec_inner` for this: a refusal
 is only reportable from a point where the channel is already in hand.
 
-Stage 1's own refusals are not on the channel, so they still reach the trail as
-`exited code=1` — it holds the write end for its whole lifetime and could report, and
-the parent has only its forwarded stderr. Same gap, one stage up (#160).
+**Stage 1 reports its own refusals too** (#160), the same gap one stage up: it exits
+non-zero, the parent has only that status, and a malformed argv or a kernel that will
+not unshare read as `exited code=1`. It already held the write end for its whole
+lifetime, so the write site was the whole of what was missing.
+
+The *region* that reports is what the design is in. `start_inner_stage` holds
+everything stage 1 does up to and including the spawn, and only its `Err` is written.
+Both edges of that region are load bearing:
+
+- Below it, `child.wait()` failing is not reported. Stage 2 exists by then and may
+  have written its own, more specific refusal, and the parent's *last* record wins —
+  so a record here would displace it. That is also what keeps the count bounded: each
+  stage reports only from above the next stage's existence, so one refusal crosses
+  however many stages write, and `RECORD_LIMIT` stays at the steps plus one.
+- Above it, `self_exe` is probed in `exec_sandboxed` rather than inside. Its refusal
+  is `spawn_failed`, which the channel does not admit; keeping it outside means every
+  label the write site can produce is one the reader takes, so the writer and the
+  reader agree without a second check at the write. The variant is shared with sandbx
+  (`command.rs`), so relabelling it there was not an option.
+
+`inner_stage_failed` is what lets the spawn sit *inside* the region. Stage 1 failing
+to start stage 2 would otherwise be `spawn_failed` too, and that label names no single
+decider — sandbx returns it about a helper, and stage 1 about its own wait. A channel
+record outranks the exit status, so one label for two deciders would let a line claim
+a helper that failed to start when one did.
 
 **sandbx emits, not the helper.** One subscriber in the process tree, one timestamp
 source, one format, and no `tracing-subscriber` dependency in the helper. This is
@@ -135,20 +160,23 @@ unconditional `null` quietly took away.
 **Defence in depth behind that line.** `decode` accepts only labels in
 `Degradation::ALL` and `SandboxError::REPORTED_BY_HELPER`, two closed sets kept
 disjoint by a test, so nothing can name a mechanism or a reason sandbx did not
-define; the record count is capped at the steps that exist plus the one refusal; and
-`encode` strips the separator characters from a detail so one record cannot forge a
-second. A refusal carries no detail at all — the reason reaches the operator on the
-helper's forwarded stderr.
+define; the record count is capped at the steps that exist plus the one refusal that
+can cross however many stages write — see the stage 1 note above; and `encode` strips
+the separator characters from a detail so one record cannot forge a second. A refusal
+carries no detail at all — the reason reaches the operator on the helper's forwarded
+stderr.
 
 `REPORTED_BY_HELPER` is a *subset* of what `SandboxError::label` can return, not all
 of it, and the four it leaves out are the point: `timeout`, `spawn_failed`,
 `path_not_allowed` and `unresolvable` are decisions sandbx and `FsGuard` make for
 themselves. A channel record outranks the exit status, so admitting `timeout` would
 let a forged line claim a kill that never happened *and* suppress the real outcome —
-on a trail whose whole purpose is that `reason="timeout"` can be filtered. The subset
-is hand-maintained against `label`, which the compiler cannot help with; a helper
-refusal missing from it is dropped rather than mistrusted, leaving the trail saying
-what it said before #157.
+on a trail whose whole purpose is that `reason="timeout"` can be filtered. What the
+criterion turns on is whether the label names one decider, not what failed:
+`inner_stage_failed` is in and `spawn_failed` is out although both name a process that
+would not start. The subset is hand-maintained
+against `label`, which the compiler cannot help with; a helper refusal missing from it
+is dropped rather than mistrusted, leaving the trail saying what it said before #157.
 
 ## What this is not
 
@@ -194,5 +222,6 @@ reporting on. Two mechanisms and one detail-free refusal, each reported at most
 once, with the detail capped at 256 characters, is two orders of magnitude inside
 the 64 KiB a Linux pipe holds — and the cap is unit-tested, so the bound is a
 property of the format rather than a hope about the length of errno strings.
-Widening the refusal's label set does not widen the bound: stage 2 returns at most
-one error, so it writes at most one such record.
+Neither widening the refusal's label set nor letting a second stage report widens the
+bound: a stage returns at most one error, and reports only from above the next stage's
+existence, so at most one refusal record is on the channel whatever refused.
