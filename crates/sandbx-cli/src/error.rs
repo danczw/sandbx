@@ -40,10 +40,12 @@ pub enum PolicyError {
         cwd: PathBuf,
     },
 
-    /// With no usable `HOME`, the working directory could not be ruled out as a home.
+    /// With no `HOME` naming a home directory, the cwd could not be ruled out as one.
     UnnamedHome {
         /// The directory a default would have been rooted at.
         cwd: PathBuf,
+        /// The absolute `$HOME` rejected as no home, or `None` when there was none to name.
+        home: Option<PathBuf>,
     },
 
     /// The working directory holds a path every command is already granted execute on.
@@ -74,10 +76,22 @@ impl std::fmt::Display for PolicyError {
                  — {ADVICE}",
                 cwd.display()
             ),
-            Self::UnnamedHome { cwd } => write!(
+            // Naming the value matters where it is set and still rejected — `HOME=/home` is
+            // where homes live, not one of them, and "no usable HOME" reads as unset.
+            Self::UnnamedHome {
+                cwd,
+                home: Some(home),
+            } => write!(
                 f,
-                "refusing to derive a policy from {}: with no usable HOME, \
-                 sandbx cannot tell it from a home directory — {ADVICE}",
+                "refusing to derive a policy from {}: HOME={} names no home directory, \
+                 so sandbx cannot tell it from one — {ADVICE}",
+                cwd.display(),
+                home.display()
+            ),
+            Self::UnnamedHome { cwd, home: None } => write!(
+                f,
+                "refusing to derive a policy from {}: with no HOME naming a home directory, \
+                 sandbx cannot tell it from one — {ADVICE}",
                 cwd.display()
             ),
             Self::SystemExecutables { cwd, path } => write!(

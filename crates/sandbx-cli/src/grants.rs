@@ -203,6 +203,9 @@ fn vetted_root<'a>(
     if !homes.usable && looks_like_a_home(cwd) {
         return Err(PolicyError::UnnamedHome {
             cwd: cwd.to_path_buf(),
+            // The written spelling, which `named_homes` pushes first and keeps only when
+            // absolute — so an empty or relative `HOME` names nothing here either.
+            home: homes.paths.first().cloned(),
         });
     }
 
@@ -554,7 +557,9 @@ mod tests {
                 "{error} let {cwd} through with no HOME set"
             );
             assert!(
-                error.to_string().contains("with no usable HOME"),
+                error
+                    .to_string()
+                    .contains("with no HOME naming a home directory"),
                 "{error} does not say why {cwd} could not be told apart"
             );
         }
@@ -604,6 +609,13 @@ mod tests {
         assert!(
             matches!(error, PolicyError::UnnamedHome { .. }),
             "{error} let /home/other through for $HOME=/home"
+        );
+        // The refusal fires on a `$HOME` that *is* set, where "no usable HOME" read as unset.
+        assert!(
+            error
+                .to_string()
+                .contains("HOME=/home names no home directory"),
+            "{error} does not name the $HOME it rejected"
         );
     }
 

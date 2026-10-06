@@ -149,9 +149,16 @@ leaves out is why there are two lists rather than one. `/root` is in
 `HOME_PARENTS` because a root *at* `/root` is write over root's home, and it is
 that home — so `HOME=/root` names a home, where `HOME=/home` names none. Testing
 all four would refuse `HOME=/root` with cwd `/root/app`, the conventional root
-container, saying "no usable HOME" of a `$HOME` that is set, resolvable and names
-exactly the home it should. The cwd arms still read all four: a cwd *at* `/root`
-is refused whatever `$HOME` says, which is the asymmetry the two lists encode.
+container, over a `$HOME` that is set, resolvable and names exactly the home it
+should. The cwd arms still read all four: a cwd *at* `/root` is refused whatever
+`$HOME` says, which is the asymmetry the two lists encode.
+
+The refusal names the `$HOME` it rejected, because this arm now fires on one that
+is *set*. `UnnamedHome` said "with no usable HOME", which reads as unset and sent
+the operator to check whether they had exported it; `HOME=/home names no home
+directory` says which value was rejected and leaves "with no HOME naming a home
+directory" for the case where there is genuinely nothing to name — unset, empty
+or relative, the three `named_homes` keeps out of `paths`.
 
 What this costs, visibly: a cwd shaped like a home under `HOME_PARENTS` is now
 refused where an unusable `$HOME` previously derived. `HOME=/home/app` not yet
@@ -372,6 +379,10 @@ usable stops asking that $HOME holds no homes (HOME=/home, the #162 hole)
 that test widened from SHARED_HOME_PARENTS to all four (HOME=/root)
    ──► a_root_home_still_derives_under_itself             fails   ◄── /root/app refuses
        a_home_that_holds_homes_refuses_a_child_of_one      passes  ◄── /home is in both
+
+UnnamedHome stops naming the $HOME it rejected
+   ──► a_home_that_holds_homes_refuses_a_child_of_one      fails
+       an_unset_home_refuses_a_child_of_one                passes  ◄── nothing to name
 
 the written form dropped when $HOME does not resolve
    ──► an_unresolvable_home_is_still_compared              fails
