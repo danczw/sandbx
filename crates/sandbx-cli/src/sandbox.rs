@@ -6,16 +6,29 @@ use sandbx_core::{NetworkPolicy, SandboxPolicy, SandboxedCommand};
 
 use crate::{Grants, PolicyError, SandboxRunError};
 
-/// What a run that failed under a port allowlist most likely needed, if anything.
+/// Whether the policy leaves a name no way to resolve.
 ///
-/// Keyed to a failure and not to the policy alone, because sandbx cannot see the command's
-/// own `getaddrinfo` — so this fires for any failure under a port list, resolution or not.
-fn resolver_advice(policy: &SandboxPolicy, code: i32) -> Option<&'static str> {
-    let narrowed = matches!(policy.network(), NetworkPolicy::Ports(_));
-    match narrowed && !policy.hints_dns_over_tcp() && code != 0 {
+/// A port list denying UDP *and* not naming TCP 53, which is the one shape where the
+/// advice below names something the policy is actually missing.
+fn cannot_resolve(policy: &SandboxPolicy) -> bool {
+    let unnamed = match policy.network() {
+        NetworkPolicy::Ports(ports) => !ports.contains(&53),
+        NetworkPolicy::Denied | NetworkPolicy::AnyPort => false,
+    };
+    unnamed && !policy.hints_dns_over_tcp()
+}
+
+/// What such a run most likely needed, once it has failed.
+///
+/// Hedged, and it has to be: sandbx cannot see the command's own `getaddrinfo`, so a
+/// failure for any other reason gets this too.
+fn resolver_advice(cannot_resolve: bool, code: i32) -> Option<&'static str> {
+    match cannot_resolve && code != 0 {
         true => Some(
-            "a port allowlist denies UDP, so names do not resolve. If that was the failure, \
-             add --dns-over-tcp --allow-network 53 --allow-read /etc",
+            "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
+             resolve. If that was the failure, add --dns-over-tcp --allow-network 53 \
+             --allow-read /etc — and a path flag replaces the working-directory default, \
+             so name the tree the command needs too",
         ),
         false => None,
     }
@@ -70,8 +83,9 @@ impl SandboxRun {
     /// Run it, forward its output, and report the code to exit with.
     pub fn execute(&self) -> Result<i32, SandboxRunError> {
         let policy = self.policy()?;
-        let mut command =
-            SandboxedCommand::new(self.program(), policy.clone()).args(self.arguments());
+        // Before the policy moves: the advice needs one bit of it, not a clone of all of it.
+        let unresolvable = cannot_resolve(&policy);
+        let mut command = SandboxedCommand::new(self.program(), policy).args(self.arguments());
         if let Some(limit) = self.timeout() {
             command = command.timeout(limit);
         }
@@ -84,7 +98,7 @@ impl SandboxRun {
 
         let code = sandbx_core::exit_code(&output.status);
         // After the command's own stderr, so sandbx's line is the last thing read.
-        if let Some(advice) = resolver_advice(&policy, code) {
+        if let Some(advice) = resolver_advice(unresolvable, code) {
             eprintln!("sandbx: {advice}");
         }
 
@@ -100,34 +114,50 @@ mod tests {
         SandboxPolicy::default().allow_network_port(443)
     }
 
+    /// Everything the advice tells the operator to type, including the clause about the
+    /// default it replaces — the trap of the three flags it names.
     #[test]
-    fn a_failed_run_under_a_port_list_advises_the_hint() {
-        let advice = resolver_advice(&ported(), 6).expect("a failure under a port list");
+    fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
+        let advice = resolver_advice(true, 6).expect("a failure with no way to resolve");
 
         assert!(advice.contains("--dns-over-tcp"), "got: {advice}");
+        assert!(advice.contains("--allow-network 53"), "got: {advice}");
         assert!(advice.contains("--allow-read /etc"), "got: {advice}");
+        assert!(
+            advice.contains("replaces the working-directory default"),
+            "the advice does not say a path flag suppresses the default: {advice}"
+        );
     }
 
     /// Nothing failed, so there is nothing to explain.
     #[test]
-    fn a_successful_run_under_a_port_list_is_silent() {
-        assert_eq!(resolver_advice(&ported(), 0), None);
+    fn a_successful_run_is_silent() {
+        assert_eq!(resolver_advice(true, 0), None);
     }
 
-    /// The hint is already set, so whatever failed was not this.
     #[test]
-    fn a_failed_run_with_the_hint_set_is_silent() {
-        assert_eq!(resolver_advice(&ported().hint_dns_over_tcp(), 6), None);
+    fn a_port_list_without_53_cannot_resolve() {
+        assert!(cannot_resolve(&ported()));
+    }
+
+    /// The policy already names what the advice would ask for, so a failure here was
+    /// something else — and advising it anyway would name a port the operator has.
+    #[test]
+    fn a_port_list_naming_53_is_silent() {
+        assert!(!cannot_resolve(&ported().allow_network_port(53)));
+    }
+
+    /// The hint is set, so the remaining gap is the operator's to see on the port list.
+    #[test]
+    fn a_hinted_policy_is_silent() {
+        assert!(!cannot_resolve(&ported().hint_dns_over_tcp()));
     }
 
     /// Only a port allowlist denies UDP: under the other two shapes the resolver is
     /// either fully reachable or fully denied, and in both the advice would mislead.
     #[test]
-    fn a_failed_run_without_a_port_list_is_silent() {
-        assert_eq!(resolver_advice(&SandboxPolicy::default(), 6), None);
-        assert_eq!(
-            resolver_advice(&SandboxPolicy::default().allow_network(), 6),
-            None
-        );
+    fn no_port_list_is_silent() {
+        assert!(!cannot_resolve(&SandboxPolicy::default()));
+        assert!(!cannot_resolve(&SandboxPolicy::default().allow_network()));
     }
 }

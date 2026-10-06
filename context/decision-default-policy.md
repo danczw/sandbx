@@ -37,8 +37,9 @@ the strict thing, the CLI opts in.
 
 Any of `--allow-read`, `--allow-write`, `--allow-exec` present ⇒ no default. None
 ⇒ derive. `--allow-env`, `--allow-network`, `--allow-unix-sockets` and
-`--dns-over-tcp` name no path and change nothing. The predicate runs over `Axis::ALL`, so a fourth path flag
-joins the rule rather than being forgotten into a default that widens it.
+`--dns-over-tcp` name no path and change nothing. The predicate runs over
+`Axis::ALL`, so a fourth path flag joins the rule rather than being forgotten
+into a default that widens it.
 
 The alternative was an unconditional default plus a `--no-default-policy` opt-out,
 and what decides it is the failure mode rather than the ergonomics. Under that

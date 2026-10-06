@@ -158,6 +158,12 @@ $ sandbx sandbox-run --dns-over-tcp \
     -- curl -sSI https://example.com
 ```
 
+Two things that line does not say. `--allow-read` is a path flag, so it
+*replaces* the working-directory default — name the tree the command works on as
+well, or it loses the read and write it had. And where `resolv.conf` is a symlink
+out of `/etc`, which is the systemd-resolved default on most distributions, read
+the link target too: `--allow-read /run/systemd/resolve`.
+
 `--dns-over-tcp` is a request to the resolver inside the command, not something
 `sandbx` enforces: a command that ignores `RES_OPTIONS` is unaffected, and musl
 has no equivalent — a statically linked musl binary starts on UDP and falls back

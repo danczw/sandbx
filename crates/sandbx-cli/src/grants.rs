@@ -50,7 +50,10 @@ pub struct Grants {
     /// musl, which has no `RES_OPTIONS` and so cannot be asked to start on TCP.
     ///
     /// `--allow-read /etc` is needed for resolution under any network policy,
-    /// bare flag included; nothing else grants it.
+    /// bare flag included; nothing else grants it. It is a path flag, so it
+    /// replaces the working-directory default — name the command's own tree as
+    /// well. Where `resolv.conf` is a symlink out of `/etc`, the link target
+    /// needs a grant too: `--allow-read /run/systemd/resolve`.
     ///
     /// The allowlist is ports, not hosts: `--allow-network 443` reaches port
     /// 443 on every routable host. Unix-domain sockets stay denied either way.
@@ -343,11 +346,9 @@ impl Grants {
             policy = policy.hint_dns_over_tcp();
         }
 
-        // Both flags claim one variable and disagree about its value, so honouring both
-        // would silently drop the operator's — refused as `variable_name` refuses
-        // `NAME=VALUE`. Over `imposed_env` rather than the name itself, so a second imposed
-        // variable inherits the refusal and the CLI never spells one.
-        if let Some(name) = policy.allowed_env().iter().find(|name| {
+        // Honouring both would drop the operator's value in silence. Over `--allow-env`'s
+        // own names, not `allowed_env()`: a name nobody typed is not one they can drop.
+        if let Some(name) = self.allow_env.iter().find(|name| {
             policy
                 .imposed_env()
                 .iter()

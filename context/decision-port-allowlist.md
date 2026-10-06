@@ -75,6 +75,13 @@ is not in `SYSTEM_EXECUTABLE_PATHS`, and nothing else grants `resolv.conf` or
 `nsswitch.conf`. The flag is why it is one line and not an incantation nobody
 finds.
 
+Two sharp edges in that line, both outside what the flag can fix. `--allow-read`
+is a path flag, so it suppresses the working-directory default — the recipe has
+to name the command's own tree as well or take it away. And a Landlock rule
+covers the resolved target, not the link: where `resolv.conf` points out of
+`/etc`, as it does under systemd-resolved, the grant on `/etc` does not reach the
+file. `--allow-read /run/systemd/resolve` is the rest of it there.
+
 Two things it is not. It **grants no port**: the operator still writes
 `--allow-network 53`, because a flag that opened a port of its own would put a
 port on the audit trail that nobody named — the same defect as reporting a count

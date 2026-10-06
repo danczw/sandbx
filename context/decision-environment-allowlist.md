@@ -103,9 +103,10 @@ is never anywhere it does not need to be.
 ## Stage 2 checks as well, and refuses
 
 Stage 2 does one more thing: before applying anything it looks at the environment
-it *inherited* and refuses if the policy permits no variable of that name. The factory is
-what the command relies on; this is what says whether the stage above actually went
-through it. Narrowing again instead would answer the same question with silence.
+it *inherited* and refuses if the policy permits no variable of that name. The
+factory is what the command relies on; this is what says whether the stage above
+actually went through it. Narrowing again instead would answer the same question
+with silence.
 
 So stage 2 depends on an earlier stage having run, and the asymmetry with stage 1
 is a deliberate trade rather than a derivation from reachability. Stage 2 is **not**
