@@ -20,7 +20,7 @@ made the file.
 | + a constraint a plausible edit would break | one more sentence, two if the mechanism needs naming |
 | public enum variant or public field | one clause, and only because `missing_docs` fires on these too |
 | private field, getter, `From`, `Default` | nothing, unless the name is genuinely ambiguous — then one clause |
-| test function | nothing; the name and the `assert!` messages carry it |
+| test function | one line, and only when it states what the name cannot |
 | inline `//` | one or two lines, where the *why* is not derivable from the line |
 | module `//!` | five lines: what the module owns, and the one thing a reader must know before editing it |
 
@@ -33,8 +33,8 @@ work and keep that one.
   names are the documentation; a `///` that paraphrases them is noise.
 - **History.** "which produced #49", "was first proposed as", "used to be",
   "added in the commit that split the helper". `git log` and the issue tracker
-  hold this and stay accurate. An issue number is allowed only when it points at
-  open work.
+  hold this and stay accurate. An issue number is allowed when the reader needs
+  it to find the work; the issue carries its own status, so the comment does not.
 - **Rejected alternatives**, unless the rejection is a trap someone will
   re-propose next month. Then one sentence: what fails, not the full argument.
 - **Rhetoric and emphasis.** `**The table.**`, "deliberately", "irreducible
@@ -61,9 +61,8 @@ into a tool's JSON-schema `description` (`sandbx-tools/src/tools/*.rs`). Those
 are user- and model-facing text. Leave them, and exclude them when reading a
 crate's density.
 
-`sandbx-core/src/helper/` is almost entirely this category. Expect it to shrink
-by rewording rather than by deleting, and prefer one terse sentence to none on
-any enforcement path.
+Expect `sandbx-core/src/helper/` to shrink by rewording rather than by deleting,
+and prefer one terse sentence to none on any enforcement path.
 
 ## Before and after
 

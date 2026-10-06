@@ -178,9 +178,10 @@ Three properties matter as much as the list:
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
   can add raw syscalls.
-- **Approval is not enforcement, and there is no approval step yet.** The agent
-  loop runs every tool call the model asks for — nothing sits between the model
-  requesting one and `sandbx-tools` executing it. `sandbx agent-run` reaches that
+- **Approval is not enforcement, and nothing gates a tool call**
+  ([#106](https://github.com/danczw/sandbx/issues/106)). The agent loop runs every
+  tool call the model asks for — nothing sits between the model requesting one and
+  `sandbx-tools` executing it. `sandbx agent-run` reaches that
   loop, so this is what a prompt you type does, not only what the library would do:
   the sandbox is the only thing between a prompt-injected tool call and your files,
   which is why it is default-deny and why the policy `agent-run` derives is the
@@ -238,10 +239,10 @@ Three properties matter as much as the list:
   inside a `sendmsg` and so never passes the hook the port rules hang off. All
   denied by seccomp while a port list is in force. So **name resolution fails**
   under `--allow-network <port>` — `getaddrinfo` can reach neither a UDP resolver
-  nor `AF_NETLINK` — and so do QUIC, HTTP/3, `ping` and in-process kTLS. Until
-  the first of those is addressed
-  ([#147](https://github.com/danczw/sandbx/issues/147)), a command needing names
-  wants a bare `--allow-network`, or an address resolved before the run.
+  nor `AF_NETLINK` — and so do QUIC, HTTP/3, `ping` and in-process kTLS.
+  [#147](https://github.com/danczw/sandbx/issues/147) holds the options; a command
+  needing names wants a bare `--allow-network`, or an address resolved before the
+  run.
   `context/decision-port-allowlist.md` records why the denial is not narrower.
 
   **And it is not uniformly narrower than withholding network.** `bind` is
@@ -259,9 +260,9 @@ Three properties matter as much as the list:
   socket, the session bus — not a chosen one. seccomp compares register values
   and the path passed to `connect` is behind a pointer it cannot follow;
   Landlock gained a path-scoped right only in ABI V9 (Linux 7.1), which is not
-  available in practice yet. Until then, what the command can *read* is what
-  bounds which sockets exist to be dialled, so keep the filesystem policy narrow
-  when granting this.
+  available in practice. So what the command can *read* is what bounds which
+  sockets exist to be dialled, so keep the filesystem policy narrow when granting
+  this.
 - **A variable you pass through is passed in full.** The environment allowlist is
   by *name*: `--allow-env ANTHROPIC_API_KEY` hands the command the value the
   harness holds, verbatim. There is no redaction, no partial value, no per-tool
@@ -269,8 +270,8 @@ Three properties matter as much as the list:
   crosses `exec` and nothing downstream narrows it again. So the allowlist decides
   *whether* a secret is shared, never *how much* of it. Handing a credential to a
   tool without exposing the value to the tool is a separate problem
-  ([#41](https://github.com/danczw/sandbx/issues/41)) and is not solved here;
-  until it is, name a variable only when the command genuinely needs its value.
+  ([#41](https://github.com/danczw/sandbx/issues/41)) and is not solved here:
+  name a variable only when the command genuinely needs its value.
   The example is not hypothetical: `agent-run` reads `ANTHROPIC_API_KEY` from the
   harness's own environment, so the harness holds a live key for the whole turn.
   A tool the agent runs does not see it — the environment is cleared and only

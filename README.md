@@ -123,7 +123,7 @@ permission denials the examples above are there to show.
 | `--allow-read PATH`  | read access to `PATH`. Repeatable |
 | `--allow-write PATH` | write access to `PATH`. Repeatable |
 | `--allow-exec PATH`  | run programs under `PATH` (grants read too). Repeatable |
-| `--allow-network`    | a network namespace with an interface. IP egress only |
+| `--allow-network`    | IP egress on any TCP port, with UDP and raw sockets. Shares the host's network namespace |
 | `--allow-network PORT` | IP connect and bind on `PORT` alone — on every host, since the kernel matches the port and not the destination. Denies UDP and raw sockets with it, so names stop resolving, and shares the host's network namespace. Repeatable |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
 | `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. There is no way to set one from here. Repeatable |

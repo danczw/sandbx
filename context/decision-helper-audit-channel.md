@@ -143,6 +143,6 @@ happened; only the ordering is lossy.
 **Not blocking is structural, not lucky.** Nothing drains the pipe while stage 1
 writes, so a write that filled the buffer would deadlock the very run it is
 reporting on. Two mechanisms, each reporting at most once, with the detail capped
-at 256 characters, is three orders of magnitude inside the 64 KiB a Linux pipe
+at 256 characters, is two orders of magnitude inside the 64 KiB a Linux pipe
 holds — and the cap is unit-tested, so the bound is a property of the format
 rather than a hope about the length of errno strings.
