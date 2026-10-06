@@ -47,9 +47,8 @@ pub enum Command {
     /// With no path flag, the working directory is readable and writable, so
     /// working on the project you are standing in needs no flags. A `--allow-…`
     /// path flag replaces that default rather than adding to it. Standing at the
-    /// filesystem root, in your home directory, in a directory holding it, or in
-    /// one holding the running `sandbx` is refused rather than granted — pass
-    /// the flags for the tree you mean.
+    /// filesystem root, in your home directory, or in a directory holding it is
+    /// refused rather than granted — pass the flags for the tree you mean.
     ///
     /// Everything else is denied unless a flag grants it, except what a command
     /// needs in order to start: read access to the system binaries and
@@ -62,7 +61,7 @@ pub enum Command {
     /// Put the command after `--`:
     ///
     /// ```text
-    /// sandbx sandbox-run -- cargo test
+    /// sandbx sandbox-run -- grep -rn TODO .
     /// sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt
     /// ```
     SandboxRun(SandboxRun),
