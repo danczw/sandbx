@@ -28,13 +28,21 @@ impl SessionId {
     /// retrying with the attempt count raised. It is added to the millisecond rather
     /// than suffixed, so a retry is still one base36 number.
     pub fn from_clock(attempt: u64) -> Result<Self, SessionError> {
-        let elapsed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| SessionError::Clock)?;
-        let millis = u64::try_from(elapsed.as_millis()).map_err(|_| SessionError::Clock)?;
-
-        Ok(Self(base36(millis.saturating_add(attempt))))
+        Ok(Self(base36(clock_millis()?.saturating_add(attempt))))
     }
+}
+
+/// Milliseconds since the Unix epoch.
+///
+/// `u64` rather than the `u128` the duration reports: a clock far enough in the future
+/// to overflow it is as broken as one before the epoch, and truncating would hand back
+/// an id that looks ordinary.
+pub(crate) fn clock_millis() -> Result<u64, SessionError> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| SessionError::Clock)?;
+
+    u64::try_from(elapsed.as_millis()).map_err(|_| SessionError::Clock)
 }
 
 impl std::str::FromStr for SessionId {
