@@ -25,7 +25,7 @@ repository = "https://github.com/danczw/sandbx"
 publish = false
 
 # Every member crate opts in with `[lints] workspace = true`, `sandbx-core`
-# included: it exempts the four sites that spawn, not the whole crate.
+# included: it exempts the one site that spawns, not the whole crate.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
