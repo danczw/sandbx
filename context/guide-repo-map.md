@@ -23,8 +23,8 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
                         ├──► sandbx-agent ──┐  turn loop
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
-sandbx-core ────────────────────────────────┘                 derivation, the
-sandbx-session   no internal deps                             turn loop's caller
+sandbx-core ────────────────────────────────┤                 derivation, the
+sandbx-session ─────────────────────────────┘                 turn loop's caller
 sandbx-tui       placeholder
 ```
 
@@ -34,7 +34,7 @@ sandbx-tui       placeholder
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, tools |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, session, tools |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
 | `sandbx-tui` | placeholder (#133) | — |
 
@@ -192,18 +192,21 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    sandbox.rs   SandboxRun
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller, and the gate it answers with
+      render.rs the answer on stdout, everything about it on stderr
    auth.rs      Auth — which source the provider key comes from: the
                 environment, then a file, and the login/logout/status over it
    auth/store.rs
                 the credential file itself — its TOML shape, and the 0600/0700
                 modes it is refused and written under
+   session.rs   --session: which session to open, and the translation to and from
+                the stored shapes
    error.rs     AgentError, SandboxRunError, PolicyError, HashError
    error/auth.rs
                 AuthError — what stops `auth`, or a key resolution under `agent-run`
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
-tests/          agent_run, audit_log, audit_log_install, auth, auth_store,
-                cwd_policy, hash, name, sandbox_run
+tests/          agent_run, agent_session, audit_log, audit_log_install, auth,
+                auth_store, cwd_policy, hash, name, sandbox_run
 ```
 
 Lib `sandbx_cli`, bin `sandbx`. Four subcommands: `sandbox-run`, `agent-run`,

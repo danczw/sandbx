@@ -12,8 +12,9 @@ runs goes through a Landlock + seccomp boundary, and the sandbox fails closed
 rather than degrading to unrestricted execution.
 
 > **Pre-alpha.** You can ask an agent one question from the command line and
-> watch it use tools to answer. What is missing above that is the interactive
-> surface — no session, no history, no interrupt — and, more importantly, any
+> watch it use tools to answer, saving the conversation to resume it later. What
+> is missing above that is the interactive surface — no live session, no
+> interrupt — and, more importantly, any
 > per-call approval prompt: a tool is approved for the whole run or not at all, so
 > the grants you pass are the whole of what a prompt injection reaches once it has
 > a tool. Enforced today on Linux 6.10+ with
@@ -284,10 +285,25 @@ result for it to work around rather than a crash — and reaches stderr not at a
 | `--allow-tool [TOOL]` | approve a tool that does more than read. Repeatable; bare approves all seven |
 | `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
 | `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
+| `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
 | `--system TEXT`   | a system prompt. Unset sends none |
 
-It is single-shot on purpose: one question, one answer, then the process ends.
-There is no session to resume and no way to interrupt a turn mid-flight.
+Each run is still one question and one answer, then the process ends — there is
+no way to interrupt a turn mid-flight. `--session` is what carries a
+conversation across runs:
+
+```bash
+sandbx agent-run --session -- 'remember the number 41'
+# sandbx: session 1z8k3p7q started; resume it with --session 1z8k3p7q
+sandbx agent-run --session 1z8k3p7q -- 'what number did I ask you to remember?'
+```
+
+A session is a plaintext JSONL transcript under
+`$XDG_STATE_HOME/sandbx/sessions` (or `~/.local/state/sandbx/sessions`), created
+`0600` in a `0700` directory, and it holds whatever a tool read into the
+conversation. Resuming one that another user can write is refused; one they can
+only read resumes and says so on stderr. Nothing expires it and nothing
+redacts it — see [SECURITY.md](SECURITY.md).
 
 Exit `0` means the model finished its answer. Exit `2` means `--max-tokens` cut
 it off mid-sentence — what reached stdout is real but incomplete, which is worth

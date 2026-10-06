@@ -214,6 +214,33 @@ Three properties matter as much as the list:
   way to make the blast radius smaller than a tree. The gate did not change the
   commitment underneath this bullet: a tool call you approve runs. sandbx bounds
   what it can reach; it does not decide whether it should run.
+- **A saved session is a plaintext transcript on your disk.** `agent-run
+  --session` writes the whole conversation — your prompts, the model's replies,
+  every tool call's arguments and every tool's output — as JSON lines under
+  `$XDG_STATE_HOME/sandbx/sessions`, or `~/.local/state/sandbx/sessions`.
+  Whatever a tool read into the conversation is in that file: a config holding a
+  token, a `.env` an `--allow-read` tree happened to contain, a `bash` output
+  that printed a key. There is no encryption, no redaction and no expiry;
+  nothing ever deletes a transcript, and it grows for as long as you resume it.
+
+  What is enforced is ownership and integrity, not secrecy. sandbx creates the
+  directory `0700` and each transcript `0600`, narrows a directory it finds
+  wider, and refuses to resume a transcript — or a directory holding one — that
+  another user can write or that another user owns, because a history somebody
+  else chose is replayed to a model that calls tools. A transcript another user
+  can merely *read* resumes and says so on stderr: by the time the mode is read
+  the disclosure has already happened, and unlike a credential a conversation
+  cannot be rotated.
+
+  The store sits outside the working directory on purpose, so a no-flag run does
+  not grant a tool write over its own history. A path flag can still put it back
+  in reach, and that is not refused: `--allow-read ~` hands the model every
+  transcript you have, and `--allow-write` over the session root lets one turn
+  choose what the next turn is told it said. The mode check cannot see that one —
+  a tool in your own run writes with your own uid and leaves the mode at `0600` —
+  so the defence has to be a policy that refuses the grant
+  ([#173](https://github.com/danczw/sandbx/issues/173)). Until it lands, keep
+  path grants off your home directory and off the session root.
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
   an opt-in `--timeout`; that call always returns by then. The other six tools run
