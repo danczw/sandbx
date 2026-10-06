@@ -1,8 +1,7 @@
 //! `auth`: where the provider key comes from when it is not in the environment.
 //!
-//! Two sources, environment first, then a file at `0600` in a directory at `0700` —
-//! refused rather than read when either is wider. `login` takes the key on stdin and
-//! refuses a tty, so a key never reaches the terminal or the shell's history. See
+//! Environment first, then a file at `0600` in a directory at `0700`, refused rather than
+//! read when either is wider. `login` takes the key on stdin and refuses a tty. See
 //! `context/decision-credentials.md`.
 
 mod store;
@@ -150,8 +149,7 @@ fn resolve(
 /// [`ENV_VAR`]'s value, or `None` when it is unset, blank or not UTF-8.
 ///
 /// Through `resolve_api_key` so the trim-and-treat-blank-as-absent rule has one
-/// implementation. A blank value falls through to the file rather than failing, which
-/// `auth status` is what makes legible.
+/// implementation. A blank value falls through to the file rather than failing.
 fn env_key(lookup: &impl Fn(&str) -> Option<OsString>) -> Option<SecretString> {
     sandbx_providers::resolve_api_key(ENV_VAR, |name| {
         lookup(name)
@@ -225,7 +223,7 @@ mod tests {
     /// A credential file holding `key`, written the way `login` writes one.
     ///
     /// Through [`store::store`] rather than `fs::write`, so the fixture carries the modes
-    /// [`resolve`] insists on instead of whatever the enclosing `tempdir` had.
+    /// [`resolve`] insists on and not the `tempdir`'s own.
     fn stored_key(dir: &std::path::Path, key: &str) {
         store::store(&dir.join(FILE), &SecretString::from(key.to_string())).unwrap();
     }

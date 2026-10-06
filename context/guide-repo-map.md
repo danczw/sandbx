@@ -174,7 +174,9 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    auth/store.rs
                 the credential file itself — its TOML shape, and the 0600/0700
                 modes it is refused and written under
-   error.rs     AgentError, SandboxRunError, PolicyError, HashError, AuthError
+   error.rs     AgentError, SandboxRunError, PolicyError, HashError
+   error/auth.rs
+                AuthError — what stops `auth`, or a key resolution under `agent-run`
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
 tests/          agent_run, audit_log, audit_log_install, auth, auth_store,

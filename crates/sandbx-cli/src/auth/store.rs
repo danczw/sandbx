@@ -1,8 +1,7 @@
-//! The credential file: its format, and the modes it is read and written under.
+//! The credential file: its TOML shape, and the modes it is read and written under.
 //!
-//! Separate from the chain above it because the two change for different reasons — that
-//! one owns which source answers, this one owns what is on disk. Several steps below are
-//! ordering requirements rather than style; each says so where it stands.
+//! `auth.rs` owns which source answers; this owns what is on disk, and the ordering the
+//! `0600` guarantee depends on.
 
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -28,11 +27,10 @@ const SHARED_BITS: u32 = 0o077;
 /// Whether a credential file wider than its owner may still be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shared {
-    /// Refuse it. Resolving a key that another user could have substituted is the thing
-    /// the mode check exists to prevent.
+    /// Refuse it — a key another user could have substituted is what the check prevents.
     Refuse,
-    /// Read it anyway. `logout` removes a disclosed key rather than leaving it in place
-    /// because it is disclosed, which would make the mode check protect the attacker.
+    /// Read it anyway: refusing `logout` would leave a disclosed key on disk in order to
+    /// protect it, which makes the check protect the attacker.
     Tolerate,
 }
 
@@ -53,13 +51,12 @@ pub(super) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
 
 /// The file as a table, or `None` when it is absent.
 ///
-/// Refuses a file, or a directory holding it, that any group or other bit is set on —
-/// unless `shared` tolerates it. A writable directory is enough on its own: another user
-/// can rename a `0600` file of their own over the credential, which this would then read
-/// as the operator's.
+/// Refuses a file, or the directory holding it, with any group or other bit set, unless
+/// `shared` tolerates it: a writable directory is one another user can rename their own
+/// `0600` file into, which this would then read as the operator's.
 ///
-/// Stat'd through the open descriptor rather than by path: checking the mode first and
-/// opening second would vet one file and read another.
+/// Both modes come from a descriptor rather than a path — a mode checked before the open
+/// vets one file and reads another.
 fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
     let mut file = match std::fs::File::open(path) {
         Ok(file) => file,
@@ -89,9 +86,8 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
             });
         }
 
-        // Canonicalised, not `path.parent()`: that parent is lexical, so a symlinked
-        // `credentials.toml` would have the directory holding the *link* vetted and the one
-        // holding the key never looked at.
+        // Canonicalised: `path.parent()` is lexical, so a symlinked `credentials.toml`
+        // would have the link's directory vetted and the key's never looked at.
         let resolved = std::fs::canonicalize(path).map_err(|source| AuthError::Io {
             path: path.to_path_buf(),
             source,
@@ -123,10 +119,7 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
     Ok(Some(table))
 }
 
-/// `dir`'s mode, read through a descriptor on it rather than by path.
-///
-/// Same reason the file's is: a mode read by path describes whatever that name resolved to
-/// at the time, not the directory the credential was read out of.
+/// `dir`'s mode, through a descriptor on it — see [`read`] for why not by path.
 fn dir_mode_of(dir: &Path) -> Result<u32, AuthError> {
     let io = |source| AuthError::Io {
         path: dir.to_path_buf(),
@@ -215,10 +208,9 @@ pub(super) fn discard(path: &Path) -> Result<bool, AuthError> {
 /// Render `table` over `path` at [`OWNER_ONLY`], creating the directory at
 /// [`DIR_OWNER_ONLY`].
 ///
-/// Through a temporary file in the same directory, then a rename: `OpenOptionsExt::mode`
-/// applies only when a file is created, so truncating an existing one would leave whatever
-/// mode it already had. The rename also means a failed write cannot leave a half-written
-/// credential behind.
+/// Through a temporary file in the same directory, then a rename. `OpenOptionsExt::mode`
+/// applies only at creation, so truncating an existing file would keep its old mode; the
+/// rename also leaves nothing half-written behind a failure.
 fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
     let text = toml::to_string(table).map_err(AuthError::Encode)?;
 
@@ -234,10 +226,8 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
         .create(dir)
         .map_err(dir_io)?;
 
-    // One descriptor, narrowed through and later synced through. Again by a separate call:
-    // `DirBuilder::mode` is masked by the umask, and it is a no-op entirely when the
-    // directory already exists — so neither a 0022 umask nor a directory someone else
-    // created leaves the credential in a 0700 one.
+    // A separate call, through one descriptor reused for the fsync below: `DirBuilder::mode`
+    // is masked by the umask, and a no-op entirely when the directory already exists.
     let handle = std::fs::File::open(dir).map_err(dir_io)?;
     handle
         .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
@@ -249,8 +239,8 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
     };
 
     let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(io)?;
-    // Set rather than assumed: `NamedTempFile` is 0600 on unix, but the guarantee this
-    // file needs is stated here, not in a dependency's documentation.
+    // Not assumed: `NamedTempFile` is 0600 on unix, but this file's guarantee is stated
+    // here rather than in a dependency's documentation.
     temp.as_file()
         .set_permissions(std::fs::Permissions::from_mode(OWNER_ONLY))
         .map_err(io)?;
@@ -270,10 +260,8 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
 mod tests {
     use super::*;
 
-    /// A credential file at `mode`, in an owner-only directory.
-    ///
-    /// The directory too, because `tempdir` is 0755 and [`read`] refuses a shared one —
-    /// a fixture left at 0755 would test the directory check instead of what it meant to.
+    /// A credential file at `mode`, in an owner-only directory — `tempdir` is 0755, which
+    /// [`read`] refuses, so a fixture left at it would test the directory check instead.
     fn write_at(path: &Path, text: &str, mode: u32) {
         let dir = path.parent().unwrap();
         std::fs::create_dir_all(dir).unwrap();
@@ -388,8 +376,8 @@ mod tests {
         );
     }
 
-    /// Narrowing is unreachable — [`read`] refuses a wider file first — so what a rewrite
-    /// has to be held to is that it does not *widen* one.
+    /// Narrowing is unreachable ([`read`] refuses a wider file first), so the bar is that a
+    /// rewrite does not *widen* one.
     #[test]
     fn a_rewrite_leaves_the_mode_owner_only() {
         let dir = tempfile::tempdir().unwrap();
@@ -402,8 +390,7 @@ mod tests {
         assert_eq!(stored(&path).unwrap().unwrap().expose_secret(), "new");
     }
 
-    /// The directory is the other half of the claim: 0600 inside a directory another user
-    /// may write is a file they can rename away and replace.
+    /// 0600 inside a directory another user may write is a file they can rename away.
     #[test]
     fn store_narrows_a_directory_it_did_not_create() {
         let dir = tempfile::tempdir().unwrap();
@@ -438,9 +425,7 @@ mod tests {
         );
     }
 
-    /// A lexical parent would be the link's directory, which is owner-only here; the
-    /// directory that actually holds the key is the shared one, and it is the one that has
-    /// to be refused.
+    /// The link's directory is owner-only here; the shared one holds the key.
     #[test]
     fn a_symlink_is_vetted_where_it_points_not_where_it_sits() {
         let dir = tempfile::tempdir().unwrap();
@@ -468,9 +453,8 @@ mod tests {
         );
     }
 
-    /// The one command whose job is to remove a disclosed key must not be stopped by the
-    /// disclosure; refusing would leave the key on disk and advise narrowing a file the
-    /// operator asked to delete.
+    /// Refusing would leave the disclosed key on disk and advise narrowing a file being
+    /// deleted.
     #[test]
     fn discard_removes_a_key_from_a_file_it_would_refuse_to_read() {
         let dir = tempfile::tempdir().unwrap();
@@ -481,8 +465,7 @@ mod tests {
         assert!(!path.exists());
     }
 
-    /// A rewrite on the `logout` path narrows what it leaves behind, which is the one place
-    /// a mode does get repaired — there is no credential left in the file to protect.
+    /// The one place a mode is repaired: no credential is left in the file to protect.
     #[test]
     fn discard_narrows_a_shared_file_it_keeps() {
         let dir = tempfile::tempdir().unwrap();
