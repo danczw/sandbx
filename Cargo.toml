@@ -7,6 +7,8 @@ version = "0.1.0-alpha.10"
 edition = "2024"
 # Held up by two independent things: the let-chain in `helper`, and the `icu_*`
 # crates reached via reqwest -> url -> idna. Lowering it needs both changed.
+# `--ignore-rust-version` is for a local try, never CI: there it makes this
+# line cosmetic.
 rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/danczw/sandbx"
