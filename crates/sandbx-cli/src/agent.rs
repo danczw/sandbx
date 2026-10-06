@@ -9,7 +9,8 @@ use std::io::Write;
 use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
-    AgentEvent, AnthropicClient, ContentBlock, RequestMessage, Role, StopReason,
+    AgentEvent, AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError,
+    RequestMessage, Role, StopReason,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext, RiskLevel};
 
@@ -200,6 +201,27 @@ impl AgentRun {
 
         let client = AnthropicClient::new(crate::auth::api_key()?)?;
 
+        self.drive(
+            |request| client.stream_chat(request),
+            &ctx,
+            prompt,
+            std::io::stdout(),
+        )
+        .await
+    }
+
+    /// Run one turn against `open`, writing the answer to `out`.
+    ///
+    /// The stream opener and the sink are arguments rather than built here so a test can
+    /// drive a canned turn and read back both what the request carried and what came out
+    /// of it — which is the only way to check either without a key and a network.
+    async fn drive<W: Write>(
+        &self,
+        open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
+        ctx: &ExecutionContext,
+        prompt: String,
+        out: W,
+    ) -> Result<i32, AgentError> {
         let history = [RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],
@@ -217,11 +239,11 @@ impl AgentRun {
             withheld: 0,
         };
 
-        let mut render = Render::new(std::io::stdout());
+        let mut render = Render::new(out);
         let outcome = run_turn(
-            |request| client.stream_chat(request),
+            open,
             turn,
-            &ctx,
+            ctx,
             |event| render.event(event),
             |requested| self.gate(requested),
         )
@@ -499,7 +521,7 @@ mod tests {
     }
 
     /// Everything stdout received, and what the turn would have exited with.
-    fn drive(events: &[AgentEvent]) -> (String, Result<i32, AgentError>) {
+    fn rendered(events: &[AgentEvent]) -> (String, Result<i32, AgentError>) {
         let mut render = Render::new(Vec::new());
         for event in events {
             render.event(event);
@@ -511,7 +533,7 @@ mod tests {
 
     #[test]
     fn a_rounds_stop_does_not_terminate_the_answer() {
-        let (written, code) = drive(&[
+        let (written, code) = rendered(&[
             text("looking"),
             stop(StopReason::ToolUse),
             text(" — found it"),
@@ -525,40 +547,103 @@ mod tests {
 
     #[test]
     fn only_the_last_stop_decides_whether_it_was_cut() {
-        let (_, intermediate) = drive(&[
+        let (_, intermediate) = rendered(&[
             stop(StopReason::MaxTokens),
             text("and then it went on"),
             stop(StopReason::EndTurn),
         ]);
         assert_eq!(intermediate.expect("clean turn"), 0);
 
-        let (_, last) = drive(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
+        let (_, last) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
         assert_eq!(last.expect("truncated turn"), TRUNCATED);
     }
 
     #[test]
     fn an_answer_cut_short_mid_line_is_still_terminated() {
         // No `Stop` at all: the shape of a turn that died mid-stream.
-        let (written, _) = drive(&[text("partial answ")]);
+        let (written, _) = rendered(&[text("partial answ")]);
         assert_eq!(written, "partial answ\n");
     }
 
     #[test]
     fn a_terminated_answer_is_not_terminated_twice() {
-        let (written, _) = drive(&[text("hi\n"), stop(StopReason::EndTurn)]);
+        let (written, _) = rendered(&[text("hi\n"), stop(StopReason::EndTurn)]);
         assert_eq!(written, "hi\n");
     }
 
     #[test]
     fn an_empty_delta_leaves_the_line_where_it_was() {
-        let (written, _) = drive(&[text("hi\n"), text(""), stop(StopReason::EndTurn)]);
+        let (written, _) = rendered(&[text("hi\n"), text(""), stop(StopReason::EndTurn)]);
         assert_eq!(written, "hi\n");
     }
 
     #[test]
     fn a_turn_that_wrote_nothing_adds_no_newline() {
-        let (written, _) = drive(&[stop(StopReason::EndTurn)]);
+        let (written, _) = rendered(&[stop(StopReason::EndTurn)]);
         assert_eq!(written, "");
+    }
+
+    /// An `EventStream` that replays `events` and then ends.
+    ///
+    /// `fuse()` because `EventStream` promises a `FusedStream`: a caller may poll it
+    /// past its end without panicking.
+    fn canned(events: Vec<AgentEvent>) -> EventStream {
+        use futures_util::StreamExt;
+        Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)).fuse())
+    }
+
+    /// Drive one scripted round through `drive`, and report what was sent and written.
+    fn one_round(
+        args: &AgentRun,
+        prompt: &str,
+        events: Vec<AgentEvent>,
+    ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
+        let ctx = ExecutionContext::new(SandboxPolicy::default());
+        let mut sent = Vec::new();
+        let mut events = Some(events);
+        let mut out = Vec::new();
+
+        // A current-thread runtime rather than `#[tokio::test]`: `rt` is already on for
+        // the binary, and `macros` is not. Timers are not optional — `run_turn` arms a
+        // per-round timeout and panics without one.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("a current-thread runtime");
+        let code = runtime.block_on(args.drive(
+            |request| {
+                sent.push(request);
+                let round = events.take().expect("a second round was asked for");
+                std::future::ready(Ok(canned(round)))
+            },
+            &ctx,
+            prompt.to_owned(),
+            &mut out,
+        ));
+
+        (sent, String::from_utf8(out).expect("utf-8"), code)
+    }
+
+    #[test]
+    fn the_prompt_is_the_whole_request_history() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "what", "is", "in", "/srv?"]);
+
+        let (sent, written, code) = one_round(
+            &args,
+            &args.prompt(),
+            vec![text("etc"), stop(StopReason::EndTurn)],
+        );
+
+        assert_eq!(written, "etc\n");
+        assert_eq!(code.expect("clean turn"), 0);
+        let body = serde_json::to_value(&sent).unwrap();
+        assert_eq!(
+            body[0]["messages"],
+            serde_json::json!([{
+                "role": "user",
+                "content": [{ "type": "text", "text": "what is in /srv?" }],
+            }])
+        );
     }
 
     #[test]
