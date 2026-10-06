@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::{HelperArgs, SandboxError, SandboxPolicy};
+use crate::{HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
 
 mod dispatch;
 
@@ -31,6 +31,7 @@ pub struct SandboxedCommand {
     policy: SandboxPolicy,
     helper: Option<PathBuf>,
     timeout: Option<Duration>,
+    pin: Option<Sha256Digest>,
 }
 
 /// How often the timed path polls for the child's exit, `std::process` having no timed wait.
@@ -51,6 +52,7 @@ impl SandboxedCommand {
             policy,
             helper: None,
             timeout: None,
+            pin: None,
         }
     }
 
@@ -89,6 +91,17 @@ impl SandboxedCommand {
         self
     }
 
+    /// Refuse to run `program` unless its bytes hash to `digest`; unpinned by default.
+    ///
+    /// Covers the one `execve` sandbx performs and nothing the command then spawns itself,
+    /// and requires an absolute `program`: the helper opens the file to hash it, so it
+    /// resolves the name instead of libc. Why, in `context/decision-pinned-entry-point.md`.
+    #[must_use]
+    pub fn pin_sha256(mut self, digest: Sha256Digest) -> Self {
+        self.pin = Some(digest);
+        self
+    }
+
     /// Build the exact command line that will be run.
     ///
     /// Spawning it yourself carries one obligation: the argv contains `AUDIT_STDIN_FLAG`,
@@ -111,7 +124,12 @@ impl SandboxedCommand {
             crate::helper::AUDIT_STDIN_FLAG.to_string(),
         ];
 
-        argv.extend(HelperArgs::encode(&self.policy, &self.program, &self.args));
+        argv.extend(HelperArgs::encode(
+            &self.policy,
+            &self.program,
+            &self.args,
+            self.pin,
+        ));
         Ok((helper, argv))
     }
 

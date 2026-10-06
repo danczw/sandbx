@@ -8,7 +8,7 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 
 #[test]
 fn round_trips_an_empty_policy() {
-    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[]);
+    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[], None);
     let decoded = HelperArgs::decode(&args).unwrap();
 
     assert_eq!(decoded.policy, SandboxPolicy::default());
@@ -26,7 +26,7 @@ fn round_trips_paths_and_network() {
         .allow_network()
         .allow_unix_sockets();
 
-    let args = HelperArgs::encode(&policy, "/bin/sh", &["-c".into(), "echo hi".into()]);
+    let args = HelperArgs::encode(&policy, "/bin/sh", &["-c".into(), "echo hi".into()], None);
     let decoded = HelperArgs::decode(&args).unwrap();
 
     assert_eq!(decoded.policy, policy);
@@ -44,6 +44,7 @@ fn command_arguments_are_not_parsed_as_helper_flags() {
         &policy,
         "/bin/echo",
         &["--allow-network".into(), "--ro".into(), "/etc".into()],
+        None,
     );
     let decoded = HelperArgs::decode(&args).unwrap();
 
@@ -72,7 +73,7 @@ fn a_port_list_round_trips() {
         .allow_network_port(80)
         .allow_read("/usr/lib");
 
-    let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
     let decoded = HelperArgs::decode(&args).unwrap();
 
     assert_eq!(decoded.policy, policy);
@@ -90,7 +91,12 @@ fn a_port_list_round_trips() {
 fn an_unrestricted_grant_round_trips_as_the_bare_flag() {
     use sandbx_core::NetworkPolicy;
 
-    let args = HelperArgs::encode(&SandboxPolicy::default().allow_network(), "/bin/true", &[]);
+    let args = HelperArgs::encode(
+        &SandboxPolicy::default().allow_network(),
+        "/bin/true",
+        &[],
+        None,
+    );
 
     assert!(
         args.iter().any(|arg| arg == "--allow-network"),
@@ -163,6 +169,7 @@ fn a_port_flag_without_a_port_is_refused() {
         &SandboxPolicy::default().allow_network_port(443),
         "/bin/true",
         &[],
+        None,
     );
     let flag = emitted[0].clone();
 
@@ -211,7 +218,7 @@ fn round_trips_a_grant_on_every_axis() {
     for axis in Axis::ALL {
         let policy = SandboxPolicy::default().grant(axis, "/srv/data");
 
-        let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+        let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
         let decoded = HelperArgs::decode(&args)
             .unwrap_or_else(|error| panic!("{axis:?} did not survive encoding: {error}"));
 
@@ -233,6 +240,7 @@ fn every_axis_rejects_a_path_flag_without_its_path() {
             &SandboxPolicy::default().grant(axis, "/srv"),
             "/bin/true",
             &[],
+            None,
         );
         let flag = emitted[0].clone();
 
@@ -258,7 +266,7 @@ fn round_trips_an_env_allowlist() {
         .allow_standard_env()
         .allow_env("GIT_AUTHOR_NAME");
 
-    let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
     let decoded = HelperArgs::decode(&args).unwrap();
 
     assert_eq!(decoded.policy, policy);
@@ -275,6 +283,7 @@ fn the_wire_carries_the_name_and_not_the_value() {
         &SandboxPolicy::default().allow_env("CARGO_MANIFEST_DIR"),
         "/bin/true",
         &[],
+        None,
     );
 
     assert!(
@@ -295,6 +304,7 @@ fn an_env_flag_without_a_name_is_rejected() {
         &SandboxPolicy::default().allow_env("HOME"),
         "/bin/true",
         &[],
+        None,
     );
     let flag = emitted[0].clone();
 
@@ -344,7 +354,7 @@ fn round_trips_the_resolver_hint() {
         .allow_standard_env()
         .hint_dns_over_tcp();
 
-    let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
     let decoded = HelperArgs::decode(&args).unwrap();
 
     assert!(decoded.policy.hints_dns_over_tcp());
@@ -353,7 +363,7 @@ fn round_trips_the_resolver_hint() {
 
 #[test]
 fn an_unhinted_policy_emits_no_hint_flag() {
-    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[]);
+    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[], None);
 
     assert!(!args.iter().any(|arg| arg == "--dns-over-tcp"), "{args:?}");
 }
@@ -366,7 +376,106 @@ fn the_wire_names_no_resolver_value() {
         &SandboxPolicy::default().hint_dns_over_tcp(),
         "/bin/true",
         &[],
+        None,
     );
 
     assert!(!args.iter().any(|arg| arg.contains("use-vc")), "{args:?}");
+}
+
+/// The digest an operator writes, in the one form [`sandbx_core::Sha256Digest`] accepts.
+const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/// It crosses beside the policy and not inside it, so this is the check that it crosses at
+/// all — and that the policy came back unchanged next to it.
+#[test]
+fn round_trips_a_pinned_program() {
+    let digest = sandbx_core::Sha256Digest::parse(DIGEST).expect("64 lowercase hex characters");
+    let policy = SandboxPolicy::default().allow_read_execute("/bin");
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], Some(digest));
+    let decoded = HelperArgs::decode(&args).unwrap();
+
+    assert_eq!(decoded.pin, Some(digest));
+    assert_eq!(
+        decoded.policy, policy,
+        "a pin came back as a different policy"
+    );
+}
+
+#[test]
+fn an_unpinned_run_emits_no_pin_flag() {
+    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[], None);
+
+    assert!(!args.iter().any(|arg| arg == "--pin-sha256"), "{args:?}");
+    assert_eq!(HelperArgs::decode(&args).unwrap().pin, None);
+}
+
+/// Carrying on would mean running an image nothing checked.
+#[test]
+fn a_pin_flag_without_a_digest_is_refused() {
+    let refusal = HelperArgs::decode(&["--pin-sha256".into()])
+        .expect_err("the pin flag was accepted with no digest after it");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("pin flag with no digest")
+        ),
+        "refused for the wrong reason: {refusal:?}"
+    );
+}
+
+/// Uppercase among them, and that is the one that matters: `encode` emits lowercase, so a
+/// wire accepting both spellings would admit a digest sandbx could not have produced.
+#[test]
+fn a_pin_digest_encode_could_not_emit_is_refused() {
+    for hex in [
+        &DIGEST[..63],
+        &format!("{DIGEST}0")[..],
+        &DIGEST.to_uppercase(),
+        "not hex at all, though still sixty-four characters long for the parser",
+    ] {
+        let args = vec![
+            "--pin-sha256".to_string(),
+            hex.to_string(),
+            "--".to_string(),
+            "/bin/true".to_string(),
+        ];
+
+        let refusal = HelperArgs::decode(&args).expect_err("accepted as a pinned digest");
+
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("pin digest that is not")
+            ),
+            "{hex} was refused for the wrong reason: {refusal:?}"
+        );
+    }
+}
+
+/// Last-wins would quietly choose one of two images named for one program.
+#[test]
+fn a_second_pin_flag_is_refused() {
+    let args = vec![
+        "--pin-sha256".to_string(),
+        DIGEST.to_string(),
+        "--pin-sha256".to_string(),
+        DIGEST.to_string(),
+        "--".to_string(),
+        "/bin/true".to_string(),
+    ];
+
+    let refusal = HelperArgs::decode(&args).expect_err("two pin flags were accepted");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("more than one pin flag")
+        ),
+        "refused for the wrong reason: {refusal:?}"
+    );
 }
