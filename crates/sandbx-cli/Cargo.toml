@@ -66,6 +66,9 @@ tracing = "0.1.44"
 # Likewise already in the tree, three crates over. The home derivation keeps both spellings
 # of a symlinked `$HOME`, and nothing but a real symlink exercises that.
 tempfile = "3.27.0"
+# Also already in the tree. `ToolCall::input` is a `serde_json::Value`, so the gate's unit
+# tests cannot build the call they decide on without naming it.
+serde_json = "1.0.151"
 
 [lints]
 workspace = true

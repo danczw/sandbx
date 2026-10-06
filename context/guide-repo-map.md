@@ -153,7 +153,7 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
  compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
    error.rs   TurnError (6 variants)
-tests/       turn_loop (20), turn_compaction (23),
+tests/       turn_loop (22), turn_compaction (23),
              support/mod.rs — the Script double and the request builders
 ```
 

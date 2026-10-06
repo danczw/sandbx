@@ -566,6 +566,116 @@ async fn an_unknown_name_never_reaches_the_gate() {
     assert_eq!(tool_error(&messages)["is_error"], true);
 }
 
+/// A name resolves against every built-in, not against what this turn offered, so
+/// resolving alone would hand a gate a call the caller never put on the table — and an
+/// allow-all gate would then run it. Refused above the gate instead.
+#[tokio::test]
+async fn an_un_offered_tool_never_reaches_the_gate() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("note.txt");
+    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            call(
+                "write",
+                serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("Understood."), stop(StopReason::EndTurn)],
+    ]);
+    let mut asked = 0usize;
+
+    // Only `ls` is offered, and the policy would let the write through, so the offered
+    // set is the single thing standing between the call and the file.
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx,
+        |_| {},
+        |_| {
+            asked += 1;
+            ApprovalDecision::Allow
+        },
+    )
+    .await
+    .unwrap()
+    .messages;
+
+    assert_eq!(asked, 0, "a tool the turn never offered reached the gate");
+    assert!(!file.exists(), "an un-offered call must not have run");
+    assert_eq!(tool_error(&messages)["is_error"], true);
+}
+
+/// One verdict per call, not one per round: the gate is asked again for the second call
+/// and each answer has to come back on its own `tool_use_id`, or the model reads the
+/// refusal as belonging to the call that succeeded.
+#[tokio::test]
+async fn a_round_of_two_calls_gets_a_verdict_each() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("note.txt");
+    let ctx = ctx(SandboxPolicy::default()
+        .allow_read(root.path())
+        .allow_write(root.path()));
+
+    let mut script = Script::new([
+        vec![
+            call_id(
+                "denied",
+                "write",
+                serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" }),
+            ),
+            call_id(
+                "allowed",
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("One of two."), stop(StopReason::EndTurn)],
+    ]);
+
+    let messages = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Write, BuiltinTool::Ls]),
+        &ctx,
+        |_| {},
+        |requested: ToolCall<'_>| match requested.tool {
+            BuiltinTool::Write => ApprovalDecision::Deny {
+                reason: "write is not approved".to_string(),
+            },
+            _ => ApprovalDecision::Allow,
+        },
+    )
+    .await
+    .unwrap()
+    .messages;
+
+    assert!(!file.exists(), "the refused call must not have run");
+
+    let results = wire(&messages)[1]["content"].clone();
+    assert_eq!(results[0]["tool_use_id"], "denied");
+    assert_eq!(results[0]["is_error"], true);
+    assert_eq!(results[0]["content"], "write is not approved");
+    assert_eq!(results[1]["tool_use_id"], "allowed");
+    assert_eq!(
+        results[1]["is_error"],
+        serde_json::Value::Null,
+        "got {:?}",
+        results[1]
+    );
+}
+
+/// A scripted call with an explicit id, for a round that makes more than one.
+fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
+    AgentEvent::ToolCallRequested {
+        id: id.to_string(),
+        name: name.to_string(),
+        input,
+    }
+}
+
 /// A model that keeps asking for tools — looping on its own, or steered into it by
 /// injected content — would otherwise drive tool execution without bound.
 #[tokio::test]

@@ -113,7 +113,7 @@ impl AgentRun {
     /// runs only when a flag named it, or when the bare flag approved every tool. A read-
     /// only tool is approved either way, so `--allow-tool write` does not have to re-list
     /// the four it did not mean to withdraw.
-    pub fn approves(&self, tool: BuiltinTool) -> bool {
+    fn approves(&self, tool: BuiltinTool) -> bool {
         if tool.risk() == RiskLevel::ReadOnly {
             return true;
         }
@@ -227,9 +227,16 @@ impl AgentRun {
 /// the same reason `--allow-env` does.
 fn tool_name(value: &str) -> Result<BuiltinTool, String> {
     BuiltinTool::from_name(value).ok_or_else(|| {
-        let names: Vec<&str> = BuiltinTool::ALL.iter().map(|tool| tool.name()).collect();
+        // Only the tools the flag can change are offered back. Listing all seven would
+        // invite `--allow-tool read`, which parses, approves what was approved anyway and
+        // leaves whoever typed it believing they had widened something.
+        let names: Vec<&str> = BuiltinTool::ALL
+            .iter()
+            .filter(|tool| tool.risk() != RiskLevel::ReadOnly)
+            .map(|tool| tool.name())
+            .collect();
         format!(
-            "no tool is called `{value}`; the tools are {}",
+            "no tool is called `{value}`; the tools needing approval are {}",
             names.join(", ")
         )
     })
@@ -278,7 +285,8 @@ impl<W: Write> Render<W> {
                 self.truncated = matches!(reason, StopReason::MaxTokens);
             }
             // A requested call is announced by `AgentRun::gate`, which knows whether it
-            // ran. The cost is that a name no tool answers to reaches only the model.
+            // ran. The cost is that the two refusals above the gate — an unknown name, a
+            // tool the turn did not offer — reach only the model (#169).
             AgentEvent::ToolCallRequested { .. }
             | AgentEvent::Thinking { .. }
             | AgentEvent::Usage { .. } => {}
@@ -320,6 +328,122 @@ impl<W: Write> Render<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use clap::Parser;
+
+    fn agent_run(argv: &[&str]) -> AgentRun {
+        match crate::Cli::parse_from(argv).command {
+            crate::Command::AgentRun(args) => args,
+            other => panic!("{other:?} is not agent-run"),
+        }
+    }
+
+    /// The default nobody types, and so the one nobody checks: a `write`, an `edit` or a
+    /// `bash` the model asks for comes back refused, which is the only thing between a
+    /// prompt injection and a command running inside the boundary.
+    ///
+    /// The seven verdicts are spelled out rather than compared against `risk()`, which is
+    /// the table `approves` itself reads: derived, this would assert only that the two
+    /// agree, and a `bash` reclassified as read-only would pass while running.
+    #[test]
+    fn the_read_only_tools_need_no_flag() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "hello"]);
+
+        assert!(args.approves(BuiltinTool::Read));
+        assert!(args.approves(BuiltinTool::Ls));
+        assert!(args.approves(BuiltinTool::Grep));
+        assert!(args.approves(BuiltinTool::Find));
+        assert!(!args.approves(BuiltinTool::Write));
+        assert!(!args.approves(BuiltinTool::Edit));
+        assert!(!args.approves(BuiltinTool::Bash));
+    }
+
+    #[test]
+    fn a_named_tool_is_the_only_one_lifted() {
+        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "write", "--", "go"]);
+
+        assert!(args.approves(BuiltinTool::Write));
+        assert!(!args.approves(BuiltinTool::Edit));
+        assert!(!args.approves(BuiltinTool::Bash));
+        assert!(args.approves(BuiltinTool::Read), "a read was withdrawn");
+    }
+
+    #[test]
+    fn a_bare_allow_tool_approves_every_tool() {
+        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "go"]);
+
+        for tool in BuiltinTool::ALL {
+            assert!(
+                args.approves(tool),
+                "{tool:?} is refused under the bare flag"
+            );
+        }
+    }
+
+    /// The broader spelling yields the narrower set, as `--allow-network` does: the bare
+    /// flag beside a named one is read as the named one alone.
+    #[test]
+    fn mixing_a_bare_flag_with_a_tool_narrows_to_the_tool() {
+        let args = agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--allow-tool",
+            "--allow-tool",
+            "write",
+            "--",
+            "go",
+        ]);
+
+        assert!(args.approves(BuiltinTool::Write));
+        assert!(!args.approves(BuiltinTool::Bash));
+    }
+
+    /// A refusal is read twice — by the operator on stderr and by the model in the
+    /// `tool_result` — and the model's copy is the only account it gets, so it has to name
+    /// the flag that would lift it rather than just saying no.
+    #[test]
+    fn a_refusal_tells_the_model_which_flag_would_lift_it() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "go"]);
+        let input = serde_json::Value::Null;
+
+        let ApprovalDecision::Deny { reason } = args.gate(ToolCall {
+            tool: BuiltinTool::Bash,
+            id: "call_1",
+            input: &input,
+        }) else {
+            panic!("bash was approved with no flag");
+        };
+
+        assert!(reason.contains("`--allow-tool bash`"), "got {reason}");
+    }
+
+    #[test]
+    fn an_approved_tool_is_allowed_not_merely_announced() {
+        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "bash", "--", "go"]);
+        let input = serde_json::Value::Null;
+
+        let decision = args.gate(ToolCall {
+            tool: BuiltinTool::Bash,
+            id: "call_1",
+            input: &input,
+        });
+
+        assert_eq!(decision, ApprovalDecision::Allow);
+    }
+
+    /// `--allow-tool` can only ever widen, so offering a read-only name back would invite
+    /// a spelling that parses and changes nothing.
+    #[test]
+    fn the_unknown_name_advice_lists_only_what_needs_approving() {
+        let message = tool_name("shell").expect_err("a name no tool answers to was accepted");
+
+        assert!(message.contains("write"), "got {message}");
+        assert!(message.contains("bash"), "got {message}");
+        assert!(
+            !message.contains("grep"),
+            "a read-only tool was offered as approvable: {message}"
+        );
+    }
 
     fn text(delta: &str) -> AgentEvent {
         AgentEvent::Text {

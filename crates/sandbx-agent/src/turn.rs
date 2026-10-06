@@ -220,7 +220,15 @@ impl Default for TurnLimits {
 /// the same reason as `observe`. An [`ApprovalDecision::Deny`] answers the model with its
 /// `reason` as a `tool_result` marked `is_error` and runs nothing, so a refusal is
 /// recoverable — the model may answer in prose or try a tool the gate allows, within
-/// [`TurnLimits::max_rounds`]. A name no tool answers to never reaches it.
+/// [`TurnLimits::max_rounds`]. A name no tool answers to never reaches it, and nor does
+/// one outside [`Turn::tools`]: both are refused above the gate, so a closure never has to
+/// invent a verdict for a call the caller never offered.
+///
+/// **`approve` must not block.** It is called on the async task, with no `spawn_blocking`
+/// of its own, so a gate that waits — on an operator, a channel, a lock — stalls every
+/// other task on the runtime, and on a current-thread one deadlocks the turn it is
+/// deciding. A decision that has to be awaited belongs to a caller that owns the runtime,
+/// made before `run_turn` is entered rather than inside it.
 ///
 /// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future drops the
 /// `JoinHandle` while the blocking task runs to completion, so a turn abandoned mid-tool
@@ -337,7 +345,7 @@ where
 
         // Answered before the assistant turn is pushed: answering borrows the blocks and
         // pushing moves them.
-        let results = answer_calls(&blocks, ctx, &mut approve).await?;
+        let results = answer_calls(&blocks, ctx, turn.tools, &mut approve).await?;
 
         produced.push(RequestMessage {
             role: Role::Assistant,

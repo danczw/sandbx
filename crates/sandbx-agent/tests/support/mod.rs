@@ -90,7 +90,8 @@ pub(crate) fn stop(reason: StopReason) -> AgentEvent {
     AgentEvent::Stop { reason }
 }
 
-/// The id every scripted call uses; each round here makes exactly one call.
+/// The id `call` uses, which is all a one-call round needs. A round scripting two gives
+/// its own ids, so each result can be matched to the call it answers.
 const CALL_ID: &str = "call_1";
 
 pub(crate) fn call(name: &str, input: serde_json::Value) -> AgentEvent {

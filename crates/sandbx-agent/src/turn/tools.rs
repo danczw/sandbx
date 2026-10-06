@@ -20,6 +20,7 @@ use crate::{ApprovalDecision, ToolCall, TurnError};
 pub(super) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
+    offered: &[BuiltinTool],
     approve: &mut G,
 ) -> Result<Vec<ContentBlock>, TurnError>
 where
@@ -38,6 +39,15 @@ where
             results.push(refused(id, format!("unknown tool: {name}")));
             continue;
         };
+
+        if !offered.contains(&tool) {
+            // `from_name` resolves against every built-in, so resolving alone would let a
+            // call the caller never offered through to a gate that cannot tell. The offered
+            // set is the caller's declaration of what may run; a name outside it is refused
+            // without a verdict being asked for.
+            results.push(refused(id, format!("tool not offered this turn: {name}")));
+            continue;
+        }
 
         // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
         // so a decision that arrived late would not stop the call it refused (#26).
