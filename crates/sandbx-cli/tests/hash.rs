@@ -41,9 +41,8 @@ fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
     (String::from_utf8(output.stdout).expect("utf-8"), digest)
 }
 
-/// The exact bytes, because the composition `--pin-sha256 "$(sandbx hash …)"` is what this
-/// subcommand exists for: a prefix, a different case or a second field all break it while
-/// leaving a laxer assertion green.
+/// The exact bytes: a prefix, a different case or a second field all break
+/// `--pin-sha256 "$(sandbx hash …)"` while leaving a laxer assertion green.
 #[test]
 fn the_printed_digest_is_the_one_the_flag_accepts() {
     let (stdout, digest) = printed(b"pinned bytes");

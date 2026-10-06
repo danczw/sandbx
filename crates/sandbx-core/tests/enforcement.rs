@@ -1010,12 +1010,11 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
     );
 }
 
-/// The kernel hands the interpreter the path sandbx exec'd, and that path names a
-/// close-on-exec descriptor — so a pinned script would die as `cannot open
-/// /proc/self/fd/N` rather than run. Refused with a reason instead.
+/// The interpreter re-opens the path sandbx exec'd, which names a close-on-exec
+/// descriptor — so a pinned script would die as `cannot open /proc/self/fd/N`.
 ///
-/// The script is its own pinned bytes, which is what makes this the script refusal and not
-/// a mismatch; the same file runs unpinned, so the refusal is the pin's and not the policy's.
+/// The script is its own pinned bytes, and the same file runs unpinned, so this is the
+/// script refusal and not a mismatch or a denial.
 #[test]
 fn a_pinned_script_is_refused_rather_than_exec_d() {
     let dir = tempfile::tempdir().unwrap();

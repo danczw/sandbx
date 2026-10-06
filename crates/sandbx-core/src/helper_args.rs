@@ -16,8 +16,7 @@ const FLAG_DNS_OVER_TCP: &str = "--dns-over-tcp";
 /// Introduces the SHA-256 the program must hash to, and takes exactly one value.
 ///
 /// No path: the digest describes the one binary the helper is about to become, which
-/// `SEPARATOR` already names. Spelled the same here as on the CLI, unlike
-/// [`FLAG_NET_PORT`], there being no optional-value form to diverge from.
+/// `SEPARATOR` already names.
 const FLAG_PIN: &str = "--pin-sha256";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
@@ -60,9 +59,9 @@ pub struct HelperArgs {
     pub args: Vec<String>,
     /// What `program` must hash to, when the caller pinned it.
     ///
-    /// Beside `program` and not inside `policy`, for the reason the supervisor pid is a
-    /// token of its own: the policy says what the command may do, this says which image
-    /// may be it, so the policy grammar and its round-trip stay untouched.
+    /// Beside `program` and not inside `policy`: the policy says what the command may do,
+    /// this says which image may be it, so the policy grammar and its round-trip stay
+    /// untouched.
     pub pin: Option<Sha256Digest>,
 }
 
