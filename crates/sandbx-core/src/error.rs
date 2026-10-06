@@ -138,6 +138,28 @@ pub enum SandboxError {
         actual: crate::Sha256Digest,
     },
 
+    /// A pinned program could not be read, so its bytes were never established.
+    ///
+    /// Distinct from [`ExecFailed`](Self::ExecFailed) because the two diverge: a mode-111
+    /// binary is executable and unreadable, so it runs unpinned and cannot be pinned.
+    PinUnreadable {
+        /// The program as the caller named it.
+        program: String,
+        /// The underlying OS failure, from the open or from a read.
+        source: std::io::Error,
+    },
+
+    /// A pinned program is a `#!` script, which the pin cannot cover.
+    ///
+    /// The kernel hands the interpreter the path sandbx exec'd — the hashed descriptor —
+    /// and the interpreter opens it again, by then closed. Refused rather than made to work
+    /// by leaking the descriptor past the `exec`, which would also hand the script a procfs
+    /// path as its own `$0`.
+    PinnedScript {
+        /// The program as the caller named it.
+        program: String,
+    },
+
     /// A sandboxed process outran its time limit and was killed.
     ///
     /// Distinct from [`SpawnFailed`](Self::SpawnFailed), which would make a wedged command
@@ -199,6 +221,20 @@ impl std::fmt::Display for SandboxError {
                      found {actual}"
                 )
             }
+            Self::PinUnreadable { program, source } => {
+                write!(
+                    f,
+                    "could not read {program} to check its pin: {source} — a pin needs read \
+                     access, which execute alone does not give"
+                )
+            }
+            Self::PinnedScript { program } => {
+                write!(
+                    f,
+                    "{program} is a #! script, which --pin-sha256 cannot cover: pin an ELF \
+                     binary, or run the interpreter as the program instead"
+                )
+            }
             Self::Landlock { detail } => {
                 write!(f, "kernel refused the Landlock ruleset: {detail}")
             }
@@ -226,10 +262,12 @@ impl std::error::Error for SandboxError {
             | Self::ProcessHardening { .. }
             | Self::TimedOut { .. }
             | Self::PinMismatch { .. }
+            | Self::PinnedScript { .. }
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. }
             | Self::SpawnFailed { source, .. }
             | Self::InnerStageFailed { source, .. }
+            | Self::PinUnreadable { source, .. }
             | Self::ExecFailed { source } => Some(source),
         }
     }
@@ -248,7 +286,7 @@ impl SandboxError {
     ///
     /// Hand-maintained against `label`; an omission fails safe, falling back to the relayed
     /// exit status.
-    pub(crate) const REPORTED_BY_HELPER: [&str; 9] = [
+    pub(crate) const REPORTED_BY_HELPER: [&str; 11] = [
         "bad_helper_args",
         "landlock",
         "seccomp",
@@ -257,6 +295,8 @@ impl SandboxError {
         "inner_stage_failed",
         "exec_failed",
         "pin_mismatch",
+        "pin_unreadable",
+        "pinned_script",
         "unsupported",
     ];
 
@@ -277,6 +317,8 @@ impl SandboxError {
             Self::InnerStageFailed { .. } => "inner_stage_failed",
             Self::ExecFailed { .. } => "exec_failed",
             Self::PinMismatch { .. } => "pin_mismatch",
+            Self::PinUnreadable { .. } => "pin_unreadable",
+            Self::PinnedScript { .. } => "pinned_script",
             // The word the operator typed and the docs use, so it is the word a trail
             // reader greps for.
             Self::TimedOut { .. } => "timeout",
@@ -299,17 +341,21 @@ impl SandboxError {
 mod tests {
     use super::*;
 
-    /// One of every variant. The `match` below is exhaustive, so a new variant fails to
-    /// compile until someone decides whether it belongs in `REPORTED_BY_HELPER` too.
-    /// A distinct digest per `seed`, so a mismatch sample really mismatches.
-    fn digest(seed: &str) -> crate::Sha256Digest {
-        let mut file = tempfile::NamedTempFile::new().expect("a temporary file");
-        std::io::Write::write_all(&mut file, seed.as_bytes()).expect("write");
-        let mut handle = std::fs::File::open(file.path()).expect("reopen");
+    /// Two digests that differ, so a mismatch sample really mismatches.
+    ///
+    /// Parsed rather than hashed: what is under test here is which label a variant carries,
+    /// and a temporary file per call would make that depend on file I/O.
+    fn digests() -> (crate::Sha256Digest, crate::Sha256Digest) {
+        let parse = |hex: &str| crate::Sha256Digest::parse(hex).expect("64 lowercase hex");
 
-        crate::Sha256Digest::of_file(&mut handle).expect("hash")
+        (
+            parse("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            parse("0000000000000000000000000000000000000000000000000000000000000001"),
+        )
     }
 
+    /// One of every variant. The `match` below is exhaustive, so a new variant fails to
+    /// compile until someone decides whether it belongs in `REPORTED_BY_HELPER` too.
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
@@ -344,8 +390,15 @@ mod tests {
             SandboxError::ExecFailed { source: io() },
             SandboxError::PinMismatch {
                 program: "/sample".to_string(),
-                expected: digest("a"),
-                actual: digest("b"),
+                expected: digests().0,
+                actual: digests().1,
+            },
+            SandboxError::PinUnreadable {
+                program: "/sample".to_string(),
+                source: io(),
+            },
+            SandboxError::PinnedScript {
+                program: "/sample".to_string(),
             },
             SandboxError::TimedOut {
                 after: std::time::Duration::from_secs(1),
@@ -366,6 +419,8 @@ mod tests {
                 | SandboxError::InnerStageFailed { .. }
                 | SandboxError::ExecFailed { .. }
                 | SandboxError::PinMismatch { .. }
+                | SandboxError::PinUnreadable { .. }
+                | SandboxError::PinnedScript { .. }
                 | SandboxError::TimedOut { .. }
                 | SandboxError::Unsupported { .. } => {}
             }

@@ -25,8 +25,11 @@ impl Sha256Digest {
     /// Rejects uppercase rather than folding it: [`fmt::Display`] emits lowercase, so
     /// accepting both would mean two spellings of one digest in the audit trail.
     pub fn parse(hex: &str) -> Result<Self, DigestParseError> {
-        if hex.len() != HEX_LEN {
-            return Err(DigestParseError::Length { found: hex.len() });
+        // Characters and not bytes, because that is what the refusal says it counted: a
+        // digest pasted with a non-breaking space is 65 characters and 66 bytes.
+        let found = hex.chars().count();
+        if found != HEX_LEN {
+            return Err(DigestParseError::Length { found });
         }
 
         let mut bytes = [0u8; 32];
@@ -51,10 +54,13 @@ impl Sha256Digest {
         let mut buffer = [0u8; CHUNK];
 
         loop {
-            let read = file.read(&mut buffer)?;
-            if read == 0 {
-                break;
-            }
+            let read = match file.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => read,
+                // A signal between chunks is not a different file; std does not retry.
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            };
             hasher.update(&buffer[..read]);
         }
 
@@ -68,23 +74,21 @@ impl Sha256Digest {
 /// there is no second resolution between the check and the run for the file to be swapped
 /// in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
 ///
-/// Follows symlinks, unlike `fs_guard`'s `open`. The proposition here is "the bytes
-/// `execve` would run hash to this", and `execve` follows them too; refusing a symlink
-/// would refuse `/usr/bin/python3` and buy nothing, the swap being closed by holding the
-/// inode rather than by how it was reached.
+/// Follows symlinks, unlike `fs_guard`'s `open`: `execve` follows them too, and the swap
+/// is closed by holding the inode rather than by how it was reached. Why that is enough,
+/// and why a `#!` script is refused, in `context/decision-pinned-entry-point.md`.
 pub(crate) fn open_verified(
     program: &str,
     expected: Sha256Digest,
 ) -> Result<std::fs::File, crate::SandboxError> {
-    let mut file =
-        std::fs::File::open(program).map_err(|source| crate::SandboxError::ExecFailed {
-            // The same variant an unpinned run would fail with: under Landlock there is no
-            // path `execve` can run that `open` for reading cannot.
-            source,
-        })?;
+    let unreadable = |source| crate::SandboxError::PinUnreadable {
+        program: program.to_string(),
+        source,
+    };
 
-    let actual = Sha256Digest::of_file(&mut file)
-        .map_err(|source| crate::SandboxError::ExecFailed { source })?;
+    let mut file = std::fs::File::open(program).map_err(unreadable)?;
+
+    let actual = Sha256Digest::of_file(&mut file).map_err(unreadable)?;
 
     if actual != expected {
         return Err(crate::SandboxError::PinMismatch {
@@ -94,15 +98,44 @@ pub(crate) fn open_verified(
         });
     }
 
+    // After the digest, so bytes that were never the pinned ones report the mismatch; a
+    // script is the narrower refusal and only reachable once the image is the right one.
+    if starts_with_shebang(&mut file).map_err(unreadable)? {
+        return Err(crate::SandboxError::PinnedScript {
+            program: program.to_string(),
+        });
+    }
+
     Ok(file)
+}
+
+/// Would the kernel hand this image to an interpreter rather than run it?
+///
+/// `binfmt_script` substitutes the path sandbx exec'd for the script's own, and that path
+/// names a descriptor closed by then — so the interpreter cannot open it.
+fn starts_with_shebang(file: &mut std::fs::File) -> std::io::Result<bool> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+
+    file.seek(SeekFrom::Start(0))?;
+
+    let mut magic = [0u8; 2];
+    let mut read = 0;
+    while read < magic.len() {
+        match file.read(&mut magic[read..]) {
+            Ok(0) => return Ok(false),
+            Ok(n) => read += n,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(&magic == b"#!")
 }
 
 /// The path that execs `file` itself rather than whatever its name now points at.
 ///
 /// Landlock dereferences this magic link, so the exec is still checked against the real
-/// path and a pinned run gains no right and needs no grant on `/proc`. `as_raw_fd` on a
-/// borrow is safe — only adopting a descriptor is not — and the number here is only
-/// formatted into a path.
+/// path and a pinned run needs no grant on `/proc`.
 pub(crate) fn fd_path(file: &std::fs::File) -> std::path::PathBuf {
     use std::os::fd::{AsFd, AsRawFd};
 
@@ -248,5 +281,91 @@ mod tests {
         let at_once: [u8; 32] = sha2::Sha256::digest(&bytes).into();
 
         assert_eq!(streamed, Sha256Digest(at_once));
+    }
+
+    /// Written, reopened and hashed the way `open_verified` will, so the digest is the one
+    /// the pin is checked against rather than one computed from the same bytes elsewhere.
+    fn written(contents: &[u8]) -> (tempfile::TempDir, std::path::PathBuf, Sha256Digest) {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("program");
+        std::fs::write(&path, contents).expect("write");
+
+        let mut file = std::fs::File::open(&path).expect("reopen");
+        let digest = Sha256Digest::of_file(&mut file).expect("hash");
+
+        (dir, path, digest)
+    }
+
+    #[test]
+    fn a_matching_image_hands_back_a_descriptor() {
+        let (_dir, path, digest) = written(b"\x7fELF not really, but not a script");
+
+        let file = open_verified(path.to_str().unwrap(), digest).expect("the pinned bytes");
+
+        assert!(
+            fd_path(&file).starts_with("/proc/self/fd/"),
+            "the descriptor was not named for exec: {:?}",
+            fd_path(&file)
+        );
+    }
+
+    #[test]
+    fn a_shebang_image_is_refused_rather_than_exec_d() {
+        let (_dir, path, digest) = written(b"#!/bin/sh\nexit 0\n");
+
+        let error = open_verified(path.to_str().unwrap(), digest).expect_err("a script ran");
+
+        assert!(
+            matches!(error, crate::SandboxError::PinnedScript { .. }),
+            "a script was refused as something else: {error}"
+        );
+    }
+
+    /// The pin is checked first, so bytes that were never the pinned ones report that and
+    /// not the narrower complaint about what they happen to be.
+    #[test]
+    fn a_swapped_script_reports_the_mismatch() {
+        let (_dir, path, digest) = written(b"the pinned bytes");
+        std::fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("swap");
+
+        let error = open_verified(path.to_str().unwrap(), digest).expect_err("a swap ran");
+
+        assert!(
+            matches!(error, crate::SandboxError::PinMismatch { .. }),
+            "a swapped image was refused as something else: {error}"
+        );
+    }
+
+    /// Mode 111 runs unpinned and cannot be pinned, so the refusal has to say which of the
+    /// two it is rather than reading as a program that could not be executed.
+    #[test]
+    fn an_unreadable_program_says_the_pin_needs_read() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let (_dir, path, digest) = written(b"\x7fELF");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o111)).expect("chmod");
+
+        // Both branches assert: root reads a mode-111 file, and skipping there would report
+        // `ok` for a mapping this never exercised.
+        let readable = std::fs::File::open(&path).is_ok();
+        let result = open_verified(path.to_str().unwrap(), digest);
+
+        match readable {
+            true => {
+                result.expect("the bytes are the pinned ones, whoever may read them");
+            }
+            false => {
+                let error = result.expect_err("an unreadable program was hashed");
+
+                assert!(
+                    matches!(error, crate::SandboxError::PinUnreadable { .. }),
+                    "an unreadable program was refused as something else: {error}"
+                );
+                assert!(
+                    error.to_string().contains("needs read access"),
+                    "the refusal did not say what was missing: {error}"
+                );
+            }
+        }
     }
 }
