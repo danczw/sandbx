@@ -24,7 +24,7 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-core ────────────────────────────────┘                 derivation, the
-sandbx-session   placeholder                                  turn loop's caller
+sandbx-session   no internal deps                             turn loop's caller
 sandbx-tui       placeholder
 ```
 
@@ -35,7 +35,7 @@ sandbx-tui       placeholder
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
 | `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, tools |
-| `sandbx-session` | placeholder (#108) | — |
+| `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
 | `sandbx-tui` | placeholder (#133) | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
@@ -158,6 +158,29 @@ tests/       turn_loop (22), turn_compaction (23),
              support/mod.rs — the Script double and the request builders
 ```
 
+## `sandbx-session`
+
+```
+src/lib.rs        re-exports
+   id.rs          SessionId — 1–32 of [0-9a-z], an allowlist because an id
+                  becomes a path component
+   paths.rs       sessions_directory — $XDG_STATE_HOME, else $HOME, never the
+                  working directory
+   message.rs     Message, Role, Content, Usage, CompletedTurn — the stored
+                  shapes, declared rather than imported
+   store.rs       SessionStore, Session; the mode and ownership checks
+      record.rs   the three line kinds, and the fold that replays them
+   error.rs       SessionError
+tests/            identifier, permissions, transcript
+```
+
+No internal dependency, and the stored types are its own rather than
+`sandbx-providers`': a transcript is a file format, and one that moved whenever a
+provider type moved would not be. The translation lives in `sandbx-cli`, where a
+new content block is a compile error rather than a block quietly missing from a
+transcript. See [decision-on-disk-state.md](decision-on-disk-state.md) for the
+roots, the mode rule and the line format.
+
 ## `sandbx-cli`
 
 ```
@@ -214,6 +237,8 @@ that users reasonably read as the same flags.
     much it claims
 13. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
+13. `decision-on-disk-state.md` — what sandbx writes outside the working
+    directory, and who may read it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
