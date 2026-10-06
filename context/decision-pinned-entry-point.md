@@ -46,11 +46,34 @@ and never a path, which makes the honest route the only one the type permits.
 
 Three things that makes true. Landlock dereferences the magic link, so the exec is
 still checked against the program's real path and a pinned run needs no grant on
-`/proc`. `O_CLOEXEC` on the handle is harmless: the kernel opens the image in
-`do_open_execat` before `flush_old_files` runs. And the open happens *after*
-`apply`, so the descriptor is provably one the policy authorizes — opening first
-would hash a file no grant covers and report a mismatch where the honest answer is
-a denied read.
+`/proc`. `O_CLOEXEC` on the handle costs nothing for an ELF image: the kernel
+opens it in `do_open_execat`, before `flush_old_files` closes anything. And the
+open happens *after* `apply`, so the descriptor is provably one the policy
+authorizes — opening first would hash a file no grant covers and report a mismatch
+where the honest answer is a denied read.
+
+## A pinned `#!` script is refused
+
+Not an ELF image, and the exception to the paragraph above. `binfmt_script`
+substitutes `bprm->interp` for argv[0] and calls `remove_arg_zero`, so the
+interpreter re-opens the path sandbx exec'd — `/proc/self/fd/N`, by then a closed
+descriptor. The run dies as `cannot open /proc/self/fd/4`, an error naming nothing
+an operator could act on.
+
+Clearing `FD_CLOEXEC` would make it start, and was rejected: the script would then
+see `$0 = /proc/self/fd/N`, which breaks `dirname $0` and every multi-call
+dispatch — a security flag must not change what the program observes about itself.
+So `open_verified` reads the first two bytes and refuses, after the digest
+comparison, so a swapped script still reports the mismatch and only an image that
+*is* the pinned one is refused for being a script. The message says to pin an ELF
+binary or to run the interpreter as the program instead, which is the shape that
+works: the interpreter is then the entry point, and the script an argument the pin
+does not cover.
+
+A pin also needs read access, which an execute grant alone does not give — a
+mode-111 binary runs unpinned and cannot be pinned. That is `PinUnreadable`, whose
+message names the missing right rather than letting a `Permission denied` from the
+open read as a failed exec.
 
 Symlinks are followed, deliberately and against the first draft of #146's plan.
 The proposition is "the bytes `execve` would run hash to this", and `execve`

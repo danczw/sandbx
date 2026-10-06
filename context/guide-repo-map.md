@@ -82,7 +82,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          tests/      unit tests: compat, grants, net, rules
 tests/               audit, audit_channel, audit_outcome (6, how a real run
                      ends), capability_coverage, command, denylist,
-                     enforcement (38 real-kernel tests, paths and grants),
+                     enforcement (39 real-kernel tests, paths and grants),
                      enforcement_syscalls (8, calls Landlock cannot express),
                      enforcement_network (5, the TCP ports it can),
                      fs_guard, helper_args, policy
