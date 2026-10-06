@@ -1,5 +1,7 @@
 //! Public contract of [`SandboxPolicy`].
 
+use std::ffi::OsStr;
+
 use sandbx_core::{NetworkPolicy, SandboxPolicy};
 
 /// If the default ever grants an access, a caller that forgets to configure the
@@ -394,4 +396,78 @@ fn granted_paths_yields_each_grant_in_axis_order() {
             (Axis::ReadExecute, "/c".to_string()),
         ]
     );
+}
+
+#[test]
+fn dns_over_tcp_imposes_the_resolver_variable() {
+    let policy = SandboxPolicy::default().hint_dns_over_tcp();
+
+    assert!(policy.hints_dns_over_tcp());
+    assert_eq!(policy.imposed_env(), [("RES_OPTIONS", "use-vc")]);
+}
+
+#[test]
+fn a_bare_policy_imposes_no_variable() {
+    let policy = SandboxPolicy::default();
+
+    assert!(!policy.hints_dns_over_tcp());
+    assert!(policy.imposed_env().is_empty());
+}
+
+/// An imposed variable is never spelled as a name, which is what keeps
+/// `allowed_env` meaning "names whose values come from the harness" — and with it
+/// the audit record's `env` count.
+#[test]
+fn an_imposed_variable_is_not_in_the_allowlist() {
+    let policy = SandboxPolicy::default()
+        .allow_standard_env()
+        .hint_dns_over_tcp();
+
+    assert_eq!(policy.allowed_env().len(), 7);
+    assert!(
+        !policy
+            .allowed_env()
+            .iter()
+            .any(|name| name == "RES_OPTIONS"),
+        "the hint reached the allowlist"
+    );
+}
+
+/// A resolver hint is not a grant: it reaches no port, no path and no socket. TCP 53
+/// still has to be named, or the audit trail would report a port nobody asked for.
+#[test]
+fn the_resolver_hint_widens_nothing_else() {
+    let policy = SandboxPolicy::default().hint_dns_over_tcp();
+
+    assert_eq!(policy.network(), &NetworkPolicy::Denied);
+    assert!(!policy.allows_network());
+    assert!(!policy.allows_unix_sockets());
+    assert_eq!(policy.granted_paths().count(), 0);
+}
+
+#[test]
+fn permits_env_covers_the_allowlist_and_the_hint() {
+    let policy = SandboxPolicy::default()
+        .allow_env("FOO")
+        .hint_dns_over_tcp();
+
+    for permitted in ["FOO", "RES_OPTIONS"] {
+        assert!(
+            policy.permits_env(OsStr::new(permitted)),
+            "{permitted} was not permitted"
+        );
+    }
+    assert!(
+        !policy.permits_env(OsStr::new("BAR")),
+        "a name neither allowlisted nor imposed was permitted"
+    );
+}
+
+/// Without the hint, the imposed name is as unwelcome as any other — otherwise the
+/// helper's inherited-environment check would pass a variable no policy asked for.
+#[test]
+fn an_unhinted_policy_permits_no_resolver_variable() {
+    let policy = SandboxPolicy::default().allow_env("FOO");
+
+    assert!(!policy.permits_env(OsStr::new("RES_OPTIONS")));
 }

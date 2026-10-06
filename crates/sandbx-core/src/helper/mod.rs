@@ -266,12 +266,12 @@ fn restrict_and_exec(
     // helper run cannot end without either running the command or reporting why not, and a
     // panic leaves through neither. The message names no variable, for the reason
     // `records_how_many_variables_passed_not_which` gives.
-    let allowed_env = request.policy.allowed_env();
-    if std::env::vars_os()
-        .any(|(name, _)| !allowed_env.iter().any(|allowed| name == allowed.as_str()))
-    {
+    //
+    // `permits_env` and not `allowed_env`: it is the predicate `spawn::command` builds from,
+    // so a variable the policy *imposes* cannot be the thing that refuses the run.
+    if std::env::vars_os().any(|(name, _)| !request.policy.permits_env(&name)) {
         return Err(SandboxError::ProcessHardening {
-            detail: "the inner stage inherited a variable the policy does not name; \
+            detail: "the inner stage inherited a variable the policy does not permit; \
                      an earlier stage did not narrow the environment"
                 .to_string(),
         });

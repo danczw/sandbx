@@ -72,6 +72,9 @@ pub enum AuditEvent<'a> {
         /// names would invite the next change to list values beside them. Its length, not
         /// the number that cross: a name the harness does not hold is passed as nothing.
         env: usize,
+        /// Whether the resolver hint was set, which is one variable in the child that the
+        /// `env` count does not reach.
+        dns_over_tcp: bool,
     },
 
     /// A sandboxed process ended, and with what status.
@@ -146,6 +149,7 @@ impl<'a> AuditEvent<'a> {
             network_ports,
             unix_sockets: policy.allows_unix_sockets(),
             env: policy.allowed_env().len(),
+            dns_over_tcp: policy.hints_dns_over_tcp(),
         }
     }
 
@@ -210,6 +214,7 @@ impl<'a> AuditEvent<'a> {
                 network_ports,
                 unix_sockets,
                 env,
+                dns_over_tcp,
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "spawned",
@@ -221,6 +226,7 @@ impl<'a> AuditEvent<'a> {
                 network_ports,
                 unix_sockets,
                 env,
+                dns_over_tcp,
             ),
             Self::Exited { program, code } => tracing::info!(
                 target: AUDIT_TARGET,

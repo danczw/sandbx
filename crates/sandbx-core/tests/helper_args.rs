@@ -335,3 +335,39 @@ fn an_env_name_with_an_equals_sign_is_rejected() {
         "refused for the wrong reason: {refusal:?}"
     );
 }
+
+/// The seam is load-bearing for this one, not bookkeeping: stage 1 sets
+/// `RES_OPTIONS`, and a stage 2 that decoded a policy without the hint would refuse
+/// the run in its inherited-environment check.
+#[test]
+fn round_trips_the_resolver_hint() {
+    let policy = SandboxPolicy::default()
+        .allow_standard_env()
+        .hint_dns_over_tcp();
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[]);
+    let decoded = HelperArgs::decode(&args).unwrap();
+
+    assert!(decoded.policy.hints_dns_over_tcp());
+    assert_eq!(decoded.policy, policy);
+}
+
+#[test]
+fn an_unhinted_policy_emits_no_hint_flag() {
+    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[]);
+
+    assert!(!args.iter().any(|arg| arg == "--dns-over-tcp"), "{args:?}");
+}
+
+/// The pair is a constant the policy type owns, so unlike the allowlist there is
+/// nothing for the encoder to read out of the harness and put in argv.
+#[test]
+fn the_wire_names_no_resolver_value() {
+    let args = HelperArgs::encode(
+        &SandboxPolicy::default().hint_dns_over_tcp(),
+        "/bin/true",
+        &[],
+    );
+
+    assert!(!args.iter().any(|arg| arg.contains("use-vc")), "{args:?}");
+}

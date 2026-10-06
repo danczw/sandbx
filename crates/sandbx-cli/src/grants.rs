@@ -43,8 +43,14 @@ pub struct Grants {
     /// `--allow-network 443` allowlists a port and is repeatable; bare
     /// `--allow-network` allows every port. A port allowlist also denies UDP
     /// and raw sockets, without which it would not be an allowlist — so DNS
-    /// over UDP, QUIC and `ping` stop working, and a name has to resolve
-    /// through `/etc/hosts` or a TCP resolver.
+    /// over UDP, QUIC and `ping` stop working.
+    ///
+    /// Under glibc a name can still resolve over TCP: `--dns-over-tcp
+    /// --allow-network 53 --allow-network 443 --allow-read /etc`. Not under
+    /// musl, which has no `RES_OPTIONS` and so cannot be asked to start on TCP.
+    ///
+    /// `--allow-read /etc` is needed for resolution under any network policy,
+    /// bare flag included; nothing else grants it.
     ///
     /// The allowlist is ports, not hosts: `--allow-network 443` reaches port
     /// 443 on every routable host. Unix-domain sockets stay denied either way.
@@ -78,6 +84,19 @@ pub struct Grants {
     /// `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE` and `TZ`.
     #[arg(long = "allow-env", value_name = "NAME", value_parser = variable_name)]
     allow_env: Vec<String>,
+
+    /// Ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc`.
+    ///
+    /// For resolving under a port allowlist, which denies UDP. A request to the
+    /// resolver inside the command rather than something sandbx enforces: a
+    /// command that ignores `RES_OPTIONS` is unaffected, and musl has no
+    /// equivalent, so a statically linked musl binary keeps starting on UDP.
+    ///
+    /// It allowlists no port of its own — pass `--allow-network 53` as well, so
+    /// the audit trail never names a port you did not. Resolution also needs
+    /// `--allow-read /etc`, for `resolv.conf` and `nsswitch.conf`.
+    #[arg(long = "dns-over-tcp")]
+    dns_over_tcp: bool,
 }
 
 /// Accept a name `--allow-env` can actually pass, and refuse anything else.
@@ -320,6 +339,23 @@ impl Grants {
             policy = policy.allow_unix_sockets();
         }
 
+        if self.dns_over_tcp {
+            policy = policy.hint_dns_over_tcp();
+        }
+
+        // Both flags claim one variable and disagree about its value, so honouring both
+        // would silently drop the operator's — refused as `variable_name` refuses
+        // `NAME=VALUE`. Over `imposed_env` rather than the name itself, so a second imposed
+        // variable inherits the refusal and the CLI never spells one.
+        if let Some(name) = policy.allowed_env().iter().find(|name| {
+            policy
+                .imposed_env()
+                .iter()
+                .any(|(imposed, _)| name == imposed)
+        }) {
+            return Err(PolicyError::ImposedVariable { name: name.clone() });
+        }
+
         Ok(policy)
     }
 }
@@ -344,6 +380,7 @@ mod tests {
             allow_network: None,
             allow_unix_sockets: false,
             allow_env: Vec::new(),
+            dns_over_tcp: false,
         }
     }
 
@@ -720,6 +757,7 @@ mod tests {
         grants.allow_network = Some(vec![443]);
         grants.allow_unix_sockets = true;
         grants.allow_env.push("TERM".to_string());
+        grants.dns_over_tcp = true;
 
         assert!(
             !grants.paths_given(),

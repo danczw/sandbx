@@ -834,6 +834,51 @@ fn granting_one_variable_passes_only_that_one() {
     );
 }
 
+/// One test for three seams at once: `spawn::command` injects the pair, `HelperArgs`
+/// carries the hint, and stage 2's inherited-environment check permits what the stage
+/// above put there. Drop any one and this fails — the last of them as a refusal to run.
+#[test]
+fn the_resolver_hint_reaches_the_command() {
+    let policy = runtime_paths(SandboxPolicy::default()).hint_dns_over_tcp();
+
+    let output = run(&policy, "/usr/bin/env", &[]);
+
+    assert!(
+        output.status.success(),
+        "env did not run: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "RES_OPTIONS=use-vc",
+        "the hint did not arrive as the only variable"
+    );
+}
+
+/// The hint widens the environment by exactly one name, so the clear still clears.
+/// Names sorted: `Command` holds its environment in a map, not in insertion order.
+#[test]
+fn a_hinted_policy_still_drops_everything_else() {
+    let policy = runtime_paths(SandboxPolicy::default())
+        .allow_env("CARGO_MANIFEST_DIR")
+        .hint_dns_over_tcp();
+
+    let output = run(&policy, "/usr/bin/env", &[]);
+
+    let seen = String::from_utf8_lossy(&output.stdout);
+    let mut names: Vec<&str> = seen
+        .lines()
+        .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+        .collect();
+    names.sort_unstable();
+
+    assert_eq!(
+        names,
+        ["CARGO_MANIFEST_DIR", "RES_OPTIONS"],
+        "the command's environment was not the allowlist plus the hint: {seen}"
+    );
+}
+
 /// Absent, not present and empty: a command branching on whether a variable is *set*
 /// reads a blank value as "configured, to nothing".
 #[test]

@@ -127,6 +127,44 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("network_ports=0"), "got: {line}");
     assert!(line.contains("unix_sockets=true"), "got: {line}");
     assert!(line.contains("env=2"), "got: {line}");
+    assert!(line.contains("dns_over_tcp=false"), "got: {line}");
+}
+
+/// The hint puts a variable in the child that the `env` count does not reach, so a
+/// trail without this field would under-report the environment the command saw.
+#[test]
+fn records_whether_a_spawn_set_the_resolver_hint() {
+    for (policy, recorded) in [
+        (SandboxPolicy::default(), "dns_over_tcp=false"),
+        (
+            SandboxPolicy::default().hint_dns_over_tcp(),
+            "dns_over_tcp=true",
+        ),
+    ] {
+        let lines = capture(|| {
+            AuditEvent::spawned("/bin/cat", &policy).emit();
+        });
+
+        let line = &lines[0];
+        assert!(line.contains(recorded), "got: {line}");
+    }
+}
+
+/// `env` is the length of the allowlist, so counting an imposed variable there would
+/// report a name the operator never passed — and the name itself still never appears.
+#[test]
+fn the_hint_is_not_counted_as_an_allowlisted_name() {
+    let policy = SandboxPolicy::default()
+        .allow_env("PATH")
+        .hint_dns_over_tcp();
+
+    let lines = capture(|| {
+        AuditEvent::spawned("/bin/cat", &policy).emit();
+    });
+
+    let line = &lines[0];
+    assert!(line.contains("env=1"), "got: {line}");
+    assert!(!line.contains("RES_OPTIONS"), "got: {line}");
 }
 
 /// Three shapes of network grant, three labels. A trail that collapsed `any` and `ports`

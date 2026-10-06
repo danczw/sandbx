@@ -1,8 +1,12 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 
 const STANDARD_ENV_NAMES: [&str; 7] = ["PATH", "HOME", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ"];
+
+/// What the resolver hint puts in the child: glibc's stub resolver then opens TCP.
+const DNS_OVER_TCP_ENV: [(&str, &str); 1] = [("RES_OPTIONS", "use-vc")];
 
 /// A kind of access a policy can grant on a path.
 ///
@@ -90,6 +94,9 @@ pub struct SandboxPolicy {
     unix_sockets: bool,
     /// Variable *names*, never values; the value is read at spawn time from the harness.
     env: Vec<String>,
+    /// A value and not a name, which the other axis forbids: `use-vc` is a compile-time
+    /// constant, so argv carrying it would leak nothing.
+    dns_over_tcp: bool,
 }
 
 impl SandboxPolicy {
@@ -166,6 +173,35 @@ impl SandboxPolicy {
     /// Environment variable names the process may inherit; anything unlisted is dropped.
     pub fn allowed_env(&self) -> &[String] {
         &self.env
+    }
+
+    /// Variables the policy sets in the child itself, as `(name, value)`.
+    ///
+    /// Values, where [`allowed_env`](Self::allowed_env) carries names: only compile-time
+    /// constants belong here, never anything read from the harness. Applied after the
+    /// allowlist, so a variable named both ways gets this value.
+    pub fn imposed_env(&self) -> &'static [(&'static str, &'static str)] {
+        match self.dns_over_tcp {
+            true => &DNS_OVER_TCP_ENV,
+            false => &[],
+        }
+    }
+
+    /// Whether the child may hold a variable called `name`, allowlisted or imposed.
+    ///
+    /// The one answer `spawn::command` and the helper's inherited-environment check both
+    /// use, so what one puts there cannot be what the other refuses.
+    pub fn permits_env(&self, name: &OsStr) -> bool {
+        self.env.iter().any(|allowed| name == OsStr::new(allowed))
+            || self
+                .imposed_env()
+                .iter()
+                .any(|(imposed, _)| name == OsStr::new(imposed))
+    }
+
+    /// Whether the policy asks the child's resolver to use TCP.
+    pub fn hints_dns_over_tcp(&self) -> bool {
+        self.dns_over_tcp
     }
 
     /// Let the process inherit the variable called `name`.
@@ -286,6 +322,17 @@ impl SandboxPolicy {
     #[must_use]
     pub fn allow_unix_sockets(mut self) -> Self {
         self.unix_sockets = true;
+        self
+    }
+
+    /// Ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc` in the child.
+    ///
+    /// A hint to the resolver inside the command and not a restriction sandbx applies: musl
+    /// has no equivalent, and a command ignoring `RES_OPTIONS` is unaffected. Allowlists no
+    /// port — TCP 53 still needs [`allow_network_port`](Self::allow_network_port).
+    #[must_use]
+    pub fn hint_dns_over_tcp(mut self) -> Self {
+        self.dns_over_tcp = true;
         self
     }
 }
