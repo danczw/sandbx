@@ -20,12 +20,9 @@ workspace = true
 tempfile = "3.27.0"
 
 [features]
-# Tests that actually spawn sandboxed processes, matching sandbx-core's own
-# gating. Excluded from the default run because they need a capable kernel.
+# Needs a sandbox-capable kernel, like `sandbx-core`'s feature of the same name.
 sandbox-integration = ["sandbx-core/sandbox-integration"]
 
-# Dispatching helper for the sandboxed-execution tests. `required-features`
-# keeps it out of normal builds.
 [[bin]]
 name = "sandbx-tools-test-helper"
 path = "tests/support/helper.rs"

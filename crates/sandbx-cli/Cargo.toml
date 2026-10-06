@@ -7,8 +7,6 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# The crate is `sandbx-cli` to keep the workspace naming consistent, but the
-# shipped command users type is `sandbx`.
 [lib]
 name = "sandbx_cli"
 path = "src/lib.rs"
@@ -21,73 +19,35 @@ path = "src/main.rs"
 clap = { version = "4.5.51", features = ["derive"] }
 sandbx-agent = { path = "../sandbx-agent" }
 sandbx-core = { path = "../sandbx-core" }
-# Reached directly rather than through `sandbx-agent`, which re-exports none of
-# it: `agent-run` builds the client, the request message and the first user turn
-# itself, and renders the events the loop hands back.
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-session = { path = "../sandbx-session" }
 sandbx-tools = { path = "../sandbx-tools" }
-# The runtime flavour is the binary's call, which is why `sandbx-agent` takes
-# `rt` and stops there. `rt` is all `spawn_blocking` needs, so this is a
-# current-thread runtime and never `rt-multi-thread`.
-#
-# The other two features are not preferences. `time` carries `run_turn`'s
-# per-round timeout, which panics on the first round without a timer. `net` is
-# what makes `enable_all` callable at all, and reqwest's connector needs the IO
-# driver it switches on. Neither enables `process`, so clippy.toml's inert entry
-# for `tokio::process::Command::new` stays inert.
+# Not `rt-multi-thread`: `spawn_blocking` needs only `rt`. `time` is not optional
+# — `run_turn` panics on the first round without a timer. Nothing here enables
+# `process`, which is why clippy.toml's `tokio::process` entry stays inert.
 tokio = { version = "1.53.1", default-features = false, features = [
   "net",
   "rt",
   "time",
 ] }
-# The audit trail is a product feature of `sandbx-core`, but `tracing` discards
-# every event when no subscriber is installed — which is what shipped until #89:
-# `RUST_LOG=trace sandbx sandbox-run …` printed nothing at all. A library cannot
-# install one, so the binary does, and this crate owns that one subscriber.
-#
-# `default-features = false` drops three of the five defaults: `ansi`
-# (`logging::subscriber` forces colour off, so `nu-ansi-term` would be linked and
-# never used), `tracing-log` (nothing in the workspace logs through the `log`
-# facade) and `smallvec` (a span-registry optimisation for a subscriber that
-# records no spans). `fmt` pulls in `registry` and `std` on its own, which is the
-# whole of what the layer needs. `env-filter` is deliberately absent: the audit
-# filter is `filter::Targets`, which is not behind that feature, so it costs no
-# `matchers`/`regex-automata`.
+# `tracing` discards every event when no subscriber is installed, and a library
+# cannot install one; this crate owns the workspace's only subscriber.
 tracing-subscriber = { version = "0.3.23", default-features = false, features = [
   "fmt",
 ] }
-# The credential chain hands a key to `AnthropicClient::new`, which takes a
-# `SecretString`. `sandbx-providers` does not re-export `secrecy`, so the version
-# is pinned to match the one it resolves.
+# `sandbx-providers` does not re-export `secrecy`; keep this at the version it
+# resolves, or `AnthropicClient::new` takes a different `SecretString`.
 secrecy = "0.10.3"
-# The tier-3 credential file. Read and written as a `toml::Table` rather than a
-# derived struct, so a table this binary does not know — a second provider — is
-# not dropped when `login` or `logout` rewrites the file. `serde` is what `Table`
-# itself is parsed and rendered through; `default-features = false` keeps the
-# preserved-formatting and datetime machinery out.
 toml = { version = "1.1.6", default-features = false, features = [
   "parse",
   "display",
   "serde",
 ] }
-# Promoted from a dev-dependency: `auth login` writes through a temp file in the
-# target directory and renames over it, because `OpenOptionsExt::mode` applies
-# only at creation and a truncating open would leave a pre-existing wider mode.
-# `NamedTempFile` is already 0600 on unix.
 tempfile = "3.27.0"
 
 [dev-dependencies]
-# Already in the tree as a dependency of `sandbx-core`; named here because
-# `audit_log` has to *emit* a non-audit event to prove the filter drops it, and
-# an integration test can only reach a dependency it names itself. No new crate
-# enters the tree.
 tracing = "0.1.44"
-# Also already in the tree, via `sandbx-agent`: `drive`'s tests build the event
-# stream a real client hands back, which is a `futures_util::stream`.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
-# Also already in the tree. `ToolCall::input` is a `serde_json::Value`, so the gate's unit
-# tests cannot build the call they decide on without naming it.
 serde_json = "1.0.151"
 
 [lints]

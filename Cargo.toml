@@ -2,34 +2,24 @@
 resolver = "3"
 members = ["crates/*"]
 
-# Member crates inherit these with `field.workspace = true`.
 [workspace.package]
 version = "0.1.0-alpha.10"
 edition = "2024"
-# Set at 1.88 by two independent things: the let-chain in `helper`, and the
-# `icu_*` crates reached via reqwest -> url -> idna. Lowering it means deleting
-# the let-chain *and* pinning those back. Inert unless inherited, so all seven
-# crates carry `rust-version.workspace = true` and CI fails unless they agree.
-#
-# Resolver 3 reads this and holds a dependency back rather than cross the floor,
-# saying so as `(available: vX, requires Rust Y)`. To take a security update that
-# needs a newer toolchain, move the floor in the same commit:
-# `cargo update -p <crate> --precise <ver> --ignore-rust-version`, then edit this
-# line. Never `--ignore-rust-version` in CI; that makes the floor cosmetic.
+# Held up by two independent things: the let-chain in `helper`, and the `icu_*`
+# crates reached via reqwest -> url -> idna. Lowering it needs both changed.
 rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/danczw/sandbx"
-# GitHub Releases only, never crates.io. Makes an accidental `cargo publish`
-# fail, and lets path dependencies omit a version without cargo-deny reading it
-# as a registry wildcard.
+# Also lets path dependencies omit a version without cargo-deny reading it as a
+# registry wildcard.
 publish = false
 
-# Every member crate opts in with `[lints] workspace = true`, `sandbx-core`
-# included: it exempts the one site that spawns, not the whole crate.
+# `sandbx-core` opts in too: the one site that spawns carries its own `#[allow]`,
+# which is narrower than exempting the crate.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
-# The actual method list lives in clippy.toml at the workspace root.
+# Method list: clippy.toml.
 disallowed_methods = "deny"
