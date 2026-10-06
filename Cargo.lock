@@ -1206,6 +1206,7 @@ name = "sandbx-cli"
 version = "0.1.0-alpha.10"
 dependencies = [
  "clap",
+ "futures-util",
  "sandbx-agent",
  "sandbx-core",
  "sandbx-providers",

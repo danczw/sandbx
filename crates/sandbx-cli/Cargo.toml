@@ -82,6 +82,9 @@ tempfile = "3.27.0"
 # an integration test can only reach a dependency it names itself. No new crate
 # enters the tree.
 tracing = "0.1.44"
+# Also already in the tree, via `sandbx-agent`: `drive`'s tests build the event
+# stream a real client hands back, which is a `futures_util::stream`.
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 # Also already in the tree. `ToolCall::input` is a `serde_json::Value`, so the gate's unit
 # tests cannot build the call they decide on without naming it.
 serde_json = "1.0.151"
