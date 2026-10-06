@@ -32,9 +32,12 @@ So it is a field on `SandboxedCommand` and on `HelperArgs`, beside `program` and
 `args`. That follows `exec_inner`'s precedent for the supervisor pid: a token
 ahead of the policy, keeping the policy grammar and its round-trip untouched.
 Untouched in fact: `Axis`, `Grants`, `SandboxPolicy::grant`, `paths`,
-`granted_paths`, and `Grants::paths` in the CLI. The CLI's `pin()` is likewise
-outside `paths_given()`, so a pin cannot suppress the working-directory default —
-a flag that granted nothing must not narrow anything either.
+`granted_paths`, and `Grants::paths` in the CLI. The CLI's flag sits on
+`SandboxRun` and not the `Grants` both subcommands flatten, so it is outside
+`paths_given()` and a pin cannot suppress the working-directory default — a flag
+that granted nothing must not narrow anything either. It is absent from
+`agent-run` for a second reason: there the program is the model's to choose, so
+the flag would parse, document a guarantee and pin nothing.
 
 ## The descriptor, not the path
 

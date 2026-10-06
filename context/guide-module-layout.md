@@ -38,8 +38,8 @@ Move them to `foo/tests.rs` when the file passes roughly a thousand lines, or th
 tests outweigh the code by more than about three to one. `foo.rs` may own a
 `foo/` directory for its submodules: the file does not become `foo/mod.rs` and
 needs no `#[path]`. Split again into `foo/tests/`, one file per topic, once the
-moved tests are themselves over budget — `wire/tests/` and
-`helper/ruleset/tests/` already do.
+moved tests are themselves over budget — `wire/tests/`, `helper/ruleset/tests/`
+and `helper/seccomp/tests/` already do.
 
 Either way the tests stay compiled into the crate, which is the point: they reach
 private items. `crates/*/tests/` is a separate crate and sees only the public

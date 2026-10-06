@@ -55,14 +55,18 @@ a failed helper run cannot fall through to unrestricted execution.
 ```
 rights_for(axis: Axis, target_is_dir: bool, abi: landlock::ABI) -> BitFlags<AccessFs>
 fs_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> [(Axis, &Path, BitFlags<AccessFs>)]
+net_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> RequestedNet<'_>
                                                                       helper/ruleset/rights.rs
 handled_access(abi: landlock::ABI) -> BitFlags<AccessFs>
+handled_net_access(abi: landlock::ABI) -> BitFlags<AccessNet>
 kernel_probe(abi: landlock::ABI) -> Result<(), RulesetError>
 negotiated_abi_from(probe: impl FnMut(ABI) -> Result<(), RulesetError>) -> Result<ABI, _>
 negotiated_abi() -> Result<ABI, _>
 enforcement_verdict(status: RulesetStatus) -> Result<(), _>
                                                                       helper/ruleset/compat.rs
-Requested { handled: BitFlags<AccessFs>, rules: [(Axis, &Path, BitFlags<AccessFs>)] }
+Requested { handled: BitFlags<AccessFs>, rules: [(Axis, &Path, BitFlags<AccessFs>)],
+            net: RequestedNet }
+RequestedNet::Unhandled | ::Ports { handled, granted: BitFlags<AccessNet>, ports: &[u16] }
 requested_at(policy: &SandboxPolicy, abi: landlock::ABI) -> Requested<'_>
 requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
                                                                       helper/ruleset/mod.rs
@@ -118,13 +122,13 @@ move together.
 | `rights_for` / `fs_rules` | ✓ | |
 | `FsGuard::new` buckets | ✓ | |
 | `encode` / `decode` | ✓ | |
-| `requested_at` | ✓ (it is `handled_access` + `fs_rules`) | |
+| `requested_at` | ✓ (it is `handled_access` + `fs_rules` + `net_rules`) | |
 | `each_axis_confers_exactly_the_documented_set` | | ✓ `make_bitflags!`, both ABI ends |
 | `rights_for_narrows_a_regular_file` | | ✓ `file_legal` spelled out |
 | the three `negotiated_abi_from` tests | | ✓ error chains built by hand; which variant steps down is spelled out |
 | `the_handled_set_and_the_rules_come_from_one_abi` | ✓ — see below | ✓ `ResolveUnix` named |
 | audit counts | | ✓ exhaustive `match` |
-| `SandboxRun::paths` | | ✓ exhaustive `match` |
+| `Grants::paths` | | ✓ exhaustive `match` |
 
 The hard-coded rows are the ones that would fail if `Axis::Write` were flipped to
 `execute: true`. The two exhaustive matches are what make a *new* axis a build
@@ -156,10 +160,10 @@ power available in the negotiable range.
 | 4 | partial enforcement accepted | #76 — `enforcement_verdict` refuses it |
 | 5 | per-endpoint egress | #42 — a TCP port allowlist, which is all the kernel can match on. Per-host is not enforced and needs a userspace proxy (#145) |
 
-45 real-kernel enforcement tests, split by what enforces them: 31 in
+53 real-kernel enforcement tests, split by what enforces them: 39 in
 `tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
 for the calls Landlock cannot express, 6 in `tests/enforcement_network.rs` for
 the ports it does. All three files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 45 run or none of the files compiles, and
+count is unconditional — all 53 run or none of the files compiles, and
 `cargo test` reports `0 ignored`. Nothing checks this number against the files.

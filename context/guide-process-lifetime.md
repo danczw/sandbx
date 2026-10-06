@@ -7,7 +7,7 @@ Nothing the sandbox starts may outlive the call that started it (#28).
 | # | Process | Job |
 |---|---|---|
 | 0 | `sandbx` | spawns stage 1; **when a timeout is set**, in its own process group, polls the deadline, `killpg` |
-| 1 | helper supervisor | `unshare(NEWUSER\|NEWPID[\|NEWNET])`, drop capsets, `RLIMIT_CORE=0`, `no_new_privs`, uid/gid map, then `exec` stage 2 |
+| 1 | helper supervisor | `unshare(NEWUSER\|NEWPID[\|NEWNET])`, uid/gid map, drop capsets, `RLIMIT_CORE=0`, `no_new_privs`, then `exec` stage 2 |
 | 2 | helper inner | PID 1 of the new namespace. `pdeathsig`, confirm supervisor, `apply()`, then becomes the command |
 
 Stage 1 exists because `unshare(CLONE_NEWPID)` only places a process's

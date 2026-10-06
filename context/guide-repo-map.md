@@ -8,7 +8,8 @@ Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
                     included; zero unsafe anywhere)
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
-.githooks/          pre-commit: fmt --check, clippy -D warnings, subject length
+.githooks/          pre-commit: fmt --check, clippy -D warnings; commit-msg:
+                    Conventional Commits and a 72-character subject
 .github/            CI and release workflows, their action pins, and dependabot
 .github/scripts/    what a workflow calls but must be runnable without one
 docs/release-notes/ one file per tag, which the release gates on; TEMPLATE.md
@@ -56,17 +57,20 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
    fs_guard.rs       in-process path enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, the audit pipe, the kill chain
-      dispatch.rs    HELPER_FLAG, HelperDispatch — the entry into helper mode
+      dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch — the entry
+                     into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx,
                      --allow-network-port, --env, --dns-over-tcp, --pin-sha256
    digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
    audit.rs          AuditEvent, AUDIT_TARGET
+   degradation.rs    the helper's channel to the parent, and its wire format
    spawn.rs          spawn::command — the one Command::new; env_clear, then
                      the allowlist and the policy's own constants
    error.rs
    bin/sandbx-helper.rs
    helper/
-      mod.rs         apply() — sequences all three mechanisms; exit_code
+      mod.rs         the two stages — exec_sandboxed, then exec_inner as PID 1;
+                     apply() sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
       seccomp.rs     compiled_filter, clone3_filter, x32_gate,
                      deny_dangerous_syscalls — how it reaches the kernel
@@ -84,15 +88,16 @@ tests/               audit, audit_channel, audit_outcome (6, how a real run
                      ends), capability_coverage, command, denylist,
                      enforcement (39 real-kernel tests, paths and grants),
                      enforcement_syscalls (8, calls Landlock cannot express),
-                     enforcement_network (5, the TCP ports it can),
+                     enforcement_network (6, the TCP ports it can),
                      fs_guard, helper_args, policy
 tests/support/       mod.rs — runtime_paths, allow_probe, run, run_pinned,
                      shared by the three enforcement targets; plus 6 [[bin]] probes,
                      required-features = ["sandbox-integration"]
 ```
 
-Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`,
-`HelperDispatch`, `SandboxError`, `Access`, `FsGuard`, `ReadableWalk`,
+Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
+`HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
+`with_helper_dispatch`, `SandboxError`, `Access`, `FsGuard`, `ReadableWalk`,
 `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
 `NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`.
 
@@ -114,18 +119,20 @@ src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolSpec, ToolOutpu
    limits.rs      ToolLimits
    error.rs       ToolError: Denied | BadInput | Failed | TimedOut
    tools/         bash, edit, find, grep, ls, read, write — each with its SPEC
-tests/            per-tool, plus registry, limits, scan_limits, spawn
+tests/            per-tool (find and grep share search), plus registry, limits,
+                  scan_limits, spawn
 ```
 
-Public surface: `ExecutionContext`, `ToolError`, `ToolLimits`, `ToolOutput`,
-`BuiltinTool`.
+Public surface: `ExecutionContext`, `DEFAULT_TIMEOUT`, `ToolError`, `ToolLimits`,
+`ToolOutput`, `BuiltinTool`, `RiskLevel`.
 
 ## `sandbx-providers`
 
 ```
 src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    anthropic.rs   AnthropicClient
-   credentials.rs resolve_api_key, SecretString
+   credentials.rs resolve_api_key, anthropic_api_key, SecretString
+   error.rs       ProviderError
    event.rs       AgentEvent, StopReason
    request.rs     MessagesRequest
    sse.rs         SSE framing
@@ -150,8 +157,8 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
    turn.rs    run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
- approval.rs  what a gate is asked, and the two answers it may give
- compact.rs   which prefix of a history may be withheld
+   approval.rs  what a gate is asked, and the two answers it may give
+   compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
    error.rs   TurnError (6 variants)
 tests/       turn_loop (22), turn_compaction (23),
@@ -241,7 +248,7 @@ that users reasonably read as the same flags.
     much it claims
 13. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
-13. `decision-on-disk-state.md` — what sandbx writes outside the working
+14. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

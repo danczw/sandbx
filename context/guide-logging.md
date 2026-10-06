@@ -101,7 +101,7 @@ hardening steps run there. Emitting `Degraded` in the helper recorded nothing,
 whatever the level (#95).
 
 So the helper does not emit. `helper/hardening.rs` *returns* what degraded,
-stage 1 renders it as `label<TAB>detail` lines (`core/src/degradation.rs`) and
+stage 1 renders it as `label<TAB>detail` lines (`sandbx-core/src/degradation.rs`) and
 writes them to the pipe sandbx put in its **stdin** slot, and sandbx decodes the
 bytes and emits the audit events itself. One subscriber in the process tree, one
 timestamp source, and the command's own stdout and stderr stay byte-exact.

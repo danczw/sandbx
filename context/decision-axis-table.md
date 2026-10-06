@@ -23,7 +23,7 @@ Axis::ReadExecute => (true,  false, true )
 | `fs_guard.rs` | two hand-built path lists | destructure `grants()` into readable/writable |
 | `helper_args.rs` | three flag spellings, twice (encode + decode) | one `path_flag` match, `axis_for` as reverse lookup |
 | `audit.rs` | three counted fields, hand-maintained | loop + exhaustive `match` |
-| `sandbx-cli/src/lib.rs` | three flag blocks | loop + exhaustive `match` |
+| `sandbx-cli/src/grants.rs` | three flag blocks | loop + exhaustive `match` |
 
 Two sites cannot derive their answer and are **forced** instead — `tracing` needs
 static field names, and clap needs per-flag `--help` text. Both pair the loop
@@ -61,8 +61,9 @@ still hand-written.
 What stands in for the compiler on the *behaviour* — that `spawn::command` narrows
 at all, which the lint says nothing about — is `tests/enforcement.rs`, which runs
 `/usr/bin/env` through the real helper and reads its stdout, plus the check in
-`exec_inner` that refuses an environment an earlier stage should have narrowed. One
-site to delete, 24 failures when it goes. See `decision-environment-allowlist.md`.
+`restrict_and_exec` that refuses an environment an earlier stage should have
+narrowed. One site to delete, 24 failures when it goes. See
+`decision-environment-allowlist.md`.
 
 ## Why the rights are subtractions
 
@@ -92,8 +93,8 @@ round 1:  flip Axis::Write to execute: true
               rights_for_narrows_a_regular_file, a_write_grant_does_not_make_files_executable
 
 round 2:  add a fourth axis
-          ──► audit.rs exhaustive match        ← forced to notice
-              SandboxRun::paths exhaustive match ← forced to notice
+          ──► audit.rs exhaustive match       ← forced to notice
+              Grants::paths exhaustive match  ← forced to notice
               everything else derives it
 ```
 

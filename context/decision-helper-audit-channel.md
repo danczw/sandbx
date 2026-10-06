@@ -6,7 +6,7 @@ than being logged where it is found (#95, #96).
 
 ## The problem
 
-`AuditEvent::Degraded` has two emitters, both in `helper/hardening.rs`:
+`AuditEvent::Degraded` had two emitters, both in `helper/hardening.rs`:
 `PR_CAPBSET_DROP` refused, and the uid/gid map unwritten. Both run in helper
 **stage 1**, a re-exec'd child of sandbx.
 
