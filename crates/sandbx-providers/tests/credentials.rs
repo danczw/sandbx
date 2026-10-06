@@ -1,9 +1,7 @@
 //! Public contract of Anthropic API key resolution.
 //!
-//! `std::env::set_var`/`remove_var` are `unsafe fn` under edition 2024 and this
-//! workspace forbids `unsafe_code` in test binaries too, so resolution takes an
-//! injected lookup closure; these tests drive that closure, never a real environment
-//! mutation.
+//! These drive the injected lookup closure, never a real environment mutation, for
+//! the reason `resolve_api_key` gives.
 
 use sandbx_providers::ProviderError;
 
@@ -50,9 +48,9 @@ fn surrounding_whitespace_is_trimmed_off_the_key() {
     assert_eq!(key.expose_secret(), "sk-ant-test");
 }
 
-/// `ANTHROPIC_API_KEY=` leaves the variable present and empty, which
-/// `std::env::var` reports as `Ok("")`; treating that as resolved would send an empty
-/// `x-api-key` and 401 instead of saying what to set.
+/// `ANTHROPIC_API_KEY=` leaves the variable present and empty, which `std::env::var`
+/// reports as `Ok("")`; resolving that would send an empty `x-api-key` and 401 instead
+/// of saying what to set.
 #[test]
 fn an_empty_value_is_reported_as_missing() {
     let error = sandbx_providers::resolve_api_key("ANTHROPIC_API_KEY", |_| Ok(String::new()))
@@ -74,10 +72,9 @@ fn a_whitespace_only_value_is_reported_as_missing_too() {
 
 #[test]
 fn anthropic_api_key_names_the_right_env_var() {
-    // `anthropic_api_key()` reads the real environment and must not mutate it, so
-    // which branch runs depends on what is already set. The probe is for a *usable*
-    // key, not merely a present one: gating on `Ok` would skip the assertion under
-    // `ANTHROPIC_API_KEY=`, where blank-rejection matters most.
+    // Which branch runs depends on what is already set, since the environment must not
+    // be mutated. The probe is for a usable key, not a present one: gating on `Ok`
+    // would skip the assertion under `ANTHROPIC_API_KEY=`, where it matters most.
     let a_real_key_is_set =
         std::env::var("ANTHROPIC_API_KEY").is_ok_and(|value| !value.trim().is_empty());
     if a_real_key_is_set {

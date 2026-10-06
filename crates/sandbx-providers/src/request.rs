@@ -3,18 +3,16 @@ use serde::{Serialize, Serializer};
 
 /// A request to the Messages API.
 ///
-/// No `stream` field: this crate builds no non-streaming path, and the flag is
-/// serialized as the constant `true` by the [`Serialize`] impl below. `Clone` is
-/// part of the contract, here and down the whole tree: `stream_chat` takes the
-/// request by value, so without it a caller could not retry a turn.
+/// No `stream` field: the [`Serialize`] impl below writes it as the constant `true`.
+/// `Clone` is part of the contract, here and down the whole tree, because
+/// `stream_chat` takes the request by value and a retry needs a second copy.
 #[derive(Debug, Clone)]
 pub struct MessagesRequest {
     /// A freeform string, not an enum: new model IDs ship regularly.
     pub model: String,
     /// Required by the API; this crate has no default opinion on a value.
     pub max_tokens: u32,
-    /// The system prompt, omitted from the body entirely when `None` — which is
-    /// not the same as sending `null`.
+    /// The system prompt, omitted from the body when `None`, not sent as `null`.
     pub system: Option<String>,
     /// The conversation so far, oldest first.
     pub messages: Vec<RequestMessage>,
@@ -23,11 +21,9 @@ pub struct MessagesRequest {
 }
 
 impl Serialize for MessagesRequest {
-    /// Hand-written so `stream` can be a constant on the wire without being a public
-    /// field, and so `system`/`tools` are omitted rather than sent as `null`/`[]`.
-    ///
-    /// The destructuring `let` is load-bearing: binding every field by name makes a
-    /// field added later fail to compile until it is written to the wire.
+    /// Hand-written so `stream` is a wire constant without being a public field, and
+    /// `system`/`tools` are omitted rather than sent as `null`/`[]`. The destructuring
+    /// `let` makes a field added later fail to compile until it is written out.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let Self {
             model,
@@ -55,8 +51,8 @@ impl Serialize for MessagesRequest {
 /// One turn in the conversation.
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestMessage {
-    /// Who produced this turn. The API rejects a conversation whose first turn is
-    /// not [`Role::User`].
+    /// Who produced it. The API rejects a conversation whose first turn is not
+    /// [`Role::User`].
     pub role: Role,
     /// Content blocks, in order.
     pub content: Vec<ContentBlock>,
@@ -78,11 +74,10 @@ pub enum Role {
 pub enum ContentBlock {
     /// Prose, the only block kind a first user turn needs.
     Text {
-        /// Sent as given; the model's context window is what bounds its length.
+        /// Sent as given.
         text: String,
     },
-    /// A tool call the model made on a previous turn, replayed back into the
-    /// conversation.
+    /// A tool call from a previous turn, replayed back into the conversation.
     ToolUse {
         /// The vendor's call ID, which the answering
         /// [`ToolResult`](Self::ToolResult) must echo.
@@ -98,8 +93,7 @@ pub enum ContentBlock {
         tool_use_id: String,
         /// The tool's output, or its error message when `is_error` is set.
         content: String,
-        /// `Some(true)` marks the call as failed; omitted from the body entirely
-        /// when `None`.
+        /// `Some(true)` marks the call as failed; omitted from the body when `None`.
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
@@ -112,7 +106,7 @@ pub struct ToolDefinition {
     pub name: String,
     /// What it does, in prose — the model's only guide to when to reach for it.
     pub description: String,
-    /// A plain `serde_json::Value`, not `schemars::Schema`, so this crate does not
-    /// depend on sandbx-tools.
+    /// A plain `Value`, not `schemars::Schema`, so this crate need not depend on
+    /// sandbx-tools.
     pub input_schema: serde_json::Value,
 }

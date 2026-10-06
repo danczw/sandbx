@@ -1,5 +1,5 @@
-//! Tool-call accumulation: the one block kind whose deltas have to be buffered before
-//! they mean anything, and the ways a stream can leave that buffer in an odd state.
+//! Tool-call accumulation: the one block kind whose deltas must be buffered whole,
+//! and the ways a stream can leave that buffer in an odd state.
 
 use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
 
@@ -29,9 +29,9 @@ async fn a_call_split_across_fragments_becomes_one_event() {
     );
 }
 
-/// A tool taking no arguments sends no `input_json_delta`, so the buffer is empty at
-/// `content_block_stop` and `{}` is the input — and the API rejects the next request
-/// for an unanswered `tool_use`.
+/// A tool taking no arguments sends no `input_json_delta`, so an empty buffer at
+/// `content_block_stop` means `{}`; the API rejects the next request for an
+/// unanswered `tool_use`.
 #[tokio::test]
 async fn a_zero_argument_tool_call_yields_an_empty_input() {
     let out = ok_events(vec![
@@ -106,7 +106,7 @@ async fn parallel_calls_accumulate_independently_by_index() {
 }
 
 /// Dropping a block whose `content_block_stop` was lost, while still reporting
-/// `Stop { ToolUse }`, would tell the caller to run a tool it was never given.
+/// `Stop { ToolUse }`, tells the caller to run a tool it never got.
 #[tokio::test]
 async fn a_block_left_open_is_flushed_at_message_stop() {
     let out = ok_events(vec![
@@ -129,7 +129,7 @@ async fn a_block_left_open_is_flushed_at_message_stop() {
 }
 
 /// A new block's deltas landing in an abandoned tool call would emit a
-/// `ToolCallRequested` the model never asked for, which the agent loop would run.
+/// `ToolCallRequested` the model never asked for, which the agent loop runs.
 #[tokio::test]
 async fn a_block_opened_over_an_unclosed_one_discards_it() {
     let out = events(vec![
@@ -160,6 +160,6 @@ async fn unparseable_json_is_a_malformed_event_not_a_panic() {
 
     assert!(matches!(out[0], Err(ProviderError::MalformedEvent { .. })));
     // Unlike a frame that fails to parse, one unusable tool call does not end the
-    // turn: the `message_stop` behind it is still honoured.
+    // turn: the `message_stop` behind it still arrives.
     assert!(matches!(out[1], Ok(AgentEvent::Stop { .. })));
 }

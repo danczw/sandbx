@@ -1,9 +1,8 @@
 //! Exercises the real Anthropic API over the network.
 //!
-//! Excluded from the default `cargo test` run and from CI: it costs real money and
-//! needs a live `ANTHROPIC_API_KEY`. Gated behind a Cargo feature rather than a runtime
-//! env-var check, so without the feature `cargo test` reports zero tests here instead
-//! of a silently-passing no-op.
+//! Costs real money and needs a live `ANTHROPIC_API_KEY`, so it is behind a Cargo
+//! feature rather than a runtime env-var check: without the feature `cargo test`
+//! reports zero tests here instead of a silently-passing no-op.
 //!
 //! Run manually: `cargo test -p sandbx-providers --features live-anthropic-tests`
 #![cfg(feature = "live-anthropic-tests")]
@@ -18,8 +17,8 @@ async fn streams_a_real_response_from_the_anthropic_api() {
 
     let request = MessagesRequest {
         model: "claude-opus-5".to_string(),
-        // Generous on purpose: `max_tokens` also covers whatever thinking the model
-        // does first, and a small budget can be spent before any text is emitted.
+        // Generous: `max_tokens` also covers whatever thinking the model does first,
+        // and a small budget can be spent before any text is emitted.
         max_tokens: 1024,
         system: None,
         messages: vec![RequestMessage {

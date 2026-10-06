@@ -1,5 +1,5 @@
-//! How a turn ends: exactly one `Stop` when `message_stop` arrives, an error
-//! when it does not, and the fusedness the returned stream promises.
+//! How a turn ends: one `Stop` when `message_stop` arrives, an error when it does
+//! not, and the fusedness the returned stream promises.
 
 use super::{AgentEvent, ProviderError, StopReason, event_stream, events, ok_events, raw, stop};
 
@@ -14,8 +14,7 @@ async fn message_stop_ends_the_stream_with_a_stop_event() {
     );
 }
 
-/// `stop_reason` is nullable on the wire, and a truncated stream must still be
-/// distinguishable, so a `Stop` is emitted either way.
+/// `stop_reason` is nullable on the wire, and a truncation must stay distinguishable.
 #[tokio::test]
 async fn a_null_stop_reason_still_ends_the_turn_with_a_stop() {
     let out = ok_events(vec![
@@ -38,8 +37,8 @@ async fn a_null_stop_reason_still_ends_the_turn_with_a_stop() {
     );
 }
 
-/// A stop reason arriving before `message_stop` is held, not emitted: a connection
-/// dropping between the two is a truncated turn, not a clean finish.
+/// A connection dropping between `message_delta` and `message_stop` is a truncated
+/// turn, not a clean finish.
 #[tokio::test]
 async fn a_stop_reason_without_message_stop_truncates() {
     let out = events(vec![raw(
@@ -57,7 +56,6 @@ async fn a_stop_reason_without_message_stop_truncates() {
 
 #[tokio::test]
 async fn connection_closing_before_message_stop_is_reported() {
-    // No message_stop before the underlying stream ends.
     let out = events(vec![raw(r#"{"type":"ping"}"#)]).await;
 
     assert_eq!(out.len(), 1);
@@ -87,14 +85,13 @@ async fn an_in_band_error_event_ends_the_stream() {
     }
 }
 
-/// `unfold` panics if polled after it returns `None`, and callers may over-poll, so
-/// fusedness is part of the contract.
+/// `unfold` panics if polled past `None`, and callers may over-poll.
 #[tokio::test]
 async fn the_stream_is_fused_and_survives_being_over_polled() {
     use futures_util::StreamExt;
 
-    // Boxed to poll it by hand: the stream holds the async body of
-    // `next_agent_event` and so is not `Unpin`, which `.next()` requires.
+    // Boxed to poll by hand: the stream holds `next_agent_event`'s async body and so
+    // is not `Unpin`, which `.next()` requires.
     let mut stream = Box::pin(event_stream(futures_util::stream::iter(vec![raw(
         r#"{"type":"message_stop"}"#,
     )])));

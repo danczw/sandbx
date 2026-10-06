@@ -1,7 +1,7 @@
 //! Why a session operation did not happen.
 //!
-//! No `From` impls: every wrapped failure is paired with the path and the operation it
-//! came from, which a blanket conversion would discard. Do not add one.
+//! No `From` impls, and do not add one: every wrapped failure is paired with the path
+//! and operation it came from, which a blanket conversion would discard.
 
 use std::path::PathBuf;
 
@@ -30,28 +30,20 @@ pub enum SessionError {
         id: SessionId,
     },
 
-    /// Every id the clock offered was already taken.
-    ///
-    /// Two sessions in the same millisecond is ordinary and retried; this many in a row
-    /// means the clock is not advancing.
+    /// Every id the clock offered was taken, so it is not advancing.
     Collision {
         /// How many ids were tried.
         attempts: u64,
     },
 
-    /// The first line of the transcript is not a header.
-    ///
-    /// Refused rather than read from line two: without the header there is nothing
-    /// saying the rest of the file is a transcript at all.
+    /// The first line is not a header, so nothing says the rest is a transcript.
     MissingHeader {
         /// The file that was read.
         path: PathBuf,
     },
 
-    /// The transcript was written by a newer format than this build reads.
-    ///
-    /// Refused rather than read on a best effort: a reader that silently dropped a
-    /// field it did not know would change the history the model is shown.
+    /// A newer format than this build reads; refused rather than read best-effort,
+    /// since dropping an unknown field would change the history the model is shown.
     UnsupportedVersion {
         /// The file that was read.
         path: PathBuf,
@@ -59,10 +51,7 @@ pub enum SessionError {
         version: u32,
     },
 
-    /// A line of the transcript is not a record this build understands.
-    ///
-    /// Refused rather than skipped: an unclassifiable line may be a message, and
-    /// dropping it would alter the conversation without saying so.
+    /// A line is not a record; refused rather than skipped, since it may be a message.
     Malformed {
         /// The file that was read.
         path: PathBuf,
@@ -72,32 +61,26 @@ pub enum SessionError {
         source: serde_json::Error,
     },
 
-    /// The transcript can be written by somebody other than its owner.
-    ///
-    /// Refused, unlike a merely readable one: a history another user can edit is a
-    /// history they choose, and the model it is replayed to calls tools.
+    /// The transcript is writable by somebody else. Refused, unlike a merely readable
+    /// one: a history another user can edit is one they choose, and it drives tool calls.
     Writable {
         /// The transcript that was refused.
         path: PathBuf,
-        /// The mode it carries, which the message prints in octal.
+        /// The mode it carries.
         mode: u32,
     },
 
-    /// The directory holding transcripts can be written by somebody else.
-    ///
-    /// Stronger than the file's own mode: whoever may write the directory can rename
-    /// their own `0600` file over the transcript.
+    /// The directory is writable by somebody else, who can rename their own `0600` file
+    /// over the transcript whatever the transcript's own mode says.
     DirWritable {
         /// The directory that was refused.
         path: PathBuf,
-        /// The mode it carries, which the message prints in octal.
+        /// The mode it carries.
         mode: u32,
     },
 
-    /// The transcript, or the directory holding it, is a symbolic link.
-    ///
-    /// Following one would vet a different file than it read, or — for the root, whose
-    /// mode is narrowed and not only read — `chmod` a directory outside the store.
+    /// The transcript, or its directory, is a symbolic link: following one vets a
+    /// different file than it reads, and for the root `chmod`s outside the store.
     Symlink {
         /// The link that was refused.
         path: PathBuf,
@@ -111,19 +94,14 @@ pub enum SessionError {
         uid: u32,
     },
 
-    /// The history holds two turns of the same role in a row.
-    ///
-    /// Only a hand-edited transcript gets here: an append refuses a turn that would break
-    /// the alternation, so the store cannot write one.
+    /// Two turns of the same role in a row, which only a hand edit can produce.
     Disordered {
         /// The transcript that was refused.
         path: PathBuf,
     },
 
-    /// The turn did not end with an assistant message.
-    ///
-    /// A transcript that ends on a user turn makes the next resume send two user turns
-    /// in a row, which the API rejects — a session bricked by a run that exited zero.
+    /// The turn did not end with an assistant message, which would make the next resume
+    /// send two user turns in a row and brick the session from a run that exited zero.
     IncompleteTurn,
 
     /// An operation on the store's files failed.

@@ -1,8 +1,7 @@
 //! What a transcript recovers from, and what it still refuses.
 //!
-//! Apart from `transcript.rs`, which pins the format's own rules: these are the cases
-//! where a file is already damaged or a turn is already odd — a torn append, a
-//! hand-edited role order, a turn that measured a prompt and produced no message.
+//! Apart from `transcript.rs`, which pins the format's own rules: here the file is
+//! already damaged or the turn already odd.
 
 use sandbx_session::{CompletedTurn, Content, Message, Role, SessionError, SessionStore, Usage};
 
@@ -69,8 +68,8 @@ fn a_transcript_of_nothing_but_a_torn_line_is_refused() {
     );
 }
 
-/// `settled` sees only the last role, so an interior pair reached the provider as the
-/// 400 the check exists to prevent.
+/// `settled` sees only the last role, so an interior pair would reach the provider as a
+/// 400.
 #[test]
 fn an_interior_pair_of_user_turns_is_refused() {
     let (_root, store) = store();
@@ -94,8 +93,8 @@ fn an_interior_pair_of_user_turns_is_refused() {
     );
 }
 
-/// A round that reported what the prompt cost and produced no blocks. The accounting line
-/// is the only place that figure can live.
+/// The accounting line is the only place a figure from a round that produced no blocks
+/// can live.
 #[test]
 fn a_turn_with_no_messages_still_records_what_it_cost() {
     let (_root, store) = store();

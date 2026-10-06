@@ -1,6 +1,5 @@
-/// A provider-agnostic unit of a streamed model turn.
-///
-/// Fully owned, no lifetimes: this type outlives the HTTP response it came from.
+/// A provider-agnostic unit of a streamed model turn, fully owned so it outlives the
+/// HTTP response it came from.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentEvent {
     /// An incremental chunk of assistant-visible text.
@@ -14,15 +13,13 @@ pub enum AgentEvent {
     },
     /// An incremental chunk of the model's extended-thinking text.
     ///
-    /// The signature needed to replay a thinking block into a later turn is
-    /// discarded, and [`ContentBlock`](crate::ContentBlock) has no variant to hold
-    /// one; see #85.
+    /// The signature that would replay a thinking block into a later turn is
+    /// discarded; [`ContentBlock`](crate::ContentBlock) has no variant for one (#85).
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
     },
-    /// A tool call whose JSON input has fully arrived and parsed, emitted once per
-    /// call after every fragment of that input is accumulated.
+    /// A tool call whose JSON input has fully arrived and parsed, once per call.
     ToolCallRequested {
         /// The vendor's call ID, to echo in the answering `tool_result` block.
         id: String,
@@ -33,14 +30,13 @@ pub enum AgentEvent {
     },
     /// Token accounting for the turn.
     ///
-    /// Emitted at most once, carrying the last figures reported: Anthropic restates
-    /// the counts cumulatively on every `message_delta`, so summing several would
-    /// double-count. Every field is `Option` because the API may omit any of them —
-    /// `None` is "not reported", not a reported zero.
+    /// At most once, carrying the last figures reported: Anthropic restates the counts
+    /// cumulatively on every `message_delta`, so summing them double-counts. `None` is
+    /// "not reported", not a reported zero.
     Usage {
         /// Tokens in the request, excluding anything served from cache.
         input_tokens: Option<u32>,
-        /// Tokens generated, extended thinking included, so this can exceed the reply.
+        /// Tokens generated, extended thinking included, so it can exceed the reply.
         output_tokens: Option<u32>,
         /// Tokens written to the prompt cache.
         cache_creation_input_tokens: Option<u32>,
@@ -49,8 +45,8 @@ pub enum AgentEvent {
     },
     /// The turn ended, and why.
     ///
-    /// Emitted at `message_stop`, not when a stop reason is first seen; a turn that
-    /// never reaches it yields
+    /// At `message_stop`, not when a stop reason is first seen; a turn that never
+    /// reaches it yields
     /// [`StreamEndedUnexpectedly`](crate::ProviderError::StreamEndedUnexpectedly).
     Stop {
         /// Why it ended, or [`StopReason::Unspecified`] when the API never said.
@@ -69,9 +65,8 @@ pub enum StopReason {
     MaxTokens,
     /// A caller-supplied stop sequence was produced (`stop_sequence`).
     StopSequence,
-    /// The turn ended without the API ever reporting a reason:
-    /// `message_delta.stop_reason` is nullable, so a stream can reach
-    /// `message_stop` with nothing having said why.
+    /// `message_delta.stop_reason` is nullable, so a stream can reach `message_stop`
+    /// with nothing having said why.
     Unspecified,
     /// An unrecognized vendor string, verbatim: new stop reasons ship over time.
     Other(String),

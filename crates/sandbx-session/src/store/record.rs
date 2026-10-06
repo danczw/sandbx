@@ -1,7 +1,4 @@
 //! A line of a transcript, and how a file of them replays into a session.
-//!
-//! Separate from the store because it changes for a different reason: the store changes
-//! when the rules for opening a file change, this when the format does.
 
 use std::path::Path;
 
@@ -12,10 +9,8 @@ use crate::{Message, SessionError, Usage};
 /// The format this build writes, and the only one it reads.
 pub(super) const VERSION: u32 = 1;
 
-/// One line of a transcript.
-///
-/// Internally tagged, so a message line is the message's own fields plus a `type`, and
-/// an unknown `type` fails the parse rather than being skipped.
+/// One line of a transcript, internally tagged: a message line is the message's own
+/// fields plus a `type`, and an unknown `type` fails the parse rather than skipping.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum Record {
@@ -41,9 +36,9 @@ pub(super) struct Accounting {
 
 /// Replay a transcript into the state the next turn starts from.
 ///
-/// The accounting fold is the same operation the turn loop performs in memory —
-/// `observed` keeps the last figure anyone reported, `withheld` is whatever the last
-/// turn cut — so a resumed session and a continued one carry the same numbers.
+/// The accounting fold is what the turn loop does in memory — `observed` keeps the last
+/// figure reported, `withheld` whatever the last turn cut — so a resumed session and a
+/// continued one carry the same numbers.
 pub(super) fn fold(
     path: &Path,
     body: &str,
@@ -59,9 +54,9 @@ pub(super) fn fold(
     let mut withheld = 0;
     let mut headed = false;
 
-    // No newline after the last line means an append that did not finish, and dropping it
-    // restores the state the file was last consistent in. That one line only: an interior
-    // line that will not parse may be a message, so it refuses.
+    // No newline after the last line means an append that did not finish, and dropping
+    // it restores the last consistent state. That line only: an interior line that will
+    // not parse may be a message, so it refuses.
     let torn = !body.ends_with('\n');
     let last = body.lines().count().saturating_sub(1);
 
@@ -98,8 +93,7 @@ pub(super) fn fold(
                 observed = accounting.observed.or(observed);
                 withheld = accounting.withheld;
             }
-            // A second header says nothing about the conversation, so nothing it could
-            // say would change what is replayed.
+            // A second header carries nothing that would change what is replayed.
             (_, Record::Header(_)) => {}
         }
     }
