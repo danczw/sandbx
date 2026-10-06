@@ -84,8 +84,9 @@ test able to tell. Four hand-written obligations, each individually unobservable
 and a fifth spawn site added later would have inherited the harness's whole
 environment rather than nothing — failing *open*.
 
-**One factory.** `spawn::command` is the only `Command::new` in the workspace, and
-the only `#[allow(clippy::disallowed_methods)]` for it. Two properties fall out
+**One factory.** `spawn::command` is the only `Command::new` in any crate's `src/`,
+and carries the only `#[allow(clippy::disallowed_methods)]` there; the tests that
+drive the built binary carry their own. Two properties fall out
 that no amount of per-site discipline gave:
 
 - There is one line to delete, and deleting it fails 24 enforcement tests. The
