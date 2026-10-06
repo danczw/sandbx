@@ -1,12 +1,8 @@
 //! What the store creates, and what it refuses to read back.
 //!
-//! The rule splits by bit: a transcript somebody else can *write* is refused, because a
-//! history another user chose is replayed to a model that calls tools; one they can only
-//! *read* resumes and reports, because by then the disclosure has happened and a
-//! conversation cannot be rotated.
-//!
-//! A foreign owner is refused as well. Nothing here drives that arm: it needs a file
-//! owned by a second uid, which a test running as one user cannot make.
+//! The rule splits by bit: a transcript somebody else can *write* is refused, one they
+//! can only *read* resumes and reports. A foreign owner is refused too, but nothing here
+//! drives that arm — it needs a second uid, which a test running as one user cannot make.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
@@ -140,8 +136,8 @@ fn an_owner_only_transcript_reports_nothing() {
     assert!(!store.resume(&id).unwrap().shared_read());
 }
 
-/// Without `O_NOFOLLOW` this resumes: the link's own directory is the vetted 0700 one,
-/// and the mode and owner come from a target the check never looks at.
+/// Without `O_NOFOLLOW` this resumes: the vetted directory holds the link, and the mode
+/// and owner come from a target the check never looks at.
 #[test]
 fn a_symlinked_transcript_is_refused() {
     let (root, store) = store();

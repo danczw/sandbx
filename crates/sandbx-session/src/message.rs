@@ -1,12 +1,10 @@
 //! What a transcript line holds: one turn of the conversation, and what the request for
 //! it cost.
 //!
-//! These mirror `sandbx_providers::request`'s `RequestMessage`, `Role` and
-//! `ContentBlock` field for field, and `sandbx_agent`'s `PromptUsage`. Declared again
-//! rather than imported so this crate depends on no other sandbx crate: a transcript is
-//! a file format, and a format that moves whenever a provider type moves is not one. The
-//! translation lives in the binary that uses both, where a new block kind is a compile
-//! error rather than a block quietly missing from a transcript.
+//! These mirror `sandbx_providers::request`'s `RequestMessage`, `Role` and `ContentBlock`
+//! field for field, and `sandbx_agent`'s `PromptUsage`, but are declared again so this
+//! crate depends on no other: a format that moves whenever a provider type moves is not
+//! one. The translation lives in `sandbx-cli`, where a new block kind fails to compile.
 
 use serde::{Deserialize, Serialize};
 
@@ -62,9 +60,8 @@ pub enum Content {
 
 /// What the provider counted the prompt at, as of the last turn that reported one.
 ///
-/// Stored so a resumed conversation starts from a real figure rather than from zero:
-/// without it the first turn after a resume cannot tell whether the history already
-/// fills the context window.
+/// Stored because it is recoverable only at the moment the turn reports it: a resume
+/// without it cannot tell whether the history already fills the context window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
     /// Tokens in the request, excluding anything served from cache.
@@ -77,9 +74,8 @@ pub struct Usage {
 
 /// One turn's worth of everything a transcript records.
 ///
-/// The three travel together because they are one turn's result: threading two and
-/// dropping the third leaves a history whose accounting describes a different
-/// conversation than its messages do.
+/// The three travel together because threading two and dropping the third leaves a
+/// history whose accounting describes a different conversation than its messages do.
 #[derive(Debug, Clone, Copy)]
 pub struct CompletedTurn<'a> {
     /// The turns the call produced, oldest first.

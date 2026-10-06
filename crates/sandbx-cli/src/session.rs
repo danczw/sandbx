@@ -1,14 +1,11 @@
 //! Where a conversation is kept between runs, and the translation at the edge of it.
 //!
-//! `sandbx-session` stores shapes of its own rather than the provider's, so that a
-//! transcript is a file format and not whatever `sandbx-providers` happened to compile
-//! to. The cost of that is this module, and it is the cost worth paying: every match
-//! below destructures by field name with no `_` arm, so a new [`ContentBlock`] variant is
-//! a compile error here rather than a block silently missing from a saved conversation.
+//! `sandbx-session` keeps shapes of its own, so this module is the seam. Every match
+//! below destructures by field name with no `_` arm: a new [`ContentBlock`] variant is a
+//! compile error here rather than a block silently missing from a saved conversation.
 //!
-//! The four conversions are free functions and not `From` impls because both types are
-//! foreign to this crate, which makes a `From` a coherence error — and writing it in
-//! `sandbx-session` would mean that crate depending on `sandbx-providers`.
+//! Free functions and not `From` impls — both types are foreign to this crate, so a
+//! `From` is a coherence error.
 
 use sandbx_agent::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
@@ -31,8 +28,8 @@ pub enum SessionChoice<'a> {
 
 /// Open the session `choice` describes, reporting it on stderr.
 ///
-/// Called before the provider client is built, so a refused mode or an id with nothing
-/// behind it costs no request — the ordering the policy already has.
+/// Called before the first request, so a refused mode or an id with nothing behind it
+/// costs nothing — but after the client, which no new transcript should outlive.
 ///
 /// # Errors
 ///

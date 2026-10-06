@@ -1,8 +1,8 @@
-//! Cases the code review turned up: torn appends, hand-edited role order, and a turn
-//! that measured a prompt without producing a message.
+//! What a transcript recovers from, and what it still refuses.
 //!
-//! Alongside `transcript.rs` rather than inside it only because that file already covers
-//! the happy path and the refusals the format itself defines; these are recovery rules.
+//! Apart from `transcript.rs`, which pins the format's own rules: these are the cases
+//! where a file is already damaged or a turn is already odd — a torn append, a
+//! hand-edited role order, a turn that measured a prompt and produced no message.
 
 use sandbx_session::{CompletedTurn, Content, Message, Role, SessionError, SessionStore, Usage};
 
@@ -39,9 +39,7 @@ fn spoken_to(store: &SessionStore) -> (sandbx_session::SessionId, std::path::Pat
     (session.id().clone(), session.path().to_owned())
 }
 
-/// ENOSPC part-way through an append is the realistic cause. Every record `write` emits
-/// is newline-terminated, so a file not ending in one stopped mid-write — and refusing
-/// the whole transcript would make one torn append cost the conversation.
+/// ENOSPC part-way through an append, which refusing would let cost the conversation.
 #[test]
 fn a_torn_final_line_is_dropped() {
     let (_root, store) = store();
@@ -96,8 +94,8 @@ fn an_interior_pair_of_user_turns_is_refused() {
     );
 }
 
-/// A round that reported what the prompt cost and produced no blocks. The accounting
-/// line is the only place that figure can live, so the turn still writes one.
+/// A round that reported what the prompt cost and produced no blocks. The accounting line
+/// is the only place that figure can live.
 #[test]
 fn a_turn_with_no_messages_still_records_what_it_cost() {
     let (_root, store) = store();

@@ -59,11 +59,9 @@ pub(super) fn fold(
     let mut withheld = 0;
     let mut headed = false;
 
-    // A last line with no newline after it is an append that did not finish — ENOSPC,
-    // most often. Only that one line may be dropped: it restores the state the file was
-    // last consistent in, where refusing would make one torn write cost the whole
-    // conversation. An interior line that will not parse still refuses, because it may be
-    // a message and skipping it would change what the model is replayed without saying so.
+    // No newline after the last line means an append that did not finish, and dropping it
+    // restores the state the file was last consistent in. That one line only: an interior
+    // line that will not parse may be a message, so it refuses.
     let torn = !body.ends_with('\n');
     let last = body.lines().count().saturating_sub(1);
 

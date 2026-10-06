@@ -1,9 +1,8 @@
 //! Session persistence: the `SessionStore` that owns a transcript, and the `Session`
 //! and `Message` types it stores. Depends on no other sandbx crate.
 //!
-//! A transcript is append-only JSONL, one record per line, under a directory outside
-//! the working tree. Appending is what keeps `withheld` meaningful: it is an index into
-//! the history, so a rewrite that moved a prefix would move what it counts.
+//! A transcript is append-only JSONL, one record per line, under a directory outside the
+//! working tree. See `context/decision-on-disk-state.md` for why it is never rewritten.
 
 mod error;
 mod id;

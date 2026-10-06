@@ -1,7 +1,7 @@
 //! Why a session operation did not happen.
 //!
-//! No `From` impls, deliberately: every wrapped failure is paired with the path and the
-//! operation it came from, which a blanket conversion would discard.
+//! No `From` impls: every wrapped failure is paired with the path and the operation it
+//! came from, which a blanket conversion would discard. Do not add one.
 
 use std::path::PathBuf;
 
@@ -74,9 +74,8 @@ pub enum SessionError {
 
     /// The transcript can be written by somebody other than its owner.
     ///
-    /// Refused rather than reported, unlike a merely readable one: a history another
-    /// user can edit is a history they choose, and the model it is replayed to calls
-    /// tools.
+    /// Refused, unlike a merely readable one: a history another user can edit is a
+    /// history they choose, and the model it is replayed to calls tools.
     Writable {
         /// The transcript that was refused.
         path: PathBuf,
@@ -97,10 +96,8 @@ pub enum SessionError {
 
     /// The transcript, or the directory holding it, is a symbolic link.
     ///
-    /// For a transcript, following it would vet the wrong directory: the mode and owner
-    /// come from the target while the directory checked holds the link. For the root it is
-    /// worse — the mode is not only read but narrowed, so following one would `chmod` a
-    /// directory outside the store. Neither is ever a link when the store made it.
+    /// Following one would vet a different file than it read, or — for the root, whose
+    /// mode is narrowed and not only read — `chmod` a directory outside the store.
     Symlink {
         /// The link that was refused.
         path: PathBuf,
