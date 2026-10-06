@@ -1,13 +1,13 @@
-//! The conditional rules on `socket`, the one syscall the policy both widens and narrows:
-//! the unix-socket axis lifts a rule on its `domain`, and a port allowlist adds rules on its
-//! `domain`, `type` and `protocol` — plus the `MSG_FASTOPEN` rules on the send syscalls,
-//! which are here because they belong to the same claim.
+//! The conditional rules on `socket`, the one syscall the policy both widens and narrows: the
+//! unix-socket axis lifts a rule on its `domain`, and a port allowlist adds rules on its
+//! `domain`, `type` and `protocol` — plus the `MSG_FASTOPEN` rules on the send syscalls, which
+//! belong to the same claim.
 
 use super::*;
 
-/// A policy whose egress is confined to one TCP port, which is the only state that denies
-/// datagrams. The port itself is irrelevant here — Landlock holds the ports, seccomp only
-/// sees which *shape* of socket is being asked for.
+/// A policy whose egress is confined to one TCP port, the only state that denies datagrams.
+/// The port itself is irrelevant — Landlock holds the ports, seccomp sees only which *shape*
+/// of socket is asked for.
 fn port_list() -> SandboxPolicy {
     SandboxPolicy::default().allow_network_port(443)
 }
@@ -50,11 +50,10 @@ fn socket_refuses_af_unix_and_allows_af_inet() {
     );
 }
 
-/// `socket`'s `domain` is an `int`, so the kernel truncates it and a 64-bit comparison
-/// would look at register bits the kernel discards. That makes a `Dword`-to-`Qword`
-/// change a real bypass: `socket(0x1_0000_0001, …)` has the kernel see `AF_UNIX` while
-/// a `Qword` filter sees a non-zero high half, finds no match, and allows it. The test
-/// above leaves the high half zero and so passes against either width.
+/// `socket`'s `domain` is an `int`, so a `Dword`-to-`Qword` change is a real bypass:
+/// `socket(0x1_0000_0001, …)` has the kernel see `AF_UNIX` while a `Qword` filter sees a
+/// non-zero high half, finds no match, and allows it. The test above leaves the high half zero
+/// and so passes against either width.
 #[test]
 fn the_af_unix_test_ignores_the_domains_high_half() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -68,8 +67,8 @@ fn the_af_unix_test_ignores_the_domains_high_half() {
     );
 }
 
-/// The second assertion is the one worth having: a grant that also widened the
-/// denylist would otherwise be invisible here.
+/// The second assertion is the one worth having: a grant that also widened the denylist would
+/// otherwise be invisible here.
 #[test]
 fn granting_unix_sockets_lifts_only_the_socket_rule() {
     let program = compiled_filter(&SandboxPolicy::default().allow_unix_sockets()).unwrap();
@@ -116,8 +115,8 @@ fn a_port_list_denies_raw_sockets() {
 ///
 /// `socket(…, SOCK_DGRAM | SOCK_CLOEXEC)` is the spelling every modern library uses, and
 /// `__sys_socket` masks the flag bits off before reading the type — so an `Eq` rule against
-/// `SOCK_DGRAM` matches none of them while the kernel hands back a datagram socket either
-/// way. The test above leaves the flag bits clear and so passes against either operator.
+/// `SOCK_DGRAM` matches none of them while the kernel still hands back a datagram socket. The
+/// test above leaves the flag bits clear and so passes against either operator.
 #[test]
 fn a_port_list_denies_udp_with_cloexec_set() {
     let program = compiled_filter(&port_list()).unwrap();
@@ -139,8 +138,7 @@ fn a_port_list_denies_udp_with_cloexec_set() {
         );
     }
 
-    // The same bypass one level up: `type` is an `int`, so a `Qword` comparison would
-    // look at bits the kernel discards.
+    // `type` is an `int` too, so a `Qword` comparison would look at bits the kernel discards.
     assert_eq!(
         typed_socket_verdict(
             &program,
@@ -153,9 +151,9 @@ fn a_port_list_denies_udp_with_cloexec_set() {
     );
 }
 
-/// `SOCK_SEQPACKET` over `AF_INET` is SCTP, which Landlock's `ConnectTcp` does not police.
-/// The enumeration over the whole 4-bit type field is what closes it, and anything else the
-/// field grows to mean.
+/// `SOCK_SEQPACKET` over `AF_INET` is SCTP, which Landlock's `ConnectTcp` does not police. The
+/// enumeration over the whole 4-bit type field closes it, and anything else the field grows to
+/// mean.
 #[test]
 fn a_port_list_denies_seqpacket() {
     let program = compiled_filter(&port_list()).unwrap();
@@ -186,9 +184,8 @@ fn a_port_list_still_permits_tcp() {
     }
 }
 
-/// Unix sockets are their own axis. A type denial aimed at IP egress that also caught
-/// `AF_UNIX` would narrow a grant it never mentions — and `SOCK_DGRAM` and `SOCK_SEQPACKET`
-/// unix sockets are both in ordinary use.
+/// A type denial aimed at IP egress that also caught `AF_UNIX` would narrow a grant it never
+/// mentions — and `SOCK_DGRAM` and `SOCK_SEQPACKET` unix sockets are both in ordinary use.
 #[test]
 fn a_port_list_still_permits_unix_datagrams_when_granted() {
     let program = compiled_filter(&port_list().allow_unix_sockets()).unwrap();
@@ -216,9 +213,9 @@ fn an_unrestricted_grant_permits_udp() {
     );
 }
 
-/// The default policy keeps datagrams too, for a different reason: it runs in an empty
-/// network namespace, so a UDP socket has nowhere to send — and `getaddrinfo` needs
-/// `AF_NETLINK`, which glibc's `__check_pf` opens as `SOCK_RAW`.
+/// The default policy keeps datagrams for a different reason: it runs in an empty network
+/// namespace, so a UDP socket has nowhere to send — and `getaddrinfo` needs `AF_NETLINK`,
+/// which glibc's `__check_pf` opens as `SOCK_RAW`.
 ///
 /// Both netlink types, because the exemption has to cover the call glibc actually makes and
 /// `netlink_create` accepts either.
@@ -241,9 +238,8 @@ fn a_denied_policy_permits_udp_in_an_empty_netns() {
 }
 
 /// `blocked_syscalls` has two producers of `SYS_socket` rules, and rules for one syscall are
-/// OR'd — so an `insert` in either would wipe the other with no trace. The rule families are
-/// disjoint, `AF_UNIX` against everything else, so neither can be inferred from the other's
-/// verdict.
+/// OR'd — so an `insert` in either would wipe the other with no trace. The families are
+/// disjoint, `AF_UNIX` against everything else, so neither verdict implies the other.
 #[test]
 fn the_unix_and_type_rules_coexist_on_one_socket_entry() {
     let program = compiled_filter(&port_list()).unwrap();
@@ -262,10 +258,8 @@ fn the_unix_and_type_rules_coexist_on_one_socket_entry() {
 
 /// The hole the type rules alone leave open. Landlock asks for `CONNECT_TCP` only where
 /// `sk_is_tcp` holds — `SOCK_STREAM` *and* `IPPROTO_TCP` — so a stream socket carrying any
-/// other protocol number is egress no port rule ever sees.
-///
-/// MPTCP is the one that matters in practice: it is built into distribution kernels and
-/// needs no module to load.
+/// other protocol number is egress no port rule ever sees. MPTCP is the reachable one: built
+/// into distribution kernels, needing no module load.
 #[test]
 fn a_port_list_denies_stream_protocols_other_than_tcp() {
     let program = compiled_filter(&port_list()).unwrap();
@@ -385,7 +379,7 @@ fn a_port_list_permits_stream_sockets_only_in_the_ip_families() {
     }
 }
 
-/// The family allowlist guards `socket`, and a socket's family does not stay fixed there:
+/// A socket's family does not stay fixed at `socket`, where the allowlist guards it:
 /// `setsockopt(fd, SOL_TCP, TCP_ULP, "smc")` re-points the descriptor at a new `AF_SMC`
 /// socket, so a permitted `socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)` becomes the very thing
 /// the rule above refuses to create.
@@ -408,9 +402,9 @@ fn a_port_list_denies_the_tcp_ulp_sockopt() {
     );
 }
 
-/// The denial is the option and not the syscall: a program that cannot call `setsockopt` at
-/// all cannot set `SO_REUSEADDR` or a timeout, and `TCP_NODELAY` shares the level the rule
-/// names — so the `optname` half of the condition has to be doing work.
+/// The denial is the option and not the syscall: a program that cannot call `setsockopt`
+/// cannot set `SO_REUSEADDR` or a timeout, and `TCP_NODELAY` shares the level the rule names —
+/// so the `optname` half of the condition has to be doing work.
 #[test]
 fn a_port_list_permits_other_sockopts() {
     let program = compiled_filter(&port_list()).unwrap();
@@ -455,8 +449,8 @@ fn the_tcp_ulp_rule_ignores_the_arguments_high_half() {
 }
 
 /// The denial belongs to the port allowlist. Under the other two states there is no claim it
-/// would falsify — an empty netns has nowhere for an SMC socket to dial, and unrestricted
-/// egress was the request — and `TCP_ULP` is how in-process kTLS is enabled.
+/// would falsify — an empty netns has nowhere for an SMC socket to dial, unrestricted egress
+/// was the request — and `TCP_ULP` is how in-process kTLS is enabled.
 #[test]
 fn only_a_port_list_denies_the_tcp_ulp_sockopt() {
     for policy in [
@@ -526,10 +520,10 @@ fn a_port_list_permits_an_ordinary_send() {
     }
 }
 
-/// A conditional rule must never widen an unconditional denial. Asserted directly, because
-/// no production policy produces the collision: an empty rule vector means "match every
-/// call", so appending one condition to a syscall on [`BLOCKED_SYSCALLS`] would permit every
-/// call that fails the condition.
+/// A conditional rule must never widen an unconditional denial. Asserted directly, no
+/// production policy producing the collision: an empty rule vector means "match every call",
+/// so appending one condition to a syscall on [`BLOCKED_SYSCALLS`] would permit every call
+/// that fails the condition.
 #[test]
 fn a_conditional_rule_cannot_weaken_an_unconditional_denial() {
     use seccompiler::{SeccompCmpArgLen, SeccompCmpOp, SeccompCondition};

@@ -1,5 +1,5 @@
-//! The unconditional denylist, the filter's polarity, and whether the program is one
-//! the kernel would load at all.
+//! The unconditional denylist, the filter's polarity, and whether the program is one the
+//! kernel would load at all.
 
 use super::*;
 
@@ -21,12 +21,12 @@ fn blocked_syscalls_covers_the_whole_denylist() {
     }
 }
 
-/// This is a denylist, so a syscall the filter does not name has to be allowed. Swap
-/// the two actions in [`compiled_filter`] and this becomes `EPERM` — a sandbox that
-/// refuses every syscall and permits the dangerous ones.
+/// This is a denylist, so a syscall the filter does not name has to be allowed. Swap the two
+/// actions in [`compiled_filter`] and this becomes `EPERM` — a sandbox that refuses every
+/// syscall and permits the dangerous ones.
 ///
-/// Evaluated rather than read off the program's last instruction, where seccompiler
-/// happens to emit the mismatch action but is not required to.
+/// Evaluated rather than read off the program's last instruction, where seccompiler happens to
+/// emit the mismatch action but is not required to.
 #[test]
 fn a_syscall_the_filter_does_not_name_is_allowed() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -39,13 +39,13 @@ fn a_syscall_the_filter_does_not_name_is_allowed() {
     );
 }
 
-/// The other half of the polarity, needed alongside the fallthrough because either
-/// alone admits one of the two broken filters.
+/// The other half of the polarity, needed alongside the fallthrough because either alone
+/// admits one of the two broken filters.
 ///
-/// What the kernel then does with the program is out of reach here: its effective
-/// action is the most severe across *every* installed filter, so "the program returns
-/// `ALLOW`" is not "the syscall runs". The `sandbox-integration` suite establishes
-/// that; this pins what sandbx asked for.
+/// What the kernel then does with the program is out of reach here: its effective action is
+/// the most severe across *every* installed filter, so "the program returns `ALLOW`" is not
+/// "the syscall runs". The `sandbox-integration` suite establishes that; this pins what sandbx
+/// asked for.
 #[test]
 fn every_denylisted_syscall_is_refused_with_eperm() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -65,11 +65,10 @@ fn every_denylisted_syscall_is_refused_with_eperm() {
     }
 }
 
-/// `compiled_filter` with its two actions swapped, built from the same
-/// `blocked_syscalls` data.
+/// `compiled_filter` with its two actions swapped, from the same `blocked_syscalls` data.
 ///
-/// A twin, not the real path: if `compiled_filter` does more than call
-/// `SeccompFilter::new`, this stops being a mutation of it. Change both.
+/// A twin, not the real path: if `compiled_filter` does more than call `SeccompFilter::new`,
+/// this stops being a mutation of it. Change both.
 fn inverted_filter(policy: &crate::SandboxPolicy) -> seccompiler::BpfProgram {
     use seccompiler::{SeccompAction, SeccompFilter};
 
@@ -87,14 +86,12 @@ fn inverted_filter(policy: &crate::SandboxPolicy) -> seccompiler::BpfProgram {
 
 /// Would the other tests notice if the filter pointed the other way?
 ///
-/// Proves their assertions have mutation-killing power, and says nothing about
-/// production polarity: if [`compiled_filter`] were inverted this test would still
-/// pass and they would fail, because this one asserts about [`inverted_filter`],
-/// a copy.
+/// Proves their assertions have mutation-killing power, and says nothing about production
+/// polarity: if [`compiled_filter`] were inverted this test would still pass and they would
+/// fail, because this one asserts about [`inverted_filter`], a copy.
 ///
-/// Three verdicts, because the inversion has three distinguishable effects: the
-/// denylist opens, the fallthrough closes, and the conditional rule inverts with the
-/// unconditional ones.
+/// Three verdicts, the inversion having three distinguishable effects: the denylist opens, the
+/// fallthrough closes, and the conditional rule inverts with the unconditional ones.
 #[test]
 fn inverting_the_two_actions_inverts_every_verdict() {
     let program = inverted_filter(&SandboxPolicy::default());
@@ -121,10 +118,9 @@ fn inverting_the_two_actions_inverts_every_verdict() {
 
 /// Is the program one the kernel would load at all?
 ///
-/// Evaluation covers only the paths its data takes, and a wrong jump offset passes
-/// unnoticed. These checks close the rest, and every one is `bpf_check_classic()`
-/// restated rather than anything about seccompiler's codegen — the last-instruction
-/// check included.
+/// Evaluation covers only the paths its data takes, and a wrong jump offset passes unnoticed.
+/// These checks close the rest, and every one is `bpf_check_classic()` restated rather than
+/// anything about seccompiler's codegen — the last-instruction check included.
 ///
 /// Asked of the widest policy as well as the default one, because that is the one whose
 /// program grows: a port allowlist adds eighteen rules on `socket` alone, and the kernel
@@ -138,8 +134,8 @@ fn the_program_is_one_the_kernel_would_accept() {
     for policy in [SandboxPolicy::default(), widest] {
         let filters = installed_filters(&policy).unwrap();
 
-        // Or the loop below checks nothing, and `x32_gate` — the one hand-assembled
-        // program here, and so the one most likely to be malformed — goes unexamined.
+        // Or the loop below checks nothing, and `x32_gate` — the one hand-assembled program
+        // here, and so the one most likely to be malformed — goes unexamined.
         assert_eq!(
             filters.len(),
             if cfg!(target_arch = "x86_64") { 3 } else { 2 },
@@ -155,11 +151,10 @@ fn the_program_is_one_the_kernel_would_accept() {
 fn check_program_is_well_formed(program: seccompiler::BpfProgramRef<'_>) {
     let len = program.len();
 
-    // `bpf_check_classic` refuses `flen == 0 || flen > BPF_MAXINSNS`, so 4096 is the
-    // largest filter the kernel loads. seccompiler's own `BPF_MAX_LEN` guard is
-    // stricter (it errors at `>=` 4096), so a program can only fail this by being
-    // empty — stated as the kernel's bound anyway, for whoever chases a real
-    // `FilterTooLarge`.
+    // `bpf_check_classic` refuses `flen == 0 || flen > BPF_MAXINSNS`, so 4096 is the largest
+    // filter the kernel loads. seccompiler's own `BPF_MAX_LEN` guard is stricter (it errors
+    // at `>=` 4096), so a program can only fail this by being empty — stated as the kernel's
+    // bound anyway, for whoever chases a real `FilterTooLarge`.
     assert!(
         (1..=4096).contains(&len),
         "a filter the kernel would load holds 1 to 4096 instructions, this one \

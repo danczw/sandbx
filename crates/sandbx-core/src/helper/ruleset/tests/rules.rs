@@ -1,5 +1,5 @@
-//! The mapping itself: one rule per grant, each narrowed to its target, and what the
-//! kernel ends up enforcing once overlapping grants are unioned.
+//! The mapping itself: one rule per grant, each narrowed to its target, and what the kernel
+//! ends up enforcing once overlapping grants are unioned.
 //!
 //! Asked through [`requested_at`] rather than `fs_rules`, because that is what `apply`
 //! installs — the wrapper is where a dropped grant or a re-fused narrowing would hide.
@@ -47,10 +47,9 @@ fn rule(
 
 /// Every right the rules name for this exact path, unioned the way Landlock unions them.
 ///
-/// Matches on the path as spelled, where the kernel merges per inode — so two grants
-/// reaching one inode by different spellings (`/usr/bin` and `/usr/bin/`) are unioned
-/// there and counted apart here. Fine for the tests below, which name one path one way,
-/// but not the kernel's own answer for an arbitrary policy.
+/// Matches on the path as spelled, where the kernel merges per inode — so two grants reaching
+/// one inode by different spellings (`/usr/bin` and `/usr/bin/`) are unioned there and counted
+/// apart here. Fine for the tests below, which name one path one way.
 fn union(
     policy: &SandboxPolicy,
     path: &std::path::Path,
@@ -86,14 +85,12 @@ fn a_file_rule_drops_directory_only_rights() {
         !on_file.contains(AccessFs::MakeDir),
         "a regular file kept a directory-only right, which invalidates the ruleset"
     );
-    // Narrowing is an intersection, so the file can never gain anything the directory
-    // case did not already have.
+    // An intersection, so the file can never hold more than the directory case.
     assert!(on_dir.contains(on_file));
 }
 
-/// Two grants on one path stay two rules, each carrying its own axis's rights and nothing
-/// of the other's. The ordinary case: `sandbx --allow-write` grants read *and* write on
-/// the same path.
+/// Two grants on one path stay two rules, each carrying its own axis's rights and nothing of
+/// the other's. The ordinary case: `sandbx --allow-write` grants read *and* write on one path.
 #[test]
 fn a_path_granted_on_two_axes_keeps_one_rule_per_axis() {
     let dir = tempdir();
@@ -124,9 +121,8 @@ fn a_policy_with_no_paths_produces_no_rules() {
     );
 }
 
-/// One rule per *grant*, not per path: a path granted on two axes yields two rules, which
-/// the kernel unions. A grant dropped here is a permission the command silently does not
-/// get.
+/// One rule per *grant*, not per path: a path granted on two axes yields two rules, which the
+/// kernel unions. A grant dropped here is a permission the command silently does not get.
 #[test]
 fn every_grant_produces_a_rule_even_when_repeated() {
     let dir = tempdir();
@@ -139,15 +135,13 @@ fn every_grant_produces_a_rule_even_when_repeated() {
     assert_eq!(requested_at(&policy, LATEST_ABI).rules.len(), 3);
 }
 
-/// `SECURITY.md`'s headline claim, asked in the form it takes: Landlock *unions* the rules
-/// it holds for a path, so where two grants overlap no single rule is the answer.
+/// `SECURITY.md`'s headline claim, asked in the form it takes: Landlock *unions* the rules it
+/// holds for a path, so where two grants overlap no single rule is the answer. Stated over the
+/// powerset of `Axis::ALL`, since a policy may grant any combination on one path.
 ///
-/// Stated over the powerset of `Axis::ALL`, since a policy may grant any combination on
-/// one path. The expectation names `ReadExecute` literally rather than reading
-/// [`Axis::grants`], so a table row that starts conferring execute fails here instead of
-/// moving the expectation with it.
-///
-/// [`Axis::grants`]: crate::Axis::grants
+/// The expectation names `ReadExecute` literally rather than reading
+/// [`Axis::grants`](crate::Axis::grants), so a table row that starts conferring execute fails
+/// here instead of moving the expectation with it.
 #[test]
 fn no_combination_of_grants_confers_execute() {
     let dir = tempdir();
@@ -177,19 +171,19 @@ fn no_combination_of_grants_confers_execute() {
 /// joining of the two is *live* rather than decorative.
 ///
 /// The rights themselves are pinned literally, at both ends of the range, by
-/// [`each_axis_confers_exactly_the_documented_set`](super::grants); pinning `handled` here
-/// too would be a third site spelling out the same seventeen rights. This asks only what
-/// that one cannot — whether `handled` was read off the same call that produced `rules`.
+/// [`each_axis_confers_exactly_the_documented_set`](super::grants); pinning `handled` here too
+/// would be a third site spelling out the same seventeen rights. This asks only what that one
+/// cannot — whether `handled` was read off the same call that produced `rules`.
 ///
-/// The union identity is weak evidence alone, being a theorem rather than an observation:
-/// read is `from_read` minus `Execute`, write is `from_all` minus `from_read`, execute is
-/// the single bit, and landlock's own invariant test asserts `from_read | from_write ==
-/// from_all`, so the union equals the handled set at *every* ABI. `from_all` is also
-/// constant across V5..V8, so `ResolveUnix` arriving in V9 is the only bit in the
-/// negotiable range two ABIs can be seen to differ on without a kernel.
+/// The union identity is weak evidence alone, a theorem rather than an observation: read is
+/// `from_read` minus `Execute`, write is `from_all` minus `from_read`, execute is the single
+/// bit, and landlock's own invariant test asserts `from_read | from_write == from_all`, so the
+/// union equals the handled set at *every* ABI. `from_all` is also constant across V5..V8, so
+/// `ResolveUnix` arriving in V9 is the only bit two ABIs in the negotiable range can be seen
+/// to differ on without a kernel.
 ///
 /// `handled` ⊆ `union` is not a general invariant: it holds here only because the policy
-/// saturates, one directory on all three axes. Under default-deny a handled right no grant
+/// saturates, one directory on all three axes. Under default-deny, a handled right no grant
 /// reaches is the ordinary case.
 ///
 /// [`Requested`]: super::super::Requested
@@ -206,8 +200,7 @@ fn the_handled_set_and_the_rules_come_from_one_abi() {
         let requested = requested_at(&policy, abi);
         let granted = union(&policy, dir.path(), abi);
 
-        // So the agreement below cannot hold by the policy having quietly produced fewer
-        // grants than it names.
+        // So the agreement below cannot hold by the policy quietly producing fewer grants.
         assert_eq!(
             requested.rules.len(),
             crate::Axis::ALL.len(),
@@ -216,7 +209,7 @@ fn the_handled_set_and_the_rules_come_from_one_abi() {
 
         // The direction the kernel already refuses: a rule carrying a right outside the
         // handled set is narrowed by `PathBeneath`, which takes the ruleset to
-        // `PartiallyEnforced`, and `enforcement_verdict` declines that.
+        // `PartiallyEnforced`, declined by `enforcement_verdict`.
         assert!(
             requested.handled.contains(granted),
             "{abi:?}: a rule carries a right the kernel was not told to handle, \
@@ -236,9 +229,8 @@ fn the_handled_set_and_the_rules_come_from_one_abi() {
         requested_at(&policy, LATEST_ABI).handled,
     );
 
-    // The only assertion here that catches a `requested_at` ignoring its `abi`, or both
-    // halves pinned to one rung: under either, the agreement above still holds at every
-    // ABI.
+    // The only assertion here that catches a `requested_at` ignoring its `abi`, or both halves
+    // pinned to one rung: under either, the agreement above still holds at every ABI.
     assert_ne!(
         at_floor, at_ceiling,
         "the handled set does not move with the ABI, so the parameter is being \

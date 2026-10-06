@@ -4,16 +4,15 @@
 use super::*;
 
 /// x32 syscalls reach the kernel with [`X32_SYSCALL_BIT`] set in `nr`, under the same
-/// `AUDIT_ARCH_X86_64` the filter gates on, so the denylist's native numbers never
-/// match them (#117).
+/// `AUDIT_ARCH_X86_64` the filter gates on, so the denylist's native numbers never match them
+/// (#117).
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_x32_abi_is_killed_whatever_the_syscall() {
     let program = x32_gate();
 
-    // `unshare` is the demonstration: a `common` syscall, so x32 reaches it at the
-    // native number with the bit set. `ptrace` sits at a *different* x32 number
-    // (521), which is why the gate is a mask rather than a list.
+    // `unshare` is `common`, so x32 reaches it at the native number with the bit set.
+    // `ptrace` sits at a *different* x32 number (521) — hence a mask rather than a list.
     for (what, nr) in [
         (
             "unshare",
@@ -37,8 +36,8 @@ fn the_x32_abi_is_killed_whatever_the_syscall() {
     }
 }
 
-/// The gate keys on one bit, so it must leave every native syscall alone — otherwise
-/// it would kill the command outright and the test above would still pass.
+/// The gate keys on one bit, so it must leave every native syscall alone — otherwise it would
+/// kill the command outright and the test above would still pass.
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_x32_gate_lets_native_syscalls_through() {
@@ -56,10 +55,9 @@ fn the_x32_gate_lets_native_syscalls_through() {
 
 /// A negative `nr` carries bit 30 like an x32 number does, but is not one.
 ///
-/// `syscall(-1)` is legal to pass and every kernel answers `ENOSYS`; a bare mask over
-/// bit 30 kills it instead, by a signal and with nothing on stderr. The rest of this
-/// file assumes that call is survivable — `seccomp_data` passes `nr` through as a
-/// signed `int` for exactly this reason.
+/// `syscall(-1)` is legal to pass and every kernel answers `ENOSYS`; a bare mask over bit 30
+/// kills it instead, by a signal and with nothing on stderr. `seccomp_data` passes `nr`
+/// through as a signed `int` for this reason.
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_x32_gate_never_kills_a_negative_number() {
@@ -75,9 +73,9 @@ fn the_x32_gate_never_kills_a_negative_number() {
     }
 }
 
-/// `CLONE_NEWNET` and [`X32_SYSCALL_BIT`] are both `0x4000_0000`, in different fields.
-/// Pinned because the two rules added together read as if one constant could serve
-/// both, and a shared constant would couple a syscall number to a clone flag.
+/// `CLONE_NEWNET` and [`X32_SYSCALL_BIT`] are both `0x4000_0000`, in different fields. Pinned
+/// because the two rules read as if one constant could serve both, which would couple a
+/// syscall number to a clone flag.
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_x32_bit_and_clone_newnet_only_share_a_value() {
@@ -93,13 +91,13 @@ fn the_x32_bit_and_clone_newnet_only_share_a_value() {
 
 /// A process reporting a different architecture is killed, not refused.
 ///
-/// Syscall numbers are per-architecture, so a filter built for one cannot say anything
-/// safe about calls arriving from another; `seccomp_data.arch` is how the kernel
-/// tells, and seccompiler gates every filter on it before the first comparison. So an
-/// i386 binary on x86_64, or AArch32 on aarch64, dies rather than seeing `EPERM`,
-/// unlike every other denial these tests make.
+/// Syscall numbers are per-architecture, so a filter built for one cannot say anything safe
+/// about calls arriving from another; `seccomp_data.arch` is how the kernel tells, and
+/// seccompiler gates every filter on it before the first comparison. So an i386 binary on
+/// x86_64, or AArch32 on aarch64, dies rather than seeing `EPERM`, unlike every other denial
+/// these tests make.
 ///
-/// Uses a *blocked* number, so the test shows the gate short-circuits the chain.
+/// Uses a *blocked* number, so the gate is shown to short-circuit the chain.
 #[test]
 fn a_syscall_from_another_architecture_is_killed() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -113,12 +111,12 @@ fn a_syscall_from_another_architecture_is_killed() {
 }
 
 /// A diagnostic, not evidence about the filter. [`AUDIT_ARCH`] is transcribed from
-/// `linux/audit.h`, and if it stops matching seccompiler's
-/// `TargetArch::get_audit_value` then most tests across these modules fail as
-/// "expected ALLOW, got 0x80000000" and name nothing. This localizes that failure.
+/// `linux/audit.h`, and if it stops matching seccompiler's `TargetArch::get_audit_value` then
+/// most tests across these modules fail as "expected ALLOW, got 0x80000000" and name nothing.
+/// This localizes that failure.
 ///
-/// Positionless: that the gate is the program's *first* instruction is seccompiler's
-/// codegen, not ABI.
+/// Positionless: that the gate is the program's *first* instruction is seccompiler's codegen,
+/// not ABI.
 #[test]
 fn the_filter_gates_on_the_arch_this_test_models() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();

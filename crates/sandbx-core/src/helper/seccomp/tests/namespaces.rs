@@ -1,5 +1,4 @@
-//! `clone`'s namespace flags and `clone3`, the two routes to a namespace that are not
-//! `unshare`.
+//! `clone`'s namespace flags and `clone3`, the routes to a namespace that are not `unshare`.
 
 use super::*;
 
@@ -8,18 +7,18 @@ fn clone_verdict(program: seccompiler::BpfProgramRef<'_>, flags: u64) -> u32 {
     verdict_with_args(program, libc::SYS_clone, [flags, 0, 0, 0, 0, 0])
 }
 
-/// Every namespace `unshare` is denied for is denied through `clone`'s flags too
-/// (#118), one flag at a time.
+/// Every namespace `unshare` is denied for is denied through `clone`'s flags too (#118), one
+/// flag at a time.
 ///
-/// Per flag rather than over the union: the rules are OR'd, so a filter that only
-/// fired when every flag was set would pass a union-only test.
+/// Per flag rather than over the union: the rules are OR'd, so a filter that only fired when
+/// every flag was set would pass a union-only test.
 #[test]
 fn clone_cannot_reach_a_namespace_unshare_cannot() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
 
     for flag in NAMESPACE_CLONE_FLAGS {
-        // `SIGCHLD` in the exit-signal byte, as a real caller passes it, so the test
-        // would catch a rule that matched the flags word exactly instead of masking.
+        // `SIGCHLD` in the exit-signal byte, as a real caller passes it, so a rule that
+        // matched the flags word exactly instead of masking is caught.
         let flags = *flag as u64 | libc::SIGCHLD as u64;
 
         assert_eq!(
@@ -31,9 +30,8 @@ fn clone_cannot_reach_a_namespace_unshare_cannot() {
     }
 }
 
-/// The flag rules must not cost an ordinary `fork`, which is `clone` carrying no
-/// namespace flag at all. Without this, denying `clone` outright would pass the test
-/// above.
+/// The flag rules must not cost an ordinary `fork`, which is `clone` carrying no namespace
+/// flag at all. Without this, denying `clone` outright would pass the test above.
 #[test]
 fn clone_without_a_namespace_flag_is_allowed() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -54,10 +52,9 @@ fn clone_without_a_namespace_flag_is_allowed() {
     }
 }
 
-/// `clone`'s flags are an `unsigned long`, but the kernel reads namespace bits out of
-/// the low half only, so the comparison has to ignore the high one — exactly as the
-/// socket rule does. A `Qword` rule would let `clone(0x1_0000_0000 | CLONE_NEWUSER)`
-/// through.
+/// `clone`'s flags are an `unsigned long`, but the kernel reads namespace bits out of the low
+/// half only, so the comparison has to ignore the high one. A `Qword` rule would let
+/// `clone(0x1_0000_0000 | CLONE_NEWUSER)` through.
 #[test]
 fn the_clone_flag_comparison_ignores_the_high_half() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
@@ -71,12 +68,12 @@ fn the_clone_flag_comparison_ignores_the_high_half() {
     );
 }
 
-/// `clone3` carries its flags in a struct seccomp cannot read, so it is refused
-/// outright — and with `ENOSYS`, which is what makes the `clone` rules reachable.
+/// `clone3` carries its flags in a struct seccomp cannot read, so it is refused outright — and
+/// with `ENOSYS`, which is what makes the `clone` rules reachable.
 ///
 /// glibc 2.34+ calls `clone3` from `pthread_create` and falls back to `clone` only on
-/// `ENOSYS`. `EPERM` here would break every threaded program rather than routing it
-/// onto the filtered `clone`, so the errno is load-bearing, not cosmetic.
+/// `ENOSYS`. `EPERM` here would break every threaded program rather than routing it onto the
+/// filtered `clone`.
 #[test]
 fn clone3_answers_enosys_so_callers_fall_back() {
     let program = clone3_filter().unwrap();
