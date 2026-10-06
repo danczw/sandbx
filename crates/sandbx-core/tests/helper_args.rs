@@ -385,8 +385,8 @@ fn the_wire_names_no_resolver_value() {
 /// The digest an operator writes, in the one form [`sandbx_core::Sha256Digest`] accepts.
 const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-/// It crosses beside the policy and not inside it, so this is the check that it crosses at
-/// all — and that the policy came back unchanged next to it.
+/// It crosses beside the policy and not inside it, so this checks both: that it crosses at
+/// all, and that the policy came back unchanged next to it.
 #[test]
 fn round_trips_a_pinned_program() {
     let digest = sandbx_core::Sha256Digest::parse(DIGEST).expect("64 lowercase hex characters");
@@ -456,9 +456,8 @@ fn a_pin_digest_encode_could_not_emit_is_refused() {
     }
 }
 
-/// The CLI refuses this with advice, but a hand-built argv does not pass through the CLI —
-/// and the helper opens the program itself, so a bare name would be resolved against the
-/// `PATH` the policy imposes while `execve` resolved it a second time.
+/// A hand-built argv does not pass through the CLI's own refusal, and the helper opens the
+/// program itself — so a bare name would hash one file and `execve` another.
 #[test]
 fn a_pinned_program_that_is_not_an_absolute_path_is_refused() {
     for program in ["mytool", "target/debug/mytool", "./mytool"] {

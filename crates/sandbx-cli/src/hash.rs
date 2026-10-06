@@ -34,9 +34,8 @@ impl Hash {
             source,
         })?;
 
-        // `println!` panics on a closed stdout, and `SIGPIPE` is ignored, so
-        // `sandbx hash big | head -c 8` would exit 101 with a backtrace. Dropped the way
-        // `SandboxRun::execute` drops its own write failures.
+        // Not `println!`, which panics on a closed stdout with `SIGPIPE` ignored: dropped
+        // the way `SandboxRun::execute` drops its own write failures.
         let line = format!("{digest}\n");
         let _ = std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes());
 

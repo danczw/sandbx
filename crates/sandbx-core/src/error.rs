@@ -127,8 +127,6 @@ pub enum SandboxError {
     },
 
     /// The bytes at the program's path are not the ones the caller pinned, so it never ran.
-    ///
-    /// No warning mode: the bypass is omitting the digest.
     PinMismatch {
         /// The program as the caller named it.
         program: String,
@@ -152,9 +150,8 @@ pub enum SandboxError {
     /// A pinned program is a `#!` script, which the pin cannot cover.
     ///
     /// The kernel hands the interpreter the path sandbx exec'd — the hashed descriptor —
-    /// and the interpreter opens it again, by then closed. Refused rather than made to work
-    /// by leaking the descriptor past the `exec`, which would also hand the script a procfs
-    /// path as its own `$0`.
+    /// and the interpreter opens it again, by then closed.
+    /// See `context/decision-pinned-entry-point.md`.
     PinnedScript {
         /// The program as the caller named it.
         program: String,

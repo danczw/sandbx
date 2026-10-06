@@ -9,10 +9,7 @@ use std::fmt;
 /// How many hex characters spell one.
 const HEX_LEN: usize = 64;
 
-/// How much of a file is hashed at a time.
-///
-/// A binary is read whole and discarded, so this trades only syscall count against a
-/// stack frame; nothing here holds the file in memory.
+/// How much of a file is hashed at a time, as a stack buffer — nothing holds the file.
 const CHUNK: usize = 64 * 1024;
 
 /// A SHA-256 digest.
@@ -75,8 +72,7 @@ impl Sha256Digest {
 /// in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
 ///
 /// Follows symlinks, unlike `fs_guard`'s `open`: `execve` follows them too, and the swap
-/// is closed by holding the inode rather than by how it was reached. Why that is enough,
-/// and why a `#!` script is refused, in `context/decision-pinned-entry-point.md`.
+/// is closed by holding the inode. See `context/decision-pinned-entry-point.md`.
 pub(crate) fn open_verified(
     program: &str,
     expected: Sha256Digest,
@@ -283,8 +279,7 @@ mod tests {
         assert_eq!(streamed, Sha256Digest(at_once));
     }
 
-    /// Written, reopened and hashed the way `open_verified` will, so the digest is the one
-    /// the pin is checked against rather than one computed from the same bytes elsewhere.
+    /// A file, and the digest a pin on it would be checked against.
     fn written(contents: &[u8]) -> (tempfile::TempDir, std::path::PathBuf, Sha256Digest) {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("program");
@@ -336,8 +331,8 @@ mod tests {
         );
     }
 
-    /// Mode 111 runs unpinned and cannot be pinned, so the refusal has to say which of the
-    /// two it is rather than reading as a program that could not be executed.
+    /// Mode 111 runs unpinned and cannot be pinned, so the refusal has to name the missing
+    /// read rather than read as a program that could not be executed.
     #[test]
     fn an_unreadable_program_says_the_pin_needs_read() {
         use std::os::unix::fs::PermissionsExt as _;

@@ -8,9 +8,8 @@ use crate::{Grants, PolicyError, SandboxRunError};
 
 /// Accept a digest `--pin-sha256` can carry, and refuse anything else.
 ///
-/// In `Grants::variable_name`'s shape, and for its reason: the wire takes one spelling, so
-/// the CLI says what to write rather than leaving a pasted digest to be refused two
-/// processes later with no advice attached.
+/// Here rather than at the wire, in `Grants::variable_name`'s shape, so a pasted digest is
+/// refused with the advice attached rather than two processes later without it.
 fn pin_digest(value: &str) -> Result<Sha256Digest, String> {
     Sha256Digest::parse(value).map_err(|error| {
         format!("{error} — `sandbx hash <file>` prints one in the form this takes")
