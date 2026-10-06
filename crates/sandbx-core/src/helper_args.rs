@@ -10,8 +10,8 @@ const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Introduces the *name* of a variable the command may inherit. Never a value.
 const FLAG_ENV: &str = "--env";
-/// Carries the resolver hint, taking no value — so unlike [`FLAG_NET_PORT`] it can be
-/// spelled as the CLI spells it; the pair it stands for is a constant the policy owns.
+/// Carries the resolver hint and takes no value; the pair it stands for is a constant the
+/// policy owns.
 const FLAG_DNS_OVER_TCP: &str = "--dns-over-tcp";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";

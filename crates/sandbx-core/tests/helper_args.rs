@@ -336,9 +336,8 @@ fn an_env_name_with_an_equals_sign_is_rejected() {
     );
 }
 
-/// The seam is load-bearing for this one, not bookkeeping: stage 1 sets
-/// `RES_OPTIONS`, and a stage 2 that decoded a policy without the hint would refuse
-/// the run in its inherited-environment check.
+/// Load-bearing, not bookkeeping: stage 1 sets `RES_OPTIONS`, so a stage 2 decoding a
+/// policy without the hint would refuse the run.
 #[test]
 fn round_trips_the_resolver_hint() {
     let policy = SandboxPolicy::default()
@@ -359,8 +358,8 @@ fn an_unhinted_policy_emits_no_hint_flag() {
     assert!(!args.iter().any(|arg| arg == "--dns-over-tcp"), "{args:?}");
 }
 
-/// The pair is a constant the policy type owns, so unlike the allowlist there is
-/// nothing for the encoder to read out of the harness and put in argv.
+/// The pair is a constant the policy owns, so the encoder has nothing to read out of the
+/// harness and put in argv.
 #[test]
 fn the_wire_names_no_resolver_value() {
     let args = HelperArgs::encode(

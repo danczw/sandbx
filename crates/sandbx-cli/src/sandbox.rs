@@ -83,7 +83,6 @@ impl SandboxRun {
     /// Run it, forward its output, and report the code to exit with.
     pub fn execute(&self) -> Result<i32, SandboxRunError> {
         let policy = self.policy()?;
-        // Before the policy moves: the advice needs one bit of it, not a clone of all of it.
         let unresolvable = cannot_resolve(&policy);
         let mut command = SandboxedCommand::new(self.program(), policy).args(self.arguments());
         if let Some(limit) = self.timeout() {
@@ -114,8 +113,8 @@ mod tests {
         SandboxPolicy::default().allow_network_port(443)
     }
 
-    /// Everything the advice tells the operator to type, including the clause about the
-    /// default it replaces — the trap of the three flags it names.
+    /// Including the clause about the default a path flag replaces, which is the trap in
+    /// the three flags it names.
     #[test]
     fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
         let advice = resolver_advice(true, 6).expect("a failure with no way to resolve");
@@ -129,7 +128,6 @@ mod tests {
         );
     }
 
-    /// Nothing failed, so there is nothing to explain.
     #[test]
     fn a_successful_run_is_silent() {
         assert_eq!(resolver_advice(true, 0), None);
@@ -140,21 +138,19 @@ mod tests {
         assert!(cannot_resolve(&ported()));
     }
 
-    /// The policy already names what the advice would ask for, so a failure here was
-    /// something else — and advising it anyway would name a port the operator has.
+    /// Advising it anyway would name a port the operator already has.
     #[test]
     fn a_port_list_naming_53_is_silent() {
         assert!(!cannot_resolve(&ported().allow_network_port(53)));
     }
 
-    /// The hint is set, so the remaining gap is the operator's to see on the port list.
     #[test]
     fn a_hinted_policy_is_silent() {
         assert!(!cannot_resolve(&ported().hint_dns_over_tcp()));
     }
 
-    /// Only a port allowlist denies UDP: under the other two shapes the resolver is
-    /// either fully reachable or fully denied, and in both the advice would mislead.
+    /// Only a port allowlist denies UDP; under the other two the resolver is fully
+    /// reachable or fully denied, and the advice would mislead either way.
     #[test]
     fn no_port_list_is_silent() {
         assert!(!cannot_resolve(&SandboxPolicy::default()));

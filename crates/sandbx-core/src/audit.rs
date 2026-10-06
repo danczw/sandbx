@@ -72,8 +72,7 @@ pub enum AuditEvent<'a> {
         /// names would invite the next change to list values beside them. Its length, not
         /// the number that cross: a name the harness does not hold is passed as nothing.
         env: usize,
-        /// Whether the resolver hint was set, which is one variable in the child that the
-        /// `env` count does not reach.
+        /// Whether the resolver hint was set — one variable in the child `env` does not count.
         dns_over_tcp: bool,
     },
 
