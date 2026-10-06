@@ -138,6 +138,19 @@ fn holds_home_directories(cwd: &Path) -> bool {
         .any(|known| Path::new(known).starts_with(cwd))
 }
 
+/// The [`HOME_PARENTS`] that hold other users' homes rather than being one.
+///
+/// `/root` is a home as well as the place for root's, so `HOME=/root` names one where
+/// `HOME=/home` names none. Widening this to all four refuses root's own `/root/app`.
+const SHARED_HOME_PARENTS: [&str; 3] = ["/home", "/Users", "/var/home"];
+
+/// Whether `home` is one of [`SHARED_HOME_PARENTS`] or holds one, and so is nobody's home.
+fn holds_other_homes(home: &Path) -> bool {
+    SHARED_HOME_PARENTS
+        .into_iter()
+        .any(|known| Path::new(known).starts_with(home))
+}
+
 /// Whether `cwd` is a direct child of one of [`HOME_PARENTS`], and so shaped like a home.
 ///
 /// Only with no `$HOME` to compare: `/home/other` is then indistinguishable from a home
@@ -234,9 +247,8 @@ fn named_homes(home: Option<&Path>) -> Homes {
     }
 
     // Resolving is not being a home: `HOME=/dev/null` is a service-account convention,
-    // Docker hands a UID with no passwd entry `HOME=/`, and `HOME=/home` names where homes
-    // live rather than one of them. All resolve, and match no cwd.
-    let usable = resolved.is_dir() && !holds_home_directories(&resolved);
+    // Docker hands a UID with no passwd entry `HOME=/`, and `HOME=/home` is nobody's home.
+    let usable = resolved.is_dir() && !holds_other_homes(&resolved);
 
     Homes { paths, usable }
 }
@@ -578,21 +590,38 @@ mod tests {
         }
     }
 
-    /// Being where homes live is not being one: `HOME=/home` satisfied the stand-in gate, and
-    /// `/home/other` then derived read and write over a neighbour's tree (#162).
+    /// Where homes live is nobody's home, so it must not satisfy the stand-in gate (#162).
     #[test]
-    fn a_home_that_is_a_home_parent_refuses_a_child_of_one() {
-        // The two [`HOME_PARENTS`] a Linux host resolves, so the gate is really exercised.
-        for home in ["/home", "/root"] {
-            let homes = named_homes(Some(Path::new(home)));
+    fn a_home_that_holds_homes_refuses_a_child_of_one() {
+        assert!(
+            Path::new("/home").is_dir(),
+            "no /home to resolve, so this test asserts nothing"
+        );
+        let homes = named_homes(Some(Path::new("/home")));
 
-            let error = root(format!("{home}/other"), &homes)
-                .expect_err("something shaped like a home directory");
-            assert!(
-                matches!(error, PolicyError::UnnamedHome { .. }),
-                "{error} let {home}/other through for $HOME={home}"
-            );
-        }
+        let error =
+            root("/home/other", &homes).expect_err("something shaped like a home directory");
+        assert!(
+            matches!(error, PolicyError::UnnamedHome { .. }),
+            "{error} let /home/other through for $HOME=/home"
+        );
+    }
+
+    /// `/root` is in [`HOME_PARENTS`] and is also root's own home, which a container sets.
+    #[test]
+    fn a_root_home_still_derives_under_itself() {
+        assert!(
+            Path::new("/root").is_dir(),
+            "no /root to resolve, so this test asserts nothing"
+        );
+        let homes = named_homes(Some(Path::new("/root")));
+
+        assert!(homes.usable, "$HOME=/root named no usable home");
+        assert_eq!(
+            root("/root/app", &homes).expect("root's own project directory"),
+            Path::new("/root/app"),
+            "a root container with $HOME=/root could not derive a root under it"
+        );
     }
 
     /// The comparison outlives the usability verdict: an unprovisioned home is still a path
