@@ -42,9 +42,10 @@ tracing = "0.1.44"
 io-uring = { version = "0.7.15", optional = true }
 
 # Inherited like every other member, the workspace-wide ban on spawning
-# subprocesses included: this is the one crate allowed to spawn, and each of the
-# four sites that does carries its own `#[allow]` and a justification, which is a
-# narrower exemption than switching the lint off for the whole crate.
+# subprocesses included: this is the one crate allowed to spawn, and the single
+# site that does — `spawn::command` — carries its own `#[allow]` and a
+# justification, which is a narrower exemption than switching the lint off for
+# the whole crate.
 #
 # `unsafe_code = "forbid"` therefore applies here too. The re-exec helper applies
 # restrictions in a fresh single-threaded process rather than in a pre_exec

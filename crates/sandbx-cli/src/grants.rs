@@ -174,7 +174,8 @@ struct Homes {
 /// `cwd` itself, or why no default may be rooted there.
 ///
 /// An unusable `$HOME` leaves the exact home rule nothing to compare — so
-/// [`looks_like_a_home`] stands in for it rather than being skipped.
+/// [`looks_like_a_home`] stands in for it rather than being skipped, and such a cwd still
+/// derives rather than being refused: `HOME` unset with cwd `/app` is the container case.
 fn vetted_root<'a>(
     cwd: &'a Path,
     homes: &Homes,
@@ -264,7 +265,7 @@ fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
     })?;
     // `getcwd` already resolves, so this is for what `canonicalize` else proves: the
     // directory is still openable, which `PathFd::new` requires and which
-    // `FsGuard::canonical_roots` answers by dropping the root rather than refusing.
+    // `fs_guard::canonical_roots` answers by dropping the root rather than refusing.
     let cwd = cwd
         .canonicalize()
         .map_err(|source| PolicyError::Unavailable {
