@@ -98,13 +98,16 @@ writes them to the pipe sandbx put in its **stdin** slot, and sandbx decodes the
 bytes and emits the audit events itself. One subscriber in the process tree, one
 timestamp source, and the command's own stdout and stderr stay byte-exact.
 
-A stage 2 that refused rather than becoming the command crosses the same channel,
-as its `SandboxError::label` — `exec_failed` for a command that does not exist,
-`namespace_setup_failed` for a supervisor already gone, and so on — and that
-becomes the run's terminal record. It has to: stage 1 relays stage 2's non-zero
-exit on the command's behalf, so the parent sees a status indistinguishable from a
-command that ran and exited 1 (#96, #157). Stage 1's own refusals are not on the
-channel, so they still read as `exited code=1`.
+A stage that refused rather than reaching the command crosses the same channel, as
+its `SandboxError::label` — `exec_failed` for a command that does not exist,
+`namespace_setup_failed` for a supervisor already gone, `bad_helper_args` for an argv
+stage 1 would not decode, `inner_stage_failed` for a stage 2 it could not start — and
+that becomes the run's terminal record. It has to: the helper's exit status is
+relayed on the command's behalf, so the parent sees one indistinguishable from a
+command that ran and exited 1 (#96, #157, #160). Each stage reports only from above
+the next stage's existence, so one refusal crosses and the more specific one is never
+displaced; the two paths that leaves silent are in
+`context/decision-helper-audit-channel.md`.
 
 The stdin slot because fds 0/1/2 are the only descriptors `std` can hand a child
 without `unsafe`, which the workspace forbids — and 1/2 are the command's output.

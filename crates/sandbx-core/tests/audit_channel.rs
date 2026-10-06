@@ -254,6 +254,52 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
     );
 }
 
+/// Driven by hand for the reason the stage 2 case is: `SandboxedCommand` builds a
+/// well-formed argv by construction, so an unrecognised flag is a refusal only a hand-built
+/// invocation reaches. The stderr assertion attributes the record, several steps here
+/// returning `bad_helper_args`.
+#[test]
+fn stage_1_names_its_own_refusal_on_the_channel() {
+    use std::io::Read;
+
+    let (mut channel, write_end) = std::io::pipe().expect("a channel for the helper");
+
+    let mut helper = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
+    helper
+        .args([
+            sandbx_core::HELPER_FLAG,
+            "--sandbx-audit-stdin",
+            "--not-a-flag",
+        ])
+        .stdin(std::process::Stdio::from(write_end));
+
+    let output = helper.output().expect("helper should start");
+
+    // Dropped before the read, and that ordering is what makes the read terminate: the
+    // `Command` owns this process's copy of the write end.
+    drop(helper);
+
+    let mut records = String::new();
+    channel
+        .read_to_string(&mut records)
+        .expect("the channel should be readable");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        !output.status.success(),
+        "the stage accepted an argv it cannot have come from sandbx: {stderr}"
+    );
+    assert!(
+        stderr.contains("unrecognised helper flag"),
+        "the stage refused for some other reason, so this says nothing about #160: {stderr}"
+    );
+    assert_eq!(
+        records, "bad_helper_args\t\n",
+        "a stage 1 refusal named no reason on the channel\nstderr: {stderr}"
+    );
+}
+
 /// A record interleaved into the command's own output is indistinguishable from
 /// bytes the command wrote, so both streams are compared byte-exact.
 #[test]

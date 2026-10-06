@@ -24,10 +24,11 @@ const DETAIL_LIMIT: usize = 256;
 
 /// How many records [`decode`] will accept from one channel.
 ///
-/// Each step reports at most once and a refusal at most once, so anything beyond this did
-/// not come from [`encode`], and refusing the excess keeps a malformed channel from growing
-/// the trail without bound. Not a trust boundary: by the time the command exists the write
-/// end is gone.
+/// Each step reports at most once, and one refusal at most crosses however many stages
+/// write: a stage reports only from a region where the stage below it does not yet exist.
+/// So anything beyond this did not come from [`encode`], and refusing the excess keeps a
+/// malformed channel from growing the trail without bound. Not a trust boundary: by the
+/// time the command exists the write end is gone.
 const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
 
 /// What the helper reported on the channel.
@@ -36,12 +37,11 @@ pub(crate) enum Report<'a> {
     /// A hardening step that did not take effect, and why.
     Degraded(Degradation, &'a str),
 
-    /// The stage that would have become the command refused instead, carrying the
-    /// refusal's [`label`](crate::SandboxError::label).
+    /// A helper stage refused rather than reaching the command, carrying the refusal's
+    /// [`label`](crate::SandboxError::label).
     ///
-    /// On the channel because that stage exits non-zero and the stage above relays the
-    /// status on the command's behalf, so it would otherwise read as the command's own
-    /// exit.
+    /// On the channel because the stage exits non-zero and that status is relayed on the
+    /// command's behalf, so it would otherwise read as the command's own exit.
     Failed(&'static str),
 }
 
@@ -303,7 +303,8 @@ mod tests {
     }
 
     /// The cap is one more than the steps for this record, so a channel carrying every
-    /// degradation still has room for the refusal behind them.
+    /// degradation still has room for the refusal behind them — the worst case either stage
+    /// can write.
     #[test]
     fn the_record_cap_admits_a_refusal_too() {
         let mut channel = encode(&Degradation::ALL.map(|step| (step, "degraded".to_string())));
