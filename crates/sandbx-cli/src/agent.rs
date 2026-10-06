@@ -228,11 +228,9 @@ impl AgentRun {
             self.approved_tools().join(", ")
         );
 
-        // Before the session, which the credential chain is allowed to pre-empt: it makes
-        // no request but can fail for want of a key, and a session opened first would
-        // leave a header-only transcript behind every time, which nothing deletes. Still
-        // before the first request, so a refused mode or an unknown id costs nothing —
-        // the ordering the policy already has.
+        // Before the session: the credential chain makes no request but can fail for want
+        // of a key, and a session opened first would leave a header-only transcript behind
+        // every time, which nothing deletes.
         let client = AnthropicClient::new(crate::auth::api_key()?)?;
 
         let session = session::open(self.session())?;
@@ -250,9 +248,9 @@ impl AgentRun {
     /// Run one turn against `open`, writing the answer to `out` and saving it to
     /// `session`.
     ///
-    /// The stream opener and the sink are arguments rather than built here so a test can
-    /// drive a canned turn and read back both what the request carried and what came out
-    /// of it — which is the only way to check either without a key and a network.
+    /// The stream opener and the sink are arguments so a test can drive a canned turn and
+    /// read back what the request carried and what came out of it, which is the only way
+    /// to check either without a key and a network.
     async fn drive<W: Write>(
         &self,
         open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
@@ -303,9 +301,8 @@ impl AgentRun {
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
         let code = render.finish();
-        // Before the append, not after: a `TurnError` discards the turn's own messages,
-        // and a prompt persisted without its answer makes the next resume send two user
-        // turns in a row.
+        // Before the append: a `TurnError` discards the turn's own messages, and a prompt
+        // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
 
         if let Some(session) = session {
@@ -320,9 +317,8 @@ impl AgentRun {
     /// Add the prompt and the finished turn to the transcript.
     ///
     /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
-    /// *produced*, so the caller's own prompt is not in it. A transcript built from the
-    /// outcome alone would hold assistant turns only, and the next resume would send the
-    /// model its own replies with nothing it was replying to.
+    /// *produced*, so the caller's own prompt is not in it, and a transcript built from
+    /// the outcome alone would hold the model's replies with nothing it replied to.
     fn save(
         &self,
         mut session: Session,
@@ -339,9 +335,8 @@ impl AgentRun {
 
         match session.append(turn) {
             Ok(()) => Ok(()),
-            // Not an error: the turn's own exit code already describes what happened,
-            // and a transcript that gained nothing is the correct outcome for a turn
-            // that produced no reply to gain.
+            // Not an error: the turn's own exit code already says what happened, and a
+            // turn with no reply to store has nothing to add.
             Err(SessionError::IncompleteTurn) => {
                 eprintln!(
                     "sandbx: the turn produced no reply; session {} is unchanged",

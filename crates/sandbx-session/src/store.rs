@@ -1,9 +1,9 @@
 //! The store and a session: which files exist, who may read them, and where a write
 //! goes.
 //!
-//! A transcript is append-only, and that is load-bearing rather than tidy: `withheld` is
-//! an index into the history, so it stays exact only as long as nothing moves a prefix.
-//! Everything here is therefore either a read of the whole file or a write to its end.
+//! Append-only, and not for tidiness: `withheld` is an index into the history, exact
+//! only while nothing moves a prefix. So every operation here reads the whole file or
+//! writes to its end.
 
 mod record;
 
@@ -26,11 +26,9 @@ const DIR_OWNER_ONLY: u32 = 0o700;
 
 /// The bits that let somebody else write, which refuse a resume.
 ///
-/// Split from [`READABLE_BITS`] rather than sharing `sandbx-cli`'s single `SHARED_BITS`,
-/// and deliberately: a credential can be rotated once it has leaked, a conversation
-/// cannot, so refusing to *read* a wide transcript protects nothing that is still
-/// protectable. What a resume can still prevent is somebody else choosing the history a
-/// tool-calling model is told it produced.
+/// Kept apart from [`READABLE_BITS`] rather than sharing `auth/store.rs`'s single
+/// `SHARED_BITS`: a leaked credential rotates and a conversation does not, so only the
+/// write bits are worth refusing over — see `context/decision-on-disk-state.md`.
 const WRITABLE_BITS: u32 = 0o022;
 
 /// The bits that let somebody else read, which resume and report.
@@ -38,14 +36,13 @@ const READABLE_BITS: u32 = 0o044;
 
 /// Every bit outside the owner's, which the root is narrowed to shed.
 ///
-/// Wider than [`WRITABLE_BITS`] because a transcript's name is clock-derived and so
-/// guessable: group/other execute alone lets somebody else traverse to one.
+/// Wider than [`WRITABLE_BITS`]: a transcript's name is clock-derived and so guessable,
+/// and group/other execute alone lets somebody else traverse to one.
 const DIR_SHARED_BITS: u32 = 0o077;
 
 /// How many ids to try before concluding the clock is stuck.
 ///
-/// Two sessions starting in the same millisecond is ordinary, so a taken id is a retry
-/// rather than a failure.
+/// Two sessions starting in the same millisecond is ordinary, so a taken id retries.
 const ATTEMPTS: u64 = 1000;
 
 /// The directory transcripts live in.
@@ -125,19 +122,16 @@ impl SessionStore {
 
     /// Reopen a session and read back everything it holds.
     ///
-    /// Refuses a transcript, or a directory holding it, that somebody else can write or
-    /// that somebody else owns. The directory is vetted first: one another user may write
-    /// lets them rename their own `0600` file over the transcript, whatever mode the
-    /// transcript itself carries.
-    ///
-    /// Everything is stat'd through an open descriptor rather than by path, so the file
-    /// that is vetted is the file that is read.
+    /// Refuses a transcript, or the directory holding it, that somebody else can write or
+    /// owns. The directory goes first: one another user may write lets them rename their
+    /// own `0600` file over the transcript, whatever mode it carries. Every mode and uid
+    /// is read through an open descriptor, so the file vetted is the file read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
         let path = self.path_for(id);
         let owner = nix::unistd::getuid().as_raw();
 
-        // No root at all means no session by that id, which is the more useful of the two
-        // things to say: the operator asked about a session, not about a directory.
+        // No root at all means no session by that id: the operator asked about a session,
+        // not about a directory.
         let directory = match open_root(&self.root) {
             Err(SessionError::Io { source, .. }) if source.kind() == ErrorKind::NotFound => {
                 return Err(SessionError::NotFound { id: id.clone() });
@@ -182,11 +176,9 @@ impl SessionStore {
             })?;
 
         let (messages, observed, withheld) = fold(&path, &body)?;
-        // Checked over the whole history, not just its end: an append can only break the
-        // last role, but a hand-edited file can hold a pair of user turns anywhere, and
-        // the request is refused for an interior pair exactly as for a trailing one. A
-        // transcript with no messages at all is fine — a session created and not yet
-        // talked to.
+        // The whole history, not just its end: an append can only break the last role,
+        // but a hand-edited file can hold a pair of user turns anywhere, which the API
+        // refuses the same way. No messages at all is a session not yet talked to.
         if !messages.is_empty() {
             if !settled(&messages) {
                 return Err(SessionError::IncompleteTurn);
@@ -217,12 +209,10 @@ impl SessionStore {
 
     /// Bring the root down to `0700`, refusing one somebody else owns.
     ///
-    /// `DirBuilderExt::mode` does not cover this: the mode is ignored outright when the
-    /// directory already exists, so a `sessions/` somebody widened — or created before
-    /// the first run — would stay wide for every session after it. Narrowing rather than
-    /// refusing because nothing is in the directory yet that a refusal would protect;
-    /// [`resume`](Self::resume) refuses instead, where there is. A root that is itself a
-    /// link is refused either way — see [`open_root`].
+    /// `DirBuilderExt::mode` is ignored outright for a directory that already exists, so
+    /// a `sessions/` somebody widened would otherwise stay wide for every session after
+    /// it. Narrowed here and refused by [`resume`](Self::resume): nothing is in the
+    /// directory yet that a refusal would protect.
     fn narrow_root(&self) -> Result<(), SessionError> {
         let directory = open_root(&self.root)?;
         let (mode, uid) = ownership(&directory, &self.root)?;
@@ -237,8 +227,8 @@ impl SessionStore {
             return Ok(());
         }
 
-        // Through the descriptor just stat'd — `fchmod`, not `chmod` by path — for the
-        // reason every other mode here is read that way.
+        // `fchmod` on the descriptor just stat'd, not `chmod` by path, for the reason
+        // every mode here is read that way.
         directory
             .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
             .map_err(|source| SessionError::Io {
@@ -299,9 +289,8 @@ impl Session {
 
     /// True when somebody else can read the transcript, which resumed anyway.
     ///
-    /// Worth telling the operator about and not worth refusing over: by the time this is
-    /// known the conversation has already been readable, and a transcript cannot be
-    /// rotated the way a leaked credential can.
+    /// Reported rather than refused: by the time it is known the conversation has already
+    /// been readable, and a transcript does not rotate the way a credential does.
     #[must_use]
     pub fn shared_read(&self) -> bool {
         self.shared_read
@@ -309,10 +298,9 @@ impl Session {
 
     /// Add a finished turn to the end of the transcript.
     ///
-    /// Refuses a turn that does not end on an assistant message, because the next
-    /// resume would send two user turns in a row. A turn with no messages at all is not
-    /// that: it leaves the last role where it was, so it writes its accounting line and
-    /// nothing else.
+    /// Refuses a turn not ending on an assistant message: the next resume would send two
+    /// user turns in a row. A turn with no messages leaves the last role where it was, so
+    /// it writes its accounting line and nothing else.
     pub fn append(&mut self, turn: CompletedTurn<'_>) -> Result<(), SessionError> {
         if !turn.messages.is_empty() && !settled(turn.messages) {
             return Err(SessionError::IncompleteTurn);
@@ -323,10 +311,8 @@ impl Session {
             .iter()
             .map(|message| Record::Message(message.clone()))
             .collect();
-        // Always its own record, never folded onto a message line: a round that produced
-        // no content still reports what the prompt cost. A caller that prepends its own
-        // prompt — `agent-run` does — is refused above instead, and re-measures it when
-        // the prompt is sent again.
+        // Its own record, never folded onto a message line: a round that produced no
+        // content still reports what the prompt cost, and has no message to hang it on.
         records.push(Record::Turn(Accounting {
             observed: turn.observed,
             withheld: turn.withheld,
@@ -367,9 +353,8 @@ impl Session {
 
 /// `O_NOFOLLOW`, so the leaf of a path this store vets is never a symbolic link.
 ///
-/// Only the last component is unfollowed, so an ancestor may still be a link — a
-/// symlinked `~/.local/state` is an operator's business, and `$XDG_STATE_HOME` is the
-/// supported way to put the store somewhere else.
+/// The last component only, so a symlinked ancestor still opens — `~/.local/state` is an
+/// operator's business.
 fn no_follow() -> i32 {
     nix::fcntl::OFlag::O_NOFOLLOW.bits()
 }
@@ -393,13 +378,12 @@ fn opening(path: &Path, source: std::io::Error) -> SessionError {
 
 /// Open the directory holding transcripts, refusing one that is a symbolic link.
 ///
-/// A link here is worse than a link to a transcript: [`narrow_root`](SessionStore::narrow_root)
-/// `fchmod`s this descriptor to `0700`, so following one would narrow whatever the link
-/// points at — a directory outside the store, possibly a shared one.
+/// [`narrow_root`](SessionStore::narrow_root) `fchmod`s this descriptor, so following a
+/// link would narrow a directory outside the store.
 ///
 /// No `O_DIRECTORY`: paired with `O_NOFOLLOW` the kernel reports a symlinked directory as
-/// `ENOTDIR` rather than `ELOOP`, which a root that is a plain file reports too, and the
-/// two are worth telling apart.
+/// `ENOTDIR`, which a root that is a plain file reports too, and the two are worth
+/// telling apart.
 fn open_root(root: &Path) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
@@ -410,9 +394,8 @@ fn open_root(root: &Path) -> Result<File, SessionError> {
 
 /// Open a transcript, refusing one that is a symbolic link.
 ///
-/// Every check is on the descriptor, and a link makes the descriptor a different file
-/// than the path that was vetted: the mode and owner would come from the target while the
-/// directory refused for being writable is the one holding the link.
+/// A link makes the descriptor a different file than the path vetted: the mode and owner
+/// would come from the target, the vetted directory from where the link sits.
 fn open_transcript(path: &Path, id: &SessionId) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
@@ -441,17 +424,16 @@ fn ownership(file: &File, path: &Path) -> Result<(u32, u32), SessionError> {
 
 /// True when no two neighbouring messages carry the same role.
 ///
-/// With only two roles that is alternation, and together with [`settled`] it also pins the
-/// first message as the user's: an alternating history ending on the model begins on them.
+/// With two roles that is alternation, which together with [`settled`] also pins the first
+/// message as the user's: an alternating history ending on the model begins on them.
 fn alternating(messages: &[Message]) -> bool {
     messages.windows(2).all(|pair| pair[0].role != pair[1].role)
 }
 
 /// True when the history ends where a conversation may be left: on the model's reply.
 ///
-/// An empty history is not settled. For a turn being appended that is the whole point —
-/// a turn that produced no reply at all would otherwise contribute an accounting line
-/// and no messages.
+/// An empty history is not settled, which is what refuses a prompt with no answer behind
+/// it. A message-*less* turn is screened out before this is reached.
 fn settled(messages: &[Message]) -> bool {
     messages.last().map(|message| message.role) == Some(Role::Assistant)
 }
