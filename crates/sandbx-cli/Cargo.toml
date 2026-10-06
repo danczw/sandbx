@@ -56,6 +56,25 @@ tokio = { version = "1.53.1", default-features = false, features = [
 tracing-subscriber = { version = "0.3.23", default-features = false, features = [
   "fmt",
 ] }
+# The credential chain hands a key to `AnthropicClient::new`, which takes a
+# `SecretString`. `sandbx-providers` does not re-export `secrecy`, so the version
+# is pinned to match the one it resolves.
+secrecy = "0.10.3"
+# The tier-3 credential file. Read and written as a `toml::Table` rather than a
+# derived struct, so a table this binary does not know — a second provider — is
+# not dropped when `login` or `logout` rewrites the file. `serde` is what `Table`
+# itself is parsed and rendered through; `default-features = false` keeps the
+# preserved-formatting and datetime machinery out.
+toml = { version = "1.1.6", default-features = false, features = [
+  "parse",
+  "display",
+  "serde",
+] }
+# Promoted from a dev-dependency: `auth login` writes through a temp file in the
+# target directory and renames over it, because `OpenOptionsExt::mode` applies
+# only at creation and a truncating open would leave a pre-existing wider mode.
+# `NamedTempFile` is already 0600 on unix.
+tempfile = "3.27.0"
 
 [dev-dependencies]
 # Already in the tree as a dependency of `sandbx-core`; named here because
@@ -63,9 +82,6 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # an integration test can only reach a dependency it names itself. No new crate
 # enters the tree.
 tracing = "0.1.44"
-# Likewise already in the tree, three crates over. The home derivation keeps both spellings
-# of a symlinked `$HOME`, and nothing but a real symlink exercises that.
-tempfile = "3.27.0"
 # Also already in the tree. `ToolCall::input` is a `serde_json::Value`, so the gate's unit
 # tests cannot build the call they decide on without naming it.
 serde_json = "1.0.151"
