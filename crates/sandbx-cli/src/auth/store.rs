@@ -89,15 +89,16 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
             });
         }
 
-        if let Some(dir) = path.parent() {
-            let dir_mode = std::fs::metadata(dir)
-                .map_err(|source| AuthError::Io {
-                    path: dir.to_path_buf(),
-                    source,
-                })?
-                .permissions()
-                .mode();
+        // Canonicalised, not `path.parent()`: that parent is lexical, so a symlinked
+        // `credentials.toml` would have the directory holding the *link* vetted and the one
+        // holding the key never looked at.
+        let resolved = std::fs::canonicalize(path).map_err(|source| AuthError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
 
+        if let Some(dir) = resolved.parent() {
+            let dir_mode = dir_mode_of(dir)?;
             if dir_mode & SHARED_BITS != 0 {
                 return Err(AuthError::DirPermissions {
                     path: dir.to_path_buf(),
@@ -120,6 +121,24 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
     })?;
 
     Ok(Some(table))
+}
+
+/// `dir`'s mode, read through a descriptor on it rather than by path.
+///
+/// Same reason the file's is: a mode read by path describes whatever that name resolved to
+/// at the time, not the directory the credential was read out of.
+fn dir_mode_of(dir: &Path) -> Result<u32, AuthError> {
+    let io = |source| AuthError::Io {
+        path: dir.to_path_buf(),
+        source,
+    };
+
+    Ok(std::fs::File::open(dir)
+        .map_err(io)?
+        .metadata()
+        .map_err(io)?
+        .permissions()
+        .mode())
 }
 
 /// The one-based line `error` points at, or 0 when it carries no span.
@@ -214,10 +233,14 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
         .mode(DIR_OWNER_ONLY)
         .create(dir)
         .map_err(dir_io)?;
-    // Again, by a separate call: `DirBuilder::mode` is masked by the umask, and it is a
-    // no-op entirely when the directory already exists — so neither a 0022 umask nor a
-    // directory someone else created leaves the credential in a 0700 one.
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
+
+    // One descriptor, narrowed through and later synced through. Again by a separate call:
+    // `DirBuilder::mode` is masked by the umask, and it is a no-op entirely when the
+    // directory already exists — so neither a 0022 umask nor a directory someone else
+    // created leaves the credential in a 0700 one.
+    let handle = std::fs::File::open(dir).map_err(dir_io)?;
+    handle
+        .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
         .map_err(dir_io)?;
 
     let io = |source| AuthError::Io {
@@ -238,9 +261,7 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
     temp.persist(path).map_err(|error| io(error.error))?;
 
     // The rename itself, so the entry survives a crash and not just the bytes behind it.
-    std::fs::File::open(dir)
-        .and_then(|handle| handle.sync_all())
-        .map_err(dir_io)?;
+    handle.sync_all().map_err(dir_io)?;
 
     Ok(())
 }
@@ -414,6 +435,36 @@ mod tests {
         assert!(
             refused,
             "a credential in a world-writable directory was read"
+        );
+    }
+
+    /// A lexical parent would be the link's directory, which is owner-only here; the
+    /// directory that actually holds the key is the shared one, and it is the one that has
+    /// to be refused.
+    #[test]
+    fn a_symlink_is_vetted_where_it_points_not_where_it_sits() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("shared");
+        let target = shared.join("credentials.toml");
+        write_at(&target, "[anthropic]\napi_key = \"k\"\n", 0o600);
+        std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o757)).unwrap();
+
+        let link = dir.path().join("sandbx/credentials.toml");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::fs::set_permissions(
+            link.parent().unwrap(),
+            std::fs::Permissions::from_mode(DIR_OWNER_ONLY),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let refused = matches!(stored(&link), Err(AuthError::DirPermissions { .. }));
+        // Restored before the assert, or `TempDir::drop` cannot clean up after a failure.
+        std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        assert!(
+            refused,
+            "a credential symlinked into a world-writable directory was read"
         );
     }
 
