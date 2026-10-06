@@ -699,3 +699,105 @@ fn another_variable_survives_the_resolver_hint() {
     );
     assert!(policy.hints_dns_over_tcp());
 }
+
+/// A digest in the one form the flag takes.
+const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+#[test]
+fn a_pin_digest_reaches_the_command() {
+    let run = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--pin-sha256",
+        DIGEST,
+        "--",
+        "/bin/true",
+    ]);
+
+    assert_eq!(
+        run.pin().expect("one digest").map(|d| d.to_string()),
+        Some(DIGEST.to_string())
+    );
+}
+
+/// A pin grants nothing, so it must not be the flag that replaces the default.
+#[test]
+fn a_pin_never_suppresses_the_cwd_default() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--pin-sha256",
+        DIGEST,
+        "--",
+        "/bin/true",
+    ])
+    .policy()
+    .expect("the flags describe a policy");
+
+    assert!(
+        policy.writable_paths().contains(&cwd()),
+        "a pin replaced the working-directory default: {:?}",
+        policy.writable_paths()
+    );
+}
+
+/// Clap refuses this one, so there is no `SandboxRun` to ask — the parse is the check.
+#[test]
+fn a_malformed_pin_digest_is_refused() {
+    for value in ["", "abc", &DIGEST.to_uppercase()] {
+        let parsed = Cli::try_parse_from([
+            "sandbx",
+            "sandbox-run",
+            "--pin-sha256",
+            value,
+            "--",
+            "/bin/true",
+        ]);
+
+        assert!(
+            parsed.is_err(),
+            "{value:?} was accepted as a SHA-256 digest"
+        );
+    }
+}
+
+/// Last-wins would quietly choose one of two images for one program.
+#[test]
+fn a_second_pin_flag_is_refused() {
+    let run = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--pin-sha256",
+        DIGEST,
+        "--pin-sha256",
+        DIGEST,
+        "--",
+        "/bin/true",
+    ]);
+
+    assert!(run.pin().is_err(), "two digests were accepted");
+}
+
+/// sandbx opens the file itself, so a bare name would hash one file and exec another.
+#[test]
+fn a_pin_on_a_bare_program_name_is_refused() {
+    for program in ["true", "./target/debug/sandbx"] {
+        let run = sandbox_run(&[
+            "sandbx",
+            "sandbox-run",
+            "--pin-sha256",
+            DIGEST,
+            "--",
+            program,
+        ]);
+
+        let error = run
+            .pin()
+            .expect_err("a pin on a program that is not an absolute path was accepted");
+
+        assert!(
+            error.to_string().contains(program),
+            "the refusal did not name the program it rejected: {error}"
+        );
+    }
+}
