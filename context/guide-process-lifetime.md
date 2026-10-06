@@ -11,7 +11,8 @@ Nothing the sandbox starts may outlive the call that started it (#28).
 | 2 | helper inner | PID 1 of the new namespace. `pdeathsig`, confirm supervisor, `apply()`, then becomes the command |
 
 Stage 1 exists because `unshare(CLONE_NEWPID)` only places a process's
-*children* — so unsharing in the supervisor is what makes stage 2 PID 1.
+*children* — so unsharing in the supervisor is what makes stage 2 PID 1. Stage 2
+is a second `exec` of the helper rather than a `fork`, which would need `unsafe`.
 
 Of stage 1's work, `uid/gid map` and the capability **bounding** set drop are
 *best-effort*: both record an `AuditEvent::Degraded` and carry on. Everything
