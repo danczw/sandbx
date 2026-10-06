@@ -311,8 +311,15 @@ Three properties matter as much as the list:
 - **A stored credential is protected from other users, not from the agent.**
   `sandbx auth login` writes the key to
   `$XDG_CONFIG_HOME/sandbx/credentials.toml` with mode `0600` in a directory at
-  `0700`, and sandbx refuses to read that file rather than reading it when any
-  group or other bit is set. That bounds who *else* on the host can read it. It is
+  `0700`, and refuses to read the file rather than reading it when any group or
+  other bit is set on *either* — a directory another user may write is one they
+  can rename the credential out of and substitute their own. The mode is part of
+  the claim, so a file that is too wide is refused and named, never quietly
+  `chmod`ed back: it was already disclosed, and the fix is to rotate the key, not
+  to narrow the file. `auth logout` is the single exception, removing a key from a
+  too-wide file rather than refusing — the alternative leaves an exposed
+  credential on disk to protect it from exposure. That bounds who *else* on the
+  host can read it. It is
   not encryption: the key is plaintext, readable by your own uid and by root, and
   the process holding it is the harness, which is not sandboxed. Storing it does
   remove one exposure — a key in the file is not in the harness's environment, so

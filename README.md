@@ -227,8 +227,12 @@ sandbx auth logout
 `auth login` reads the key from stdin and will not prompt for it, so it is never
 echoed to your terminal, never in your shell's history, and never in argv where
 any process on the host could read it. It writes
-`$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) with mode `0600`,
-and refuses to read that file later if anyone but you can.
+`$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) with mode `0600` in
+a directory at `0700`, and later refuses to read the file if anyone but you can
+reach either — naming the `chmod` that fixes it rather than silently fixing it,
+because a credential that was readable needs rotating and not just narrowing.
+`auth status` exits 0 when it found a key, 1 when there is none, and 2 when it was
+refused, so a script can tell "log in" apart from "something is wrong".
 
 Exporting the variable wins over the stored key, so you can override it for one
 shell without logging out. The stored key is plaintext — the mode keeps it from

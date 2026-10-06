@@ -169,8 +169,11 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    sandbox.rs   SandboxRun
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller, and the gate it answers with
-   auth.rs      Auth — where the provider key comes from: the environment, then
-                a 0600 file, and the login/logout/status that maintain it
+   auth.rs      Auth — which source the provider key comes from: the
+                environment, then a file, and the login/logout/status over it
+   auth/store.rs
+                the credential file itself — its TOML shape, and the 0600/0700
+                modes it is refused and written under
    error.rs     AgentError, SandboxRunError, PolicyError, HashError, AuthError
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes

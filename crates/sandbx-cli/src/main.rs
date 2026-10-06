@@ -22,21 +22,26 @@ fn main() -> std::process::ExitCode {
         }
 
         match Cli::parse().command {
-            Command::SandboxRun(args) => report(args.execute()),
-            Command::AgentRun(args) => report(block_on(args.execute())),
-            Command::Hash(args) => report(args.execute()),
-            Command::Auth(args) => report(args.execute()),
+            Command::SandboxRun(args) => report(args.execute(), 1),
+            Command::AgentRun(args) => report(block_on(args.execute()), 1),
+            Command::Hash(args) => report(args.execute(), 1),
+            // 2, not 1: `auth status` already spends 1 on "no key anywhere", and a script
+            // branching on that must not read a refused file as an absent one.
+            Command::Auth(args) => report(args.execute(), 2),
         }
     })
 }
 
 /// Turn what a subcommand reported into an exit code, saying why on the way out.
-fn report(result: Result<i32, impl std::fmt::Display>) -> std::process::ExitCode {
+///
+/// `failure` is the code an `Err` exits with, which a subcommand reserving 1 for an answer
+/// of its own has to move off.
+fn report(result: Result<i32, impl std::fmt::Display>, failure: u8) -> std::process::ExitCode {
     match result {
-        Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(failure)),
         Err(error) => {
             eprintln!("sandbx: {error}");
-            std::process::ExitCode::FAILURE
+            std::process::ExitCode::from(failure)
         }
     }
 }

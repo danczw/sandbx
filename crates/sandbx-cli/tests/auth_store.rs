@@ -200,12 +200,92 @@ fn a_group_readable_file_is_refused_with_the_fix() {
 
     let run = auth(config.path(), "status", None);
 
-    assert_eq!(run.code, Some(1), "a 0640 credential was accepted");
+    assert_eq!(run.code, Some(2), "a 0640 credential was accepted");
     assert!(
         run.stderr.contains("chmod 600"),
         "the refusal does not say how to fix it: {}",
         run.stderr
     );
+}
+
+/// The two negative answers must not share a code: a script running
+/// `auth status || auth login` would otherwise overwrite a credential it was refused.
+#[test]
+fn a_refusal_and_an_absent_key_exit_differently() {
+    let config = tempfile::tempdir().unwrap();
+    auth(config.path(), "login", Some("sk-ant-test"));
+
+    let path = credentials(config.path());
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let refused = auth(config.path(), "status", None);
+
+    std::fs::remove_file(&path).unwrap();
+    let absent = auth(config.path(), "status", None);
+
+    assert_eq!(absent.code, Some(1), "{}", absent.stdout);
+    assert_eq!(refused.code, Some(2), "{}", refused.stderr);
+}
+
+/// Refusing here would leave the exposed key on disk and advise narrowing a file the
+/// operator asked to delete.
+#[test]
+fn logout_removes_a_key_from_a_file_status_would_refuse() {
+    let config = tempfile::tempdir().unwrap();
+    auth(config.path(), "login", Some("sk-ant-test"));
+
+    let path = credentials(config.path());
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let run = auth(config.path(), "logout", None);
+
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!path.exists(), "an exposed credential survived logout");
+}
+
+/// 0600 in a directory another user may write is a file they can rename away and replace
+/// with their own, which `read` would then accept.
+#[test]
+fn a_credential_in_a_shared_directory_is_refused() {
+    let config = tempfile::tempdir().unwrap();
+    auth(config.path(), "login", Some("sk-ant-test"));
+
+    let dir = credentials(config.path()).parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o757)).unwrap();
+    let run = auth(config.path(), "status", None);
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    assert_eq!(run.code, Some(2), "{}{}", run.stdout, run.stderr);
+    assert!(
+        run.stderr.contains("chmod 700"),
+        "the refusal does not say how to fix it: {}",
+        run.stderr
+    );
+}
+
+/// The parse error is withheld because `toml` quotes the line it failed on, and for an
+/// unquoted `api_key` that line is the key.
+#[test]
+fn a_malformed_file_is_reported_without_quoting_the_key() {
+    let config = tempfile::tempdir().unwrap();
+    let path = credentials(config.path());
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::set_permissions(
+        path.parent().unwrap(),
+        std::fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    std::fs::write(&path, "[anthropic]\napi_key = sk-ant-secret\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+    let run = auth(config.path(), "status", None);
+
+    assert_eq!(run.code, Some(2), "{}", run.stdout);
+    assert!(
+        !run.stderr.contains("sk-ant-secret"),
+        "the parse failure printed the key: {}",
+        run.stderr
+    );
+    assert!(run.stderr.contains("line 2"), "{}", run.stderr);
 }
 
 /// An empty stdin is a `printf` that produced nothing, or a pipe from a command that
@@ -215,7 +295,7 @@ fn login_refuses_an_empty_stdin() {
     let config = tempfile::tempdir().unwrap();
     let run = auth(config.path(), "login", Some(""));
 
-    assert_eq!(run.code, Some(1));
+    assert_eq!(run.code, Some(2));
     assert!(!credentials(config.path()).exists());
 }
 
