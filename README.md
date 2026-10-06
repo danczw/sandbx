@@ -14,15 +14,15 @@ rather than degrading to unrestricted execution.
 > **Pre-alpha.** You can ask an agent one question from the command line and
 > watch it use tools to answer, saving the conversation to resume it later. What
 > is missing above that is the interactive surface — no live session, no
-> interrupt — and, more importantly, any
-> per-call approval prompt: a tool is approved for the whole run or not at all, so
-> the grants you pass are the whole of what a prompt injection reaches once it has
-> a tool. Enforced today on Linux 6.10+ with
-> unprivileged user namespaces: filesystem (Landlock), network (empty netns, or
-> a TCP port allowlist),
-> dangerous syscalls (seccomp), process lifetime (PID namespace). Kernels that
-> cannot enforce are refused, never run unrestricted. Do not assume a version
-> sandboxes anything until it says so.
+> interrupt — and, more importantly, any per-call approval prompt: a tool is
+> approved for the whole run or not at all, so the grants you pass are the whole
+> of what a prompt injection reaches once it has a tool.
+>
+> Enforced today on Linux 6.10+ with unprivileged user namespaces: filesystem
+> (Landlock), network (empty netns, or a TCP port allowlist), dangerous syscalls
+> (seccomp), process lifetime (PID namespace). Kernels that cannot enforce are
+> refused, never run unrestricted. Do not assume a version sandboxes anything
+> until it says so.
 
 ## Try the sandbox
 
@@ -37,21 +37,22 @@ sandbx sandbox-run --allow-read /srv -- cat /etc/shadow      # permission denied
 sandbx sandbox-run -- curl https://example.com               # no network at all
 ```
 
-Everything is denied unless a flag grants it. Three things are granted without
-one. Two are what a command needs in order to start: read access to the system
-binaries and libraries — with nothing readable, not even `/bin/true` reaches
-`main` — and the handful of environment variables below. The third is the
-working directory.
-
 ### The default policy
 
-With no path flag, `sandbx` grants read *and write* on the directory you ran it
-from, so working on the project you are standing in needs no flags at all. Giving
-any path flag — `--allow-read`, `--allow-write` or `--allow-exec` — replaces that
-default rather than adding to it, so `--allow-read /srv` is read on `/srv` and
-nothing else. That direction is deliberate: a policy narrower than you expected
-announces itself as a permission denial naming the path, while a wider one says
-nothing at all.
+Everything is denied unless a flag grants it. Three things are granted without
+one:
+
+- **read on the system binaries and libraries** — with nothing readable, not
+  even `/bin/true` reaches `main`;
+- **seven environment variables** — see [The environment](#the-environment);
+- **read *and write* on the working directory**, so working on the project you
+  are standing in needs no flags at all.
+
+Giving any path flag — `--allow-read`, `--allow-write` or `--allow-exec` —
+replaces that working-directory default rather than adding to it, so
+`--allow-read /srv` is read on `/srv` and nothing else. That direction is
+deliberate: a policy narrower than you expected announces itself as a permission
+denial naming the path, while a wider one says nothing at all.
 
 It grants the *directory*, not your toolchain. A compiler or package manager
 installed under your home — rustup's `~/.cargo/bin`, nvm, pyenv — is outside the
@@ -69,13 +70,13 @@ $ cd ~ && sandbx sandbox-run -- true
 sandbx: refusing to derive a policy from your home directory /home/you — pass --allow-read PATH and --allow-write PATH for the tree the command needs
 ```
 
-The rest are the filesystem root; where home directories live (`/home`, `/Users`,
-`/var/home`, `/root`, or anything holding one); anything overlapping the system
-binaries, since `sandbx` already grants execute there and write beside it would
-let a command rewrite `/usr/bin/git`; and any directory holding the running
-`sandbx`, where a write grant replaces the thing doing the enforcing. Each refusal
-names the flags to type instead, and passing them lifts it: the guard governs what
-`sandbx` derives, never what you ask for.
+Refused roots are the filesystem root; `$HOME`; where home directories live
+(`/home`, `/Users`, `/var/home`, `/root`, or anything holding one); anything
+overlapping the system binaries, since `sandbx` already grants execute there and
+write beside it would let a command rewrite `/usr/bin/git`; and any directory
+holding the running `sandbx`, where a write grant replaces the thing doing the
+enforcing. Each refusal names the flags to type instead, and passing them lifts
+it: the guard governs what `sandbx` derives, never what you ask for.
 
 With no usable `HOME` — a systemd unit, cron, `docker exec`, or a `HOME` that is
 empty or points nowhere — `sandbx` cannot tell one person's home directory from
@@ -104,14 +105,14 @@ before anything executes, with both digests on stderr. The flag grants nothing, 
 it neither widens a policy nor replaces the working-directory default, and it needs
 an absolute program path.
 
-It covers the one program you named and nothing that program then spawns itself. A
-pinned `/usr/bin/python3` is still arbitrary code.
+It covers the one program you named and nothing that program then spawns itself: a
+pinned `/usr/bin/python3` is still arbitrary code. Two images it cannot pin, both
+refused rather than run unchecked — a `#!` script, since the kernel hands the
+interpreter the path `sandbx` exec'd, which by then names a closed descriptor, so
+pin the interpreter and pass the script as an argument; and a program you may
+execute but not read, since a pin has to read the file.
 
-Two things it cannot pin, both refused rather than run unchecked. A `#!` script:
-the kernel hands the interpreter the path `sandbx` exec'd, which by then names a
-closed descriptor, so pin the interpreter and pass the script as an argument. And
-a program you may execute but not read — a pin has to read the file, which an
-execute-only mode does not allow.
+### The environment
 
 The environment is cleared too. A sandboxed command does not inherit the one
 `sandbx` was launched with, so a secret in your shell does not reach it; name a
@@ -121,11 +122,12 @@ reason as the system binaries: `PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`,
 up only in the C library's fallback (`/bin:/usr/bin`), so `cat` would still start
 but anything installed elsewhere would not be found.
 
-One variable `sandbx` sets rather than passes on: `--dns-over-tcp` puts
-`RES_OPTIONS=use-vc` in the command. That is a constant, not something read from
-your shell, and it is the only exception.
+One variable `sandbx` sets rather than passes on, and the only exception:
+`--dns-over-tcp` puts the constant `RES_OPTIONS=use-vc` in the command.
 
-Each run also records the policy it ran under and how it ended, on stderr:
+### The audit trail
+
+Each run records the policy it ran under and how it ended, on stderr:
 
 ```console
 $ sandbx sandbox-run --allow-read /srv -- /bin/true
@@ -141,14 +143,19 @@ was granted — and that is settled before it runs.
 The second record says how the run ended, and every run gets exactly one.
 `exited` carries the code `sandbx` itself exits with, a signal as 128 + n, so a
 command the sandbox killed does not read as a success. A run with no status of its
-own is `failed` with a reason you can filter on: `reason="timeout"` for a
-`--timeout` kill, `reason="exec_failed"` for a program that could not be executed
-at all, `reason="pin_mismatch"` for a program that is not the bytes it was pinned
-to, `reason="pin_unreadable"` for one a pin could not be checked against,
-`reason="pinned_script"` for a `#!` script, which `--pin-sha256` cannot cover, and
-`reason="landlock"` or `reason="seccomp"` for a sandbox the kernel would not
-accept. Each of those would otherwise look like a command that ran and exited
-1, the stage that refused having exited in the command's place.
+own is `failed` with a reason you can filter on:
+
+| `reason` | the run was refused or cut short by |
+|---|---|
+| `timeout` | a `--timeout` kill |
+| `exec_failed` | a program that could not be executed at all |
+| `pin_mismatch` | a program that is not the bytes it was pinned to |
+| `pin_unreadable` | a program a pin could not be checked against |
+| `pinned_script` | a `#!` script, which `--pin-sha256` cannot cover |
+| `landlock` / `seccomp` | a kernel that would not accept the sandbox |
+
+Each of those would otherwise look like a command that ran and exited 1, the
+stage that refused having exited in the command's place.
 
 `env=7` is a count, not a list: a variable's *name* is not a secret, but its value
 routinely is, and a record that spelled out the names would invite the next change
@@ -167,10 +174,12 @@ digest is not in the record: it is already in the command line you typed.
 It is metadata only, never a command's output, and it never touches stdout: the
 command's own stdout is forwarded untouched, so piping it is unaffected. Both
 records are written before any of the command's own output, which `sandbx`
-forwards once the run is over. To keep
-only the record, `2>&1 >/dev/null | grep sandbx::audit`. Note that `2>/dev/null`
-discards the sandboxed command's own stderr along with the record — including the
-permission denials the examples above are there to show.
+forwards once the run is over. To keep only the record,
+`2>&1 >/dev/null | grep sandbx::audit`. Note that `2>/dev/null` discards the
+sandboxed command's own stderr along with the record — including the permission
+denials the examples above are there to show.
+
+### `sandbox-run` flags
 
 | flag | grants |
 |------|--------|
@@ -186,7 +195,9 @@ permission denials the examples above are there to show.
 | `--dns-over-tcp`     | ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc`. Allowlists no port of its own |
 | `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |
 
-Resolving a name needs `--allow-read /etc` under *any* network policy, bare
+### Resolving a name
+
+Resolution needs `--allow-read /etc` under *any* network policy, bare
 `--allow-network` included: `resolv.conf` and `nsswitch.conf` are not granted by
 anything else. Under a port allowlist it also needs TCP 53 and the resolver on
 TCP, which together are one line:
