@@ -8,63 +8,36 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Async HTTP with streaming bodies, for the Messages API. No default features:
-# default-tls needs system OpenSSL, and plain `rustls` defaults to the
-# aws-lc-rs crypto provider, which vendors and compiles C/assembly — the same
-# class of build dependency rejected once already (rusqlite -> redb).
-# rustls-no-provider gets rustls integration plus native cert-store loading
-# without auto-picking a provider, so we can choose one explicitly below.
+# `rustls-no-provider`, not `rustls`: the latter auto-picks aws-lc-rs, which
+# vendors and compiles C and assembly. The provider is chosen below instead.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2", "stream", "json", "system-proxy"] }
-# Pulled in directly, not just transitively via reqwest, specifically to
-# select the `ring` crypto provider feature instead of the default aws_lc_rs:
-# no cmake and no nasm, its assembly being pre-generated. Its build.rs does
-# still compile C, so this crate needs a C compiler for the target — which is
-# why the musl builds install one.
+# Direct dependency only so the `ring` provider is selected; with no provider
+# enabled anywhere, building a `ClientConfig` fails at runtime, not at compile
+# time.
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-# Wraps the API key the moment it is read: its Debug prints `[REDACTED]`, so a key
-# reaches a log only through an explicit `expose_secret`.
 secrecy = "0.10.3"
-# The minimal crate (not the `futures` megacrate): Stream/StreamExt,
-# stream::unfold, BoxStream. Nothing here touches futures' io/sink/compat.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
-# reqwest's bytes_stream() yields bytes::Bytes directly; declared explicitly
-# rather than relying on an implicit re-export path.
 bytes = "1"
 
 [dev-dependencies]
-# Dev-only: neither AnthropicClient nor the SSE/wire parsing call a tokio API
-# directly — reqwest::Client drives itself off whatever executor the caller
-# runs. Only needed here for #[tokio::test] and to let wiremock's MockServer
-# spawn its listener. Current-thread runtime suffices.
 tokio = { version = "1.53.1", default-features = false, features = ["macros", "rt"] }
-# A local mock HTTP server so SSE-parsing and error-mapping tests exercise a
-# real HTTP round-trip with zero live network access.
 wiremock = "0.6.5"
 
-# `MockProvider`'s tests need the `mock` feature, and it must NOT be turned on by
-# a self dev-dependency (`sandbx-providers = { path = ".", features = ["mock"] }`).
-# That edge is active under `--all-targets` and under `cargo test`, and resolver
-# v3 unifies features per package, so the single rlib every consumer links would
-# have `mock` on: production code referencing `MockProvider` would pass clippy
-# and the full test suite, then fail for the first time in the release build.
-# Declaring the target instead keeps the default lint/build passes honest, and
-# `cargo test --features sandbx-providers/mock` (what CI runs) covers it.
+# Declared as a target rather than via a self dev-dependency on `features =
+# ["mock"]`: resolver v3 unifies features per package, so that edge would turn
+# `mock` on in the one rlib every consumer links, and production code touching
+# `MockProvider` would pass clippy and the test suite before failing the release
+# build.
 [[test]]
 name = "mock_provider"
 required-features = ["mock"]
 
 [features]
-# Opt-in suite that calls the real Anthropic API. Excluded from the default
-# `cargo test` run because it needs a paid `ANTHROPIC_API_KEY` and spends money
-# per run, so it cannot work in CI without a secret — the same reason
-# sandbx-core gates `sandbox-integration`. Feature-gated rather than checked at
-# runtime so an accidental run without opting in fails to compile instead of
-# silently passing; see `tests/live_anthropic.rs`.
+# Spends money per run against a paid `ANTHROPIC_API_KEY`. A feature rather than
+# a runtime check so running without opting in fails to compile.
 live-anthropic-tests = []
-# Exposes `MockProvider`, a test double that fabricates responses. Off by
-# default: a canned-response provider has no business in a production build.
 mock = []
 
 [lints]

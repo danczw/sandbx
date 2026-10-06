@@ -8,67 +8,35 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-# Opt-in suite that spawns real processes and asserts the kernel actually blocks
-# escapes. Excluded from the default `cargo test` run because it needs a Linux
-# kernel with Landlock ABI 5 (6.10+) available.
+# Needs a kernel with Landlock ABI 5 (Linux 6.10+), so it is out of the default
+# `cargo test` run.
 sandbox-integration = ["dep:io-uring"]
 
 [dependencies]
-# Safe wrapper around capset(2)/PR_CAPBSET_DROP — the only way to drop this
-# process's Linux capabilities that stays inside `unsafe_code = "forbid"`; nix
-# has no capability-set module at all, and libc only exposes the raw prctl
-# syscall.
+# The only way to drop this process's capabilities that stays inside
+# `unsafe_code = "forbid"`: nix has no capability module, libc only the raw prctl.
 caps = "0.5.6"
 landlock = "0.4.7"
 libc = "0.2.189"
 nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "user", "resource"] }
-# A caret range, so a minor bump arrives as a lockfile-only change touching no
-# file a reviewer reads. One thing in the tree does depend on this crate's
-# codegen: `eval` in `helper/seccomp.rs` interprets the closed set of opcodes
-# 0.5.0 emits, and panics by name on any other. Read that panic before widening
-# this range — not pinned to `=0.5.0`, which would also refuse patch releases.
 seccompiler = "0.5.0"
-# SHA-256 for a pinned entry point. `default-features = false` drops `oid`,
-# which pulls `const-oid` for an identifier nothing here reads, and `alloc`,
-# which the fixed-size digest does not need. 0.11 dropped the `asm` feature, but
-# it still compiles `unsafe` x86 and aarch64 intrinsics selected at runtime by
-# `cpufeatures` — this crate's `forbid` binds this crate, not its dependencies.
 sha2 = { version = "0.11.0", default-features = false }
 tracing = "0.1.44"
-# Test-only, and only when the integration feature is on: the sole safe way to
-# reach io_uring_setup without raw syscalls (which this crate forbids), used by
-# the probe that proves the syscall is denied. A [[bin]] cannot see dev-deps,
-# so it is an optional dep gated behind the feature rather than a dev-dep.
+# Optional rather than a dev-dependency because the probe that reaches
+# `io_uring_setup` is a `[[bin]]`, and a `[[bin]]` cannot see dev-dependencies.
 io-uring = { version = "0.7.15", optional = true }
 
-# Inherited like every other member, the workspace-wide ban on spawning
-# subprocesses included: this is the one crate allowed to spawn, and the single
-# site that does — `spawn::command` — carries its own `#[allow]` and a
-# justification, which is a narrower exemption than switching the lint off for
-# the whole crate.
-#
-# `unsafe_code = "forbid"` therefore applies here too. The re-exec helper applies
-# restrictions in a fresh single-threaded process rather than in a pre_exec
-# closure, so every call it needs (`CommandExt::exec`, `restrict_self`) is a safe
-# function and no exemption is warranted.
+# Inherited unchanged: the one site allowed to spawn, `spawn::command`, carries
+# its own `#[allow]` rather than the crate opting out of the ban.
 [lints]
 workspace = true
 
 [dev-dependencies]
-# Already a normal dependency above; repeated here because `capability_coverage`
-# asserts a property *of this crate* (that its hardcoded capability list still
-# covers the running kernel), and an integration test can only reach a
-# dependency it names itself. No new crate enters the tree.
 caps = "0.5.6"
-# Same reason as `caps` above: `denylist` compares this crate's syscall list
-# against the `libc::SYS_*` constants by name, and an integration test can only
-# reach a dependency it names itself. Already a normal dependency.
 libc = "0.2.189"
 tempfile = "3.27.0"
 tracing-subscriber = "0.3.23"
 
-# Test-only probe for the `Truncate` access right. `required-features` keeps it
-# out of normal builds; it is not part of the shipped surface.
 [[bin]]
 name = "sandbx-truncate-probe"
 path = "tests/support/truncate_probe.rs"
