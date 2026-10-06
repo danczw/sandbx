@@ -73,6 +73,23 @@ impl SandboxRun {
         &self.command[1..]
     }
 
+    /// The digest the program was pinned to, or why the pin cannot stand.
+    ///
+    /// The absolute-path check is here and not in [`Grants`](crate::Grants), which never
+    /// sees the command: the helper refuses a relative one too, but only here is the
+    /// program in scope to name in the advice.
+    pub fn pin(&self) -> Result<Option<sandbx_core::Sha256Digest>, PolicyError> {
+        let pin = self.grants.pin()?;
+
+        if pin.is_some() && !std::path::Path::new(self.program()).is_absolute() {
+            return Err(PolicyError::PinNeedsAbsoluteProgram {
+                program: self.program().to_string(),
+            });
+        }
+
+        Ok(pin)
+    }
+
     /// The `--timeout` seconds as a [`Duration`], or `None` for no limit.
     ///
     /// [`Duration`]: std::time::Duration
@@ -83,10 +100,14 @@ impl SandboxRun {
     /// Run it, forward its output, and report the code to exit with.
     pub fn execute(&self) -> Result<i32, SandboxRunError> {
         let policy = self.policy()?;
+        let pin = self.pin()?;
         let unresolvable = cannot_resolve(&policy);
         let mut command = SandboxedCommand::new(self.program(), policy).args(self.arguments());
         if let Some(limit) = self.timeout() {
             command = command.timeout(limit);
+        }
+        if let Some(digest) = pin {
+            command = command.pin_sha256(digest);
         }
         let output = command.output()?;
 

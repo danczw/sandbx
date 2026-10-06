@@ -24,6 +24,7 @@ fn main() -> std::process::ExitCode {
         match Cli::parse().command {
             Command::SandboxRun(args) => report(args.execute()),
             Command::AgentRun(args) => report(block_on(args.execute())),
+            Command::Hash(args) => report(args.execute()),
         }
     })
 }
