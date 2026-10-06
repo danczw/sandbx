@@ -41,12 +41,22 @@ the only place it can be caught. So `sandbx-session` names `WRITABLE_BITS` and
 `READABLE_BITS` separately where `auth.rs` has a single `SHARED_BITS`. Do not
 unify them.
 
-Both paths check the containing directory as well, and refuse a foreign owner.
-A directory another user may write lets them rename their own `0600` file over
-the target whatever its own mode says — this is what ssh's `StrictModes` checks
-a home directory for, and it is the stronger of the two checks. Every mode is
-read through an open descriptor (`File::metadata`, so `fstat`), never by path:
-checking the mode first and opening second vets one file and reads another.
+Both paths check the containing directory as well. A directory another user may
+write lets them rename their own `0600` file over the target whatever its own
+mode says — this is what ssh's `StrictModes` checks a home directory for, and it
+is the stronger of the two checks. Every mode is read through an open descriptor
+(`File::metadata`, so `fstat`), never by path: checking the mode first and
+opening second vets one file and reads another. The credential path takes the
+directory from `canonicalize`, not `Path::parent`, which is lexical: a symlinked
+`credentials.toml` would otherwise have the directory holding the *link* vetted
+and the one holding the key never looked at.
+
+Ownership is where the two diverge again: a transcript whose `st_uid` is not the
+running uid is refused, an API key file's is not read at all. Every path to a
+foreign-owned credentials file runs through an attacker-controlled `$HOME`, and
+root is trusted already, so the check would buy nothing there. It is not a gap
+to close by symmetry — the transcript check is cheap because the store's root is
+derived and not configurable.
 
 The directory's mode is also not left to `DirBuilderExt::mode`, which is
 ignored outright for a directory that already exists — so a root somebody

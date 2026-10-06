@@ -1,8 +1,8 @@
 //! `agent-run`: one prompt, one streamed answer, tool calls through the boundary.
 //!
-//! Single-shot and non-interactive, so there is nothing to persist between turns and
-//! nobody to ask mid-turn: the approval gate is decided from argv before the first
-//! request goes out.
+//! Single-shot and non-interactive, so there is nobody to ask mid-turn: the approval
+//! gate is decided from argv before the first request goes out. `--session` carries a
+//! conversation between runs, which is a transcript on disk and not a live session.
 
 mod render;
 
