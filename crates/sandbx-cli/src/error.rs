@@ -11,6 +11,30 @@ use sandbx_providers::ProviderError;
 const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
                       for the tree the command needs";
 
+/// Why `sandbx hash` printed no digest.
+///
+/// One field and no variants: a path that cannot be opened and one that cannot be read
+/// through are the same answer to the operator, and the errno distinguishes them.
+#[derive(Debug)]
+pub struct HashError {
+    /// The file as it was named.
+    pub(crate) path: PathBuf,
+    /// The underlying OS failure.
+    pub(crate) source: std::io::Error,
+}
+
+impl std::fmt::Display for HashError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "could not hash {}: {}", self.path.display(), self.source)
+    }
+}
+
+impl std::error::Error for HashError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
 /// Why the flags described no policy.
 ///
 /// Every variant refuses rather than falling back to a narrower policy, which would make

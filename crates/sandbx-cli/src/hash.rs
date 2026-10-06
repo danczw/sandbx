@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 use sandbx_core::Sha256Digest;
 
+use crate::HashError;
+
 /// A parsed `sandbx hash` invocation.
 #[derive(Debug, clap::Args)]
 pub struct Hash {
@@ -32,31 +34,12 @@ impl Hash {
             source,
         })?;
 
-        println!("{digest}");
+        // `println!` panics on a closed stdout, and `SIGPIPE` is ignored, so
+        // `sandbx hash big | head -c 8` would exit 101 with a backtrace. Dropped the way
+        // `SandboxRun::execute` drops its own write failures.
+        let line = format!("{digest}\n");
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes());
+
         Ok(0)
-    }
-}
-
-/// Why no digest was printed.
-///
-/// One variant: a path that cannot be opened and one that cannot be read through are the
-/// same answer to the operator, and the errno distinguishes them.
-#[derive(Debug)]
-pub struct HashError {
-    /// The file as it was named.
-    path: PathBuf,
-    /// The underlying OS failure.
-    source: std::io::Error,
-}
-
-impl std::fmt::Display for HashError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "could not hash {}: {}", self.path.display(), self.source)
-    }
-}
-
-impl std::error::Error for HashError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.source)
     }
 }
