@@ -3,20 +3,17 @@ use crate::{Axis, NetworkPolicy, SandboxError, SandboxPolicy, Sha256Digest};
 const FLAG_NET: &str = "--allow-network";
 /// Introduces one allowlisted TCP port, and takes exactly one value.
 ///
-/// Its own flag rather than an optional value on [`FLAG_NET`] the way the CLI spells it: an
-/// optional value would make `decode`'s refusal of an unrecognised token a "does this look
-/// like a port?" guess. Why, in `context/decision-enforcement-seam.md`.
+/// Its own flag rather than an optional value on [`FLAG_NET`] the way the CLI spells it,
+/// which would make `decode`'s refusal of an unrecognised token a guess at whether the token
+/// looks like a port. `context/decision-enforcement-seam.md`.
 const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
-/// Introduces the *name* of a variable the command may inherit. Never a value.
+/// Introduces the name of a variable the command may inherit. Never a value.
 const FLAG_ENV: &str = "--env";
-/// Carries the resolver hint and takes no value; the pair it stands for is a constant the
-/// policy owns.
+/// Carries the resolver hint and takes no value; the pair it stands for is the policy's.
 const FLAG_DNS_OVER_TCP: &str = "--dns-over-tcp";
-/// Introduces the SHA-256 the program must hash to, and takes exactly one value.
-///
-/// No path: the digest describes the one binary the helper is about to become, which
-/// `SEPARATOR` already names.
+/// Introduces the SHA-256 the program must hash to, and takes exactly one value. No path:
+/// the digest describes the one binary the helper becomes, which `SEPARATOR` already names.
 const FLAG_PIN: &str = "--pin-sha256";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
@@ -24,8 +21,7 @@ const SEPARATOR: &str = "--";
 /// The flag that introduces a path granted on `axis`.
 ///
 /// Here rather than on [`Axis`], the policy type having no business knowing how the helper
-/// is invoked; one exhaustive match for both `encode` and `decode`, so a new axis is a
-/// compile error here and nowhere else.
+/// is invoked; one exhaustive match serves both `encode` and `decode`.
 const fn path_flag(axis: Axis) -> &'static str {
     match axis {
         Axis::Read => "--ro",
@@ -36,8 +32,8 @@ const fn path_flag(axis: Axis) -> &'static str {
 
 /// The axis `flag` introduces, if it is a path flag at all.
 ///
-/// A lookup over [`path_flag`] rather than a second list of spellings, so a flag `encode`
-/// can emit is one `decode` accepts, by construction.
+/// A lookup over [`path_flag`] and not a second list of spellings, so a flag `encode` can
+/// emit is one `decode` accepts by construction.
 fn axis_for(flag: &str) -> Option<Axis> {
     Axis::ALL.into_iter().find(|axis| path_flag(*axis) == flag)
 }
@@ -45,9 +41,8 @@ fn axis_for(flag: &str) -> Option<Axis> {
 /// A policy plus a command, as carried between sandbx and the helper process.
 ///
 /// Argv is not private: the command reads its own `/proc/self/cmdline`, so everything here
-/// is visible to the process being confined — hence the rule the environment axis obeys,
-/// that this carries variable names and never values. The environment cannot be the channel
-/// instead, being what the policy now governs: the filter would leak it or eat it.
+/// is visible to the process being confined — hence variable names and never values. The
+/// environment cannot carry them instead, being the thing the policy governs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperArgs {
     /// Restrictions the helper must apply to itself.
@@ -60,8 +55,7 @@ pub struct HelperArgs {
     /// What `program` must hash to, when the caller pinned it.
     ///
     /// Beside `program` and not inside `policy`: the policy says what the command may do,
-    /// this says which image may be it, so the policy grammar and its round-trip stay
-    /// untouched.
+    /// this says which image may be it.
     pub pin: Option<Sha256Digest>,
 }
 
@@ -82,7 +76,7 @@ impl HelperArgs {
             out.push(path.display().to_string());
         }
         // Exhaustive, so a network state added to the policy is a compile error here rather
-        // than a grant that silently fails to cross into the stage that enforces it.
+        // than a grant that fails to cross into the stage that enforces it.
         match policy.network() {
             NetworkPolicy::Denied => {}
             NetworkPolicy::AnyPort => out.push(FLAG_NET.to_string()),
@@ -123,8 +117,6 @@ impl HelperArgs {
         let mut pin = None;
         let mut rest = argv.iter();
 
-        // Split off where the separator is found, rather than by collecting the tail and
-        // re-iterating it to take the head.
         let (program, args) = loop {
             let Some(arg) = rest.next() else {
                 return Err(SandboxError::BadHelperArgs {
@@ -144,14 +136,14 @@ impl HelperArgs {
                     let port = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "network port flag with no port after it",
                     })?;
-                    // `parse::<u16>` is the range check: out-of-range and not-a-number are
-                    // one refusal, with no `as` cast between them to truncate one into the
-                    // other.
+                    // `parse::<u16>` is the range check, so out-of-range and not-a-number
+                    // are one refusal with no `as` cast between them to truncate one into
+                    // the other.
                     let port: u16 = port.parse().map_err(|_| SandboxError::BadHelperArgs {
                         detail: "network port that is not a number in 1..=65535",
                     })?;
-                    // Refused where `allow_network_port` skips it: `encode` never emits 0, so
-                    // a 0 here means the argv speaks a different protocol.
+                    // Refused where `allow_network_port` skips it: `encode` never emits 0,
+                    // so a 0 here means the argv speaks a different protocol.
                     if port == 0 {
                         return Err(SandboxError::BadHelperArgs {
                             detail: "network port 0, which matches no port",
@@ -165,9 +157,8 @@ impl HelperArgs {
                     let name = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "env flag with no variable name after it",
                     })?;
-                    // `allow_env` would skip this, right for a caller composing a policy
-                    // but wrong here: a name `encode` could not have emitted means the
-                    // argv speaks a different protocol.
+                    // Refused where `allow_env` would skip it: a name `encode` could not
+                    // have emitted means the argv speaks a different protocol.
                     if name.contains('=') {
                         return Err(SandboxError::BadHelperArgs {
                             detail: "env variable name containing `=`",
@@ -179,9 +170,9 @@ impl HelperArgs {
                     let hex = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "pin flag with no digest after it",
                     })?;
-                    // A digest the CLI already parsed once, so anything unparseable here
-                    // means the argv speaks a different protocol — as does a second one,
-                    // which last-wins would quietly resolve to whichever came later.
+                    // The CLI parsed this once already, so anything unparseable here means
+                    // the argv speaks a different protocol — as does a second one, which
+                    // last-wins would resolve to whichever came later.
                     let digest =
                         Sha256Digest::parse(hex).map_err(|_| SandboxError::BadHelperArgs {
                             detail: "pin digest that is not 64 lowercase hex characters",
@@ -194,8 +185,6 @@ impl HelperArgs {
                     }
                 }
                 flag => {
-                    // One lookup, then one grant: the axis carries which one it is, so no
-                    // second match here decides it again.
                     let axis = axis_for(flag).ok_or(SandboxError::BadHelperArgs {
                         detail: "unrecognised helper flag",
                     })?;
@@ -208,8 +197,8 @@ impl HelperArgs {
         };
 
         // A pin means the helper opens the file itself, so it resolves the name instead of
-        // libc — and a bare name is resolved against a `PATH` the *policy* defines, which
-        // would have it hash one file and `execve` another. Refused rather than searched.
+        // libc — and a bare name resolved against the policy's own `PATH` would have it
+        // hash one file and `execve` another. Refused rather than searched.
         if pin.is_some() && !std::path::Path::new(&program).is_absolute() {
             return Err(SandboxError::BadHelperArgs {
                 detail: "a pinned program that is not an absolute path",

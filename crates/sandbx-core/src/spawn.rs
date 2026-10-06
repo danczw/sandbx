@@ -1,10 +1,8 @@
 //! The one place this crate builds a `std::process::Command`.
 //!
-//! The environment is handed over by `fork`/`exec` before Landlock or seccomp have any
-//! say, so neither can express "not this" about a variable and the only way to withhold
-//! one is to never put it there: every process is born here with its environment already
-//! narrowed to the names the policy carries, plus the constants it imposes. Hence the
-//! workspace ban on `Command::new` (`clippy.toml`), with exactly one exception, here.
+//! The environment crosses `fork`/`exec` before Landlock or seccomp have any say, so
+//! neither can express "not this" about a variable: the only way to withhold one is to
+//! never put it there. Hence the ban on `Command::new` in `clippy.toml`.
 
 use std::ffi::OsStr;
 
@@ -12,14 +10,13 @@ use crate::SandboxPolicy;
 
 /// Build a command for `program` whose environment holds only what `policy` permits.
 ///
-/// Clear and re-add rather than remove what looks sensitive: an allowlist stays correct as
-/// the harness gains variables. Allowlisted values are read out of *this* process as the
-/// command is built rather than carried on the policy, which crosses into the helper as
-/// argv — readable from inside the sandbox through `/proc/self/cmdline`. A name the harness
-/// does not hold is absent from the child rather than present and empty. An imposed value
-/// rides the policy instead, being a compile-time constant with nothing to leak.
+/// Clear and re-add, so the allowlist stays correct as the harness gains variables.
+/// Allowlisted values are read out of this process here and never carried on the policy,
+/// which crosses into the helper as argv and so is readable from inside the sandbox through
+/// `/proc/self/cmdline`; an imposed value rides the policy, being a constant.
 pub(crate) fn command(program: impl AsRef<OsStr>, policy: &SandboxPolicy) -> std::process::Command {
-    // The one sanctioned `Command::new` in the workspace; see `clippy.toml`.
+    // The only `Command::new` in any crate's `src/`; tests that spawn the binary carry
+    // their own allow. See `clippy.toml`.
     #[allow(clippy::disallowed_methods)]
     let mut command = std::process::Command::new(program);
 
