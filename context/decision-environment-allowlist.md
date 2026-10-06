@@ -60,11 +60,12 @@ program that checks.
 
 ## Narrow by construction, at one site
 
-Four `Command`s are built on the spawn path — `output()`, `run_with_deadline()`,
-the supervisor's re-exec into stage 2, and stage 2's `.exec()` into the real
-program. None of them calls `Command::new`: all four go through `spawn::command`,
-which clears and re-adds as it builds, so a narrowed environment is a property of
-every `Command` in the crate rather than a step each site remembers.
+Four `Command`s are built on the spawn path — `run_to_completion()`,
+`run_with_deadline()`, the supervisor's re-exec into stage 2, and stage 2's
+`.exec()` into the real program. None of them calls `Command::new`: all four go
+through `spawn::command`, which clears and re-adds as it builds, so a narrowed
+environment is a property of every `Command` in the crate rather than a step
+each site remembers.
 
 Three alternatives were on the table, and the first two were tried and discarded.
 
@@ -90,7 +91,7 @@ that no amount of per-site discipline gave:
 - There is one line to delete, and deleting it fails 24 enforcement tests. The
   invariant is now pinned, not merely upheld.
 - A new spawn site cannot forget. `clippy.toml` bans `Command::new` workspace-wide
-  under `-D warnings`, so the only way to build one is the way that narrows —
+  at `deny`, so the only way to build one is the way that narrows —
   checked by adding a bare `Command::new` elsewhere and watching the lint refuse
   to compile it. The fail-open hole above is closed structurally rather than by
   remembering.

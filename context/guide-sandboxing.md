@@ -73,8 +73,15 @@ above — `BitFlags<AccessFs>` and `BitFlags<AccessNet>` are distinct types:
 ```
 Denied    ──►  Unhandled              ◄── the empty netns confines it instead
 AnyPort   ──►  Unhandled              ◄── the flag's stated meaning
-Ports(p)  ──►  Ports { from_all(abi), p }
+Ports(p)  ──►  Ports { handled: from_all(abi), granted: BindTcp | ConnectTcp, p }
 ```
+
+`handled` and `granted` are deliberately not the same set — the two directions
+are not symmetric. A right a future ABI adds has to be *handled*, or Landlock
+leaves it unrestricted everywhere; but granting it on every allowlisted port is
+how a UDP or raw right would arrive already permitted on the ports the policy
+named. So the axis is policed in full and a port rule confers those two rights
+and nothing else.
 
 `Unhandled` is a named state and not an empty collection, which is the one thing
 in this file most worth not simplifying. Handling `AccessNet` with zero
@@ -129,10 +136,10 @@ set_no_new_privs()        ◄── seccomp will not install without it
 deny_dangerous_syscalls(policy)
 requested(policy)  ──► Requested { handled, rules, net }   ◄── negotiates internally
   handle_access(handled)
-  net == Ports  ──► handle_access(rights)            ◄── both before create
+  net == Ports  ──► handle_access(net handled)       ◄── both before create
                                    create
   for rules: PathFd::new ──► add_rule
-  net == Ports  ──► for ports: NetPort::new ──► add_rule
+  net == Ports  ──► for ports: NetPort::new(port, granted) ──► add_rule
 restrict_self()
 enforcement_verdict()
 ```
@@ -205,7 +212,7 @@ cannot loosen an earlier one.
 
 | Filter | Action | Why not `EPERM` |
 |---|---|---|
-| the 28 entries, the conditional `socket` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
+| the 28 entries, the conditional `socket`, `setsockopt`, `sendto` and `sendmsg` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
 | `clone3` | `ENOSYS` | glibc 2.34+ calls it from `pthread_create` and falls back to `clone` only on `ENOSYS`; `EPERM` breaks every threaded program instead of routing it onto the filtered `clone` |
 | any non-negative `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
 
@@ -319,7 +326,7 @@ path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 
 ## What this does NOT protect against
 
-Matches `SECURITY.md`'s known-weaknesses table. The short form:
+Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
 
 - **No resource bounds on spawned processes.** A fork bomb runs unbounded for the
   length of the call; cgroups are not in place. Tool *work* is bounded — see

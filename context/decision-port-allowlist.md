@@ -195,7 +195,7 @@ fail-closed shape — a ULP added to the kernel tomorrow is denied without an ed
 The bypass is live from v6.14 on. Before it, `current_check_access_socket` gated
 on `sock->type != SOCK_STREAM` rather than `sk_is_tcp`, so a converted socket
 reached the `sa_family != skc_family` check and the connect failed with `-EINVAL`
-of its own accord. `BASELINE_ABI` is V5, which Linux 6.7 reports, so sandbx does
+of its own accord. `BASELINE_ABI` is V5, which Linux 6.10 reports, so sandbx does
 run on kernels where this was already closed — the rule is unconditional
 regardless, since the policy may not depend on which side of that boundary the
 host is on.

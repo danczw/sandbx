@@ -24,7 +24,7 @@ compile, where a denylist would have been silently missing it.
 ## Dispatch: an enum, not a trait object
 
 ```rust
-pub enum BuiltinTool { Read, Write, Edit, Ls, Grep, Find, Bash }  // fieldless, Copy
+pub enum BuiltinTool { Read, Write, Bash, Edit, Ls, Grep, Find }  // fieldless, Copy
 pub const ALL: [Self; 7] = [..];                                   // this is the registry
 struct ToolSpec { name, description, risk, schema, run }           // one per tool, in its module
 ```
@@ -142,7 +142,7 @@ bodies that do blocking I/O anyway.
 | Property | State |
 |---|---|
 | bounded in time | `bash` only |
-| bounded in work | all six in-process searches |
+| bounded in work | the two searches — not `read`/`edit`, which allocate a whole file |
 | cancellable from outside | **partly** — the turn can be abandoned; the running tool still completes (#26) |
 | approval gate | **per tool per run** — `run_turn`'s `approve` closure, asked before the spawn; no per-call prompt (#165) |
 

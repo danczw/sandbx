@@ -31,7 +31,7 @@ vindication of the ordering.
 ## The input flank is still vendor-shaped
 
 `MessagesRequest` is Anthropic's wire schema behind a neutral name: `max_tokens`,
-`system: String`, `input_schema`, `ToolResult` as a content block rather than a
+`system: Option<String>`, `input_schema`, `ToolResult` as a content block rather than a
 message. `StopReason::from_wire` matches Anthropic strings with no provider
 parameter, and `RETRYABLE_KINDS` holds vendor error codes.
 

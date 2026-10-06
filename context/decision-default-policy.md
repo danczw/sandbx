@@ -2,7 +2,7 @@
 
 Why a no-flag `sandbx sandbox-run` grants read and write on the directory it was
 run from, why a path flag *replaces* that rather than adding to it, and why some
-working directories are refused instead. The mechanism is thirty lines of
+working directories are refused instead. The mechanism is the guard at the top of
 `crates/sandbx-cli/src/grants.rs`; this is what the choices were between.
 
 ## What it is for
@@ -61,7 +61,7 @@ A derived write grant is reachable by accident in a way a typed one is not, so
 | Refuse when | Test |
 |---|---|
 | cwd is the filesystem root | `cwd.parent().is_none()` |
-| cwd is `$HOME`, or *holds* it | `homes.iter().any(\|h\| h.starts_with(cwd))` |
+| cwd is `$HOME`, or *holds* it | `homes.paths.iter().any(\|h\| h.starts_with(cwd))` |
 | cwd is where homes live, or holds it | `holds_home_directories(cwd)`, below |
 | no usable `$HOME`, and cwd is shaped like a home | `looks_like_a_home(cwd)`, below |
 | cwd overlaps a path already granted execute | `granted.iter().any(\|p\| p.starts_with(cwd) \|\| cwd.starts_with(p))` |
@@ -71,7 +71,7 @@ One `starts_with` covers both `$HOME` cases: it is true of equal paths, so "cwd 
 whole-component, so `/home/u/project-tools` is not inside `/home/u/project`. The
 root rule stays alongside it because it subsumes the root only when `HOME` is set.
 
-Only the `$HOME` arm reads the environment, and it is there to *name* a directory
+Of the two arms that consult `$HOME`, the exact one is there to *name* a directory
 the arm below it already covers by location. That ordering is deliberate: it was
 the other way round once, and the inversion was a hole — see below.
 
@@ -278,7 +278,7 @@ and enumerating the candidates would be a denylist whose first omission is silen
 
 `getcwd` already returns a resolved path, so `canonicalize` is there for the other
 thing it proves: that the directory is still openable. `PathFd::new` in the helper
-requires that, and `FsGuard::canonical_roots` *drops* a root it cannot resolve
+requires that, and `fs_guard::canonical_roots` *drops* a root it cannot resolve
 rather than refusing. The two layers disagree, and the safe reading of the
 disagreement is that an unopenable working directory must fail here, loudly,
 rather than become a grant one layer silently omits.
@@ -299,7 +299,9 @@ turn variants look reachable from `sandbox-run`.
 Every variant about the working directory ends in one shared `ADVICE` const, so
 two refusals cannot name different flags. `ImposedVariable` is the one that does
 not: it is about neither a path nor the working directory, and path-flag advice
-on it would answer a question nobody asked.
+on it would answer a question nobody asked. The two `--pin-sha256` refusals are
+outside it for the same reason, and each says what to write instead of its own
+accord.
 
 ## The seam
 
