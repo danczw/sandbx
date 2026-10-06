@@ -21,7 +21,6 @@ fn rendered(output: &std::process::Output) -> String {
     )
 }
 
-/// The seam carries the policy, so the caller never passes one in.
 #[test]
 fn a_command_from_the_seam_is_confined_by_the_policy() {
     let dir = tempfile::tempdir().unwrap();

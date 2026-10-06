@@ -74,7 +74,6 @@ fn grep_reports_no_matches_rather_than_failing() {
     assert_eq!(out.content(), "no matches");
 }
 
-/// A symlink in a searched directory must not leak the contents of its target.
 #[cfg(unix)]
 #[test]
 fn grep_does_not_follow_a_symlink_out_of_the_root() {
@@ -141,7 +140,6 @@ fn find_matches_file_names() {
     );
 }
 
-/// The same symlink guarantee for `find`: names outside the root stay hidden.
 #[cfg(unix)]
 #[test]
 fn find_does_not_follow_a_symlink_out_of_the_root() {
@@ -198,9 +196,8 @@ fn grep_orders_hits_by_line_number() {
     );
 }
 
-/// grep does not sort: it relies on `walk_readable` returning files already sorted.
-/// Nothing else pins that contract, so dropping the sort inside `walk_readable`
-/// would put output in readdir order with the rest of the suite still green.
+/// grep does not sort: it relies on `walk_readable` returning files already sorted,
+/// and nothing else pins that contract.
 #[test]
 fn grep_orders_hits_across_files_by_path() {
     let root = tempfile::tempdir().unwrap();
@@ -254,9 +251,8 @@ fn grep_does_not_block_on_a_fifo() {
     assert!(out.content().contains("real.txt"), "got: {}", out.content());
 }
 
-/// A symlink to a file outside the root is what exercises the walk's confinement: a
-/// symlink to a directory is skipped for unrelated reasons and would pass with the
-/// check removed.
+/// A file symlink is what exercises the walk's confinement: a directory symlink is
+/// skipped for unrelated reasons and would pass with the check removed.
 #[cfg(unix)]
 #[test]
 fn grep_does_not_follow_a_file_symlink_out_of_root() {

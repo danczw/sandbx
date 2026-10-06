@@ -104,9 +104,8 @@ fn read_grant_alone_does_not_permit_editing() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
 }
 
-/// The write handle truncates on open, so it is opened only after the replacement is
-/// known unique. Opening earlier would empty the file on the paths that report
-/// failure.
+/// The write handle truncates on open, so opening it before the match is known
+/// unique would empty the file on every path that reports failure.
 #[test]
 fn a_refused_edit_leaves_the_file_intact() {
     let root = tempfile::tempdir().unwrap();
