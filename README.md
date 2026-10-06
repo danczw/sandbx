@@ -55,10 +55,35 @@ nothing at all.
 
 It grants the *directory*, not your toolchain. A compiler or package manager
 installed under your home — rustup's `~/.cargo/bin`, nvm, pyenv — is outside the
-default, so `sandbx sandbox-run -- cargo test` fails with a permission denial
-until you add `--allow-exec ~/.cargo/bin` and read access to what it needs
-(`~/.cargo/registry`, `~/.rustup`). What works with no flags is a command from
-the system paths, which is why the examples above use `grep` and `cat`.
+default, so `sandbx sandbox-run -- cargo test` fails with a permission denial.
+What works with no flags is a command from the system paths, which is why the
+examples above use `grep` and `cat`.
+
+A build is the demanding case, because it is four programs rather than one. For a
+rustup toolchain, `cargo test` needs all of these:
+
+```sh
+sandbx sandbox-run \
+  --allow-exec ~/.cargo/bin --allow-exec ~/.rustup \
+  --allow-write . --allow-exec . \
+  --allow-read /dev --allow-write /tmp \
+  -- cargo test --offline
+```
+
+Each line is one of the four. `~/.cargo/bin` is the rustup shims, which is what
+`cargo` and `rustc` resolve to on your `PATH`; `~/.rustup` is the toolchain they
+hand off to. The working directory needs write for `target/` and *execute* to run
+the test binary it just built — a write grant does not imply one. `/tmp` is where
+the linker puts its temporary files.
+
+`/dev` is the one to know about, because leaving it out looks like something else
+entirely: `cargo` redirects a child's stdio to `/dev/null`, and failing that it
+reports `could not execute process .../rustc -vV (never executed): Permission
+denied`, which reads as a missing execute grant on a path you did grant.
+
+`--offline` because the sandbox denies the network: a build that resolves
+dependencies needs `--allow-network 443 --allow-read /etc` as well, which also
+widens what a `build.rs` reaches.
 
 Some working directories are refused rather than granted, because the tree would
 be far wider than you meant, or would hold what every command already runs:
