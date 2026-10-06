@@ -2,17 +2,16 @@
 //!
 //! `enforcement_syscalls.rs` probes only four of the entries end to end, so another could
 //! leave the list with every test still passing while `SECURITY.md` went on promising it.
-//! Weaker evidence than a probe — the number is in the list the filter is built
-//! from, not refused by the kernel — and all that is available for syscalls with no
-//! safe wrapper, since `sandbx-core` forbids `unsafe`. Not behind
-//! `sandbox-integration`: it spawns nothing, so it runs where the enforcement suite
-//! cannot.
+//! Weaker evidence than a probe — the number is in the list the filter is built from, not
+//! refused by the kernel — and all that is available for syscalls with no safe wrapper,
+//! since `sandbx-core` forbids `unsafe`. Not behind `sandbox-integration`: it spawns
+//! nothing, so it runs where the enforcement suite cannot.
 #![cfg(target_os = "linux")]
 
 use sandbx_core::BLOCKED_SYSCALLS;
 
-/// Every syscall the docs say is denied, paired with the name to report when it
-/// is missing. Adding a syscall to the denylist means adding it here too.
+/// Every syscall the docs say is denied, paired with the name to report when it is
+/// missing. Adding a syscall to the denylist means adding it here too.
 const CLAIMED: &[(&str, libc::c_long)] = &[
     // Inspect or modify other processes.
     ("ptrace", libc::SYS_ptrace),
@@ -74,8 +73,8 @@ fn every_claimed_syscall_is_actually_denied() {
     );
 }
 
-/// A duplicate is otherwise invisible: `deny_dangerous_syscalls` collects the list
-/// into a `BTreeMap`, which keeps one entry per syscall number.
+/// A duplicate is otherwise invisible: `deny_dangerous_syscalls` collects the list into a
+/// `BTreeMap`, one entry per syscall number.
 #[test]
 fn the_denylist_has_no_duplicate_entries() {
     let mut seen = BLOCKED_SYSCALLS.to_vec();

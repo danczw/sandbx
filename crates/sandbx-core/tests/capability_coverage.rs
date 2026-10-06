@@ -1,15 +1,14 @@
 //! Does the `caps` crate still know about every capability this kernel has?
 //!
-//! `caps::clear(Bounding)` issues one `PR_CAPBSET_DROP` per capability, enumerated
-//! from a hardcoded list in the crate rather than from the running kernel, so a
-//! capability the crate has never heard of stays in `CapBnd` while `SECURITY.md`
-//! promises an empty set. Not behind `sandbox-integration`: it spawns nothing, so
-//! it runs where the `CapBnd` assertion in `enforcement.rs` cannot.
+//! `caps::clear(Bounding)` issues one `PR_CAPBSET_DROP` per capability, enumerated from a
+//! hardcoded list in the crate rather than from the running kernel, so a capability the
+//! crate has never heard of stays in `CapBnd` while `SECURITY.md` promises an empty set.
+//! Not behind `sandbox-integration`: it spawns nothing, so it runs where the `CapBnd`
+//! assertion in `enforcement.rs` cannot.
 #![cfg(target_os = "linux")]
 
 fn kernel_last_cap() -> u8 {
-    // Present on every Linux since 2.6.25; absence is a broken test environment,
-    // so fail loudly rather than skip and report a silent pass.
+    // Present on every Linux since 2.6.25, so absence is a broken test environment.
     let raw = std::fs::read_to_string("/proc/sys/kernel/cap_last_cap")
         .expect("no /proc/sys/kernel/cap_last_cap — is /proc mounted?");
 

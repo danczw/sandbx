@@ -1,12 +1,11 @@
 //! Does the kernel actually block an escape?
 //!
-//! Everything else in this crate tests our own logic; these spawn real processes
-//! and assert the *kernel* refuses them, which is the only evidence the sandbox
-//! does anything at all. Gated behind `--features sandbox-integration`: they need
-//! Landlock available (ABI 5, Linux 6.10+, enabled at boot).
+//! Everything else in this crate tests our own logic; these spawn real processes and
+//! assert the *kernel* refuses them. Gated behind `--features sandbox-integration`: they
+//! need Landlock available (ABI 5, Linux 6.10+, enabled at boot).
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
-// Every `Command::new` below spawns the sandbox helper itself, never a command that
-// bypasses it; the workspace ban exists to stop code executing *around* the sandbox.
+// Every `Command::new` below spawns the sandbox helper itself; the workspace ban exists
+// to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
 use std::process::Command;
@@ -17,8 +16,8 @@ mod support;
 
 use support::{allow_probe, run, run_pinned, runtime_paths};
 
-/// Baseline: without it the denials below would pass on a sandbox that broke
-/// everything indiscriminately.
+/// Baseline: without it the denials below would pass on a sandbox that broke everything
+/// indiscriminately.
 #[test]
 fn allowed_path_can_be_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -36,7 +35,6 @@ fn allowed_path_can_be_read() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "visible");
 }
 
-/// The point of the whole crate, enforced by the kernel rather than our own checks.
 #[test]
 fn unallowed_path_cannot_be_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -57,7 +55,6 @@ fn unallowed_path_cannot_be_read() {
     );
 }
 
-/// At the kernel level, not merely in `FsGuard`.
 #[test]
 fn read_only_grant_cannot_write() {
     let dir = tempfile::tempdir().unwrap();
@@ -121,17 +118,14 @@ fn malformed_arguments_do_not_run_the_command() {
     );
 }
 
-/// Between the supervisor spawning this stage and the stage arming its parent death
-/// signal, the supervisor can die with the signal never armed, leaving the command
-/// PID 1 of a namespace nothing watches — confined, but unreaped — so the stage checks
-/// that the pid it was told to expect is still its parent. It reads `/proc/self/stat`
-/// and not `getppid`, which returns 0 inside a PID namespace whose parent lives
-/// outside it; `/proc` is the host's, so its ppid field still names the supervisor in
-/// host numbering. Pid 1 is a claim no stage can legally receive.
+/// The supervisor can die between spawning this stage and the stage arming its parent
+/// death signal, so the stage checks the pid it was told to expect is still its parent. Off
+/// `/proc/self/stat`, not `getppid`, which returns 0 inside a PID namespace whose parent
+/// lives outside it; `/proc` is the host's, so its ppid field still names the supervisor.
 #[test]
 fn the_inner_stage_refuses_a_foreign_supervisor() {
-    // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
-    // the statement, which would leave `!marker.exists()` below asserting nothing.
+    // Bound, not a temporary: `tempdir().path()` drops the directory at the end of the
+    // statement, leaving `!marker.exists()` below asserting nothing.
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("should-not-exist");
 
@@ -154,8 +148,8 @@ fn the_inner_stage_refuses_a_foreign_supervisor() {
         !marker.exists(),
         "the inner stage ran the command despite having no supervisor"
     );
-    // Named in the refusal, so this cannot pass merely because the pid token was
-    // rejected as an unrecognised flag.
+    // Named in the refusal, so this cannot pass because the pid token was rejected as an
+    // unrecognised flag instead.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("supervisor"),
@@ -163,25 +157,20 @@ fn the_inner_stage_refuses_a_foreign_supervisor() {
     );
 }
 
-/// The only test that reaches this check: every other path arrives at `exec_inner`
-/// with the environment already narrowed, so without this the check could be deleted
-/// with the suite staying green.
-///
-/// Reaching it needs the liveness check to pass, so the supervisor named must really
-/// be this process's parent — the harness spawns the helper directly. The variable is
-/// planted with `Command::env`, since `set_var` is `unsafe` on edition 2024. The
-/// policy grants everything `/bin/touch` needs, so with the check removed each
-/// assertion fails on its own; under a `default()` policy the exec would be denied and
-/// the test would stay green for the wrong reason.
+/// The only test that reaches this check: every other path arrives at `exec_inner` with the
+/// environment already narrowed. Reaching it needs the liveness check to pass, so the
+/// harness spawns the helper directly and names itself the supervisor. The policy grants
+/// everything `/bin/touch` needs, or the exec would be denied and this would stay green for
+/// the wrong reason.
 #[test]
 fn the_inner_stage_refuses_an_unnarrowed_environment() {
-    // Bound, not a temporary: `tempdir().path()` drops the directory at the end of
-    // the statement, and `!marker.exists()` would then assert nothing.
+    // Bound, not a temporary: `tempdir().path()` drops the directory at the end of the
+    // statement, leaving `!marker.exists()` below asserting nothing.
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("should-not-exist");
 
-    // Nothing in the environment allowlist, so the planted variable is outside it —
-    // as is every variable cargo handed this process.
+    // Nothing in the environment allowlist, so the planted variable is outside it — as is
+    // every variable cargo handed this process.
     let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
     let args = [marker.to_str().unwrap().to_string()];
 
@@ -203,26 +192,24 @@ fn the_inner_stage_refuses_an_unnarrowed_environment() {
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // Named in the refusal, so this cannot pass merely because the supervisor check
-    // or the decode rejected something first.
+    // Named in the refusal, so this cannot pass because the supervisor check or the
+    // decode rejected something first.
     assert!(
         stderr.contains("environment"),
         "the refusal must say the environment is the reason, got: {stderr}"
     );
-    // And not named: a refusal is a diagnostic an operator reads, so naming the
-    // variable would walk back what the audit trail already refuses to record.
+    // And not named: naming the variable would walk back what the audit trail already
+    // refuses to record.
     assert!(
         !stderr.contains("SANDBX_SHOULD_NOT_SURVIVE"),
         "the refusal must not name the variable it found, got: {stderr}"
     );
 }
 
-/// Asserted on its own, ahead of everything that depends on it, because the answer is
-/// a property of the host: a box without AppArmor grants capabilities inside a fresh
-/// user namespace that Ubuntu 24.04+ and GitHub's runners strip
-/// (`kernel.apparmor_restrict_unprivileged_userns`). Red here means the PID-namespace
-/// approach is dead. A probe binary rather than an in-process `unshare`, which would
-/// strip the harness of its own namespaces for every test that follows.
+/// A property of the host, so it is asserted on its own: Ubuntu 24.04+ and GitHub's runners
+/// set `kernel.apparmor_restrict_unprivileged_userns`, which strips capabilities a box
+/// without AppArmor grants in a fresh user namespace. A probe binary, not an in-process
+/// `unshare`, which would strip the harness's own namespaces for every test after it.
 #[test]
 fn unprivileged_pid_namespace_is_available() {
     #[allow(clippy::disallowed_methods)]
@@ -244,9 +231,9 @@ fn unprivileged_pid_namespace_is_available() {
 }
 
 /// Everything about process lifetime rests on this: a process cannot leave the PID
-/// namespace it was born into, and `unshare`/`setns` are denied, so killing PID 1
-/// makes the kernel reap the rest unconditionally — where a process group is advisory.
-/// `$$` is the shell's own pid as the kernel reports it.
+/// namespace it was born into, and `unshare`/`setns` are denied, so killing PID 1 makes
+/// the kernel reap the rest unconditionally — where a process group is advisory. `$$` is
+/// the shell's own pid as the kernel reports it.
 #[test]
 fn the_command_is_pid_one_of_its_own_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -266,8 +253,8 @@ fn the_command_is_pid_one_of_its_own_namespace() {
 
 /// Pid resolution is namespace-relative, so a host pid does not exist as far as the
 /// command is concerned. Without the namespace this succeeds: the command runs as the
-/// caller's uid, so it can signal the caller's processes — the harness included.
-/// `kill -0` sends nothing; it asks whether the signal could be delivered.
+/// caller's uid, so it can signal the caller's processes. `kill -0` sends nothing; it asks
+/// whether the signal could be delivered.
 #[test]
 fn the_command_cannot_signal_outside_its_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -309,7 +296,7 @@ fn network_is_denied_by_default() {
     );
 }
 
-/// The opposite direction, or the flag is decorative.
+/// Without it the denial above would pass on a sandbox with no network at all.
 #[test]
 fn allowed_network_keeps_host_interfaces() {
     let policy = runtime_paths(SandboxPolicy::default())
@@ -325,8 +312,8 @@ fn allowed_network_keeps_host_interfaces() {
     );
 }
 
-/// Installed, not merely constructed: `/proc/self/status` reports `Seccomp: 2` once a
-/// BPF filter is in force, which needs no tool that attempts a blocked syscall.
+/// `/proc/self/status` reports `Seccomp: 2` once a BPF filter is in force, which needs no
+/// tool that attempts a blocked syscall.
 #[test]
 fn seccomp_filter_is_installed() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -359,19 +346,17 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
 }
 
-/// The four sets the helper can always clear, since shrinking them needs no
-/// capability. Hex bitmasks; a fully dropped process reports each as
-/// `0000000000000000`. `CapBnd` is absent — see
-/// [`the_bounding_set_is_cleared_or_left_inherited`].
+/// The four sets the helper can always clear, since shrinking them needs no capability.
+/// Hex bitmasks; a fully dropped process reports each as `0000000000000000`. `CapBnd` is
+/// absent — see [`the_bounding_set_is_cleared_or_left_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
-/// Can this machine drop the capability bounding set at all? It needs `CAP_SETPCAP`,
-/// held only inside a self-created user namespace — and not even there when an LSM
-/// strips capabilities from one. AppArmor's `restrict_unprivileged_userns` (default on
-/// Ubuntu 24.04+ and GitHub's runners) lets the `unshare` succeed but makes
-/// `PR_CAPBSET_DROP` return `EPERM`, so the helper treats the drop as best-effort and
-/// this assertion is conditional in step. Repeated in `audit_channel.rs`, because cargo
-/// gives each `tests/*.rs` its own binary; keep the two copies identical.
+/// Can this machine drop the capability bounding set at all? It needs `CAP_SETPCAP`, held
+/// only inside a self-created user namespace — and not even there when an LSM strips
+/// capabilities from one. AppArmor's `restrict_unprivileged_userns` (default on Ubuntu
+/// 24.04+ and GitHub's runners) lets the `unshare` succeed but makes `PR_CAPBSET_DROP`
+/// return `EPERM`, so the helper treats the drop as best-effort and this assertion is
+/// conditional in step. Repeated in `audit_channel.rs`; keep the two copies identical.
 fn bounding_set_is_droppable() -> bool {
     use std::os::unix::fs::MetadataExt;
 
@@ -414,8 +399,8 @@ fn capabilities_are_dropped() {
     );
 }
 
-/// Both paths enter a user namespace, since the PID namespace requires one whatever
-/// the policy says, so this pins `CLONE_NEWNET` as the only thing the flag changes.
+/// Both paths enter a user namespace, since the PID namespace requires one whatever the
+/// policy says, so this pins `CLONE_NEWNET` as the only thing the flag changes.
 #[test]
 fn capabilities_are_dropped_when_network_is_allowed() {
     let policy = runtime_paths(SandboxPolicy::default().allow_network()).allow_read("/proc");
@@ -437,10 +422,10 @@ fn capabilities_are_dropped_when_network_is_allowed() {
     }
 }
 
-/// Both branches assert rather than one returning early, which would report `ok`
-/// without checking anything on every CI run. `caps::clear(Bounding)` issues one
-/// `PR_CAPBSET_DROP` per capability, so a mid-loop `EPERM` leaves a partial drop — a
-/// different failure from the documented fallback.
+/// Both branches assert: returning early on one would report `ok` without checking
+/// anything. `caps::clear(Bounding)` issues one `PR_CAPBSET_DROP` per capability, so a
+/// mid-loop `EPERM` leaves a partial drop — a different failure from the documented
+/// fallback.
 #[test]
 fn the_bounding_set_is_cleared_or_left_inherited() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -464,7 +449,7 @@ fn the_bounding_set_is_cleared_or_left_inherited() {
     }
 
     // This process is the helper's parent, so its bounding set is the one the helper
-    // inherits — the only correct value when the kernel refuses the drop.
+    // inherits.
     let host = std::fs::read_to_string("/proc/self/status")
         .expect("could not read this process's own status");
 
@@ -478,8 +463,6 @@ fn the_bounding_set_is_cleared_or_left_inherited() {
     );
 }
 
-/// `RLIMIT_CORE` must be zero so a crash inside the sandboxed command cannot
-/// write a core dump to disk.
 #[test]
 fn core_dumps_are_disabled() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
@@ -505,8 +488,8 @@ fn core_dumps_are_disabled() {
 }
 
 /// Landlock leaves *unhandled* access types unrestricted everywhere, so a ruleset that
-/// never handles `Truncate` permits zeroing any file on the machine, read-only grant
-/// included. Needs the probe: only `truncate(2)` on a path exercises that right.
+/// never handles `Truncate` permits zeroing any file on the machine. Needs the probe: only
+/// `truncate(2)` on a path exercises that right.
 #[test]
 fn truncate_on_read_only_grant_is_denied() {
     let dir = tempfile::tempdir().unwrap();
@@ -568,9 +551,9 @@ fn truncate_on_write_grant_is_permitted() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
 }
 
-/// `FsGuard` canonicalizes its roots; the helper must too, or one policy means
-/// different things in-process and in the kernel. Resolved rather than rejected
-/// because `/bin`, `/lib` and `/lib64` are symlinks on ordinary systems.
+/// `FsGuard` canonicalizes its roots; the helper must too, or one policy means different
+/// things in-process and in the kernel. Resolved rather than rejected because `/bin`,
+/// `/lib` and `/lib64` are symlinks on ordinary systems.
 #[test]
 fn symlinked_policy_root_resolves_consistently() {
     let real = tempfile::tempdir().unwrap();
@@ -594,8 +577,8 @@ fn symlinked_policy_root_resolves_consistently() {
 }
 
 /// The kernel gets read alongside execute, since `AccessFs::from_read` bundles
-/// `ReadFile`/`ReadDir` in with `Execute`. If `FsGuard` reads only the read and write
-/// axes, `bash` can `cat` a file the native `read` tool refuses under one policy.
+/// `ReadFile`/`ReadDir` in with `Execute`. If `FsGuard` reads only the read and write axes,
+/// `bash` can `cat` a file the native `read` tool refuses under one policy.
 #[test]
 fn an_execute_grant_reads_the_same_in_both_layers() {
     let dir = tempfile::tempdir().unwrap();
@@ -619,9 +602,9 @@ fn an_execute_grant_reads_the_same_in_both_layers() {
     );
 }
 
-/// `SandboxPolicy::writable_paths` promises a write-only drop directory stays
-/// unreadable, and `AccessFs::from_all` bundles `ReadFile`/`ReadDir` — so the kernel
-/// side needs more than `Execute` subtracted. Both layers are asserted on one policy.
+/// `SandboxPolicy::writable_paths` promises a write-only drop directory stays unreadable,
+/// and `AccessFs::from_all` bundles `ReadFile`/`ReadDir` — so the kernel side needs more
+/// than `Execute` subtracted.
 #[test]
 fn a_write_grant_does_not_make_files_readable() {
     let dir = tempfile::tempdir().unwrap();
@@ -644,9 +627,8 @@ fn a_write_grant_does_not_make_files_readable() {
     );
 }
 
-/// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so a read
-/// grant mapped straight onto it carries execute — which nothing about the name
-/// `allow_read` would suggest to a caller granting a data directory.
+/// `AccessFs::from_read` bundles `Execute` alongside `ReadFile`/`ReadDir`, so a read grant
+/// mapped straight onto it carries execute.
 #[test]
 fn a_read_grant_does_not_make_files_executable() {
     let dir = tempfile::tempdir().unwrap();
@@ -662,8 +644,7 @@ fn a_read_grant_does_not_make_files_executable() {
     );
 }
 
-/// Without this mirror, the denial above would pass on a sandbox that refused to
-/// execute anything at all.
+/// Without it the denial above would pass on a sandbox that refused to execute anything.
 #[test]
 fn a_read_execute_grant_does_make_files_executable() {
     let dir = tempfile::tempdir().unwrap();
@@ -680,8 +661,8 @@ fn a_read_execute_grant_does_make_files_executable() {
     );
 }
 
-/// Write a binary, then run it: write grants map to `from_all`, which also contains
-/// `Execute`, so fixing only the read side leaves this open.
+/// Write grants map to `from_all`, which also contains `Execute`, so fixing only the read
+/// side leaves this open.
 #[test]
 fn a_write_grant_does_not_make_files_executable() {
     let dir = tempfile::tempdir().unwrap();
@@ -718,18 +699,17 @@ fn a_write_grant_does_not_make_files_executable() {
     );
 }
 
-/// A fresh user namespace reports the overflow `nobody` until a uid_map is written,
-/// while the command still *acts* as the real uid on the host — a mismatch that
-/// `getuid()`-based logic trips over.
+/// A fresh user namespace reports the overflow `nobody` until a uid_map is written, while
+/// the command still *acts* as the real uid on the host — a mismatch that `getuid()`-based
+/// logic trips over.
 ///
 /// Both paths create a user namespace, since the PID namespace needs one regardless of
-/// policy, so each is checked against the same two answers rather than one being the
-/// other's reference: the identity map is best-effort, and where the platform refuses
-/// it the command runs as the overflow uid. A third value must never appear.
+/// policy, so each is checked against the same two answers: the identity map is
+/// best-effort, and where the platform refuses it the command runs as the overflow uid. A
+/// third value must never appear.
 #[test]
 fn the_command_sees_a_consistent_real_uid() {
-    // std exposes no getuid and nix's `user` feature is not worth pulling in for one
-    // test; ask the host directly.
+    // std exposes no getuid and nix's `user` feature is not worth pulling in for one test.
     let host_value = |args: &[&str]| {
         String::from_utf8(
             std::process::Command::new("/usr/bin/id")
@@ -767,13 +747,9 @@ fn the_command_sees_a_consistent_real_uid() {
     }
 }
 
-/// A variable the harness holds does not travel through the filesystem — `fork`/`exec`
-/// hands it over before Landlock or seccomp have any say — so no path policy can
-/// express "not this" about it.
-///
-/// `CARGO_MANIFEST_DIR` rather than a planted variable: `std::env::set_var` is `unsafe`
-/// on edition 2024. Goes through `run`, which spawns the helper without clearing
-/// anything first, so what is under test is the helper stages doing it themselves.
+/// `fork`/`exec` hands the environment over before Landlock or seccomp have any say, so no
+/// path policy can express "not this" about a variable. `CARGO_MANIFEST_DIR` rather than a
+/// planted one: `std::env::set_var` is `unsafe` on edition 2024.
 #[test]
 fn a_variable_the_policy_omits_never_reaches_it() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -877,10 +853,9 @@ fn a_hinted_policy_still_drops_everything_else() {
     );
 }
 
-/// `spawn::command` applies the allowlist and *then* the imposed table, so a name reached
-/// both ways arrives with the constant. The value is planted on the spawning command
-/// because values are read from the live environment: with none to lose, swapping the two
-/// `envs` calls would pass either way.
+/// `spawn::command` applies the allowlist and *then* the imposed table. The value is
+/// planted on the spawning command because values are read from the live environment: with
+/// none to lose, swapping the two `envs` calls would pass either way.
 #[test]
 fn an_imposed_value_beats_an_allowlisted_one() {
     let policy = runtime_paths(SandboxPolicy::default())
@@ -926,7 +901,6 @@ fn granting_what_the_harness_lacks_passes_nothing() {
     );
 }
 
-/// The digest of a file on disk, taken the way an operator would before the run.
 fn digest_of(path: &std::path::Path) -> sandbx_core::Sha256Digest {
     let mut file = std::fs::File::open(path).expect("the program should be readable");
 
@@ -955,8 +929,8 @@ fn a_matching_pin_runs_the_program() {
     );
 }
 
-/// Issue #146's demonstration, as a test: the path is granted, the bytes behind it are
-/// not the ones that were named, and Landlock cannot tell the difference.
+/// The path is granted, the bytes behind it are not the ones that were named, and Landlock
+/// cannot tell the difference.
 #[test]
 fn a_binary_swapped_behind_its_pin_is_refused() {
     let dir = tempfile::tempdir().unwrap();
@@ -964,7 +938,6 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
     std::fs::copy("/bin/true", &program).unwrap();
     let pinned = digest_of(&program);
 
-    // The swap, after the digest was taken and before the run.
     std::fs::copy("/bin/id", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
@@ -980,8 +953,7 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
         String::from_utf8_lossy(&output.stdout).is_empty(),
         "the swapped binary produced output, so it ran before being refused"
     );
-    // Both digests, which is what tells the operator the bytes changed rather than that
-    // they pinned the wrong ones.
+    // Both digests: that is what distinguishes changed bytes from a wrong pin.
     assert!(
         stderr.contains(&pinned.to_string()) && stderr.contains("is not the binary"),
         "the refusal did not name the digests: {stderr}"
@@ -1010,11 +982,9 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
     );
 }
 
-/// The interpreter re-opens the path sandbx exec'd, which names a close-on-exec
-/// descriptor — so a pinned script would die as `cannot open /proc/self/fd/N`.
-///
-/// The script is its own pinned bytes, and the same file runs unpinned, so this is the
-/// script refusal and not a mismatch or a denial.
+/// The interpreter re-opens the path sandbx exec'd, which names a close-on-exec descriptor
+/// — so a pinned script would die as `cannot open /proc/self/fd/N`. The script is its own
+/// pinned bytes and runs unpinned, so this is the script refusal, not a mismatch.
 #[test]
 fn a_pinned_script_is_refused_rather_than_exec_d() {
     let dir = tempfile::tempdir().unwrap();

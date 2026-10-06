@@ -1,10 +1,9 @@
 //! Tries to reach a `HOST:PORT` over TCP or UDP, or to listen on it, and reports which.
 //! Test-only.
 //!
-//! Three modes in one binary, because the port allowlist's claim is about all of them:
+//! Three modes in one binary, because the port allowlist's claim covers all of them:
 //! Landlock permits connect *and* bind on the named TCP ports and refuses both elsewhere,
-//! and seccomp denies UDP outright. A probe that could only connect would leave most of the
-//! promise unasserted.
+//! and seccomp denies UDP outright.
 
 use std::io::Read;
 
@@ -37,9 +36,8 @@ fn bind(target: &str) -> std::process::ExitCode {
             }
             std::process::ExitCode::SUCCESS
         }
-        // The `ErrorKind` as well as the message: a caller testing a port it has just
-        // released cannot rule out another process having taken it, and
-        // `AddrInUse` is how that is told apart from the allowlist's own `PermissionDenied`.
+        // The `ErrorKind` as well as the message: `AddrInUse` is how a caller tells another
+        // process having taken the port from the allowlist's own `PermissionDenied`.
         Err(error) => {
             eprintln!("TCP BIND DENIED: {:?}: {error}", error.kind());
             std::process::ExitCode::FAILURE
@@ -65,8 +63,7 @@ fn tcp(target: &str) -> std::process::ExitCode {
 }
 
 /// The `bind` failure is reported apart from the send: seccomp refuses the `socket` call
-/// itself, so under a port allowlist there is never a socket to send from, and one message
-/// for both would hide which half refused.
+/// itself, so under a port allowlist there is never a socket to send from.
 fn udp(target: &str) -> std::process::ExitCode {
     let socket = match std::net::UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => socket,

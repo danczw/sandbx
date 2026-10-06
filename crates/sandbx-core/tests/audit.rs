@@ -42,8 +42,8 @@ impl tracing::field::Visit for Collect {
     }
 }
 
-/// A `wait(2)` status as the kernel encodes one, with no process to spawn: an exit code
-/// sits in the byte above the signal bits, which is what `from_raw` takes.
+/// A `wait(2)` status with no process to spawn: the exit code sits in the byte above
+/// the signal bits.
 fn status(raw: i32) -> std::process::ExitStatus {
     use std::os::unix::process::ExitStatusExt;
 
@@ -131,8 +131,7 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("pinned=false"), "got: {line}");
 }
 
-/// A pin that matched leaves no other mark: the run succeeds exactly as an unpinned one
-/// does, so without this field an auditor cannot tell the checked run from the unchecked.
+/// A matching pin leaves no other mark: the run succeeds exactly as an unpinned one does.
 #[test]
 fn records_whether_the_entry_point_was_pinned() {
     for (pinned, recorded) in [(false, "pinned=false"), (true, "pinned=true")] {
@@ -145,8 +144,8 @@ fn records_whether_the_entry_point_was_pinned() {
     }
 }
 
-/// The digest itself is not a secret — it is in `/proc/self/cmdline` already — but the
-/// trail carries the boolean, so a record is the same width for every run.
+/// The digest is no secret — it is in `/proc/self/cmdline` — but a boolean keeps every
+/// record the same width.
 #[test]
 fn records_that_a_run_was_pinned_and_not_which_digest() {
     let lines = capture(|| {
@@ -198,8 +197,8 @@ fn the_hint_is_not_counted_as_an_allowlisted_name() {
     assert!(!line.contains("RES_OPTIONS"), "got: {line}");
 }
 
-/// Three shapes of network grant, three labels. A trail that collapsed `any` and `ports`
-/// into one could not say whether a spawn was allowlisted.
+/// A trail that collapsed `any` and `ports` into one label could not say whether a spawn
+/// was allowlisted.
 #[test]
 fn records_which_shape_of_network_grant_a_spawn_had() {
     for (policy, network, count) in [
@@ -241,8 +240,6 @@ fn records_how_many_variables_passed_not_which() {
     assert!(!line.contains("AWS_SECRET_ACCESS_KEY"), "got: {line}");
 }
 
-/// A hardening step that did not take effect is part of what the sandbox did, so
-/// it belongs on the trail beside the decisions.
 #[test]
 fn records_a_degraded_hardening_step() {
     let lines = capture(|| {
@@ -327,7 +324,6 @@ fn records_a_failure_to_start_under_its_own_reason() {
     assert!(!line.contains("timeout"), "got: {line}");
 }
 
-/// A helper that never started and a command that never existed are different facts.
 #[test]
 fn an_exec_failure_and_a_spawn_failure_differ() {
     let missing = SandboxError::ExecFailed {
@@ -369,8 +365,8 @@ fn an_outcome_is_emitted_at_info_not_debug() {
     );
 }
 
-/// `program` is the only thing tying a spawn to its outcome — there is no correlation id
-/// until sandbx has a session concept (#108) — so both records must carry it unchanged.
+/// `program` is the only thing tying a spawn to its outcome — there is no correlation
+/// id — so both records must carry it unchanged.
 #[test]
 fn a_spawn_and_its_outcome_name_one_program() {
     let lines = capture(|| {
@@ -385,7 +381,6 @@ fn a_spawn_and_its_outcome_name_one_program() {
     assert_eq!(lines.len(), 2, "a spawn and its outcome, got: {lines:?}");
 }
 
-/// A spawn that never got as far as a command still ends the trail.
 #[test]
 fn a_helper_that_cannot_start_closes_the_trail() {
     let lines = capture(|| {

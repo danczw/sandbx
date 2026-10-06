@@ -10,9 +10,8 @@ mod support;
 use sandbx_core::SandboxPolicy;
 use support::{allow_probe, run, runtime_paths};
 
-/// Reaching a host daemon over a unix socket is not IP egress: one grant covering
-/// both turns "let it talk to the internet" into "let it ask systemd to run something
-/// outside the cage".
+/// Reaching a host daemon over a unix socket is not IP egress: one grant covering both
+/// turns "let it talk to the internet" into "let it ask systemd to run something".
 #[test]
 fn granting_network_does_not_grant_unix_sockets() {
     let dir = tempfile::tempdir().unwrap();
@@ -82,9 +81,9 @@ fn an_explicit_unix_grant_permits_the_connection() {
     );
 }
 
-/// A network namespace isolates only *abstract* unix sockets; pathname sockets live in
-/// the filesystem and cross it freely, so without a further control a command can dial
-/// host daemons (systemd's bus, docker.sock, an ssh-agent) and have them act for it.
+/// A network namespace isolates only *abstract* unix sockets; pathname sockets live in the
+/// filesystem and cross it freely, so without a further control a command can dial host
+/// daemons (systemd's bus, docker.sock, an ssh-agent) and have them act for it.
 #[test]
 fn unix_socket_connect_to_ungranted_path_is_denied() {
     let dir = tempfile::tempdir().unwrap();
@@ -116,9 +115,8 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
         "data crossed the sandbox boundary over a unix socket"
     );
 }
-/// io_uring runs operations from a submission queue without issuing the syscalls, so a
-/// ring inside the sandbox sidesteps the whole denylist, the `socket(AF_UNIX)` rule
-/// included. Denying `io_uring_setup` is what keeps the ring from existing.
+/// io_uring runs operations from a submission queue without issuing the syscalls, so a ring
+/// inside the sandbox sidesteps the whole denylist; denying setup keeps it from existing.
 #[test]
 fn io_uring_setup_is_denied() {
     let probe = env!("CARGO_BIN_EXE_sandbx-iouring-probe");
@@ -132,10 +130,9 @@ fn io_uring_setup_is_denied() {
     );
 }
 
-/// `memfd_create` returns a descriptor backed by RAM with no path anywhere, so
-/// Landlock — which binds its rules to inodes and paths — has nothing to match on.
-/// Asserts the errno and not just the exit status: any value other than `EPERM` means
-/// the call failed for an unrelated reason.
+/// `memfd_create` returns a descriptor backed by RAM with no path, so Landlock has nothing
+/// to match on. The errno and not the exit status: anything but `EPERM` is an unrelated
+/// failure.
 #[test]
 fn memfd_create_is_denied() {
     let probe = env!("CARGO_BIN_EXE_sandbx-memfd-probe");
@@ -149,14 +146,12 @@ fn memfd_create_is_denied() {
     );
 }
 
-/// Reach a syscall through perl's `syscall` builtin and return what the kernel
-/// answered: the raw errno, or `"0"` when the call succeeded.
+/// The raw errno the kernel answered with, or `"0"` when the call succeeded — the only way
+/// this suite can probe a syscall with no safe Rust wrapper, the crate forbidding `unsafe`.
 ///
-/// The only way this suite can probe a syscall with no safe Rust wrapper, since the
-/// crate forbids `unsafe`. Pass `nr` from `libc` and never a literal: syscall numbers
-/// are per-architecture, and x86_64's `userfaultfd` number is aarch64's `signalfd`, so
-/// a literal probes a different call. `$!` is cleared first so a stale errno from
-/// perl's startup cannot be read back as this call's result.
+/// Pass `nr` from `libc` and never a literal: syscall numbers are per-architecture, and
+/// x86_64's `userfaultfd` number is aarch64's `signalfd`. `$!` is cleared first so a stale
+/// errno from perl's startup cannot be read back as this call's result.
 fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
     let program = format!(
         "$! = 0; my $r = syscall({nr}, {args}); print +(defined $r && $r >= 0) ? 0 : $! + 0;"
@@ -189,9 +184,9 @@ fn pidfd_open_is_denied() {
     );
 }
 
-/// `pidfd_getfd` lifts an open descriptor *out* of another process — a socket, a file
-/// above the policy. Not filesystem access, so Landlock cannot express it, and denying
-/// `ptrace` does not cover it.
+/// `pidfd_getfd` lifts an open descriptor *out* of another process — a socket, a file above
+/// the policy. Not filesystem access, so Landlock cannot express it; `ptrace` does not cover
+/// it either.
 #[test]
 fn pidfd_getfd_is_denied() {
     assert_eq!(
@@ -217,8 +212,7 @@ fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
     );
 
     if sysctl == "0" {
-        // The kernel denies it here regardless, so there is no filter-specific
-        // observation to make on this host.
+        // The kernel denies it here regardless, so there is nothing to observe.
         return;
     }
 

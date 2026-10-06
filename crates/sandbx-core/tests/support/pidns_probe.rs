@@ -1,13 +1,10 @@
-//! Tries to create an unprivileged PID namespace and reports whether the next
-//! child was born as PID 1 of it; test-only
-//! (`required-features = ["sandbox-integration"]`).
+//! Tries to create an unprivileged PID namespace and reports whether the next child was
+//! born as PID 1 of it. Test-only.
 //!
-//! `CLONE_NEWPID` needs `CAP_SYS_ADMIN`, which an unprivileged process holds only
-//! inside a user namespace it created, so both flags go in one `unshare`. The
-//! unsharing process does not enter the namespace, only its children, so a
-//! re-exec is enough. AppArmor's `restrict_unprivileged_userns` (default on
-//! Ubuntu 24.04+ and GitHub's runners) permits the namespace but strips its
-//! capabilities, so the raw errno is printed: `EPERM` proves the approach dead.
+//! `CLONE_NEWPID` needs `CAP_SYS_ADMIN`, which an unprivileged process holds only inside a
+//! user namespace it created, so both flags go in one `unshare`; the unsharing process does
+//! not enter the namespace, only its children. AppArmor's `restrict_unprivileged_userns`
+//! permits the namespace but strips its capabilities, so the raw errno is printed.
 
 const CHILD_FLAG: &str = "--child";
 

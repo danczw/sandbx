@@ -136,11 +136,9 @@ fn granting_network_does_not_grant_unix_sockets() {
     );
 }
 
-/// A port allowlist is a narrowing of egress, not an absence of it.
-///
 /// `hardening::isolate` reads `allows_network` to decide whether to unshare the network
-/// namespace. If a port grant answered no, the command would get an empty netns and the
-/// allowlist would permit nothing.
+/// namespace, so a port grant answering no would leave the command in an empty netns with
+/// the allowlist permitting nothing.
 #[test]
 fn a_port_grant_allows_network() {
     let policy = SandboxPolicy::default().allow_network_port(443);
@@ -165,9 +163,9 @@ fn ports_accumulate_and_deduplicate() {
     assert_eq!(*policy.network(), NetworkPolicy::Ports(vec![443, 80]));
 }
 
-/// Port 0 is skipped, not refused — `allow_env`'s precedent. `bind(0)` asks the kernel to
-/// choose a port, which an allowlist cannot express, and `NetPort::new(0, …)` matches
-/// nothing, so a rule for it would be a grant that grants nothing.
+/// `bind(0)` asks the kernel to choose a port, which an allowlist cannot express, and
+/// `NetPort::new(0, …)` matches nothing — so a rule for it would grant nothing. Skipped
+/// rather than refused, following `allow_env`.
 #[test]
 fn port_zero_is_skipped() {
     let only_zero = SandboxPolicy::default().allow_network_port(0);
@@ -279,11 +277,9 @@ fn standard_env_carries_path() {
     );
 }
 
-/// `=` would make the wire format ambiguous, `NUL` cannot cross `exec`, and the
-/// empty string can never match (`std::env::var_os("")` is always `None`).
-/// Dropping at the gate is what keeps `HelperArgs` round-tripping: nothing
-/// `encode` emits is something `decode` refuses. The CLI's `--allow-env` refuses
-/// these loudly instead.
+/// `=` would make the wire format ambiguous, `NUL` cannot cross `exec`, and the empty
+/// string can never match (`std::env::var_os("")` is always `None`). Dropped at the gate
+/// rather than refused, so nothing `encode` emits is something `decode` refuses.
 #[test]
 fn allow_env_skips_a_name_it_could_not_encode() {
     for bad in ["FOO=bar", "FOO\0BAR", "=", "\0", ""] {

@@ -1,7 +1,7 @@
-//! Tries to create an io_uring instance; test-only
-//! (`required-features = ["sandbox-integration"]`). io_uring dispatches queued
-//! operations without issuing the syscalls, routing around the whole denylist, so
-//! `io_uring_setup` itself must be refused.
+//! Tries to create an io_uring instance. Test-only.
+//!
+//! io_uring dispatches queued operations without issuing the syscalls, routing around the
+//! whole denylist, so `io_uring_setup` itself must be refused.
 
 fn main() -> std::process::ExitCode {
     match io_uring::IoUring::new(8) {
