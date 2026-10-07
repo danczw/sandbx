@@ -220,7 +220,8 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
       gate.rs   which tools --allow-tool approved, the refusal the rest get,
                 and the one line per call the operator reads
       prompt.rs --approve call: the question put on /dev/tty, the three answers
-                it takes, and the refusal an unanswerable one gets
+                it takes, the refusal an unanswerable one gets, and Operator,
+                which carries the per-call line back to the same device
       orientation.rs
                 the approved tools and the roots the model is told about before
                 the first request

@@ -190,3 +190,68 @@ fn an_escape_sequence_in_a_path_cannot_rewrite_the_question() {
     // One question, so the injected second one cannot be the one being answered.
     assert_eq!(seen.matches("allow it?").count(), 1, "got {seen:?}");
 }
+
+/// Wait for `fd` to carry something, or fail the test.
+///
+/// Not a sleep: a pty's line discipline may move a written line into the reader's queue
+/// from a workqueue, and a drain that ran before the line was queued would leave the
+/// test asserting nothing.
+fn wait_readable(fd: &impl std::os::fd::AsFd) {
+    use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+
+    let mut fds = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
+    let ready = poll(&mut fds, PollTimeout::from(5_000u16)).expect("poll");
+
+    assert_eq!(ready, 1, "the pty queued nothing within five seconds");
+}
+
+/// A pty pair with the echo off, so the master carries only what sandbx wrote.
+fn pty() -> (File, File) {
+    use nix::sys::termios;
+
+    let pair = nix::pty::openpty(None, None).expect("a pty pair");
+
+    let mut attrs = termios::tcgetattr(&pair.slave).expect("the pty's termios");
+    attrs.local_flags.remove(termios::LocalFlags::ECHO);
+    termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
+
+    (File::from(pair.master), File::from(pair.slave))
+}
+
+/// The branch's own invariant, over a real terminal because what the drain clears is the
+/// kernel's input queue: a `y` typed at a question the model counterfeited in the round's
+/// text is not read as the answer to the question that follows it.
+#[test]
+fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
+    let (mut master, slave) = pty();
+
+    writeln!(master, "y").expect("the typed line");
+    // Queued before the drain runs, or the drain is not what the verdict below shows.
+    wait_readable(&slave);
+
+    let mut terminal = Terminal::on(slave).expect("the terminal");
+    let input = serde_json::json!({ "path": "/work/out.rs" });
+    let asking = &mut terminal;
+
+    let decision = std::thread::scope(|scope| {
+        let asked = scope.spawn(move || {
+            asking.ask(ToolCall {
+                tool: BuiltinTool::Write,
+                id: "call_1",
+                input: &input,
+            })
+        });
+
+        // Only after the question has been written, so the answer below is an answer to
+        // it and the `y` above could only have been consumed by the drain.
+        wait_readable(&master);
+        writeln!(master, "n").expect("the answer");
+
+        asked.join().expect("the asking thread")
+    });
+
+    assert!(
+        matches!(decision, ApprovalDecision::Deny { .. }),
+        "the `y` typed before the question was read as the answer to it: {decision:?}"
+    );
+}

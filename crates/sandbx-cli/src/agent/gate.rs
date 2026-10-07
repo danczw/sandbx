@@ -8,7 +8,7 @@
 use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
-use super::prompt::Ask;
+use super::prompt::Operator;
 
 /// The flag that lifts the default refusal.
 ///
@@ -54,6 +54,17 @@ pub(super) fn approved_tools(allowed: Option<&[BuiltinTool]>) -> Vec<&'static st
         .collect()
 }
 
+/// Whether `--approve call` will put anything to the operator in this run.
+///
+/// Argv is the ceiling and is checked first, and a read-only call is never asked about, so
+/// with no `--allow-tool` the flag asks about nothing at all — and a line announcing that
+/// every write will be asked for is false for that run.
+pub(super) fn asks_about_anything(allowed: Option<&[BuiltinTool]>) -> bool {
+    BuiltinTool::ALL
+        .iter()
+        .any(|tool| tool.risk() != RiskLevel::ReadOnly && approves(allowed, *tool))
+}
+
 /// The gate `agent-run` drives: argv decides, an operator may narrow it, and every call
 /// is reported once.
 ///
@@ -70,7 +81,7 @@ impl<'a, T> ArgvGate<'a, T> {
     }
 }
 
-impl<T: Ask> CallGate for ArgvGate<'_, T> {
+impl<T: Operator> CallGate for ArgvGate<'_, T> {
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
         // Argv is the ceiling, asked first: a prompt that could only ever be refused is
         // fatigue with no decision in it, and it would teach an operator to answer `y`.
@@ -97,19 +108,33 @@ impl<T: Ask> CallGate for ArgvGate<'_, T> {
     }
 
     fn settled(&mut self, call: Settled<'_>) {
-        settled(call);
+        let line = line(call);
+
+        match &mut self.terminal {
+            // Where the question was asked, not on stderr: an operator who redirected it
+            // would answer the next call never having seen what this one did.
+            Some(terminal) => terminal.report(&line),
+            None => eprintln!("{line}"),
+        }
     }
 }
 
-/// Write the operator's line for one call.
+/// Write the operator's line for one call, to stderr.
 ///
 /// Shared with the wrap-up round's gate, which refuses for a different reason but owes the
-/// same account: a call the wrap-up refused reached no operator at all before #169.
+/// same account: a call the wrap-up refused reached no operator at all before #169. That
+/// round asks nobody, so it has no terminal to write to either.
 pub(super) fn settled(call: Settled<'_>) {
-    // Stripped here and not only field by field: this is the one place a report reaches a
-    // terminal, so a `Display` impl that starts carrying model text cannot re-open the hole
-    // behind a formatter nobody re-audited. `SandboxError`'s already did once.
-    eprintln!("sandbx: {}", stripped(&report(call)));
+    eprintln!("{}", line(call));
+}
+
+/// The operator's whole line for one call, prefixed and stripped.
+///
+/// Stripped here and not only field by field: this is the one place a report reaches a
+/// terminal, so a `Display` impl that starts carrying model text cannot re-open the hole
+/// behind a formatter nobody re-audited. `SandboxError`'s already did once.
+fn line(call: Settled<'_>) -> String {
+    format!("sandbx: {}", stripped(&report(call)))
 }
 
 /// The operator's account of one call, without the `sandbx: ` prefix.

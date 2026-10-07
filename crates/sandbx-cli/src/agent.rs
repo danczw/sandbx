@@ -297,10 +297,20 @@ impl AgentRun {
                     Terminal::open().map_err(|source| AgentError::NoTerminal { source })?;
                 // After the open, not before: a line claiming the run will ask is false
                 // for the run that could not.
-                eprintln!(
-                    "sandbx: each call that writes or runs a program will be asked for on \
-                     this terminal"
-                );
+                if gate::asks_about_anything(self.allow_tool.as_deref()) {
+                    eprintln!(
+                        "sandbx: each call that writes or runs a program will be asked for \
+                         on this terminal"
+                    );
+                } else {
+                    // Argv is the ceiling, so the flag is inert here rather than wrong.
+                    // Said plainly, or an operator reads the silence as consent granted.
+                    eprintln!(
+                        "sandbx: nothing in this run will be asked for: `{APPROVE_CALL}` \
+                         asks only about the tools `{}` approved, and none was",
+                        gate::ALLOW_TOOL
+                    );
+                }
                 Ok(Some(terminal))
             }
         }

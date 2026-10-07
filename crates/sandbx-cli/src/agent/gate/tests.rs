@@ -92,16 +92,32 @@ fn the_announced_set_is_the_read_only_four_by_default() {
     );
 }
 
-/// A consent channel that answers whatever it is told to, and counts being asked.
+/// A consent channel that answers whatever it is told to, counts being asked, and keeps
+/// what it was told.
 struct Asked {
     answer: ApprovalDecision,
     count: usize,
+    reported: Vec<String>,
 }
 
-impl Ask for Asked {
+impl Asked {
+    fn new(answer: ApprovalDecision) -> Self {
+        Self {
+            answer,
+            count: 0,
+            reported: Vec::new(),
+        }
+    }
+}
+
+impl Operator for Asked {
     fn ask(&mut self, _: ToolCall<'_>) -> ApprovalDecision {
         self.count += 1;
         self.answer.clone()
+    }
+
+    fn report(&mut self, line: &str) {
+        self.reported.push(line.to_owned());
     }
 }
 
@@ -120,7 +136,7 @@ fn verdict(argv: &[&str], tool: BuiltinTool, input: &serde_json::Value) -> Appro
 fn asked(argv: &[&str], tool: BuiltinTool, answer: ApprovalDecision) -> (ApprovalDecision, usize) {
     let allowed = allowed(argv);
     let input = serde_json::json!({ "path": "/work/out.rs" });
-    let mut gate = ArgvGate::new(allowed.as_deref(), Some(Asked { answer, count: 0 }));
+    let mut gate = ArgvGate::new(allowed.as_deref(), Some(Asked::new(answer)));
 
     let decision = gate.approve(ToolCall {
         tool,
@@ -132,6 +148,47 @@ fn asked(argv: &[&str], tool: BuiltinTool, answer: ApprovalDecision) -> (Approva
         decision,
         gate.terminal.expect("the channel is still there").count,
     )
+}
+
+/// Both directions on one channel: stderr is as redirectable as stdout, so an operator
+/// reading the account there would answer the next call never having seen what this one
+/// did.
+#[test]
+fn a_run_that_asks_on_a_terminal_reports_there_too() {
+    let allowed = allowed(&["sandbx", "agent-run", "--allow-tool", "write", "--", "go"]);
+    let input = serde_json::json!({ "path": "/work/out.rs" });
+    let mut gate = ArgvGate::new(
+        allowed.as_deref(),
+        Some(Asked::new(ApprovalDecision::Allow)),
+    );
+
+    gate.settled(Settled {
+        name: "write",
+        id: "call_1",
+        tool: Some(BuiltinTool::Write),
+        input: &input,
+        outcome: Outcome::Ran,
+    });
+
+    assert_eq!(
+        gate.terminal.expect("the channel is still there").reported,
+        ["sandbx: write /work/out.rs"],
+        "the account went somewhere other than the question did"
+    );
+}
+
+/// `--approve call` with no `--allow-tool` asks about nothing — argv is the ceiling and is
+/// checked first — so the line announcing a question per write would be false for it.
+#[test]
+fn the_flag_asks_about_nothing_until_argv_approves_something() {
+    let none = allowed(&["sandbx", "agent-run", "--", "go"]);
+    assert!(
+        !asks_about_anything(none.as_deref()),
+        "a run whose every write is refused at the ceiling claimed it would ask"
+    );
+
+    let one = allowed(&["sandbx", "agent-run", "--allow-tool", "write", "--", "go"]);
+    assert!(asks_about_anything(one.as_deref()));
 }
 
 /// A prompt that could only ever be refused is fatigue with no decision in it, and it
