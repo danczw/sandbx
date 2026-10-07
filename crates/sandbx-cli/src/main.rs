@@ -20,6 +20,13 @@ fn main() -> std::process::ExitCode {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }
 
+        // Before parsing, so one call covers every subcommand, and inside the closure, so the
+        // flag is sandbx's own and not something a sandboxed command inherits.
+        if let Err(error) = sandbx_core::conceal_process_state() {
+            eprintln!("sandbx: {error}");
+            return std::process::ExitCode::from(1);
+        }
+
         match Cli::parse().command {
             Command::SandboxRun(args) => report(args.execute(), 1),
             Command::AgentRun(args) => report(block_on(args.execute()), 1),

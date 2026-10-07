@@ -112,6 +112,16 @@ pub enum SandboxError {
         detail: String,
     },
 
+    /// The harness could not hide its own process state, so a granted `/proc` would still
+    /// read the provider key out of its environment.
+    ///
+    /// Separate from [`ProcessHardening`](Self::ProcessHardening), which is about the state a
+    /// sandboxed command is born into: this one is about sandbx itself.
+    ProcessConcealment {
+        /// What failed, for the operator to act on.
+        detail: String,
+    },
+
     /// A sandboxed process could not be started.
     SpawnFailed {
         /// What failed, for the operator to act on.
@@ -264,6 +274,13 @@ impl std::fmt::Display for SandboxError {
             Self::ProcessHardening { detail } => {
                 write!(f, "could not harden process state: {detail}")
             }
+            Self::ProcessConcealment { detail } => {
+                write!(
+                    f,
+                    "refusing to run without concealing sandbx's own process state, which is \
+                     what keeps an exported key out of a tool granted /proc: {detail}"
+                )
+            }
             Self::Seccomp { detail } => {
                 write!(f, "could not install the syscall filter: {detail}")
             }
@@ -290,6 +307,7 @@ impl std::error::Error for SandboxError {
             | Self::Landlock { .. }
             | Self::NamespaceSetupFailed { .. }
             | Self::ProcessHardening { .. }
+            | Self::ProcessConcealment { .. }
             | Self::TimedOut { .. }
             | Self::PinMismatch { .. }
             | Self::PinnedScript { .. }
@@ -319,6 +337,7 @@ impl SandboxError {
             Self::Seccomp { .. } => "seccomp",
             Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
             Self::ProcessHardening { .. } => "process_hardening",
+            Self::ProcessConcealment { .. } => "process_concealment",
             Self::SpawnFailed { .. } => "spawn_failed",
             Self::InnerStageFailed { .. } => "inner_stage_failed",
             Self::ExecFailed { .. } => "exec_failed",
@@ -381,6 +400,9 @@ mod tests {
             SandboxError::ProcessHardening {
                 detail: "sample".to_string(),
             },
+            SandboxError::ProcessConcealment {
+                detail: "sample".to_string(),
+            },
             SandboxError::SpawnFailed {
                 detail: "sample",
                 source: io(),
@@ -425,6 +447,7 @@ mod tests {
                 | SandboxError::Seccomp { .. }
                 | SandboxError::NamespaceSetupFailed { .. }
                 | SandboxError::ProcessHardening { .. }
+                | SandboxError::ProcessConcealment { .. }
                 | SandboxError::SpawnFailed { .. }
                 | SandboxError::InnerStageFailed { .. }
                 | SandboxError::ExecFailed { .. }
@@ -508,6 +531,28 @@ mod tests {
                     error.label()
                 );
             }
+        }
+    }
+
+    /// The same direction as the old `reportable_label` check this replaces: a label the
+    /// parent or [`FsGuard`](crate::FsGuard) decides must name no refusal, or a forged line
+    /// claims an outcome it never watched. `process_concealment` is sandbx's own startup
+    /// failure, so only the harness can see it (#192).
+    #[test]
+    fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
+        for label in [
+            "timeout",
+            "spawn_failed",
+            "path_not_allowed",
+            "unresolvable",
+            "not_found",
+            "process_concealment",
+        ] {
+            assert_eq!(
+                HelperRefusal::from_label(label),
+                None,
+                "{label} is not a helper stage's to report, but the channel accepted it"
+            );
         }
     }
 

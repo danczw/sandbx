@@ -39,6 +39,12 @@ libc = "0.2.189"
 tempfile = "3.27.0"
 tracing-subscriber = "0.3.23"
 
+# The one probe outside `sandbox-integration`: concealing a process needs no Landlock ABI,
+# only a second process to be concealed from.
+[[bin]]
+name = "sandbx-concealment-probe"
+path = "tests/support/concealment_probe.rs"
+
 [[bin]]
 name = "sandbx-truncate-probe"
 path = "tests/support/truncate_probe.rs"

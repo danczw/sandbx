@@ -14,6 +14,7 @@ compile_error!(
 
 mod audit;
 mod command;
+mod concealment;
 mod degradation;
 mod digest;
 mod error;
@@ -28,6 +29,7 @@ pub use command::{
     HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, SandboxedCommand, dispatch_helper_mode,
     with_helper_dispatch,
 };
+pub use concealment::conceal_process_state;
 pub use digest::{DigestParseError, Sha256Digest};
 pub use error::{Access, HelperRefusal, SandboxError};
 pub use fs_guard::{FsGuard, ReadableWalk};
