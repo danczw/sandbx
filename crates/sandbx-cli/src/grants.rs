@@ -174,6 +174,8 @@ struct Homes {
 /// An unusable `$HOME` leaves the exact home rule nothing to compare — so
 /// [`looks_like_a_home`] stands in for it rather than being skipped, and such a cwd still
 /// derives rather than being refused: `HOME` unset with cwd `/app` is the container case.
+///
+/// `cwd` comes resolved from [`current_root`], which every comparison here assumes.
 fn vetted_root<'a>(
     cwd: &'a Path,
     homes: &Homes,
@@ -222,7 +224,7 @@ fn vetted_root<'a>(
 
     // The default grants write over the cwd, and inside the session directory the cwd is the
     // history — #173 with no flag.
-    if let Some(found) = reaches_owned(cwd, owned, &|| Ok(cwd.to_path_buf()))? {
+    if let Some(found) = reaches_owned(cwd, owned) {
         return Err(PolicyError::CwdReachesOwned {
             cwd: cwd.to_path_buf(),
             owned: found.path.clone(),
@@ -266,6 +268,9 @@ fn named_homes(home: Option<&Path>) -> Homes {
 }
 
 /// Somewhere sandbx keeps state of its own, and what it keeps there.
+///
+/// `path` is absolute: both derivations drop a `$HOME` or `XDG_*` that is not, so this side
+/// of a comparison never needs the working directory.
 #[derive(Debug)]
 struct OwnedPath {
     path: PathBuf,
@@ -296,44 +301,48 @@ fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
     owned
 }
 
+/// `granted` made absolute, a relative flag being joined to the working directory.
+///
+/// Which is what the helper opens such a grant against. [`resolved`]'s walk bottoms out at
+/// the empty path, so a relative grant whose first component does not exist yet would stay
+/// relative otherwise; a cwd that cannot be read refuses rather than standing in as nothing,
+/// which would leave the grant matching no owned path (#203).
+fn absolute(
+    granted: &Path,
+    cwd: &impl Fn() -> std::io::Result<PathBuf>,
+) -> Result<PathBuf, PolicyError> {
+    if granted.is_absolute() {
+        return Ok(granted.to_path_buf());
+    }
+
+    Ok(cwd()
+        .map_err(|source| PolicyError::UnresolvableGrant {
+            granted: granted.to_path_buf(),
+            source,
+        })?
+        .join(granted))
+}
+
 /// `path` with its deepest resolvable ancestor replaced by what that resolves to.
 ///
 /// `canonicalize` needs the whole path to exist and a credential nobody has stored yet does
 /// not, so comparing canonical forms alone would miss the host where `/home` links to
 /// `/var/home` — Fedora Silverblue — and let the unresolved spelling through.
-fn resolved(
-    path: &Path,
-    cwd: &impl Fn() -> std::io::Result<PathBuf>,
-) -> Result<PathBuf, PolicyError> {
-    // The cwd first, since that is what the helper opens a relative grant against and the
-    // walk below bottoms out at the empty path: a missing first component would stay relative.
-    // A cwd that cannot be read refuses rather than standing in as nothing, which would leave
-    // the grant matching no owned path (#203).
-    let path = &if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        cwd()
-            .map_err(|source| PolicyError::UnresolvableGrant {
-                granted: path.to_path_buf(),
-                source,
-            })?
-            .join(path)
-    };
-
+fn resolved(path: &Path) -> PathBuf {
     for (depth, ancestor) in path.ancestors().enumerate() {
         if let Ok(base) = ancestor.canonicalize() {
-            return Ok(path
+            return path
                 .components()
                 .rev()
                 .take(depth)
                 .collect::<Vec<_>>()
                 .iter()
                 .rev()
-                .fold(base, |resolved, name| resolved.join(name)));
+                .fold(base, |resolved, name| resolved.join(name));
         }
     }
 
-    Ok(path.clone())
+    path.to_path_buf()
 }
 
 /// The path in `owned` that `granted` reaches, if it reaches one.
@@ -341,21 +350,16 @@ fn resolved(
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
 /// one naming something inside it both reach it. Both sides go through [`resolved`], so one
 /// symlinked spelling cannot reach what the other is refused for.
-fn reaches_owned<'a>(
-    granted: &Path,
-    owned: &'a [OwnedPath],
-    cwd: &impl Fn() -> std::io::Result<PathBuf>,
-) -> Result<Option<&'a OwnedPath>, PolicyError> {
-    let granted = resolved(granted, cwd)?;
+///
+/// `granted` has to be absolute already — through [`absolute`] for a path a flag gave — or a
+/// relative one resolves against nothing and reaches no owned path.
+fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
+    let granted = resolved(granted);
 
-    for owned in owned {
-        let path = resolved(&owned.path, cwd)?;
-        if path.starts_with(&granted) || granted.starts_with(&path) {
-            return Ok(Some(owned));
-        }
-    }
-
-    Ok(None)
+    owned.iter().find(|owned| {
+        let path = resolved(&owned.path);
+        path.starts_with(&granted) || granted.starts_with(&path)
+    })
 }
 
 /// [`vetted_root`] over this process's own state.
@@ -423,8 +427,8 @@ impl Grants {
         let owned = owned_paths(&|name| std::env::var_os(name));
 
         if !self.paths_given() {
-            // Inside the branch, not above it: an invocation that typed its own flags
-            // depends on neither `getcwd` nor `HOME`, so must not be refused for them.
+            // Inside the branch, not above it: an invocation that typed its own flags never
+            // depends on `HOME`, and on `getcwd` only to resolve a relative one.
             let root = current_root(policy.executable_paths(), &owned)?;
             policy = policy.allow_read(&root).allow_write(&root);
         }
@@ -433,7 +437,8 @@ impl Grants {
             for path in self.paths(axis) {
                 // Outside the branch above: every other path refusal guards only the derived
                 // default, which is why a flag bypassed all of them.
-                if let Some(found) = reaches_owned(path, &owned, &std::env::current_dir)? {
+                let granted = absolute(path, &std::env::current_dir)?;
+                if let Some(found) = reaches_owned(&granted, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
                         granted: path.clone(),
                         owned: found.path.clone(),
@@ -568,9 +573,10 @@ mod tests {
 
     /// Whether `granted` reaches one of `owned`, the cwd a test runs from being readable.
     fn reaches(granted: impl AsRef<Path>, owned: &[OwnedPath]) -> bool {
-        reaches_owned(granted.as_ref(), owned, &std::env::current_dir)
-            .expect("a readable working directory")
-            .is_some()
+        let granted = absolute(granted.as_ref(), &std::env::current_dir)
+            .expect("a readable working directory");
+
+        reaches_owned(&granted, owned).is_some()
     }
 
     #[test]
@@ -1092,9 +1098,7 @@ mod tests {
     /// no owned path and so was honoured (#203).
     #[test]
     fn an_unreadable_cwd_refuses_a_relative_grant() {
-        let owned = owned_under("/home/u");
-
-        let error = reaches_owned(Path::new("sandbx"), &owned, &no_cwd())
+        let error = absolute(Path::new("sandbx"), &no_cwd())
             .expect_err("a relative grant with no working directory to resolve it against");
 
         assert!(
@@ -1113,10 +1117,11 @@ mod tests {
     fn an_absolute_grant_needs_no_cwd() {
         let owned = owned_under("/home/u");
 
+        let granted = absolute(Path::new("/srv/app"), &no_cwd())
+            .expect("an absolute grant needs no working directory");
+
         assert!(
-            reaches_owned(Path::new("/srv/app"), &owned, &no_cwd())
-                .expect("an absolute grant resolves without a working directory")
-                .is_none(),
+            reaches_owned(&granted, &owned).is_none(),
             "an ordinary absolute grant reached an owned path"
         );
     }

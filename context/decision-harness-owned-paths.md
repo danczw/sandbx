@@ -91,11 +91,16 @@ run the policy was derived for.
 
 A working directory that cannot be read refuses the relative grant rather than
 standing in as nothing, which would leave it matching no owned path (#203). An
-absolute grant needs no working directory and is not refused for one — the same
-split `current_root` keeps, where an invocation that typed its own flags depends
-on neither `getcwd` nor `HOME`. That is also why the resolver takes the cwd as an
-argument: a process global that only fails on a deleted directory is a direction
-no test can pin.
+absolute grant needs no working directory and is not refused for one. That
+narrows what `current_root`'s placement rested on: an invocation that typed its
+own flags still never depends on `HOME`, but it depends on `getcwd` for a
+relative one, and the refusal says to write the grant absolute rather than
+advising the path flags it was already given.
+
+Joining the cwd is therefore a step of its own — `absolute`, which the flag route
+calls and the derived route does not, over a `resolved` that is total. The cwd
+arrives as an argument rather than off the process: a direction that fails only
+on a deleted directory is one no test can pin.
 
 ## It does not ask whether anything is stored there
 
