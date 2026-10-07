@@ -357,6 +357,7 @@ approves all seven names none of them: there is nothing left to refuse.
 | `--no-wrap-up`    | do not spend one more request answering a turn that hit `--max-rounds` |
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
 | `--system TEXT`   | a system prompt, sent after whatever lines name the run's approved tools and roots |
+| `--show-thinking` | print a summary of the model's reasoning on stderr as it arrives. Stored nowhere, and a 400 on models before Claude 4.6 |
 
 Each run is one question and one answer, then the process ends; there is no way
 to interrupt a turn mid-flight. `--session` carries a conversation across runs:

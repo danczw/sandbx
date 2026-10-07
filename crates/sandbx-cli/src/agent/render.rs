@@ -109,6 +109,12 @@ impl<W: Write> Render<W> {
     pub(super) fn event(&mut self, event: &AgentEvent) {
         match event {
             AgentEvent::Text { delta } => {
+                // Before the answer, not just at the round's `Stop`: on a terminal both
+                // streams share the line, so reasoning left part-written would have the
+                // answer's first line appended to it and its newline arrive after.
+                if !delta.is_empty() {
+                    self.end_thinking_line();
+                }
                 if !delta.is_empty() && std::mem::take(&mut self.separating) {
                     // Two newlines from mid-line, one from a line already terminated.
                     self.write(if self.mid_line { b"\n\n" } else { b"\n" });
@@ -287,6 +293,23 @@ pub(super) mod tests {
             );
             assert_eq!(code.expect("clean turn"), 0);
         }
+    }
+
+    /// Stderr cannot be captured here, so the line state is the observable: on a terminal
+    /// the answer shares the line, and reasoning left part-written would run into it.
+    #[test]
+    fn the_answer_does_not_continue_a_reasoning_line() {
+        let mut render = Render::new(Vec::new()).showing_thinking(true);
+        render.event(&AgentEvent::Thinking {
+            delta: "weighing it up".to_string(),
+        });
+        assert!(render.thinking_mid_line, "a delta ending mid-line");
+
+        render.event(&text(""));
+        assert!(render.thinking_mid_line, "an empty delta is not the answer");
+
+        render.event(&text("the answer"));
+        assert!(!render.thinking_mid_line);
     }
 
     /// A turn that only reasoned wrote nothing, so the "no answer" report is still owed —
