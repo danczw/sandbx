@@ -255,17 +255,35 @@ Three properties matter as much as the list:
   practice. What the command can *read* bounds which sockets exist to be dialled,
   so keep the filesystem policy narrow when granting this.
 - **A variable you pass through is passed in full.** The allowlist is by *name*:
-  `--allow-env ANTHROPIC_API_KEY` hands the command the value the harness holds,
-  verbatim. No redaction, no partial value, no per-tool scoping, and every process
-  the command spawns inherits it — the environment crosses `exec` and nothing
+  `--allow-env GH_TOKEN` hands the command the value the harness holds, verbatim.
+  No redaction, no partial value, no per-tool scoping, and every process the
+  command spawns inherits it — the environment crosses `exec` and nothing
   downstream narrows it again. So the allowlist decides *whether* a secret is
-  shared, never *how much* of it. Handing a credential to a tool without exposing
-  the value is a separate problem
-  ([#41](https://github.com/danczw/sandbx/issues/41)), not solved here: name a
-  variable only when the command genuinely needs its value. The example is not
-  hypothetical — with `ANTHROPIC_API_KEY` set, `agent-run` reads it from the
-  harness's own environment, so naming that variable hands a live key to a process
-  a hijacked turn chose the arguments for.
+  shared, never *how much* of it, and naming a credential is the whole of handing
+  one over. Doing that without exposing the value has no mechanism — see
+  [context/decision-tool-credentials.md](context/decision-tool-credentials.md) for
+  why none of the shapes that would is claimable today. Name a variable only when
+  the command genuinely needs its value. Exactly one name is refused rather than
+  passed, and it is the next bullet.
+- **`agent-run` refuses to pass the harness's own provider credential to a tool.**
+  `--allow-env ANTHROPIC_API_KEY` is refused before the first request goes out:
+  sandbx makes the provider call in-process, so no tool call needs that value, and
+  naming it would hand the key that pays for the model to a process whose
+  arguments the model chose. The refusal is by the one name sandbx itself reads as
+  a credential, not by a pattern — every other variable you name is still passed
+  in full, and `sandbox-run` still passes this one, because there the program and
+  its arguments are yours and the command may *be* the thing calling the provider.
+  It closes the `--allow-env` route only, and that is narrower than "the
+  environment". A key stored by `sandbx auth login` is still reachable through a
+  read grant covering your config directory, which is the next bullet; a key you
+  *exported* is still in the harness's own environment, and the harness is not
+  sandboxed against a procfs it shares, so a grant reaching `/proc` reaches
+  `/proc/<harness-pid>/environ` and the key in it
+  ([#192](https://github.com/danczw/sandbx/issues/192)). That is the hazard the
+  audit socket bullet names below, arriving by the same route: do not grant
+  `/proc`.
+  And the flags are the operator's, so what this removes is a
+  mistake rather than an attacker — a hijacked turn cannot pass `--allow-env`.
 - **A stored credential is protected from other users, not from the agent.**
   `sandbx auth login` writes the key to
   `$XDG_CONFIG_HOME/sandbx/credentials.toml` with mode `0600` in a directory at
@@ -280,10 +298,11 @@ Three properties matter as much as the list:
   That bounds who *else* on the host can read it. It is not encryption: the key is
   plaintext, readable by your own uid and by root, and the process holding it is
   the harness, which is not sandboxed. Storing it removes one exposure — a key in
-  the file is not in the harness's environment, so `--allow-env
-  ANTHROPIC_API_KEY` has nothing to hand over — and adds the one to plan around:
+  the file is not in the harness's environment, so no `--allow-env` has it to hand
+  over, on either subcommand — and adds the one to plan around:
   the file lives under your config directory, so a filesystem grant covering it
-  (`--allow-read ~/.config`) reads the credential into the agent's reach. The
+  (`--allow-read ~/.config`) reads the credential into the agent's reach
+  ([#184](https://github.com/danczw/sandbx/issues/184)). The
   working-directory default refuses `$HOME` and the directories holding it, so
   reaching the file takes an explicit flag; it takes only one. An OS keyring would
   not change this and is not offered — see
@@ -350,6 +369,11 @@ These are documented behaviour, and reports of them will be closed as such:
   `TZ`) the CLI grants so that a program named without a leading `/` is looked up
   in your `PATH` rather than only in the C library's fallback. The value arrives
   whole — see *A variable you pass through is passed in full* above.
+- `agent-run` refusing `--allow-env ANTHROPIC_API_KEY`, including when the
+  variable is unset, since the flag is a statement of intent either way. And
+  `sandbox-run` continuing to pass it, since there the program and its arguments
+  are yours — see *`agent-run` refuses to pass the harness's own provider
+  credential to a tool* above.
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
