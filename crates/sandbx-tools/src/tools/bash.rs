@@ -71,12 +71,9 @@ pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
 
 /// Which kind of wrong a sandbox error is, in the one string the model reads.
 ///
-/// The subject carries what the variant cannot: the model gets only `ToolError`'s `Display`,
-/// so ``sandbox `x` `` against ``run `x` `` is what separates a sandbox that would not apply
-/// from a command that ran and exited non-zero. A pin is policy naming exact bytes and
-/// refuses the next attempt identically, so it is a denial; everything else is a `Failed`,
-/// `Denied` rendering as "refused by the sandbox policy" and so lying about a malformed argv
-/// or a kernel that would not unshare. `context/guide-tools.md` (#185).
+/// The subject carries what the variant cannot — the model gets only `ToolError`'s `Display`,
+/// so ``sandbox `x` `` against ``run `x` `` is what separates a sandbox that never applied
+/// from a command that ran and exited non-zero. `context/guide-tools.md` (#185).
 fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
     use sandbx_core::{HelperRefusal, SandboxError};
 
@@ -89,11 +86,10 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
             after,
         },
         // Exhaustive over the refusals and not over `SandboxError`: the rest of that enum is
-        // `FsGuard`'s, which no spawn reaches, so an arm for one would assert something false
-        // about an unreachable path. A twelfth refusal still has to be classified here.
-        // The label stands in when the stderr is gone — a stage killed between the channel
-        // write and its own print leaves the record but not the prose, and a bare
-        // ``sandbox `x` failed: `` tells the model nothing about what refused.
+        // `FsGuard`'s, which no spawn reaches, so an arm for one would claim an unreachable
+        // path is handled.
+        // The label stands in when the stderr is gone: a stage killed between the channel
+        // write and its own print leaves the record but not the prose.
         SandboxError::HelperRefused { refusal, detail } => {
             let detail = match detail.is_empty() {
                 true => refusal.label().to_string(),

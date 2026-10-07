@@ -171,9 +171,8 @@ pub enum SandboxError {
     /// A helper stage refused the run and named itself on the audit channel, so the command
     /// never ran — see [`HelperRefusal`].
     ///
-    /// The relayed exit status says only that the helper exited non-zero, which is
-    /// indistinguishable from the command doing so. This is that status replaced by what the
-    /// channel said instead.
+    /// The status it exited with says only that it was non-zero, which is indistinguishable
+    /// from the command doing so. This is that status replaced by what the channel said.
     HelperRefused {
         /// Which stage refused, and why.
         refusal: HelperRefusal,
@@ -496,11 +495,9 @@ mod tests {
         }
     }
 
-    /// The direction the exhaustive `refusal` match cannot cover alone. A twelfth refusal
-    /// given arms in `label` and `refusal` but left out of `ALL` compiles — the array's
-    /// length only catches an edit that touches it. `from_label` would then reject the label
-    /// its own writer emits, `decode` would drop the record, and `output` would hand back the
-    /// helper's exit status: #157 and #185 both, reintroduced silently.
+    /// The direction the exhaustive `refusal` match cannot cover alone: a refusal given arms
+    /// in `label` and `refusal` but left out of `ALL` compiles, and then `from_label` rejects
+    /// the label its own writer emits and the record is dropped on arrival (#185).
     #[test]
     fn every_refusal_a_variant_reports_is_one_the_channel_admits() {
         for error in every_variant() {

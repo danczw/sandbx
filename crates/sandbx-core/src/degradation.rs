@@ -101,9 +101,8 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
 /// Render the record a stage that refused rather than becoming the command reports.
 ///
 /// A [`HelperRefusal`](crate::HelperRefusal) and not a string: this writes the label as
-/// given, unlike [`encode`], so a `\t` in one would forge a second record, and the type makes
-/// one unrepresentable. No detail: the reason reaches the operator on the helper's stderr, and
-/// the parent lifts it off there for the caller.
+/// given, unlike [`encode`], so a `\t` in one would forge a second record and the type makes
+/// one unrepresentable. No detail — the reason travels on the helper's stderr instead.
 pub(crate) fn encode_refusal(refusal: crate::HelperRefusal) -> String {
     format!("{}{SEPARATOR}\n", refusal.label())
 }
