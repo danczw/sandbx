@@ -222,6 +222,14 @@ policy *smaller*, needing no `--allow-read /etc`. Every `nsswitch.conf` line
 that is not about a name is kept as the host had it, so an account that lives
 in `systemd`, `sss` or LDAP still looks up inside the sandbox.
 
+Where `resolv.conf` is a symlink out of `/etc` — the systemd-resolved default —
+that one file gets no read rule, a bind following the link so a rule spelled
+`/etc/resolv.conf` would name the target instead. The command gets `EACCES`
+there rather than `sandbx`'s body, unless some other grant reaches the target.
+The bound does not rest on that file either way: glibc is left no DNS source by
+`nsswitch.conf`, and musl, which reads it and falls back to `127.0.0.1` when it
+cannot, is left no allowlisted port to reach a nameserver on.
+
 It bounds resolution, not connection: an IP literal reaches any allowlisted
 port exactly as before. So the run is refused where a nameserver would still
 answer for every name — alongside `--dns-over-tcp`, alongside bare
