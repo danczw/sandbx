@@ -204,7 +204,8 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    agent.rs     AgentRun — the turn loop's caller
       gate.rs   which tools --allow-tool approved, and the refusal the rest get
       orientation.rs
-                the roots the model is told about before the first request
+                the approved tools and the roots the model is told about before
+                the first request
       render.rs the answer on stdout, everything about it on stderr
    auth.rs      Auth — which source the provider key comes from: the
                 environment, then a file, and the login/logout/status over it

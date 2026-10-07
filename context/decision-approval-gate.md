@@ -113,8 +113,12 @@ a tool's declared `RiskLevel` is enough for a `bash` to run. Taken deliberately:
 the refusal is what tells the operator which flag to pass, which a tool the model
 was never offered cannot do. A live run is the evidence — asked to write a file
 with no flag, the model tried `bash`, read the refusal, and switched to `write`.
-Narrowing the offered set buys defence in depth and costs that, so the trade is
-worth revisiting if a second caller appears; `the_risk_each_tool_carries_is_documented`
+That round is no longer the price of it: the system prompt names the approved set
+before the first request (#197), so the refusal stays the operator's signal
+without being the model's only route to the list.
+
+Narrowing the offered set buys defence in depth and costs that signal, so the trade
+is worth revisiting if a second caller appears; `the_risk_each_tool_carries_is_documented`
 is what currently holds the classification a mistake would have to get past.
 
 `RiskLevel` is a field of each tool's own `SPEC` rather than a table in the gate,
