@@ -496,6 +496,24 @@ mod tests {
         }
     }
 
+    /// The direction the exhaustive `refusal` match cannot cover alone. A twelfth refusal
+    /// given arms in `label` and `refusal` but left out of `ALL` compiles — the array's
+    /// length only catches an edit that touches it. `from_label` would then reject the label
+    /// its own writer emits, `decode` would drop the record, and `output` would hand back the
+    /// helper's exit status: #157 and #185 both, reintroduced silently.
+    #[test]
+    fn every_refusal_a_variant_reports_is_one_the_channel_admits() {
+        for error in every_variant() {
+            if let Some(refusal) = error.refusal() {
+                assert!(
+                    HelperRefusal::ALL.contains(&refusal),
+                    "{} reports {refusal:?}, which is missing from HelperRefusal::ALL",
+                    error.label()
+                );
+            }
+        }
+    }
+
     /// Each is a decision the parent or [`FsGuard`](crate::FsGuard) watched itself, so a
     /// channel record claiming one would outrank the outcome it saw.
     #[test]
