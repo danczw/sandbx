@@ -40,7 +40,7 @@ request carrying those without the definitions they name. Built that way, the
 feature would 400 on every real run.
 
 So the definitions stay and `tool_choice: {"type": "none"}` forbids the call —
-the documented way to ask for a prose-only reply. `MessagesRequest::tool_choice`
+the documented way to ask for a prose-only reply. `Prompt::tool_choice`
 and `Turn::tool_choice` are new for it, and the field is dropped on the way out
 when `tools` is empty, the API refusing a choice over tools no request defined.
 

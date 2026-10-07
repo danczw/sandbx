@@ -139,23 +139,29 @@ Public surface: `ExecutionContext`, `DEFAULT_TIMEOUT`, `ToolError`, `ToolLimits`
 
 ```
 src/lib.rs        EventStream (boxed FusedStream) — the provider seam
-   anthropic.rs   AnthropicClient
-   credentials.rs resolve_api_key, anthropic_api_key, SecretString
-   error.rs       ProviderError
+   prompt.rs      Prompt, RequestMessage, ContentBlock, ToolDefinition,
+                  ToolChoice, Thinking — data, with no Serialize
    event.rs       AgentEvent, StopReason
-   request.rs     MessagesRequest, ToolChoice
+   error.rs       ProviderError
    sse.rs         SSE framing
+   credentials.rs resolve_api_key, anthropic_api_key, SecretString
+   anthropic.rs   AnthropicClient
+      body.rs     Serialize for the Messages body, built from a &Prompt
+      wire/       accumulate.rs, payload.rs + unit tests
    mock.rs        MockProvider — behind the `mock` feature
-   wire/          accumulate.rs, payload.rs + unit tests
 tests/            anthropic_client, credentials, crypto_provider, error,
                   mock_provider (needs `mock`),
-                  live_anthropic (needs `live-anthropic-tests`),
-                  request_serialization
+                  live_anthropic (needs `live-anthropic-tests`)
 ```
 
 No vendor SDK, and no trait or enum over the backends: the seam is the
 `EventStream` return type, which every client's `stream_chat` hands back. #90
 deleted the one-variant `Provider` enum that used to sit in front of it.
+
+The tree is the boundary: everything above `anthropic.rs` is neutral, and every
+vendor name, string and rule sits at or below it (#59). The body serializer is
+private to `anthropic/`, so the top-level types cannot be posted to any API by
+accident — see [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-agent`
 
@@ -258,8 +264,8 @@ that users reasonably read as the same flags.
 9. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
    recorded, and how one made inside the helper gets out
 10. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-11. `decision-provider-seam.md` — why there is no provider trait, and what is still
-    vendor-shaped
+11. `decision-provider-seam.md` — why there is no provider trait, and where the
+    vendor's vocabulary stops
 12. `decision-approval-gate.md` — what sits between the model and a tool, and how
     much it claims
 13. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
@@ -274,6 +280,8 @@ that users reasonably read as the same flags.
     more, and what that costs
 18. `decision-grant-identity.md` — why a grant is pinned to the object the
     harness vetted, and what an unpinned one costs
+19. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+    turn and nowhere else
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.

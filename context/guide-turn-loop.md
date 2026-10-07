@@ -10,7 +10,7 @@ pub async fn run_turn<F, O, G>(
     open: F, turn: Turn<'_>, ctx: &ExecutionContext, observe: O, approve: G,
 ) -> Result<TurnOutcome, TurnError>
 where
-    F: AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
+    F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
     G: FnMut(ToolCall<'_>) -> ApprovalDecision,
 ```
@@ -83,7 +83,7 @@ is unanswered behind it, so it comes back as an empty turn.
 
 Set `TurnLimits::compaction` and a turn whose *last measured* prompt went over
 `budget_tokens` leaves its oldest history out of the request. The measurement is
-`input_tokens + cache_read_input_tokens + cache_creation_input_tokens` of the request
+`input_tokens + cache_read_tokens + cache_write_tokens` of the request
 that already went out — a cache read is a real prompt token, so counting `input_tokens`
 alone under-reads a long cached conversation badly. An unreported counter sums as zero;
 the API omits the cache fields entirely when no cache was involved, and reading that as
@@ -192,6 +192,22 @@ Three properties that are easier to state than to infer:
 `EndedMidToolUse` is unaffected: it reads `produced`, which compaction cannot reach. The
 coupling runs the other way — withholding history is one of the things that can confuse a
 model into an empty round, and that is where it lands.
+
+### Reasoning blocks are the one thing a deepened cut edits
+
+A reasoning block is only valid against the messages that preceded it, so deepening the
+cut invalidates every block already sent — the provider rejects the whole request, not
+just the block. So when `withheld` moves, `produced` is stripped of its `Thinking` and
+`RedactedThinking` blocks before the next request goes out. Dropping the oldest reasoning
+is the one edit the provider's check permits; a *gap* is what it refuses.
+
+Blocks produced after the deepening are signed against the new prefix and are replayed
+normally, so a long turn that compacts once does not lose reasoning continuity for the
+rest of its rounds.
+
+`history` is never the problem, because `TurnOutcome::messages` carries no reasoning
+block out of the turn — so no cut can strand one, and `opens_a_request` has nothing to
+say about them. See [decision-thinking-replay.md](decision-thinking-replay.md).
 
 ## A tool failure is not a turn failure
 
