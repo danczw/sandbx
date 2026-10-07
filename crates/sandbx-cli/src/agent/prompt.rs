@@ -244,9 +244,11 @@ impl Operator for Terminal {
 
     fn report(&mut self, line: &str) {
         // Per `RESET`, the account as much as the question: concealing the record of what
-        // ran is the same attack one line later. One write, so the reset cannot land
-        // without the line it covers.
-        if writeln!(self.out, "{RESET}{line}").is_err() {
+        // ran is the same attack one line later. Formatted first and written once:
+        // `write_fmt` issues a syscall per piece, which leaves the model's own stream —
+        // the same device — a window to land between the reset and the line it covers.
+        let account = format!("{RESET}{line}\n");
+        if self.out.write_all(account.as_bytes()).is_err() {
             // Unlike a question, a dropped account reaches nobody — and the last call of a
             // run has no later question whose own failure would stand in for it (#218).
             to_stderr(line);
