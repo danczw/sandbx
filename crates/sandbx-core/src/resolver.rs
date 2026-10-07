@@ -64,10 +64,8 @@ pub(crate) struct Resolved {
 
     /// How many allowlisted names resolved to no address at all.
     ///
-    /// Carried out rather than reported here, this running in the re-exec'd helper: without
-    /// it, a lookup that failed is indistinguishable from the flag working, and the command
-    /// meets `EAI_NONAME` for the one name the operator allowlisted. A count and not the
-    /// names, `guide-logging.md` keeping values off the trail.
+    /// Carried out and not reported here, this running in the re-exec'd helper. A count and
+    /// not the names, `guide-logging.md` keeping values off the trail.
     pub(crate) unresolved: usize,
 }
 
@@ -128,7 +126,7 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
 ///
 /// A link-local IPv6 address is dropped: `ip()` discards the `scope_id` that makes one
 /// routable, a hosts file has no column to carry it back, and `connect` to a scopeless
-/// `fe80::/10` address is `EINVAL`. Keeping it would leave the command a line it cannot use.
+/// `fe80::/10` address is `EINVAL`.
 fn addresses(name: &str) -> Vec<IpAddr> {
     let mut found = Vec::new();
 

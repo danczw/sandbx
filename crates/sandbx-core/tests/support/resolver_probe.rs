@@ -1,5 +1,4 @@
 //! Resolves a name, connects to one, reads a file or writes one, and reports which it was.
-//! Test-only.
 //!
 //! Several modes in one binary, bounding resolution being several claims: the granted names
 //! resolve, the ungranted do not, the `/etc` files are sandbx's own, each reads back under its

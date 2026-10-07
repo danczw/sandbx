@@ -33,9 +33,8 @@ pub(super) fn prepare_supervisor(
     // namespace — where a lookup resolves nothing at all.
     let resolved = crate::resolver::files(policy);
 
-    // A name that resolved to nothing bounds resolution all the same, so the run goes on —
-    // reported because a command exiting 0 unable to reach the one name the operator
-    // allowlisted is the outcome that reads as the flag working.
+    // A name that resolved to nothing bounds resolution all the same, so the run goes on, and
+    // the report is the only thing telling that outcome apart from the flag working.
     if let Some(count) = resolved
         .as_ref()
         .map(|resolved| resolved.unresolved)

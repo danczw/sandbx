@@ -1,9 +1,8 @@
 //! Does a name the allowlist does not hold fail to resolve, and does one it holds still work?
 //!
 //! The resolver half of the enforcement suite; `enforcement.rs` states the kernel floor all of
-//! these run on. Needs no external network and asks no nameserver: every name here is one this
-//! host already resolves out of its own `/etc/hosts`, which is also what makes the denials
-//! real rather than a run that is offline anyway.
+//! these run on. Every name here is one this host already resolves out of its own
+//! `/etc/hosts`, so no test needs a network and no denial is a run that was offline anyway.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 mod support;
@@ -22,13 +21,11 @@ const USERNS_RESTRICTION: &str = "/proc/sys/kernel/apparmor_restrict_unprivilege
 
 /// Whether this host forbids the mounts, in which case the six tests below assert nothing.
 ///
-/// Reads the sysctl rather than catching the `EACCES` it produces: an errno guard would also
-/// skip on a genuine regression, and the regression nobody sees is the one that unbounds every
+/// Reads the sysctl rather than catching the `EACCES` it produces: an errno guard would skip on
+/// a genuine regression too, and the regression nobody sees is the one that unbounds every
 /// name. Set, the kernel lets `unshare` succeed and then denies `CAP_SYS_ADMIN` inside the new
-/// namespace, so `helper::resolver` cannot detach mount propagation and refuses the run.
-///
-/// The same host property `enforcement.rs`'s `bounding_set_is_droppable` reads, asked the
-/// other way round and with the same root exemption.
+/// namespace, so `helper::resolver` refuses the run. The same host property
+/// `enforcement.rs`'s `bounding_set_is_droppable` reads, and with the same root exemption.
 fn host_forbids_the_mounts() -> bool {
     use std::os::unix::fs::MetadataExt as _;
 
@@ -59,7 +56,7 @@ fn host_forbids_the_mounts() -> bool {
 ///
 /// Derived and not written down, the one such name on a developer machine being the machine's
 /// own hostname: hard-coding either the name or its address passes on one host and fails on
-/// the next. Trial-bound, a name being usable here only if the test can answer on it.
+/// the next.
 fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::JoinHandle<()>) {
     let hosts = std::fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
 
@@ -372,11 +369,10 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
 /// The namespace is the command's own. A run that mutated the host's `/etc` would bound this
 /// command's names by changing every other process's.
 ///
-/// Both branches assert, and this is the one test here that runs its body on a host the mounts
-/// are forbidden on: an early return would report `ok` having checked only that a refused run
-/// changes nothing, which is true of a deleted feature too. So the restricted branch pins the
-/// refusal the docs promise instead — the one assertion anywhere on `helper::resolver`'s
-/// `EACCES` path.
+/// The one test here that runs its body where the mounts are forbidden, so both branches have
+/// to assert: an early return would report `ok` having checked only that a refused run changes
+/// nothing, which a deleted feature also does. The restricted branch pins the refusal instead,
+/// and is the only assertion anywhere on `helper::resolver`'s `EACCES` path.
 #[test]
 fn the_host_etc_survives_a_bounded_run() {
     let (name, address, accepting) = local_listener("UNUSED");
