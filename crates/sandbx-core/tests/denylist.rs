@@ -81,6 +81,27 @@ fn every_claimed_syscall_is_actually_denied() {
     );
 }
 
+/// The other direction, which is the one that drifts: the test above passes while a syscall
+/// added to the filter goes unclaimed, and a claim nobody wrote is one no doc can be checked
+/// against. It does not reach the markdown — `CLAIMED` is a hand mirror of it, so a number
+/// stated in prose still drifts silently (#212).
+#[test]
+fn every_denied_syscall_is_one_the_docs_claim() {
+    let unclaimed: Vec<libc::c_long> = BLOCKED_SYSCALLS
+        .iter()
+        .filter(|nr| !CLAIMED.iter().any(|(_, claimed)| claimed == *nr))
+        .copied()
+        .collect();
+
+    assert!(
+        unclaimed.is_empty(),
+        "these syscall numbers are denied but named by no claim: {unclaimed:?}. The boundary \
+         is wider than the docs describe, which is how a count in SECURITY.md or \
+         context/guide-sandboxing.md goes stale. Fix by adding them to CLAIMED above and to \
+         the syscalls row in SECURITY.md."
+    );
+}
+
 /// A duplicate is otherwise invisible: `deny_dangerous_syscalls` collects the list into a
 /// `BTreeMap`, one entry per syscall number.
 #[test]
