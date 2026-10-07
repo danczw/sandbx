@@ -3,16 +3,19 @@
 //! [`compat`] is what *this kernel* will enforce: the ABI floor, the ceiling, the ladder
 //! between them, the verdict on what came back. [`rights`] is what the *policy* maps to at a
 //! given ABI. They meet in [`requested`], because the rights a grant confers depend on which
-//! ABI was negotiated. Nothing here restricts this process.
+//! ABI was negotiated. [`opened`] is the one axis neither covers: which directory a grant
+//! turns out to name. Nothing here restricts this process.
 
 use crate::SandboxError;
 
 mod compat;
+mod opened;
 mod rights;
 #[cfg(test)]
 mod tests;
 
 pub(super) use compat::{enforcement_verdict, landlock_failed};
+pub(super) use opened::open_grant;
 
 /// Everything [`apply`](super::apply) asks the kernel for, derived from one ABI.
 ///

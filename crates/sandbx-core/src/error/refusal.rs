@@ -27,6 +27,9 @@ pub enum HelperRefusal {
     /// The kernel refused the ruleset — [`SandboxError::Landlock`].
     Landlock,
 
+    /// A granted path opened as a different one — [`SandboxError::GrantRedirected`].
+    GrantRedirected,
+
     /// The syscall filter would not install — [`SandboxError::Seccomp`].
     Seccomp,
 
@@ -59,9 +62,10 @@ pub enum HelperRefusal {
 
 impl HelperRefusal {
     /// Every refusal that can cross the channel; drives `from_label`.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::BadHelperArgs,
         Self::Landlock,
+        Self::GrantRedirected,
         Self::Seccomp,
         Self::NamespaceSetupFailed,
         Self::ProcessHardening,
@@ -81,6 +85,7 @@ impl HelperRefusal {
         match self {
             Self::BadHelperArgs => "bad_helper_args",
             Self::Landlock => "landlock",
+            Self::GrantRedirected => "grant_redirected",
             Self::Seccomp => "seccomp",
             Self::NamespaceSetupFailed => "namespace_setup_failed",
             Self::ProcessHardening => "process_hardening",
@@ -134,6 +139,9 @@ impl SandboxError {
         match self {
             Self::BadHelperArgs { .. } => Some(HelperRefusal::BadHelperArgs),
             Self::Landlock { .. } => Some(HelperRefusal::Landlock),
+            // Only the stage holding the descriptor can compare what it opened against what
+            // it was told to open, so this is helper-decided by construction.
+            Self::GrantRedirected { .. } => Some(HelperRefusal::GrantRedirected),
             Self::Seccomp { .. } => Some(HelperRefusal::Seccomp),
             Self::NamespaceSetupFailed { .. } => Some(HelperRefusal::NamespaceSetupFailed),
             Self::ProcessHardening { .. } => Some(HelperRefusal::ProcessHardening),

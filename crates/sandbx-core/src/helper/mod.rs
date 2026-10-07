@@ -15,7 +15,9 @@ pub use seccomp::BLOCKED_SYSCALLS;
 use hardening::{
     bind_lifetime_to_supervisor, confirm_supervisor, prepare_supervisor, set_no_new_privs,
 };
-use ruleset::{Requested, RequestedNet, enforcement_verdict, landlock_failed, requested};
+use ruleset::{
+    Requested, RequestedNet, enforcement_verdict, landlock_failed, open_grant, requested,
+};
 use seccomp::deny_dangerous_syscalls;
 
 use crate::{HelperArgs, SandboxError};
@@ -357,8 +359,7 @@ fn claim_audit_channel() -> Result<std::fs::File, SandboxError> {
 
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
-        CompatLevel, Compatible, NetPort, PathBeneath, PathFd, Ruleset, RulesetAttr,
-        RulesetCreatedAttr,
+        CompatLevel, Compatible, NetPort, PathBeneath, Ruleset, RulesetAttr, RulesetCreatedAttr,
     };
 
     // The namespaces and the capability drops already happened in the supervisor — see
@@ -409,7 +410,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // `Requested` decides what to install; this loop only opens the paths. The axis is for
     // the tests that assert the mapping — the kernel is told the rights and nothing else.
     for (_, path, rights) in rules {
-        let fd = PathFd::new(path).map_err(landlock_failed)?;
+        let fd = open_grant(path)?;
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))
             .map_err(landlock_failed)?;
