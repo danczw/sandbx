@@ -39,7 +39,7 @@ pub fn execute(input: WriteInput, ctx: &ExecutionContext) -> Result<ToolOutput, 
     let mut file = ctx
         .guard()
         .open_write(&input.path)
-        .map_err(|error| crate::denied(&input.path, error))?;
+        .map_err(|error| crate::guard_error(&input.path, error))?;
 
     std::io::Write::write_all(&mut file, input.content.as_bytes())
         .map_err(|error| crate::failed("write", &input.path, error))?;

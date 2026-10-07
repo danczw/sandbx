@@ -164,11 +164,22 @@ impl BuiltinTool {
     }
 }
 
-/// Turn a guard refusal into the form the model sees, one shape for every tool.
-pub(crate) fn denied(path: &std::path::Path, error: sandbx_core::SandboxError) -> ToolError {
-    ToolError::Denied {
-        subject: path.display().to_string(),
-        reason: error.to_string(),
+/// Turn a guard verdict into the form the model sees, one shape for every tool.
+///
+/// Absence is the one verdict that is not a refusal: no policy objected, so the agent's
+/// move is to fix the name rather than ask for a wider grant.
+pub(crate) fn guard_error(path: &std::path::Path, error: sandbx_core::SandboxError) -> ToolError {
+    let subject = path.display().to_string();
+
+    match error {
+        sandbx_core::SandboxError::NotFound { .. } => ToolError::Failed {
+            subject,
+            detail: error.to_string(),
+        },
+        error => ToolError::Denied {
+            subject,
+            reason: error.to_string(),
+        },
     }
 }
 
@@ -197,7 +208,7 @@ pub(crate) fn read_file(
     let mut file = ctx
         .guard()
         .open_read(path)
-        .map_err(|error| denied(path, error))?;
+        .map_err(|error| guard_error(path, error))?;
 
     let mut content = String::new();
     std::io::Read::read_to_string(&mut file, &mut content)

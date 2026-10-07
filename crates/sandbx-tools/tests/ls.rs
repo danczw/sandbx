@@ -42,6 +42,22 @@ fn distinguishes_directories_from_files() {
     );
 }
 
+/// `ls` holds a path rather than a handle, so it reaches the guard on its own.
+#[test]
+fn a_missing_directory_in_a_grant_is_a_failure() {
+    let root = tempfile::tempdir().unwrap();
+
+    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let err = BuiltinTool::Ls
+        .execute(
+            json!({ "path": root.path().join("nodir").to_str().unwrap() }),
+            &ctx,
+        )
+        .unwrap_err();
+
+    assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
+}
+
 #[test]
 fn refuses_a_directory_outside_every_allowed_root() {
     let allowed = tempfile::tempdir().unwrap();

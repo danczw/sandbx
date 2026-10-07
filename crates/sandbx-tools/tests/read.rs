@@ -45,6 +45,35 @@ fn refuses_a_path_outside_every_allowed_root() {
 #[test]
 fn distinguishes_a_missing_file_from_a_refusal() {
     let root = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.txt");
+    std::fs::write(&secret, b"secret").unwrap();
+    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+
+    let missing = BuiltinTool::Read
+        .execute(
+            json!({ "path": root.path().join("nope.txt").to_str().unwrap() }),
+            &ctx,
+        )
+        .unwrap_err();
+    let outside = BuiltinTool::Read
+        .execute(json!({ "path": secret.to_str().unwrap() }), &ctx)
+        .unwrap_err();
+
+    assert!(
+        matches!(missing, ToolError::Failed { .. }),
+        "got {missing:?}"
+    );
+    assert!(
+        matches!(outside, ToolError::Denied { .. }),
+        "got {outside:?}"
+    );
+}
+
+/// The variant only reaches the model as text, so the text is what has to differ.
+#[test]
+fn a_missing_file_reports_why_not_a_refusal() {
+    let root = tempfile::tempdir().unwrap();
     let ctx = context(SandboxPolicy::default().allow_read(root.path()));
 
     let err = BuiltinTool::Read
@@ -52,9 +81,11 @@ fn distinguishes_a_missing_file_from_a_refusal() {
             json!({ "path": root.path().join("nope.txt").to_str().unwrap() }),
             &ctx,
         )
-        .unwrap_err();
+        .unwrap_err()
+        .to_string();
 
-    assert!(matches!(err, ToolError::Denied { .. }) || matches!(err, ToolError::Failed { .. }));
+    assert!(err.contains("No such file"), "got {err}");
+    assert!(!err.contains("refused by the sandbox policy"), "got {err}");
 }
 
 /// Rejected before any filesystem access is attempted.
