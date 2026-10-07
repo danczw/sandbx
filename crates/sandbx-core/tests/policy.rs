@@ -535,10 +535,8 @@ fn a_policy_granting_nothing_names_nowhere_to_start() {
     assert_eq!(SandboxPolicy::default().working_root(), None);
 }
 
-/// The four shapes in which a name allowlist reports as applied and bounds nothing. Decided
-/// here and not only in the CLI, `SECURITY.md` making the claim at this level: an embedder
-/// writing one of these pairs gets a refusal rather than three bound files and every name
-/// resolving anyway.
+/// All four shapes, and decided here rather than in the CLI alone — an embedder writing one
+/// meets the refusal too.
 #[test]
 fn a_name_allowlist_beside_a_reachable_nameserver_is_unenforceable() {
     let bounded = || SandboxPolicy::default().allow_dns("example.com");
@@ -563,9 +561,7 @@ fn a_name_allowlist_beside_a_reachable_nameserver_is_unenforceable() {
     }
 }
 
-/// The negative half, so the check above cannot be a method that refuses everything. A port
-/// list that is not 53 is the shape the claim is actually made about, and no allowlist at all
-/// leaves resolution as the host has it — nothing to bound and nothing to refuse.
+/// The negative half, so the check above cannot be a method that refuses every bounded policy.
 #[test]
 fn a_bounded_policy_with_no_route_to_a_nameserver_is_enforceable() {
     for policy in [

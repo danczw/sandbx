@@ -557,9 +557,7 @@ impl Grants {
             if self.dns_over_tcp {
                 return Err(PolicyError::DnsWithResolverHint);
             }
-            // glibc asks nscd over `/var/run/nscd/socket` before it reads `nsswitch.conf`, on
-            // a path gated by a flag only `__nss_configure_lookup` sets — so the rendered
-            // file cannot turn it off, and one pathname socket is every pathname socket.
+            // A pathname socket among them: `SandboxPolicy::unbounded_resolution` has why.
             if self.allow_unix_sockets {
                 return Err(PolicyError::DnsWithUnixSockets);
             }

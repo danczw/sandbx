@@ -247,17 +247,13 @@ impl SandboxPolicy {
     /// Why this policy's name allowlist would bound nothing, or `None` if it bounds what it
     /// says.
     ///
-    /// A name allowlist beside a reachable nameserver is the one combination that reports as
-    /// applied and holds nothing: the three files go in, `Spawned` records `dns_names`, and
-    /// the command asks a resolver that answers for every name. So it is refused rather than
-    /// recorded — here, where [`SandboxedCommand`] and `HelperArgs::decode` both reach it,
-    /// and not only in the CLI that used to own all of it. `SECURITY.md`'s claim is made at
-    /// this level, so it has to be decidable at this level.
+    /// The one combination that reports as applied and holds nothing: the files are bound,
+    /// `Spawned` records `dns_names`, and the command asks a resolver answering for every
+    /// name. Off the policy and not the CLI alone, `SECURITY.md` making the claim at this
+    /// level — [`SandboxedCommand`] and `HelperArgs::decode` both reach it here.
     ///
-    /// A detail and not a bool, each shape reaching a nameserver by its own route. The CLI
-    /// refuses the same four with a message naming the flag to drop, and one more of its own
-    /// — a name allowlist with no egress at all bounds resolution to addresses nothing can
-    /// reach, which is pointless rather than unenforceable.
+    /// Four shapes, where `Grants::policy` refuses five: a name allowlist with no egress
+    /// bounds resolution to addresses nothing can reach, pointless rather than unenforceable.
     ///
     /// [`SandboxedCommand`]: crate::SandboxedCommand
     pub fn unbounded_resolution(&self) -> Option<&'static str> {
@@ -273,8 +269,7 @@ impl SandboxPolicy {
         }
 
         // glibc asks nscd over `/var/run/nscd/socket` before it reads `nsswitch.conf`, on a
-        // path gated by a flag only `__nss_configure_lookup` sets — so the rendered file
-        // cannot turn it off, and one pathname socket is every pathname socket.
+        // path only `__nss_configure_lookup` turns off — so the rendered file cannot.
         if self.unix_sockets {
             return Some("a local resolver answers over a pathname socket, asked before nsswitch");
         }

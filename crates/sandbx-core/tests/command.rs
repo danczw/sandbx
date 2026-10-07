@@ -507,8 +507,7 @@ fn an_argv_with_no_arguments_is_not_helper_mode() {
     }
 }
 
-/// `command_line` and not `output`: the argv is the thing an embedder may spawn itself, so a
-/// policy that bounds nothing has to be refused where it is built rather than where it is run.
+/// `command_line` and not `output`: this argv is the one an embedder may spawn itself.
 #[test]
 fn a_policy_that_bounds_no_name_cannot_be_turned_into_an_argv() {
     let policy = SandboxPolicy::default()

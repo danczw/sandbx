@@ -601,9 +601,8 @@ fn a_second_pin_flag_is_refused() {
     );
 }
 
-/// `encode` never emits this pair — the harness refuses the policy before it spawns — so an
-/// argv carrying it did not come from sandbx, which is what `BadHelperArgs` means. The one
-/// check that cannot be made inside the loop: either flag alone is legitimate.
+/// `BadHelperArgs` and not a policy refusal: the harness refuses the policy before it spawns,
+/// so `encode` never emits this pair.
 #[test]
 fn an_argv_pairing_a_name_with_a_nameserver_is_refused() {
     for (flag, value, expected) in [
