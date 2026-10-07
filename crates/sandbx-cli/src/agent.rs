@@ -35,8 +35,8 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// The exit code for an answer a bound cut short.
 ///
-/// Neither success nor failure: what reached stdout is a real answer and an incomplete
-/// one, which a script consuming it has to tell apart. Stderr names the bound.
+/// Neither success nor failure: stdout holds the text that arrived before the bound, and
+/// nothing at all when the model opened with a tool call. Stderr names the bound.
 const INCOMPLETE: i32 = 2;
 
 /// `sandbx agent-run [--allow-…] -- <prompt>`
