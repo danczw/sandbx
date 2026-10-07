@@ -248,9 +248,8 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
     if !policy.allows_network() {
         flags |= CloneFlags::CLONE_NEWNET;
     }
-    // Only for a policy that bounds resolution, and `helper::resolver` is what fills it: a
-    // mount namespace with nothing mounted into it confines nothing, and unsharing one
-    // unconditionally would make every run depend on a kernel that permits it.
+    // Only where `helper::resolver` has mounts to put in it: an empty mount namespace
+    // confines nothing, and unsharing one would make every run need a kernel that allows it.
     if policy.bounds_resolution() {
         flags |= CloneFlags::CLONE_NEWNS;
     }

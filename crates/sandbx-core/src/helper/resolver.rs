@@ -1,13 +1,9 @@
-//! Installing a bounded resolver: one ordered mount sequence, in a mount namespace of the
-//! command's own.
+//! Installing what [`crate::resolver`] rendered: one ordered mount sequence.
 //!
-//! What gets installed is [`crate::resolver`]'s; this is the part that touches the kernel, and
-//! the order is the whole of it — `MS_REC | MS_PRIVATE` on `/` before any mount, or every bind
-//! below propagates to the host's `/etc` and sandbx has rewritten the machine's resolution.
-//!
-//! Runs in stage 1, after `isolate` has unshared `CLONE_NEWNS` and before stage 2 exists, so
-//! the command inherits the mounts and seccomp is not yet installed to deny `mount(2)`. Stage 2
-//! cannot do this: `apply` has no namespace to put them in.
+//! The order is the whole of it. `MS_REC | MS_PRIVATE` on `/` before any mount, or every bind
+//! below propagates into the host's own `/etc`. Runs in stage 1, after `isolate` unshared
+//! `CLONE_NEWNS` and before stage 2 exists, so the command inherits the mounts and `mount(2)`
+//! is not yet denied; stage 2 could not, `apply` having no namespace to put them in.
 
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
@@ -17,26 +13,18 @@ use nix::mount::{MsFlags, mount};
 use crate::SandboxError;
 use crate::resolver::File;
 
-/// Permissions on the directory the three bodies are written to before they are mounted, and
-/// on the tmpfs mounted over it.
-///
-/// The files are only ever read through the bind mounts, which carry their own inode
-/// permissions; this is what keeps the window before the tmpfs is detached from being a
-/// world-readable one.
+/// Permissions on the directory the three bodies are written to, and on the tmpfs over it.
+/// Nothing reads them by that path — the binds carry their own inode permissions.
 const SOURCE_DIR_MODE: u32 = 0o700;
 
-/// Permissions on each written body. Read by the command as the same uid that wrote it, the
-/// user namespace mapping that uid to itself.
+/// Permissions on each written body, read by the command as the uid that wrote it.
 const SOURCE_FILE_MODE: u32 = 0o600;
 
 /// Install `files` as the command's resolution, or say why it could not.
 ///
-/// A no-op for `None`, which is the only reason `isolate` may leave `CLONE_NEWNS` out: both
-/// come from the same [`bounds_resolution`], so a namespace this needs cannot be one that was
-/// never unshared.
-///
-/// Takes what was already resolved rather than the policy: the lookups have to happen before
-/// the unshare, and this has to happen after it.
+/// `None` is the no-op, and the only reason `isolate` may leave `CLONE_NEWNS` out: both read
+/// the same [`bounds_resolution`]. Takes what was already resolved rather than the policy —
+/// the lookups have to happen before the unshare, and this after it.
 ///
 /// [`bounds_resolution`]: crate::SandboxPolicy::bounds_resolution
 pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxError> {
@@ -48,9 +36,8 @@ pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxEr
 
     let source = source_dir()?;
 
-    // Every mount is attempted before the source goes, and the source goes on every path out:
-    // each bind holds its own reference to the tmpfs, so detaching it takes away the last path
-    // by which anything could reach the bodies and leaves what the command reads untouched.
+    // The source goes on every path out, and only after the mounts: each bind holds its own
+    // reference to the tmpfs, so detaching it leaves what the command reads untouched.
     let installed = files.iter().try_for_each(|file| install(&source, file));
     remove_source(&source);
 
@@ -59,12 +46,9 @@ pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxEr
 
 /// Make `/` and everything under it private, recursively.
 ///
-/// Before any mount of ours: a mount namespace from `unshare` inherits the propagation type of
-/// what it copied, and a host whose `/` is shared — systemd makes it so — would receive every
-/// bind below into its own `/etc`. The run would then have replaced the machine's resolver
-/// configuration, which is both an escape and a wrecked host.
-///
-/// `MS_REC`, because the propagation type is per mount and `/etc` may be a mount of its own.
+/// Before any mount of ours: a namespace from `unshare` inherits the propagation type it
+/// copied, and systemd makes `/` shared, so every bind below would land in the host's own
+/// `/etc`. `MS_REC`, the type being per mount and `/etc` possibly a mount of its own.
 fn detach_mount_propagation() -> Result<(), SandboxError> {
     mount(
         None::<&Path>,
@@ -86,9 +70,8 @@ fn detach_mount_propagation() -> Result<(), SandboxError> {
 
 /// Write `file`'s body and bind-mount it over its `/etc` counterpart.
 ///
-/// Skips a target that does not exist, or is a symlink, unless the file says it must refuse —
-/// a bind mount needs the target to be there already, and `crate::resolver::File::required` is
-/// where the difference between "nothing to bound here" and "nothing can be bounded" is decided.
+/// A bind needs its target to exist already, so an absent or symlinked one is skipped unless
+/// `crate::resolver::File::required` says that leaves resolution unbounded.
 fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     let name = file.target.file_name().unwrap_or(file.target.as_os_str());
     let written = source.join(name);
@@ -100,15 +83,11 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
         };
     };
 
-    // `mount(2)` resolves the target path, so a bind over a symlink lands on what the link
-    // points to and leaves the link itself an ordinary dentry — one that a policy granting
-    // write under `/etc` can unlink and replace with a hosts file of the command's own, the
-    // read-only remount below being on a path nothing then opens. NixOS links every `/etc`
-    // entry into the store, so this is a host shape and not a contrived one.
-    //
-    // `resolv.conf` is exempt, systemd-resolved making it a symlink nearly everywhere: a
-    // forged one names a nameserver that no policy bounding resolution can reach, every shape
-    // that could reach one being refused before the run starts.
+    // `mount(2)` resolves the target, so a bind over a symlink lands on what it points to and
+    // leaves the link an ordinary dentry — unlinkable under a write grant on `/etc`, and
+    // replaceable with a hosts file of the command's own. NixOS links every `/etc` entry.
+    // `resolv.conf` is exempt: a forged one names a nameserver that no policy bounding
+    // resolution can reach, every shape that could reach one being refused before the run.
     if target.is_symlink() && file.required {
         return Err(symlinked(file.target));
     }
@@ -124,10 +103,9 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     )
     .map_err(|_| mount_failed(file.target))?;
 
-    // A second call, `MS_RDONLY` not taking effect on the bind itself. Not cosmetic: with the
-    // mount writable, a policy that also grants write under `/etc` would let the command
-    // append a line to its own hosts file and resolve anything it liked. Stage 2's filter
-    // denies `mount(2)`, so this is the last word on it.
+    // A second call, `MS_RDONLY` not taking effect on the bind itself. Not cosmetic: writable,
+    // a policy granting write under `/etc` would let the command append its own names. Stage
+    // 2's filter denies `mount(2)`, so this is the last word on it.
     mount(
         None::<&Path>,
         file.target,
@@ -174,9 +152,6 @@ fn symlinked(target: &Path) -> SandboxError {
 }
 
 /// Why a bind over `target` failed, naming the consequence rather than the call.
-///
-/// Which file, rather than the errno: `NamespaceSetupFailed` carries a `&'static str`, and
-/// the three mounts fail for different reasons about resolution.
 fn mount_failed(target: &Path) -> SandboxError {
     SandboxError::NamespaceSetupFailed {
         detail: match target.to_str() {
@@ -200,8 +175,7 @@ fn write_body(path: &Path, body: &str) -> Result<(), SandboxError> {
 
     std::fs::OpenOptions::new()
         .write(true)
-        // `create_new`, so an existing name — a symlink planted at a predictable path — is a
-        // refusal rather than a write through it.
+        // `create_new`, so a planted symlink is a refusal rather than a write through it.
         .create_new(true)
         .mode(SOURCE_FILE_MODE)
         .open(path)
@@ -211,16 +185,13 @@ fn write_body(path: &Path, body: &str) -> Result<(), SandboxError> {
 
 /// A tmpfs of this namespace's own to write the three bodies into, before they are bind-mounted.
 ///
-/// A tmpfs and not a plain directory, because the bodies must never be *unlinked* while the
+/// A tmpfs and not a plain directory because the bodies must never be *unlinked* while the
 /// binds are up: `/proc/self/fd` reads an unlinked file's path back with `" (deleted)"`
-/// appended, so the command would see its own `/etc/hosts` under a path no policy names, and
-/// anything comparing a descriptor against the path it was opened by is comparing two
-/// different strings. `remove_source` takes the bodies out of reach without unlinking them.
+/// appended, so the command would find its own `/etc/hosts` under a path no policy names.
+/// `remove_source` takes them out of reach without unlinking them.
 ///
-/// Under `std::env::temp_dir`, which needs no grant: nothing of this outlives the mounts, and
-/// the command never reads it by name. Created rather than opened, so a name already taken is
-/// a refusal, and named for this process *and* the clock, so a name a local user can predict
-/// is not one they can plant ahead of a run.
+/// Created rather than opened, so a name already taken is a refusal, and named for the clock
+/// as well as this process, so a predictable name is not one a local user can plant first.
 fn source_dir() -> Result<PathBuf, SandboxError> {
     let path = std::env::temp_dir().join(format!(
         "sandbx-resolver-{}-{}",
@@ -245,8 +216,7 @@ fn source_dir() -> Result<PathBuf, SandboxError> {
         Some(format!("mode={SOURCE_DIR_MODE:o}").as_str()),
     )
     .map_err(|_| {
-        // The directory was created and nothing is mounted on it, so this is the one path out
-        // that `bound_resolution`'s `remove_source` does not cover.
+        // The one path out that `bound_resolution`'s `remove_source` does not cover.
         let _ = std::fs::remove_dir(&path);
 
         SandboxError::NamespaceSetupFailed {
@@ -259,13 +229,9 @@ fn source_dir() -> Result<PathBuf, SandboxError> {
 
 /// Detach the tmpfs the bodies were written to, and remove the directory it was mounted on.
 ///
-/// Best-effort, and after the mounts: each bind over `/etc` holds its own reference to that
-/// filesystem, so the command goes on reading the bodies while no process — this namespace's
-/// or the host's — has a path to them any more. Lazily, because the binds are references to
-/// it; and *not* by unlinking, for the reason `source_dir` gives.
-///
-/// A failure leaves an empty 0700 directory in `/tmp` and changes nothing the policy claims,
-/// so it is not worth failing a run that is otherwise fully bounded.
+/// `MNT_DETACH`, the binds being references to it, and *not* by unlinking, for the reason
+/// `source_dir` gives: the command goes on reading the bodies while nothing has a path to
+/// them. Best-effort, a failure leaving an empty 0700 directory and nothing the policy claims.
 fn remove_source(source: &Path) {
     let _ = nix::mount::umount2(source, nix::mount::MntFlags::MNT_DETACH);
     let _ = std::fs::remove_dir(source);

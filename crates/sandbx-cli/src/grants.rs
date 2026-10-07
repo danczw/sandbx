@@ -554,17 +554,15 @@ impl Grants {
             policy = policy.hint_dns_over_tcp();
         }
 
-        // Before the names are granted, so a refused run never reports a bound it does not
-        // have. Each arm is a shape in which a nameserver stays reachable, and a reachable
+        // Each arm is a shape in which a nameserver stays reachable, and a reachable
         // nameserver answers for every name — `context/decision-egress-proxy.md`.
         if !self.allow_dns.is_empty() {
             if self.dns_over_tcp {
                 return Err(PolicyError::DnsWithResolverHint);
             }
-            // glibc asks nscd over `/var/run/nscd/socket` before it reads `nsswitch.conf`, and
-            // the rendered file cannot turn that off: the nscd path is gated on a flag only
-            // `__nss_configure_lookup` sets. One pathname socket is every pathname socket, so
-            // on a host running nscd the daemon would resolve whatever it likes.
+            // glibc asks nscd over `/var/run/nscd/socket` before it reads `nsswitch.conf`, on
+            // a path gated by a flag only `__nss_configure_lookup` sets — so the rendered
+            // file cannot turn it off, and one pathname socket is every pathname socket.
             if self.allow_unix_sockets {
                 return Err(PolicyError::DnsWithUnixSockets);
             }

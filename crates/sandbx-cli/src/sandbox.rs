@@ -19,9 +19,8 @@ fn pin_digest(value: &str) -> Result<Sha256Digest, String> {
 /// Whether the policy leaves a name no way to resolve.
 ///
 /// A port list denying UDP and not naming TCP 53 — the one shape where the advice below
-/// names something the policy is actually missing. A policy that bounds resolution is not
-/// that shape: it resolves its names before the command starts and asks no nameserver, so a
-/// name it does not hold is refused on purpose and not for want of a port.
+/// names something the policy is actually missing. A policy bounding resolution asks no
+/// nameserver, so a name it does not hold is refused on purpose and not for want of a port.
 fn cannot_resolve(policy: &SandboxPolicy) -> bool {
     let unnamed = match policy.network() {
         NetworkPolicy::Ports(ports) => !ports.contains(&53),
@@ -33,8 +32,7 @@ fn cannot_resolve(policy: &SandboxPolicy) -> bool {
 /// What such a run most likely needed, once it has failed.
 ///
 /// Hedged: sandbx cannot see the command's own `getaddrinfo`, so a failure for any other
-/// reason gets this too. Names both answers, `--allow-dns` being the one that bounds which
-/// names resolve rather than leaving every name resolvable over TCP.
+/// reason gets this too. Names both answers, the flag that bounds which names resolve first.
 fn resolver_advice(cannot_resolve: bool, code: i32) -> Option<&'static str> {
     match cannot_resolve && code != 0 {
         true => Some(
@@ -293,8 +291,8 @@ mod tests {
         assert!(!cannot_resolve(&ported().allow_network_port(53)));
     }
 
-    /// Advice naming a missing port would be wrong twice over: such a policy resolves its
-    /// names before the command starts, and a name it does not hold is refused on purpose.
+    /// A name it does not hold is refused on purpose, so advice naming a missing port is
+    /// wrong here.
     #[test]
     fn a_policy_bounding_resolution_is_silent() {
         assert!(!cannot_resolve(&ported().allow_dns("example.com")));

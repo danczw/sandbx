@@ -76,10 +76,8 @@ pub enum AuditEvent<'a> {
         env: usize,
         /// Whether the resolver hint was set; the variable it imposes is not counted in `env`.
         dns_over_tcp: bool,
-        /// How long the name allowlist is, never the names in it. Zero leaves resolution as
-        /// the host has it; anything else means the command's `/etc` resolution files are
-        /// sandbx's own. Not how many resolved — a name that resolves to nothing is still a
-        /// name the policy would have permitted.
+        /// How long the name allowlist is, never the names in it, and not how many resolved:
+        /// a name that resolves to nothing is still one the policy permitted.
         dns_names: usize,
         /// Whether a digest had to match before the exec. Not the digest, already in
         /// `/proc/self/cmdline`; what an auditor cannot recover is that it was checked.

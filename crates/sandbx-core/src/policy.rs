@@ -375,20 +375,17 @@ impl SandboxPolicy {
         self
     }
 
-    /// Let `name` resolve, and bound resolution to the names granted this way.
+    /// Let `name` resolve, and bound resolution to the names granted this way; repeat for
+    /// several, duplicates collapsing.
     ///
-    /// The first call is what imposes the bound: the helper resolves each name before the
-    /// command starts and gives it a hosts file holding those addresses and no nameserver, so
-    /// a name nothing granted stops resolving. Repeat to allowlist several; duplicates
-    /// collapse. Bounds resolution only — an IP literal needs no resolver, and
-    /// [`allow_network_port`](Self::allow_network_port) is what bounds where a connection can
-    /// go. `context/decision-egress-proxy.md`.
+    /// The first call imposes the bound: the helper resolves each name before the command
+    /// starts and gives it a hosts file holding those addresses and no nameserver, so a name
+    /// nothing granted stops resolving. Bounds resolution and not connection —
+    /// `context/decision-egress-proxy.md`.
     ///
     /// A name that is empty, over [`DNS_NAME_LIMIT`] bytes, or carries a NUL, whitespace or
-    /// `#` is skipped and not refused, so nothing `HelperArgs::encode` emits is something
-    /// `decode` rejects: the last three would otherwise forge a field or a comment in the
-    /// rendered hosts file. `sandbx`'s `--allow-dns` refuses them instead. A name that does
-    /// not resolve contributes no address, as an absent path contributes no rule.
+    /// `#` is skipped and not refused, as in [`allow_env`](Self::allow_env); the last three
+    /// would forge a field or a comment in the rendered hosts file.
     #[must_use]
     pub fn allow_dns(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
@@ -400,13 +397,11 @@ impl SandboxPolicy {
 }
 
 /// The longest name [`SandboxPolicy::allow_dns`] will carry, from DNS's own 253-byte limit on
-/// a presentation-form name.
-///
-/// A bound at all because every name becomes a line in a file the helper writes with no reader
-/// to push back, and because the argv carrying them has `MAX_ARG_STRLEN` to fit under.
+/// a presentation-form name. Bounded at all because the argv carrying the names has
+/// `MAX_ARG_STRLEN` to fit under.
 pub const DNS_NAME_LIMIT: usize = 253;
 
-/// Whether `name` is a name the helper can both carry and render.
+/// Whether `name` is one the helper can both carry and render.
 ///
 /// Shared with `HelperArgs::decode`, which refuses what this rejects: the encode side skips
 /// such a name, so one arriving on the wire did not come from `encode`.

@@ -139,9 +139,9 @@ pub enum PolicyError {
 
     /// `--allow-dns` was given alongside `--dns-over-tcp`.
     ///
-    /// The five `Dns…` variants are each a shape in which the bound `--allow-dns` claims would
-    /// not hold — a nameserver the command can still reach answers for every name, so the
-    /// allowlist would bound nothing. `context/decision-egress-proxy.md`.
+    /// The five `Dns…` variants are each a shape that leaves a nameserver reachable, which
+    /// answers for every name — so the allowlist bounds nothing.
+    /// `context/decision-egress-proxy.md`.
     DnsWithResolverHint,
 
     /// `--allow-dns` was given alongside bare `--allow-network`.
