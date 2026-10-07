@@ -163,7 +163,9 @@ fn env_key(lookup: &impl Fn(&str) -> Option<OsString>) -> Option<SecretString> {
 ///
 /// Both must be absolute. XDG says a relative `$XDG_CONFIG_HOME` is to be ignored, and
 /// joining one to the cwd would put a credential in whatever tree the agent was pointed at.
-fn config_file(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, AuthError> {
+pub(crate) fn config_file(
+    lookup: &impl Fn(&str) -> Option<OsString>,
+) -> Result<PathBuf, AuthError> {
     if let Some(dir) = lookup("XDG_CONFIG_HOME").map(PathBuf::from)
         && dir.is_absolute()
     {

@@ -153,6 +153,78 @@ fn a_path_flag_runs_from_the_home_directory() {
 /// A fake key, so a failure to refuse cannot leak a real one into a test log.
 const FAKE_KEY: &str = "sk-ant-not-a-real-key";
 
+/// A home nothing has been stored under, so the refusal is seen to ignore existence.
+fn unstored_home() -> String {
+    format!("{}/owned-paths-home", env!("CARGO_TARGET_TMPDIR"))
+}
+
+/// `$HOME` and nothing else deriving the owned roots, with a key exported to be withheld.
+fn under(home: &str) -> impl FnOnce(&mut Command) -> &mut Command + use<'_> {
+    move |command| {
+        command
+            .env("HOME", home)
+            .env("ANTHROPIC_API_KEY", FAKE_KEY)
+            .env_remove("XDG_STATE_HOME")
+            .env_remove("XDG_CONFIG_HOME")
+    }
+}
+
+/// #173 and #184, on both subcommands: a path flag reaching the session directory would let
+/// one turn choose what the next is told it said, and the two may differ by a refusal but
+/// never by a policy.
+#[test]
+fn a_grant_reaching_an_owned_path_is_refused_on_both() {
+    let home = unstored_home();
+
+    for (name, tail) in [SANDBOX_RUN, AGENT_RUN] {
+        let (ok, stderr) = spawn(
+            (name, tail),
+            PACKAGE,
+            &["--allow-read", &home],
+            under(&home),
+        );
+
+        assert!(
+            !ok,
+            "{name} granted a tool the tree sandbx keeps state in: {stderr}"
+        );
+        assert!(
+            stderr.contains(&home)
+                && stderr.contains("sandbx/sessions")
+                && stderr.contains("--allow-read"),
+            "{stderr} does not name the grant, what it reaches, and what to type instead"
+        );
+        assert!(
+            !stderr.contains(FAKE_KEY),
+            "the refusal printed the value it exists to withhold: {stderr}"
+        );
+    }
+}
+
+/// There is no exact-path hatch: naming the credential file is the request the refusal is
+/// for, not a narrower one it can honour.
+#[test]
+fn naming_the_credential_file_itself_is_refused() {
+    let home = unstored_home();
+    let file = format!("{home}/.config/sandbx/credentials.toml");
+
+    let (ok, stderr) = spawn(
+        SANDBOX_RUN,
+        PACKAGE,
+        &["--allow-write", &file],
+        under(&home),
+    );
+
+    assert!(
+        !ok,
+        "a grant over the credential file was honoured: {stderr}"
+    );
+    assert!(
+        stderr.contains("credentials.toml") && stderr.contains("--allow-read"),
+        "{stderr} does not name the file, or what to type instead"
+    );
+}
+
 /// An exported key changes nothing, and the message naming the variable must not quote it.
 #[test]
 fn an_exported_credential_is_refused_too() {
