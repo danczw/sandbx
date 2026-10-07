@@ -32,10 +32,15 @@ refusal outside the roots is therefore the same refusal.
 `conceal_unless_granted` is the one exception, and it has a single rule: the
 nearest ancestor that *does* resolve decides. Inside a granted root the caller
 could enumerate the directory anyway, so absence there is honest, and it is
-`SandboxError::NotFound` — gated on `ErrorKind::NotFound`, because a `000`
-directory inside a grant is still a refusal and keeps `Unresolvable`. Absence is
-no verdict, so it emits no audit record, and `sandbx-tools` maps it to
-`ToolError::Failed` rather than `Denied` (#180).
+`SandboxError::NotFound`. Absence is no verdict, so it emits no audit record,
+and `sandbx-tools` maps it to `ToolError::Failed` rather than `Denied` (#180).
+
+What counts as absence is `names_nothing`: ENOENT, ENOTDIR and ENAMETOOLONG, by
+errno because `ErrorKind` cannot spell the last one. The line is what the agent
+can act on — a wrong name is its to fix — so EACCES from a `000` directory and
+the `ELOOP` of a swapped leaf keep `Unresolvable`, and keep their `denied`
+record. Narrowing it to ENOENT alone sent a path through a regular file back as
+a refusal, which is #180's own failure mode one errno over.
 
 Both entry points go through the gate. `check_write` resolves the parent, not the
 leaf, and reports the path the caller asked for rather than the parent that

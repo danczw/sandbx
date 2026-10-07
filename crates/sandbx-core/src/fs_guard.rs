@@ -52,7 +52,7 @@ impl FsGuard {
             // Why a path failed to resolve is information: ENOENT against EACCES over
             // arbitrary paths reads back as a map of the host.
             Err(source) => {
-                Err(self.conceal_unless_granted(path, source, &self.readable, Access::Read))
+                Err(self.conceal_unless_granted(path, path, source, &self.readable, Access::Read))
             }
         }
     }
@@ -63,9 +63,13 @@ impl FsGuard {
     /// already entitled to know what is there, so "no such file" is honest. Anywhere else
     /// the refusal is indistinguishable from any other. Absence inside a grant is no
     /// verdict, so it gets no record; `allowed` would name a file nothing read.
+    ///
+    /// `failed` is the component resolution actually tripped on, which is the parent for a
+    /// write; it is named only on the granted path, where it is inside the roots already.
     fn conceal_unless_granted(
         &self,
         requested: &Path,
+        failed: &Path,
         source: std::io::Error,
         roots: &[PathBuf],
         access: Access,
@@ -85,15 +89,19 @@ impl FsGuard {
             };
         }
 
-        let requested = requested.to_path_buf();
-        // A granted area can still refuse the lookup: a `000` directory resolves EACCES,
-        // which is a refusal and not an absence.
-        if source.kind() == std::io::ErrorKind::NotFound {
-            return SandboxError::NotFound { requested, source };
+        let failed = failed.to_path_buf();
+        if names_nothing(&source) {
+            return SandboxError::NotFound {
+                requested: failed,
+                source,
+            };
         }
 
         crate::AuditEvent::denied(access.operation(), &subject, "path does not resolve").emit();
-        SandboxError::Unresolvable { requested, source }
+        SandboxError::Unresolvable {
+            requested: failed,
+            source,
+        }
     }
 
     /// Open `path` for reading, refusing anything the policy does not allow.
@@ -229,8 +237,9 @@ impl FsGuard {
                     return Err(not_allowed());
                 }
 
-                // The only inputs where the halves disagree are `.`/`..`-tailed, refused
-                // either way, so one failure covers both.
+                // `file_name` is the half that can be `None` here: it normalizes a `.` tail
+                // away, so only a `..` tail reaches this, and `parent` is `None` only for
+                // `/`, which resolves and never gets here at all.
                 let Some((parent, file_name)) = path.parent().zip(path.file_name()) else {
                     crate::AuditEvent::denied(
                         Access::Write.operation(),
@@ -243,11 +252,13 @@ impl FsGuard {
 
                 match parent.canonicalize() {
                     Ok(dir) => dir.join(file_name),
-                    // The parent is what failed, but the caller's path is what gets
-                    // reported: handing back the parent would name a path never asked for.
+                    // The concealment decision is about the path the caller asked for; the
+                    // parent is what the message names, a `write` told it cannot find the
+                    // file it is creating having nothing to act on.
                     Err(source) => {
                         return Err(self.conceal_unless_granted(
                             path,
+                            parent,
                             source,
                             &self.writable,
                             Access::Write,
@@ -259,6 +270,20 @@ impl FsGuard {
 
         permit(resolved, &self.writable, path, Access::Write)
     }
+}
+
+/// Whether resolution failed because the name does not denote a file, rather than because
+/// something refused the lookup.
+///
+/// The split is what the agent acts on: a wrong name is for it to fix, where EACCES or the
+/// `ELOOP` of a swapped leaf it cannot. ENOTDIR and ENAMETOOLONG are as much a wrong name as
+/// ENOENT, and reading back as refusals is what sent the model asking for a wider grant
+/// (#180). By errno because `ErrorKind` has no stable spelling for ENAMETOOLONG.
+fn names_nothing(source: &std::io::Error) -> bool {
+    matches!(
+        source.raw_os_error(),
+        Some(libc::ENOENT | libc::ENOTDIR | libc::ENAMETOOLONG)
+    )
 }
 
 /// Resolve every root that currently exists, discarding the rest.
@@ -319,7 +344,7 @@ fn open(
         .open(resolved)
         .map_err(|source| {
             let requested = requested.to_path_buf();
-            if source.kind() == std::io::ErrorKind::NotFound {
+            if names_nothing(&source) {
                 SandboxError::NotFound { requested, source }
             } else {
                 SandboxError::Unresolvable { requested, source }

@@ -52,12 +52,17 @@ filter can rely on (#146).
 **Denials always carry a reason.** `Denied.reason` is non-optional; "denied"
 alone is not actionable.
 
-**An absence is not a verdict.** A path missing inside a root the policy already
-grants gets no record at all: `denied` would name a refusal no policy made, and
-`allowed` a file nothing read. It reaches the model as a `Failed`, so the next
-move is to fix the name rather than widen the grant (#180). A path missing
-*outside* every root is still a `denied` — that one the guard refuses, and the
-refusal is deliberately indistinguishable from any other.
+**An absence is not a verdict.** A path that names nothing inside a root the
+policy already grants draws no `denied`: there is no refusal to record, no policy
+having made one. It reaches the model as a `Failed`, so the next move is to fix
+the name rather than widen the grant (#180). A path missing *outside* every root
+is still a `denied` — that one the guard refuses, and the refusal is deliberately
+indistinguishable from any other.
+
+The guard decides on resolution, so that is what `allowed` stands for too: the
+*verdict*, not the access. `permit` emits before the open, and a leaf deleted or
+swapped in between leaves `allowed` on the trail for a file nothing read (#182).
+So the trail answers what the policy decided, and not what the agent saw.
 
 **A run is two records** (#96). `Spawned` is the policy, settled before the exec,
 so it stands for an attempt — including one that never starts. Exactly one

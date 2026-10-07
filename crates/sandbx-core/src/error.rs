@@ -56,15 +56,15 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// A path inside a granted root does not exist, so no policy objected to it.
+    /// A path inside a granted root names no file, so no policy objected to it.
     ///
     /// Returned only where the roots already cover the area: elsewhere absence is concealed
     /// as [`PathNotAllowed`](Self::PathNotAllowed), ENOENT against EACCES over arbitrary
     /// paths reading back as a map of the host.
     NotFound {
-        /// The path as the caller supplied it.
+        /// The component that names nothing — the parent, for a write to a missing directory.
         requested: PathBuf,
-        /// The underlying `ErrorKind::NotFound` failure.
+        /// The underlying failure: ENOENT, ENOTDIR or ENAMETOOLONG.
         source: std::io::Error,
     },
 

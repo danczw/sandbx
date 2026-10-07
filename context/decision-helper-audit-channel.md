@@ -169,12 +169,12 @@ stderr.
 `REPORTED_BY_HELPER` is a *subset* of what `SandboxError::label` can return, not all
 of it, and the five it leaves out are the point: `timeout`, `spawn_failed`,
 `path_not_allowed`, `unresolvable` and `not_found` are decisions sandbx and
-`FsGuard` make for themselves. A channel record outranks the exit status, so admitting `timeout` would
-let a forged line claim a kill that never happened *and* suppress the real outcome —
-on a trail whose whole purpose is that `reason="timeout"` can be filtered. What the
-criterion turns on is whether the label names one decider, not what failed:
-`inner_stage_failed` is in and `spawn_failed` is out although both name a process that
-would not start. The subset is hand-maintained
+`FsGuard` make for themselves. A channel record outranks the exit status, so
+admitting `timeout` would let a forged line claim a kill that never happened *and*
+suppress the real outcome — on a trail whose whole purpose is that
+`reason="timeout"` can be filtered. What the criterion turns on is whether the label
+names one decider, not what failed: `inner_stage_failed` is in and `spawn_failed` is
+out although both name a process that would not start. The subset is hand-maintained
 against `label`, which the compiler cannot help with; a helper refusal missing from it
 is dropped rather than mistrusted, leaving the trail saying what it said before #157.
 
