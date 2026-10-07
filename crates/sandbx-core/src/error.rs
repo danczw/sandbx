@@ -568,6 +568,7 @@ mod tests {
                     | SandboxError::NotFound { .. }
                     | SandboxError::SpawnFailed { .. }
                     | SandboxError::HelperRefused { .. }
+                    | SandboxError::ProcessConcealment { .. }
                     | SandboxError::TimedOut { .. }
             );
 
