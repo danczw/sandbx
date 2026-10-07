@@ -122,19 +122,22 @@ thing.
 ## A rule the helper makes for itself is pinned later
 
 `open_grant` runs in stage 2, inside whatever stage 1 unshared, so a mount made
-there is a mount the comparison sees. Today that is harmless because
-`hardening::isolate` unshares no `CLONE_NEWNS` and a pre-existing bind vets as
-itself. It stops being harmless as soon as the helper mounts something of its
-own, which is what #145 needs for `/etc/hosts`, `/etc/nsswitch.conf` and
-`/etc/resolv.conf`.
+there is a mount the comparison sees. #145 makes one: `/etc/hosts`,
+`/etc/nsswitch.conf` and `/etc/resolv.conf` are bind-mounted over before the rules
+are opened.
 
-The distinction to hold: an **operator** grant is vetted before the helper runs,
-so its pin is taken in the harness and the stat in stage 2 must agree. A rule the
-**helper** adds for itself is vetted after its own mount, so its pin is taken in
-stage 2 and there is no cross-process window to close. Pinning both at the same
-point refuses the helper's own resolver files — the mount moved the inode under a
-name the harness had already pinned, which is indistinguishable from the attack
-unless the two are kept apart.
+So a rule says which kind of thing it names. `RuleTarget::Granted` holds the
+harness's `VettedPath`; `RuleTarget::Installed` holds the `&'static` path the helper
+bind-mounted a moment ago, in this process. The readback runs on both — an installed
+path redirected under the bind is still a rule on an inode sandbx did not place. The
+pin runs only on the first, and the reason is not that the helper's object is
+trustworthy: it is that the helper has no second answer to compare against. A pin
+taken in stage 2 for a mount made in stage 2 compares this process's answer with
+itself, and agrees whatever happened.
+
+Pinning both at one point refuses the helper's own resolver files, the mount having
+moved the inode under a name the harness had already pinned — indistinguishable from
+the attack unless the two are kept apart.
 
 This is also where the pin meets what can make a mount in stage 2 at all. The
 helper's mounts rest on the capability drop rather than on `BLOCKED_SYSCALLS`,
@@ -142,6 +145,23 @@ and whether the newer mount API — `open_tree`, `move_mount`, `fsopen`, `fsmoun
 `mount_setattr` — belongs in the filter is #145's question, not this note's. It
 is the same seam: a pin that has to survive mounts made in stage 2 is worth only
 as much as the bound on what can make one.
+
+Two orderings fall out of which crate owns which refusal, and are worth stating
+because nothing maintains them. A grant refusal reaches the operator before
+`UnboundedResolution` does: `unbounded_resolution` is decided in
+`SandboxedCommand::command_line`, and a `SandboxPolicy` has to exist before a
+`SandboxedCommand` can hold one, so `Grants::policy`'s path refusals strictly
+precede it. That is the right order for diagnosis — a grant refusal sends an operator
+to a path they can go and look at, a resolution refusal to flags they can read off
+their own command line. And `grant_bound_by_resolver` is checked after the five
+`Dns…` shapes in the CLI, because an operator with no egress at all should hear that
+first.
+
+One cost the reviews surfaced and this note should carry: nested write grants pay the
+pin twice. `Grants::policy` grants read alongside every write-conferring axis, so a
+directory granted write is vetted once and pinned on two axes, and the helper opens
+and stats it twice. Reachable but unusual, and a stat beside a resolve that already
+walked every ancestor.
 
 ## What it costs
 
@@ -155,15 +175,39 @@ is paid once at a pre-1.0 version.
 **A stat per grant, in the harness.** Beside a resolve that already walks every
 ancestor, which is the expensive part.
 
-**A property `guide-sandboxing.md` states, moving.** That file says the property
-to keep is about spellings and not about mounts: a file bind-mounted over
-`/etc/hosts` reads back `/etc/hosts`, measured, and is fine. Under the pin that
-holds only for a bind that existed when the grant was vetted. One made between
-the vet and the open now refuses — correctly, because that is the attack, but it
-is a narrowing and not a clarification.
+**A property `guide-sandboxing.md` states, moving.** That file said the property to
+keep is about spellings and not about mounts: a file bind-mounted over `/etc/hosts`
+reads back `/etc/hosts`, measured, and is fine. Under the pin that holds only for a
+bind that existed when the grant was vetted. One made between the vet and the open
+refuses as `GrantReplaced` — correctly, because that is the attack, but it is a
+narrowing and not a clarification, and it is why the files the helper binds itself
+are reached by `RuleTarget::Installed` and not by a grant.
 
-**Nothing an operator types changes.** No flag is added, no grant narrows, and a
-run whose granted directories are the ones that were vetted behaves as it did.
+**One pair an operator can type is refused.** `--allow-dns` alongside a grant naming
+one of the three files it replaces exactly. The harness vets the host's file and the
+bind substitutes sandbx's, so the pin would fail on a legitimate pair; refusing the
+pair is the only fail-closed answer, because waiving the pin would have to decide the
+waiver in the process that made the substitution. `--allow-read /etc` beside the flag
+is unaffected — binding a file inside a directory does not change the directory's
+inode — and is what the refusal tells the operator to pass. Nothing else an operator
+types changes: no flag is added, no grant narrows, and a run whose granted
+directories are the ones that were vetted behaves as it did.
+
+## What a grant can be refused for
+
+| What is wrong | Decided | Label |
+|---|---|---|
+| the granted spelling opens as another path | helper | `grant_redirected` |
+| the object under the granted name is not the vetted one | helper | `grant_replaced` |
+| the path cannot be vetted at all — it names nothing | harness | `grant_unpinnable`, `PolicyError::UnpinnableGrant` at the flag |
+| the path names a file this run's own resolver binds over | harness | `grant_bound_by_resolver`, `PolicyError::DnsGrantsBoundFile` at the flag |
+| a grant arrives on the wire with no object beside it | helper, at decode | `bad_helper_args` |
+| a vetted path names nothing by the time the helper opens it | helper | `landlock`, carrying the kernel's `ENOENT` unchanged |
+
+The last is the unlink-after-vet window, and it is the reason `VettedPath::from_wire`
+is testable without racing: it is the one producer that can build a vetted path naming
+nothing. The other two shapes of that window are the first two rows — unlinked and
+replaced is `grant_replaced`, unlinked and symlinked is `grant_redirected`.
 
 ## What was rejected
 

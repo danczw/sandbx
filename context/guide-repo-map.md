@@ -56,12 +56,14 @@ It also owns the tokio runtime, because the flavour is the binary's choice and
 ```
 src/lib.rs           re-exports; Linux-only, refused at compile time
    policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
+      policy/vetted.rs  VettedPath, ObjectId — a grant and the object it names
    fs_guard.rs       in-process path enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, the audit pipe, the kill chain
       dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch — the entry
                      into helper mode
-   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx,
-                     --allow-network-port, --env, --dns-over-tcp, --pin-sha256
+   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx each with a
+                     <path> <dev>:<ino> pair, --allow-network-port, --env,
+                     --dns-over-tcp, --pin-sha256
    concealment.rs    conceal_process_state — the one step aimed at sandbx's own
                      process rather than a sandboxed child's
    digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
@@ -79,7 +81,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
       seccomp.rs     compiled_filter, clone3_filter, x32_gate,
                      deny_dangerous_syscalls — how it reaches the kernel
-         rules.rs    BLOCKED_SYSCALLS (28), blocked_syscalls — what is denied
+         rules.rs    BLOCKED_SYSCALLS (35), blocked_syscalls — what is denied
          tests/      unit tests: denylist, sockets, namespaces, arch; plus the
                      eval interpreter they are all read through
       ruleset/
@@ -106,7 +108,7 @@ Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
 `HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
 `with_helper_dispatch`, `SandboxError`, `Access`, `HelperRefusal`, `FsGuard`,
 `ReadableWalk`, `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
-`NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`,
+`NetworkPolicy`, `SandboxPolicy`, `VettedPath`, `ObjectId`, `Sha256Digest`, `DigestParseError`,
 `conceal_process_state`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
