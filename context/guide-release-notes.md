@@ -40,17 +40,19 @@ reviewed as prose. Agree the sentences across the branches before any of them
 lands — merging three accounts afterwards is the time pressure the convention
 exists to avoid.
 
-The budget below does not grow. The owner's rewrite fits every change into one
-twelve-line, two-paragraph file; there is no allowance per change (#193).
+There is no allowance per change. The owner's rewrite fits every change into one
+file within the budget below, which is a ceiling for the release and not a sum of
+per-branch shares (#193).
 
 ## The budget
 
-Two paragraphs, twelve lines, no headings and no bullets. The checker enforces
+Two paragraphs, thirty lines, no headings and no bullets. The checker enforces
 all of it. Anything longer belongs in `context/` or on an issue, linked from
 the prose.
 
-The ceiling is the point. A reader who stops after the first sentence must not
-be surprised later, which is only achievable if there are few sentences.
+Thirty is a ceiling, not a target, and the shortest notes that carry every claim
+are the best ones. A reader who stops after the first sentence must not be
+surprised later, which gets harder with every sentence added.
 
 ## What earns its place
 
