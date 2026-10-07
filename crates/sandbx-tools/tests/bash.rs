@@ -33,6 +33,32 @@ fn surfaces_a_non_zero_exit() {
 
     assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
     assert!(format!("{err}").contains('3'), "exit code missing: {err}");
+    // The other half of the pair below: a command that really ran names itself, and a
+    // sandbox that never applied names the sandbox.
+    assert!(
+        format!("{err}").starts_with("run `exit 3` failed"),
+        "a command that ran did not name itself: {err}"
+    );
+}
+
+/// The reachable refusal without a pin: the shell is unexecutable under this policy, so
+/// Landlock denies the `exec` and stage 2 reports `exec_failed` instead of the command
+/// exiting 1 — which is what the pair with `surfaces_a_non_zero_exit` tells apart (#185).
+#[test]
+fn a_sandbox_that_would_not_apply_is_not_a_command_that_failed() {
+    let ctx = context(SandboxPolicy::default());
+    let err = BuiltinTool::Bash
+        .execute(json!({ "command": "echo hello" }), &ctx)
+        .unwrap_err();
+
+    assert!(
+        format!("{err}").starts_with("sandbox `echo hello` failed"),
+        "a sandbox that would not apply read as something else: {err}"
+    );
+    assert!(
+        !format!("{err}").contains("exit 1"),
+        "a command that never ran was reported as having exited: {err}"
+    );
 }
 
 #[test]
