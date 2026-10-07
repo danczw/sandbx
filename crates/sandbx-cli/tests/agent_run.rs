@@ -290,9 +290,8 @@ fn the_round_cap_defaults_to_the_crates_own() {
     );
 }
 
-/// The flag's own text only: every request also carries the lines naming the run's roots
-/// and its approved tools, which `the_request_carries_the_granted_root_as_system` and
-/// `the_request_names_the_tools_the_run_approved` pin.
+/// The flag's own text only: `the_request_carries_the_granted_root_as_system` and
+/// `the_request_names_the_tools_the_run_approved` pin the lines every request carries.
 #[test]
 fn no_system_text_is_added_unless_asked_for() {
     assert_eq!(
