@@ -29,7 +29,7 @@ pub use command::{
     with_helper_dispatch,
 };
 pub use digest::{DigestParseError, Sha256Digest};
-pub use error::{Access, SandboxError};
+pub use error::{Access, HelperRefusal, SandboxError};
 pub use fs_guard::{FsGuard, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;

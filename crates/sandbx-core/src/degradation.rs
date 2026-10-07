@@ -34,12 +34,11 @@ pub(crate) enum Report<'a> {
     /// A hardening step that did not take effect, and why.
     Degraded(Degradation, &'a str),
 
-    /// A helper stage refused rather than reaching the command, carrying the refusal's
-    /// [`label`](crate::SandboxError::label).
+    /// A helper stage refused rather than reaching the command.
     ///
     /// On the channel because the stage's non-zero exit is relayed on the command's behalf,
     /// so it would otherwise read as the command's own.
-    Failed(&'static str),
+    Failed(crate::HelperRefusal),
 }
 
 /// A best-effort hardening step that did not take effect.
@@ -101,11 +100,12 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
 
 /// Render the record a stage that refused rather than becoming the command reports.
 ///
-/// `'static` because this writes `label` as given, unlike [`encode`], so a `\t` in one would
-/// forge a second record; [`SandboxError::label`](crate::SandboxError::label) is the only
-/// source of one. No detail: the reason reaches the operator on the helper's stderr.
-pub(crate) fn encode_refusal(label: &'static str) -> String {
-    format!("{label}{SEPARATOR}\n")
+/// A [`HelperRefusal`](crate::HelperRefusal) and not a string: this writes the label as
+/// given, unlike [`encode`], so a `\t` in one would forge a second record, and the type makes
+/// one unrepresentable. No detail: the reason reaches the operator on the helper's stderr, and
+/// the parent lifts it off there for the caller.
+pub(crate) fn encode_refusal(refusal: crate::HelperRefusal) -> String {
+    format!("{}{SEPARATOR}\n", refusal.label())
 }
 
 /// Parse what the helper wrote back into the records it reported.
@@ -121,9 +121,7 @@ pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
             if let Some(step) = Degradation::from_label(label) {
                 return Some(Report::Degraded(step, detail));
             }
-            Some(Report::Failed(crate::SandboxError::reportable_label(
-                label,
-            )?))
+            Some(Report::Failed(crate::HelperRefusal::from_label(label)?))
         })
         .take(RECORD_LIMIT)
         .collect()
@@ -262,11 +260,11 @@ mod tests {
 
     #[test]
     fn every_refusal_survives_the_round_trip() {
-        for label in crate::SandboxError::REPORTED_BY_HELPER {
+        for refusal in crate::HelperRefusal::ALL {
             assert_eq!(
-                decode(&encode_refusal(label)),
-                vec![Report::Failed(label)],
-                "{label} did not cross as itself"
+                decode(&encode_refusal(refusal)),
+                vec![Report::Failed(refusal)],
+                "{refusal:?} did not cross as itself"
             );
         }
     }
@@ -287,7 +285,7 @@ mod tests {
     fn no_degradation_label_is_also_a_refusal() {
         for step in Degradation::ALL {
             assert_eq!(
-                crate::SandboxError::reportable_label(step.label()),
+                crate::HelperRefusal::from_label(step.label()),
                 None,
                 "{} names both a degradation and a refusal",
                 step.label()
@@ -301,14 +299,14 @@ mod tests {
     #[test]
     fn the_record_cap_admits_a_refusal_too() {
         let mut channel = encode(&Degradation::ALL.map(|step| (step, "degraded".to_string())));
-        channel.push_str(&encode_refusal("process_hardening"));
+        channel.push_str(&encode_refusal(crate::HelperRefusal::ProcessHardening));
 
         let decoded = decode(&channel);
 
         assert_eq!(decoded.len(), RECORD_LIMIT, "the cap dropped a record");
         assert_eq!(
             decoded.last(),
-            Some(&Report::Failed("process_hardening")),
+            Some(&Report::Failed(crate::HelperRefusal::ProcessHardening)),
             "the refusal was capped away behind the degradations"
         );
     }

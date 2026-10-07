@@ -149,7 +149,7 @@ impl SandboxedCommand {
         // The channel outranks the status, a command that never ran having exited as the
         // helper that refused rather than as itself.
         match (&result, refused) {
-            (_, Some(reason)) => crate::AuditEvent::failed(&self.program, reason),
+            (_, Some(refusal)) => crate::AuditEvent::failed(&self.program, refusal.label()),
             (Ok(output), None) => crate::AuditEvent::exited(&self.program, &output.status),
             (Err(error), None) => crate::AuditEvent::failed(&self.program, error.label()),
         }
@@ -208,7 +208,7 @@ fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), Sandbox
 /// Emitted here because this is the process with a subscriber. Reads to EOF with the helper
 /// already waited on, which is safe only because `degradation::encode` bounds the records: a
 /// channel that outgrew the pipe buffer would deadlock the run it reports on.
-fn record_reports(mut audit: std::io::PipeReader) -> Option<&'static str> {
+fn record_reports(mut audit: std::io::PipeReader) -> Option<crate::HelperRefusal> {
     use std::io::Read;
 
     let mut records = String::new();
@@ -222,8 +222,8 @@ fn record_reports(mut audit: std::io::PipeReader) -> Option<&'static str> {
             crate::degradation::Report::Degraded(step, detail) => {
                 crate::AuditEvent::degraded(step.label(), detail).emit();
             }
-            crate::degradation::Report::Failed(reason) => {
-                refused = Some(reason);
+            crate::degradation::Report::Failed(refusal) => {
+                refused = Some(refusal);
             }
         }
     }
@@ -406,7 +406,7 @@ mod tests {
 
     /// What `record_reports` makes of a channel, without a helper to write one. The write
     /// end is dropped before the read, which is what makes the read terminate.
-    fn reported(channel: &str) -> Option<&'static str> {
+    fn reported(channel: &str) -> Option<crate::HelperRefusal> {
         use std::io::Write;
 
         let (read, mut write) = std::io::pipe().expect("a pipe for the channel");
@@ -420,7 +420,7 @@ mod tests {
     fn a_refusal_on_the_channel_becomes_the_runs_reason() {
         assert_eq!(
             reported("process_hardening\t\n"),
-            Some("process_hardening"),
+            Some(crate::HelperRefusal::ProcessHardening),
             "a stage that refused did not name its reason"
         );
     }

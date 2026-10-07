@@ -1,5 +1,9 @@
 use std::path::PathBuf;
 
+mod refusal;
+
+pub use refusal::HelperRefusal;
+
 /// Which grant a path was checked against.
 ///
 /// Carried by a refusal so it names the grant that was missing: the guard keeps its root
@@ -119,7 +123,7 @@ pub enum SandboxError {
     /// The supervisor stage could not start the stage below it.
     ///
     /// Separate from [`SpawnFailed`](Self::SpawnFailed) because one site returns it, and a
-    /// single decider is what `REPORTED_BY_HELPER` admits a label on.
+    /// single decider is what [`HelperRefusal`] admits a label on.
     InnerStageFailed {
         /// What failed, for the operator to act on.
         detail: &'static str,
@@ -279,28 +283,6 @@ impl std::error::Error for SandboxError {
 }
 
 impl SandboxError {
-    /// The closed set a label off the helper's audit channel is validated against.
-    ///
-    /// A strict subset of [`label`](Self::label), because a channel record outranks the exit
-    /// status: admitting one of the parent's or [`FsGuard`](crate::FsGuard)'s own decisions
-    /// would let a forged line claim a kill that never happened. The criterion is a single
-    /// decider and not what failed, so `inner_stage_failed` is in and `spawn_failed` out
-    /// though both name a process that would not start. Hand-maintained against `label`; an
-    /// omission falls back to the relayed exit status.
-    pub(crate) const REPORTED_BY_HELPER: [&str; 11] = [
-        "bad_helper_args",
-        "landlock",
-        "seccomp",
-        "namespace_setup_failed",
-        "process_hardening",
-        "inner_stage_failed",
-        "exec_failed",
-        "pin_mismatch",
-        "pin_unreadable",
-        "pinned_script",
-        "unsupported",
-    ];
-
     /// A stable name for this refusal, which the audit trail is filtered by.
     ///
     /// Exhaustive, so a new variant has to decide what a trail calls it.
@@ -326,14 +308,6 @@ impl SandboxError {
             Self::Unsupported { .. } => "unsupported",
         }
     }
-
-    /// The helper-reportable refusal `label` names, as a `'static` copy — so a label read off
-    /// the channel reaches `AuditEvent::failed` without the trail borrowing from the bytes.
-    pub(crate) fn reportable_label(label: &str) -> Option<&'static str> {
-        Self::REPORTED_BY_HELPER
-            .into_iter()
-            .find(|known| *known == label)
-    }
 }
 
 #[cfg(test)]
@@ -352,7 +326,7 @@ mod tests {
     }
 
     /// One of every variant. The `match` below is exhaustive, so a new variant fails to
-    /// compile until someone decides whether it belongs in `REPORTED_BY_HELPER` too.
+    /// compile until someone decides whether it is a [`HelperRefusal`] too.
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
@@ -442,43 +416,50 @@ mod tests {
         assert_eq!(labels.len(), total, "two variants share a label");
     }
 
+    /// The trail must call a refusal the same thing whichever side of the channel decided it,
+    /// a `reason=` filter being written once.
     #[test]
-    fn every_helper_reportable_label_is_one_a_variant_returns() {
+    fn a_refusal_is_called_what_the_variant_it_relays_is_called() {
+        for error in every_variant() {
+            if let Some(refusal) = error.refusal() {
+                assert_eq!(
+                    refusal.label(),
+                    error.label(),
+                    "{} and the refusal it reports as disagree",
+                    error.label()
+                );
+            }
+        }
+
         let labels: Vec<_> = every_variant().iter().map(SandboxError::label).collect();
-
-        for reportable in SandboxError::REPORTED_BY_HELPER {
+        for refusal in HelperRefusal::ALL {
             assert!(
-                labels.contains(&reportable),
-                "{reportable} is on the channel's closed set but names no variant"
+                labels.contains(&refusal.label()),
+                "{} crosses the channel but names no variant",
+                refusal.label()
             );
         }
     }
 
-    /// A forged one would outrank the exit status and claim a kill that never happened.
+    /// Each is a decision the parent or [`FsGuard`](crate::FsGuard) watched itself, so a
+    /// channel record claiming one would outrank the outcome it saw.
     #[test]
-    fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
-        for label in [
-            "timeout",
-            "spawn_failed",
-            "path_not_allowed",
-            "unresolvable",
-            "not_found",
-        ] {
-            assert_eq!(
-                SandboxError::reportable_label(label),
-                None,
-                "{label} is not a helper stage's to report, but the channel accepted it"
+    fn the_reasons_the_helper_does_not_decide_are_not_refusals() {
+        for error in every_variant() {
+            let decided_here = matches!(
+                error,
+                SandboxError::PathNotAllowed { .. }
+                    | SandboxError::Unresolvable { .. }
+                    | SandboxError::NotFound { .. }
+                    | SandboxError::SpawnFailed { .. }
+                    | SandboxError::TimedOut { .. }
             );
-        }
-    }
 
-    #[test]
-    fn a_label_we_did_not_define_is_refused() {
-        for label in ["", "not_a_refusal", "seccomp ", "SECCOMP"] {
             assert_eq!(
-                SandboxError::reportable_label(label),
-                None,
-                "{label:?} was accepted as one of our labels"
+                error.refusal().is_none(),
+                decided_here,
+                "{} is on the wrong side of the channel",
+                error.label()
             );
         }
     }

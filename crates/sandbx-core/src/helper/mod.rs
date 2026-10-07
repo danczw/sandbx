@@ -62,9 +62,8 @@ fn report(records: &str) {
 ///
 /// One region, so one site reports every refusal of stage 1's (#160). Both edges are load
 /// bearing: stage 2 does not exist anywhere inside here, so at most one refusal reaches the
-/// channel, and every refusal inside here is one
-/// [`REPORTED_BY_HELPER`](SandboxError::REPORTED_BY_HELPER) admits, so the write needs no
-/// second check.
+/// channel, and every refusal inside here is a
+/// [`HelperRefusal`](crate::HelperRefusal), so nothing it returns is dropped unreported.
 fn start_inner_stage(
     exe: std::path::PathBuf,
     argv: &[String],
@@ -149,8 +148,10 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 
     // Without this the trail cannot tell a refusal from a command that ran and exited 1:
     // this stage exits non-zero and the parent has only that status (#160).
-    if let (true, Err(error)) = (audit_on_stdin, &started) {
-        report(&crate::degradation::encode_refusal(error.label()));
+    if let (true, Err(error)) = (audit_on_stdin, &started)
+        && let Some(refusal) = error.refusal()
+    {
+        report(&crate::degradation::encode_refusal(refusal));
     }
 
     let mut child = started?;
@@ -246,10 +247,12 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
     // Without this the trail cannot tell a refusal from a command that ran and exited 1:
     // this stage exits non-zero and stage 1 relays that status on the command's behalf.
     // Swallowed — a lost record must not fail a run the parent was already told about.
-    if let (Some(channel), Err(error)) = (&mut channel, &refusal) {
+    if let (Some(channel), Err(error)) = (&mut channel, &refusal)
+        && let Some(reported) = error.refusal()
+    {
         use std::io::Write;
 
-        let _ = channel.write_all(crate::degradation::encode_refusal(error.label()).as_bytes());
+        let _ = channel.write_all(crate::degradation::encode_refusal(reported).as_bytes());
     }
 
     refusal
