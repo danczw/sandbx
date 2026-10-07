@@ -2,6 +2,17 @@
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 
+/// A scratch directory whose own path is already resolved, so granting it grants a path that
+/// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
+fn scratch() -> tempfile::TempDir {
+    let root = std::env::temp_dir()
+        .canonicalize()
+        .expect("the temporary directory exists");
+    tempfile::Builder::new()
+        .tempdir_in(root)
+        .expect("a temporary directory")
+}
+
 /// What lets a shipped sandbx need no second binary installed.
 #[test]
 fn defaults_to_re_executing_this_image_by_inode() {
@@ -83,7 +94,7 @@ fn explicit_helper_still_takes_the_dispatch_flag() {
 /// caller that spawns this itself gets its own working directory and not the policy's.
 #[test]
 fn the_start_directory_is_not_in_the_command_line() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let root = dir.path().to_str().unwrap().to_string();
 
     let policy = SandboxPolicy::default().allow_write(dir.path());
@@ -108,7 +119,7 @@ fn the_start_directory_is_not_in_the_command_line() {
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn runs_a_command_under_the_policy() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let file = dir.path().join("readable.txt");
     std::fs::write(&file, b"visible").unwrap();
 
@@ -135,7 +146,7 @@ fn runs_a_command_under_the_policy() {
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn starts_the_command_in_a_granted_root() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let root = dir.path().canonicalize().unwrap();
 
     let policy = SandboxPolicy::default()
@@ -163,7 +174,7 @@ fn starts_the_command_in_a_granted_root() {
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn refuses_a_path_the_policy_omits() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let secret = dir.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
@@ -348,7 +359,7 @@ fn a_command_exit_code_survives_the_relay() {
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_backgrounded_descendant_dies_with_the_command() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let canary = dir.path().join("canary");
     let started = std::time::Instant::now();
 
@@ -432,7 +443,7 @@ fn without_a_timeout_a_descendant_does_not_block() {
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_descendant_that_leaves_the_group_is_still_killed() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let canary = dir.path().join("canary");
     let started = std::time::Instant::now();
 

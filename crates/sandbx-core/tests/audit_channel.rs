@@ -20,6 +20,17 @@ use sandbx_core::{
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
+/// A scratch directory whose own path is already resolved, so granting it grants a path that
+/// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
+fn scratch() -> tempfile::TempDir {
+    let root = std::env::temp_dir()
+        .canonicalize()
+        .expect("the temporary directory exists");
+    tempfile::Builder::new()
+        .tempdir_in(root)
+        .expect("a temporary directory")
+}
+
 /// Collects audit events; repeated from `audit.rs` because cargo gives each
 /// `tests/*.rs` its own binary.
 #[derive(Clone, Default)]
@@ -358,7 +369,7 @@ fn every_record_names_a_real_mechanism_once() {
 /// that ran and exited 1; the digests ride along on the helper's stderr.
 #[test]
 fn a_pin_refusal_names_itself_on_the_channel() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("tool");
     std::fs::copy("/bin/true", &program).unwrap();
 
@@ -408,7 +419,7 @@ fn a_pin_refusal_names_itself_on_the_channel() {
 /// every grant, so a policy still carrying a link is one whose target moved after the check.
 #[test]
 fn a_redirected_grant_names_itself_on_the_channel() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let target = dir.path().join("work");
     let link = dir.path().join("granted");
     std::fs::create_dir(&target).unwrap();

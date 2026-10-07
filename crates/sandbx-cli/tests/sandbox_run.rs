@@ -101,6 +101,9 @@ fn a_no_flag_run_starts_in_the_working_directory() {
 #[test]
 fn a_path_flag_moves_where_the_command_starts() {
     let work = tempfile::tempdir().expect("a temporary directory");
+    // Resolved, because the policy holds what the flag resolves to: `$TMPDIR` may name a
+    // symlink, and the start directory is one of the grants.
+    let expected = work.path().canonicalize().expect("it exists");
     let root = work.path().to_str().expect("a UTF-8 path");
 
     let policy = sandbox_run(&[
@@ -118,7 +121,7 @@ fn a_path_flag_moves_where_the_command_starts() {
 
     assert_eq!(
         policy.working_root(),
-        Some(work.path()),
+        Some(expected.as_path()),
         "the command would have started outside what the flags granted"
     );
 }

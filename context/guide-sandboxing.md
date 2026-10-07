@@ -192,12 +192,27 @@ from, and the comparison would be against whatever the links point at by then.
 `open_grant` is the only way to get a `PathFd` in the crate, so a rule cannot be
 added without the confirmation.
 
+Spellings, not inodes: a directory replaced by another real directory at the same
+name — a `rename(2)`, not a link — reads back as the name it was granted. Closing
+that needs the vetted `(dev, ino)` to cross the seam, or the vetted descriptor
+itself to be inherited through the `exec`.
+
 Three facts the readback rests on: a task may always read its own `/proc/self/fd`
 (`proc_fd_permission` exempts a same-thread-group reader, which is also why #192's
 dumpable clearing does not reach it, and stage 2 is a fresh `execve` that resets
 the flag anyway); `hardening::isolate` unshares no `CLONE_NEWNS`, so both
 spellings are in one mount namespace; and a grant naming nothing still fails at
 `PathFd::new` with `SandboxError::Landlock`, unchanged.
+
+The mount namespace is the one to be careful with, because `open_grant` runs in
+stage 2 — inside whatever stage 1 unshared, so a mount made there is a mount the
+comparison sees. The property to keep is about *spellings*, not about mounts: a
+file bind-mounted over `/etc/hosts` still reads back `/etc/hosts`, measured, and
+is fine. What is not fine is a `pivot_root`, an `MS_MOVE` over a granted root, or
+a bind whose source is unlinked — `read_link` then appends `" (deleted)"`. Any of
+those makes every grant read back as something else, so the run refuses under a
+label naming the grant rather than the mount that moved it, which is the hardest
+shape to attribute: the message accuses the innocent party.
 
 Decided in the helper, so it carries a `HelperRefusal` and crosses the audit
 channel as `grant_redirected`: only the stage holding the descriptor can compare
@@ -208,12 +223,17 @@ what it opened against what it was told to.
 `SandboxPolicy::working_root` — the first writable *directory* the policy grants,
 else the first readable one — and `None` when it grants neither, where the caller's
 own directory is inherited. One derivation in the crate that owns the policy, so
-the spawn and the orientation line the model reads cannot disagree (#191).
+the spawn and the orientation line the model reads answer from the same place
+rather than each deriving one (#191). The sentence may still say less than the
+spawn knows: `orientation::start_root` drops a start directory the roots sentence
+did not name, which is the system binaries and nothing else.
 
 A directory and not merely the first path: `--allow-write /dev/null` is an ordinary
-grant and a `chdir` to a file fails the spawn with `ENOTDIR`. Not over
-`granted_paths()` either, whose `Axis::ALL` order would start a writable run
-read-only and an exec-only run inside the system binaries.
+grant and a `chdir` to a file fails the spawn with `ENOTDIR`. `is_dir` on a path
+that cannot be stat'd is false, so a grant naming nothing is not a start directory
+either and the next one is tried. Not over `granted_paths()`, whose `Axis::ALL`
+order would start a writable run read-only and an exec-only run inside the system
+binaries.
 
 Applied in `helper_command` (`command.rs`), not in `spawn::command`: that builder is
 also what stage 2 uses to *become* the command, after the ruleset is installed, and

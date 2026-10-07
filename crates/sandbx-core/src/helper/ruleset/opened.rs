@@ -33,9 +33,11 @@ pub(in crate::helper) fn open_grant(path: &Path) -> Result<PathFd, SandboxError>
 
 /// The path `fd` actually names, as the kernel spells it.
 ///
-/// `hardening::isolate` unshares no `CLONE_NEWNS`, which this requires and future work may not
-/// take away: in a mount namespace of its own the helper would read a spelling the harness
-/// never granted, and every run would refuse.
+/// A comparison of spellings, so it holds only while a granted path spells the same here as
+/// it did in the harness. A `pivot_root`, an `MS_MOVE` over a granted root, or a bind whose
+/// source is unlinked (`read_link` then appends `" (deleted)"`) makes every grant read back as
+/// something else, refusing the run under a label that names the grant and not the mount that
+/// moved it.
 fn reads_back(fd: &PathFd) -> Result<PathBuf, SandboxError> {
     // A task may always read its own `fd/`, `proc_fd_permission` exempting a same-thread-group
     // reader from `__ptrace_may_access`. Independently, `execve` resets the dumpable flag that

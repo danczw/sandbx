@@ -118,9 +118,11 @@ Five properties matter as much as the list:
   `/proc/self/fd` and refuses the whole run when it names something other than what
   it was told to open (`open_grant` in
   `sandbx-core/src/helper/ruleset/opened.rs`). So a grant whose *own* spelling is
-  redirected is refused rather than opened, and the refusal names both paths. A
-  symlink *inside* a grant is a separate question, under *Not vulnerabilities*
-  below.
+  redirected is refused rather than opened, and the refusal names both paths. What
+  is compared is the path, not the inode: a directory swapped for another real
+  directory under the same name — a `rename(2)`, not a symlink — reads back as the
+  name it was granted. A symlink *inside* a grant is a separate question, under
+  *Not vulnerabilities* below.
 
 ## What sandbx does *not* claim
 
@@ -455,10 +457,10 @@ These are documented behaviour, and reports of them will be closed as such:
 - A command reading or writing the directory you ran `sandbx` from, when you
   passed no path flag. That is the documented default — see *It is default-deny*
   above for what it covers and what it refuses. Under a path flag the command does
-  not start there at all: it starts in the first root the policy grants write on,
-  else the first it grants read on, and inherits sandbx's own directory only where
-  the policy grants neither — a run given execute alone, which is nobody's
-  workspace to begin in.
+  not start there at all: it starts in the first *directory* the policy grants
+  write on, else the first it grants read on, and inherits sandbx's own directory
+  only where the policy names no such directory — a run granted execute alone, or
+  one whose read and write grants are all single files.
 - An agent running a tool call the gate approved — which, as things stand, means
   any call to a tool approved for the run rather than that one call (see *Approval
   is not enforcement* above). That includes a call a prompt injection induced, and
