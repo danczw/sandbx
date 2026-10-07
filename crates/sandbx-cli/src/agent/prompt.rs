@@ -98,8 +98,9 @@ impl Consent {
             }
 
             let mut answer = String::new();
-            // A read error is as final as an end of input: the question cannot be put
-            // again, so nothing it would have approved may run.
+            // A read error is as final as an end of input, and a hangup is the error
+            // case: a controlling terminal revoked mid-run fails the read with `EIO`
+            // where a merely closed one returns 0, so both arms refuse.
             if matches!(input.read_line(&mut answer), Ok(0) | Err(_)) {
                 return deny(CLOSED);
             }

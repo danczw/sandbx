@@ -210,7 +210,12 @@ Five properties matter as much as the list:
   every call to it in that turn runs, including one a prompt injection induced.
   `--approve call` asks you on your terminal before each write and each command
   instead — `y` for the one call, `n` to refuse it, `a` for every later call to
-  that tool — and refuses to start where there is no terminal to ask on. What it
+  that tool — and refuses to start where there is no terminal to ask on. A
+  terminal that goes away *during* a run is fail-closed but unnoticed: the read
+  fails rather than returning an answer, so every remaining call is refused and
+  the account of it falls back to stderr, but the turn runs on, pays for at least
+  one more request, and the process still exits 0
+  ([#218](https://github.com/danczw/sandbx/issues/218)). What it
   shows you is the arguments the model chose, cut at 512 characters: the tail of a
   longer command is not shown, and no answer to the prompt reveals it
   ([#169](https://github.com/danczw/sandbx/issues/169)). The gate narrows *which*
