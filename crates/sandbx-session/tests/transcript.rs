@@ -200,8 +200,8 @@ fn a_turn_with_no_reply_is_refused_not_written() {
     assert_eq!(std::fs::read(session.path()).unwrap(), before);
 }
 
-/// The round trip is the assertion: a batch `append` takes and `resume` refuses would
-/// brick the session from a run that already exited (#188).
+/// The round trip is the assertion: a batch `append` takes and `resume` refuses bricks
+/// the session (#188).
 #[test]
 fn a_turn_out_of_rounds_is_stored_and_read_back() {
     let (_root, store) = store();
@@ -223,8 +223,7 @@ fn a_turn_out_of_rounds_is_stored_and_read_back() {
     assert!(stored.pending_call());
 }
 
-/// Two user turns in a row, which every other shape is refused for: the prompt is sent
-/// merged into the results it answers beside, so the pair never reaches the wire.
+/// Two user turns in a row, legal only because the request merges them into one.
 #[test]
 fn a_prompt_may_follow_the_call_it_answers_beside() {
     let (_root, store) = store();
@@ -250,8 +249,7 @@ fn a_prompt_may_follow_the_call_it_answers_beside() {
     assert!(!stored.pending_call());
 }
 
-/// The exception is one turn of results followed by a prompt, not an answer followed by
-/// another answer — a chain of results nothing asked for is what a hand edit writes.
+/// The exception is results then a prompt, not results then more results.
 #[test]
 fn a_second_turn_of_results_is_still_refused() {
     let (_root, store) = store();

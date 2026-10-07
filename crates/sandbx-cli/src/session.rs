@@ -98,12 +98,11 @@ pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
         .collect()
 }
 
-/// A stored conversation in the shape a request carries it, and the index translation
-/// collapsing it cost.
+/// A stored conversation in the shape a request carries it.
 ///
-/// Two index spaces meet here: the transcript stores every message separately, and the
-/// request carries each run of user messages as one. `withheld` is an *index*, so a figure
-/// crossing between them has to be translated in whichever direction it is going.
+/// Two index spaces meet here: the transcript stores every message separately, the request
+/// carries each run of user messages as one. `withheld` is an *index*, so a figure
+/// crossing between them is translated in whichever direction it is going.
 pub struct Merged {
     /// What the request carries, each run of user messages collapsed into one.
     pub history: Vec<RequestMessage>,
@@ -136,15 +135,12 @@ impl Merged {
 
 /// Collapse each run of consecutive user messages into one.
 ///
-/// A transcript may end on the tool results a turn out of rounds never answered, so the
-/// prompt resuming it is stored as a second user message (#188). Consecutive user
-/// *messages* are what the API rejects, not the unanswered call, and merging their blocks
-/// is what makes the pair sendable — results first, as they are stored and as the API
-/// wants them.
+/// Consecutive user *messages* are what the API rejects, not the unanswered call a turn
+/// out of rounds ends on (#188). Results stay ahead of the prose, which is both the order
+/// they are stored in and the order the API wants them.
 ///
 /// `withheld` arrives in the transcript's index space and comes back in the request's; one
-/// inside a run names the message the run became. `guide-turn-loop.md` is where that
-/// index's exactness is a requirement and not a nicety.
+/// inside a run names the message the run became.
 #[must_use]
 pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged {
     let length = history.len();
@@ -364,8 +360,7 @@ mod tests {
         ));
     }
 
-    /// `withheld` is an index into the history, and merging is the one thing that moves
-    /// the indices after it — so the floor is translated, not carried over.
+    /// Merging moves the indices after a run, so the floor is translated, not carried.
     #[test]
     fn the_floor_names_the_message_it_named_before() {
         for (before, after) in [(0, 0), (1, 1), (2, 2), (3, 2), (4, 3)] {
@@ -375,8 +370,7 @@ mod tests {
         }
     }
 
-    /// The figure a turn reports goes back to a transcript that stores the run apart, so
-    /// the translation has to invert — a merged index names where its run began.
+    /// Inverting it: a merged index names where its run began in the transcript.
     #[test]
     fn a_reported_floor_returns_to_the_stored_index() {
         let merged = merge_user_runs(resumed(), 0);
