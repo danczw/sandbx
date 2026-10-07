@@ -41,6 +41,14 @@ Docs-only, comment-only, or test-rename branches need neither review — but the
 comment pass still applies to a comment-only branch, which is the one case where
 it is the whole diff.
 
+**Check what each review read before believing it.** Both commands collect their
+own diff, and a review working from a different checkout than the branch collects
+an empty one — then reports no findings, which is indistinguishable from a clean
+branch. Two sessions hit exactly that from a `git worktree`. So before acting on
+"no findings", confirm the pass named files the branch actually touched; if it
+named none, state the diff explicitly (`git diff main...HEAD`) and run it again.
+A review over zero lines is not a pass.
+
 The comment pass: read every comment the branch added or touched against
 `context/guide-code-comments.md`, and trim what is over budget. Restatement,
 history, rejected alternatives, narration and prose that belongs in
