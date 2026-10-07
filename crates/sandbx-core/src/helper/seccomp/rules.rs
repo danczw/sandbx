@@ -24,6 +24,18 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     libc::SYS_umount2,
     libc::SYS_pivot_root,
     libc::SYS_chroot,
+    // The same reshaping through the descriptor-based mount API, which reaches it without
+    // calling `mount`: `fsopen` → `fsconfig` → `fsmount` → `move_mount` is a complete mount
+    // sequence, and `mount_setattr` clears `MS_RDONLY` on a mount already there, a
+    // write-enable with no mount at all. `open_tree_attr` belongs here and waits on a libc
+    // bump: the locked libc defines it for no target this builds for, so the gap is deliberate.
+    libc::SYS_open_tree,
+    libc::SYS_move_mount,
+    libc::SYS_fsopen,
+    libc::SYS_fsconfig,
+    libc::SYS_fsmount,
+    libc::SYS_fspick,
+    libc::SYS_mount_setattr,
     // Escape or re-create namespaces, including the netns just entered.
     libc::SYS_setns,
     libc::SYS_unshare,

@@ -22,6 +22,14 @@ const CLAIMED: &[(&str, libc::c_long)] = &[
     ("umount2", libc::SYS_umount2),
     ("pivot_root", libc::SYS_pivot_root),
     ("chroot", libc::SYS_chroot),
+    // The same, through the descriptor-based mount API, which never calls `mount`.
+    ("open_tree", libc::SYS_open_tree),
+    ("move_mount", libc::SYS_move_mount),
+    ("fsopen", libc::SYS_fsopen),
+    ("fsconfig", libc::SYS_fsconfig),
+    ("fsmount", libc::SYS_fsmount),
+    ("fspick", libc::SYS_fspick),
+    ("mount_setattr", libc::SYS_mount_setattr),
     // Escape or re-create namespaces.
     ("setns", libc::SYS_setns),
     ("unshare", libc::SYS_unshare),
