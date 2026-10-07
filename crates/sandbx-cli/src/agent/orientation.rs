@@ -132,10 +132,8 @@ mod tests {
         (dir, named)
     }
 
-    /// The prompt a run with no `--allow-tool` and no `--system` sends.
-    ///
-    /// Never `None`: a run that approved no extra tool still has four tools of seven to
-    /// name, and three it must say are refused.
+    /// The prompt a default run sends. Never `None`: four of the seven tools are always
+    /// approved, so there is always a set to name.
     fn granted(policy: SandboxPolicy) -> String {
         system_prompt(&policy, None, None).expect("the approved tools are always named")
     }
@@ -219,9 +217,8 @@ mod tests {
         );
     }
 
-    /// Against the whole tools sentence and not against the absence of a path: an empty
-    /// root list renders a roots sentence promising a boundary over nothing, which names
-    /// no path either.
+    /// Compared against the whole tools sentence: a roots sentence over an empty list names
+    /// no path either, so a check for one would pass with the guard gone.
     #[test]
     fn a_grant_that_resolves_to_nothing_is_not_named() {
         let prompt = granted(SandboxPolicy::default().allow_read("/no/such/root"));
@@ -294,8 +291,7 @@ mod tests {
         assert!(!prompt.contains("write"), "got {prompt:?}");
     }
 
-    /// A bare `--allow-tool` refuses nothing, so a sentence about the rest describes no run
-    /// — and the request already carries all seven schemas.
+    /// A bare `--allow-tool` refuses nothing, so a sentence about the rest describes no run.
     #[test]
     fn no_tool_is_named_when_every_tool_is_approved() {
         let (work, named) = work();
@@ -318,8 +314,7 @@ mod tests {
         );
     }
 
-    /// The flag is the operator's to pass and the model cannot pass one mid-turn, so it
-    /// reads the flag only in a refusal, where `gate::decide` names it.
+    /// The model cannot pass a flag mid-turn; `gate::decide`'s refusal is where it reads one.
     #[test]
     fn the_prompt_never_names_the_flag_to_the_model() {
         let prompt = granted(SandboxPolicy::default());
