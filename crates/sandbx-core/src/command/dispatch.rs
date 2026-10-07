@@ -71,10 +71,9 @@ where
 
 /// How a helper process announces, on its own stderr, that it refused.
 ///
-/// A const because the parent strips it back off again when it lifts that stderr into
-/// [`SandboxError::HelperRefused`](crate::SandboxError::HelperRefused): the relayed error is
-/// printed by a caller that adds a prefix of its own, and two drift apart if the writer and
-/// the stripper spell it twice.
+/// A const because the parent strips it back off when it lifts that stderr into
+/// [`SandboxError::HelperRefused`], and a writer and a stripper that spell it twice drift
+/// apart.
 pub(crate) const HELPER_FAILURE_PREFIX: &str = "sandbx: sandbox helper failed: ";
 
 /// Dispatch helper mode first, then run `ordinary_main` if this was not one.

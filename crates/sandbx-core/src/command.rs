@@ -129,9 +129,8 @@ impl SandboxedCommand {
     ///
     /// Blocks until the command exits, or — with a [`timeout`](Self::timeout) set — until
     /// the limit expires, which kills it and returns [`SandboxError::TimedOut`]. A helper
-    /// stage that refused instead of reaching the command returns
-    /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
-    /// otherwise indistinguishable from the command's own.
+    /// stage that refused returns [`SandboxError::HelperRefused`] rather than the status it
+    /// exited with, which is indistinguishable from the command's own.
     pub fn output(&self) -> Result<std::process::Output, SandboxError> {
         let (helper, argv) = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
@@ -158,12 +157,9 @@ impl SandboxedCommand {
         }
         .emit();
 
-        // A record replaces a status, never an error: an `Err` here is the parent's own
-        // account of a kill it performed or a spawn it watched fail, and the one thing the
-        // channel must not be able to do is suppress that — the same reason `timeout` and
-        // `spawn_failed` are not labels it admits. So a refusal racing a deadline stays on
-        // the trail as the cause and leaves `TimedOut` to reach the caller, which is the
-        // only one of the two that says retrying longer might work.
+        // A record replaces a status, never an error: an `Err` is sandbx's own account of a
+        // kill it performed, and suppressing that is what keeping `timeout` out of the
+        // admitted set exists to prevent. `context/decision-helper-audit-channel.md`.
         match (result, refused) {
             (Ok(output), Some(refusal)) => Err(refusal.relayed(&output.stderr)),
             (result, _) => result,

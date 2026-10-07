@@ -1,18 +1,17 @@
 //! The closed set of refusals a helper stage reports on the audit channel.
 //!
-//! A subset of what [`SandboxError::label`](crate::SandboxError::label) can return, and the
-//! five it leaves out are the point: a channel record outranks the exit status, so a label
-//! naming a decision the parent or [`FsGuard`](crate::FsGuard) makes for itself would let a
-//! forged line claim an outcome that never happened. The criterion is whether the label names
-//! one decider, not what failed. `context/decision-helper-audit-channel.md`.
+//! A subset of what [`SandboxError::label`](crate::SandboxError::label) returns: a record
+//! outranks the exit status, so admitting one the parent or [`FsGuard`](crate::FsGuard)
+//! decides itself would let a forged line claim an outcome that never happened — the
+//! criterion is one decider, not what failed. `context/decision-helper-audit-channel.md`.
 
 use crate::SandboxError;
 
 /// How much of the helper's stderr a relayed refusal carries.
 ///
-/// It reaches an operator on one line and a model inside a `tool_result`, and nothing
-/// downstream bounds it — `ToolLimits::max_bytes` caps a command's output, not an error's
-/// detail. Four `Display` lines' worth, which is more than any refusal the helper writes.
+/// Nothing downstream bounds it: `ToolLimits::max_bytes` caps a command's output, not an
+/// error's detail, and this reaches a model inside a `tool_result`. Four `Display` lines'
+/// worth, more than any refusal the helper writes.
 const STDERR_LIMIT: usize = 4096;
 
 /// A refusal a helper stage reported for itself, rather than running the command.
@@ -76,10 +75,8 @@ impl HelperRefusal {
 
     /// The name this refusal carries on the wire and in the audit trail.
     ///
-    /// The same word the variant it relays answers
-    /// [`label`](crate::SandboxError::label) with, so a trail filtered by `reason=` cannot
-    /// tell which side of the channel decided it — and a trail is filtered by these strings,
-    /// so they are a compatibility surface.
+    /// The same word the variant it relays answers [`label`](crate::SandboxError::label)
+    /// with, and a trail is filtered by these strings, so they are a compatibility surface.
     pub const fn label(self) -> &'static str {
         match self {
             Self::BadHelperArgs => "bad_helper_args",
@@ -106,14 +103,12 @@ impl HelperRefusal {
 
     /// This refusal as the error the caller gets, carrying what the helper said about it.
     ///
-    /// From the stderr and not the channel: a refusal record carries no detail, so the
-    /// helper's own `Display` is the only prose about it that exists. Truncated on a
-    /// character boundary, and lossily decoded because these bytes are a pipe rather than a
-    /// bounded record.
+    /// From the stderr and not the channel, a refusal record carrying no detail, so the
+    /// helper's own `Display` is the only prose that exists. Lossily decoded because these
+    /// bytes are a pipe rather than a bounded record.
     ///
-    /// [`HELPER_FAILURE_PREFIX`] comes back off because this is a `Display` that a caller
-    /// prefixes again — the CLI prints `sandbx: {error}`, and relaying the helper's own
-    /// announcement verbatim reads as `sandbx: sandbx: sandbox helper failed:`.
+    /// `HELPER_FAILURE_PREFIX` comes back off: this is a `Display` a caller prefixes again,
+    /// and the CLI printing `sandbx: {error}` over it reads as `sandbx: sandbx: `.
     pub(crate) fn relayed(self, stderr: &[u8]) -> SandboxError {
         let relayed = String::from_utf8_lossy(stderr);
         let relayed = relayed.trim();
