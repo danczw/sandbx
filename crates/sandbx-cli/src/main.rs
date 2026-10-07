@@ -20,22 +20,35 @@ fn main() -> std::process::ExitCode {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }
 
-        // Before parsing, so one call covers every subcommand, and inside the closure, so the
-        // flag is sandbx's own and not something a sandboxed command inherits.
+        let command = Cli::parse().command;
+        let failure = failure_code(&command);
+
+        // After parsing, so a refusal here exits with the same code the subcommand's own
+        // errors do, and inside the closure, so the flag is sandbx's own rather than
+        // something a sandboxed command inherits. Nothing has been spawned yet either way.
         if let Err(error) = sandbx_core::conceal_process_state() {
             eprintln!("sandbx: {error}");
-            return std::process::ExitCode::from(1);
+            return std::process::ExitCode::from(failure);
         }
 
-        match Cli::parse().command {
-            Command::SandboxRun(args) => report(args.execute(), 1),
-            Command::AgentRun(args) => report(block_on(args.execute()), 1),
-            Command::Hash(args) => report(args.execute(), 1),
-            // 2, not 1: `auth status` already spends 1 on "no key anywhere", and a script
-            // branching on that must not read a refused file as an absent one.
-            Command::Auth(args) => report(args.execute(), 2),
+        match command {
+            Command::SandboxRun(args) => report(args.execute(), failure),
+            Command::AgentRun(args) => report(block_on(args.execute()), failure),
+            Command::Hash(args) => report(args.execute(), failure),
+            Command::Auth(args) => report(args.execute(), failure),
         }
     })
+}
+
+/// The code an `Err` exits with, for the subcommand and for anything refused ahead of it.
+///
+/// 2 under `auth`, not 1: `auth status` already spends 1 on "no key anywhere", and a script
+/// branching on that must not read a refused file as an absent one.
+fn failure_code(command: &Command) -> u8 {
+    match command {
+        Command::Auth(_) => 2,
+        Command::SandboxRun(_) | Command::AgentRun(_) | Command::Hash(_) => 1,
+    }
 }
 
 /// Turn what a subcommand reported into an exit code, saying why on the way out.

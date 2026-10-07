@@ -80,6 +80,15 @@ re-joining what is left, applied to each side of the comparison. The deepest
 *existing* ancestor and not the whole path, because `canonicalize` needs every
 component to exist and a credential nobody has stored yet does not.
 
+A relative grant is joined to the working directory before any of that, which is
+what the helper opens it against too. Resolving it ancestor by ancestor is not
+enough on its own: the walk bottoms out at the empty path, so a relative grant
+whose *first* component does not exist yet — `--allow-write sandbx` from
+`~/.local/state`, with no transcript saved — would stay relative and match no
+absolute owned path. That is the one spelling in which existence could still have
+decided the verdict, and it is the spelling `--session` creates during the very
+run the policy was derived for.
+
 ## It does not ask whether anything is stored there
 
 The refusal fires on a host with no transcript and no key, exactly as #41's
@@ -116,6 +125,13 @@ flag bypassed all of them before this. So `vetted_root` gains the same arm as th
 per-grant loop, and one rule covers both — the refusal is about what a grant
 reaches, not about how the grant was spelled.
 
+One rule, two messages, and they are different errors on purpose. The derived
+route refused nothing the operator typed, so it reads like its neighbours —
+"refusing to derive a policy from …" — and ends on the shared advice to pass the
+path flags. The flag route cannot end there: advising `--allow-read PATH` to an
+operator whose `--allow-read` was just refused says nothing, so it says what to
+change about the path instead.
+
 ## #192 is a different mechanism, not more of this
 
 An exported key is not on a path sandbx owns. It is in sandbx's own memory and
@@ -142,6 +158,12 @@ sandbx are refused. A failure to set it is a refusal rather than a degradation,
 unlike the capability bounding set — there the bit cannot be spent on any host,
 here the key is exposed on the host where the call failed.
 
+The call sits just after `Cli::parse`, which is what lets the refusal exit with
+the subcommand's own failure code: `auth status` spends 1 on "no key anywhere",
+so a refusal there has to be 2 or a script reads it as an absence. Parsing argv
+exposes nothing, and nothing has been spawned yet either way — what the flag has
+to precede is the first sandboxed command, not the first line of `main`.
+
 The flag is set on the harness and nowhere else. The helper does not set it, and
 `helper/hardening.rs` says why: the kernel resets dumpable on every `execve` of
 an ordinary binary, so it would cover only the helper's pre-exec window. That
@@ -159,8 +181,8 @@ and the helper's own entry is not concealed, which is what the audit channel's
 stored and no session saved, because both roots derive under `$HOME`. Those two
 flags are the ones an operator reaches for when a command needs more than the
 project tree, so this is the change most likely to be met as a regression. The
-message names the grant, the owned path inside it, and what to type instead; the
-answer is to name the trees the command needs.
+message names the grant, the owned path inside it, and what sandbx keeps there;
+the answer is to grant the trees the command needs.
 
 Nothing else narrows. A grant over a project tree, a scratch directory, `/usr`,
 `/tmp` or `/etc` derives exactly what it did before, and no subcommand gained a
