@@ -78,9 +78,6 @@ fn system_and_tools_are_included_when_present() {
 }
 
 /// The shape a wrap-up round sends: the tools stay, and the choice forbids calling one.
-///
-/// Both halves matter on the wire. Dropping the definitions makes the API refuse a
-/// history replaying `tool_use` blocks, and dropping the choice lets the model call one.
 #[test]
 fn a_tool_choice_rides_alongside_the_tools_it_names() {
     let request = MessagesRequest {

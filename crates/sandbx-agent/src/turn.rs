@@ -27,19 +27,19 @@ pub struct Turn<'a> {
     pub system: Option<String>,
     /// The built-ins to offer. An empty slice offers none, not all of them.
     ///
-    /// Not the way to stop a model calling one when [`history`] holds `tool_use` or
-    /// `tool_result` blocks: the API refuses a request that replays those without the
-    /// definitions they name. Keep offering them and set [`tool_choice`] instead.
+    /// Not the way to stop a model calling one: a [`history`] replaying `tool_use` needs
+    /// them defined. Keep them and set [`tool_choice`].
     ///
     /// [`history`]: Self::history
     /// [`tool_choice`]: Self::tool_choice
     pub tools: &'a [BuiltinTool],
 
-    /// Whether the model may call one of [`tools`], passed to the provider unchanged.
+    /// Whether the model may call one of [`tools`]. `None` leaves the choice to it.
     ///
-    /// `None` leaves the choice to the model, which is the API's own default. It bounds
-    /// nothing on its own — [`ApprovalDecision`] is still the only thing between a
-    /// requested call and `sandbx-tools` running it.
+    /// Dropped from the request when `tools` is empty, the API refusing a choice over
+    /// tools nothing defined. Bounds nothing on its own either way —
+    /// [`ApprovalDecision`] is still all that stands between a requested call and
+    /// `sandbx-tools` running it.
     ///
     /// [`tools`]: Self::tools
     /// [`ApprovalDecision`]: crate::ApprovalDecision

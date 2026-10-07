@@ -32,10 +32,8 @@ pub struct MessagesRequest {
 pub enum ToolChoice {
     /// Call none of them, so the reply is prose.
     ///
-    /// Not the same as sending no `tools` at all. The API refuses a request whose
-    /// messages hold `tool_use` or `tool_result` blocks without the definitions those
-    /// blocks name, so a conversation that has used a tool must keep offering it even
-    /// when the next reply must not use one.
+    /// Not the same as sending no `tools`: the API refuses a conversation replaying
+    /// `tool_use` or `tool_result` without the definitions those blocks name.
     None,
 }
 

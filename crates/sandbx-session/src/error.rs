@@ -181,8 +181,8 @@ impl std::fmt::Display for SessionError {
             ),
             Self::Disordered { path } => write!(
                 f,
-                "{} is not in an order the API accepts — it has been edited since sandbx \
-                 wrote it",
+                "{} must open on a user turn, alternate, and end on the model's reply, \
+                 and does not — it has been edited since sandbx wrote it",
                 path.display()
             ),
             Self::IncompleteTurn => write!(
@@ -191,8 +191,9 @@ impl std::fmt::Display for SessionError {
             ),
             Self::DisorderedTurn => write!(
                 f,
-                "the turn is not in an order the API accepts — appending it would leave \
-                 the session unreadable"
+                "the turn must open on a user turn, alternate, and join the stored \
+                 history on the other role, and does not — appending it would leave the \
+                 session unreadable"
             ),
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
         }
