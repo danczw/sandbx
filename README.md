@@ -13,9 +13,10 @@ execution. What it claims, and what it does not, is [SECURITY.md](SECURITY.md).
 
 > **Pre-alpha.** One question from the command line, tools used to answer it, and
 > a conversation you can save and resume. Missing: the interactive surface (no
-> live session, no interrupt) and any per-call approval prompt — a tool is
-> approved for the whole run or not at all, so the grants you pass are the whole
-> of what a prompt injection reaches once it has a tool.
+> live session, no interrupt). A tool is approved for the whole run unless you
+> pass `--approve call`, which asks on your terminal per call; without it the
+> grants you pass are the whole of what a prompt injection reaches once it has a
+> tool.
 >
 > Requires Linux 6.10+ with unprivileged user namespaces. Enforced today:
 > filesystem (Landlock), network (empty netns, or a TCP port allowlist),
@@ -338,10 +339,23 @@ record per refusal:
 2026-10-06T22:05:10.633436Z  INFO sandbx::audit: decision="denied" tool="write" subject="/tmp/outside-grant.txt" reason="outside every writable root"
 ```
 
-The answer streams on stdout; the approved set, then which tool the gate ran and
-which it refused, goes to stderr. Read that first stderr line — it is what makes
+The answer streams on stdout; the approved set, then one line per call saying
+what became of it, goes to stderr. Read that first stderr line — it is what makes
 a misplaced `--` obvious, since `--allow-tool -- write the file` is the bare flag
 plus a prompt.
+
+```console
+sandbx: write /work/notes.md
+sandbx: write /etc/hosts — refused by the policy: outside every writable root
+sandbx: bash — refused: the `bash` tool is not approved for this run: …
+```
+
+To decide each one yourself instead, `--approve call` asks on your terminal
+before every write and every command — `y` for this call, `n` to refuse it, `a`
+for every call to that tool for the rest of the run. Read-only calls are not
+asked about, `--allow-tool` still has to have approved the tool at all, and a run
+with no terminal to ask on refuses to start rather than quietly falling back to
+the per-run answer.
 
 Every run opens by telling the model which roots its tools can reach, and a run
 that refuses a tool names the ones it approved too, so the turn is not spent
@@ -351,6 +365,7 @@ approves all seven names none of them: there is nothing left to refuse.
 | flag | |
 |------|--|
 | `--allow-tool [TOOL]` | approve a tool that does more than read. Repeatable; bare approves all seven |
+| `--approve WHEN`  | `run` (default) takes the answer from `--allow-tool` alone; `call` asks on your terminal per write and per command |
 | `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
 | `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
 | `--max-rounds N`  | cap how many rounds of tool calls one turn may spend. Default 8, plus the wrap-up round below |
@@ -382,11 +397,13 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 | `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. A turn out of rounds is asked once more, a round that may call no tool, so stdout usually holds a summary — one blank line below whatever arrived before the cap, if anything did. stderr says when that round failed instead, and `--no-wrap-up` skips it, leaving stdout with whatever the cap cut off — nothing at all if the model opened with a tool call |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
-> **Nothing asks you before an approved tool call runs.** `--allow-tool` is a
-> decision per tool per run, not per call: approve `bash` and the model runs every
-> command it chooses. The sandbox is the control, not the asking — approve the
-> fewest tools the task needs, grant the narrowest tree that lets it finish, and
-> read [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
+> **By default nothing asks you before an approved tool call runs.**
+> `--allow-tool` is a decision per tool per run, not per call: approve `bash` and
+> the model runs every command it chooses. `--approve call` moves the decision to
+> each call, but it needs a terminal, so an unattended run cannot have it. Either
+> way the sandbox is the control, not the asking — approve the fewest tools the
+> task needs, grant the narrowest tree that lets it finish, and read
+> [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
 >
 > `--allow-env ANTHROPIC_API_KEY` is refused here: sandbx makes the provider call
 > itself, so no tool call needs that value. Every other variable you name is still

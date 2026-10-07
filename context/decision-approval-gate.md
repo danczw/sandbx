@@ -1,31 +1,51 @@
 # The approval gate
 
 What sits between the model asking for a tool and `sandbx-tools` running it, and
-how much it actually claims. Four decisions, one per section.
+how much it actually claims. Five decisions, one per section.
 
-## A closure, not a trait
+## A trait, not a closure
 
 ```rust
-G: FnMut(ToolCall<'_>) -> ApprovalDecision
+pub trait CallGate {
+    fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
+    fn settled(&mut self, call: Settled<'_>);
+}
 ```
 
-`run_turn`'s fifth parameter, beside the two closure seams already there. The
-alternative was an `ApprovalGate` trait with an `async fn`, which is what the
+Still `run_turn`'s fifth parameter and still one generic. It was a bare
+`FnMut(ToolCall<'_>) -> ApprovalDecision`; what made it a trait is that a verdict
+is only half of what a gate has to know, the other half being what became of the
+call it approved (#169). Two methods on one type rather than a sixth parameter,
+which a caller could take the verdict from and leave the report behind. The
+alternative was an `ApprovalGate` trait with an `async fn`, which the
 `async_trait` dependency in the original phase-5 sketch existed for; it is absent
-from the workspace and from `Cargo.lock`, and a closure keeps it absent.
+from the workspace and from `Cargo.lock`, and a sync trait keeps it absent.
 
 | | |
 |---|---|
 | Why not `dyn` | `dyn FnMut` is not `Send`, so taking one makes the whole future unspawnable. `observe` is generic for the same reason — see `guide-turn-loop.md` |
-| Why not a trait | one implementation exists; a closed enum or a closure is the default to beat. A trait buys dispatch over a set that is not open |
+| Why not a new `AgentEvent` | #169 declines one. A settling is not a stream event, and an event would arrive at `observe`, which is the renderer and has no verdict to correlate it against |
 | Why not async | the decision is a caller's, and a caller that needs to await one owns the runtime. An `async` bound here would re-introduce the unnamed-future problem on the gate as well as on `open` |
-| Why mandatory | a defaulted gate is one a caller acquires gate-less by omitting an argument. There is no `run_turn_unchecked` |
-| Why by value | three small fields, one of them `Copy`. A `FnMut(&ToolCall)` bound makes an un-annotated closure hit an HRTB inference edge |
+| Why both methods required | a defaulted reporter is one a caller acquires silently by omitting it — the argument that already made the gate mandatory. There is no `run_turn_unchecked` |
+| Why `ToolCall` by value | three small fields, one of them `Copy`. A `FnMut(&ToolCall)` bound makes an un-annotated closure hit an HRTB inference edge |
+| Why the gate by value | a caller that keeps its own gate lends it instead: `&mut G` has a blanket impl, so the records survive the turn |
 
 `ToolCall` carries the resolved `BuiltinTool`, the call `id` and the `input` the
 model sent, unparsed. `BuiltinTool::risk()` is reachable from the tool, so a gate
 deciding by category needs nothing else; the `input` is there because a gate blind
 to the arguments could never show an operator what the call would do.
+
+`Settled` carries the same `id` and `input` with an `Outcome` — `Unknown`,
+`NotOffered`, `Denied`, `Ran` or `Errored` — and a `name` that is present even
+when nothing resolved it. Three of the five never reach `approve`, which is why
+the report cannot be built from the verdict. It carries the `input` rather than
+expecting the gate to have remembered the call by id, and `Errored` borrows the
+`ToolError` rather than flattening it: the five arms read differently to an
+operator, and a `Display` string would have to be re-parsed to tell a policy
+refusal from a timeout.
+
+`settled` is not called for the one failure that ends the turn. A panicking tool
+is a `TurnError::ToolPanicked` and the round has no result to report.
 
 ## Asked before the spawn, never racing it
 
@@ -51,18 +71,24 @@ the table — which an allow-all gate would then run. A caller offering `[Read, 
 would have had an injected `bash` execute. `an_unknown_name_never_reaches_the_gate`
 and `an_un_offered_tool_never_reaches_the_gate` pin both.
 
-**`approve` must not wait.** It is called on the async task, with no
-`spawn_blocking` of its own. A gate that waits — on an operator, a channel, a lock
-— stalls every other task on the runtime, and on the current-thread runtime
-`sandbx-cli` builds it deadlocks the turn it is deciding. A bounded write is not
-that: `AgentRun::gate` prints a line with `eprintln!`, as `Render` already writes
-stdout from `observe`. The rule is about an unbounded wait, not about touching a
-file descriptor. This is the sharp edge on
-#165: a per-call prompt cannot be a blocking read from inside the gate, because the
-escape hatch in the table above ("a caller that needs to await one owns the
-runtime") means *before* `run_turn` is entered, not inside it. `Handle::block_on`
+**Neither method may wait on the runtime.** Both are called on the async task,
+with no `spawn_blocking` of their own. A gate that waits on anything the runtime
+itself has to drive — a tokio primitive, a channel a task feeds, a lock a task
+holds — stalls every other task on it, and on the current-thread runtime
+`sandbx-cli` builds it deadlocks the turn it is deciding. `Handle::block_on`
 panics in a runtime thread and `blocking_recv` panics in async context, so neither
 is the way out.
+
+A descriptor no task feeds is not that class, which is the narrower rule #165
+needed. `ArgvGate` writes its report with `eprintln!`, as `Render` already writes
+stdout from `observe`, and under `--approve call` it reads the operator's answer
+from `/dev/tty` inside `approve` — unbounded in time, bounded in scheduling.
+During that read nothing else is in flight in `agent-run`: the round's stream has
+ended, its timeout is dropped, and `answer_calls` is sequential. Staying sync is
+what keeps `run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`)
+and keeps RPITIT off the trait. The limit is a precondition on the caller, so
+#133, which drives a UI from the same runtime, has to meet it again rather than
+inherit it.
 
 ## A refusal is a `tool_result`, not a `TurnError`
 
@@ -81,10 +107,11 @@ No audit record either. `AuditEvent::Denied` records what the sandbox refused to
 let a *running* tool touch; a call that never ran touched nothing. The operator's
 record is the stderr line and the transcript's is the `tool_result`.
 
-The stderr line covers the gate's own verdict and nothing after it: a call the gate
-approves and the *policy* then refuses reads on stderr as a call that ran, and the
-two refusals above the gate reach stderr not at all. #169 holds that gap, which
-needs a seam `observe` does not currently have.
+That stderr line is `settled`'s, not `approve`'s, so it covers what became of a
+call rather than only what the gate said about it: a call the gate approves and
+the *policy* then refuses reads as a refusal rather than as one that ran, and the
+two refusals above the gate reach stderr at all (#169). One line per `tool_use`
+block, whichever of the five outcomes it reached.
 
 ## Deny by default, and the honest claim
 
@@ -128,9 +155,31 @@ prevent. `tests/registry.rs` spells the expected levels out by hand: derived fro
 `risk()` the test would assert only self-consistency, and a `bash` reclassified as
 read-only would pass.
 
-**What this is not.** It is a decision per tool per run, not per call. Once
-`--allow-tool bash` is passed, every command the model chooses to run in that turn
-runs, including one a prompt injection induced. That keeps `SECURITY.md`'s standing
-commitment true — a tool call you approve runs; sandbx bounds what it can reach, it
-does not decide whether it should run — and leaves the per-call operator prompt to
-the interactive surface, where there is somewhere to render it (#165, #133).
+## The operator is the floor, argv the ceiling
+
+Argv alone is a decision per tool per run: once `--allow-tool bash` is passed,
+every command the model chooses to run in that turn runs, including one a prompt
+injection induced (#165). `--approve call` adds a second answer below the first —
+one per call, asked on `/dev/tty`, for the tools that write or run a program.
+
+| | |
+|---|---|
+| asked in that order | argv first. A prompt that could only ever be refused is fatigue with no decision in it, and it teaches an operator to answer `y` |
+| why not stdin | stdout carries the model's answer and is piped, and `agent-run`'s prompt comes from argv. `/dev/tty` is the one channel the operator still holds |
+| why read-only is never asked | the twenty-prompt turn #165 describes is what this and the `a` answer exist to avoid, and a `read` has no answer worth taking |
+| why `a` is per tool | an operator who has judged one `write` has judged the tool for the run; carrying it across tools would make a single `a` a bare `--allow-tool` |
+| why the arguments are capped and stripped | they are model-chosen, and a `path` carrying ANSI escapes rewrites the question being answered. Shared with the report, so one strip covers both |
+
+**No consent channel, no consent.** `--approve call` with no `/dev/tty` refuses
+before the first request rather than taking the argv answer. Falling back is
+fail-closed against the default and fail-**open** against the request: an operator
+who passed the flag chose a decision per call, and quietly serving them one per
+run hands the run a weaker regime than they asked for. The refusal names the flag
+to drop, since dropping it is the whole remedy.
+
+**What this is not.** Neither mode decides whether a call *should* happen, only
+whether it may. `SECURITY.md`'s standing commitment holds under both — a tool call
+you approve runs; sandbx bounds what it can reach, it does not judge the intent
+behind it — and an operator answering `y` to a question whose arguments they did
+not read has approved it as surely as a flag would have. #133 is where the same
+question gets a surface with somewhere to render it.
