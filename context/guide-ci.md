@@ -143,6 +143,22 @@ Two traps in that step, both of which have bitten:
 The version compare is hand-rolled and field-wise rather than `sort -V`, which is
 GNU-only; the scripts are `#!/bin/sh` and the self-test runs under `dash`.
 
+### One release run at a time
+
+Reading the published set makes the decision a snapshot, and two `v*` tags pushed
+close together would each take theirs before either published — so the later
+publisher wins and can demote the higher version. `release.yml` therefore groups
+on `github.workflow` **alone**. `ci.yml` groups on workflow-plus-ref and cancels,
+which is the opposite of what a release wants on both keys: the collision here is
+between two different tags, so a per-ref group would not see it, and a half-done
+publish must not be cancelled.
+
+The cost is that `cancel-in-progress: false` queues at most one run per group — a
+third tag pushed while one is publishing and one is queued cancels the queued run,
+which then has to be re-run by hand. That is the trade taken deliberately: a
+cancelled run is visible and repeatable, and a tag that took the "latest" link
+wrongly cannot be un-pushed.
+
 ## Pinned actions, and what updates them
 
 Every action is pinned to a SHA with a `# vX.Y.Z` comment beside it. Dependabot

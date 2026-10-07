@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Workflow-wide, not per-ref as in ci.yml: the race is between two *tags*, each
+# reading the published release set before either has published into it.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_NET_RETRY: 0
