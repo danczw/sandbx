@@ -218,6 +218,19 @@ pub enum SandboxError {
         /// What is missing, for the operator to act on.
         detail: &'static str,
     },
+
+    /// The policy bounds which names resolve and also leaves a nameserver reachable, so it
+    /// would bound nothing while reporting as applied.
+    ///
+    /// The one combination that is worse than either half: the files are bound, the audit
+    /// trail records a name count, and every name resolves anyway.
+    /// [`SandboxPolicy::unbounded_resolution`] names the shape.
+    ///
+    /// [`SandboxPolicy::unbounded_resolution`]: crate::SandboxPolicy::unbounded_resolution
+    UnboundedResolution {
+        /// Which route to a nameserver is still open, for the operator to close.
+        detail: &'static str,
+    },
 }
 
 impl std::fmt::Display for SandboxError {
@@ -241,6 +254,9 @@ impl std::fmt::Display for SandboxError {
             }
             Self::Unsupported { detail } => {
                 write!(f, "sandboxing is not available here: {detail}")
+            }
+            Self::UnboundedResolution { detail } => {
+                write!(f, "a name allowlist would bound nothing here: {detail}")
             }
             Self::BadHelperArgs { detail } => {
                 write!(f, "malformed sandbox helper arguments: {detail}")
@@ -328,6 +344,7 @@ impl std::error::Error for SandboxError {
         match self {
             Self::PathNotAllowed { .. }
             | Self::Unsupported { .. }
+            | Self::UnboundedResolution { .. }
             | Self::BadHelperArgs { .. }
             | Self::Landlock { .. }
             | Self::GrantRedirected { .. }
@@ -378,6 +395,7 @@ impl SandboxError {
             // reader greps for.
             Self::TimedOut { .. } => "timeout",
             Self::Unsupported { .. } => "unsupported",
+            Self::UnboundedResolution { .. } => "unbounded_resolution",
         }
     }
 }
@@ -459,6 +477,7 @@ mod tests {
                 after: std::time::Duration::from_secs(1),
             },
             SandboxError::Unsupported { detail: "sample" },
+            SandboxError::UnboundedResolution { detail: "sample" },
             // `Landlock` because it is the refusal whose label collides, so an edit giving
             // the relay a label of its own fails `no_two_variants_share_a_label` instead of
             // passing it.
@@ -488,6 +507,7 @@ mod tests {
                 | SandboxError::PinnedScript { .. }
                 | SandboxError::TimedOut { .. }
                 | SandboxError::HelperRefused { .. }
+                | SandboxError::UnboundedResolution { .. }
                 | SandboxError::Unsupported { .. } => {}
             }
         }
@@ -579,6 +599,7 @@ mod tests {
                     | SandboxError::SpawnFailed { .. }
                     | SandboxError::HelperRefused { .. }
                     | SandboxError::ProcessConcealment { .. }
+                    | SandboxError::UnboundedResolution { .. }
                     | SandboxError::TimedOut { .. }
             );
 

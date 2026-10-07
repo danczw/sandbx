@@ -244,6 +244,52 @@ impl SandboxPolicy {
         !self.dns_names.is_empty()
     }
 
+    /// Why this policy's name allowlist would bound nothing, or `None` if it bounds what it
+    /// says.
+    ///
+    /// A name allowlist beside a reachable nameserver is the one combination that reports as
+    /// applied and holds nothing: the three files go in, `Spawned` records `dns_names`, and
+    /// the command asks a resolver that answers for every name. So it is refused rather than
+    /// recorded — here, where [`SandboxedCommand`] and `HelperArgs::decode` both reach it,
+    /// and not only in the CLI that used to own all of it. `SECURITY.md`'s claim is made at
+    /// this level, so it has to be decidable at this level.
+    ///
+    /// A detail and not a bool, each shape reaching a nameserver by its own route. The CLI
+    /// refuses the same four with a message naming the flag to drop, and one more of its own
+    /// — a name allowlist with no egress at all bounds resolution to addresses nothing can
+    /// reach, which is pointless rather than unenforceable.
+    ///
+    /// [`SandboxedCommand`]: crate::SandboxedCommand
+    pub fn unbounded_resolution(&self) -> Option<&'static str> {
+        if !self.bounds_resolution() {
+            return None;
+        }
+
+        if self.dns_over_tcp {
+            return Some(
+                "a name allowlist asks no nameserver and `--dns-over-tcp` asks one for every \
+                 name",
+            );
+        }
+
+        // glibc asks nscd over `/var/run/nscd/socket` before it reads `nsswitch.conf`, on a
+        // path gated by a flag only `__nss_configure_lookup` sets — so the rendered file
+        // cannot turn it off, and one pathname socket is every pathname socket.
+        if self.unix_sockets {
+            return Some("a local resolver answers over a pathname socket, asked before nsswitch");
+        }
+
+        match &self.network {
+            NetworkPolicy::AnyPort => {
+                Some("every port is allowlisted, so the command reaches a nameserver by IP literal")
+            }
+            NetworkPolicy::Ports(ports) if ports.contains(&NAMESERVER_PORT) => {
+                Some("port 53 is allowlisted, so a nameserver answers for every name")
+            }
+            NetworkPolicy::Ports(_) | NetworkPolicy::Denied => None,
+        }
+    }
+
     /// Let the process inherit the variable called `name`.
     ///
     /// An empty name, or one containing `=` or a NUL, is skipped and not refused, so nothing
@@ -397,6 +443,9 @@ impl SandboxPolicy {
 /// a presentation-form name. Bounded at all because the argv carrying the names has
 /// `MAX_ARG_STRLEN` to fit under.
 pub const DNS_NAME_LIMIT: usize = 253;
+
+/// The port a nameserver answers on, which a bounded policy may not allowlist.
+pub const NAMESERVER_PORT: u16 = 53;
 
 /// Whether `name` is one the helper can both carry and render.
 ///

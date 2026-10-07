@@ -600,3 +600,31 @@ fn a_second_pin_flag_is_refused() {
         "refused for the wrong reason: {refusal:?}"
     );
 }
+
+/// `encode` never emits this pair — the harness refuses the policy before it spawns — so an
+/// argv carrying it did not come from sandbx, which is what `BadHelperArgs` means. The one
+/// check that cannot be made inside the loop: either flag alone is legitimate.
+#[test]
+fn an_argv_pairing_a_name_with_a_nameserver_is_refused() {
+    for (flag, value, expected) in [
+        ("--allow-unix-sockets", None, "pathname socket"),
+        ("--allow-network-port", Some("53"), "port 53"),
+        ("--dns-over-tcp", None, "--dns-over-tcp"),
+    ] {
+        let mut args = vec!["--allow-dns-name".to_string(), "example.com".to_string()];
+        args.push(flag.to_string());
+        args.extend(value.map(str::to_string));
+        args.extend(["--".to_string(), "/bin/true".to_string()]);
+
+        let refusal = HelperArgs::decode(&args)
+            .expect_err(&format!("{flag} was accepted beside a name allowlist"));
+
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail } if detail.contains(expected)
+            ),
+            "{flag} was refused for the wrong reason: {refusal:?}"
+        );
+    }
+}

@@ -154,9 +154,17 @@ not claim: a stub resolver reads an RCODE, a shell script reads the exit code.
 **It is also indistinguishable from a typo**, which `REFUSED` was chosen to
 avoid, and that is the cost. It is paid where the operator is: `sandbox.rs`'s
 advice names `--allow-dns NAME` as the first of the two answers, and the
-refusals in `Grants::policy` catch the shapes where the flag is the wrong one
-before the run starts. The fifth of those is `--allow-unix-sockets`, which is
-not about IP at all: glibc asks nscd over `/var/run/nscd/socket` *before* it
+refusals catch the shapes where the flag is the wrong one before the run
+starts. Four of them are decided on the policy itself
+(`SandboxPolicy::unbounded_resolution`), so an embedder calling
+`SandboxedCommand` meets them and not only an operator typing flags, and
+`HelperArgs::decode` refuses an argv carrying one. `Grants::policy` keeps all
+five for their messages; the one it owns alone is a name allowlist with no
+egress at all, which bounds resolution to addresses nothing can reach and is
+pointless rather than unenforceable.
+
+The refusal that is not about IP at all is `--allow-unix-sockets`: glibc asks
+nscd over `/var/run/nscd/socket` *before* it
 reads `nsswitch.conf`, the rendered file cannot turn that off, and
 `--allow-unix-sockets` is one boolean over every pathname socket.
 
