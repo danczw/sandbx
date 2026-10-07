@@ -122,6 +122,27 @@ fn a_miss_outside_every_root_is_not_an_absence() {
     assert!(!lines[0].contains("decision=absent"), "got: {}", lines[0]);
 }
 
+/// A dangling symlink in a granted root is in-grant by its own spelling and out of grant
+/// by where it points, and `absent` there would read as "this host path does not exist"
+/// for whatever target the agent chose. The one place the trail could still be an oracle.
+#[cfg(unix)]
+#[test]
+fn an_absence_behind_a_symlink_is_not_an_absence() {
+    let root = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let probe = root.path().join("probe");
+    std::os::unix::fs::symlink(elsewhere.path().join("gone.txt"), &probe).unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let lines = capture(|| {
+        let _ = guard.check_read(&probe);
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
+    assert!(!lines[0].contains("decision=absent"), "got: {}", lines[0]);
+}
+
 /// `decision=` records the access, and a check is not one (#182).
 #[test]
 fn a_check_that_opens_nothing_records_nothing() {

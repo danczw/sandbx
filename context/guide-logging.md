@@ -72,7 +72,9 @@ Three consequences a reader of the trail depends on:
   grant (#180).
 - **`absent` never escapes a grant.** A path missing *outside* every root stays a
   `denied`, indistinguishable from any other refusal. Naming the absence there
-  would hand back over the trail exactly what the refusal conceals.
+  would hand back over the trail exactly what the refusal conceals — and a grant
+  is judged on an ancestor, so a symlink below it is out of grant however
+  in-bounds the spelling looks. `reaches_plainly` is what holds that line.
 
 What separates the two is `names_nothing` — ENOENT, ENOTDIR, ENAMETOOLONG — with
 one errno read the other way. On the leaf of a directory read, ENOTDIR says the

@@ -31,19 +31,32 @@ back makes the guard a filesystem oracle, and the refusal travels inside a
 refusal outside the roots is therefore the same refusal.
 
 `conceal_unless_granted` is the one exception, and it has a single rule: the
-nearest ancestor that *does* resolve decides. Inside a granted root the caller
-could enumerate the directory anyway, so absence there is honest, and it is
-`SandboxError::NotFound`, which `sandbx-tools` maps to `ToolError::Failed` rather
-than `Denied` (#180) and the trail records as `absent` (#187). Outside a grant it
-is a `denied` like any other: naming the absence there would disclose over the
-trail what the refusal conceals.
+nearest ancestor that *does* resolve decides, **and must speak for the path
+below it.** It does not if a symlink sits in between: the link is in-grant by
+spelling and its target is anywhere, so a dangling one planted in a granted root
+would answer "does this host path exist" for any target the agent names — the
+oracle in the shape the ancestor rule alone cannot see. `reaches_plainly`
+therefore conceals anything reached through a symlink, and a `..` with it, which
+leaks nothing but would print an out-of-grant path as an absence's subject. So a
+symlink in a grant is refused the way an out-of-bounds path is, whatever stopped
+it: `within` tests a *resolved* path, and one that will not resolve is inside no
+root. That costs the loop case a precise reason, which is the price of the three
+failures reading alike.
+
+Where the ancestor does speak for the path, the caller could enumerate the
+directory anyway, so absence there is honest, and it is `SandboxError::NotFound`,
+which `sandbx-tools` maps to `ToolError::Failed` rather than `Denied` (#180) and
+the trail records as `absent` (#187). Outside a grant it is a `denied` like any
+other: naming the absence there would disclose over the trail what the refusal
+conceals.
 
 What counts as absence is `names_nothing`: ENOENT, ENOTDIR and ENAMETOOLONG, by
 errno because `ErrorKind` cannot spell the last one. The line is what the agent
-can act on — a wrong name is its to fix — so EACCES from a `000` directory and
-the `ELOOP` of a swapped leaf keep `Unresolvable`, and keep their `denied`
-record. Narrowing it to ENOENT alone sent a path through a regular file back as
-a refusal, which is #180's own failure mode one errno over.
+can act on — a wrong name is its to fix — so EACCES from a `000` directory keeps
+`Unresolvable` and its `denied` record. Narrowing it to ENOENT alone sent a path
+through a regular file back as a refusal, which is #180's own failure mode one
+errno over — except on the leaf of a directory read, where ENOTDIR says the leaf
+*is* a file and `listed_nothing` drops it.
 
 Both entry points go through the gate. `check_write` resolves the parent, not the
 leaf, and reports the path the caller asked for rather than the parent that
