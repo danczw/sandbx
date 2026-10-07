@@ -112,6 +112,18 @@ pub enum PolicyError {
         holds: &'static str,
     },
 
+    /// A relative path flag could not be resolved, the working directory it is relative to
+    /// being unreadable.
+    ///
+    /// Separate from [`Unavailable`](Self::Unavailable), whose advice is to pass the path
+    /// flags: here they were passed, and what is missing is an absolute spelling.
+    UnresolvableGrant {
+        /// The path as the flag gave it.
+        granted: PathBuf,
+        /// Why the working directory could not be read.
+        source: std::io::Error,
+    },
+
     /// A no-flag run was made from a working directory reaching one of those paths.
     ///
     /// Separate from [`GrantReachesOwned`](Self::GrantReachesOwned): the operator granted
@@ -224,6 +236,12 @@ impl std::fmt::Display for PolicyError {
                 granted.display(),
                 owned.display()
             ),
+            Self::UnresolvableGrant { granted, source } => write!(
+                f,
+                "refusing to grant {}: it is relative, and the working directory to resolve \
+                 it against could not be read: {source} — write the grant as an absolute path",
+                granted.display()
+            ),
             Self::CwdReachesOwned { cwd, owned, holds } if cwd == owned => write!(
                 f,
                 "refusing to derive a policy from {}, where sandbx keeps {holds} and the \
@@ -268,7 +286,9 @@ impl std::error::Error for PolicyError {
             | Self::CwdReachesOwned { .. }
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
-            Self::Unavailable { source, .. } => Some(source),
+            Self::Unavailable { source, .. } | Self::UnresolvableGrant { source, .. } => {
+                Some(source)
+            }
         }
     }
 }

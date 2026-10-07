@@ -222,7 +222,7 @@ fn vetted_root<'a>(
 
     // The default grants write over the cwd, and inside the session directory the cwd is the
     // history — #173 with no flag.
-    if let Some(found) = reaches_owned(cwd, owned) {
+    if let Some(found) = reaches_owned(cwd, owned, &|| Ok(cwd.to_path_buf()))? {
         return Err(PolicyError::CwdReachesOwned {
             cwd: cwd.to_path_buf(),
             owned: found.path.clone(),
@@ -301,29 +301,39 @@ fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
 /// `canonicalize` needs the whole path to exist and a credential nobody has stored yet does
 /// not, so comparing canonical forms alone would miss the host where `/home` links to
 /// `/var/home` — Fedora Silverblue — and let the unresolved spelling through.
-fn resolved(path: &Path) -> PathBuf {
+fn resolved(
+    path: &Path,
+    cwd: &impl Fn() -> std::io::Result<PathBuf>,
+) -> Result<PathBuf, PolicyError> {
     // The cwd first, since that is what the helper opens a relative grant against and the
     // walk below bottoms out at the empty path: a missing first component would stay relative.
+    // A cwd that cannot be read refuses rather than standing in as nothing, which would leave
+    // the grant matching no owned path (#203).
     let path = &if path.is_absolute() {
         path.to_path_buf()
     } else {
-        std::env::current_dir().unwrap_or_default().join(path)
+        cwd()
+            .map_err(|source| PolicyError::UnresolvableGrant {
+                granted: path.to_path_buf(),
+                source,
+            })?
+            .join(path)
     };
 
     for (depth, ancestor) in path.ancestors().enumerate() {
         if let Ok(base) = ancestor.canonicalize() {
-            return path
+            return Ok(path
                 .components()
                 .rev()
                 .take(depth)
                 .collect::<Vec<_>>()
                 .iter()
                 .rev()
-                .fold(base, |resolved, name| resolved.join(name));
+                .fold(base, |resolved, name| resolved.join(name)));
         }
     }
 
-    path.clone()
+    Ok(path.clone())
 }
 
 /// The path in `owned` that `granted` reaches, if it reaches one.
@@ -331,13 +341,21 @@ fn resolved(path: &Path) -> PathBuf {
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
 /// one naming something inside it both reach it. Both sides go through [`resolved`], so one
 /// symlinked spelling cannot reach what the other is refused for.
-fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
-    let granted = resolved(granted);
+fn reaches_owned<'a>(
+    granted: &Path,
+    owned: &'a [OwnedPath],
+    cwd: &impl Fn() -> std::io::Result<PathBuf>,
+) -> Result<Option<&'a OwnedPath>, PolicyError> {
+    let granted = resolved(granted, cwd)?;
 
-    owned.iter().find(|owned| {
-        let path = resolved(&owned.path);
-        path.starts_with(&granted) || granted.starts_with(&path)
-    })
+    for owned in owned {
+        let path = resolved(&owned.path, cwd)?;
+        if path.starts_with(&granted) || granted.starts_with(&path) {
+            return Ok(Some(owned));
+        }
+    }
+
+    Ok(None)
 }
 
 /// [`vetted_root`] over this process's own state.
@@ -415,7 +433,7 @@ impl Grants {
             for path in self.paths(axis) {
                 // Outside the branch above: every other path refusal guards only the derived
                 // default, which is why a flag bypassed all of them.
-                if let Some(found) = reaches_owned(path, &owned) {
+                if let Some(found) = reaches_owned(path, &owned, &std::env::current_dir)? {
                     return Err(PolicyError::GrantReachesOwned {
                         granted: path.clone(),
                         owned: found.path.clone(),
@@ -546,6 +564,13 @@ mod tests {
     /// The owned paths a host with this `$HOME` and nothing else set would have.
     fn owned_under(home: &str) -> Vec<OwnedPath> {
         owned_paths(&env(&[("HOME", home)]))
+    }
+
+    /// Whether `granted` reaches one of `owned`, the cwd a test runs from being readable.
+    fn reaches(granted: impl AsRef<Path>, owned: &[OwnedPath]) -> bool {
+        reaches_owned(granted.as_ref(), owned, &std::env::current_dir)
+            .expect("a readable working directory")
+            .is_some()
     }
 
     #[test]
@@ -956,7 +981,7 @@ mod tests {
 
         for granted in ["/home/u", "/home/u/.config", "/home/u/.local/state"] {
             assert!(
-                reaches_owned(Path::new(granted), &owned).is_some(),
+                reaches(granted, &owned),
                 "{granted} reached no owned path, so the grant would be honoured"
             );
         }
@@ -974,7 +999,7 @@ mod tests {
             "/home/u/.config/sandbx/credentials.toml",
         ] {
             assert!(
-                reaches_owned(Path::new(granted), &owned).is_some(),
+                reaches(granted, &owned),
                 "{granted} reached no owned path, so the grant would be honoured"
             );
         }
@@ -991,7 +1016,7 @@ mod tests {
             "/home/other/.config/sandbx",
         ] {
             assert!(
-                reaches_owned(Path::new(granted), &owned).is_none(),
+                !reaches(granted, &owned),
                 "{granted} was taken for an owned path"
             );
         }
@@ -1017,7 +1042,7 @@ mod tests {
             }
 
             assert!(
-                reaches_owned(&grants.paths(axis)[0], &owned).is_some(),
+                reaches(&grants.paths(axis)[0], &owned),
                 "{axis:?} reached no owned path"
             );
         }
@@ -1036,7 +1061,7 @@ mod tests {
         let relative = config.join("..").join("sandbx");
 
         assert!(
-            reaches_owned(&relative, &owned).is_some(),
+            reaches(&relative, &owned),
             "{} reached no owned path once resolved",
             relative.display()
         );
@@ -1053,8 +1078,46 @@ mod tests {
         }];
 
         assert!(
-            reaches_owned(Path::new("nothing-stored-yet"), &owned).is_some(),
+            reaches("nothing-stored-yet", &owned),
             "a relative grant naming no existing directory reached no owned path"
+        );
+    }
+
+    /// A working directory nothing can read, for the one spelling that needs one.
+    fn no_cwd() -> impl Fn() -> std::io::Result<PathBuf> {
+        || Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+    }
+
+    /// Standing in a deleted directory left a relative grant joined to nothing, which reached
+    /// no owned path and so was honoured (#203).
+    #[test]
+    fn an_unreadable_cwd_refuses_a_relative_grant() {
+        let owned = owned_under("/home/u");
+
+        let error = reaches_owned(Path::new("sandbx"), &owned, &no_cwd())
+            .expect_err("a relative grant with no working directory to resolve it against");
+
+        assert!(
+            matches!(error, PolicyError::UnresolvableGrant { .. }),
+            "{error} is not the unresolvable-grant refusal"
+        );
+        assert!(
+            error.to_string().contains("absolute path"),
+            "{error} does not say what to write instead"
+        );
+    }
+
+    /// The other half of #203: an invocation that typed absolute flags depends on no cwd, so
+    /// an unreadable one must not refuse it.
+    #[test]
+    fn an_absolute_grant_needs_no_cwd() {
+        let owned = owned_under("/home/u");
+
+        assert!(
+            reaches_owned(Path::new("/srv/app"), &owned, &no_cwd())
+                .expect("an absolute grant resolves without a working directory")
+                .is_none(),
+            "an ordinary absolute grant reached an owned path"
         );
     }
 
@@ -1072,7 +1135,7 @@ mod tests {
         let owned = owned_paths(&env(&[("HOME", link.to_str().expect("a UTF-8 home"))]));
 
         assert!(
-            reaches_owned(&real, &owned).is_some(),
+            reaches(&real, &owned),
             "the real path reached no owned path named through the link"
         );
     }
