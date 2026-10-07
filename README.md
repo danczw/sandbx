@@ -85,8 +85,14 @@ overlapping the system binaries, which already have execute. With no usable
 `HOME` — unset, empty or pointing nowhere, as under a systemd unit, cron or
 `docker exec` — any *direct child* of those locations is refused too. Every
 refusal names the flags to type instead, and `--allow-read PATH` with
-`--allow-write PATH` lifts any of them: the guard governs what `sandbx` derives,
+`--allow-write PATH` lifts any of them: that guard governs what `sandbx` derives,
 never what you ask for.
+
+One refusal does govern what you ask for, and no flag lifts it: a path you grant
+may not reach what sandbx keeps its own state under — the session store, and the
+credential file `auth login` writes — whether or not anything is stored there
+yet. `--allow-read ~` and `--allow-read /` are refused on both run subcommands
+for that reason, and the message names the owned path the grant reached.
 
 A directory holding the `sandbx` binary is *not* refused, so a no-flag run from
 an install prefix such as `~/.local/bin` grants write there. The helper is
@@ -242,8 +248,10 @@ reach either, naming the `chmod` that fixes it rather than fixing it silently.
 was refused, so a script can tell "log in" apart from "something is wrong".
 
 Exporting the variable wins over the stored key, so you can override it for one
-shell without logging out. The stored key is plaintext, and a read grant over
-your config directory reaches it — see [SECURITY.md](SECURITY.md).
+shell without logging out. The stored key is plaintext, and a path grant that
+would reach it — `--allow-read ~/.config`, or the file's own path — is refused
+rather than honoured; an exported one is kept out of a `/proc` grant by sandbx
+concealing its own procfs entry. See [SECURITY.md](SECURITY.md).
 
 ## Try the agent
 
@@ -316,7 +324,9 @@ sandbx agent-run --session 1z8k3p7q -- 'what number did I ask you to remember?'
 A session is a plaintext JSONL transcript under `$XDG_STATE_HOME/sandbx/sessions`
 (or `~/.local/state/sandbx/sessions`), created `0600` in a `0700` directory, and
 it holds whatever a tool read into the conversation. Resuming one another user
-can write is refused; one they can only read resumes and says so on stderr.
+can write is refused; one they can only read resumes and says so on stderr. A
+path grant reaching that directory is refused too, so no tool gets write over
+the history it is part of.
 Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 
 | `agent-run` exit | means |
@@ -333,9 +343,11 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 >
 > `--allow-env ANTHROPIC_API_KEY` is refused here: sandbx makes the provider call
 > itself, so no tool call needs that value. Every other variable you name is still
-> passed in full, so that is the flag to think twice about. A stored key is not in
-> the harness's environment at all, but it is on disk under your config directory,
-> where a read grant reaches it instead.
+> passed in full, so that is the flag to think twice about. The two paths sandbx
+> keeps its own state under — the session store and the stored credential — are
+> refused to a path flag, on this subcommand and on `sandbox-run` alike, so
+> `--allow-read ~` and `--allow-read /` no longer derive a policy. Name the trees
+> the command needs.
 
 ## Install
 

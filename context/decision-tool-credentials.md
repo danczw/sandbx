@@ -147,8 +147,9 @@ and the procfs one (#192) are not simply more of this, and why neither is
 subtractable either: Landlock composes rules by union with no exclusion form, as
 `decision-default-policy.md` records in rejecting a carve-out for the enforcer
 binary. The question both leave open is the same one — what the harness does when
-a grant it was given contains something the harness itself owns — and it is not
-answered here.
+a grant it was given contains something the harness itself owns — and
+`decision-harness-owned-paths.md` answers it, on both subcommands, under this
+rule.
 
 ## By name, and without asking the environment
 
@@ -183,19 +184,22 @@ and `ANTHROPIC_API_KE` all still derive a policy.
 ## What the refusal does not close
 
 The `--allow-env` route, which is narrower than "the environment" and has to be
-said that way round. Two others reach the same key and neither is a flag the
-refusal reads:
+said that way round. Two others reach the same key, neither is a flag this
+refusal reads, and each is closed by a mechanism of its own in
+`decision-harness-owned-paths.md`:
 
 - A key written by `sandbx auth login` lives under the config home, so a read
-  grant covering it hands the file to a tool — #184. `SECURITY.md` has disclosed
-  that route in prose since before the refusal existed; closing it is a separate
-  enforcement step with the same shape as #173's session root.
+  grant covering it would hand the file to a tool — #184. What closes it is a path
+  refusal of the same shape as #173's session root, not this check: the route is
+  decidable only by comparing paths, which is why it had to be answered for both
+  subcommands at once.
 - A key the operator *exported* is in the harness's environment, and the harness
   is not sandboxed while procfs is the host's, so a filesystem grant reaching
-  `/proc` reaches `/proc/<harness-pid>/environ` — #192. This is not specific to a
-  credential — it is the reason `SECURITY.md` says not to grant `/proc` at all —
-  but a reader who takes the refusal as "the environment is handled" has the wrong
-  conclusion, so the bullet says both.
+  `/proc` would reach `/proc/<harness-pid>/environ` — #192. That one is not closed
+  by any refusal: the harness conceals its own procfs entry, because `/proc` is a
+  path `sandbox-run` may legitimately need. A reader who takes *this* refusal as
+  "the environment is handled" still has the wrong conclusion, since every other
+  same-uid process's `environ` is reachable through a `/proc` grant.
 
 And handing a tool a credential it legitimately needs is still unanswered. Nothing
 above is a mechanism for it. `gh` in `bash` with a real token has exactly one
