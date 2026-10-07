@@ -135,11 +135,19 @@ cost the whole conversation, unresumable until somebody hand-edited it. A line
 that parses badly *with* a newline after it was written whole and still refuses.
 
 A transcript must be empty or end on an assistant message, and no two
-neighbouring messages may share a role. `append` checks the end, which is all it
-can break; `resume` checks the whole history, because a hand-edited file can hold
+neighbouring messages may share a role. Both halves are checked on the way in and
+again on the way out. `append` checks the batch and the join between it and what
+is stored; `resume` checks the whole history, because a hand-edited file can hold
 a pair of user turns anywhere and the API rejects an interior pair exactly as it
-rejects a trailing one — a session otherwise bricked by a run that exited zero. A
-turn carrying *no* messages is neither of those things: it leaves the last role
+rejects a trailing one — a session otherwise bricked by a run that exited zero.
+
+The two guards have to agree, and for a while they did not: `append` checked only
+the end, on the reasoning that the end was all it could break. It could also
+join its first message onto a stored one of the same role, or carry an interior
+pair of its own. The file is append-only, so either one is written and then
+refused by every later resume, with nothing to undo it.
+
+A turn carrying *no* messages is neither of those things: it leaves the last role
 where it was, so it writes its accounting line and nothing else, which is what
 keeps the figure a blockless first round reported. A caller that prepends its own
 prompt — `agent-run` does — is refused instead, and re-measures the prompt when

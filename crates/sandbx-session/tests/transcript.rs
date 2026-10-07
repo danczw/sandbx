@@ -166,6 +166,61 @@ fn a_turn_with_no_reply_is_refused_not_written() {
     assert_eq!(std::fs::read(session.path()).unwrap(), before);
 }
 
+/// `resume` refuses two turns of the same role in a row, and the file is append-only, so
+/// a batch that lands that way cannot be taken back out — every later resume would refuse
+/// a transcript written by a run that exited zero.
+#[test]
+fn a_turn_that_would_be_unreadable_is_refused() {
+    let (_root, store) = store();
+    let mut session = store.create().unwrap();
+    session
+        .append(CompletedTurn {
+            messages: &exchange("hi", "hello"),
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap();
+    let before = std::fs::read(session.path()).unwrap();
+
+    // Settled, and alternating on its own, but it joins a stored assistant message onto
+    // another one.
+    let joined = session
+        .append(CompletedTurn {
+            messages: &[said(Role::Assistant, "unprompted")],
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap_err();
+
+    // Checked within the batch too: this one follows the stored history cleanly and is
+    // still a pair the API rejects.
+    let inside = session
+        .append(CompletedTurn {
+            messages: &[
+                said(Role::User, "first"),
+                said(Role::User, "second"),
+                said(Role::Assistant, "which?"),
+            ],
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap_err();
+
+    assert!(
+        matches!(joined, SessionError::DisorderedTurn),
+        "got {joined:?}"
+    );
+    assert!(
+        matches!(inside, SessionError::DisorderedTurn),
+        "got {inside:?}"
+    );
+    assert_eq!(std::fs::read(session.path()).unwrap(), before);
+
+    // The point of refusing before the write: what `append` turned away, `resume` still
+    // reads.
+    assert_eq!(store.resume(session.id()).unwrap().messages().len(), 2);
+}
+
 #[test]
 fn two_sessions_never_take_the_same_id() {
     let (_root, store) = store();

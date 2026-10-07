@@ -270,9 +270,19 @@ impl Session {
     /// Refuses a turn not ending on an assistant message, since the next resume would
     /// send two user turns in a row. A turn with no messages leaves the last role where
     /// it was, so it writes its accounting line and nothing else.
+    ///
+    /// Both of [`SessionStore::resume`]'s conditions are checked here, over the batch and
+    /// over its boundary with what is stored. The file is append-only, so one that lands
+    /// disordered cannot be taken back out: it would be refused by every later resume,
+    /// after a run that exited zero.
     pub fn append(&mut self, turn: CompletedTurn<'_>) -> Result<(), SessionError> {
-        if !turn.messages.is_empty() && !settled(turn.messages) {
-            return Err(SessionError::IncompleteTurn);
+        if !turn.messages.is_empty() {
+            if !settled(turn.messages) {
+                return Err(SessionError::IncompleteTurn);
+            }
+            if !alternating(turn.messages) || !follows(&self.messages, turn.messages) {
+                return Err(SessionError::DisorderedTurn);
+            }
         }
 
         let mut records: Vec<Record> = turn
@@ -324,6 +334,16 @@ impl Session {
 /// [`settled`] also pins the first message as the user's.
 fn alternating(messages: &[Message]) -> bool {
     messages.windows(2).all(|pair| pair[0].role != pair[1].role)
+}
+
+/// True when `batch` can follow `stored` without putting two turns of the same role
+/// together — the one join [`alternating`] cannot see, each half being alternating alone.
+fn follows(stored: &[Message], batch: &[Message]) -> bool {
+    match (stored.last(), batch.first()) {
+        (Some(last), Some(first)) => last.role != first.role,
+        // Nothing to join: a first batch, or an empty one.
+        _ => true,
+    }
 }
 
 /// True when the history ends where a conversation may be left: on the model's reply.

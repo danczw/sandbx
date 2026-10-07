@@ -104,6 +104,13 @@ pub enum SessionError {
     /// send two user turns in a row and brick the session from a run that exited zero.
     IncompleteTurn,
 
+    /// The turn holds two messages of the same role in a row, or joins the stored history
+    /// on the role it ends with. [`Disordered`] is the same defect found on the way back
+    /// in, by which time the write cannot be undone.
+    ///
+    /// [`Disordered`]: Self::Disordered
+    DisorderedTurn,
+
     /// An operation on the store's files failed.
     Io {
         /// What was being read or written.
@@ -180,6 +187,11 @@ impl std::fmt::Display for SessionError {
                 f,
                 "the turn did not end with an assistant reply, so there is nothing to append"
             ),
+            Self::DisorderedTurn => write!(
+                f,
+                "the turn holds two messages of the same role in a row, which the API \
+                 rejects — appending it would leave the session unreadable"
+            ),
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
         }
     }
@@ -202,7 +214,8 @@ impl std::error::Error for SessionError {
             | Self::Symlink { .. }
             | Self::ForeignOwner { .. }
             | Self::Disordered { .. }
-            | Self::IncompleteTurn => None,
+            | Self::IncompleteTurn
+            | Self::DisorderedTurn => None,
         }
     }
 }
