@@ -121,8 +121,8 @@ Five properties matter as much as the list:
   redirected is refused rather than opened, and the refusal names both paths. What
   is compared is the path, not the inode: a directory swapped for another real
   directory under the same name — a `rename(2)`, not a symlink — reads back as the
-  name it was granted. A symlink *inside* a grant is a separate question, under
-  *Not vulnerabilities* below.
+  name it was granted; pinning the inode is #212. A symlink *inside* a grant is a
+  separate question, under *Not vulnerabilities* below.
 
 ## What sandbx does *not* claim
 
