@@ -136,6 +136,20 @@ pub enum PolicyError {
         source: SandboxError,
     },
 
+    /// A path flag resolved to one path when the refusals were checked and to another when
+    /// the pin was taken, so the grant is not the one that was judged (#212).
+    ///
+    /// Only a path moving mid-run reaches this: both resolutions are a `canonicalize` of the
+    /// same name, so they agree unless a component changed between them.
+    GrantMovedWhileVetting {
+        /// The path as the flag gave it, which is what the operator can go and change.
+        granted: PathBuf,
+        /// What it named when the path refusals ran.
+        checked: PathBuf,
+        /// What it named a moment later, when it was pinned.
+        vetted: PathBuf,
+    },
+
     /// A no-flag run was made from a working directory reaching one of those paths.
     ///
     /// Separate from [`GrantReachesOwned`](Self::GrantReachesOwned): the operator granted
@@ -253,7 +267,7 @@ impl std::fmt::Display for PolicyError {
                  sandbox-run, where the program and its arguments are yours"
             ),
             // No `ADVICE` through here: the flags it names are the ones just refused, so these
-            // three arms say what to change about them instead.
+            // arms say what to change about them instead.
             Self::GrantReachesOwned {
                 granted,
                 owned,
@@ -287,6 +301,19 @@ impl std::fmt::Display for PolicyError {
                 "refusing to grant {}: {source} — a grant is checked against the object it \
                  named, so name a path that exists",
                 granted.display()
+            ),
+            Self::GrantMovedWhileVetting {
+                granted,
+                checked,
+                vetted,
+            } => write!(
+                f,
+                "refusing to grant {}: it named {} when the path refusals were checked and \
+                 {} a moment later, so what would be granted is not what was judged — run \
+                 it again, from a tree nothing else is rewriting underneath you",
+                granted.display(),
+                checked.display(),
+                vetted.display()
             ),
             Self::CwdReachesOwned { cwd, owned, holds } if cwd == owned => write!(
                 f,
@@ -366,6 +393,7 @@ impl std::error::Error for PolicyError {
             | Self::ImposedVariable { .. }
             | Self::HarnessCredential { .. }
             | Self::GrantReachesOwned { .. }
+            | Self::GrantMovedWhileVetting { .. }
             | Self::CwdReachesOwned { .. }
             | Self::DnsWithResolverHint
             | Self::DnsWithEveryPort
