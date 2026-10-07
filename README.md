@@ -240,7 +240,12 @@ all.
 It needs a host where an unprivileged user namespace may mount. A kernel that
 restricts them — `kernel.apparmor_restrict_unprivileged_userns=1`, Ubuntu's
 default since 24.04 — denies `CAP_SYS_ADMIN` inside the namespace it just let
-you create, so the run is refused rather than left resolving every name.
+you create, so the run is refused rather than left resolving every name. The
+way out that stays narrow is an AppArmor profile for the `sandbx` binary
+carrying `userns,`, which restores the unshare for `sandbx` and nothing else.
+`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` also works and
+is the worse of the two: it lifts the restriction for every program on the
+host, not just this one.
 
 Or leave every name resolvable, over TCP, which is what a port allowlist leaves
 room for:
