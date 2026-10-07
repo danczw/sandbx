@@ -46,11 +46,11 @@ pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxEr
 
 /// Make `/` and everything under it private, recursively.
 ///
-/// Before any bind of ours, so what the command reads is this namespace's own however the host
-/// propagates: `unshare` leaves a shared `/` a *slave*, which receives the host's mount events
-/// and sends none back, and `MS_PRIVATE` makes that the guarantee rather than a consequence of
-/// how the namespace was copied. `MS_REC`, the type being per mount and `/etc` possibly a mount
-/// of its own.
+/// Two things, both before any bind of ours. It stops a mount the host makes *later* from
+/// appearing inside: `unshare` leaves a shared `/` a slave, and a slave still receives its
+/// master's events. And it makes the outbound half ours rather than a side effect of the copy —
+/// a shared `/` is turned slave only because the user namespace was unshared in the same call.
+/// `MS_REC`, the type being per mount and `/etc` possibly a mount of its own.
 ///
 /// `EACCES` as much as `EPERM`: a host restricting unprivileged user namespaces — Ubuntu's
 /// `kernel.apparmor_restrict_unprivileged_userns` — lets the `unshare` succeed and then denies
