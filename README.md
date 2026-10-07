@@ -320,7 +320,7 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 | `agent-run` exit | means |
 |---|---|
 | `0` | the model finished its answer |
-| `2` | a bound cut the turn short: what reached stdout is real but incomplete, and stderr names the bound — `--max-tokens` or `--max-rounds` |
+| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Stdout holds the text that arrived before it, which is nothing at all if the model opened with a tool call |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
 > **Nothing asks you before an approved tool call runs.** `--allow-tool` is a
