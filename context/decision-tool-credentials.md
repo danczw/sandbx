@@ -32,7 +32,9 @@ Every component of it belongs to #145 — the listener the command can reach, th
 interception that catches an uncooperative program, the TLS termination that makes
 the allowlist about names, and the resolver that answers for those names. That
 issue already owns the resolver on the grounds that it should not be built twice.
-The credential half is a section of its design note, not a second mechanism.
+`decision-egress-proxy.md` prices all four and reaches the same verdict from the
+destination side: substitution leaves with the termination it needs to read a
+request, and the resolver is the one piece left standing.
 
 Nor is the dependency free. No crate depends on a server-side HTTP stack; hyper
 arrives only through `wiremock`, a dev-dependency, and `tokio`'s `net` feature is
