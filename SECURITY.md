@@ -425,12 +425,13 @@ These are documented behaviour, and reports of them will be closed as such:
   `ls`, and the agent has to tell a wrong filename from a refused one. Outside
   every granted root, absence and refusal stay indistinguishable.
 
-  A symlink *inside* the grant is the edge of that claim: resolution follows it,
-  so an in-grant name pointing out of the roots reports whether its target
-  exists — "could not find" where it does not, the uniform refusal where it
-  does. The probe is one bit about a path you did not grant, and planting the
-  symlink needs write access the six in-process tools do not have. `bash` has it
-  and needs no symlink: Landlock has no access right over path resolution, so
+  A symlink *inside* the grant does not widen that. Resolution follows it, so an
+  in-grant name pointing out of the roots is in the grant only by its spelling:
+  the six in-process tools refuse it as out of bounds whether its target exists,
+  is missing, or sits behind an unreadable directory, so the refusal reports
+  nothing about a path you did not grant (#187). A symlink loop inside the grant
+  is refused the same way, which is the cost of the three reading alike. `bash`
+  needs no symlink: Landlock has no access right over path resolution, so
   `test -e` answers for any path already.
 - A command *reading* a path the CLI granted write on — whether you typed
   `--allow-write` or the working-directory default derived it. The CLI grants read
