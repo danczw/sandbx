@@ -144,9 +144,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # Two statements: the default shell has no `pipefail`, so piping `gh`
-          # into the script would report the script's status and hide a failed API
-          # call as an empty release set — which answers `true`.
+          # Two statements, not a pipe: the default shell has no `pipefail`, so a
+          # failed API call would read as an empty release set, answering `true`.
           gh api --paginate "repos/$GH_REPO/releases" \
             --jq '.[] | select(.draft == false) | .tag_name' > published.txt
           # A call that succeeds and matches nothing answers `true` unchallenged.

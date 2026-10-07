@@ -4,9 +4,8 @@
 
 set -eu
 
-# Nine digits at most, because these fields reach `[ -gt ]`: a wider number is
-# not orderable by any POSIX shell, and a shell that cannot order it reports a
-# parse error rather than a comparison.
+# Nine digits at most because these fields reach `[ -gt ]`, which on a wider
+# number reports a parse error rather than an order — and `if` reads that as "no".
 num='(0|[1-9][0-9]{0,8})'
 
 # Only an exact 1.0-or-later version may become "latest"; anything else,
@@ -21,25 +20,23 @@ channel() {
   fi
 }
 
-# Whether a tag carries a version this script can place in order at all. Every
-# unrecognised shape classifies `prerelease`, so without this a published tag
-# `latest` cannot parse would be skipped as harmless and read as "nothing higher
-# is published".
+# Whether a tag carries a version this script can order. Asked apart from
+# `channel` because an unrecognised shape classifies `prerelease`, and skipping
+# one as a non-rival would read as "nothing higher is published".
 known() {
   printf '%s' "${1#v}" \
     | grep -qE "^$num\.$num\.$num(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?\$"
 }
 
-# Build metadata is excluded from semver precedence, so it comes off before any
-# comparison.
+# Build metadata is excluded from semver precedence, so it comes off first.
 core() {
   c="${1#v}"
   echo "${c%%+*}"
 }
 
-# Hand-rolled because `sort -V` is GNU-only and this is /bin/sh. Both arguments
-# have passed `channel`, so every field is digits only, has no leading zero and is
-# at most nine wide — which is what makes a field-wise `[ -gt ]` safe here.
+# Hand-rolled because `sort -V` is GNU-only and this is /bin/sh. Field-wise
+# `[ -gt ]` is safe only because both arguments have passed `channel`: digits
+# only, no leading zero, at most nine wide.
 higher_of() {
   a="${1#*.}"; a_min="${a%%.*}"
   b="${2#*.}"; b_min="${b%%.*}"
@@ -51,17 +48,15 @@ higher_of() {
   echo "$2"
 }
 
-# Whether $1 may take GitHub's "latest" link, against the already-published tags
-# on stdin. Takes the set as input rather than querying it: everything in
-# .github/scripts/ has to run without a workflow, so the API call stays in
-# release.yml and the self-test below can feed this a table.
+# Whether $1 may take GitHub's "latest" link, against the published tags on
+# stdin. Takes the set as input rather than querying it because `.github/scripts/`
+# must run without a workflow; see `context/guide-ci.md`.
 latest() {
   if [ "$(channel "$1")" != release ]; then echo false; return 0; fi
   mine="$(core "$1")"
   verdict=true
-  # The second test is for an unterminated final line, which `read` assigns before
-  # reporting EOF: `gh api --jq` terminates its last record, a hand-fed `printf`
-  # need not.
+  # `read` assigns an unterminated final line before reporting EOF, and a
+  # hand-fed stream need not terminate its last one.
   while read -r other || [ -n "$other" ]; do
     [ -n "$other" ] || continue
     if ! known "$other"; then
@@ -135,9 +130,8 @@ nightly - false
 v2.0.1 v2.0 error
 v1.0.1 v1.0.9999999999 error
 ROWS
-  # Once through argv with a redirect, the way release.yml calls it. The table
-  # above pipes into the function, so a `verdict` confined to a subshell passes
-  # there and fails only in production.
+  # Once through argv with a redirect, the way release.yml calls it: the table
+  # above pipes into the function, so it never reaches the dispatch arm.
   got="$("$0" --latest v1.5.1 <<'ONE'
 v2.0.0
 ONE
