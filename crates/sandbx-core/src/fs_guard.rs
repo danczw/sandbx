@@ -136,9 +136,25 @@ impl FsGuard {
     /// verdict and the trail.
     pub fn read_dir(&self, path: &Path) -> Result<std::fs::ReadDir, SandboxError> {
         let resolved = self.check_read(path)?;
-        let entries = std::fs::read_dir(&resolved).map_err(|source| classify(source, path));
+        let subject = path.display().to_string();
 
-        record(entries, Access::Read, path)
+        match std::fs::read_dir(&resolved) {
+            Ok(entries) => {
+                crate::AuditEvent::allowed(Access::Read.operation(), &subject).emit();
+                Ok(entries)
+            }
+            // Not through `record`, whose absence line is `names_nothing`: ENOTDIR there
+            // means a path through a regular file, but here it means the leaf is one, and
+            // `check_read` just resolved it. Only a deletion inside the window is absence,
+            // and a directory that turned out to be a file was never listed either — so of
+            // the three records, the only true one is none.
+            Err(source) => {
+                if source.raw_os_error() == Some(libc::ENOENT) {
+                    crate::AuditEvent::absent(Access::Read.operation(), &subject).emit();
+                }
+                Err(classify(source, path))
+            }
+        }
     }
 
     /// Open `path` for writing, creating or truncating it; closes the check-to-open window
