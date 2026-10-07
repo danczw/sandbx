@@ -6,7 +6,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxError, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{
+    AUDIT_TARGET, AuditEvent, FsGuard, SandboxError, SandboxPolicy, SandboxedCommand,
+};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -79,6 +81,20 @@ fn records_a_refusal_with_its_reason() {
     let line = &lines[0];
     assert!(line.contains("decision=denied"), "got: {line}");
     assert!(line.contains("outside every readable root"), "got: {line}");
+}
+
+/// No policy objected, so there is no verdict to record: `denied` would name a refusal
+/// that never happened and `allowed` a file nothing read.
+#[test]
+fn an_in_grant_miss_records_no_denial() {
+    let root = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let lines = capture(|| {
+        let _ = guard.check_read(&root.path().join("absent.txt"));
+    });
+
+    assert!(lines.is_empty(), "got: {lines:?}");
 }
 
 /// Audit that only appears under `RUST_LOG=debug` is off for everyone who did

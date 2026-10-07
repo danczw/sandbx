@@ -47,12 +47,12 @@ impl FsGuard {
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
-        match canonicalize(path) {
+        match path.canonicalize() {
             Ok(resolved) => permit(resolved, &self.readable, path, Access::Read),
             // Why a path failed to resolve is information: ENOENT against EACCES over
             // arbitrary paths reads back as a map of the host.
-            Err(unresolved) => {
-                Err(self.conceal_unless_granted(path, unresolved, &self.readable, Access::Read))
+            Err(source) => {
+                Err(self.conceal_unless_granted(path, source, &self.readable, Access::Read))
             }
         }
     }
@@ -61,11 +61,12 @@ impl FsGuard {
     ///
     /// The nearest ancestor that does resolve decides: inside an allowed root the caller was
     /// already entitled to know what is there, so "no such file" is honest. Anywhere else
-    /// the refusal is indistinguishable from any other.
+    /// the refusal is indistinguishable from any other. Absence inside a grant is no
+    /// verdict, so it gets no record; `allowed` would name a file nothing read.
     fn conceal_unless_granted(
         &self,
         requested: &Path,
-        unresolved: SandboxError,
+        source: std::io::Error,
         roots: &[PathBuf],
         access: Access,
     ) -> SandboxError {
@@ -76,16 +77,23 @@ impl FsGuard {
             .is_some_and(|existing| within(&existing, roots));
 
         let subject = requested.display().to_string();
-        if grants_area {
-            crate::AuditEvent::denied(access.operation(), &subject, "path does not resolve").emit();
-            return unresolved;
+        if !grants_area {
+            crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
+            return SandboxError::PathNotAllowed {
+                requested: requested.to_path_buf(),
+                access,
+            };
         }
 
-        crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
-        SandboxError::PathNotAllowed {
-            requested: requested.to_path_buf(),
-            access,
+        let requested = requested.to_path_buf();
+        // A granted area can still refuse the lookup: a `000` directory resolves EACCES,
+        // which is a refusal and not an absence.
+        if source.kind() == std::io::ErrorKind::NotFound {
+            return SandboxError::NotFound { requested, source };
         }
+
+        crate::AuditEvent::denied(access.operation(), &subject, "path does not resolve").emit();
+        SandboxError::Unresolvable { requested, source }
     }
 
     /// Open `path` for reading, refusing anything the policy does not allow.
@@ -239,7 +247,7 @@ impl FsGuard {
 fn canonical_roots<'a>(roots: impl IntoIterator<Item = &'a Path>) -> Vec<PathBuf> {
     roots
         .into_iter()
-        .filter_map(|root| canonicalize(root).ok())
+        .filter_map(|root| root.canonicalize().ok())
         .collect()
 }
 
