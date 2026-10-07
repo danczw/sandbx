@@ -228,10 +228,8 @@ impl Default for TurnLimits {
 /// executing it. [`CallGate::approve`] is asked once per resolved call, before it runs, and
 /// an [`ApprovalDecision::Deny`] is recoverable within [`TurnLimits::max_rounds`] rather
 /// than a [`TurnError`]. Neither an unknown name nor one outside [`Turn::tools`] reaches
-/// it, both being refused above the gate — but all of them reach
-/// [`CallGate::settled`], which sees every call in the round once. Neither method may wait
-/// on what the runtime drives; see the trait. `context/decision-approval-gate.md` has the
-/// rest.
+/// it, both being refused above the gate — but both reach [`CallGate::settled`], which sees
+/// every call in the round once. `context/decision-approval-gate.md` has the rest.
 ///
 /// [`ApprovalDecision::Deny`]: crate::ApprovalDecision::Deny
 ///

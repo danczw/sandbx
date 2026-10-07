@@ -1,9 +1,8 @@
 //! What [`run_turn`] asks before it runs a tool call, and what it reports once the call is
 //! done with.
 //!
-//! One trait, two methods, both required: the loop knows what happened to every call and a
-//! caller is the only thing that can tell an operator. See
-//! `context/decision-approval-gate.md` for the granularity, which is a caller's to choose.
+//! Two methods, both required: the loop knows what became of every call and a caller is the
+//! only thing that can tell an operator. `context/decision-approval-gate.md` has the rest.
 //!
 //! [`run_turn`]: crate::run_turn
 
@@ -73,15 +72,13 @@ pub enum Outcome<'a> {
 
 /// What sits between the model and a tool.
 ///
-/// Mandatory, so a gate-less loop cannot be had by omitting an argument, and
-/// [`settled`](Self::settled) is required for the same reason: a defaulted reporter is one
-/// a caller acquires silently.
+/// Mandatory, and [`settled`](Self::settled) required rather than defaulted: a reporter a
+/// caller acquires by omitting an argument is one nobody chose.
 ///
 /// Both methods run on the async task with no `spawn_blocking` of theirs, so neither may
 /// wait on anything *the runtime drives* — a tokio primitive, a channel a task feeds, a
 /// lock a task holds — which on a current-thread runtime deadlocks the turn being decided.
-/// Blocking on a descriptor no task feeds is outside that, and is how `sandbx-cli` asks an
-/// operator per call; see `context/guide-turn-loop.md`.
+/// A descriptor no task feeds is outside that, and is how `sandbx-cli` asks per call.
 pub trait CallGate {
     /// Whether this call may run, asked before the tool is spawned and never racing it.
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision;

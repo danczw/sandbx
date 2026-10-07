@@ -18,10 +18,12 @@ use super::gate;
 /// prompt arrives on argv, so neither end is free to hold a conversation.
 const TTY: &str = "/dev/tty";
 
-/// Reset the graphic rendition, written before each question.
+/// Reset the graphic rendition, written before anything sandbx puts on this device.
 ///
-/// Not part of the question itself, so the text the strip covers stays free of escapes:
-/// this one is sandbx's own, on a real terminal only.
+/// The model's answer streams to the same terminal and may leave an SGR state behind —
+/// concealed, or black on black — so a question and an account of a call both start from a
+/// known one, and a later sink owes the same. Written outside the text the strip covers,
+/// this escape being sandbx's own.
 const RESET: &str = "\x1b[0m";
 
 /// The flag that asks per call.
@@ -68,8 +70,8 @@ impl Consent {
     /// Ask about one call, writing the question to `out` and reading the answer from
     /// `input`.
     ///
-    /// The two ends are arguments rather than fields so the whole exchange is drivable;
-    /// opening the real device is [`Terminal::open`], which is the uncovered part.
+    /// The two ends are arguments rather than fields so the exchange is drivable; opening
+    /// the real device ([`Terminal::open`]) is the uncovered part.
     fn ask(
         &mut self,
         call: ToolCall<'_>,
@@ -96,8 +98,8 @@ impl Consent {
             }
 
             let mut answer = String::new();
-            // A read error is as final as an end of input: either way the question
-            // cannot be put again, so nothing it would have approved may run.
+            // A read error is as final as an end of input: the question cannot be put
+            // again, so nothing it would have approved may run.
             if matches!(input.read_line(&mut answer), Ok(0) | Err(_)) {
                 return deny(CLOSED);
             }
@@ -109,8 +111,7 @@ impl Consent {
                     self.blanket.push(call.tool);
                     return ApprovalDecision::Allow;
                 }
-                // Asked again rather than read as either answer: a typo is not consent,
-                // and reading one as a refusal trains an operator to retype blind.
+                // Asked again rather than read as either answer: a typo is not consent.
                 _ => {}
             }
         }
@@ -135,9 +136,8 @@ fn deny(reason: &str) -> ApprovalDecision {
 
 /// Write one account of a call to stderr, from a known graphic rendition.
 ///
-/// The reset only when stderr is a terminal: the model's answer streams to stdout, usually
-/// this same device, so a concealing SGR in it would hide every later line — but `2>
-/// run.log` would otherwise carry the escape into the log instead.
+/// `RESET` only when stderr is a terminal: `2> run.log` would carry the escape into the
+/// log.
 pub(super) fn to_stderr(line: &str) {
     if std::io::stderr().is_terminal() {
         eprintln!("{RESET}{line}");
@@ -149,8 +149,8 @@ pub(super) fn to_stderr(line: &str) {
 /// The operator, as the gate reaches them: asked about a call, then told what became of
 /// it.
 ///
-/// A trait so [`gate::ArgvGate`]'s order — argv first, the terminal only after — is
-/// testable without a terminal: a fake records whether it was asked at all.
+/// A trait so that [`gate::ArgvGate`] asking argv first is testable without a terminal: a
+/// fake records whether it was asked at all.
 pub(super) trait Operator {
     /// Whether this call may run, as the operator answered.
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
@@ -158,8 +158,7 @@ pub(super) trait Operator {
     /// Tell the operator what became of one call, where they were asked about it.
     ///
     /// Both directions on one channel or neither: stderr is as redirectable as stdout, so
-    /// an operator reading the report there would answer the next call without having seen
-    /// what this one did.
+    /// an operator reading it there would answer call N+1 blind to what call N did.
     fn report(&mut self, line: &str);
 }
 
@@ -176,10 +175,9 @@ impl Terminal {
     ///
     /// # Errors
     ///
-    /// Fails with `ENXIO` when the process has no controlling terminal — under `setsid`,
-    /// or in a job runner. That is what [`APPROVE_CALL`] refuses the run over rather than
-    /// serving it the argv answer: an operator who asked to decide per call was not
-    /// offered the weaker regime.
+    /// Fails with `ENXIO` when the process has no controlling terminal — under `setsid`, or
+    /// in a job runner. [`APPROVE_CALL`] refuses the run over it rather than quietly
+    /// serving the weaker argv answer.
     pub(super) fn open() -> std::io::Result<Self> {
         let tty = File::options().read(true).write(true).open(TTY)?;
 
@@ -193,16 +191,12 @@ impl Terminal {
     /// Drop whatever was typed before the question is asked.
     ///
     /// Canonical mode queues a finished line until something reads it, so an answer typed
-    /// earlier is returned by the next read as the answer to *this* call. The model's own
-    /// prose reaches this device too, so a counterfeit question printed in the round's
-    /// text can harvest a `y` the operator believes they gave something else — the gate
-    /// reads inside `approve`, which fixes *which* call consumes an answer but not which
-    /// question earned it.
+    /// earlier — at a counterfeit question in the model's own prose, which reaches this
+    /// device too — is returned by the next read as the answer to *this* call.
     ///
     /// Both layers go: `tcflush` clears the kernel queue, and one read can deliver several
     /// lines, so [`BufReader`] may already hold a later one. Either alone leaves the path
-    /// open. A flush also drops an answer typed early in good faith, which re-asking
-    /// covers.
+    /// open.
     ///
     /// # Errors
     ///
@@ -219,8 +213,8 @@ impl Terminal {
 
     /// The same terminal over a device already open, for the pty fixture.
     ///
-    /// [`Terminal::open`] is the only route a run takes. This exists because what the
-    /// drain clears is the kernel's own input queue, which no in-memory reader has.
+    /// Needed because what the drain clears is the kernel's own input queue, which no
+    /// in-memory reader has. [`Terminal::open`] is the only route a run takes.
     #[cfg(test)]
     fn on(device: File) -> std::io::Result<Self> {
         Ok(Self {
@@ -240,22 +234,20 @@ impl Operator for Terminal {
             return deny(UNCLEARED);
         }
 
-        // The model's answer streams to this same device and may leave an SGR state behind
-        // — concealed, or black on black — so the question is written from a known one. A
-        // failed write is not handled here: the question's own write fails too, and denies.
+        // From a known rendition, per `RESET`. A failed write is not handled here: the
+        // question's own write fails too, and denies.
         let _ = self.out.write_all(RESET.as_bytes());
 
         self.consent.ask(call, &mut self.input, &mut self.out)
     }
 
     fn report(&mut self, line: &str) {
-        // Reset for the same reason the question is: the model's text reached this device
-        // too, and a concealing SGR left behind would hide the operator's only account of
-        // what ran. One write, so the reset cannot land without the line it covers.
+        // Per `RESET`, the account as much as the question: concealing the record of what
+        // ran is the same attack one line later. One write, so the reset cannot land
+        // without the line it covers.
         if writeln!(self.out, "{RESET}{line}").is_err() {
-            // The fallback the question has no use for: a refusal reaches the model, but a
-            // dropped account reaches nobody, and the last call of a run has no later
-            // question whose own failure would stand in for it (#218).
+            // Unlike a question, a dropped account reaches nobody — and the last call of a
+            // run has no later question whose own failure would stand in for it (#218).
             to_stderr(line);
         }
     }
