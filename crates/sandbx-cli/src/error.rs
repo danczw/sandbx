@@ -11,8 +11,8 @@ use sandbx_session::SessionError;
 
 pub use auth::AuthError;
 
-/// What to type instead, appended to every [`PolicyError`] about the working directory so
-/// two refusals cannot advise differently.
+/// What to type instead, appended to every [`PolicyError`] that refused the derived default
+/// so two of them cannot advise differently. A refusal of a flag says what to change about it.
 const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
                       for the tree the command needs";
 
@@ -212,8 +212,8 @@ impl std::fmt::Display for PolicyError {
                  a process the model chose the arguments for — drop the flag, or use \
                  sandbox-run, where the program and its arguments are yours"
             ),
-            // No `ADVICE`: the flags it names are the ones that were just refused, so this
-            // pair says what to change about them instead.
+            // No `ADVICE` through here: the flags it names are the ones just refused, so these
+            // three arms say what to change about them instead.
             Self::GrantReachesOwned {
                 granted,
                 owned,
