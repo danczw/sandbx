@@ -361,6 +361,58 @@ fn write_refusals_outside_the_policy_look_alike() {
     );
 }
 
+/// A refusal and an absence are different next moves: widen the grant, or fix the name.
+#[test]
+fn a_missing_file_in_a_grant_is_not_a_refusal() {
+    let root = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let error = guard
+        .check_read(&root.path().join("absent.txt"))
+        .unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::NotFound { .. }),
+        "got {error:?}"
+    );
+}
+
+/// The invariant the variant's name does not carry: absence is reported only where a grant
+/// already covers the area.
+#[test]
+fn a_missing_path_outside_a_grant_is_a_refusal() {
+    let allowed = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+
+    let error = guard
+        .check_read(&elsewhere.path().join("absent.txt"))
+        .unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::PathNotAllowed { .. }),
+        "absence leaked outside every grant: {error:?}"
+    );
+}
+
+/// A grant covers the area, so the path is not concealed — but a loop is the guard
+/// declining to resolve it, not a name the caller can fix.
+#[cfg(unix)]
+#[test]
+fn an_unresolvable_path_in_a_grant_is_not_absent() {
+    let root = tempfile::tempdir().unwrap();
+    let looped = root.path().join("loop");
+    std::os::unix::fs::symlink(&looped, &looped).unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let error = guard.check_read(&looped).unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::Unresolvable { .. }),
+        "got {error:?}"
+    );
+}
+
 /// The policy already grants this directory, so reporting a file in it absent discloses
 /// nothing the caller was not entitled to learn.
 #[test]

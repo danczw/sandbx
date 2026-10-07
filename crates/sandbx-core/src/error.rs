@@ -56,6 +56,18 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
+    /// A path inside a granted root does not exist, so no policy objected to it.
+    ///
+    /// Returned only where the roots already cover the area: elsewhere absence is concealed
+    /// as [`PathNotAllowed`](Self::PathNotAllowed), ENOENT against EACCES over arbitrary
+    /// paths reading back as a map of the host.
+    NotFound {
+        /// The path as the caller supplied it.
+        requested: PathBuf,
+        /// The underlying `ErrorKind::NotFound` failure.
+        source: std::io::Error,
+    },
+
     /// The helper process was given argv it could not parse. Not parsed best-effort: a
     /// policy other than the one sandbx intended is the failure the sandbox prevents.
     BadHelperArgs {
@@ -182,6 +194,9 @@ impl std::fmt::Display for SandboxError {
                     requested.display()
                 )
             }
+            Self::NotFound { requested, source } => {
+                write!(f, "could not find {}: {source}", requested.display())
+            }
             Self::TimedOut { after } => {
                 write!(f, "command exceeded its {after:?} limit and was killed")
             }
@@ -254,6 +269,7 @@ impl std::error::Error for SandboxError {
             | Self::PinnedScript { .. }
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. }
+            | Self::NotFound { source, .. }
             | Self::SpawnFailed { source, .. }
             | Self::InnerStageFailed { source, .. }
             | Self::PinUnreadable { source, .. }
@@ -292,6 +308,7 @@ impl SandboxError {
         match self {
             Self::PathNotAllowed { .. } => "path_not_allowed",
             Self::Unresolvable { .. } => "unresolvable",
+            Self::NotFound { .. } => "not_found",
             Self::BadHelperArgs { .. } => "bad_helper_args",
             Self::Landlock { .. } => "landlock",
             Self::Seccomp { .. } => "seccomp",
@@ -348,6 +365,12 @@ mod tests {
                 requested: PathBuf::from("/sample"),
                 source: io(),
             },
+            // Its own kind, not `io()`: the variant is only ever built behind an
+            // `ErrorKind::NotFound` gate.
+            SandboxError::NotFound {
+                requested: PathBuf::from("/sample"),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            },
             SandboxError::BadHelperArgs { detail: "sample" },
             SandboxError::Landlock {
                 detail: "sample".to_string(),
@@ -390,6 +413,7 @@ mod tests {
             match error {
                 SandboxError::PathNotAllowed { .. }
                 | SandboxError::Unresolvable { .. }
+                | SandboxError::NotFound { .. }
                 | SandboxError::BadHelperArgs { .. }
                 | SandboxError::Landlock { .. }
                 | SandboxError::Seccomp { .. }
@@ -439,6 +463,7 @@ mod tests {
             "spawn_failed",
             "path_not_allowed",
             "unresolvable",
+            "not_found",
         ] {
             assert_eq!(
                 SandboxError::reportable_label(label),
