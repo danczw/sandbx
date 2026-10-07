@@ -180,14 +180,22 @@ run hands the run a weaker regime than they asked for. The refusal names the fla
 to drop, since dropping it is the whole remedy.
 
 **The model's answer shares that terminal.** stdout is usually the same device,
-and it streams before the gate asks, so the model can leave an SGR state behind
-or print text that reads like a question. The question is written after a
-`\x1b[0m` reset for the first of those. For the second the bound is positional
-rather than visual: the read happens inside `approve`, so an answer applies to
-the call being decided whatever else is on screen, and a counterfeit question
-cannot consume it. A counterfeit that makes the real one *look* already answered
-is not covered — stripping the model's own prose would mangle the answer the
-operator asked for.
+and the whole round's text streams before the gate asks anything, so the model
+can leave an SGR state behind or print prose that reads like a question. The
+reset covers the first. The second is worse than it looks: a counterfeit question
+cannot *consume* an answer, since only `approve` ever reads, but canonical mode
+queues a finished line until something reads it, so a `y` typed at the forgery
+was still sitting in the kernel's input queue when the real question's read
+arrived — and a round can hold the operator there, since a read-only call runs
+unasked and takes as long as the tree it walks. The answer bound to a call the
+operator never saw.
+
+So the queue is discarded immediately before each question — `tcflush` for the
+kernel's, and `BufReader`'s own buffer after it, one read being able to deliver
+several lines. An answer cannot predate the question it answers. What that leaves
+is a counterfeit that makes the real question *look* already answered, which no
+flush reaches; stripping the model's own prose would mangle the answer the
+operator asked for, so the terminal is shared and that is the cost of sharing it.
 
 **What this is not.** Neither mode decides whether a call *should* happen, only
 whether it may. `SECURITY.md`'s standing commitment holds under both — a tool call

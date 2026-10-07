@@ -164,10 +164,33 @@ impl Terminal {
             consent: Consent::new(),
         })
     }
+
+    /// Drop whatever was typed before the question is asked.
+    ///
+    /// Canonical mode queues a finished line until something reads it, so an answer typed
+    /// earlier is returned by the next read as the answer to *this* call. The model's own
+    /// prose reaches this device too, so a counterfeit question printed in the round's
+    /// text can harvest a `y` the operator believes they gave something else — the gate
+    /// reads inside `approve`, which fixes *which* call consumes an answer but not which
+    /// question earned it.
+    ///
+    /// Both layers go: `tcflush` clears the kernel queue, and one read can deliver several
+    /// lines, so [`BufReader`] may already hold a later one. Either alone leaves the path
+    /// open. A flush also drops an answer typed early in good faith, which re-asking
+    /// covers.
+    fn discard_typeahead(&mut self) {
+        let _ =
+            nix::sys::termios::tcflush(self.input.get_ref(), nix::sys::termios::FlushArg::TCIFLUSH);
+
+        let buffered = self.input.buffer().len();
+        self.input.consume(buffered);
+    }
 }
 
 impl Ask for Terminal {
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
+        self.discard_typeahead();
+
         // The model's answer streams to this same device and may leave an SGR state behind
         // — concealed, or black on black — so the question is written from a known one. A
         // failed write is not handled here: the question's own write fails too, and denies.
