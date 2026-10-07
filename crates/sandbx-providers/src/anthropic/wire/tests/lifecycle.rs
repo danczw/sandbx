@@ -77,11 +77,40 @@ async fn an_in_band_error_event_ends_the_stream() {
     assert_eq!(out.len(), 2);
     assert!(out[0].is_ok());
     match &out[1] {
-        Err(ProviderError::ApiError { status, kind, .. }) => {
+        Err(ProviderError::ApiError {
+            status,
+            kind,
+            transient,
+            ..
+        }) => {
             assert_eq!(*status, None);
             assert_eq!(kind, "overloaded_error");
+            // The table is read only here, there being no status to classify by.
+            assert!(*transient, "an overload is worth retrying");
         }
         other => panic!("expected ApiError, got {other:?}"),
+    }
+}
+
+/// The other half of that table: a `type` it does not name is not retried, so a typo in
+/// it cannot pass for a kind that is.
+#[tokio::test]
+async fn an_in_band_error_is_retried_only_if_its_kind_says_so() {
+    for (kind, transient) in [
+        ("overloaded_error", true),
+        ("api_error", true),
+        ("authentication_error", false),
+        ("invalid_request_error", false),
+    ] {
+        let frame = format!(r#"{{"type":"error","error":{{"type":"{kind}","message":"m"}}}}"#);
+        let out = events(vec![raw(&frame)]).await;
+
+        match out.as_slice() {
+            [Err(error @ ProviderError::ApiError { .. })] => {
+                assert_eq!(error.is_retryable(), transient, "{kind}");
+            }
+            other => panic!("expected one ApiError for {kind}, got {other:?}"),
+        }
     }
 }
 

@@ -145,7 +145,7 @@ impl<S> WireState<S> {
 ///
 /// An unsigned thinking block is the `None` case: its signature is what makes it
 /// replayable, so passing one on would seed a caller's history with a block the next
-/// request is rejected for.
+/// request is rejected for. An empty signature counts as none.
 fn closed_block_event(index: u32, block: OpenBlock) -> Option<Result<AgentEvent, ProviderError>> {
     match block {
         OpenBlock::ToolUse {
@@ -155,7 +155,7 @@ fn closed_block_event(index: u32, block: OpenBlock) -> Option<Result<AgentEvent,
         } => Some(tool_call_event(index, id, name, &partial_json)),
         OpenBlock::Thinking { text, signature } => Some(Ok(AgentEvent::ThinkingBlock {
             text,
-            signature: signature?,
+            signature: signature.filter(|value| !value.is_empty())?,
         })),
     }
 }
@@ -301,7 +301,11 @@ where
                     if let Some(OpenBlock::Thinking { signature, .. }) =
                         state.blocks.get_mut(&index)
                     {
-                        *signature = Some(value);
+                        // Appended, not assigned: one frame per block is what the API
+                        // sends today, but a signature is kilobytes of base64 arriving
+                        // under a `_delta` tag, and keeping only the last fragment of a
+                        // split one is a 400 on the next request.
+                        signature.get_or_insert_default().push_str(&value);
                     }
                 }
                 RawDelta::InputJsonDelta { partial_json } => {
