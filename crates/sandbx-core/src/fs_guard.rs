@@ -299,6 +299,9 @@ fn permit(
 
 /// Open an already-approved path without following a symlink at the leaf, which — the path
 /// having been canonical when checked — was swapped in after the check.
+///
+/// The path is proven inside a root by now, so there is nothing left to conceal: a file
+/// deleted since the check is an absence, while `ELOOP` from `O_NOFOLLOW` is the swap.
 fn open(
     options: &mut std::fs::OpenOptions,
     resolved: &Path,
@@ -309,9 +312,13 @@ fn open(
     options
         .custom_flags(libc::O_NOFOLLOW)
         .open(resolved)
-        .map_err(|source| SandboxError::Unresolvable {
-            requested: requested.to_path_buf(),
-            source,
+        .map_err(|source| {
+            let requested = requested.to_path_buf();
+            if source.kind() == std::io::ErrorKind::NotFound {
+                SandboxError::NotFound { requested, source }
+            } else {
+                SandboxError::Unresolvable { requested, source }
+            }
         })
 }
 
@@ -324,4 +331,42 @@ pub struct ReadableWalk {
     pub files: Vec<PathBuf>,
     /// Whether the cap stopped the walk with tree left unvisited.
     pub truncated: bool,
+}
+
+/// Inline because `open` runs after the check has passed: no public call can lose the
+/// check-to-open race on purpose.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_absent_approved_path_opens_as_not_found() {
+        let root = tempfile::tempdir().unwrap();
+        let gone = root.path().join("deleted-after-the-check");
+
+        let error = open(std::fs::OpenOptions::new().read(true), &gone, &gone).unwrap_err();
+
+        assert!(
+            matches!(error, SandboxError::NotFound { .. }),
+            "got {error:?}"
+        );
+    }
+
+    /// The leaf-swap the `O_NOFOLLOW` flag exists to catch stays a refusal.
+    #[cfg(unix)]
+    #[test]
+    fn a_swapped_leaf_opens_as_unresolvable() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.txt");
+        std::fs::write(&target, b"x").unwrap();
+        let link = root.path().join("swapped");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let error = open(std::fs::OpenOptions::new().read(true), &link, &link).unwrap_err();
+
+        assert!(
+            matches!(error, SandboxError::Unresolvable { .. }),
+            "got {error:?}"
+        );
+    }
 }
