@@ -165,19 +165,34 @@ many stages write — see the stage 1 note above; and `encode` strips the separa
 characters from a detail so one record cannot forge a second. A refusal carries no
 detail at all. The reason reaches the operator on the helper's forwarded stderr, and
 the parent lifts it off there into `SandboxError::HelperRefused` for its caller, so
-the prose crosses once and is relayed, never re-encoded on the wire (#185).
+the prose crosses once and is relayed, never re-encoded on the wire (#185). The
+helper's own `sandbx: sandbox helper failed: ` comes back off as it is lifted: the
+relayed error is a `Display` that a caller prefixes again, and
+`HELPER_FAILURE_PREFIX` is a const so the writer and the stripper cannot drift.
 
 `HelperRefusal` is a *subset* of what `SandboxError::label` can return, not all of
 it, and the five it leaves out are the point: `timeout`, `spawn_failed`,
 `path_not_allowed`, `unresolvable` and `not_found` are decisions sandbx and
-`FsGuard` make for themselves. A channel record outranks the exit status — and now
-the returned `Result` too — so admitting `timeout` would let a forged line claim a
-kill that never happened *and* suppress the real outcome, on a trail whose whole
-purpose is that `reason="timeout"` can be filtered. What the criterion turns on is
-whether the label names one decider, not what failed: `inner_stage_failed` is in and
-`spawn_failed` is out although both name a process that would not start.
-`SandboxError::refusal` is the one exhaustive place the two sets are mapped, so a
-new variant cannot be left out of the set by omission.
+`FsGuard` make for themselves. A channel record outranks the exit status, so
+admitting `timeout` would let a forged line claim a kill that never happened *and*
+suppress the real outcome, on a trail whose whole purpose is that `reason="timeout"`
+can be filtered. What the criterion turns on is whether the label names one decider,
+not what failed: `inner_stage_failed` is in and `spawn_failed` is out although both
+name a process that would not start.
+
+**A record replaces a status, not an error** (#185). `output` returns
+`HelperRefused` where it would have returned `Ok` with the helper's exit code, and
+leaves an `Err` alone — that `Err` is sandbx's own account of a kill it performed or
+a spawn it watched fail, and suppressing it is the thing the excluded labels exist to
+prevent. So a refusal written just before a deadline expires stays on the trail as
+the cause and still reaches the caller as `TimedOut`, which is the only one of the
+two that says retrying with longer might work.
+
+`SandboxError::refusal` is the one exhaustive place the two sets are mapped. It is
+half the guarantee: the match makes a new variant decide, and
+`every_refusal_a_variant_reports_is_one_the_channel_admits` is what stops one
+deciding yes and then being left out of `ALL`, where `from_label` would reject the
+label its own writer emits and the record would be dropped on arrival.
 
 ## What this is not
 

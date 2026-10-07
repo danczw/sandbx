@@ -67,7 +67,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    degradation.rs    the helper's channel to the parent, and its wire format
    spawn.rs          spawn::command — the one Command::new; env_clear, then
                      the allowlist and the policy's own constants
-   error.rs
+   error.rs          SandboxError — every refusal and failure, and its label
       refusal.rs     HelperRefusal — the closed set the channel admits, and
                      SandboxError::refusal, the one place the two are mapped
    bin/sandbx-helper.rs
@@ -101,8 +101,7 @@ tests/support/       mod.rs — runtime_paths, allow_probe, run, run_pinned,
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
 `HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
 `with_helper_dispatch`, `SandboxError`, `Access`, `HelperRefusal`, `FsGuard`,
-`ReadableWalk`,
-`BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
+`ReadableWalk`, `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
 `NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
