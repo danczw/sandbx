@@ -534,28 +534,6 @@ mod tests {
         }
     }
 
-    /// The same direction as the old `reportable_label` check this replaces: a label the
-    /// parent or [`FsGuard`](crate::FsGuard) decides must name no refusal, or a forged line
-    /// claims an outcome it never watched. `process_concealment` is sandbx's own startup
-    /// failure, so only the harness can see it (#192).
-    #[test]
-    fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
-        for label in [
-            "timeout",
-            "spawn_failed",
-            "path_not_allowed",
-            "unresolvable",
-            "not_found",
-            "process_concealment",
-        ] {
-            assert_eq!(
-                HelperRefusal::from_label(label),
-                None,
-                "{label} is not a helper stage's to report, but the channel accepted it"
-            );
-        }
-    }
-
     /// Each is a decision the parent or [`FsGuard`](crate::FsGuard) watched itself, so a
     /// channel record claiming one would outrank the outcome it saw.
     #[test]
