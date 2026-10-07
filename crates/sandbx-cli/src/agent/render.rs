@@ -41,9 +41,8 @@ pub(super) struct Render<W> {
     /// Whether anything has reached stdout, so a gap is never the first thing on it.
     wrote: bool,
 
-    /// Whether a gap is owed before the next text. Deferred rather than written when
-    /// asked for, so a wrap-up round that answers with nothing leaves no stray blank
-    /// line.
+    /// Whether a gap is owed before the next text — deferred, so a wrap-up round that
+    /// answers with nothing leaves no stray blank line.
     separating: bool,
 
     /// Whether any text has arrived since the last [`Render::separate`], so a caller can
@@ -76,9 +75,6 @@ impl<W: Write> Render<W> {
     }
 
     /// Whether anything has reached stdout since [`Render::separate`].
-    ///
-    /// What distinguishes a wrap-up round that answered from one that streamed prose and
-    /// then failed, leaving text on stdout that no transcript accounts for.
     pub(super) fn wrote_after_gap(&self) -> bool {
         self.after_gap
     }
@@ -289,8 +285,6 @@ pub(super) mod tests {
         assert_eq!(terminated, "looking\n\nfound three\n");
     }
 
-    /// What tells a wrap-up round that answered from one that streamed prose and then
-    /// failed, leaving stdout holding text no transcript will account for.
     #[test]
     fn text_arriving_after_the_gap_is_noticed() {
         let mut render = Render::new(Vec::new());

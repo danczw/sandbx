@@ -469,8 +469,8 @@ mod tests {
     /// `one_round` over a script of several rounds, under a policy of its caller's
     /// choosing, composing the system prompt the way `execute` does.
     ///
-    /// A script, not one round: a turn out of rounds is asked again with no tools, so the
-    /// round-limited cases here open two streams.
+    /// A script, not one round: a turn out of rounds is asked again with no tool call
+    /// allowed, so the round-limited cases here open two streams.
     fn under(
         policy: SandboxPolicy,
         args: &AgentRun,
@@ -791,13 +791,8 @@ mod tests {
         assert_eq!(written, "looking\n\nI found nothing\n");
     }
 
-    /// The round the cap buys has to be one the model cannot spend on another tool, and a
-    /// second user turn behind the unanswered `tool_result` is the pair the API rejects.
-    ///
-    /// The definitions stay in the body, which looks like the opposite: the history
-    /// replays `tool_use` blocks, and the API refuses those without them. `tool_choice` is
-    /// what forbids the call, so dropping either half is a request that 400s or a round
-    /// that calls a tool.
+    /// The round the cap buys must be one the model cannot spend on a tool, and the
+    /// definitions stay in the body regardless — dropping either half is a 400 or a call.
     #[test]
     fn the_wrap_up_round_forbids_tools_and_adds_no_turn() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
