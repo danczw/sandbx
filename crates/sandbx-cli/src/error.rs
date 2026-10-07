@@ -112,11 +112,10 @@ pub enum PolicyError {
         holds: &'static str,
     },
 
-    /// A no-flag run was made from a working directory reaching one of those paths, which
-    /// the derived default would then grant read and write over.
+    /// A no-flag run was made from a working directory reaching one of those paths.
     ///
-    /// Separate from [`GrantReachesOwned`](Self::GrantReachesOwned) because the operator
-    /// granted nothing, so the message is a working-directory refusal like its neighbours.
+    /// Separate from [`GrantReachesOwned`](Self::GrantReachesOwned): the operator granted
+    /// nothing, so the advice is the one every working-directory refusal gives.
     CwdReachesOwned {
         /// Where sandbx was run from.
         cwd: PathBuf,

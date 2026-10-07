@@ -23,9 +23,9 @@ fn main() -> std::process::ExitCode {
         let command = Cli::parse().command;
         let failure = failure_code(&command);
 
-        // After parsing, so a refusal here exits with the same code the subcommand's own
-        // errors do, and inside the closure, so the flag is sandbx's own rather than
-        // something a sandboxed command inherits. Nothing has been spawned yet either way.
+        // Inside the closure, so the flag is sandbx's own and not something a sandboxed
+        // command inherits; after parsing, so a refusal exits with the subcommand's own code.
+        // Later than it looks is safe: nothing has been spawned at either point.
         if let Err(error) = sandbx_core::conceal_process_state() {
             eprintln!("sandbx: {error}");
             return std::process::ExitCode::from(failure);
