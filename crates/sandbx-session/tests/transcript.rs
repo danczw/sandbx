@@ -166,9 +166,7 @@ fn a_turn_with_no_reply_is_refused_not_written() {
     assert_eq!(std::fs::read(session.path()).unwrap(), before);
 }
 
-/// `resume` refuses two turns of the same role in a row, and the file is append-only, so
-/// a batch that lands that way cannot be taken back out — every later resume would refuse
-/// a transcript written by a run that exited zero.
+/// Refused before the write, the file being append-only: a later resume cannot undo it.
 #[test]
 fn a_turn_that_would_be_unreadable_is_refused() {
     let (_root, store) = store();
@@ -182,8 +180,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
         .unwrap();
     let before = std::fs::read(session.path()).unwrap();
 
-    // Settled, and alternating on its own, but it joins a stored assistant message onto
-    // another one.
+    // Settled and alternating on its own, but joins a stored assistant message to another.
     let joined = session
         .append(CompletedTurn {
             messages: &[said(Role::Assistant, "unprompted")],
@@ -192,8 +189,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
         })
         .unwrap_err();
 
-    // Checked within the batch too: this one follows the stored history cleanly and is
-    // still a pair the API rejects.
+    // The other half: follows the stored history cleanly, and is still a pair inside.
     let inside = session
         .append(CompletedTurn {
             messages: &[
@@ -221,8 +217,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
     assert_eq!(store.resume(session.id()).unwrap().messages().len(), 2);
 }
 
-/// The API rejects a conversation whose first turn is not the user's, and neither
-/// alternating nor settled catches one: this batch is both.
+/// Alternating and settled both hold for this batch, so neither predicate catches it.
 #[test]
 fn a_first_turn_may_not_open_on_the_models_reply() {
     let (_root, store) = store();

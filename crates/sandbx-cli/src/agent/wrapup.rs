@@ -84,9 +84,8 @@ impl Next {
             self.turn(&continued, &first),
             ctx,
             |event| render.event(event),
-            // Not `gate::decide`: this round's tools are offered only so the API accepts
-            // the `tool_use` blocks in its history, and a model that asks for one anyway
-            // must not reach `sandbx-tools` on the strength of this run's `--allow-tool`.
+            // Not `gate::decide`: a model that asks for a tool anyway must not reach
+            // `sandbx-tools` on the strength of this run's `--allow-tool`.
             |_| ApprovalDecision::Deny {
                 reason: REFUSED.to_owned(),
             },
@@ -100,12 +99,8 @@ impl Next {
                 eprintln!("sandbx: the wrap-up request failed: {error}");
                 (first, false)
             }
-            // A `RoundLimit` here is a round that asked for a tool despite `tool_choice`,
-            // and no messages means the model declined to answer. Keeping either would
-            // leave the batch ending on an unanswered `tool_result` regardless.
-            //
-            // Said out loud: the round may have streamed prose to stdout before getting
-            // here, and dropping it silently would leave an answer no transcript holds.
+            // Either leaves the batch ending on an unanswered `tool_result`, so `first`
+            // stands and prose this round already streamed is `Capped::Discarded`.
             Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
                 eprintln!(
                     "sandbx: the wrap-up round {}",
