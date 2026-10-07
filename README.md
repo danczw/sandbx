@@ -214,16 +214,19 @@ $ sandbx sandbox-run --allow-dns example.com --allow-network 443 \
 ```
 
 `sandbx` resolves `example.com` before the command starts and gives it a hosts
-file holding that address, `hosts: files` so glibc has no DNS source, and a
-`resolv.conf` naming no nameserver. A name you did not list does not resolve,
-at once rather than after a timeout. The working-directory default survives:
-this is the one flag that makes a policy *smaller*, needing no
-`--allow-read /etc`.
+file holding that address, an `nsswitch.conf` whose `hosts` line reads `files`
+alone so glibc has no DNS source, and a `resolv.conf` naming no nameserver. A
+name you did not list does not resolve, at once rather than after a timeout.
+The working-directory default survives: this is the one flag that makes a
+policy *smaller*, needing no `--allow-read /etc`. Every `nsswitch.conf` line
+that is not about a name is kept as the host had it, so an account that lives
+in `systemd`, `sss` or LDAP still looks up inside the sandbox.
 
 It bounds resolution, not connection: an IP literal reaches any allowlisted
 port exactly as before. So the run is refused where a nameserver would still
 answer for every name — alongside `--dns-over-tcp`, alongside bare
-`--allow-network`, with 53 in the port list, or with no `--allow-network` at
+`--allow-network`, alongside `--allow-unix-sockets` (nscd answers over one, and
+glibc asks it first), with 53 in the port list, or with no `--allow-network` at
 all.
 
 Or leave every name resolvable, over TCP, which is what a port allowlist leaves

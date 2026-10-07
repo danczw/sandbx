@@ -20,7 +20,7 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 | `Absent` | `absent` | `tool`, `subject` |
 | `Denied` | `denied` | `tool`, `subject`, `reason` |
 | `Degraded` | `degraded` | `mechanism`, `detail` |
-| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env`, `dns_over_tcp`, `pinned` |
+| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env`, `dns_over_tcp`, `dns_names`, `pinned` |
 | `Exited` | `exited` | `program`, `code` |
 | `Failed` | `failed` | `program`, `reason` |
 

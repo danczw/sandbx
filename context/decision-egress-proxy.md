@@ -114,6 +114,16 @@ command inherits. `hosts: files` removes glibc's `dns` source, so an unlisted
 name is not asked over any transport rather than asked and refused; the
 nameserver-less `resolv.conf` is for musl, which ignores `nsswitch.conf`.
 
+Only the `hosts` and `networks` lines of `nsswitch.conf` are sandbx's; the rest
+of the host's file is copied through. A body of our own would have written
+`passwd: files` over a host resolving its accounts through `systemd`, `sss` or
+LDAP, and a command that cannot resolve its own uid is a broken sandbox, not a
+bounded one. Two host shapes refuse instead of being bounded badly: no
+`/etc/nsswitch.conf` at all, where glibc would keep its built-in `dns` source;
+and a symlinked `/etc/hosts` or `/etc/nsswitch.conf`, where `mount(2)` resolves
+the link, the bind lands on its target, and the link is left for a write grant
+on `/etc` to replace.
+
 Positional either way, and in one respect further ahead: the responder would
 have answered whatever the command asked it during the run, where a rendered
 file is fixed before the command starts.
@@ -145,7 +155,10 @@ not claim: a stub resolver reads an RCODE, a shell script reads the exit code.
 avoid, and that is the cost. It is paid where the operator is: `sandbox.rs`'s
 advice names `--allow-dns NAME` as the first of the two answers, and the
 refusals in `Grants::policy` catch the shapes where the flag is the wrong one
-before the run starts.
+before the run starts. The fifth of those is `--allow-unix-sockets`, which is
+not about IP at all: glibc asks nscd over `/var/run/nscd/socket` *before* it
+reads `nsswitch.conf`, the rendered file cannot turn that off, and
+`--allow-unix-sockets` is one boolean over every pathname socket.
 
 What the trail records is a count on `Spawned`, `dns_names`, and no per-name
 record at all. The responder would have had one query per name to report;

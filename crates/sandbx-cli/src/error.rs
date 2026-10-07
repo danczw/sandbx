@@ -139,7 +139,7 @@ pub enum PolicyError {
 
     /// `--allow-dns` was given alongside `--dns-over-tcp`.
     ///
-    /// The four `Dns…` variants are each a shape in which the bound `--allow-dns` claims would
+    /// The five `Dns…` variants are each a shape in which the bound `--allow-dns` claims would
     /// not hold — a nameserver the command can still reach answers for every name, so the
     /// allowlist would bound nothing. `context/decision-egress-proxy.md`.
     DnsWithResolverHint,
@@ -152,6 +152,9 @@ pub enum PolicyError {
 
     /// `--allow-dns` was given with no IP egress at all.
     DnsWithoutEgress,
+
+    /// `--allow-dns` was given alongside `--allow-unix-sockets`.
+    DnsWithUnixSockets,
 
     /// `--pin-sha256` was given more than once.
     RepeatedPin,
@@ -296,6 +299,12 @@ impl std::fmt::Display for PolicyError {
                 "--allow-dns bounds which names resolve, and this run has no IP egress to \
                  resolve them for — pass --allow-network PORT as well, or drop the flag"
             ),
+            Self::DnsWithUnixSockets => write!(
+                f,
+                "--allow-dns bounds which names resolve, and --allow-unix-sockets reaches \
+                 nscd's socket, which glibc asks before it reads nsswitch.conf and which \
+                 answers for every name — pass one of the two, not both"
+            ),
             Self::RepeatedPin => write!(
                 f,
                 "one run execs one program, so there is one digest to pin — \
@@ -328,6 +337,7 @@ impl std::error::Error for PolicyError {
             | Self::DnsWithEveryPort
             | Self::DnsWithNameserverPort
             | Self::DnsWithoutEgress
+            | Self::DnsWithUnixSockets
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } | Self::UnresolvableGrant { source, .. } => {
