@@ -90,6 +90,12 @@ to it, and it **spends** the policy rather than lending it. An accessor returnin
 handles (#56) — the split was documented but nothing enforced it. Now the type
 does.
 
+So no tool can tell the model what its roots are, and no refusal does either:
+`conceal_unless_granted` has to keep one outside every root indistinguishable, or
+a sequence of probes reads back as a map of the host. `agent-run` names the roots
+in the system prompt instead, above the tool boundary, where the policy is still
+the operator's own text rather than something a `tool_result` carries back.
+
 ## Errors say which kind of wrong
 
 | Variant | Means | The agent should |
