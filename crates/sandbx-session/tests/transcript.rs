@@ -221,6 +221,62 @@ fn a_turn_that_would_be_unreadable_is_refused() {
     assert_eq!(store.resume(session.id()).unwrap().messages().len(), 2);
 }
 
+/// The API rejects a conversation whose first turn is not the user's, and neither
+/// alternating nor settled catches one: this batch is both.
+#[test]
+fn a_first_turn_may_not_open_on_the_models_reply() {
+    let (_root, store) = store();
+    let mut session = store.create().unwrap();
+
+    let err = session
+        .append(CompletedTurn {
+            messages: &[
+                said(Role::Assistant, "unprompted"),
+                said(Role::User, "what?"),
+                said(Role::Assistant, "that"),
+            ],
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap_err();
+
+    assert!(matches!(err, SessionError::DisorderedTurn), "got {err:?}");
+    assert_eq!(store.resume(session.id()).unwrap().messages().len(), 0);
+}
+
+/// The same defect reached by a hand edit instead, where there is nothing left to refuse
+/// before the write.
+#[test]
+fn a_transcript_opening_on_a_reply_is_refused() {
+    let (_root, store) = store();
+    let mut session = store.create().unwrap();
+    session
+        .append(CompletedTurn {
+            messages: &exchange("a", "1"),
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap();
+    let id = session.id().clone();
+    let path = session.path().to_owned();
+
+    // After the header, so the stored exchange is pushed behind a reply to nothing.
+    let body = std::fs::read_to_string(&path).unwrap();
+    let mut lines: Vec<&str> = body.lines().collect();
+    lines.insert(
+        1,
+        "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}",
+    );
+    std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+
+    let err = store.resume(&id).unwrap_err();
+
+    assert!(
+        matches!(err, SessionError::Disordered { .. }),
+        "got {err:?}"
+    );
+}
+
 #[test]
 fn two_sessions_never_take_the_same_id() {
     let (_root, store) = store();
