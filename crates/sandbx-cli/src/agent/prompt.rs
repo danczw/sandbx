@@ -48,6 +48,10 @@ const REFUSED: &str = "the operator refused this call; no flag lifts a refusal, 
 /// What the model is told when the terminal can no longer be asked.
 const CLOSED: &str = "the operator's terminal is closed, so no call can be approved";
 
+/// What the model is told when the terminal could not be cleared to ask on.
+const UNCLEARED: &str = "the operator's terminal could not be cleared to ask on, \
+                         so no call can be approved";
+
 /// What this run has already been consented to beyond the call it was asked about.
 struct Consent {
     /// The tools an `a` answer approved for every later call in the run.
@@ -129,13 +133,21 @@ fn deny(reason: &str) -> ApprovalDecision {
     }
 }
 
-/// What can be asked about one call.
+/// The operator, as the gate reaches them: asked about a call, then told what became of
+/// it.
 ///
 /// A trait so [`gate::ArgvGate`]'s order — argv first, the terminal only after — is
 /// testable without a terminal: a fake records whether it was asked at all.
-pub(super) trait Ask {
+pub(super) trait Operator {
     /// Whether this call may run, as the operator answered.
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
+
+    /// Tell the operator what became of one call, where they were asked about it.
+    ///
+    /// Both directions on one channel or neither: stderr is as redirectable as stdout, so
+    /// an operator reading the report there would answer the next call without having seen
+    /// what this one did.
+    fn report(&mut self, line: &str);
 }
 
 /// The controlling terminal, opened to ask and to be answered.
@@ -178,18 +190,42 @@ impl Terminal {
     /// lines, so [`BufReader`] may already hold a later one. Either alone leaves the path
     /// open. A flush also drops an answer typed early in good faith, which re-asking
     /// covers.
-    fn discard_typeahead(&mut self) {
-        let _ =
-            nix::sys::termios::tcflush(self.input.get_ref(), nix::sys::termios::FlushArg::TCIFLUSH);
+    ///
+    /// # Errors
+    ///
+    /// Whatever `tcflush` reports. A flush that failed left the queue intact, so the
+    /// caller refuses rather than asking over a channel it could not clear.
+    fn discard_typeahead(&mut self) -> nix::Result<()> {
+        nix::sys::termios::tcflush(self.input.get_ref(), nix::sys::termios::FlushArg::TCIFLUSH)?;
 
         let buffered = self.input.buffer().len();
         self.input.consume(buffered);
+
+        Ok(())
+    }
+
+    /// The same terminal over a device already open, for the pty fixture.
+    ///
+    /// [`Terminal::open`] is the only route a run takes. This exists because what the
+    /// drain clears is the kernel's own input queue, which no in-memory reader has.
+    #[cfg(test)]
+    fn on(device: File) -> std::io::Result<Self> {
+        Ok(Self {
+            input: BufReader::new(device.try_clone()?),
+            out: device,
+            consent: Consent::new(),
+        })
     }
 }
 
-impl Ask for Terminal {
+impl Operator for Terminal {
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        self.discard_typeahead();
+        // Refused rather than retried: EINTR needs a handler installed and this process
+        // installs none, so a flush that failed will fail again — and asking anyway is
+        // asking over a queue that may already hold its own answer.
+        if self.discard_typeahead().is_err() {
+            return deny(UNCLEARED);
+        }
 
         // The model's answer streams to this same device and may leave an SGR state behind
         // — concealed, or black on black — so the question is written from a known one. A
@@ -197,6 +233,12 @@ impl Ask for Terminal {
         let _ = self.out.write_all(RESET.as_bytes());
 
         self.consent.ask(call, &mut self.input, &mut self.out)
+    }
+
+    fn report(&mut self, line: &str) {
+        // A failed write is not handled here either: the next question's own write fails
+        // too, and denies.
+        let _ = writeln!(self.out, "{line}");
     }
 }
 

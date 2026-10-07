@@ -105,13 +105,19 @@ short rather than as a failure.
 
 No audit record either. `AuditEvent::Denied` records what the sandbox refused to
 let a *running* tool touch; a call that never ran touched nothing. The operator's
-record is the stderr line and the transcript's is the `tool_result`.
+record is the one line per call and the transcript's is the `tool_result`.
 
-That stderr line is `settled`'s, not `approve`'s, so it covers what became of a
-call rather than only what the gate said about it: a call the gate approves and
-the *policy* then refuses reads as a refusal rather than as one that ran, and the
-two refusals above the gate reach stderr at all (#169). One line per `tool_use`
+That line is `settled`'s, not `approve`'s, so it covers what became of a call
+rather than only what the gate said about it: a call the gate approves and the
+*policy* then refuses reads as a refusal rather than as one that ran, and the two
+refusals above the gate are reported at all (#169). One line per `tool_use`
 block, whichever of the five outcomes it reached.
+
+**It goes where the question went.** stderr by default; the terminal under
+`--approve call`, which is the same reason the question is not on stderr either.
+Both directions on one channel or neither: `2> run.log` would otherwise leave an
+operator answering call N+1 having not seen what call N did, which is consent
+given with the evidence redirected away.
 
 ## Deny by default, and the honest claim
 

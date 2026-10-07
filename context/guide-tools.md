@@ -188,7 +188,7 @@ bodies that do blocking I/O anyway.
 | bounded in work | the two searches — not `read`/`edit`, which allocate a whole file |
 | cancellable from outside | **partly** — the turn can be abandoned; the running tool still completes (#26) |
 | approval gate | **per tool per run** by default — `CallGate::approve`, asked before the spawn; `--approve call` adds one answer per call for the tools that write or run a program |
-| reported to the operator | every call, by `CallGate::settled`, once it has an outcome — including the two refusals above the gate, which `approve` never sees |
+| reported to the operator | every call, by `CallGate::settled`, once it has an outcome — including the two refusals above the gate, which `approve` never sees. On stderr, or on the terminal under `--approve call`: the account goes where the question went |
 
 ## The split that matters
 

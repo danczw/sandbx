@@ -355,7 +355,9 @@ before every write and every command — `y` for this call, `n` to refuse it, `a
 for every call to that tool for the rest of the run. Read-only calls are not
 asked about, `--allow-tool` still has to have approved the tool at all, and a run
 with no terminal to ask on refuses to start rather than quietly falling back to
-the per-run answer.
+the per-run answer. Those per-call lines move to the terminal with the question,
+so `2> run.log` cannot leave you answering one call blind to what the last one
+did.
 
 Every run opens by telling the model which roots its tools can reach, and a run
 that refuses a tool names the ones it approved too, so the turn is not spent
