@@ -1,10 +1,9 @@
 //! Resolves a name, connects to one, reads a file or writes one, and reports which it was.
 //! Test-only.
 //!
-//! Several modes in one binary, because bounding resolution is several claims: the names the
-//! policy granted resolve, the ones it did not do not, the command's `/etc` files are sandbx's
-//! own, each still reads back under its own path, and the command cannot rewrite them to add a
-//! name.
+//! Several modes in one binary, bounding resolution being several claims: the granted names
+//! resolve, the ungranted do not, the `/etc` files are sandbx's own, each reads back under its
+//! own path, and the command cannot rewrite them to add a name.
 
 use std::io::Read;
 use std::net::ToSocketAddrs;
@@ -31,10 +30,8 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-/// `getaddrinfo` through `ToSocketAddrs`, which is what every command resolves with.
-///
-/// Prints the addresses, so a test can tell a name that resolved from one that resolved to
-/// nothing at all.
+/// `getaddrinfo` through `ToSocketAddrs`, which is what every command resolves with. Prints
+/// the addresses, so a test can tell a name that resolved from one that resolved to nothing.
 fn resolve(name: &str) -> std::process::ExitCode {
     match (name, 0u16).to_socket_addrs() {
         Ok(addresses) => {
@@ -90,9 +87,8 @@ fn read(path: &str) -> std::process::ExitCode {
 
 /// The path the kernel reads back for an open descriptor on `path`.
 ///
-/// What `ruleset::opened` compares a granted path against: a bind whose source had been
-/// unlinked would read back with `" (deleted)"` appended, and every grant naming the file
-/// would be refused.
+/// A bind whose source had been unlinked reads back with `" (deleted)"` appended, so the
+/// command would find its own `/etc/hosts` under a path no policy names.
 fn fd_path(path: &str) -> std::process::ExitCode {
     let opened = std::fs::File::open(path).and_then(|file| {
         use std::os::fd::AsRawFd as _;

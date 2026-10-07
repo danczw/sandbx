@@ -19,10 +19,9 @@ const LOOPBACK_NAMES: [&str; 3] = ["localhost", "ip6-localhost", "ip6-loopback"]
 
 /// A name this host resolves with no nameserver, and a listener on the address it resolves to.
 ///
-/// Derived rather than written down: the one such name on a developer machine is the machine's
-/// own hostname, and hard-coding either the name or its address would pass on one host and fail
-/// on the next. Addresses are trial-bound, because a name is only usable here if the test can
-/// answer on what it resolves to.
+/// Derived and not written down, the one such name on a developer machine being the machine's
+/// own hostname: hard-coding either the name or its address passes on one host and fails on
+/// the next. Trial-bound, a name being usable here only if the test can answer on it.
 fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::JoinHandle<()>) {
     let hosts = std::fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
 
@@ -129,8 +128,7 @@ fn an_allowlisted_name_resolves_and_is_reached() {
 }
 
 /// The denial. `local_listener` resolved the name in this process, so it resolves outside the
-/// sandbox by construction — and the port it answers on is allowlisted, so a leaked lookup
-/// would be read, not merely connected to.
+/// sandbox by construction, and the port it answers on is allowlisted.
 #[test]
 fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
     let (name, address, accepting) = local_listener("SECRET-BEHIND-THE-NAME");
@@ -195,10 +193,8 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
     }
 }
 
-/// Each bound file still reads back under its own path. A bind whose source had been unlinked
-/// reads back from `/proc/self/fd` with `" (deleted)"` appended, so the command would find its
-/// own `/etc/hosts` under a path no policy names, and anything comparing a descriptor against
-/// the path it was opened by would be comparing two different strings.
+/// A bind whose source had been unlinked reads back from `/proc/self/fd` with `" (deleted)"`
+/// appended, so the command would find its own `/etc/hosts` under a path no policy names.
 #[test]
 fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
     let (name, address, accepting) = local_listener("UNUSED");
@@ -250,9 +246,8 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
         );
     }
 
-    // Resolution is all that may be bounded. A `passwd` or `group` line reaching `systemd`,
-    // `sss` or LDAP is how a command resolves its own uid to a name, and losing it breaks
-    // every tool that asks — on a host where sandbx has no business touching the answer.
+    // Resolution is all that may be bounded: a `passwd` or `group` line reaching `systemd`,
+    // `sss` or LDAP is how a command resolves its own uid to a name.
     let host = std::fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
     let kept = host
         .lines()

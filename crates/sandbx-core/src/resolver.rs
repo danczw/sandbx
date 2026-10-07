@@ -1,11 +1,9 @@
 //! What a bounded resolver is on disk: the three files it replaces, and what goes in them.
 //!
 //! Rendering is pure, so every body is assertable without a namespace or a nameserver. The
-//! lookups run in the helper, before any filter is installed, which is the only place they can
-//! run at all: the harness would have to carry the addresses across the argv the command reads.
-//! `helper::resolver` installs what this renders, and `context/decision-egress-proxy.md` is why
-//! resolution is bounded by a hosts file rather than by the DNS responder that note first
-//! specified.
+//! lookups run in the helper, the only place they can: the harness would have to carry the
+//! addresses across the argv the command reads. `helper::resolver` installs what this renders;
+//! `context/decision-egress-proxy.md` is why a hosts file and not a DNS responder.
 
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::Path;
@@ -22,21 +20,18 @@ const RESOLV_CONF: &str = "/etc/resolv.conf";
 /// Every path a policy that bounds resolution replaces with one of sandbx's own.
 ///
 /// Public because such a policy also grants read on exactly these — `ruleset::rights` derives
-/// those rules from this list — and because a reader of `SECURITY.md` is owed the list of files
-/// the command no longer sees the host's copy of.
+/// those rules from this list.
 pub const RESOLVER_FILES: [&str; 3] = [HOSTS, NSSWITCH, RESOLV_CONF];
 
-/// Lines every libc expects to find whatever else a hosts file holds.
-///
-/// Replacing the host's file would otherwise take `localhost` with it, and with no `dns`
-/// source left there is nothing to resolve it by.
+/// Lines every libc expects whatever else a hosts file holds: with no `dns` source left, there
+/// is nothing else to resolve `localhost` by.
 const LOOPBACK: &str = "127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n";
 
 /// The two databases that bear on resolution, set to the only source left.
 ///
-/// Prepended rather than edited in, and appended to by nothing: a database absent from
-/// `nsswitch.conf` falls back to glibc's built-in default, which for `hosts` and `networks`
-/// *includes* `dns`, so these lines go in whether the host's file named them or not.
+/// Written in whether the host's file named them or not: a database absent from
+/// `nsswitch.conf` falls back to glibc's built-in default, which for these two *includes*
+/// `dns`.
 const BOUNDED_SOURCES: &str = "\
 # sandbx: `hosts` and `networks` read files alone, so /etc/hosts is the whole of resolution.
 hosts: files
@@ -57,17 +52,15 @@ pub(crate) struct File {
     pub(crate) target: &'static Path,
     /// What it will hold.
     pub(crate) body: String,
-    /// Whether an absent target refuses the run rather than skipping the mount.
-    ///
-    /// Bind-mounting needs the target to already exist, and this is the difference between a
-    /// host that cannot be bounded and one that needs no bounding there.
+    /// Whether an absent target refuses the run rather than skipping the mount — a bind
+    /// needing its target to exist already.
     pub(crate) required: bool,
 }
 
 /// Resolve the policy's names and render the files that bound resolution to them.
 ///
-/// `None` when the policy bounds nothing, which is what keeps a run with no `--allow-dns` off
-/// the mount path entirely rather than mounting the host's own contents back over itself.
+/// `None` when the policy bounds nothing, which keeps a run with no `--allow-dns` off the
+/// mount path entirely.
 pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
     if !policy.bounds_resolution() {
         return None;
@@ -106,9 +99,7 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
 /// Every address `name` resolves to right now, in the order the resolver returned them.
 ///
 /// `getaddrinfo` through [`ToSocketAddrs`], so a name resolves exactly as it would for the
-/// command — no DNS client of our own, and nothing of `/etc/resolv.conf` reimplemented. Port 0
-/// because only the address is wanted; `SOCK_STREAM` is what collapses the per-protocol
-/// duplicates the raw call returns.
+/// command, with no DNS client of our own. Port 0 because only the address is wanted.
 ///
 /// Empty for a name that does not resolve, which contributes no line rather than failing the
 /// run, as an absent path contributes no Landlock rule. A lookup that hangs is bounded by the
@@ -129,12 +120,10 @@ fn addresses(name: &str) -> Vec<IpAddr> {
 
 /// The host's `nsswitch.conf` with `hosts` and `networks` rewritten and every other line kept.
 ///
-/// Line by line rather than a file of sandbx's own, because `passwd`, `group` and `shadow`
-/// reach `systemd`, `sss` or LDAP on an ordinary host: writing `files` over those would leave a
-/// command whose own account lives there unable to look its user up, which bounding resolution
-/// has no business doing. Only `hosts` and `networks` bear on a name.
-///
-/// `BOUNDED_SOURCES` alone for an empty `host`, which is also what an unreadable file renders.
+/// Line by line rather than a file of sandbx's own: `passwd` and `group` reach `systemd`,
+/// `sss` or LDAP on an ordinary host, and writing `files` over those would leave a command
+/// whose own account lives there unable to look its user up. Only `hosts` and `networks` bear
+/// on a name. `BOUNDED_SOURCES` alone for an empty `host`, as for an unreadable file.
 fn nsswitch_body(host: &str) -> String {
     let mut body = String::from(BOUNDED_SOURCES);
 
@@ -160,9 +149,6 @@ fn database(line: &str) -> Option<&str> {
 ///
 /// One line per address, both families, so a name with an A and a AAAA record resolves to both
 /// — a command that prefers IPv6 would otherwise lose the name rather than fall back.
-///
-/// Takes what each name resolved to rather than resolving itself, so what the file says is
-/// assertable without a nameserver.
 fn hosts_body(resolved: &[(&str, Vec<IpAddr>)]) -> String {
     use std::fmt::Write as _;
 
@@ -236,8 +222,7 @@ mod tests {
         );
     }
 
-    /// Nothing but the allowlist and loopback may be resolvable, this file being the whole of
-    /// resolution once `nsswitch.conf` has no `dns` source.
+    /// This file is the whole of resolution once `nsswitch.conf` has no `dns` source.
     #[test]
     fn nothing_the_allowlist_did_not_name_appears_in_the_hosts_file() {
         let rendered = body(&[resolved("example.com", &["93.184.216.34"])]);
@@ -261,8 +246,8 @@ mod tests {
         );
     }
 
-    /// A host's `nsswitch.conf` in the shape the two findings this rendering answers need: a
-    /// `hosts` line with `dns` in it, and a `passwd` line reaching somewhere other than `files`.
+    /// A host's file in the shape both tests below need: a `hosts` line with `dns` in it, and
+    /// a `passwd` line reaching somewhere other than `files`.
     const HOST_NSSWITCH: &str = "\
 # a comment mentioning hosts: and dns
 passwd: files systemd
@@ -271,8 +256,8 @@ hosts: files mymachines resolve [!UNAVAIL=return] myhostname dns
 networks: files dns
 ";
 
-    /// The one line that makes the bound airtight under glibc rather than dependent on a
-    /// nameserver being unreachable.
+    /// What makes the bound airtight under glibc rather than dependent on a nameserver being
+    /// unreachable.
     #[test]
     fn the_nsswitch_body_leaves_no_dns_source() {
         for host in ["", HOST_NSSWITCH] {
@@ -293,8 +278,8 @@ networks: files dns
         }
     }
 
-    /// Only resolution is bounded: a host that looks its users up through `systemd`, `sss` or
-    /// LDAP keeps doing so, or a command cannot resolve its own uid to a name.
+    /// Only resolution is bounded, or a command on a host looking its users up through
+    /// `systemd`, `sss` or LDAP cannot resolve its own uid to a name.
     #[test]
     fn a_database_that_is_not_about_a_name_is_left_as_the_host_had_it() {
         let rendered = nsswitch_body(HOST_NSSWITCH);
@@ -318,10 +303,8 @@ networks: files dns
         }
     }
 
-    /// Every rendered body is read by a libc parser that takes `#` as a comment and splits
-    /// fields on whitespace, so a name carrying either would forge a line. `allow_dns` skips
-    /// such a name and `HelperArgs::decode` refuses it; this is the assertion that the
-    /// rendering depends on that.
+    /// A libc parser takes `#` as a comment and splits fields on whitespace, so a name
+    /// carrying either would forge a line — which the rendering leaves to `allow_dns` to skip.
     #[test]
     fn a_name_that_could_forge_a_line_never_reaches_the_rendering() {
         for name in [
@@ -348,8 +331,8 @@ networks: files dns
         );
     }
 
-    /// `required` is what decides whether an absent target refuses the run, and getting
-    /// `nsswitch.conf` wrong would leave glibc's built-in `hosts: files dns` in place.
+    /// Getting `nsswitch.conf`'s side of this wrong leaves glibc's built-in `hosts: files
+    /// dns` in place.
     #[test]
     fn only_the_file_musl_can_do_without_is_optional() {
         let policy = crate::SandboxPolicy::default().allow_dns("localhost");
