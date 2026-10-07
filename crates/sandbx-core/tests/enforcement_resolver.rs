@@ -17,6 +17,30 @@ use support::{allow_probe, run, runtime_paths};
 /// from this set resolves whether the policy asked for it or not.
 const LOOPBACK_NAMES: [&str; 3] = ["localhost", "ip6-localhost", "ip6-loopback"];
 
+/// The one sysctl under which bounding resolution cannot work at all, read rather than inferred.
+const USERNS_RESTRICTION: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
+
+/// Whether this host forbids the mounts, in which case the six tests below assert nothing.
+///
+/// Reads the sysctl rather than catching the `EACCES` it produces: an errno guard would also
+/// skip on a genuine regression, and the regression nobody sees is the one that unbounds every
+/// name. Set, the kernel lets `unshare` succeed and then denies `CAP_SYS_ADMIN` inside the new
+/// namespace, so `helper::resolver` cannot detach mount propagation and refuses the run.
+fn host_forbids_the_mounts() -> bool {
+    let restricted = std::fs::read_to_string(USERNS_RESTRICTION)
+        .is_ok_and(|value| value.trim().parse::<u32>().is_ok_and(|flag| flag != 0));
+
+    if restricted {
+        eprintln!(
+            "SKIPPED: {USERNS_RESTRICTION} is set, so this host denies CAP_SYS_ADMIN inside an \
+             unprivileged user namespace and --allow-dns cannot be enforced on it at all. The \
+             claim is untested here; see SECURITY.md."
+        );
+    }
+
+    restricted
+}
+
 /// A name this host resolves with no nameserver, and a listener on the address it resolves to.
 ///
 /// Derived and not written down, the one such name on a developer machine being the machine's
@@ -105,6 +129,10 @@ fn mapped_names(hosts: &str) -> Vec<String> {
 /// grants no read on `/etc` at all — which is the one flag that makes a policy smaller.
 #[test]
 fn an_allowlisted_name_resolves_and_is_reached() {
+    if host_forbids_the_mounts() {
+        return;
+    }
+
     let (name, address, accepting) = local_listener("ALLOWLISTED-NAME-ANSWERED");
 
     let output = probe(
@@ -131,6 +159,10 @@ fn an_allowlisted_name_resolves_and_is_reached() {
 /// sandbox by construction, and the port it answers on is allowlisted.
 #[test]
 fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
+    if host_forbids_the_mounts() {
+        return;
+    }
+
     let (name, address, accepting) = local_listener("SECRET-BEHIND-THE-NAME");
 
     // `localhost` as the one allowlisted name: it bounds resolution without bounding it to
@@ -164,6 +196,10 @@ fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
 /// the allowlisted name and nothing else the host's file maps.
 #[test]
 fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
+    if host_forbids_the_mounts() {
+        return;
+    }
+
     let (name, address, accepting) = local_listener("UNUSED");
     drain(address, accepting);
 
@@ -198,6 +234,10 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
 /// naming one of these three files would be refused.
 #[test]
 fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
+    if host_forbids_the_mounts() {
+        return;
+    }
+
     let (name, address, accepting) = local_listener("UNUSED");
     drain(address, accepting);
 
@@ -226,6 +266,10 @@ fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
 /// reachable later would answer for every name, and the allowlist would bound nothing.
 #[test]
 fn the_command_is_left_no_dns_source_and_no_nameserver() {
+    if host_forbids_the_mounts() {
+        return;
+    }
+
     let (name, address, accepting) = local_listener("UNUSED");
     drain(address, accepting);
 
@@ -279,6 +323,10 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
 /// granted over `/etc`, appending one line would add a name the operator never allowlisted.
 #[test]
 fn the_hosts_file_is_not_writable_under_a_write_grant() {
+    if host_forbids_the_mounts() {
+        return;
+    }
+
     let (name, address, accepting) = local_listener("UNUSED");
     drain(address, accepting);
 
