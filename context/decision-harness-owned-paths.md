@@ -89,6 +89,14 @@ absolute owned path. That is the one spelling in which existence could still hav
 decided the verdict, and it is the spelling `--session` creates during the very
 run the policy was derived for.
 
+A working directory that cannot be read refuses the relative grant rather than
+standing in as nothing, which would leave it matching no owned path (#203). An
+absolute grant needs no working directory and is not refused for one — the same
+split `current_root` keeps, where an invocation that typed its own flags depends
+on neither `getcwd` nor `HOME`. That is also why the resolver takes the cwd as an
+argument: a process global that only fails on a deleted directory is a direction
+no test can pin.
+
 ## It does not ask whether anything is stored there
 
 The refusal fires on a host with no transcript and no key, exactly as #41's
