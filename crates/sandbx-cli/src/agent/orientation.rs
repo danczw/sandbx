@@ -219,16 +219,17 @@ mod tests {
         );
     }
 
-    /// With no root to name the tools sentence is the whole prompt, and it holds no path —
-    /// so a `/` anywhere in it is a root the guard discarded.
+    /// Against the whole tools sentence and not against the absence of a path: an empty
+    /// root list renders a roots sentence promising a boundary over nothing, which names
+    /// no path either.
     #[test]
     fn a_grant_that_resolves_to_nothing_is_not_named() {
         let prompt = granted(SandboxPolicy::default().allow_read("/no/such/root"));
 
-        assert!(
-            !prompt.contains('/'),
-            "the guard discards a root it cannot resolve, so the prompt must not claim it: \
-             {prompt:?}"
+        assert_eq!(
+            prompt,
+            tools_line(&gate::approved_tools(None)),
+            "the guard discards a root it cannot resolve, so the prompt must not claim it"
         );
     }
 
@@ -248,9 +249,10 @@ mod tests {
     fn the_system_binaries_stay_out_of_the_prompt() {
         let prompt = granted(SandboxPolicy::default().allow_system_executables());
 
-        assert!(
-            !prompt.contains('/'),
-            "a run granted nothing of its own has no roots to name: {prompt:?}"
+        assert_eq!(
+            prompt,
+            tools_line(&gate::approved_tools(None)),
+            "a run granted nothing of its own has no roots to name"
         );
     }
 

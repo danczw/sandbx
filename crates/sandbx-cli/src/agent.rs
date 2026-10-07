@@ -71,8 +71,8 @@ pub struct AgentRun {
 
     /// Give the model a system prompt.
     ///
-    /// Sent after the lines naming the tools this run approved and the roots they can
-    /// reach, neither of which it replaces.
+    /// Sent after whatever the run says about the tools it approved and the roots they
+    /// can reach, neither of which it replaces.
     #[arg(long, value_name = "TEXT")]
     system: Option<String>,
 
