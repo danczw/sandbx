@@ -110,7 +110,9 @@ uncompacted leg grows without limit, which is the failure the whole feature exis
 prevent. Carrying the count forward is safe only because a caller *appends* to history:
 appending does not move the indices of a prefix, so last turn's count still names the same
 messages. A caller that rewrites history instead is absorbed by the second rung below,
-which cuts to the deepest boundary under the floor rather than dropping it.
+which cuts to the deepest boundary under the floor rather than dropping it. `agent-run`
+does rewrite one thing — it merges a run of user messages into one (#188) — and translates
+the floor itself rather than leaning on that rung.
 
 **The cut points are not arbitrary.** Dropping a prefix can only break the conversation
 at its new front, so the whole question is three conditions on what becomes the first
@@ -196,15 +198,19 @@ keeps retrying one.
 Nor is running out of rounds. The turn comes back `Ok` with
 `TurnStop::RoundLimit { rounds }` and every message it produced, because the model did
 real work before the bound arrived and discarding it would lose the work with the answer.
-No truncation of that transcript would make it storable: it ends on a `tool_result` the
-model never answered, and so does every prefix of it, the alternative being a `tool_use`
-with nothing answering it. `TurnStop` is what says it is not an answer.
+No truncation of that transcript would make it end on an answer: it ends on a
+`tool_result` the model never answered, and so does every prefix of it, the alternative
+being a `tool_use` with nothing answering it. `TurnStop` is what says it is not an answer.
 
 What a caller does with that is the caller's. `agent-run` asks once more under
-`Turn::tool_choice`, so the reply is prose and the batch ends somewhere `Session::append`
-takes — see `decision-round-limit-answer.md`, including why that round still sends the
-tool definitions it forbids calling. Under `--no-wrap-up`, or when that second request
-fails, it reports an incomplete turn and `append` refuses the batch.
+`Turn::tool_choice`, so the reply is prose and the batch ends on an answer — see
+`decision-round-limit-answer.md`, including why that round still sends the tool
+definitions it forbids calling. Under `--no-wrap-up`, or when that second request fails,
+the batch is stored as it stands: `Session::append` takes a turn ending on results the
+model ran out of rounds on, and `sandbx-cli` sends the next prompt merged into them
+(#188, `decision-on-disk-state.md`). That merge is the caller's, over a stored history —
+nothing inside the loop may put a second user message in a request, which is the trap
+below.
 
 `TurnError` is only for what *ends* the turn:
 

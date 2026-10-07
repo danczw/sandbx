@@ -74,10 +74,10 @@ pub struct AgentRun {
     /// Do not spend one more request answering a turn that ran out of rounds.
     ///
     /// A turn that reaches `--max-rounds` is otherwise asked once more, a round that may
-    /// call no tool, so the reply is prose: stdout gets an answer and the conversation
-    /// ends somewhere `--session` can store. This refuses that request, leaving stdout
-    /// with whatever arrived before the cap and the session unchanged. The exit code is 2
-    /// either way.
+    /// call no tool, so the reply is prose and stdout gets an answer. This refuses that
+    /// request, leaving stdout with whatever arrived before the cap. `--session` stores
+    /// the tool work either way, and resuming it asks the model to answer beside the call
+    /// it ran out of rounds on. The exit code is 2 either way.
     #[arg(long = "no-wrap-up")]
     no_wrap_up: bool,
 
@@ -259,6 +259,10 @@ impl AgentRun {
             None => Vec::new(),
         };
         history.push(asked.clone());
+        // Merged, not just appended: a stored turn that ran out of rounds ends on tool
+        // results, and the prompt joins that message rather than following it (#188).
+        let (history, withheld) =
+            session::merge_user_runs(history, session.as_ref().map_or(0, Session::withheld));
 
         let turn = Turn {
             model: self.model.clone(),
@@ -278,7 +282,7 @@ impl AgentRun {
                 .as_ref()
                 .and_then(Session::observed)
                 .map(session::request_usage),
-            withheld: session.as_ref().map_or(0, Session::withheld),
+            withheld,
         };
 
         // Read off before `run_turn` takes the turn by value.
@@ -358,10 +362,11 @@ impl AgentRun {
         match session.append(turn) {
             Ok(()) => Ok(()),
             // Not an error: the turn's own exit code already says what happened, and a
-            // turn with no reply to store has nothing to add.
+            // turn that produced nothing at all — not even a refused tool call — has
+            // nothing to add.
             Err(SessionError::IncompleteTurn) => {
                 eprintln!(
-                    "sandbx: the turn did not end on an answer; session {} is unchanged",
+                    "sandbx: the turn produced nothing to store; session {} is unchanged",
                     session.id()
                 );
                 Ok(())
@@ -763,7 +768,7 @@ mod tests {
     fn a_discarded_wrap_up_round_owns_what_it_wrote() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
         let (_root, store, session) = new_session();
-        let before = std::fs::read(session.path()).expect("the transcript exists");
+        let path = session.path().to_owned();
 
         let (sent, written, code) = capped(&args, stranding_text(), Some(session));
 
@@ -771,11 +776,17 @@ mod tests {
         assert_eq!(written, "looking\n\nhere is what I found\n");
         assert_eq!(code.expect("a reported turn"), INCOMPLETE);
 
-        // The round ended on an unanswered `tool_result` like the one before it, so
-        // there is still nothing storable — only text that says otherwise.
-        let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
-            .expect("the transcript exists");
-        assert_eq!(after, before);
+        // The first turn is stored; the round that wrote and then asked for a tool is
+        // the one discarded, so its prose is on stdout and nowhere else.
+        let body = std::fs::read_to_string(&path).expect("the transcript exists");
+        assert!(body.contains("looking"), "got {body}");
+        assert!(!body.contains("here is what I found"), "got {body}");
+        assert!(
+            store
+                .resume(&only_session(&store))
+                .expect("a resumable turn")
+                .pending_call()
+        );
     }
 
     /// A provider failure exits 1 with an empty stdout; this must not read as one (#178).
@@ -839,8 +850,10 @@ mod tests {
         assert!(system.contains("no tool calls left"), "got {system:?}");
     }
 
+    /// The flag refuses the second request; it does not refuse the transcript. What the
+    /// turn did reaches disk with the call it never answered (#188).
     #[test]
-    fn no_wrap_up_leaves_the_cap_a_dead_end() {
+    fn no_wrap_up_still_stores_what_the_cap_reached() {
         let args = agent_run(&[
             "sandbx",
             "agent-run",
@@ -863,13 +876,13 @@ mod tests {
         assert_eq!(sent.len(), 1, "no request should have followed the cap");
         assert_eq!(written, "looking\n");
         assert_eq!(code.expect("a reported turn"), INCOMPLETE);
-        assert!(
-            store
-                .resume(&only_session(&store))
-                .unwrap()
-                .messages()
-                .is_empty()
-        );
+
+        let stored = store
+            .resume(&only_session(&store))
+            .expect("a resumable turn");
+        // The prompt, the round that asked for a tool, and its result.
+        assert_eq!(stored.messages().len(), 3);
+        assert!(stored.pending_call());
     }
 
     /// The round trip is the assertion: a batch `append` takes but `resume` refuses would
@@ -891,13 +904,12 @@ mod tests {
         assert_eq!(last.role, sandbx_session::Role::Assistant);
     }
 
-    /// Without it the first turn's work is unstorable and the exit code already says so;
-    /// a `?` here would cost the turn its text and report a provider failure instead.
+    /// A `?` on the wrap-up failure would cost the turn its text and report a provider
+    /// failure instead. The first turn keeps its stdout, its code, and now its transcript.
     #[test]
     fn a_failed_wrap_up_round_costs_the_turn_nothing() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
         let (_root, store, session) = new_session();
-        let before = std::fs::read(session.path()).expect("the transcript exists");
 
         // A round with no events at all ends without a `Stop`, which is the wrap-up
         // round failing without a provider that can be made to fail.
@@ -906,9 +918,68 @@ mod tests {
         assert_eq!(sent.len(), 2, "the wrap-up round should have been tried");
         assert_eq!(written, "looking\n");
         assert_eq!(code.expect("a reported turn"), INCOMPLETE);
-        let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
-            .expect("the transcript exists");
-        assert_eq!(after, before);
+
+        let stored = store
+            .resume(&only_session(&store))
+            .expect("a resumable turn");
+        assert_eq!(stored.messages().len(), 3);
+        assert!(stored.pending_call());
+    }
+
+    /// The pair the API rejects is two user *messages*, not the unanswered call, so the
+    /// prompt resuming such a session joins that message instead of following it (#188).
+    #[test]
+    fn a_prompt_resuming_an_unanswered_call_joins_it() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "what did you find?"]);
+        let (_root, store, session) = new_session();
+        let capping = agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--max-rounds",
+            "1",
+            "--no-wrap-up",
+            "--",
+            "go",
+        ]);
+        under(
+            SandboxPolicy::default(),
+            &capping,
+            &capping.prompt(),
+            vec![asking_for_ls()],
+            Some(session),
+        )
+        .2
+        .expect("a reported turn");
+
+        let (sent, _, code) = one_round(
+            &args,
+            &args.prompt(),
+            vec![text("nothing"), stop(StopReason::EndTurn)],
+            Some(store.resume(&only_session(&store)).expect("it resumes")),
+        );
+        code.expect("clean turn");
+
+        let body = serde_json::to_value(&sent).expect("a serializable request");
+        let messages = body[0]["messages"].as_array().expect("a history");
+        // Three stored turns and a prompt, three sent: the result and the prompt travel
+        // as one message.
+        assert_eq!(messages.len(), 3, "got {messages:?}");
+        assert!(
+            messages
+                .windows(2)
+                .all(|pair| pair[0]["role"] != pair[1]["role"]),
+            "got {messages:?}"
+        );
+        // Results first, which is where the API wants them and where they are stored.
+        assert_eq!(
+            messages[2]["content"]
+                .as_array()
+                .expect("blocks")
+                .iter()
+                .map(|block| block["type"].as_str().expect("a tagged block"))
+                .collect::<Vec<_>>(),
+            ["tool_result", "text"]
+        );
     }
 
     /// The id of the one session in `store`.

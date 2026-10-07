@@ -101,8 +101,9 @@ pub enum SessionError {
         path: PathBuf,
     },
 
-    /// The turn did not end with an assistant message, which would make the next resume
-    /// send two user turns in a row and brick the session from a run that exited zero.
+    /// The turn ends on a prompt nothing answered — not the model's reply, and not the
+    /// tool results a turn out of rounds breaks off on. Storing it would brick the
+    /// session from a run that exited zero.
     IncompleteTurn,
 
     /// The turn holds two messages of the same role in a row, joins the stored history on
@@ -181,19 +182,21 @@ impl std::fmt::Display for SessionError {
             ),
             Self::Disordered { path } => write!(
                 f,
-                "{} must open on a user turn, alternate, and end on the model's reply, \
-                 and does not — it has been edited since sandbx wrote it",
+                "{} must open on a user turn and alternate, bar a turn of tool results \
+                 the prompt after it answers beside, and does not — it has been edited \
+                 since sandbx wrote it",
                 path.display()
             ),
             Self::IncompleteTurn => write!(
                 f,
-                "the turn did not end with an assistant reply, so there is nothing to append"
+                "the turn ends on a prompt with nothing answering it, \
+                 neither a reply nor a tool result, so there is nothing to append"
             ),
             Self::DisorderedTurn => write!(
                 f,
                 "the turn must open on a user turn, alternate, and join the stored \
-                 history on the other role, and does not — appending it would leave the \
-                 session unreadable"
+                 history on the other role unless that ends on tool results, and does \
+                 not — appending it would leave the session unreadable"
             ),
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
         }
