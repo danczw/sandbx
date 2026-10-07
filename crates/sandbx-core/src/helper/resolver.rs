@@ -1,9 +1,9 @@
 //! Installing what [`crate::resolver`] rendered: one ordered mount sequence.
 //!
-//! The order is the whole of it. `MS_REC | MS_PRIVATE` on `/` before any mount, or every bind
-//! below propagates into the host's own `/etc`. Runs in stage 1, after `isolate` unshared
-//! `CLONE_NEWNS` and before stage 2 exists, so the command inherits the mounts and `mount(2)`
-//! is not yet denied; stage 2 could not, `apply` having no namespace to put them in.
+//! The order is the whole of it. `MS_REC | MS_PRIVATE` on `/` before any bind, so the mounts
+//! are this namespace's own whatever the host's propagation. Runs in stage 1, after `isolate`
+//! unshared `CLONE_NEWNS` and before stage 2 exists, so the command inherits the mounts and
+//! `mount(2)` is not yet denied; stage 2 could not, `apply` having no namespace to put them in.
 
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
@@ -46,9 +46,16 @@ pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxEr
 
 /// Make `/` and everything under it private, recursively.
 ///
-/// Before any mount of ours: a namespace from `unshare` inherits the propagation type it
-/// copied, and systemd makes `/` shared, so every bind below would land in the host's own
-/// `/etc`. `MS_REC`, the type being per mount and `/etc` possibly a mount of its own.
+/// Before any bind of ours, so what the command reads is this namespace's own however the host
+/// propagates: `unshare` leaves a shared `/` a *slave*, which receives the host's mount events
+/// and sends none back, and `MS_PRIVATE` makes that the guarantee rather than a consequence of
+/// how the namespace was copied. `MS_REC`, the type being per mount and `/etc` possibly a mount
+/// of its own.
+///
+/// `EACCES` as much as `EPERM`: a host restricting unprivileged user namespaces — Ubuntu's
+/// `kernel.apparmor_restrict_unprivileged_userns` — lets the `unshare` succeed and then denies
+/// `CAP_SYS_ADMIN` inside it, which the mount reports as `EACCES`. Either way there is no
+/// bounding resolution on such a host, and the run is refused rather than run unbounded.
 fn detach_mount_propagation() -> Result<(), SandboxError> {
     mount(
         None::<&Path>,
@@ -59,9 +66,13 @@ fn detach_mount_propagation() -> Result<(), SandboxError> {
     )
     .map_err(|errno| SandboxError::NamespaceSetupFailed {
         detail: match errno {
+            nix::errno::Errno::EACCES => {
+                "a host policy denies CAP_SYS_ADMIN inside an unprivileged user namespace, so \
+                 resolution cannot be bounded; refusing rather than resolving every name"
+            }
             nix::errno::Errno::EPERM => {
-                "kernel refused to detach mount propagation, so bounding resolution would \
-                 replace the host's own /etc; refusing rather than doing that"
+                "the kernel refused to detach mount propagation, so resolution cannot be \
+                 bounded; refusing rather than resolving every name"
             }
             _ => "could not detach mount propagation from the host",
         },

@@ -229,6 +229,11 @@ answer for every name — alongside `--dns-over-tcp`, alongside bare
 glibc asks it first), with 53 in the port list, or with no `--allow-network` at
 all.
 
+It needs a host where an unprivileged user namespace may mount. A kernel that
+restricts them — `kernel.apparmor_restrict_unprivileged_userns=1`, Ubuntu's
+default since 24.04 — denies `CAP_SYS_ADMIN` inside the namespace it just let
+you create, so the run is refused rather than left resolving every name.
+
 Or leave every name resolvable, over TCP, which is what a port allowlist leaves
 room for:
 
