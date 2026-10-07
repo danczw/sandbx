@@ -76,6 +76,11 @@ pub enum AuditEvent<'a> {
         env: usize,
         /// Whether the resolver hint was set; the variable it imposes is not counted in `env`.
         dns_over_tcp: bool,
+        /// How long the name allowlist is, never the names in it. Zero leaves resolution as
+        /// the host has it; anything else means the command's `/etc` resolution files are
+        /// sandbx's own. Not how many resolved — a name that resolves to nothing is still a
+        /// name the policy would have permitted.
+        dns_names: usize,
         /// Whether a digest had to match before the exec. Not the digest, already in
         /// `/proc/self/cmdline`; what an auditor cannot recover is that it was checked.
         pinned: bool,
@@ -159,6 +164,7 @@ impl<'a> AuditEvent<'a> {
             unix_sockets: policy.allows_unix_sockets(),
             env: policy.allowed_env().len(),
             dns_over_tcp: policy.hints_dns_over_tcp(),
+            dns_names: policy.allowed_dns_names().len(),
             pinned,
         }
     }
@@ -228,6 +234,7 @@ impl<'a> AuditEvent<'a> {
                 unix_sockets,
                 env,
                 dns_over_tcp,
+                dns_names,
                 pinned,
             } => tracing::info!(
                 target: AUDIT_TARGET,
@@ -241,6 +248,7 @@ impl<'a> AuditEvent<'a> {
                 unix_sockets,
                 env,
                 dns_over_tcp,
+                dns_names,
                 pinned,
             ),
             Self::Exited { program, code } => tracing::info!(

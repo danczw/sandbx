@@ -102,6 +102,8 @@ pub struct SandboxPolicy {
     env: Vec<String>,
     /// Implies a value, unlike `env`, and only because that value is a compile-time constant.
     dns_over_tcp: bool,
+    /// Host names, never addresses: the addresses are resolved in the helper, per run.
+    dns_names: Vec<String>,
 }
 
 impl SandboxPolicy {
@@ -227,6 +229,21 @@ impl SandboxPolicy {
     /// Whether the policy asks the child's resolver to use TCP.
     pub fn hints_dns_over_tcp(&self) -> bool {
         self.dns_over_tcp
+    }
+
+    /// Host names the process may resolve; empty leaves resolution exactly as the host has it.
+    ///
+    /// Names and not addresses: what each resolves to is decided per run, in the helper.
+    pub fn allowed_dns_names(&self) -> &[String] {
+        &self.dns_names
+    }
+
+    /// Whether resolution is bounded at all, which is what costs the command a mount namespace.
+    ///
+    /// The one answer `hardening::isolate` and `ruleset::rights` share, so the namespace the
+    /// first unshares cannot differ from the files the second grants read on.
+    pub fn bounds_resolution(&self) -> bool {
+        !self.dns_names.is_empty()
     }
 
     /// Let the process inherit the variable called `name`.
@@ -357,4 +374,46 @@ impl SandboxPolicy {
         self.dns_over_tcp = true;
         self
     }
+
+    /// Let `name` resolve, and bound resolution to the names granted this way.
+    ///
+    /// The first call is what imposes the bound: the helper resolves each name before the
+    /// command starts and gives it a hosts file holding those addresses and no nameserver, so
+    /// a name nothing granted stops resolving. Repeat to allowlist several; duplicates
+    /// collapse. Bounds resolution only — an IP literal needs no resolver, and
+    /// [`allow_network_port`](Self::allow_network_port) is what bounds where a connection can
+    /// go. `context/decision-egress-proxy.md`.
+    ///
+    /// A name that is empty, over [`DNS_NAME_LIMIT`] bytes, or carries a NUL, whitespace or
+    /// `#` is skipped and not refused, so nothing `HelperArgs::encode` emits is something
+    /// `decode` rejects: the last three would otherwise forge a field or a comment in the
+    /// rendered hosts file. `sandbx`'s `--allow-dns` refuses them instead. A name that does
+    /// not resolve contributes no address, as an absent path contributes no rule.
+    #[must_use]
+    pub fn allow_dns(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        if is_resolvable_name(&name) && !self.dns_names.contains(&name) {
+            self.dns_names.push(name);
+        }
+        self
+    }
+}
+
+/// The longest name [`SandboxPolicy::allow_dns`] will carry, from DNS's own 253-byte limit on
+/// a presentation-form name.
+///
+/// A bound at all because every name becomes a line in a file the helper writes with no reader
+/// to push back, and because the argv carrying them has `MAX_ARG_STRLEN` to fit under.
+pub const DNS_NAME_LIMIT: usize = 253;
+
+/// Whether `name` is a name the helper can both carry and render.
+///
+/// Shared with `HelperArgs::decode`, which refuses what this rejects: the encode side skips
+/// such a name, so one arriving on the wire did not come from `encode`.
+pub(crate) fn is_resolvable_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= DNS_NAME_LIMIT
+        && !name.contains('#')
+        && !name.contains('\0')
+        && !name.chars().any(char::is_whitespace)
 }

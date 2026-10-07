@@ -92,10 +92,45 @@ pub(super) fn fs_rules(
     &std::path::Path,
     landlock::BitFlags<landlock::AccessFs>,
 )> {
+    // Collected first, and annotated: the paths are `&'static`, and chaining them onto a
+    // borrow of the policy would otherwise have inference demand that the policy be too.
+    let resolver: Vec<(crate::Axis, &std::path::Path)> =
+        resolver_paths(policy.bounds_resolution()).collect();
+
     policy
         .granted_paths()
+        .chain(resolver)
         .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir(), abi)))
         .collect()
+}
+
+/// Read on the three files a bounded resolver replaces, or nothing when it bounds nothing.
+///
+/// Here and not in the policy, because these are not grants the caller made: they are what the
+/// mechanism costs, and a policy that counted them would report a path grant on the audit trail
+/// that nobody asked for. Landlock binds a rule to the inode, so by the time `apply` opens
+/// these, `helper::resolver` has bind-mounted sandbx's own files over them — which is why
+/// `--allow-dns` is the one flag that makes `--allow-read /etc` unnecessary rather than
+/// necessary.
+///
+/// Read and not read-execute: an NSS module is loaded from `/lib`, never from `/etc`.
+///
+/// An absent path is skipped, as in [`SandboxPolicy::allow_system_executables`]: Landlock
+/// refuses a rule for a path it cannot open, and `/etc/resolv.conf` is the one of the three a
+/// host may legitimately not have — `helper::resolver` skips its mount for the same reason.
+///
+/// Takes the one answer rather than the policy, these paths being `&'static` where a path
+/// grant's lifetime is the policy's.
+///
+/// [`SandboxPolicy::allow_system_executables`]: crate::SandboxPolicy::allow_system_executables
+fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static std::path::Path)> {
+    bounded
+        .then_some(crate::RESOLVER_FILES)
+        .into_iter()
+        .flatten()
+        .map(std::path::Path::new)
+        .filter(|path| path.exists())
+        .map(|path| (crate::Axis::Read, path))
 }
 
 /// Whether [`apply`](crate::helper::apply) hands the network axis to Landlock at all, and on

@@ -29,7 +29,15 @@ pub(super) fn prepare_supervisor(
 ) -> Result<Vec<(Degradation, String)>, SandboxError> {
     let mut degraded = Vec::new();
 
+    // Before the unshare, which puts a policy that denies IP egress into an empty network
+    // namespace — where a lookup resolves nothing at all.
+    let resolved = crate::resolver::files(policy);
+
     degraded.extend(isolate(policy)?);
+
+    // Between the unshare and the capability drops: the mounts need the namespace `isolate`
+    // just made, and `CAP_SYS_ADMIN` within it, which the drops below take away.
+    super::resolver::bound_resolution(resolved)?;
 
     // After the unshare, not before: entering a fresh user namespace grants the full
     // capability set *within it*, so dropping earlier would be undone.
@@ -239,6 +247,12 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
     let mut flags = CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWPID;
     if !policy.allows_network() {
         flags |= CloneFlags::CLONE_NEWNET;
+    }
+    // Only for a policy that bounds resolution, and `helper::resolver` is what fills it: a
+    // mount namespace with nothing mounted into it confines nothing, and unsharing one
+    // unconditionally would make every run depend on a kernel that permits it.
+    if policy.bounds_resolution() {
+        flags |= CloneFlags::CLONE_NEWNS;
     }
 
     // Captured before the unshare: afterwards this process reads back as the overflow

@@ -18,7 +18,7 @@ sandbox-integration = ["dep:io-uring"]
 caps = "0.5.6"
 landlock = "0.4.7"
 libc = "0.2.189"
-nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "user", "resource"] }
+nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "mount", "signal", "user", "resource"] }
 # A caret range, not `=0.5.0`. Widening past 0.5 needs `eval` in
 # `helper/seccomp/tests/mod.rs` to learn any new opcode first; it panics by name.
 seccompiler = "0.5.0"
@@ -73,4 +73,9 @@ required-features = ["sandbox-integration"]
 [[bin]]
 name = "sandbx-egress-probe"
 path = "tests/support/egress_probe.rs"
+required-features = ["sandbox-integration"]
+
+[[bin]]
+name = "sandbx-resolver-probe"
+path = "tests/support/resolver_probe.rs"
 required-features = ["sandbox-integration"]

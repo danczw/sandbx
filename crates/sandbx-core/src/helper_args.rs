@@ -12,6 +12,9 @@ const FLAG_UNIX: &str = "--allow-unix-sockets";
 const FLAG_ENV: &str = "--env";
 /// Carries the resolver hint and takes no value; the pair it stands for is the policy's.
 const FLAG_DNS_OVER_TCP: &str = "--dns-over-tcp";
+/// Introduces one name the command may resolve, and takes exactly one value. Never an
+/// address: the helper resolves it, the harness does not.
+const FLAG_DNS_NAME: &str = "--allow-dns-name";
 /// Introduces the SHA-256 the program must hash to, and takes exactly one value. No path:
 /// the digest describes the one binary the helper becomes, which `SEPARATOR` already names.
 const FLAG_PIN: &str = "--pin-sha256";
@@ -97,6 +100,10 @@ impl HelperArgs {
             out.push(FLAG_ENV.to_string());
             out.push(name.clone());
         }
+        for name in policy.allowed_dns_names() {
+            out.push(FLAG_DNS_NAME.to_string());
+            out.push(name.clone());
+        }
         if let Some(digest) = pin {
             out.push(FLAG_PIN.to_string());
             out.push(digest.to_string());
@@ -165,6 +172,20 @@ impl HelperArgs {
                         });
                     }
                     policy = policy.allow_env(name);
+                }
+                FLAG_DNS_NAME => {
+                    let name = rest.next().ok_or(SandboxError::BadHelperArgs {
+                        detail: "dns name flag with no name after it",
+                    })?;
+                    // Refused where `allow_dns` would skip it: such a name would forge a
+                    // field or a comment in the hosts file the helper renders from these.
+                    if !crate::policy::is_resolvable_name(name) {
+                        return Err(SandboxError::BadHelperArgs {
+                            detail: "dns name that is empty, over-long, or carries whitespace, \
+                                     `#` or a NUL",
+                        });
+                    }
+                    policy = policy.allow_dns(name);
                 }
                 FLAG_PIN => {
                     let hex = rest.next().ok_or(SandboxError::BadHelperArgs {

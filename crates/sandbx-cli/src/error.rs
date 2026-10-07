@@ -137,6 +137,22 @@ pub enum PolicyError {
         holds: &'static str,
     },
 
+    /// `--allow-dns` was given alongside `--dns-over-tcp`.
+    ///
+    /// The four `Dns…` variants are each a shape in which the bound `--allow-dns` claims would
+    /// not hold — a nameserver the command can still reach answers for every name, so the
+    /// allowlist would bound nothing. `context/decision-egress-proxy.md`.
+    DnsWithResolverHint,
+
+    /// `--allow-dns` was given alongside bare `--allow-network`.
+    DnsWithEveryPort,
+
+    /// `--allow-dns` was given alongside a port allowlist naming 53.
+    DnsWithNameserverPort,
+
+    /// `--allow-dns` was given with no IP egress at all.
+    DnsWithoutEgress,
+
     /// `--pin-sha256` was given more than once.
     RepeatedPin,
 
@@ -255,7 +271,31 @@ impl std::fmt::Display for PolicyError {
                 cwd.display(),
                 owned.display()
             ),
-            // No `ADVICE` either, for the same reason, and both say what to write instead.
+            // No `ADVICE` through here either: each names the flag it refused and what to
+            // write instead of it.
+            Self::DnsWithResolverHint => write!(
+                f,
+                "--allow-dns leaves the command no nameserver at all, and --dns-over-tcp asks \
+                 one over TCP — pass one of the two, not both"
+            ),
+            Self::DnsWithEveryPort => write!(
+                f,
+                "--allow-dns bounds which names resolve, and bare --allow-network leaves UDP \
+                 open, so a command carrying a resolver of its own reaches a nameserver that \
+                 answers for every name — name the ports the command connects to, as in \
+                 --allow-network 443"
+            ),
+            Self::DnsWithNameserverPort => write!(
+                f,
+                "--allow-dns bounds which names resolve, and --allow-network 53 reaches a \
+                 nameserver that answers for every name — drop port 53 and keep the ports the \
+                 command connects to"
+            ),
+            Self::DnsWithoutEgress => write!(
+                f,
+                "--allow-dns bounds which names resolve, and this run has no IP egress to \
+                 resolve them for — pass --allow-network PORT as well, or drop the flag"
+            ),
             Self::RepeatedPin => write!(
                 f,
                 "one run execs one program, so there is one digest to pin — \
@@ -284,6 +324,10 @@ impl std::error::Error for PolicyError {
             | Self::HarnessCredential { .. }
             | Self::GrantReachesOwned { .. }
             | Self::CwdReachesOwned { .. }
+            | Self::DnsWithResolverHint
+            | Self::DnsWithEveryPort
+            | Self::DnsWithNameserverPort
+            | Self::DnsWithoutEgress
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } | Self::UnresolvableGrant { source, .. } => {
