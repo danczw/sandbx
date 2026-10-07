@@ -9,6 +9,8 @@ is the test applied throughout.
 
 One piece survives it, and it is not the one the title is about: a resolver can
 bound *which names resolve*, because sandbx can hold the whole route to a name.
+That piece is `--allow-dns NAME` (#145); the mechanism it ships with is not the
+one this note first specified, and the paragraphs below say what moved and why.
 Nothing here bounds where a command connects.
 
 ## No kernel mechanism sees a destination
@@ -42,7 +44,7 @@ refusal is **enforcement**, a mechanism a program can simply ignore is
 | interception, so an unmodified command is proxied | cooperation |
 | TLS termination, so the allowlist is about names | widening |
 | credential substitution per destination | widening, following termination |
-| a resolver answering for allowlisted names | enforcement, of resolution only |
+| a resolver bounding which names resolve | enforcement, of resolution only |
 
 **The listener has no free spelling.** `decision-tool-credentials.md`'s channel
 table applies to this unchanged, because it is the same question asked for a
@@ -97,53 +99,81 @@ of one.
 Under a port allowlist seccomp already denies UDP and raw sockets, so
 `getaddrinfo` can reach neither a UDP nameserver nor `AF_NETLINK`
 (`helper/seccomp/rules.rs:182-190`). The one transport left is TCP, on a port
-the operator names. If the proxy is what answers on it, a name outside the
-allowlist has nowhere else to be asked — the enforcement is positional, the same
-shape as the credential refusal, and it needs no interception and no termination
-to be true.
+the operator names. Hold the only thing that can answer there and a name outside
+the allowlist has nowhere else to be asked: the enforcement is positional, the
+same shape as the credential refusal, and it needs no interception and no
+termination to be true.
+
+What this note first specified as holding that position was a DNS responder of
+sandbx's own. That shape cannot be built unprivileged — the measurements are
+under *What was rejected* — and #145 holds the position a different way, which
+costs a mount namespace and no listener at all. Stage 1 resolves each
+allowlisted name through `getaddrinfo` before it unshares, then binds its own
+`hosts`, `nsswitch.conf` and `resolv.conf` over `/etc` in a mount namespace the
+command inherits. `hosts: files` removes glibc's `dns` source, so an unlisted
+name is not asked over any transport rather than asked and refused; the
+nameserver-less `resolv.conf` is for musl, which ignores `nsswitch.conf`.
+
+Positional either way, and in one respect further ahead: the responder would
+have answered whatever the command asked it during the run, where a rendered
+file is fixed before the command starts.
 
 It is also the only route to resolution for a statically linked musl binary.
 `--dns-over-tcp` is a glibc resolver hint and musl has no equivalent
-(`decision-port-allowlist.md`), so that gap closes here or nowhere.
+(`decision-port-allowlist.md`), so that gap closes here or nowhere. The files
+close it: musl reads `/etc/hosts`, and a static binary reads it too.
 
-## A refused name gets REFUSED
+One consequence worth stating in the other direction, because it is the only
+flag that has it: `--allow-dns` makes `--allow-read /etc` *unnecessary*.
+Landlock binds a rule to the inode, so by the time stage 2 opens those three
+paths they are sandbx's files, and the read rules `ruleset::rights` adds for
+them reach nothing else. The alternative route — `--dns-over-tcp
+--allow-network 53 --allow-read /etc` — grants the command the whole directory
+and leaves every name resolvable.
 
-`REFUSED` (RCODE 5), and a refusal record on the sandbx side.
+## A name outside the allowlist is absent, not refused
 
-**`NXDOMAIN` would lie.** It asserts the name does not exist, which is a
-statement about the world where the fact is a statement about policy. An
-operator debugging reads "typo" where the truth is "this policy did not name
-it", and a client caching the negative answer then fails for a reason that
-outlives the lookup.
+There is no response code, because there is no responder. An unlisted name has
+no line in the hosts file and glibc has no other source to try, so
+`getaddrinfo` returns `EAI_NONAME` — "Name or service not known", at once and
+with no timeout. `curl` prints `Could not resolve host` and exits 6.
 
-**Answering nothing is worse than either.** It is a client-side timeout, the
-diagnostic #147 existed to remove — the confusing part there was that resolution
-failed silently where the operator was watching the port.
+That is as legible as the `REFUSED` this note specified, and it arrives by the
+path every other resolution failure arrives by, which the `REFUSED` route could
+not claim: a stub resolver reads an RCODE, a shell script reads the exit code.
+**It is also indistinguishable from a typo**, which `REFUSED` was chosen to
+avoid, and that is the cost. It is paid where the operator is: `sandbox.rs`'s
+advice names `--allow-dns NAME` as the first of the two answers, and the
+refusals in `Grants::policy` catch the shapes where the flag is the wrong one
+before the run starts.
 
-`REFUSED` is the only code that means the server declines, which is exactly the
-fact, and a stub resolver with no other nameserver to try stops there rather
-than retrying the name.
+What the trail records is a count on `Spawned`, `dns_names`, and no per-name
+record at all. The responder would have had one query per name to report;
+resolution ahead of the spawn has one event, and `Spawned` carries counts and
+not values (`guide-logging.md:41`) — doubly so here, an internal host name being
+infrastructure rather than a pointer to it.
 
-The record reuses `AuditEvent::denied(tool, subject, reason)` (`audit.rs:100`)
-with the proxy as the tool, so a refused name reads as `decision="denied"` like
-every other refusal. Two things it must not do. It must not add a label to
-`REPORTED_BY_HELPER` (`error.rs:290`): that set is closed around what crosses
-the helper's audit channel, and this refusal is decided harness-side, where no
-channel is involved. And it must not be the only signal — today
-`AuditEvent::Denied` is emitted by `fs_guard.rs` alone, so a resolver refusal is
-the first egress-shaped one, and the operator-facing failure has to be legible
-without the trail.
+Two things that have not changed. No label joins `REPORTED_BY_HELPER`
+(`error.rs:290`): that set is closed around what crosses the helper's audit
+channel, and nothing about the allowlist is decided on it. And the
+operator-facing failure is legible without the trail, which is what the advice
+above is for.
 
 ## The claim, written first
 
-The resolver's sentence:
+The resolver's sentence, as #145 made it true:
 
-> sandbx answers DNS for the sandboxed command itself and resolves only the
-> names you allowlisted. A name you did not name is answered `REFUSED` and
-> recorded as a refusal. This bounds which names resolve; it does not bound where
-> the command connects — an address the command already holds, or obtains by any
-> route other than this resolver, is reachable on any allowlisted port exactly as
-> before.
+> sandbx resolves the names you allowlisted itself, before the command starts,
+> and gives the command a hosts file holding those addresses and no nameserver
+> at all. A name you did not list does not resolve. This bounds which names
+> resolve; it does not bound where the command connects — an address the command
+> already holds, or obtains by any route other than resolution, is reachable on
+> any allowlisted port exactly as before.
+
+It is the sentence this section wrote first, with the response code taken out
+and the mechanism's own shape put in. Both halves of what the test asked for
+survived the mechanism changing: it is plain, and its limit is in the same
+breath.
 
 The per-host sentence:
 
@@ -158,12 +188,12 @@ verdict: the resolver is a mechanism, per-host egress is not, and the test is
 the one `decision-tool-credentials.md` applied to the same proxy from the other
 side.
 
-Neither sentence is in `SECURITY.md`'s *What sandbx claims to enforce* table,
-and the first does not go there until a resolver makes it true. The non-claim
-that table's counterpart already carries stays, and gains the verdict so the
-next reader does not re-derive it.
+The first sentence is now in `SECURITY.md`'s *What sandbx claims to enforce*
+table, in the form that table's rows take. The per-host sentence is not, and the
+non-claim beside it stays and carries the verdict so the next reader does not
+re-derive it.
 
-## What must not happen in the meantime
+## No unenforced field, which is how the allowlist landed
 
 **No host field may enter `SandboxPolicy` before something enforces it, and no
 name allowlist either.** The type is read as the record of what was granted
@@ -174,9 +204,11 @@ same heading. An intermediate step, if one is wanted, is a separate opt-in type
 the enforcement path rejects outright — not an unenforced field on the existing
 one.
 
-The resolver inherits it in the harder direction: the name allowlist is the
-thing being enforced, so it may not be recorded until the resolver answers for
-it.
+The name allowlist was held to it in the harder direction — the allowlist is the
+thing being enforced — and discharged rather than waived: #145 landed
+`dns_names`, the mounts that honour it and the enforcement tests in one commit.
+The rule still stands for a *host* field, which nothing enforces and which the
+five pieces above say nothing can.
 
 ## What was rejected
 
@@ -184,8 +216,31 @@ it.
 composed, matched against a policy, while the bytes go to the address it
 dialled.
 
+**A DNS responder of sandbx's own, answering over TCP.** The shape this note
+specified, and unbuildable unprivileged. Three measurements, on an ordinary
+desktop kernel with no sandbx in the way:
+
+- a port allowlist sets `allows_network()`, so `isolate` keeps the host netns
+  (`helper/hardening.rs:239-242`), and an unprivileged `bind(127.0.0.1:53)`
+  there is `EPERM` — `net.ipv4.ip_unprivileged_port_start` is 1024;
+- inside a netns sandbx owns, the same bind succeeds and the netns has no route
+  out, so a name it resolves is unreachable and nothing is gained;
+- no port above 1024 is reachable either: neither glibc's nor musl's
+  `resolv.conf` can name a port, so a stub resolver cannot be pointed at a
+  listener.
+
+`REFUSED` goes with it, being a response code with nothing to send it. What
+replaced the pair is in *Why the resolver is the exception*.
+
 **`NXDOMAIN` for a name outside the allowlist.** A policy refusal dressed as a
-fact about the world, cacheable as one.
+fact about the world, cacheable as one. Decided when the responder was still the
+mechanism; the file route makes an unlisted name absent instead, which is a
+third answer and not this one.
+
+**A per-name audit record.** The responder would have had a query to report per
+name. Resolution before the spawn has one event and `Spawned` carries counts, so
+the trail gains `dns_names` and no names — see *A name outside the allowlist is
+absent, not refused*.
 
 **A host field recorded now and enforced later.** The trap the rule above exists
 to close.
@@ -204,11 +259,16 @@ part that earns that cost, and it earns it without the rest.
 
 ## What it costs
 
-Nothing stops working, and nothing is claimed that was not claimed before. What
-the decision buys is that the next reader of `--allow-network <port>` finds the
-proxy already priced: four of its five pieces decided against, one carved out
-with its claim written, and the `SECURITY.md` non-claim saying which is which
-rather than recording an absence.
+Nothing stops working: a run that passes no `--allow-dns` resolves exactly what
+it resolved before, unshares no mount namespace, and reads the host's own `/etc`.
+What the decision buys is that the next reader of `--allow-network <port>` finds
+the proxy already priced: four of its five pieces decided against, the fifth
+built, and the `SECURITY.md` non-claim saying which is which rather than
+recording an absence.
+
+The fifth cost what the listener would have cost, in a different currency: a
+mount namespace, three bind mounts and a tmpfs, only for a run that asks for
+them.
 
 The honest summary is that per-host egress is not a mechanism sandbx can have,
 and that the resolver, which was only ever a component of it, is.
