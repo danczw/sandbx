@@ -44,6 +44,22 @@ There is no allowance per change. The owner's rewrite fits every change into one
 file within the budget below, which is a ceiling for the release and not a sum of
 per-branch shares (#193).
 
+**The checker is a budget gate, not a truth gate**, so convergence is where a
+false claim ships green. A sentence that was true when its branch wrote it can be
+falsified by a sibling that lands after it, and nothing in CI reads the two
+together: the notes job counts paragraphs and lines, and `notes` passing says
+only that. The owning branch therefore re-reads every sentence against the merged
+tree, not against the branch each came from.
+
+Two shapes go stale this way and are worth looking for by name. A **negative
+universal** — *"no `decision=` value is added or removed"* — is falsified by any
+sibling that adds one, and the alpha.12 round had exactly that. So is a claim
+about **a cap, a count or an ownership**: *"`--max-rounds` moves a cap the session
+no longer holds"* was true of its own branch and false once the branch that moved
+the cap landed. Both were caught in the merge order by hand. A claim scoped to
+what its own change does survives a sibling; a claim about the whole surface does
+not.
+
 ## The budget
 
 Three paragraphs, thirty lines, no headings and no bullets. The checker enforces
