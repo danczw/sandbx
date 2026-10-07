@@ -91,27 +91,37 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
         // Exhaustive over the refusals and not over `SandboxError`: the rest of that enum is
         // `FsGuard`'s, which no spawn reaches, so an arm for one would assert something false
         // about an unreachable path. A twelfth refusal still has to be classified here.
-        SandboxError::HelperRefused { refusal, detail } => match refusal {
-            // Reachable only through `SandboxedCommand::pin_sha256`, which no built-in sets
-            // today; kept because the builder is public and the next spawning tool may.
-            HelperRefusal::PinMismatch
-            | HelperRefusal::PinUnreadable
-            | HelperRefusal::PinnedScript => ToolError::Denied {
-                subject: ran(),
-                reason: detail,
-            },
-            HelperRefusal::BadHelperArgs
-            | HelperRefusal::Landlock
-            | HelperRefusal::Seccomp
-            | HelperRefusal::NamespaceSetupFailed
-            | HelperRefusal::ProcessHardening
-            | HelperRefusal::InnerStageFailed
-            | HelperRefusal::ExecFailed
-            | HelperRefusal::Unsupported => ToolError::Failed {
-                subject: applied(),
-                detail,
-            },
-        },
+        // The label stands in when the stderr is gone — a stage killed between the channel
+        // write and its own print leaves the record but not the prose, and a bare
+        // ``sandbox `x` failed: `` tells the model nothing about what refused.
+        SandboxError::HelperRefused { refusal, detail } => {
+            let detail = match detail.is_empty() {
+                true => refusal.label().to_string(),
+                false => detail,
+            };
+
+            match refusal {
+                // Reachable only through `SandboxedCommand::pin_sha256`, which no built-in sets
+                // today; kept because the builder is public and the next spawning tool may.
+                HelperRefusal::PinMismatch
+                | HelperRefusal::PinUnreadable
+                | HelperRefusal::PinnedScript => ToolError::Denied {
+                    subject: ran(),
+                    reason: detail,
+                },
+                HelperRefusal::BadHelperArgs
+                | HelperRefusal::Landlock
+                | HelperRefusal::Seccomp
+                | HelperRefusal::NamespaceSetupFailed
+                | HelperRefusal::ProcessHardening
+                | HelperRefusal::InnerStageFailed
+                | HelperRefusal::ExecFailed
+                | HelperRefusal::Unsupported => ToolError::Failed {
+                    subject: applied(),
+                    detail,
+                },
+            }
+        }
         // `SpawnFailed` is the only other thing `output` returns, and the sandbox is what
         // would not start.
         error => ToolError::Failed {
@@ -223,6 +233,26 @@ mod tests {
             assert!(
                 !rendered.contains("run `"),
                 "{refusal:?} still reads as a command that ran: {rendered}"
+            );
+        }
+    }
+
+    /// A stage killed between its channel write and its own print leaves the record without
+    /// the prose, and the model would otherwise be told only that something failed.
+    #[test]
+    fn a_refusal_that_lost_its_stderr_still_names_what_refused() {
+        for refusal in HelperRefusal::ALL {
+            let error = sandbox_error(
+                COMMAND,
+                SandboxError::HelperRefused {
+                    refusal,
+                    detail: String::new(),
+                },
+            );
+
+            assert!(
+                error.to_string().contains(refusal.label()),
+                "{refusal:?} reached the model with no reason at all: {error}"
             );
         }
     }
