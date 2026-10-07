@@ -193,10 +193,13 @@ already passes and checking this one junction would buy nothing it does not alre
 have. What the shape does refuse is the case that matters — a trailing *prompt*,
 with nothing answering it, and a user turn with no blocks at all.
 
-What shape-only costs is one diagnosis: an append torn after its `tool_result`
-line now reads as a round limit, and resume says so. The alternative is what the
-torn-line paragraph above already rejects — refusing the file, on an append-only
-format, which is the conversation lost rather than one line misdescribed.
+What shape-only costs is one diagnosis. An append torn after its `tool_result`
+line reads as a round limit, and resume does not merely log that — it tells the
+*model* the turn ran out of rounds, so a false sentence enters the conversation.
+The trade still goes this way: the alternative is what the torn-line paragraph
+above already rejects, refusing the file on an append-only format, and a wrong
+sentence the next turn can contradict beats the conversation lost. The shape is
+inferred because nothing records why the turn stopped; see #190.
 
 Both guards take the relaxation, which is not a choice. `append` writing a shape
 `resume` refuses is precisely the bricked session the paragraph below is about.

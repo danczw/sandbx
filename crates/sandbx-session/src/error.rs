@@ -101,9 +101,8 @@ pub enum SessionError {
         path: PathBuf,
     },
 
-    /// The turn ends on a prompt nothing answered — not the model's reply, and not the
-    /// tool results a turn out of rounds breaks off on. Storing it would brick the
-    /// session from a run that exited zero.
+    /// The turn ends on a prompt nothing answered — neither the model's reply nor the
+    /// tool results a turn out of rounds breaks off on, so storing it bricks the session.
     IncompleteTurn,
 
     /// The turn holds two messages of the same role in a row, joins the stored history on

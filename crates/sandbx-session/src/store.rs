@@ -264,9 +264,8 @@ impl Session {
     /// True when the conversation breaks off on tool calls the model never answered,
     /// which is a turn that ran out of rounds (#188).
     ///
-    /// The next prompt is sent *beside* those results rather than after them, so a caller
-    /// that merges has to know, and only the store can say without reimplementing the
-    /// predicate `append` and `resume` are checked against.
+    /// Exposed so a caller merging the next prompt *beside* those results need not
+    /// reimplement the predicate `append` and `resume` are checked against.
     #[must_use]
     pub fn pending_call(&self) -> bool {
         self.messages.last().is_some_and(answers_only)
@@ -283,7 +282,7 @@ impl Session {
     ///
     /// Refuses a turn ending on a user message that is not purely answers to tool calls:
     /// a prompt nothing replied to. A turn with no messages leaves the last role where it
-    /// was, so it writes its accounting line and nothing else.
+    /// was, so it writes its accounting line alone.
     ///
     /// Both of [`SessionStore::resume`]'s conditions are checked here, over the batch and
     /// over its boundary with what is stored. The file is append-only, so one that lands

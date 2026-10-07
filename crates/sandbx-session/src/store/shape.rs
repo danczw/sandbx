@@ -1,8 +1,8 @@
 //! Which orders of messages a transcript may hold, and which the API refuses.
 //!
-//! Separate from the sequence that applies them because these answer to the Messages
-//! API's rules about a request, and `store.rs` to the filesystem's about a file. Every
-//! one is a predicate over messages alone: no path, no mode, no descriptor.
+//! Apart from the sequence that applies them: these answer to the Messages API's rules
+//! about a request, `store.rs` to the filesystem's about a file. Every one is a predicate
+//! over messages alone — no path, no mode, no descriptor.
 
 use crate::{Content, Message, Role};
 
@@ -39,10 +39,9 @@ pub(super) fn follows(stored: &[Message], batch: &[Message]) -> bool {
 /// True when the history may be stored and read back: [`settled`], or ending on tool
 /// calls the model ran out of rounds before answering (#188).
 ///
-/// Composed beside [`settled`] rather than written into it: the two guards this is used
-/// by cannot disagree — `append` writing what `resume` refuses is a session bricked by a
-/// run that exited non-zero — but a caller wanting "ended on an answer" means that, and
-/// a round limit is the one thing this admits that is not one.
+/// Composed beside [`settled`] rather than relaxing it: a caller asking whether a
+/// conversation ended on an answer still means that. Both guards take this one, because
+/// `append` writing a shape `resume` refuses is a session nothing can undo.
 pub(super) fn resumable(messages: &[Message]) -> bool {
     settled(messages) || messages.last().is_some_and(answers_only)
 }
@@ -70,19 +69,17 @@ fn settled(messages: &[Message]) -> bool {
 ///
 /// Two user turns in a row are the pair the API rejects, with one exception: a turn of
 /// nothing but tool results is one the request carries *merged* into the turn after it,
-/// so the pair never reaches the wire. That is what makes a round-limited turn storable
-/// and the prompt that resumes it appendable (#188).
+/// so the pair never reaches the wire (#188).
 fn joins(earlier: &Message, later: &Message) -> bool {
     earlier.role != later.role
         || (earlier.role == Role::User && answers_only(earlier) && asks_only(later))
 }
 
-/// True when `message` answers no tool call — the only user turn that may follow one which
+/// True when `message` answers no tool call — the only user turn that may follow one that
 /// is nothing but answers.
 ///
-/// The merge concatenates the pair's blocks, so a second turn carrying results would send
-/// one message whose later blocks name calls no earlier message made, which the API
-/// refuses as an orphan.
+/// The merge concatenates the pair's blocks, so a turn carrying results of its own would
+/// send one naming a call no earlier message made, which the API refuses as an orphan.
 fn asks_only(message: &Message) -> bool {
     !message.content.is_empty()
         && !message

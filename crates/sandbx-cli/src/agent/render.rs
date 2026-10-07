@@ -21,8 +21,8 @@ pub(super) enum Capped {
     Summarised(usize),
 
     /// A tool-less round wrote to stdout and then did not answer, so what *it* wrote is
-    /// neither an answer nor stored — the turn before it is stored. Streamed, so it
-    /// cannot be taken back.
+    /// neither an answer nor stored, unlike the turn before it. Streamed, so it cannot be
+    /// taken back.
     Discarded(usize),
 }
 

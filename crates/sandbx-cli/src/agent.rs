@@ -778,7 +778,7 @@ mod tests {
         assert_eq!(code.expect("a reported turn"), INCOMPLETE);
 
         // The first turn is stored; the round that wrote and then asked for a tool is
-        // the one discarded, so its prose is on stdout and nowhere else.
+        // the one discarded, so its prose reached stdout and nowhere else.
         let body = std::fs::read_to_string(&path).expect("the transcript exists");
         assert!(body.contains("looking"), "got {body}");
         assert!(!body.contains("here is what I found"), "got {body}");
@@ -851,8 +851,7 @@ mod tests {
         assert!(system.contains("no tool calls left"), "got {system:?}");
     }
 
-    /// The flag refuses the second request; it does not refuse the transcript. What the
-    /// turn did reaches disk with the call it never answered (#188).
+    /// The flag refuses the second request, not the transcript (#188).
     #[test]
     fn no_wrap_up_still_stores_what_the_cap_reached() {
         let args = agent_run(&[
@@ -905,8 +904,7 @@ mod tests {
         assert_eq!(last.role, sandbx_session::Role::Assistant);
     }
 
-    /// A `?` on the wrap-up failure would cost the turn its text and report a provider
-    /// failure instead. The first turn keeps its stdout, its code, and now its transcript.
+    /// A `?` here would report a provider failure and cost the turn its text.
     #[test]
     fn a_failed_wrap_up_round_costs_the_turn_nothing() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
@@ -927,8 +925,7 @@ mod tests {
         assert!(stored.pending_call());
     }
 
-    /// The pair the API rejects is two user *messages*, not the unanswered call, so the
-    /// prompt resuming such a session joins that message instead of following it (#188).
+    /// The prompt joins the stored results rather than following them (#188).
     #[test]
     fn a_prompt_resuming_an_unanswered_call_joins_it() {
         let args = agent_run(&["sandbx", "agent-run", "--", "what did you find?"]);
@@ -971,7 +968,7 @@ mod tests {
                 .all(|pair| pair[0]["role"] != pair[1]["role"]),
             "got {messages:?}"
         );
-        // Results first, which is where the API wants them and where they are stored.
+        // Results first, which is where the API wants them.
         assert_eq!(
             messages[2]["content"]
                 .as_array()

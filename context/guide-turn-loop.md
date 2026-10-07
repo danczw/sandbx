@@ -128,6 +128,8 @@ With one subtraction since #188: the prompt that resumes a turn which ran out of
 sent merged into the results it answers beside, so that message carries a `ToolResult` and
 is not a boundary. A session that caps on *every* turn therefore has no cut point but its
 first, which `cut == 0` excludes — compaction finds none and takes the third rung below.
+Letting a cut land *inside* that message is #208, which a single `withheld` index cannot
+express.
 
 When nothing legal is deep enough, three rungs:
 
