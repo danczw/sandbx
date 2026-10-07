@@ -73,6 +73,9 @@ impl SandboxedCommand {
     ///
     /// Mainly for tests, whose harness `main` has no dispatch of its own. A path and not an
     /// inode: a rename over it redirects the next spawn, which the default does not allow.
+    /// Pass an absolute one — [`output`](Self::output) spawns from the policy's
+    /// [`working_root`](SandboxPolicy::working_root), so a relative path resolves against that
+    /// rather than against this process's own working directory.
     #[must_use]
     pub fn helper(mut self, path: impl AsRef<Path>) -> Self {
         self.helper = Some(path.as_ref().to_path_buf());
@@ -99,11 +102,14 @@ impl SandboxedCommand {
 
     /// Build the exact command line that will be run.
     ///
-    /// Spawning it yourself carries one obligation: the argv contains `AUDIT_STDIN_FLAG`,
+    /// Spawning it yourself carries two obligations. The argv contains `AUDIT_STDIN_FLAG`,
     /// telling the helper its stdin is a channel for audit records, and only
     /// [`output`](Self::output) sets that pipe up — with fd 0 a terminal, a degradation is
-    /// written there as if the command had produced it. Spawn it from this process too: the
-    /// default helper path resolves against whichever process execs it.
+    /// written there as if the command had produced it. And the start directory is not in the
+    /// argv: `output` chdirs to the policy's [`working_root`](SandboxPolicy::working_root),
+    /// so a command spawned from here instead inherits your own and may begin somewhere the
+    /// policy refuses. Spawn it from this process too: the default helper path resolves
+    /// against whichever process execs it.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
         let helper = match &self.helper {
             Some(path) => path.clone(),
@@ -167,6 +173,26 @@ impl SandboxedCommand {
     }
 }
 
+/// The helper, as both spawn paths build it: narrow environment, argv, start directory.
+///
+/// One builder so the start directory cannot be set on the undeadlined path and not the timed
+/// one. Via `spawn::command`, so a secret never enters even this helper, whose
+/// `/proc/<pid>/environ` is readable.
+///
+/// Set here and not in `spawn::command`, which the inner stage also calls to *become* the
+/// command: by then the ruleset is installed, and a `chdir` under it is a risk this needs
+/// not take. Both stages and the command inherit it across the two `exec`s regardless.
+fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> std::process::Command {
+    let mut command = crate::spawn::command(helper, policy);
+    command.args(argv);
+
+    if let Some(root) = policy.working_root() {
+        command.current_dir(root);
+    }
+
+    command
+}
+
 /// Spawn the helper and wait for it, with no deadline.
 ///
 /// `Command::output` reads both pipes to EOF before it waits, so a command that never exits
@@ -177,12 +203,8 @@ fn run_to_completion(
     policy: &SandboxPolicy,
     write_end: std::io::PipeWriter,
 ) -> Result<std::process::Output, SandboxError> {
-    // Via `spawn::command`, so a secret never enters even this helper, whose
-    // `/proc/<pid>/environ` is readable.
-    let mut command = crate::spawn::command(helper, policy);
-    command
-        .args(argv)
-        .stdin(std::process::Stdio::from(write_end));
+    let mut command = helper_command(helper, argv, policy);
+    command.stdin(std::process::Stdio::from(write_end));
 
     let output = command
         .output()
@@ -259,9 +281,8 @@ fn run_with_deadline(
     };
 
     // Its own process group, so the kill below reaches descendants too.
-    let mut command = crate::spawn::command(helper, policy);
+    let mut command = helper_command(helper, argv, policy);
     command
-        .args(argv)
         .stdin(Stdio::from(write_end))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

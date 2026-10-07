@@ -132,7 +132,28 @@ impl SandboxPolicy {
         })
     }
 
+    /// Where a command run under this policy starts, or `None` if it grants nowhere to be.
+    ///
+    /// The first writable path, else the first readable one — so a command begins somewhere it
+    /// may act rather than wherever its caller stood. Not over
+    /// [`granted_paths`](Self::granted_paths), whose [`Axis::ALL`] order puts `Read` ahead of
+    /// `Write` and `ReadExecute` last: that would start a writable run read-only, and one
+    /// granted only execute inside the system binaries.
+    pub fn working_root(&self) -> Option<&Path> {
+        self.writable
+            .first()
+            .or_else(|| self.readable.first())
+            .map(PathBuf::as_path)
+    }
+
     /// Grant `axis` access to `path`; the one place a path enters a policy.
+    ///
+    /// Pass a path that resolves to itself. No I/O happens here — the helper decodes a policy
+    /// through this too, and resolving there is resolving in the process a grant is meant to
+    /// be safe from — so a symlinked spelling is not corrected but refused, when the helper
+    /// finds the grant opened as something else ([`SandboxError::GrantRedirected`]).
+    ///
+    /// [`SandboxError::GrantRedirected`]: crate::SandboxError::GrantRedirected
     #[must_use]
     pub fn grant(mut self, axis: Axis, path: impl AsRef<Path>) -> Self {
         let paths = match axis {
@@ -255,14 +276,19 @@ impl SandboxPolicy {
     /// Grant read and execute access to the paths a command needs to start.
     ///
     /// Nothing runs without its loader and shared libraries; with a bare policy even
-    /// `/bin/true` dies before `main`. An absent path is skipped: Landlock rejects a rule for
-    /// one that does not exist, so a host without `/lib64` would fail to sandbox at all.
+    /// `/bin/true` dies before `main`.
+    ///
+    /// Granted as each resolves, which an absent path cannot do and is skipped by: Landlock
+    /// rejects a rule for a path that does not exist, so a host without `/lib64` would fail to
+    /// sandbox at all. Resolved and not as written because a merged-`/usr` host spells `/bin`
+    /// as a symlink to `/usr/bin`, and a grant has to name what it opens — see
+    /// [`grant`](Self::grant). It also makes the subtree comparisons that bound the derived
+    /// default see `/usr/bin` on both sides.
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS
             .iter()
-            .map(Path::new)
-            .filter(|path| path.exists())
+            .filter_map(|path| Path::new(path).canonicalize().ok())
             .fold(self, Self::allow_read_execute)
     }
 

@@ -303,9 +303,11 @@ fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
 
 /// `granted` made absolute, a relative flag being joined to the working directory.
 ///
-/// Which is what the helper opens it against, and [`resolved`] cannot stand in: its walk
-/// bottoms out at the empty path, leaving a relative grant relative. A cwd that cannot be read
-/// refuses rather than standing in as nothing, which would match no owned path (#203).
+/// This process's, while it is still the one that knows it: the grant crosses the seam in this
+/// form, so what it names cannot depend on where the helper happens to stand. [`resolved`]
+/// cannot stand in — its walk bottoms out at the empty path, leaving a relative grant relative.
+/// A cwd that cannot be read refuses rather than standing in as nothing, which would match no
+/// owned path (#203).
 fn absolute(
     granted: &Path,
     cwd: &impl Fn() -> std::io::Result<PathBuf>,
@@ -347,22 +349,21 @@ fn resolved(path: &Path) -> PathBuf {
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
-/// one naming something inside it both reach it. Both sides go through [`resolved`], so one
-/// symlinked spelling cannot reach what the other is refused for.
+/// one naming something inside it both reach it. Both sides are [`resolved`], so one symlinked
+/// spelling cannot reach what the other is refused for.
 ///
-/// `granted` has to be absolute — [`absolute`] makes a flag's path so — or it resolves against
-/// nothing and reaches no owned path.
+/// `granted` has to arrive resolved — and so absolute, or it resolves against nothing and
+/// reaches no owned path. Both callers pass what they grant, which is the point: a path vetted
+/// in one spelling and granted in another is the window this closes.
 fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
     debug_assert!(
-        granted.is_absolute(),
-        "a relative grant reaches nothing here"
+        granted == resolved(granted),
+        "an unresolved grant reaches the wrong owned paths here"
     );
-
-    let granted = resolved(granted);
 
     owned.iter().find(|owned| {
         let path = resolved(&owned.path);
-        path.starts_with(&granted) || granted.starts_with(&path)
+        path.starts_with(granted) || granted.starts_with(&path)
     })
 }
 
@@ -441,22 +442,27 @@ impl Grants {
             for path in self.paths(axis) {
                 // Outside the branch above: every other path refusal guards only the derived
                 // default, which is why a flag bypassed all of them.
-                let granted = absolute(path, &std::env::current_dir)?;
+                // Granted in the form it was vetted in, not as the flag spelled it: the
+                // helper opens what the policy carries, and a grant left relative or
+                // unresolved is one the helper resolves itself, against its own working
+                // directory and whatever the links point at by then (#205).
+                let granted = resolved(&absolute(path, &std::env::current_dir)?);
                 if let Some(found) = reaches_owned(&granted, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
+                        // As typed, which is what the operator can go and change.
                         granted: path.clone(),
                         owned: found.path.clone(),
                         holds: found.holds,
                     });
                 }
 
-                policy = policy.grant(axis, path);
+                policy = policy.grant(axis, &granted);
 
                 // The one place this CLI grants more than the flag's own axis: a tree a
                 // tool can rewrite and not `cat` back is a trap. Keyed to what the axis
                 // confers, not to `Write`, so a second write-conferring axis inherits it.
                 if axis.grants().write {
-                    policy = policy.grant(Axis::Read, path);
+                    policy = policy.grant(Axis::Read, &granted);
                 }
             }
         }

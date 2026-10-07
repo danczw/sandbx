@@ -85,6 +85,19 @@ pub enum SandboxError {
         detail: String,
     },
 
+    /// A granted path opened as a different one, so the sandbox would not have been the one
+    /// the harness judged.
+    ///
+    /// The policy is built in one process and the rules are opened in another, and the open
+    /// follows every symlink; a link redirected in between would otherwise be checked against
+    /// one directory and granted on another (#205).
+    GrantRedirected {
+        /// The path the policy grants, as the harness resolved it.
+        granted: PathBuf,
+        /// What opening it actually landed on.
+        opened: PathBuf,
+    },
+
     /// The syscall filter could not be installed; without it a sandboxed tool could reach
     /// syscalls Landlock cannot express.
     Seccomp {
@@ -268,6 +281,18 @@ impl std::fmt::Display for SandboxError {
             Self::Landlock { detail } => {
                 write!(f, "kernel refused the Landlock ruleset: {detail}")
             }
+            // Both paths: whoever redirected the link knows where it points, the grant is in
+            // an argv the command can read anyway, and without the target the operator cannot
+            // tell a moved directory from a planted link.
+            Self::GrantRedirected { granted, opened } => {
+                write!(
+                    f,
+                    "granted path {} opened as {}, so it was not the path the policy was \
+                     checked against",
+                    granted.display(),
+                    opened.display()
+                )
+            }
             Self::NamespaceSetupFailed { detail } => {
                 write!(f, "could not create the sandbox namespaces: {detail}")
             }
@@ -305,6 +330,7 @@ impl std::error::Error for SandboxError {
             | Self::Unsupported { .. }
             | Self::BadHelperArgs { .. }
             | Self::Landlock { .. }
+            | Self::GrantRedirected { .. }
             | Self::NamespaceSetupFailed { .. }
             | Self::ProcessHardening { .. }
             | Self::ProcessConcealment { .. }
@@ -334,6 +360,7 @@ impl SandboxError {
             Self::NotFound { .. } => "not_found",
             Self::BadHelperArgs { .. } => "bad_helper_args",
             Self::Landlock { .. } => "landlock",
+            Self::GrantRedirected { .. } => "grant_redirected",
             Self::Seccomp { .. } => "seccomp",
             Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
             Self::ProcessHardening { .. } => "process_hardening",
@@ -393,6 +420,10 @@ mod tests {
             SandboxError::Landlock {
                 detail: "sample".to_string(),
             },
+            SandboxError::GrantRedirected {
+                granted: PathBuf::from("/sample"),
+                opened: PathBuf::from("/elsewhere"),
+            },
             SandboxError::Seccomp {
                 detail: "sample".to_string(),
             },
@@ -444,6 +475,7 @@ mod tests {
                 | SandboxError::NotFound { .. }
                 | SandboxError::BadHelperArgs { .. }
                 | SandboxError::Landlock { .. }
+                | SandboxError::GrantRedirected { .. }
                 | SandboxError::Seccomp { .. }
                 | SandboxError::NamespaceSetupFailed { .. }
                 | SandboxError::ProcessHardening { .. }
