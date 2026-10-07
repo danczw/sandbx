@@ -44,7 +44,7 @@ gate.
 ## Round structure
 
 ```
-┌─ round (max_rounds = 8) ────────────────────────────────────┐
+┌─ round (max_rounds = 8, --max-rounds) ──────────────────────┐
 │  request = history[cut..] ++ produced                       │
 │    cut: ≥ last turn's; deepens, never reverses              │
 │  open(request)                     ◄── per-round timeout    │
@@ -212,7 +212,7 @@ A discarding variant discards the turn's `usage` and `withheld` with it, so a ca
 | Layer | Bound | Default |
 |---|---|---|
 | `TurnLimits::compaction` | oldest *history* withheld from the request | `None` — **off** |
-| `TurnLimits::max_rounds` | rounds per turn | 8 |
+| `TurnLimits::max_rounds` (`--max-rounds`) | rounds per turn | 8 |
 | `TurnLimits::stream_timeout` | wall clock, **per round** | 300 s |
 | `ExecutionContext::timeout` | the spawned command, `bash` only | 90 s |
 | `ToolLimits` | in-process tool *work* — files and bytes scanned | 10,000 / 64 MiB |
