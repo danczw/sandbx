@@ -107,14 +107,22 @@ impl HelperRefusal {
     /// This refusal as the error the caller gets, carrying what the helper said about it.
     ///
     /// From the stderr and not the channel: a refusal record carries no detail, so the
-    /// helper's own `Display` — which the parent relays verbatim — is the only prose about it
-    /// that exists. Truncated on a character boundary, and lossily decoded because these
-    /// bytes are a pipe rather than a bounded record.
+    /// helper's own `Display` is the only prose about it that exists. Truncated on a
+    /// character boundary, and lossily decoded because these bytes are a pipe rather than a
+    /// bounded record.
+    ///
+    /// [`HELPER_FAILURE_PREFIX`] comes back off because this is a `Display` that a caller
+    /// prefixes again — the CLI prints `sandbx: {error}`, and relaying the helper's own
+    /// announcement verbatim reads as `sandbx: sandbx: sandbox helper failed:`.
     pub(crate) fn relayed(self, stderr: &[u8]) -> SandboxError {
+        let relayed = String::from_utf8_lossy(stderr);
+        let relayed = relayed.trim();
+
         SandboxError::HelperRefused {
             refusal: self,
-            detail: String::from_utf8_lossy(stderr)
-                .trim()
+            detail: relayed
+                .strip_prefix(crate::command::dispatch::HELPER_FAILURE_PREFIX)
+                .unwrap_or(relayed)
                 .chars()
                 .take(STDERR_LIMIT)
                 .collect(),
@@ -194,6 +202,40 @@ mod tests {
                 "{label} is not a helper stage's to report, but the channel accepted it"
             );
         }
+    }
+
+    /// The relayed detail is printed by a caller that prefixes it again, so carrying the
+    /// helper's own announcement through would read as `sandbx: sandbx: sandbox helper
+    /// failed:`.
+    #[test]
+    fn a_relayed_refusal_does_not_announce_itself_twice() {
+        let said = "/bin/true is not the binary it was pinned to";
+        let stderr = format!(
+            "{}{said}\n",
+            crate::command::dispatch::HELPER_FAILURE_PREFIX
+        )
+        .into_bytes();
+
+        let SandboxError::HelperRefused { detail, .. } =
+            HelperRefusal::PinMismatch.relayed(&stderr)
+        else {
+            unreachable!("`relayed` returns the variant it names");
+        };
+
+        assert_eq!(detail, said, "the helper's own prefix was relayed");
+    }
+
+    /// Nothing downstream bounds it: a `tool_result` carries this to a model, and
+    /// `ToolLimits::max_bytes` caps a command's output rather than an error's detail.
+    #[test]
+    fn a_helper_that_printed_too_much_is_truncated() {
+        let SandboxError::HelperRefused { detail, .. } =
+            HelperRefusal::Landlock.relayed(&vec![b'x'; STDERR_LIMIT * 2])
+        else {
+            unreachable!("`relayed` returns the variant it names");
+        };
+
+        assert_eq!(detail.chars().count(), STDERR_LIMIT, "the cap did not hold");
     }
 
     #[test]
