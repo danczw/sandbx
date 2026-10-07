@@ -100,8 +100,9 @@ impl<W: Write> Render<W> {
             AgentEvent::Stop { reason } => {
                 self.truncated = matches!(reason, StopReason::MaxTokens);
             }
-            // A requested call is announced by `AgentRun::gate`, which knows whether it
-            // ran. So the two refusals above the gate reach only the model (#169).
+            // A requested call is announced where it is decided, which knows whether it
+            // ran. So a refusal above the gate, or in the wrap-up round, reaches only the
+            // model and the turn's own stderr line (#169).
             AgentEvent::ToolCallRequested { .. }
             | AgentEvent::Thinking { .. }
             | AgentEvent::Usage { .. } => {}

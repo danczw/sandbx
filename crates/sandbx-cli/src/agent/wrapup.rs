@@ -40,8 +40,7 @@ pub(super) struct Next {
 
     /// The same set the first turn offered, owned so the second [`Turn`] can borrow it.
     ///
-    /// Still offered, though `tool_choice` forbids calling one: the history replays
-    /// `tool_use` blocks, and the API refuses those without the definitions they name.
+    /// Still offered though `tool_choice` forbids calling one; see [`Turn::tools`].
     tools: Vec<BuiltinTool>,
 
     limits: TurnLimits,
@@ -124,10 +123,9 @@ impl Next {
 
     /// The turn to ask, over `history` ending in what the first turn produced.
     ///
-    /// The tools are still offered and `tool_choice` forbids calling one, rather than the
-    /// empty slice `Turn::tools` would read as offering none: `history` replays `tool_use`
-    /// blocks, and the API refuses a request carrying those without the definitions they
-    /// name. `max_rounds: 1` is then all the loop needs, a prose reply ending the turn.
+    /// The tools are offered under [`ToolChoice::None`] rather than withheld as the empty
+    /// slice [`Turn::tools`] documents. `max_rounds: 1` is then all the loop needs, a
+    /// prose reply ending the turn.
     fn turn<'a>(&'a self, history: &'a [RequestMessage], first: &TurnOutcome) -> Turn<'a> {
         Turn {
             model: self.model.clone(),

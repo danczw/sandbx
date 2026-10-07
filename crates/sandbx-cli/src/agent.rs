@@ -744,7 +744,7 @@ mod tests {
     }
 
     /// The wrap-up round streaming prose and then spending its one round asking for a
-    /// tool anyway, which is refused above the gate, no tools being offered.
+    /// tool anyway, which its gate denies whatever `--allow-tool` approved.
     fn stranding_text() -> Vec<AgentEvent> {
         vec![
             text("here is what I found"),
