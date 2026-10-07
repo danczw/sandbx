@@ -52,6 +52,10 @@ impl FsGuard {
     }
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
+    ///
+    /// Records a refusal and nothing else: whatever the caller then does with the path is the
+    /// access, and so is the record. Prefer [`open_read`](FsGuard::open_read) or
+    /// [`read_dir`](FsGuard::read_dir), which perform one and record it.
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         match path.canonicalize() {
             Ok(resolved) => permit(resolved, &self.readable, path, Access::Read),
@@ -134,27 +138,18 @@ impl FsGuard {
     /// could guard, so this closes the check-to-open window no more than a bare
     /// [`check_read`](FsGuard::check_read) does — what it closes is the gap between the
     /// verdict and the trail.
-    pub fn read_dir(&self, path: &Path) -> Result<std::fs::ReadDir, SandboxError> {
+    ///
+    /// The outer result is the policy's and the inner the host's, because the caller reports
+    /// them differently: a refusal is the sandbox's, a failed read is not.
+    pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<std::fs::ReadDir>, SandboxError> {
         let resolved = self.check_read(path)?;
-        let subject = path.display().to_string();
 
-        match std::fs::read_dir(&resolved) {
-            Ok(entries) => {
-                crate::AuditEvent::allowed(Access::Read.operation(), &subject).emit();
-                Ok(entries)
-            }
-            // Not through `record`, whose absence line is `names_nothing`: ENOTDIR there
-            // means a path through a regular file, but here it means the leaf is one, and
-            // `check_read` just resolved it. Only a deletion inside the window is absence,
-            // and a directory that turned out to be a file was never listed either — so of
-            // the three records, the only true one is none.
-            Err(source) => {
-                if source.raw_os_error() == Some(libc::ENOENT) {
-                    crate::AuditEvent::absent(Access::Read.operation(), &subject).emit();
-                }
-                Err(classify(source, path))
-            }
-        }
+        Ok(record(
+            std::fs::read_dir(&resolved),
+            Access::Read,
+            path,
+            listed_nothing,
+        ))
     }
 
     /// Open `path` for writing, creating or truncating it; closes the check-to-open window
@@ -262,7 +257,9 @@ impl FsGuard {
     /// Permit writing `path`, returning its resolved location.
     ///
     /// The target need not exist, writes creating files; only the parent is resolved, with
-    /// the filename appended, so `..` is collapsed first either way.
+    /// the filename appended, so `..` is collapsed first either way. Records a refusal and
+    /// nothing else, as [`check_read`](FsGuard::check_read) does; prefer
+    /// [`open_write`](FsGuard::open_write).
     pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         let resolved = match path.canonicalize() {
             Ok(existing) => existing,
@@ -322,6 +319,11 @@ impl FsGuard {
 /// gate caught it or the access did.
 const UNRESOLVABLE: &str = "path does not resolve";
 
+/// What it calls an access on a path that did resolve and the policy did permit: a full
+/// disk, a read-only mount, a directory opened as a file. Not `UNRESOLVABLE`, which an
+/// operator counting refusals reads as a traversal attempt.
+const INCOMPLETE: &str = "access did not complete";
+
 /// Whether resolution failed because the name denotes no file, rather than because something
 /// refused the lookup.
 ///
@@ -333,6 +335,15 @@ fn names_nothing(source: &std::io::Error) -> bool {
         source.raw_os_error(),
         Some(libc::ENOENT | libc::ENOTDIR | libc::ENAMETOOLONG)
     )
+}
+
+/// The same question for a directory read, which ENOTDIR answers the other way.
+///
+/// In a path lookup that errno is a component that turned out to be a regular file, so the
+/// name denotes nothing; on the leaf of an approved `read_dir` it is the leaf itself, which
+/// `check_read` had just resolved — there, and not a directory.
+fn listed_nothing(source: &std::io::Error) -> bool {
+    names_nothing(source) && source.raw_os_error() != Some(libc::ENOTDIR)
 }
 
 /// Resolve every root that currently exists, discarding the rest.
@@ -384,24 +395,38 @@ fn permit(
 
 /// Record what an approved path's access actually did, and nothing about the verdict.
 ///
-/// The three outcomes a post-gate access has: it happened, the name turned out to denote
-/// nothing, or the leaf was swapped since the check. `PathNotAllowed` cannot reach here —
-/// the gate returns it before any access is attempted.
+/// Three outcomes: it happened, the name turned out to denote nothing, or something refused
+/// it. Which errnos are the second is the caller's — `names_nothing` for a path lookup,
+/// `listed_nothing` for a directory read — so that the record and the error the caller
+/// returns cannot disagree about whether a path was there.
 fn record<T>(
-    outcome: Result<T, SandboxError>,
+    outcome: std::io::Result<T>,
     access: Access,
     requested: &Path,
-) -> Result<T, SandboxError> {
+    absent: fn(&std::io::Error) -> bool,
+) -> std::io::Result<T> {
     let subject = requested.display().to_string();
     let tool = access.operation();
 
     match &outcome {
         Ok(_) => crate::AuditEvent::allowed(tool, &subject).emit(),
-        Err(SandboxError::NotFound { .. }) => crate::AuditEvent::absent(tool, &subject).emit(),
-        Err(_) => crate::AuditEvent::denied(tool, &subject, UNRESOLVABLE).emit(),
+        Err(source) if absent(source) => crate::AuditEvent::absent(tool, &subject).emit(),
+        Err(source) => crate::AuditEvent::denied(tool, &subject, refusal(source)).emit(),
     }
 
     outcome
+}
+
+/// Why an access on an approved path did not happen.
+///
+/// `ELOOP` is the leaf swapped for a symlink since the check, which is the one post-gate
+/// failure that is a resolution failure; the rest found the path and stopped there.
+fn refusal(source: &std::io::Error) -> &'static str {
+    if source.raw_os_error() == Some(libc::ELOOP) {
+        UNRESOLVABLE
+    } else {
+        INCOMPLETE
+    }
 }
 
 /// Open an already-approved path without following a symlink at the leaf, which — the path
@@ -417,12 +442,9 @@ fn open(
 ) -> Result<std::fs::File, SandboxError> {
     use std::os::unix::fs::OpenOptionsExt;
 
-    let opened = options
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(resolved)
-        .map_err(|source| classify(source, requested));
+    let opened = options.custom_flags(libc::O_NOFOLLOW).open(resolved);
 
-    record(opened, access, requested)
+    record(opened, access, requested, names_nothing).map_err(|source| classify(source, requested))
 }
 
 /// Sort an error from an already-approved access into absence or refusal.
