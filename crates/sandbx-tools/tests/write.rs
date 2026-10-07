@@ -42,6 +42,40 @@ fn refuses_a_path_outside_every_allowed_root() {
     assert!(!target.exists(), "wrote outside the allowed root");
 }
 
+/// The directory is the agent's to create; the grant already covers it.
+#[test]
+fn a_missing_parent_in_a_grant_is_a_failure() {
+    let root = tempfile::tempdir().unwrap();
+
+    let ctx = context(SandboxPolicy::default().allow_write(root.path()));
+    let err = BuiltinTool::Write
+        .execute(
+            json!({ "path": root.path().join("nodir/f.txt").to_str().unwrap(), "content": "x" }),
+            &ctx,
+        )
+        .unwrap_err();
+
+    assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
+}
+
+#[test]
+fn a_missing_parent_outside_a_grant_is_denied() {
+    let allowed = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let target = elsewhere.path().join("nodir/planted.txt");
+
+    let ctx = context(SandboxPolicy::default().allow_write(allowed.path()));
+    let err = BuiltinTool::Write
+        .execute(
+            json!({ "path": target.to_str().unwrap(), "content": "nope" }),
+            &ctx,
+        )
+        .unwrap_err();
+
+    assert!(matches!(err, ToolError::Denied { .. }), "got {err:?}");
+    assert!(!target.exists(), "wrote outside the allowed root");
+}
+
 #[test]
 fn read_grant_does_not_permit_writing() {
     let root = tempfile::tempdir().unwrap();

@@ -33,7 +33,7 @@ pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, Too
     let resolved = ctx
         .guard()
         .check_read(&input.path)
-        .map_err(|error| crate::denied(&input.path, error))?;
+        .map_err(|error| crate::guard_error(&input.path, error))?;
 
     let entries =
         std::fs::read_dir(&resolved).map_err(|error| crate::failed("list", &input.path, error))?;

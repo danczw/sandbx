@@ -45,7 +45,7 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     let walk = ctx
         .guard()
         .walk_readable(&input.path, ctx.limits().max_files_scanned())
-        .map_err(|error| crate::denied(&input.path, error))?;
+        .map_err(|error| crate::guard_error(&input.path, error))?;
 
     let mut hits = Vec::new();
     let mut scanned = 0usize;
