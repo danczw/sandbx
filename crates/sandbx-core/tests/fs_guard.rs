@@ -375,15 +375,13 @@ fn a_missing_write_parent_in_a_grant_is_absent() {
         matches!(error, SandboxError::NotFound { .. }),
         "got {error:?}"
     );
-    // The directory is what is missing. Naming the leaf tells a tool that creates files it
-    // cannot find the file it is creating, which is nothing to act on.
+    // Naming the leaf tells a tool that creates files it cannot find the one it is creating.
     let message = error.to_string();
     assert!(message.contains("nodir"), "got {message}");
     assert!(!message.contains("f.txt"), "got {message}");
 }
 
-/// A name that cannot denote a file is the agent's to fix exactly as a missing one is:
-/// reading back as a refusal is what sent the model asking for a wider grant (#180).
+/// The gate is a set of errnos: ENOTDIR here, which is #180 one errno over.
 #[test]
 fn a_path_through_a_file_in_a_grant_is_not_a_refusal() {
     let root = tempfile::tempdir().unwrap();
@@ -400,8 +398,8 @@ fn a_path_through_a_file_in_a_grant_is_not_a_refusal() {
     );
 }
 
-/// The write path resolves the parent, so without the concealment gate a missing parent
-/// answers ENOENT where an existing one answers EACCES — the oracle the read path closes.
+/// The write path resolves the parent, so an absent one answers ENOENT where a present one
+/// answers EACCES: the oracle the read path already closes.
 #[test]
 fn write_to_a_missing_parent_outside_looks_alike() {
     let allowed = tempfile::tempdir().unwrap();
@@ -440,8 +438,7 @@ fn a_missing_file_in_a_grant_is_not_a_refusal() {
     );
 }
 
-/// The invariant the variant's name does not carry: absence is reported only where a grant
-/// already covers the area.
+/// Absence is reported only where a grant already covers the area.
 #[test]
 fn a_missing_path_outside_a_grant_is_a_refusal() {
     let allowed = tempfile::tempdir().unwrap();
@@ -458,8 +455,7 @@ fn a_missing_path_outside_a_grant_is_a_refusal() {
     );
 }
 
-/// A grant covers the area, so the path is not concealed — but a loop is the guard
-/// declining to resolve it, not a name the caller can fix.
+/// `ELOOP` in a grant is the guard declining to resolve, not a name the caller can fix.
 #[cfg(unix)]
 #[test]
 fn an_unresolvable_path_in_a_grant_is_not_absent() {
