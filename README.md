@@ -156,7 +156,9 @@ Two records per run, tied by `program`: one `spawned`, then exactly one of
 | `decision="exited"` | with `code=`, the code `sandbx` itself exits with; a signal as 128 + n, so a command the sandbox killed does not read as a success |
 | `decision="failed"` | with `reason=`, a run refused or cut short before it could exit on its own (table below) |
 | `decision="degraded"` | a hardening step the kernel would not allow, reported and carried on (see [SECURITY.md](SECURITY.md) on the capability bounding set) |
-| `decision="denied"` | a tool call refused by the in-process guard, with `tool=`, `subject=` and `reason=`. A path that names nothing inside a root you granted is not a refusal, so it draws no `denied` |
+| `decision="denied"` | a tool call refused by the in-process guard, with `tool=`, `subject=` and `reason=` |
+| `decision="allowed"` | a tool call that went through, with `tool=` and `subject=`. Written *after* the access, so the trail answers what the agent saw rather than what the policy decided |
+| `decision="absent"` | a path that names nothing inside a root you granted — no `reason=`, nothing having refused it. Outside your roots it is a `denied` like any other, so the trail does not say which of those paths exist |
 | `env=` | how many names were *granted* — not which, and not how many crossed: a name `sandbx`'s own environment does not hold passes nothing, so with no `TZ` set the run above sees fewer than seven |
 | `dns_over_tcp=` | its own field, not one of the counted names |
 | `pinned=` | whether a digest had to match before the exec, and the only place the trail says the entry point was checked at all. A matching pin leaves the run looking unpinned; a mismatch is already the `reason="pin_mismatch"` record closing it |
