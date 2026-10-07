@@ -89,18 +89,19 @@ pub(super) fn fs_rules(
     abi: landlock::ABI,
 ) -> Vec<(
     crate::Axis,
-    &std::path::Path,
+    std::path::PathBuf,
     landlock::BitFlags<landlock::AccessFs>,
 )> {
-    // Annotated, the paths being `&'static`: chaining them onto a borrow of the policy would
-    // otherwise have inference demand the policy live as long.
-    let resolver: Vec<(crate::Axis, &std::path::Path)> =
-        resolver_paths(policy.bounds_resolution()).collect();
-
     policy
         .granted_paths()
-        .chain(resolver)
-        .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir(), abi)))
+        // A granted path keeps the spelling the operator vetted, resolved by nothing here:
+        // that spelling is the whole of what `ruleset::opened::open_grant` confirms (#205).
+        .map(|(axis, path)| (axis, path.to_path_buf()))
+        .chain(resolver_paths(policy.bounds_resolution()))
+        .map(|(axis, path)| {
+            let rights = rights_for(axis, path.is_dir(), abi);
+            (axis, path, rights)
+        })
         .collect()
 }
 
@@ -115,14 +116,20 @@ pub(super) fn fs_rules(
 /// refuses a rule for a path it cannot open, and a host may legitimately have no
 /// `/etc/resolv.conf`.
 ///
+/// Resolved, and the one place a path this crate installs rules for is: `mount(2)` followed
+/// the symlink, so the bind landed on the target and `open_grant`'s readback names the target
+/// — a rule spelled `/etc/resolv.conf` would be refused as `GrantRedirected` on every host
+/// where systemd-resolved owns that name. Resolving the spelling sandbx chose is not resolving
+/// one an operator vetted; the inode is the one the bind just put there either way.
+///
 /// [`SandboxPolicy::allow_system_executables`]: crate::SandboxPolicy::allow_system_executables
-fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static std::path::Path)> {
+fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, std::path::PathBuf)> {
     bounded
         .then_some(crate::RESOLVER_FILES)
         .into_iter()
         .flatten()
         .map(std::path::Path::new)
-        .filter(|path| path.exists())
+        .filter_map(|path| path.canonicalize().ok())
         .map(|path| (crate::Axis::Read, path))
 }
 

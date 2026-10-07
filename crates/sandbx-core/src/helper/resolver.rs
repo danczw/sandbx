@@ -87,12 +87,21 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     let name = file.target.file_name().unwrap_or(file.target.as_os_str());
     let written = source.join(name);
 
-    let Ok(target) = std::fs::symlink_metadata(file.target) else {
-        return match file.required {
-            false => Ok(()),
-            true => Err(absent(file.target)),
-        };
+    let absent_target = |file: &File| match file.required {
+        false => Ok(()),
+        true => Err(absent(file.target)),
     };
+
+    let Ok(target) = std::fs::symlink_metadata(file.target) else {
+        return absent_target(file);
+    };
+
+    // A dangling link is the absent case, not a present one: `symlink_metadata` succeeds on
+    // it, and `mount(2)` would then resolve it to nothing and refuse a run that `required:
+    // false` says may proceed. An image whose `/run` is not populated yet has one.
+    if target.is_symlink() && !file.target.exists() {
+        return absent_target(file);
+    }
 
     // `mount(2)` resolves the target, so a bind over a symlink lands on what it points to and
     // leaves the link an ordinary dentry — unlinkable under a write grant on `/etc`, and

@@ -37,9 +37,12 @@ pub(super) struct Requested<'policy> {
     /// Every right the kernel is told to police. See [`compat::handled_access`].
     pub(super) handled: landlock::BitFlags<landlock::AccessFs>,
     /// One rule per grant, as `(axis, path, rights)`. See [`rights::fs_rules`].
+    ///
+    /// Owned, not borrowed from the policy: a resolver path is the link target its bind landed
+    /// on, which the policy spells nowhere.
     pub(super) rules: Vec<(
         crate::Axis,
-        &'policy std::path::Path,
+        std::path::PathBuf,
         landlock::BitFlags<landlock::AccessFs>,
     )>,
     /// What to ask for on the network axis. See [`rights::net_rules`].
