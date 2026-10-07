@@ -368,7 +368,25 @@ fn records_the_policy_shape_of_a_spawn() {
     assert!(line.contains("unix_sockets=true"), "got: {line}");
     assert!(line.contains("env=2"), "got: {line}");
     assert!(line.contains("dns_over_tcp=false"), "got: {line}");
+    assert!(line.contains("dns_names=0"), "got: {line}");
     assert!(line.contains("pinned=false"), "got: {line}");
+}
+
+/// The count, not the names: an internal host name is infrastructure the trail has no reason
+/// to carry, and it is the length of the allowlist rather than how many of them resolved.
+#[test]
+fn records_how_many_names_may_resolve_not_which() {
+    let policy = SandboxPolicy::default()
+        .allow_dns("vault.internal.example")
+        .allow_dns("api.example.com");
+
+    let lines = capture(|| {
+        AuditEvent::spawned("/bin/cat", &policy, false).emit();
+    });
+
+    let line = &lines[0];
+    assert!(line.contains("dns_names=2"), "got: {line}");
+    assert!(!line.contains("vault.internal.example"), "got: {line}");
 }
 
 /// A matching pin leaves no other mark: the run succeeds exactly as an unpinned one does.

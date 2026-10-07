@@ -376,6 +376,100 @@ fn the_wire_names_no_resolver_value() {
     assert!(!args.iter().any(|arg| arg.contains("use-vc")), "{args:?}");
 }
 
+/// Order and count both, as for a port list: stage 1 renders one hosts line per name, so a
+/// name dropped here is a name the command cannot resolve while the CLI says it can.
+#[test]
+fn a_name_allowlist_round_trips() {
+    let policy = SandboxPolicy::default()
+        .allow_dns("example.com")
+        .allow_dns("api.example.com")
+        .allow_network_port(443);
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
+    let decoded = HelperArgs::decode(&args).unwrap();
+
+    assert_eq!(decoded.policy, policy);
+    assert_eq!(
+        decoded.policy.allowed_dns_names(),
+        ["example.com".to_string(), "api.example.com".to_string()]
+    );
+}
+
+/// The flag is what costs the command a mount namespace, so a policy that did not ask for one
+/// must not arrive at stage 1 looking as though it did.
+#[test]
+fn a_policy_bounding_nothing_emits_no_name_flag() {
+    let args = HelperArgs::encode(&SandboxPolicy::default(), "/bin/true", &[], None);
+
+    assert!(
+        !args.iter().any(|arg| arg == "--allow-dns-name"),
+        "{args:?}"
+    );
+    assert!(
+        !HelperArgs::decode(&args)
+            .unwrap()
+            .policy
+            .bounds_resolution()
+    );
+}
+
+/// Carrying on would mean running under a policy other than the intended one.
+#[test]
+fn a_name_flag_without_a_name_is_refused() {
+    let flag = HelperArgs::encode(
+        &SandboxPolicy::default().allow_dns("example.com"),
+        "/bin/true",
+        &[],
+        None,
+    )[0]
+    .clone();
+
+    // Matched on the reason: this argv also lacks the `--` separator, so `is_err()` alone
+    // would pass with the check removed.
+    let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+        .expect_err("the dns name flag was accepted with no name after it");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("dns name flag with no name after it")
+        ),
+        "{flag} was refused for the wrong reason: {refusal:?}"
+    );
+}
+
+/// `allow_dns` skips such a name, and here it is refused rather than skipped: stage 1 renders
+/// these into a hosts file, where whitespace forges a second field and `#` forges a comment.
+#[test]
+fn a_name_encode_could_not_emit_is_refused() {
+    for name in [
+        "",
+        "evil.test\t127.0.0.9 forged.test",
+        "evil.test #",
+        &"a".repeat(sandbx_core::DNS_NAME_LIMIT + 1),
+    ] {
+        let args = vec![
+            "--allow-dns-name".to_string(),
+            name.to_string(),
+            "--".to_string(),
+            "/bin/true".to_string(),
+        ];
+
+        let refusal =
+            HelperArgs::decode(&args).expect_err(&format!("{name:?} was accepted as a name"));
+
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("dns name that is empty")
+            ),
+            "{name:?} was refused for the wrong reason: {refusal:?}"
+        );
+    }
+}
+
 /// The one form [`sandbx_core::Sha256Digest`] accepts: 64 lowercase hex characters.
 const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 

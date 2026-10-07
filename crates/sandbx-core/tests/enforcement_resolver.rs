@@ -1,0 +1,332 @@
+//! Does a name the allowlist does not hold fail to resolve, and does one it holds still work?
+//!
+//! The resolver half of the enforcement suite; `enforcement.rs` states the kernel floor all of
+//! these run on. Needs no external network and asks no nameserver: every name here is one this
+//! host already resolves out of its own `/etc/hosts`, which is also what makes the denials
+//! real rather than a run that is offline anyway.
+#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+
+mod support;
+
+use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
+
+use sandbx_core::SandboxPolicy;
+use support::{allow_probe, run, runtime_paths};
+
+/// The names sandbx's own hosts file writes, which prove nothing about the allowlist: a name
+/// from this set resolves whether the policy asked for it or not.
+const LOOPBACK_NAMES: [&str; 3] = ["localhost", "ip6-localhost", "ip6-loopback"];
+
+/// A name this host resolves with no nameserver, and a listener on the address it resolves to.
+///
+/// Derived rather than written down: the one such name on a developer machine is the machine's
+/// own hostname, and hard-coding either the name or its address would pass on one host and fail
+/// on the next. Addresses are trial-bound, because a name is only usable here if the test can
+/// answer on what it resolves to.
+fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::JoinHandle<()>) {
+    let hosts = std::fs::read_to_string("/etc/hosts").expect("a host with no /etc/hosts");
+
+    let bound = hosts
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or_default())
+        .flat_map(|line| line.split_whitespace().skip(1))
+        .filter(|name| !LOOPBACK_NAMES.contains(name))
+        .flat_map(|name| {
+            let addresses = (name, 0u16).to_socket_addrs().into_iter().flatten();
+            addresses.map(move |address| (name, address))
+        })
+        .find_map(|(name, address)| {
+            TcpListener::bind(address).ok().map(|listener| {
+                let port = listener
+                    .local_addr()
+                    .expect("a bound listener has an address");
+                (name.to_string(), port, listener)
+            })
+        });
+
+    let (name, address, listener) = bound.expect(
+        "no name in /etc/hosts resolves to an address this test can bind, so there is no name \
+         that resolves without a nameserver and the denials below would be vacuous",
+    );
+
+    let accepting = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            use std::io::Write;
+            let _ = stream.write_all(payload.as_bytes());
+        }
+    });
+
+    (name, address, accepting)
+}
+
+/// Unblock a listener thread nothing connected to, so the test does not leak it.
+fn drain(address: SocketAddr, accepting: std::thread::JoinHandle<()>) {
+    let _ = std::net::TcpStream::connect(address);
+    let _ = accepting.join();
+}
+
+fn probe(policy: SandboxPolicy, args: &[&str]) -> std::process::Output {
+    let probe = env!("CARGO_BIN_EXE_sandbx-resolver-probe");
+    let policy = allow_probe(runtime_paths(policy), probe);
+
+    run(&policy, probe, args)
+}
+
+/// A config file's directives, comments stripped: sandbx's own files say in a comment what
+/// they leave out, and matching the whole body would read the explanation as the thing.
+fn directives(body: &str) -> String {
+    body.lines()
+        .filter_map(|line| line.split('#').next())
+        .collect()
+}
+
+/// The names a hosts file maps, whichever addresses it maps them to.
+fn mapped_names(hosts: &str) -> Vec<String> {
+    hosts
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or_default())
+        .flat_map(|line| line.split_whitespace().skip(1))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The claim, whole: the name resolves, the address it resolves to is reached, and the policy
+/// grants no read on `/etc` at all — which is the one flag that makes a policy smaller.
+#[test]
+fn an_allowlisted_name_resolves_and_is_reached() {
+    let (name, address, accepting) = local_listener("ALLOWLISTED-NAME-ANSWERED");
+
+    let output = probe(
+        SandboxPolicy::default()
+            .allow_dns(&name)
+            .allow_network_port(address.port()),
+        &["connect", &format!("{name}:{}", address.port())],
+    );
+
+    drain(address, accepting);
+
+    assert!(
+        output.status.success(),
+        "an allowlisted name could not be reached, so the flag grants nothing: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("ALLOWLISTED-NAME-ANSWERED"),
+        "the name resolved but the connection read nothing from the listener"
+    );
+}
+
+/// The denial. `local_listener` resolved the name in this process, so it resolves outside the
+/// sandbox by construction — and the port it answers on is allowlisted, so a leaked lookup
+/// would be read, not merely connected to.
+#[test]
+fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
+    let (name, address, accepting) = local_listener("SECRET-BEHIND-THE-NAME");
+
+    // `localhost` as the one allowlisted name: it bounds resolution without bounding it to
+    // the name under test.
+    let policy = SandboxPolicy::default()
+        .allow_dns("localhost")
+        .allow_network_port(address.port());
+
+    let control = probe(policy.clone(), &["resolve", "localhost"]);
+    let denied = probe(policy, &["connect", &format!("{name}:{}", address.port())]);
+
+    drain(address, accepting);
+
+    assert!(
+        control.status.success(),
+        "a bounded resolver could resolve nothing at all, so the denial below says nothing: {}",
+        String::from_utf8_lossy(&control.stderr)
+    );
+    assert!(
+        !denied.status.success(),
+        "{name} resolved though the allowlist never named it, so the allowlist bounds \
+         nothing and every name the host can resolve is still reachable"
+    );
+    assert!(
+        !String::from_utf8_lossy(&denied.stdout).contains("SECRET-BEHIND-THE-NAME"),
+        "read from an address only a name outside the allowlist leads to"
+    );
+}
+
+/// The mechanism, from the command's side: the `/etc/hosts` it reads is sandbx's own, holding
+/// the allowlisted name and nothing else the host's file maps.
+#[test]
+fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
+    let (name, address, accepting) = local_listener("UNUSED");
+    drain(address, accepting);
+
+    let output = probe(
+        SandboxPolicy::default().allow_dns(&name),
+        &["read", "/etc/hosts"],
+    );
+
+    let seen = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "the command could not read /etc/hosts under --allow-dns, so resolution has no \
+         source to read: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        seen.contains(&name) && seen.contains(&address.ip().to_string()),
+        "the hosts file does not map the allowlisted name to the address it resolved to: {seen}"
+    );
+
+    for mapped in mapped_names(&seen) {
+        assert!(
+            mapped == name || LOOPBACK_NAMES.contains(&mapped.as_str()),
+            "the hosts file the command reads maps {mapped}, which is neither the \
+             allowlisted name nor a loopback name — the host's own file is still visible"
+        );
+    }
+}
+
+/// Each bound file still reads back under its own path. `ruleset::opened` compares the path
+/// `/proc/self/fd` gives a granted descriptor against the spelling the policy carries, and a
+/// bind whose source had been unlinked reads back with `" (deleted)"` appended — which would
+/// turn a grant naming one of these files into a refusal, reported against the grant rather
+/// than against the mount that moved it.
+#[test]
+fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
+    let (name, address, accepting) = local_listener("UNUSED");
+    drain(address, accepting);
+
+    // `/proc` read is the probe's own need, `/proc/self/fd` being where the kernel answers.
+    let policy = SandboxPolicy::default()
+        .allow_dns(&name)
+        .allow_read("/proc")
+        .allow_read("/etc/hosts");
+
+    let output = probe(policy, &["fdpath", "/etc/hosts"]);
+
+    assert!(
+        output.status.success(),
+        "the probe could not read a path back for the bound hosts file: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "/etc/hosts",
+        "the bound hosts file reads back under another path, so every grant naming it is \
+         compared against a spelling the policy never carried"
+    );
+}
+
+/// glibc's `dns` source has to be gone, not merely unreachable: a nameserver that becomes
+/// reachable later would answer for every name, and the allowlist would bound nothing.
+#[test]
+fn the_command_is_left_no_dns_source_and_no_nameserver() {
+    let (name, address, accepting) = local_listener("UNUSED");
+    drain(address, accepting);
+
+    let policy = SandboxPolicy::default().allow_dns(&name);
+    let nsswitch = probe(policy.clone(), &["read", "/etc/nsswitch.conf"]);
+    let resolv = probe(policy, &["read", "/etc/resolv.conf"]);
+
+    let switch = String::from_utf8_lossy(&nsswitch.stdout);
+    assert!(
+        nsswitch.status.success(),
+        "the command could not read /etc/nsswitch.conf, so glibc falls back to its built-in \
+         default, which includes the dns source: {}",
+        String::from_utf8_lossy(&nsswitch.stderr)
+    );
+    assert!(
+        !directives(&switch).contains("dns"),
+        "the nsswitch.conf the command reads keeps a dns source: {switch}"
+    );
+
+    // Skipped where the host has no `/etc/resolv.conf` to bind over, as `helper::resolver`
+    // does: there is then no file for a resolver to read a nameserver out of either.
+    if resolv.status.success() {
+        let conf = String::from_utf8_lossy(&resolv.stdout);
+        assert!(
+            !directives(&conf).contains("nameserver"),
+            "the resolv.conf the command reads names a nameserver, which musl asks for \
+             every name: {conf}"
+        );
+    }
+}
+
+/// The read-only remount, which is the whole reason for the second `mount` call: with write
+/// granted over `/etc`, appending one line would add a name the operator never allowlisted.
+#[test]
+fn the_hosts_file_is_not_writable_under_a_write_grant() {
+    let (name, address, accepting) = local_listener("UNUSED");
+    drain(address, accepting);
+
+    let scratch = tempfile::tempdir().expect("a temporary directory");
+    let writable = scratch.path().join("writable");
+    std::fs::write(&writable, b"").expect("an empty file to append to");
+
+    let policy = SandboxPolicy::default()
+        .allow_dns(&name)
+        .allow_write("/etc")
+        .allow_write(scratch.path());
+
+    let control = probe(policy.clone(), &["write", &writable.display().to_string()]);
+    let refused = probe(policy, &["write", "/etc/hosts"]);
+
+    assert!(
+        control.status.success(),
+        "the write grant wrote nothing at all, so the refusal below says nothing: {}",
+        String::from_utf8_lossy(&control.stderr)
+    );
+    assert!(
+        !refused.status.success(),
+        "a command with write over /etc appended to the hosts file, so it can add any name \
+         it likes to its own allowlist"
+    );
+}
+
+/// The namespace is the command's own. A run that mutated the host's `/etc` would bound this
+/// command's names by changing every other process's.
+#[test]
+fn the_host_etc_survives_a_bounded_run() {
+    let (name, address, accepting) = local_listener("UNUSED");
+    drain(address, accepting);
+
+    let before = std::fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+
+    let policy = SandboxPolicy::default()
+        .allow_dns(&name)
+        .allow_write("/etc")
+        .allow_network_port(address.port());
+    let _ = probe(policy, &["write", "/etc/hosts"]);
+
+    let after = std::fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+
+    assert_eq!(
+        before, after,
+        "a bounded run changed the host's /etc/hosts, so the mounts are propagating out of \
+         the command's namespace"
+    );
+}
+
+/// The flag is opt-in: without it there is no mount namespace and no rendered hosts file, so
+/// a command resolves exactly what it resolved before this existed.
+#[test]
+fn a_run_without_the_flag_resolves_as_it_did_before() {
+    let (name, address, accepting) = local_listener("UNUSED");
+    drain(address, accepting);
+
+    let policy = SandboxPolicy::default()
+        .allow_read("/etc")
+        .allow_network_port(address.port());
+
+    let resolved = probe(policy.clone(), &["resolve", &name]);
+    let hosts = probe(policy, &["read", "/etc/hosts"]);
+
+    assert!(
+        resolved.status.success(),
+        "a run with no --allow-dns could not resolve a name out of /etc/hosts, so the flag \
+         narrowed a policy that never asked for it: {}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&hosts.stdout),
+        std::fs::read_to_string("/etc/hosts").expect("the host's hosts file"),
+        "a run with no --allow-dns reads a hosts file that is not the host's"
+    );
+}

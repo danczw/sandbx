@@ -748,6 +748,148 @@ fn another_variable_survives_the_resolver_hint() {
     assert!(policy.hints_dns_over_tcp());
 }
 
+/// Through `parse_from`, so this pins the flag's spelling too. Order and count are kept:
+/// stage 1 renders one hosts line per name.
+#[test]
+fn the_name_allowlist_is_opt_in_and_ordered() {
+    let bounded = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-dns",
+        "example.com",
+        "--allow-dns",
+        "api.example.com",
+        "--allow-network",
+        "443",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("the flags describe a policy");
+    let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert_eq!(
+        bounded.allowed_dns_names(),
+        ["example.com".to_string(), "api.example.com".to_string()]
+    );
+    assert!(bounded.bounds_resolution());
+    assert!(
+        !bare.bounds_resolution(),
+        "a run that named no name is paying for a mount namespace"
+    );
+}
+
+/// The inversion worth a test of its own: the flag bounds resolution *and* leaves the policy
+/// no wider, where every other way to resolve a name needs `--allow-read /etc`.
+#[test]
+fn the_name_allowlist_grants_no_path_and_keeps_the_working_directory() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-dns",
+        "example.com",
+        "--allow-network",
+        "443",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("the flags describe a policy");
+
+    assert_eq!(policy.writable_paths(), [cwd()]);
+    assert!(
+        !policy
+            .readable_paths()
+            .iter()
+            .any(|path| path == std::path::Path::new("/etc")),
+        "the flag granted read on /etc, which is what it exists to make unnecessary: {:?}",
+        policy.readable_paths()
+    );
+}
+
+/// Each shape in which a nameserver the command can still reach would answer for every name,
+/// leaving the allowlist bounding nothing. Refused rather than narrowed: the claim is only
+/// true in the shapes that survive this.
+#[test]
+fn a_reachable_nameserver_beside_the_allowlist_is_refused() {
+    let shapes: [(&[&str], &str); 4] = [
+        (&["--dns-over-tcp"], "--dns-over-tcp"),
+        (&["--allow-network"], "--allow-network"),
+        (&["--allow-network", "53"], "53"),
+        (&[], "--allow-network"),
+    ];
+
+    for (flags, named) in shapes {
+        let mut argv = vec!["sandbx", "sandbox-run", "--allow-dns", "example.com"];
+        argv.extend_from_slice(flags);
+        argv.extend_from_slice(&["--", "true"]);
+
+        let error = sandbox_run(&argv)
+            .policy()
+            .expect_err(&format!("--allow-dns was accepted beside {flags:?}"));
+
+        assert!(
+            matches!(
+                error,
+                sandbx_cli::PolicyError::DnsWithResolverHint
+                    | sandbx_cli::PolicyError::DnsWithEveryPort
+                    | sandbx_cli::PolicyError::DnsWithNameserverPort
+                    | sandbx_cli::PolicyError::DnsWithoutEgress
+            ),
+            "{flags:?} was refused for an unrelated reason: {error}"
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains("--allow-dns") && message.contains(named),
+            "the refusal of {flags:?} does not name both flags: {message}"
+        );
+    }
+}
+
+/// A port the command connects to is the shape the flag is for, so this must not be refused
+/// along with the four above.
+#[test]
+fn a_port_allowlist_without_53_is_accepted() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-dns",
+        "example.com",
+        "--allow-network",
+        "443",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("a name allowlist beside the ports the command connects to");
+
+    assert_eq!(
+        *policy.network(),
+        sandbx_core::NetworkPolicy::Ports(vec![443])
+    );
+}
+
+/// An address reads as a host allowlist, which this is not; the rest would forge a field or a
+/// comment in the hosts file stage 1 renders.
+#[test]
+fn a_value_that_is_no_resolvable_name_is_a_usage_error() {
+    for bad in [
+        "1.2.3.4",
+        "::1",
+        "",
+        "evil.test #",
+        "evil.test\tforged.test",
+    ] {
+        assert!(
+            Cli::try_parse_from(["sandbx", "sandbox-run", "--allow-dns", bad, "--", "true"])
+                .is_err(),
+            "{bad:?} was accepted as a name to resolve"
+        );
+    }
+}
+
 const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 #[test]

@@ -7,6 +7,7 @@
 //! (`context/guide-module-layout.md`).
 
 mod hardening;
+mod resolver;
 mod ruleset;
 mod seccomp;
 

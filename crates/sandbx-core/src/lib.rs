@@ -22,6 +22,7 @@ mod fs_guard;
 mod helper;
 mod helper_args;
 mod policy;
+mod resolver;
 mod spawn;
 
 pub use audit::{AUDIT_TARGET, AuditEvent};
@@ -35,4 +36,5 @@ pub use error::{Access, HelperRefusal, SandboxError};
 pub use fs_guard::{FsGuard, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;
-pub use policy::{Axis, Grants, NetworkPolicy, SandboxPolicy};
+pub use policy::{Axis, DNS_NAME_LIMIT, Grants, NetworkPolicy, SandboxPolicy};
+pub use resolver::RESOLVER_FILES;

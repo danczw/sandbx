@@ -98,8 +98,70 @@ pub struct Grants {
     /// It allowlists no port of its own — pass `--allow-network 53` as well, so
     /// the audit trail never names a port you did not. Resolution also needs
     /// `--allow-read /etc`, for `resolv.conf` and `nsswitch.conf`.
+    ///
+    /// Not with `--allow-dns`, which leaves no nameserver to ask.
     #[arg(long = "dns-over-tcp")]
     dns_over_tcp: bool,
+
+    /// Let a sandboxed command resolve a host name, and only the ones named.
+    /// Repeatable.
+    ///
+    /// sandbx resolves each name before the command starts and gives the command
+    /// a hosts file holding those addresses and no nameserver at all, in a mount
+    /// namespace of its own — so a name this flag did not list does not resolve,
+    /// and the host's `/etc` is untouched. Without the flag, resolution is
+    /// whatever the host and the network policy allow.
+    ///
+    /// Needs a port allowlist, and is refused with bare `--allow-network`, with
+    /// port 53 in the list, with `--dns-over-tcp` and with no egress at all:
+    /// each leaves a nameserver reachable, which answers for every name. The
+    /// shape that works is `--allow-dns example.com --allow-network 443`.
+    ///
+    /// It needs no `--allow-read /etc` — the one flag that makes a policy
+    /// smaller. It bounds resolution and not connection: an IP literal needs no
+    /// resolver, so the port allowlist is still what bounds where a connection
+    /// can go, and a name that resolves to several addresses resolves to all of
+    /// them.
+    #[arg(long = "allow-dns", value_name = "NAME", value_parser = host_name)]
+    allow_dns: Vec<String>,
+}
+
+/// The port a nameserver answers on, which a run bounding resolution may not reach.
+const NAMESERVER_PORT: u16 = 53;
+
+/// Accept a name `--allow-dns` can actually bound, and refuse anything else.
+///
+/// `SandboxPolicy::allow_dns` skips a name it cannot render into a hosts file, so the CLI
+/// refuses where the library skips — otherwise `--allow-dns` could exit 0 having bounded
+/// resolution to nothing, which is the one outcome an operator cannot tell from success.
+fn host_name(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Err("expected a host name, but this one is empty".to_string());
+    }
+    if value.len() > sandbx_core::DNS_NAME_LIMIT {
+        return Err(format!(
+            "a host name is at most {} bytes, and this one is {}",
+            sandbx_core::DNS_NAME_LIMIT,
+            value.len()
+        ));
+    }
+    // A libc reading the rendered hosts file splits fields on whitespace and takes `#` as a
+    // comment, so either would let one flag write a second entry.
+    if value.contains('#') || value.contains('\0') || value.chars().any(char::is_whitespace) {
+        return Err(
+            "a host name cannot contain whitespace, `#` or a NUL byte — pass one \
+             --allow-dns per name"
+                .to_string(),
+        );
+    }
+    if value.parse::<std::net::IpAddr>().is_ok() {
+        return Err(format!(
+            "{value} is an address, not a name, so there is nothing to resolve: \
+             --allow-dns bounds which names resolve, while --allow-network PORT is what \
+             bounds where a connection can go"
+        ));
+    }
+    Ok(value.to_string())
 }
 
 /// Accept a name `--allow-env` can actually pass, and refuse anything else.
@@ -492,6 +554,27 @@ impl Grants {
             policy = policy.hint_dns_over_tcp();
         }
 
+        // Before the names are granted, so a refused run never reports a bound it does not
+        // have. Each arm is a shape in which a nameserver stays reachable, and a reachable
+        // nameserver answers for every name — `context/decision-egress-proxy.md`.
+        if !self.allow_dns.is_empty() {
+            if self.dns_over_tcp {
+                return Err(PolicyError::DnsWithResolverHint);
+            }
+            match self.allow_network.as_deref() {
+                None => return Err(PolicyError::DnsWithoutEgress),
+                Some([]) => return Err(PolicyError::DnsWithEveryPort),
+                Some(ports) if ports.contains(&NAMESERVER_PORT) => {
+                    return Err(PolicyError::DnsWithNameserverPort);
+                }
+                Some(_) => {}
+            }
+        }
+
+        for name in &self.allow_dns {
+            policy = policy.allow_dns(name);
+        }
+
         // Honouring both would drop the operator's value in silence. Over `--allow-env`'s
         // own names, not `allowed_env()`: a name nobody typed is not one they can drop.
         if let Some(name) = self.allow_env.iter().find(|name| {
@@ -528,6 +611,7 @@ mod tests {
             allow_unix_sockets: false,
             allow_env: Vec::new(),
             dns_over_tcp: false,
+            allow_dns: Vec::new(),
         }
     }
 

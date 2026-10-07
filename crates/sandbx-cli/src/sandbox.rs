@@ -19,26 +19,30 @@ fn pin_digest(value: &str) -> Result<Sha256Digest, String> {
 /// Whether the policy leaves a name no way to resolve.
 ///
 /// A port list denying UDP and not naming TCP 53 — the one shape where the advice below
-/// names something the policy is actually missing.
+/// names something the policy is actually missing. A policy that bounds resolution is not
+/// that shape: it resolves its names before the command starts and asks no nameserver, so a
+/// name it does not hold is refused on purpose and not for want of a port.
 fn cannot_resolve(policy: &SandboxPolicy) -> bool {
     let unnamed = match policy.network() {
         NetworkPolicy::Ports(ports) => !ports.contains(&53),
         NetworkPolicy::Denied | NetworkPolicy::AnyPort => false,
     };
-    unnamed && !policy.hints_dns_over_tcp()
+    unnamed && !policy.hints_dns_over_tcp() && !policy.bounds_resolution()
 }
 
 /// What such a run most likely needed, once it has failed.
 ///
 /// Hedged: sandbx cannot see the command's own `getaddrinfo`, so a failure for any other
-/// reason gets this too.
+/// reason gets this too. Names both answers, `--allow-dns` being the one that bounds which
+/// names resolve rather than leaving every name resolvable over TCP.
 fn resolver_advice(cannot_resolve: bool, code: i32) -> Option<&'static str> {
     match cannot_resolve && code != 0 {
         true => Some(
             "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
-             resolve. If that was the failure, add --dns-over-tcp --allow-network 53 \
-             --allow-read /etc — and a path flag replaces the working-directory default, \
-             so name the tree the command needs too",
+             resolve. If that was the failure, either add --allow-dns NAME for each name the \
+             command needs, which resolves them here and needs no further grant — or add \
+             --dns-over-tcp --allow-network 53 --allow-read /etc, which lets any name \
+             resolve, remembering that a path flag replaces the working-directory default",
         ),
         false => None,
     }
@@ -263,6 +267,7 @@ mod tests {
     fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
         let advice = resolver_advice(true, 6).expect("a failure with no way to resolve");
 
+        assert!(advice.contains("--allow-dns NAME"), "got: {advice}");
         assert!(advice.contains("--dns-over-tcp"), "got: {advice}");
         assert!(advice.contains("--allow-network 53"), "got: {advice}");
         assert!(advice.contains("--allow-read /etc"), "got: {advice}");
@@ -286,6 +291,13 @@ mod tests {
     #[test]
     fn a_port_list_naming_53_is_silent() {
         assert!(!cannot_resolve(&ported().allow_network_port(53)));
+    }
+
+    /// Advice naming a missing port would be wrong twice over: such a policy resolves its
+    /// names before the command starts, and a name it does not hold is refused on purpose.
+    #[test]
+    fn a_policy_bounding_resolution_is_silent() {
+        assert!(!cannot_resolve(&ported().allow_dns("example.com")));
     }
 
     #[test]
