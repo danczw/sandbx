@@ -45,18 +45,21 @@ fn default_policy_denies_everything() {
 }
 
 /// A command cannot start without its interpreter, loader and shared libraries.
+///
+/// Each as it resolves, a merged-`/usr` host spelling `/bin` as a symlink: the grant has to
+/// name the directory the helper opens, which is what it would refuse otherwise.
 #[test]
 fn system_executables_grants_what_a_command_needs() {
     let policy = SandboxPolicy::default().allow_system_executables();
 
     for expected in ["/usr", "/bin", "/lib"] {
-        let path = std::path::Path::new(expected);
-        if !path.exists() {
+        let Ok(path) = std::path::Path::new(expected).canonicalize() else {
             continue;
-        }
+        };
         assert!(
-            policy.executable_paths().contains(&path.to_path_buf()),
-            "{expected} exists but was not granted"
+            policy.executable_paths().contains(&path),
+            "{expected} exists but was not granted as {}",
+            path.display()
         );
     }
 }
@@ -465,4 +468,69 @@ fn an_unhinted_policy_permits_no_resolver_variable() {
     let policy = SandboxPolicy::default().allow_env("FOO");
 
     assert!(!policy.permits_env(OsStr::new("RES_OPTIONS")));
+}
+
+/// Two directories that exist, since a start directory is one a `chdir` would reach.
+fn two_roots() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let first = dir.path().join("first");
+    let second = dir.path().join("second");
+    std::fs::create_dir(&first).expect("the first root");
+    std::fs::create_dir(&second).expect("the second root");
+
+    (dir, first, second)
+}
+
+/// Somewhere the command may act, which is why write comes first: a run granted write on a
+/// tree and read elsewhere would otherwise start read-only.
+#[test]
+fn a_command_starts_in_the_first_writable_root() {
+    let (dir, first, second) = two_roots();
+    let policy = SandboxPolicy::default()
+        .allow_read(dir.path())
+        .allow_write(&first)
+        .allow_write(&second);
+
+    assert_eq!(policy.working_root(), Some(first.as_path()));
+}
+
+#[test]
+fn a_read_only_policy_starts_in_its_first_readable_root() {
+    let (_dir, first, second) = two_roots();
+    let policy = SandboxPolicy::default()
+        .allow_read(&first)
+        .allow_read(second);
+
+    assert_eq!(policy.working_root(), Some(first.as_path()));
+}
+
+/// `--allow-write /dev/null` is an ordinary grant, and a `chdir` to a file fails the spawn.
+#[test]
+fn a_grant_naming_a_file_is_not_somewhere_to_start() {
+    let (_dir, first, second) = two_roots();
+    let file = first.join("drop.txt");
+    std::fs::write(&file, b"x").expect("a file to grant");
+
+    let policy = SandboxPolicy::default()
+        .allow_write(&file)
+        .allow_write(&second);
+
+    assert_eq!(policy.working_root(), Some(second.as_path()));
+}
+
+/// Never the system binaries: they are granted on the execute axis alone, and a command born
+/// in `/usr/bin` starts somewhere the operator offered as nobody's workspace.
+#[test]
+fn an_execute_only_policy_names_nowhere_to_start() {
+    let (_dir, first, _) = two_roots();
+    let policy = SandboxPolicy::default()
+        .allow_read_execute(first)
+        .allow_system_executables();
+
+    assert_eq!(policy.working_root(), None);
+}
+
+#[test]
+fn a_policy_granting_nothing_names_nowhere_to_start() {
+    assert_eq!(SandboxPolicy::default().working_root(), None);
 }

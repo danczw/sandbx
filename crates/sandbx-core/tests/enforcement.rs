@@ -551,11 +551,12 @@ fn truncate_on_write_grant_is_permitted() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
 }
 
-/// `FsGuard` canonicalizes its roots; the helper must too, or one policy means different
-/// things in-process and in the kernel. Resolved rather than rejected because `/bin`,
-/// `/lib` and `/lib64` are symlinks on ordinary systems.
+/// `FsGuard` canonicalizes its roots and the helper opens what the policy carries, so a
+/// grant naming a symlink would mean one thing in-process and another in the kernel. The
+/// resolved spelling is the one both layers agree about; the link is refused, not followed
+/// (#205).
 #[test]
-fn symlinked_policy_root_resolves_consistently() {
+fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     let real = tempfile::tempdir().unwrap();
     let staging = tempfile::tempdir().unwrap();
     std::fs::write(real.path().join("s.txt"), b"target-side").unwrap();
@@ -563,15 +564,37 @@ fn symlinked_policy_root_resolves_consistently() {
     let link = staging.path().join("granted");
     std::os::unix::fs::symlink(real.path(), &link).unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read(&link);
+    let linked = runtime_paths(SandboxPolicy::default()).allow_read(&link);
+    let via_link = run(&linked, "/bin/cat", &[link.join("s.txt").to_str().unwrap()]);
+    let stderr = String::from_utf8_lossy(&via_link.stderr);
 
-    // Through the link — the path actually granted.
-    let via_link = run(&policy, "/bin/cat", &[link.join("s.txt").to_str().unwrap()]);
-    assert!(via_link.status.success());
+    assert!(
+        !via_link.status.success(),
+        "a grant naming a symlink was opened on its target: {stderr}"
+    );
+    // Named, so this cannot pass because the helper failed for some other reason.
+    assert!(
+        stderr.contains("opened as"),
+        "the refusal is not the redirected grant: {stderr}"
+    );
+
+    let target = real.path().canonicalize().unwrap();
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(&target);
+    let direct = run(
+        &policy,
+        "/bin/cat",
+        &[target.join("s.txt").to_str().unwrap()],
+    );
+
+    assert!(
+        direct.status.success(),
+        "the resolved grant was refused too, so the refusal above proves nothing: {}",
+        String::from_utf8_lossy(&direct.stderr)
+    );
 
     let guard = sandbx_core::FsGuard::new(&policy);
     assert!(
-        guard.check_read(&real.path().join("s.txt")).is_ok(),
+        guard.check_read(&target.join("s.txt")).is_ok(),
         "FsGuard denies a path the kernel layer permits: the two layers disagree"
     );
 }

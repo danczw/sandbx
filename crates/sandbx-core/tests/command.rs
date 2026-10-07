@@ -79,6 +79,31 @@ fn explicit_helper_still_takes_the_dispatch_flag() {
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
 }
 
+/// The obligation `command_line` documents: the start directory is not in the argv, so a
+/// caller that spawns this itself gets its own working directory and not the policy's.
+#[test]
+fn the_start_directory_is_not_in_the_command_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_str().unwrap().to_string();
+
+    let policy = SandboxPolicy::default().allow_write(dir.path());
+    let (_, argv) = SandboxedCommand::new("/bin/true", policy.clone())
+        .helper("/nonexistent/helper")
+        .command_line()
+        .unwrap();
+
+    assert_eq!(
+        policy.working_root(),
+        Some(dir.path()),
+        "the policy this asserts about does not name a start directory"
+    );
+    assert_eq!(
+        argv.iter().filter(|arg| **arg == root).count(),
+        1,
+        "the start directory crossed in the argv as well: {argv:?}"
+    );
+}
+
 /// End-to-end through the real helper: the policy is enforced, not merely encoded.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
@@ -103,6 +128,36 @@ fn runs_a_command_under_the_policy() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "visible");
+}
+
+/// #191 end-to-end, and through [`SandboxedCommand::output`] because that is the only thing
+/// that applies the start directory — `tests/support` builds the helper argv itself.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn starts_the_command_in_a_granted_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+
+    let policy = SandboxPolicy::default()
+        .allow_system_executables()
+        .allow_read(&root)
+        .allow_write(&root);
+
+    let output = SandboxedCommand::new("/bin/pwd", policy)
+        .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        root.to_str().unwrap(),
+        "the command started somewhere other than the root it was granted"
+    );
 }
 
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]

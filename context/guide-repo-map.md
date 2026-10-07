@@ -87,8 +87,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
                      requested, requested_at
          compat.rs   handled_access, handled_net_access, kernel_probe,
                      negotiated_abi_from, negotiated_abi, enforcement_verdict
+         opened.rs   open_grant, reads_back — the path opened is the one granted
          rights.rs   rights_for, fs_rules, net_rules
-         tests/      unit tests: compat, grants, net, rules
+         tests/      unit tests: compat, grants, net, opened, rules
 tests/               audit, audit_channel, audit_outcome (6, how a real run
                      ends), capability_coverage, command, concealment, denylist,
                      enforcement (39 real-kernel tests, paths and grants),

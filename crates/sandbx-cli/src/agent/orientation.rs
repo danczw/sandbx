@@ -4,7 +4,7 @@
 //! A run that names its roots and its approved tools up front spends no rounds probing
 //! refused paths or reaching for refused tools (#178, #197).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sandbx_core::{Axis, SandboxPolicy};
 use sandbx_tools::BuiltinTool;
@@ -26,7 +26,7 @@ pub(super) fn system_prompt(
 
     let said = [
         (approved.len() < BuiltinTool::ALL.len()).then(|| tools_line(&approved)),
-        (!roots.is_empty()).then(|| roots_line(&roots)),
+        (!roots.is_empty()).then(|| roots_line(&roots, start_root(policy).as_deref())),
         operator.map(ToString::to_string),
     ];
 
@@ -55,11 +55,23 @@ fn tools_line(approved: &[&str]) -> String {
 ///
 /// It admits the system binaries without listing them: a model told every other path is
 /// refused may decline a command that would in fact have started.
-fn roots_line(roots: &[String]) -> String {
+///
+/// `start` is where a command is spawned, and is left out when the policy grants nowhere to
+/// be — the one case where the cwd is inherited, and nothing here is true to say about it.
+fn roots_line(roots: &[String], start: Option<&Path>) -> String {
+    // Its own sentence: the roots are the bound, and this is a fact about the run inside it.
+    let starts_in = match start {
+        Some(root) => format!(
+            " A `bash` command starts in {}, and a relative path in one resolves from there.",
+            root.display()
+        ),
+        None => String::new(),
+    };
+
     format!(
         "Your tools take absolute paths and reach only these directories and what they \
-         contain: {}. Apart from the system binaries a command needs to start, every other \
-         path is refused; do not search for one.",
+         contain: {}.{starts_in} Apart from the system binaries a command needs to start, \
+         every other path is refused; do not search for one.",
         roots.join(", ")
     )
 }
@@ -103,6 +115,14 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<String> {
         .into_iter()
         .map(|(path, access)| format!("{} ({})", path.display(), access.join(", ")))
         .collect()
+}
+
+/// Where a command starts, named as [`work_roots`] names the root it is one of.
+///
+/// Canonicalized for that reason alone — the spawn uses the policy's own spelling — so the
+/// sentence cannot name a directory in a form that is nowhere in the list above it.
+fn start_root(policy: &SandboxPolicy) -> Option<PathBuf> {
+    policy.working_root()?.canonicalize().ok()
 }
 
 /// Every path `policy` grants, in the form the guard compares against.
@@ -217,6 +237,43 @@ mod tests {
         );
     }
 
+    /// Pinned against the policy the child is actually spawned with, not a literal: a
+    /// sentence naming a directory the spawn does not use is the refusal #191 is about,
+    /// reported as orientation.
+    #[test]
+    fn the_prompt_names_where_a_command_starts() {
+        let (work, named) = work();
+        let policy = SandboxPolicy::default()
+            .allow_read("/etc")
+            .allow_write(work.path());
+        let start = policy
+            .working_root()
+            .expect("a writable root to start in")
+            .canonicalize()
+            .expect("it exists");
+
+        assert!(
+            granted(policy).contains(&format!("starts in {named}")),
+            "the prompt does not name the directory the command is spawned in"
+        );
+        assert_eq!(
+            start.display().to_string(),
+            named,
+            "the prompt named a directory other than the one the spawn uses"
+        );
+    }
+
+    /// The one policy that inherits the cwd, so there is nothing true to tell the model. The
+    /// root is named all the same, or the clause would be absent for having nothing to say.
+    #[test]
+    fn a_run_granted_nowhere_to_be_is_told_nothing_about_starting() {
+        let (work, named) = work();
+        let prompt = granted(SandboxPolicy::default().allow_read_execute(work.path()));
+
+        assert!(prompt.contains(&format!("{named} (run)")), "got {prompt:?}");
+        assert!(!prompt.contains("starts in"), "got {prompt:?}");
+    }
+
     /// Compared against the whole tools sentence: a roots sentence over an empty list names
     /// no path either, so a check for one would pass with the guard gone.
     #[test]
@@ -303,7 +360,9 @@ mod tests {
         .expect("a root to name");
 
         assert!(prompt.contains(&named), "got {prompt:?}");
-        assert!(!prompt.contains("bash"), "got {prompt:?}");
+        // The sentence's own words and not a tool name: the roots sentence names `bash` to
+        // say where a command starts, which is not the tools sentence coming back.
+        assert!(!prompt.contains("approved for this run"), "got {prompt:?}");
     }
 
     #[test]

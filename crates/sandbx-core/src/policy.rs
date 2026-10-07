@@ -8,6 +8,14 @@ const STANDARD_ENV_NAMES: [&str; 7] = ["PATH", "HOME", "TERM", "LANG", "LC_ALL",
 /// What the resolver hint puts in the child: glibc's stub resolver then opens TCP.
 const DNS_OVER_TCP_ENV: [(&str, &str); 1] = [("RES_OPTIONS", "use-vc")];
 
+/// The first of `paths` that is a directory now; a grant naming nothing is not one.
+fn first_directory(paths: &[PathBuf]) -> Option<&Path> {
+    paths
+        .iter()
+        .map(PathBuf::as_path)
+        .find(|path| path.is_dir())
+}
+
 /// A kind of access a policy can grant on a path.
 ///
 /// [`Axis::grants`] is the workspace's one statement of what each kind means; every
@@ -134,16 +142,17 @@ impl SandboxPolicy {
 
     /// Where a command run under this policy starts, or `None` if it grants nowhere to be.
     ///
-    /// The first writable path, else the first readable one — so a command begins somewhere it
-    /// may act rather than wherever its caller stood. Not over
+    /// The first writable directory, else the first readable one — so a command begins
+    /// somewhere it may act rather than wherever its caller stood. Not over
     /// [`granted_paths`](Self::granted_paths), whose [`Axis::ALL`] order puts `Read` ahead of
     /// `Write` and `ReadExecute` last: that would start a writable run read-only, and one
     /// granted only execute inside the system binaries.
+    ///
+    /// A grant may name a file — `--allow-write /dev/null` is an ordinary one — and `chdir`
+    /// to a file fails the spawn, so one answer here for every caller is what keeps a tool's
+    /// orientation and the directory it is spawned in from disagreeing.
     pub fn working_root(&self) -> Option<&Path> {
-        self.writable
-            .first()
-            .or_else(|| self.readable.first())
-            .map(PathBuf::as_path)
+        first_directory(&self.writable).or_else(|| first_directory(&self.readable))
     }
 
     /// Grant `axis` access to `path`; the one place a path enters a policy.

@@ -210,8 +210,9 @@ fn vetted_root<'a>(
         });
     }
 
-    // Either direction, since Landlock rights cover a subtree — and a merged-`/usr` host
-    // resolves `/bin` to `/usr/bin`, which holds no granted path and so passed one way round.
+    // Either direction, since Landlock rights cover a subtree. Both sides are resolved: the
+    // cwd by `current_root`, the grants by `allow_system_executables`, so a merged-`/usr`
+    // host compares `/usr/bin` with `/usr/bin` rather than with `/bin`.
     if let Some(path) = granted
         .iter()
         .find(|path| path.starts_with(cwd) || cwd.starts_with(path))
@@ -582,9 +583,14 @@ mod tests {
     }
 
     /// Whether `granted` reaches one of `owned`, the cwd a test runs from being readable.
+    ///
+    /// Through both steps [`Grants::policy`] puts a flag through, so what is asserted here is
+    /// what a flag actually gets compared in.
     fn reaches(granted: impl AsRef<Path>, owned: &[OwnedPath]) -> bool {
-        let granted = absolute(granted.as_ref(), &std::env::current_dir)
-            .expect("a readable working directory");
+        let granted = resolved(
+            &absolute(granted.as_ref(), &std::env::current_dir)
+                .expect("a readable working directory"),
+        );
 
         reaches_owned(&granted, owned).is_some()
     }
@@ -1166,6 +1172,53 @@ mod tests {
         assert!(
             matches!(error, PolicyError::CwdReachesOwned { .. }),
             "{error} is not the owned-path refusal"
+        );
+    }
+
+    /// The helper opens what the policy carries, from a process whose working directory is
+    /// not this one's — so a grant left relative would be a different directory there (#205).
+    #[test]
+    fn a_relative_grant_reaches_the_policy_absolute() {
+        let mut grants = bare();
+        grants.allow_read.push(PathBuf::from("src"));
+
+        let policy = grants.policy().expect("the flags describe a policy");
+        let expected = std::env::current_dir()
+            .expect("a readable working directory")
+            .join("src")
+            .canonicalize()
+            .expect("the crate this test is in has a src directory");
+
+        assert_eq!(
+            policy.readable_paths(),
+            [expected],
+            "a relative grant crossed the seam relative"
+        );
+    }
+
+    /// The other half: vetted through the link and granted through it too, the helper would
+    /// open whatever it points at by then.
+    #[test]
+    fn a_grant_through_a_symlink_reaches_the_policy_resolved() {
+        let work = tempfile::tempdir().expect("a temporary directory");
+        let real = work.path().canonicalize().expect("a resolved directory");
+        let link = work.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).expect("a symlink to it");
+
+        let mut grants = bare();
+        grants.allow_write.push(link);
+
+        let policy = grants.policy().expect("the flags describe a policy");
+
+        assert_eq!(
+            policy.writable_paths(),
+            std::slice::from_ref(&real),
+            "a symlinked grant crossed the seam unresolved"
+        );
+        assert_eq!(
+            policy.readable_paths(),
+            std::slice::from_ref(&real),
+            "the read a write flag confers was granted in another form than the write"
         );
     }
 
