@@ -219,12 +219,10 @@ pub enum SandboxError {
         detail: &'static str,
     },
 
-    /// The policy bounds which names resolve and also leaves a nameserver reachable, so it
-    /// would bound nothing while reporting as applied.
+    /// The policy bounds which names resolve and leaves a nameserver reachable, so it would
+    /// bound nothing while reporting as applied.
     ///
-    /// The one combination that is worse than either half: the files are bound, the audit
-    /// trail records a name count, and every name resolves anyway.
-    /// [`SandboxPolicy::unbounded_resolution`] names the shape.
+    /// [`SandboxPolicy::unbounded_resolution`] names the shape and decides this.
     ///
     /// [`SandboxPolicy::unbounded_resolution`]: crate::SandboxPolicy::unbounded_resolution
     UnboundedResolution {

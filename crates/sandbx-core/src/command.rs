@@ -111,9 +111,8 @@ impl SandboxedCommand {
     /// it from this process too: the default helper path resolves against whichever process
     /// execs it.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
-        // Here and not in `output`: an embedder spawning this argv itself gets the same
-        // refusal, a policy that reports as bounded and bounds nothing being the one the
-        // claim in `SECURITY.md` is about.
+        // Here and not in `output`: an embedder spawning this argv itself has to meet the
+        // same refusal, `SECURITY.md`'s claim being made at this level.
         if let Some(detail) = self.policy.unbounded_resolution() {
             return Err(SandboxError::UnboundedResolution { detail });
         }

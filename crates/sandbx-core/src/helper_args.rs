@@ -226,10 +226,9 @@ impl HelperArgs {
             });
         }
 
-        // After the loop, each shape being a pair of flags and so undecidable until the last
-        // one is in. `BadHelperArgs` and not `UnboundedResolution`: the harness refuses this
-        // policy before it spawns, so an argv carrying one did not come from `encode` —
-        // which is the same reading as a name `allow_dns` would have skipped.
+        // After the loop, each shape being a pair of flags. `BadHelperArgs` and not
+        // `UnboundedResolution`: the harness refuses this policy before it spawns, so an argv
+        // carrying one did not come from `encode`.
         if let Some(detail) = policy.unbounded_resolution() {
             return Err(SandboxError::BadHelperArgs { detail });
         }
