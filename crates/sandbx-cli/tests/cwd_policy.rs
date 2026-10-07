@@ -2,9 +2,8 @@
 //!
 //! Spawned rather than called, because the guard reads `getcwd` and `HOME` off the real
 //! process and `set_current_dir` is process-global — under parallel tests one case would
-//! decide another's verdict. The credential refusal joins them for the other half of that
-//! reason: `set_var` is `unsafe fn`, so a case keyed on an exported variable can only be
-//! a child's environment.
+//! decide another's verdict. The credential refusal joins them because `set_var` is
+//! `unsafe fn`: a case keyed on an exported variable can only be a child's environment.
 // `Command::new` here spawns sandbx itself, never a command that bypasses it; the
 // workspace ban exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
@@ -154,8 +153,7 @@ fn a_path_flag_runs_from_the_home_directory() {
 /// A fake key, so a failure to refuse cannot leak a real one into a test log.
 const FAKE_KEY: &str = "sk-ant-not-a-real-key";
 
-/// The refusal does not consult the environment, so an exported key changes nothing — and
-/// the message naming the variable must still not quote its value.
+/// An exported key changes nothing, and the message naming the variable must not quote it.
 #[test]
 fn an_exported_credential_is_refused_too() {
     let (ok, stderr) = spawn(
@@ -180,8 +178,8 @@ fn an_exported_credential_is_refused_too() {
     );
 }
 
-/// Both refusals apply, and the order is the point: a cwd message would say nothing about
-/// the credential, so the operator would fix the directory and hand over the key anyway.
+/// Both apply, and a cwd message would send the operator to fix the directory and hand
+/// over the key anyway.
 #[test]
 fn the_credential_refusal_outranks_the_home_directory_refusal() {
     let (ok, stderr) = spawn(
