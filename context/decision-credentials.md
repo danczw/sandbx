@@ -77,9 +77,10 @@ problem with a different answer:
   child's. See [decision-environment-allowlist.md](decision-environment-allowlist.md).
 - Handing a tool a credential it legitimately needs — `bash` running `gh` — has
   no mechanism, and the sketch this document used to carry (an opaque placeholder
-  plus a TLS-terminating proxy) is not one either: every piece of it is #145's
-  proxy, its interception is cooperation rather than enforcement, and terminating
-  TLS widens the boundary it would narrow. What is offered instead is a single
+  plus a TLS-terminating proxy) is not one either: its interception is
+  cooperation rather than enforcement, and terminating TLS widens the boundary it
+  would narrow — [decision-egress-proxy.md](decision-egress-proxy.md) prices
+  every piece of it. What is offered instead is a single
   refusal — `agent-run` will not take `--allow-env ANTHROPIC_API_KEY`, the one
   name this document's tier 1 dereferences. See
   [decision-tool-credentials.md](decision-tool-credentials.md).
