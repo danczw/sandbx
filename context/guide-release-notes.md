@@ -26,6 +26,23 @@ the manifest, so a bump that forgets its notes fails at review time rather than
 with the tag already pushed. It is a required check on `main`, so a red `notes`
 blocks the merge and the tag cannot get ahead of the prose.
 
+## When several branches converge on one release
+
+One release holds one notes file, so concurrent branches cannot each commit their
+own. The first branch to need the file creates it; the **last to land owns the
+final text** and rewrites it to cover every change in the release, being the only
+one that can see them all.
+
+A non-owning branch carries no file. It puts its one-sentence claim verbatim in
+its **PR body**, so the prose is reviewed against the diff it describes even
+though it does not ship from there; the owning branch's PR is where that prose is
+reviewed as prose. Agree the sentences across the branches before any of them
+lands — merging three accounts afterwards is the time pressure the convention
+exists to avoid.
+
+The budget below does not grow. The owner's rewrite fits every change into one
+twelve-line, two-paragraph file; there is no allowance per change (#193).
+
 ## The budget
 
 Two paragraphs, twelve lines, no headings and no bullets. The checker enforces
