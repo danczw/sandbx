@@ -74,10 +74,18 @@ Three consequences a reader of the trail depends on:
   `denied`, indistinguishable from any other refusal. Naming the absence there
   would hand back over the trail exactly what the refusal conceals.
 
-What separates the two is `names_nothing` — ENOENT, ENOTDIR, ENAMETOOLONG. An
-EACCES parent or the `ELOOP` of a leaf swapped between the check and the open is
-a refusal, recorded `denied` with reason `path does not resolve` whether the gate
-caught it or the access did.
+What separates the two is `names_nothing` — ENOENT, ENOTDIR, ENAMETOOLONG — with
+one errno read the other way. On the leaf of a directory read, ENOTDIR says the
+leaf *is* a regular file, which the gate had just resolved, so `listed_nothing`
+drops it: `ls` on a file records a refusal, not an absence.
+
+A refusal past the gate carries one of two reasons, the policy having already
+allowed the path. `path does not resolve` is the resolution failure — an EACCES
+parent, or the `ELOOP` of a leaf swapped between the check and the open — and
+reads the same whether the gate caught it or the access did. `access did not
+complete` is everything else: a full disk, a read-only mount, a directory opened
+as a file. An operator counting refusals reads the first as a traversal attempt,
+which is why a full disk may not borrow it.
 
 One record per operation, with one exception: a `grep` leaves one `allowed` for
 the walk, naming the directory, and then one more per file it actually opens. All
