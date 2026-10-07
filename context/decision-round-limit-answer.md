@@ -20,16 +20,38 @@ with nothing answering it. So:
 The tokens were spent, the `write` calls had already landed, and `--session`
 gained nothing from either.
 
-## One more request, with no tools offered
+## One more request, with no tool call allowed
 
-`Turn::tools` documents an empty slice as offering *none*, not all of them. A
-second turn built that way cannot ask for a tool, so its reply is prose, so the
-batch ends on an assistant message — which `append` already accepts. No storage
-change, no transcript-format change, no new record kind.
+A second turn the model cannot spend on a tool replies in prose, so the batch ends
+on an assistant message — which `append` already accepts. No storage change, no
+transcript-format change, no new record kind.
 
-`sandbx-agent` is untouched. The round loop's contract is the same one; this is
-`agent-run` choosing to call it twice. Anything else embedding the crate keeps
-the raw `RoundLimit` and decides for itself.
+### Why the tools are still sent
+
+`Turn::tools` documents an empty slice as offering *none*, and an empty list is
+omitted from the request body entirely. That is the obvious mechanism and it does
+not work: the wrap-up round's history necessarily replays the `tool_use` and
+`tool_result` blocks the first turn produced, and the Messages API refuses a
+request carrying those without the definitions they name. Built that way, the
+feature would 400 on every real run.
+
+So the definitions stay and `tool_choice: {"type": "none"}` forbids the call —
+the documented way to ask for a prose-only reply. `MessagesRequest::tool_choice`
+and `Turn::tool_choice` are new for it, and the field is dropped on the way out
+when `tools` is empty, the API refusing a choice over tools no request defined.
+
+The round loop's contract is otherwise the same one: this is `agent-run` choosing
+to call it twice. Anything else embedding `sandbx-agent` keeps the raw
+`RoundLimit` and decides for itself.
+
+### The gate still refuses
+
+`tool_choice` bounds what the model is *asked* for, which is not a bound on what
+runs. The wrap-up round therefore passes a gate that denies unconditionally,
+rather than the run's own `--allow-tool` reading: a model that asks for a tool
+despite the choice must not reach `sandbx-tools` on the strength of a flag the
+operator typed for the first turn. Belt against a provider-side change, since
+before `tool_choice` the empty `tools` list refused such a call above the gate.
 
 ## Where the nudge goes
 
@@ -75,9 +97,11 @@ run falls back to everything in "What the cap used to leave behind". Never
 text already on stdout. That residue is #188.
 
 Stdout is the part that cannot be undone. A round that streams prose and *then*
-asks for a tool has already written an answer that no transcript will hold, and
-the blank line above it is already out. The text stays — it was paid for, and
-only the operator can judge it — but stderr says plainly that it is not an answer
-and was not saved. The alternative, reporting the ordinary round-limit line, tells
+asks for a tool has already written an answer that no transcript will hold. The
+text stays — it was paid for, and only the operator can judge it — but stderr says
+plainly that none of stdout is an answer and none of it was saved. It does not
+point at the gap: there is no gap when nothing arrived before the cap, which is
+the common shape of a model that opened with a tool call. The alternative, the
+ordinary round-limit line, tells
 the operator stdout holds only what arrived before the cap while it visibly does
 not.

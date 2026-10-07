@@ -200,9 +200,10 @@ No truncation of that transcript would make it storable: it ends on a `tool_resu
 model never answered, and so does every prefix of it, the alternative being a `tool_use`
 with nothing answering it. `TurnStop` is what says it is not an answer.
 
-What a caller does with that is the caller's. `agent-run` asks once more with no tools
-offered, so the reply is prose and the batch ends somewhere `Session::append` takes —
-see `decision-round-limit-answer.md`. Under `--no-wrap-up`, or when that second request
+What a caller does with that is the caller's. `agent-run` asks once more under
+`Turn::tool_choice`, so the reply is prose and the batch ends somewhere `Session::append`
+takes — see `decision-round-limit-answer.md`, including why that round still sends the
+tool definitions it forbids calling. Under `--no-wrap-up`, or when that second request
 fails, it reports an incomplete turn and `append` refuses the batch.
 
 `TurnError` is only for what *ends* the turn:

@@ -3,8 +3,23 @@
 //! The exact wire shape, not just that it parses: a wrong tag name or an extra field
 //! fails the real request, and no type system catches that.
 
-use sandbx_providers::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
+use sandbx_providers::{
+    ContentBlock, MessagesRequest, RequestMessage, Role, ToolChoice, ToolDefinition,
+};
 use serde_json::json;
+
+/// One tool, so a request has something a `tool_choice` can be a choice over.
+fn a_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: "get_weather".to_string(),
+        description: "Get current weather for a location".to_string(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {"location": {"type": "string"}},
+            "required": ["location"],
+        }),
+    }
+}
 
 #[test]
 fn a_minimal_request_omits_every_optional_field() {
@@ -19,6 +34,7 @@ fn a_minimal_request_omits_every_optional_field() {
             }],
         }],
         tools: vec![],
+        tool_choice: None,
     };
 
     assert_eq!(
@@ -31,7 +47,7 @@ fn a_minimal_request_omits_every_optional_field() {
             ],
             "stream": true,
         }),
-        "system must be omitted entirely when None, tools when empty"
+        "system and tool_choice must be omitted entirely when None, tools when empty"
     );
 }
 
@@ -42,15 +58,8 @@ fn system_and_tools_are_included_when_present() {
         max_tokens: 1_000,
         system: Some("Be concise.".to_string()),
         messages: vec![],
-        tools: vec![ToolDefinition {
-            name: "get_weather".to_string(),
-            description: "Get current weather for a location".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {"location": {"type": "string"}},
-                "required": ["location"],
-            }),
-        }],
+        tools: vec![a_tool()],
+        tool_choice: None,
     };
 
     let value = serde_json::to_value(&request).unwrap();
@@ -65,6 +74,44 @@ fn system_and_tools_are_included_when_present() {
         value["tools"][0]["input_schema"]["required"],
         json!(["location"])
     );
+    assert_eq!(value.get("tool_choice"), None, "a None choice was sent");
+}
+
+/// The shape a wrap-up round sends: the tools stay, and the choice forbids calling one.
+///
+/// Both halves matter on the wire. Dropping the definitions makes the API refuse a
+/// history replaying `tool_use` blocks, and dropping the choice lets the model call one.
+#[test]
+fn a_tool_choice_rides_alongside_the_tools_it_names() {
+    let request = MessagesRequest {
+        model: "claude-opus-5".to_string(),
+        max_tokens: 1_000,
+        system: None,
+        messages: vec![],
+        tools: vec![a_tool()],
+        tool_choice: Some(ToolChoice::None),
+    };
+
+    let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(value["tool_choice"], json!({"type": "none"}));
+    assert_eq!(value["tools"][0]["name"], json!("get_weather"));
+}
+
+/// The API refuses a choice over tools no request defined, so it is not sent.
+#[test]
+fn a_tool_choice_without_tools_is_dropped() {
+    let request = MessagesRequest {
+        model: "claude-opus-5".to_string(),
+        max_tokens: 1_000,
+        system: None,
+        messages: vec![],
+        tools: vec![],
+        tool_choice: Some(ToolChoice::None),
+    };
+
+    let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(value.get("tool_choice"), None, "got {value}");
+    assert_eq!(value.get("tools"), None);
 }
 
 #[test]

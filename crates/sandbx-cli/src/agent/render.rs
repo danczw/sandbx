@@ -20,8 +20,8 @@ pub(super) enum Capped {
     /// A tool-less round answered from what the turn had already found.
     Summarised(usize),
 
-    /// A tool-less round wrote to stdout and then did not answer, so the text below the
-    /// gap is neither an answer nor stored. Streamed, so it cannot be taken back.
+    /// A tool-less round wrote to stdout and then did not answer, so what it wrote is
+    /// neither an answer nor stored. Streamed, so it cannot be taken back.
     Discarded(usize),
 }
 
@@ -142,7 +142,7 @@ impl<W: Write> Render<W> {
             // for, and the operator is the only one who can judge it.
             Some(Capped::Discarded(rounds)) => eprintln!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
-                 the text after the blank line is not an answer and was not saved, \
+                 nothing on stdout is an answer and none of it was saved, \
                  and raising --max-rounds would let the turn go further"
             ),
             None => {}

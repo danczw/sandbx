@@ -1,4 +1,4 @@
-//! The second turn a round limit earns: no tools offered, so the reply is prose.
+//! The second turn a round limit earns: no tool may be called, so the reply is prose.
 //!
 //! Its own module because it changes for a different reason than the rest of `agent-run`:
 //! what a turn out of rounds is worth asking next, not what was asked or allowed. See
@@ -6,13 +6,15 @@
 
 use std::io::Write;
 
-use sandbx_agent::{PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
-use sandbx_providers::{EventStream, MessagesRequest, ProviderError, RequestMessage};
+use sandbx_agent::{
+    ApprovalDecision, PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn,
+};
+use sandbx_providers::{EventStream, MessagesRequest, ProviderError, RequestMessage, ToolChoice};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use super::{Render, gate};
+use super::Render;
 
-/// What the model is told in place of the tools it no longer has.
+/// What the model is told in place of the tools it may no longer call.
 ///
 /// Appended to the run's own system prompt rather than sent as a user message: the history
 /// ends on a `tool_result`, and a second user turn is the consecutive pair the API
@@ -20,6 +22,12 @@ use super::{Render, gate};
 /// message would be replayed on every later resume.
 const NUDGE: &str = "You have no tool calls left. Answer now from what you have already \
                      found, and say plainly what you could not finish.";
+
+/// Why the gate refuses every call this round, as the model would read it.
+///
+/// Reached only by a model that ignored both the nudge and `tool_choice`, so the sentence
+/// is about the round rather than about a flag: `--allow-tool` would not lift it.
+const REFUSED: &str = "no tool may be called while answering a turn that ran out of rounds";
 
 /// What the wrap-up round reuses from the turn that ran out of rounds.
 ///
@@ -29,6 +37,13 @@ pub(super) struct Next {
     model: String,
     max_tokens: u32,
     system: Option<String>,
+
+    /// The same set the first turn offered, owned so the second [`Turn`] can borrow it.
+    ///
+    /// Still offered, though `tool_choice` forbids calling one: the history replays
+    /// `tool_use` blocks, and the API refuses those without the definitions they name.
+    tools: Vec<BuiltinTool>,
+
     limits: TurnLimits,
     observed: Option<PromptUsage>,
 }
@@ -43,6 +58,7 @@ impl Next {
                 Some(system) => format!("{system}\n\n{NUDGE}"),
                 None => NUDGE.to_owned(),
             }),
+            tools: turn.tools.to_vec(),
             limits: turn.limits,
             observed: turn.observed,
         }
@@ -56,7 +72,6 @@ impl Next {
         &self,
         open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
-        allow_tool: Option<&[BuiltinTool]>,
         history: Vec<RequestMessage>,
         first: TurnOutcome,
         render: &mut Render<W>,
@@ -70,9 +85,12 @@ impl Next {
             self.turn(&continued, &first),
             ctx,
             |event| render.event(event),
-            // Offered nothing, so it never fires. Passed anyway: `run_turn` has no
-            // gate-less form, which is the point of the gate being mandatory.
-            |requested| gate::decide(allow_tool, requested),
+            // Not `gate::decide`: this round's tools are offered only so the API accepts
+            // the `tool_use` blocks in its history, and a model that asks for one anyway
+            // must not reach `sandbx-tools` on the strength of this run's `--allow-tool`.
+            |_| ApprovalDecision::Deny {
+                reason: REFUSED.to_owned(),
+            },
         )
         .await;
 
@@ -83,9 +101,9 @@ impl Next {
                 eprintln!("sandbx: the wrap-up request failed: {error}");
                 (first, false)
             }
-            // No tools were offered, so a `RoundLimit` means a round that asked for one
-            // anyway, and no messages means the model declined to answer. Keeping either
-            // would leave the batch ending on an unanswered `tool_result` regardless.
+            // A `RoundLimit` here is a round that asked for a tool despite `tool_choice`,
+            // and no messages means the model declined to answer. Keeping either would
+            // leave the batch ending on an unanswered `tool_result` regardless.
             //
             // Said out loud: the round may have streamed prose to stdout before getting
             // here, and dropping it silently would leave an answer no transcript holds.
@@ -106,14 +124,17 @@ impl Next {
 
     /// The turn to ask, over `history` ending in what the first turn produced.
     ///
-    /// `tools` is empty, which `Turn::tools` documents as offering none rather than all,
-    /// so the model cannot ask for one and `max_rounds: 1` is all the loop needs.
-    fn turn<'a>(&self, history: &'a [RequestMessage], first: &TurnOutcome) -> Turn<'a> {
+    /// The tools are still offered and `tool_choice` forbids calling one, rather than the
+    /// empty slice `Turn::tools` would read as offering none: `history` replays `tool_use`
+    /// blocks, and the API refuses a request carrying those without the definitions they
+    /// name. `max_rounds: 1` is then all the loop needs, a prose reply ending the turn.
+    fn turn<'a>(&'a self, history: &'a [RequestMessage], first: &TurnOutcome) -> Turn<'a> {
         Turn {
             model: self.model.clone(),
             max_tokens: self.max_tokens,
             system: self.system.clone(),
-            tools: &[],
+            tools: &self.tools,
+            tool_choice: Some(ToolChoice::None),
             history,
             limits: TurnLimits {
                 max_rounds: 1,

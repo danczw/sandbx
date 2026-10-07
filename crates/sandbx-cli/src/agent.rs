@@ -57,11 +57,12 @@ pub struct AgentRun {
     #[arg(long = "max-tokens", value_name = "N", default_value_t = DEFAULT_MAX_TOKENS)]
     max_tokens: u32,
 
-    /// Cap how many times the model may be asked within one turn.
+    /// Cap how many rounds of tool calls one turn may spend.
     ///
     /// A turn re-enters once per batch of tool calls, so this bounds how far a looping
-    /// model can drive tool execution. A turn that hits the cap stops with its tool calls
-    /// unanswered and says so on stderr.
+    /// model can drive tool execution. A turn that hits the cap says so on stderr and is
+    /// then asked once more, a round that may call no tool — `--no-wrap-up` refuses that
+    /// one, so the cap is also the number of requests.
     #[arg(
         long = "max-rounds",
         value_name = "N",
@@ -72,10 +73,10 @@ pub struct AgentRun {
 
     /// Do not spend one more request answering a turn that ran out of rounds.
     ///
-    /// A turn that reaches `--max-rounds` is otherwise asked once more with no tools
-    /// offered, so the reply is prose: stdout gets an answer and the conversation ends
-    /// somewhere `--session` can store. This refuses that request, leaving stdout with
-    /// whatever arrived before the cap and the session unchanged. The exit code is 2
+    /// A turn that reaches `--max-rounds` is otherwise asked once more, a round that may
+    /// call no tool, so the reply is prose: stdout gets an answer and the conversation
+    /// ends somewhere `--session` can store. This refuses that request, leaving stdout
+    /// with whatever arrived before the cap and the session unchanged. The exit code is 2
     /// either way.
     #[arg(long = "no-wrap-up")]
     no_wrap_up: bool,
@@ -264,6 +265,8 @@ impl AgentRun {
             max_tokens: self.max_tokens,
             system,
             tools: &BuiltinTool::ALL,
+            // The model's to make: this is the turn that may use a tool.
+            tool_choice: None,
             history: &history,
             limits: TurnLimits {
                 max_rounds: self.max_rounds,
@@ -303,10 +306,8 @@ impl AgentRun {
 
         let (outcome, capped) = match (out_of_rounds, outcome) {
             (Some(rounds), Ok(first)) if !self.no_wrap_up => {
-                let gate = self.allow_tool.as_deref();
-                let (outcome, summarised) = next
-                    .run(&mut open, ctx, gate, history, first, &mut render)
-                    .await;
+                let (outcome, summarised) =
+                    next.run(&mut open, ctx, history, first, &mut render).await;
                 // A round that failed after streaming prose has already put text on
                 // stdout that no transcript will account for, which `CutShort` denies.
                 let capped = match (summarised, render.wrote_after_gap()) {
@@ -792,15 +793,25 @@ mod tests {
 
     /// The round the cap buys has to be one the model cannot spend on another tool, and a
     /// second user turn behind the unanswered `tool_result` is the pair the API rejects.
+    ///
+    /// The definitions stay in the body, which looks like the opposite: the history
+    /// replays `tool_use` blocks, and the API refuses those without them. `tool_choice` is
+    /// what forbids the call, so dropping either half is a request that 400s or a round
+    /// that calls a tool.
     #[test]
-    fn the_wrap_up_round_offers_no_tools_and_adds_no_turn() {
+    fn the_wrap_up_round_forbids_tools_and_adds_no_turn() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
 
         let (sent, _, _) = capped(&args, summarising(), None);
 
         let body = serde_json::to_value(&sent).expect("a serializable request");
-        assert!(body[0]["tools"].is_array(), "got {:?}", body[0]["tools"]);
-        assert!(body[1]["tools"].is_null(), "got {:?}", body[1]["tools"]);
+        assert!(
+            body[0]["tool_choice"].is_null(),
+            "the first round was bound"
+        );
+        assert!(body[1]["tools"].is_array(), "got {:?}", body[1]["tools"]);
+        assert_eq!(body[1]["tools"], body[0]["tools"], "the set changed");
+        assert_eq!(body[1]["tool_choice"], serde_json::json!({"type": "none"}));
 
         let last = body[1]["messages"]
             .as_array()

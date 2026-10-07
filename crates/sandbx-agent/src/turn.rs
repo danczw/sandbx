@@ -4,7 +4,8 @@
 //! Rebuilding a round's message is `accumulate`; running what it asked for is `tools`.
 
 use sandbx_providers::{
-    AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, Role, ToolDefinition,
+    AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, Role, ToolChoice,
+    ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
@@ -25,7 +26,24 @@ pub struct Turn<'a> {
     /// The system prompt, omitted from the request entirely when `None`.
     pub system: Option<String>,
     /// The built-ins to offer. An empty slice offers none, not all of them.
+    ///
+    /// Not the way to stop a model calling one when [`history`] holds `tool_use` or
+    /// `tool_result` blocks: the API refuses a request that replays those without the
+    /// definitions they name. Keep offering them and set [`tool_choice`] instead.
+    ///
+    /// [`history`]: Self::history
+    /// [`tool_choice`]: Self::tool_choice
     pub tools: &'a [BuiltinTool],
+
+    /// Whether the model may call one of [`tools`], passed to the provider unchanged.
+    ///
+    /// `None` leaves the choice to the model, which is the API's own default. It bounds
+    /// nothing on its own — [`ApprovalDecision`] is still the only thing between a
+    /// requested call and `sandbx-tools` running it.
+    ///
+    /// [`tools`]: Self::tools
+    /// [`ApprovalDecision`]: crate::ApprovalDecision
+    pub tool_choice: Option<ToolChoice>,
     /// The conversation so far, oldest first.
     pub history: &'a [RequestMessage],
     /// The bounds this turn runs within.
@@ -259,6 +277,7 @@ where
             system: turn.system.clone(),
             messages,
             tools: definitions.clone(),
+            tool_choice: turn.tool_choice,
         };
 
         let mut stream = open(request).await.map_err(TurnError::Provider)?;

@@ -60,6 +60,7 @@ pub(crate) fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) 
         max_tokens: 1024,
         system: None,
         tools,
+        tool_choice: None,
         history,
         limits: TurnLimits::default(),
         observed: None,
