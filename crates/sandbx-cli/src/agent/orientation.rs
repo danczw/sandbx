@@ -1,31 +1,61 @@
-//! What the model is told about where it is, before the first request.
+//! What the model is told about where it is and what it may call, before the first request.
 //!
 //! Its own module because it changes for a different reason than the rest of `agent-run`.
-//! A run that names its roots up front spends no rounds probing refused paths (#178).
+//! A run that names its roots and its approved tools up front spends no rounds probing
+//! refused paths or reaching for refused tools (#178, #197).
 
 use std::path::PathBuf;
 
 use sandbx_core::{Axis, SandboxPolicy};
+use sandbx_tools::BuiltinTool;
 
-/// The system prompt one run sends: the roots its tools can reach, then the operator's.
+use super::gate;
+
+/// The system prompt one run sends: its approved tools, its roots, then the operator's.
 ///
 /// `--system` is appended rather than replacing: an operator who overrode the roots by
-/// accident would be back to probing.
-pub(super) fn system_prompt(policy: &SandboxPolicy, operator: Option<&str>) -> Option<String> {
+/// accident would be back to probing. A section with nothing to say is left out — naming
+/// all seven tools describes a boundary the run does not have.
+pub(super) fn system_prompt(
+    policy: &SandboxPolicy,
+    allowed: Option<&[BuiltinTool]>,
+    operator: Option<&str>,
+) -> Option<String> {
+    let approved = gate::approved_tools(allowed);
     let roots = work_roots(policy);
 
-    match (roots.is_empty(), operator) {
-        (true, operator) => operator.map(ToString::to_string),
-        (false, None) => Some(orientation(&roots)),
-        (false, Some(operator)) => Some(format!("{}\n\n{operator}", orientation(&roots))),
-    }
+    let said = [
+        (approved.len() < BuiltinTool::ALL.len()).then(|| tools_line(&approved)),
+        (!roots.is_empty()).then(|| roots_line(&roots)),
+        operator.map(ToString::to_string),
+    ];
+
+    let prompt = said
+        .into_iter()
+        .flatten()
+        .collect::<Vec<String>>()
+        .join("\n\n");
+
+    (!prompt.is_empty()).then_some(prompt)
+}
+
+/// The tools sentence, as the model reads it.
+///
+/// Says the rest are offered rather than absent: the request carries all seven schemas,
+/// so a model told these are its only tools would distrust the list in front of it.
+fn tools_line(approved: &[&str]) -> String {
+    format!(
+        "Only these tools are approved for this run: {}. The others are offered but \
+         refused, and a call to one comes back without running; do not reach for one.",
+        approved.join(", ")
+    )
 }
 
 /// The roots sentence, as the model reads it.
 ///
 /// It admits the system binaries without listing them: a model told every other path is
 /// refused may decline a command that would in fact have started.
-fn orientation(roots: &[String]) -> String {
+fn roots_line(roots: &[String]) -> String {
     format!(
         "Your tools take absolute paths and reach only these directories and what they \
          contain: {}. Apart from the system binaries a command needs to start, every other \
@@ -102,8 +132,12 @@ mod tests {
         (dir, named)
     }
 
-    fn granted(policy: SandboxPolicy) -> Option<String> {
-        system_prompt(&policy, None)
+    /// The prompt a run with no `--allow-tool` and no `--system` sends.
+    ///
+    /// Never `None`: a run that approved no extra tool still has four tools of seven to
+    /// name, and three it must say are refused.
+    fn granted(policy: SandboxPolicy) -> String {
+        system_prompt(&policy, None, None).expect("the approved tools are always named")
     }
 
     /// The prompt a real invocation produces.
@@ -116,7 +150,12 @@ mod tests {
             other => panic!("{other:?} is not agent-run"),
         };
 
-        system_prompt(&args.policy().expect("a derived policy"), None).expect("a root to name")
+        system_prompt(
+            &args.policy().expect("a derived policy"),
+            args.allow_tool.as_deref(),
+            None,
+        )
+        .expect("a root to name")
     }
 
     #[test]
@@ -126,8 +165,7 @@ mod tests {
             SandboxPolicy::default()
                 .allow_read(work.path())
                 .allow_write(work.path()),
-        )
-        .expect("a granted root is worth naming");
+        );
 
         assert!(
             prompt.contains(&format!("{named} (read, write)")),
@@ -169,7 +207,7 @@ mod tests {
         let detour = work.path().join("inner").join("..");
         std::fs::create_dir(work.path().join("inner")).expect("a nested dir");
 
-        let prompt = granted(SandboxPolicy::default().allow_read(&detour)).expect("a root");
+        let prompt = granted(SandboxPolicy::default().allow_read(&detour));
 
         assert!(
             prompt.contains(&format!("{named} (read)")),
@@ -181,19 +219,23 @@ mod tests {
         );
     }
 
+    /// With no root to name the tools sentence is the whole prompt, and it holds no path —
+    /// so a `/` anywhere in it is a root the guard discarded.
     #[test]
     fn a_grant_that_resolves_to_nothing_is_not_named() {
-        assert_eq!(
-            granted(SandboxPolicy::default().allow_read("/no/such/root")),
-            None,
-            "the guard discards a root it cannot resolve, so the prompt must not claim it"
+        let prompt = granted(SandboxPolicy::default().allow_read("/no/such/root"));
+
+        assert!(
+            !prompt.contains('/'),
+            "the guard discards a root it cannot resolve, so the prompt must not claim it: \
+             {prompt:?}"
         );
     }
 
     #[test]
     fn a_read_only_root_is_never_named_as_writable() {
         let (work, named) = work();
-        let prompt = granted(SandboxPolicy::default().allow_read(work.path())).expect("a root");
+        let prompt = granted(SandboxPolicy::default().allow_read(work.path()));
 
         assert!(
             prompt.contains(&format!("{named} (read)")),
@@ -204,10 +246,11 @@ mod tests {
 
     #[test]
     fn the_system_binaries_stay_out_of_the_prompt() {
-        assert_eq!(
-            granted(SandboxPolicy::default().allow_system_executables()),
-            None,
-            "a run granted nothing of its own has no roots to name"
+        let prompt = granted(SandboxPolicy::default().allow_system_executables());
+
+        assert!(
+            !prompt.contains('/'),
+            "a run granted nothing of its own has no roots to name: {prompt:?}"
         );
     }
 
@@ -216,7 +259,7 @@ mod tests {
     #[test]
     fn the_sentence_admits_the_system_binaries_exist() {
         let (work, _) = work();
-        let prompt = granted(SandboxPolicy::default().allow_read(work.path())).expect("a root");
+        let prompt = granted(SandboxPolicy::default().allow_read(work.path()));
 
         assert!(prompt.contains("system binaries"), "got {prompt:?}");
         assert!(
@@ -226,23 +269,83 @@ mod tests {
     }
 
     #[test]
-    fn an_operator_prompt_follows_the_orientation_line() {
+    fn the_prompt_names_the_tools_a_run_approved() {
+        let prompt = granted(SandboxPolicy::default());
+
+        assert!(prompt.contains("read, ls, grep, find"), "got {prompt:?}");
+        assert!(
+            !prompt.contains("bash"),
+            "a refused tool was named as approved: {prompt:?}"
+        );
+    }
+
+    /// The tool the model reached for second, having spent a round on `write` first (#197).
+    #[test]
+    fn an_approved_tool_joins_the_named_set() {
+        let prompt = system_prompt(&SandboxPolicy::default(), Some(&[BuiltinTool::Edit]), None)
+            .expect("the approved tools are named");
+
+        assert!(
+            prompt.contains("read, edit, ls, grep, find"),
+            "got {prompt:?}"
+        );
+        assert!(!prompt.contains("write"), "got {prompt:?}");
+    }
+
+    /// A bare `--allow-tool` refuses nothing, so a sentence about the rest describes no run
+    /// — and the request already carries all seven schemas.
+    #[test]
+    fn no_tool_is_named_when_every_tool_is_approved() {
         let (work, named) = work();
         let prompt = system_prompt(
             &SandboxPolicy::default().allow_read(work.path()),
-            Some("be terse"),
+            Some(&[]),
+            None,
         )
-        .expect("both halves");
+        .expect("a root to name");
 
-        let roots = prompt.find(&named).expect("the roots");
-        let operator = prompt.find("be terse").expect("the operator's text");
-        assert!(roots < operator, "got {prompt:?}");
+        assert!(prompt.contains(&named), "got {prompt:?}");
+        assert!(!prompt.contains("bash"), "got {prompt:?}");
     }
 
     #[test]
-    fn an_operator_prompt_is_sent_alone_when_nothing_is_granted() {
+    fn nothing_is_sent_when_there_is_nothing_to_say() {
         assert_eq!(
-            system_prompt(&SandboxPolicy::default(), Some("be terse")).as_deref(),
+            system_prompt(&SandboxPolicy::default(), Some(&[]), None),
+            None
+        );
+    }
+
+    /// The flag is the operator's to pass and the model cannot pass one mid-turn, so it
+    /// reads the flag only in a refusal, where `gate::decide` names it.
+    #[test]
+    fn the_prompt_never_names_the_flag_to_the_model() {
+        let prompt = granted(SandboxPolicy::default());
+
+        assert!(!prompt.contains(gate::ALLOW_TOOL), "got {prompt:?}");
+    }
+
+    #[test]
+    fn the_roots_sit_between_the_tools_and_the_operator() {
+        let (work, named) = work();
+        let prompt = system_prompt(
+            &SandboxPolicy::default().allow_read(work.path()),
+            None,
+            Some("be terse"),
+        )
+        .expect("all three sections");
+
+        let tools = prompt.find("grep").expect("the approved tools");
+        let roots = prompt.find(&named).expect("the roots");
+        let operator = prompt.find("be terse").expect("the operator's text");
+        assert!(tools < roots && roots < operator, "got {prompt:?}");
+    }
+
+    /// Nothing granted and nothing refused, so there is no boundary left to describe.
+    #[test]
+    fn an_operator_prompt_can_be_the_whole_prompt() {
+        assert_eq!(
+            system_prompt(&SandboxPolicy::default(), Some(&[]), Some("be terse")).as_deref(),
             Some("be terse")
         );
     }

@@ -71,8 +71,8 @@ pub struct AgentRun {
 
     /// Give the model a system prompt.
     ///
-    /// Sent after the line naming the roots this run's tools can reach, which it does not
-    /// replace. Unset sends that line alone.
+    /// Sent after the lines naming the tools this run approved and the roots they can
+    /// reach, neither of which it replaces.
     #[arg(long, value_name = "TEXT")]
     system: Option<String>,
 
@@ -147,7 +147,8 @@ impl AgentRun {
         self.max_rounds
     }
 
-    /// The system prompt `--system` gave, before the roots are prepended to it.
+    /// The system prompt `--system` gave, before the approved tools and the roots are
+    /// prepended to it.
     pub fn system(&self) -> Option<&str> {
         self.system.as_deref()
     }
@@ -195,7 +196,7 @@ impl AgentRun {
         // Read off the one policy the context is about to take by value: a second
         // `self.policy()?` re-reads `getcwd`, and a cwd that moved in between would name
         // the model a root the sandbox did not grant.
-        let system = orientation::system_prompt(&policy, self.system());
+        let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
         let ctx = ExecutionContext::new(policy);
 
         eprintln!(
@@ -412,8 +413,8 @@ mod tests {
 
     /// Drive one scripted round through `drive`, and report what was sent and written.
     ///
-    /// A default policy grants nothing, so no orientation line is composed and the
-    /// request carries whatever `--system` held.
+    /// A default policy grants nothing, so the request carries the approved tools and
+    /// whatever `--system` held, with no roots line.
     fn one_round(
         args: &AgentRun,
         prompt: &str,
@@ -432,7 +433,7 @@ mod tests {
         events: Vec<AgentEvent>,
         session: Option<Session>,
     ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
-        let system = orientation::system_prompt(&policy, args.system());
+        let system = orientation::system_prompt(&policy, args.allow_tool.as_deref(), args.system());
         let ctx = ExecutionContext::new(policy);
         let mut sent = Vec::new();
         let mut events = Some(events);
@@ -569,6 +570,29 @@ mod tests {
             "got {system:?}"
         );
         assert!(system.ends_with("be terse"), "got {system:?}");
+    }
+
+    /// The approved set reaches the model with the request, not one refused call at a
+    /// time (#197).
+    #[test]
+    fn the_request_names_the_tools_the_run_approved() {
+        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "edit", "--", "go"]);
+
+        let (sent, _, code) = one_round(
+            &args,
+            &args.prompt(),
+            vec![text("ok"), stop(StopReason::EndTurn)],
+            None,
+        );
+        code.expect("clean turn");
+
+        let body = serde_json::to_value(&sent).expect("a serializable request");
+        let system = body[0]["system"].as_str().expect("a system prompt");
+        assert!(
+            system.contains("read, edit, ls, grep, find"),
+            "got {system:?}"
+        );
+        assert!(!system.contains("bash"), "got {system:?}");
     }
 
     #[test]
