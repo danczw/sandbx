@@ -298,6 +298,7 @@ not spend the turn guessing at paths the sandbox refuses.
 | `--allow-tool [TOOL]` | approve a tool that does more than read. Repeatable; bare approves all seven |
 | `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
 | `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
+| `--max-rounds N`  | cap how many times the model may be asked in one turn. Default 8 |
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
 | `--system TEXT`   | a system prompt, sent after the line naming the run's roots |
 

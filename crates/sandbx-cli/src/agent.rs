@@ -60,6 +60,19 @@ pub struct AgentRun {
     #[arg(long = "max-tokens", value_name = "N", default_value_t = DEFAULT_MAX_TOKENS)]
     max_tokens: u32,
 
+    /// Cap how many times the model may be asked within one turn.
+    ///
+    /// A turn re-enters once per batch of tool calls, so this bounds how far a looping
+    /// model can drive tool execution. A turn that hits the cap stops with its tool calls
+    /// unanswered and says so on stderr.
+    #[arg(
+        long = "max-rounds",
+        value_name = "N",
+        default_value_t = TurnLimits::default().max_rounds,
+        value_parser = round_cap,
+    )]
+    max_rounds: usize,
+
     /// Give the model a system prompt.
     ///
     /// Sent after the line naming the roots this run's tools can reach, which it does not
@@ -131,6 +144,11 @@ impl AgentRun {
     /// The cap on what the model may produce in one turn.
     pub fn max_tokens(&self) -> u32 {
         self.max_tokens
+    }
+
+    /// How many times the model may be asked within one turn.
+    pub fn max_rounds(&self) -> usize {
+        self.max_rounds
     }
 
     /// The system prompt `--system` gave, before the roots are prepended to it.
@@ -290,7 +308,10 @@ impl AgentRun {
             system,
             tools: &BuiltinTool::ALL,
             history: &history,
-            limits: TurnLimits::default(),
+            limits: TurnLimits {
+                max_rounds: self.max_rounds,
+                ..TurnLimits::default()
+            },
             // What the resumed conversation last measured, so a continued one and a
             // resumed one carry the same figures. Both are `None`/`0` without a session.
             observed: session
@@ -358,6 +379,17 @@ impl AgentRun {
             }
             Err(error) => Err(error.into()),
         }
+    }
+}
+
+/// Accept a cap that still allows one request, and refuse anything else.
+///
+/// A zero never opens a stream, so the turn would report reaching a bound it never tested.
+fn round_cap(value: &str) -> Result<usize, String> {
+    match value.parse() {
+        Ok(0) => Err("a turn needs at least one round".to_owned()),
+        Ok(rounds) => Ok(rounds),
+        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -526,6 +558,14 @@ mod tests {
             !message.contains("grep"),
             "a read-only tool was offered as approvable: {message}"
         );
+    }
+
+    #[test]
+    fn a_round_cap_of_zero_is_refused() {
+        let message = round_cap("0").expect_err("a turn that asks nothing was accepted");
+
+        assert!(message.contains("at least one"), "got {message}");
+        assert_eq!(round_cap("1"), Ok(1));
     }
 
     /// An `EventStream` that replays `events` and then ends.

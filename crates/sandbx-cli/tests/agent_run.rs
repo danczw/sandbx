@@ -277,6 +277,19 @@ fn max_tokens_has_a_default_and_takes_an_override() {
     );
 }
 
+/// The default is the turn loop's own, not a second copy of 8 that could drift from it.
+#[test]
+fn the_round_cap_defaults_to_the_crates_own() {
+    assert_eq!(
+        agent_run(&["sandbx", "agent-run", "--", "hi"]).max_rounds(),
+        sandbx_agent::TurnLimits::default().max_rounds
+    );
+    assert_eq!(
+        agent_run(&["sandbx", "agent-run", "--max-rounds", "32", "--", "hi"]).max_rounds(),
+        32
+    );
+}
+
 /// The flag's own text only: every request also carries the line naming the run's roots,
 /// which `the_request_carries_the_granted_root_as_system` pins.
 #[test]
