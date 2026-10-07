@@ -321,8 +321,9 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
         );
     }
 
-    // Skipped where the host has no `/etc/resolv.conf` to bind over, as `helper::resolver`
-    // does: there is then no file for a resolver to read a nameserver out of either.
+    // Skipped where the host's `/etc/resolv.conf` is absent or a symlink, which is where
+    // `helper::resolver` and `ruleset::rights` leave the command none to read: a resolver has
+    // no file to take a nameserver out of either, and the two below carry the bound.
     if resolv.status.success() {
         let conf = String::from_utf8_lossy(&resolv.stdout);
         assert!(
