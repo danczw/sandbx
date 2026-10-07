@@ -353,10 +353,18 @@ These are documented behaviour, and reports of them will be closed as such:
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
-- A tool error reporting that a file does not exist, where the path is inside a
-  root you granted. That area is already yours to enumerate with `ls`, and the
-  agent has to tell a wrong filename from a refused one. Outside every granted
-  root, absence and refusal stay indistinguishable.
+- A tool error reporting that a file does not exist, where the path you asked
+  for is inside a root you granted. That area is already yours to enumerate with
+  `ls`, and the agent has to tell a wrong filename from a refused one. Outside
+  every granted root, absence and refusal stay indistinguishable.
+
+  A symlink *inside* the grant is the edge of that claim: resolution follows it,
+  so an in-grant name pointing out of the roots reports whether its target
+  exists — "could not find" where it does not, the uniform refusal where it
+  does. The probe is one bit about a path you did not grant, and planting the
+  symlink needs write access the six in-process tools do not have. `bash` has it
+  and needs no symlink: Landlock has no access right over path resolution, so
+  `test -e` answers for any path already.
 - A command *reading* a path the CLI granted write on — whether you typed
   `--allow-write` or the working-directory default derived it. The CLI grants read
   alongside write either way, because a tool that can rewrite a tree but not read
