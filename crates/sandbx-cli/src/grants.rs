@@ -412,11 +412,27 @@ fn resolved(path: &Path) -> PathBuf {
 ///
 /// `typed` is what the flag gave, which is the spelling a refusal names — the resolved one is
 /// derived and nothing the operator can go and change.
+///
+/// `granted` has to arrive [`resolved`], and vetting resolves again, so the two are compared:
+/// every path refusal above ran against the first resolution, and a component swapped for a
+/// symlink in between would have the policy hold the second — a path no guard here ever saw,
+/// pinned to the object at it, so neither the readback nor the pin disagrees downstream. The
+/// comparison is what keeps the judged path and the granted path one path.
 fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
-    VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
+    let vetted = VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
         granted: typed.to_path_buf(),
         source,
-    })
+    })?;
+
+    if vetted.path() != granted {
+        return Err(PolicyError::GrantMovedWhileVetting {
+            granted: typed.to_path_buf(),
+            checked: granted.to_path_buf(),
+            vetted: vetted.path().to_path_buf(),
+        });
+    }
+
+    Ok(vetted)
 }
 
 /// Whether a flag names a file a bounded resolver bind-mounts sandbx's own copy over, which
@@ -1312,6 +1328,54 @@ mod tests {
         assert!(
             matches!(error, PolicyError::CwdReachesOwned { .. }),
             "{error} is not the owned-path refusal"
+        );
+    }
+
+    /// A grant is pinned to the object at its path, and a path naming nothing has none — so
+    /// this refuses in the harness where Landlock used to refuse it in the helper (#212).
+    #[test]
+    fn a_grant_naming_nothing_cannot_be_pinned() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let mut grants = bare();
+        grants.allow_read.push(directory.path().join("no-such-dir"));
+
+        let error = grants.policy().expect_err("a grant naming nothing");
+
+        assert!(
+            matches!(error, PolicyError::UnpinnableGrant { .. }),
+            "{error} is not the unpinnable-grant refusal"
+        );
+        assert!(
+            error.to_string().contains("a path that exists"),
+            "{error} does not say what to name instead"
+        );
+    }
+
+    /// The window the comparison in [`pinned`] closes: a symlinked spelling stands in for a
+    /// component swapped between the path refusals and the pin, which is the one way the two
+    /// resolutions of one name disagree. Granting the second would grant a path no refusal
+    /// here was evaluated against — and it would be pinned, so nothing downstream objects.
+    #[test]
+    fn a_grant_that_moved_under_the_checks_is_refused() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let real = directory
+            .path()
+            .canonicalize()
+            .expect("a resolved directory");
+        let target = real.join("elsewhere");
+        let checked = real.join("checked");
+        std::fs::create_dir(&target).expect("the directory swapped in");
+        std::os::unix::fs::symlink(&target, &checked).expect("the swap");
+
+        let error = pinned(&checked, Path::new("--as-typed")).expect_err("a moved grant");
+
+        assert!(
+            matches!(error, PolicyError::GrantMovedWhileVetting { .. }),
+            "{error} is not the moved-grant refusal"
+        );
+        assert!(
+            error.to_string().contains("--as-typed"),
+            "{error} does not name the grant as it was typed"
         );
     }
 
