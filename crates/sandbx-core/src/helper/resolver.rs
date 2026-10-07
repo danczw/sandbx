@@ -54,8 +54,8 @@ pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxEr
 ///
 /// `EACCES` as much as `EPERM`: a host restricting unprivileged user namespaces — Ubuntu's
 /// `kernel.apparmor_restrict_unprivileged_userns` — lets the `unshare` succeed and then denies
-/// `CAP_SYS_ADMIN` inside it, which the mount reports as `EACCES`. Either way there is no
-/// bounding resolution on such a host, and the run is refused rather than run unbounded.
+/// `CAP_SYS_ADMIN` inside it, which the mount reports as `EACCES`. Refused either way, never
+/// run unbounded.
 fn detach_mount_propagation() -> Result<(), SandboxError> {
     mount(
         None::<&Path>,
@@ -81,8 +81,9 @@ fn detach_mount_propagation() -> Result<(), SandboxError> {
 
 /// Write `file`'s body and bind-mount it over its `/etc` counterpart.
 ///
-/// A bind needs its target to exist already, so an absent or symlinked one is skipped unless
-/// `crate::resolver::File::required` says that leaves resolution unbounded.
+/// A bind needs its target to exist already, so an absent one is skipped unless
+/// `crate::resolver::File::required` says that leaves resolution unbounded. A symlinked one is
+/// bound over its target rather than skipped — see the branch below.
 fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     let name = file.target.file_name().unwrap_or(file.target.as_os_str());
     let written = source.join(name);
@@ -108,6 +109,10 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     // replaceable with a hosts file of the command's own. NixOS links every `/etc` entry.
     // `resolv.conf` is exempt: a forged one names a nameserver that no policy bounding
     // resolution can reach, every shape that could reach one being refused before the run.
+    //
+    // So it is bound and not skipped, though `ruleset::rights::opens_as_itself` installs no
+    // rule for it: the asymmetry is the point. A command whose other grants reach the resolved
+    // path then reads sandbx's body there instead of the host's real one.
     if target.is_symlink() && file.required {
         return Err(symlinked(file.target));
     }
