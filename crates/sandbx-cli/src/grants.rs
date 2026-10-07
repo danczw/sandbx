@@ -303,10 +303,9 @@ fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
 
 /// `granted` made absolute, a relative flag being joined to the working directory.
 ///
-/// Which is what the helper opens such a grant against. [`resolved`]'s walk bottoms out at
-/// the empty path, so a relative grant whose first component does not exist yet would stay
-/// relative otherwise; a cwd that cannot be read refuses rather than standing in as nothing,
-/// which would leave the grant matching no owned path (#203).
+/// Which is what the helper opens it against, and [`resolved`] cannot stand in: its walk
+/// bottoms out at the empty path, leaving a relative grant relative. A cwd that cannot be read
+/// refuses rather than standing in as nothing, which would match no owned path (#203).
 fn absolute(
     granted: &Path,
     cwd: &impl Fn() -> std::io::Result<PathBuf>,
@@ -351,9 +350,14 @@ fn resolved(path: &Path) -> PathBuf {
 /// one naming something inside it both reach it. Both sides go through [`resolved`], so one
 /// symlinked spelling cannot reach what the other is refused for.
 ///
-/// `granted` has to be absolute already — through [`absolute`] for a path a flag gave — or a
-/// relative one resolves against nothing and reaches no owned path.
+/// `granted` has to be absolute — [`absolute`] makes a flag's path so — or it resolves against
+/// nothing and reaches no owned path.
 fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
+    debug_assert!(
+        granted.is_absolute(),
+        "a relative grant reaches nothing here"
+    );
+
     let granted = resolved(granted);
 
     owned.iter().find(|owned| {
@@ -1094,8 +1098,7 @@ mod tests {
         || Err(std::io::Error::from(std::io::ErrorKind::NotFound))
     }
 
-    /// Standing in a deleted directory left a relative grant joined to nothing, which reached
-    /// no owned path and so was honoured (#203).
+    /// A relative grant joined to nothing reached no owned path, and so was honoured (#203).
     #[test]
     fn an_unreadable_cwd_refuses_a_relative_grant() {
         let error = absolute(Path::new("sandbx"), &no_cwd())
@@ -1111,8 +1114,7 @@ mod tests {
         );
     }
 
-    /// The other half of #203: an invocation that typed absolute flags depends on no cwd, so
-    /// an unreadable one must not refuse it.
+    /// The other half of #203: needing no cwd, an absolute grant survives an unreadable one.
     #[test]
     fn an_absolute_grant_needs_no_cwd() {
         let owned = owned_under("/home/u");
