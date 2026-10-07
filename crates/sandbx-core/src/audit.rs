@@ -20,11 +20,10 @@ pub enum AuditEvent<'a> {
 
     /// An operation the policy permitted, against a name that denotes nothing.
     ///
-    /// No `reason`, unlike [`Denied`](Self::Denied): nothing refused this, so there is no
-    /// refusal to explain. Emitted only inside a granted root — outside one, that a path
-    /// does not exist is what the refusal conceals.
+    /// No `reason`: nothing refused it. Emitted only inside a granted root — outside one, a
+    /// path's absence is what the refusal conceals.
     Absent {
-        /// Who asked, in the same form as in [`Allowed`](Self::Allowed).
+        /// Who asked, as in [`Allowed`](Self::Allowed).
         tool: &'a str,
         /// The name that denotes nothing.
         subject: &'a str,

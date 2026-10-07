@@ -455,11 +455,8 @@ fn a_missing_path_outside_a_grant_is_a_refusal() {
     );
 }
 
-/// A symlink in a grant is refused as any out-of-bounds path is, whatever stopped it.
-///
-/// `within` is a test on a resolved path, so one that will not resolve is inside no root —
-/// and the three ways it can fail have to read alike, or the failure says where the target
-/// went. A loop is the case with no target at all to conceal, and is concealed the same.
+/// `within` tests a resolved path, so one that will not resolve is inside no root. A loop
+/// has no target to conceal and is concealed anyway, the three failures reading alike.
 #[cfg(unix)]
 #[test]
 fn an_unresolvable_path_in_a_grant_is_not_absent() {
@@ -476,10 +473,8 @@ fn an_unresolvable_path_in_a_grant_is_not_absent() {
     );
 }
 
-/// A symlink the agent plants in a granted root would otherwise answer "does this host
-/// path exist" for any target: dangling reads as the link's own absence, resolving reads
-/// as out of bounds, and an unreadable ancestor reads as unresolvable. All three are one
-/// refusal, so the trail and the model learn nothing about the target.
+/// A planted symlink would otherwise answer "does this host path exist" for any target:
+/// dangling as the link's own absence, resolving as out of bounds. One refusal for both.
 #[cfg(unix)]
 #[test]
 fn a_symlink_out_of_a_grant_conceals_its_target_either_way() {
@@ -531,8 +526,7 @@ fn a_symlinked_parent_out_of_a_grant_conceals_its_target() {
     }
 }
 
-/// An unreadable directory inside a grant is still the guard declining to resolve: no
-/// symlink is involved, so there is no target the reason could name.
+/// No symlink, so no target a reason could name: this one keeps `Unresolvable`.
 #[cfg(unix)]
 #[test]
 fn an_unreadable_parent_in_a_grant_stays_unresolvable() {
