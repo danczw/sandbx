@@ -411,9 +411,11 @@ Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
   privilege. Do not rely on `CapBnd` being empty.
 - **A dependency is not contained.** Anything linked into the binary runs with
   the harness's privileges.
-- **Approval is per tool per run.** The gate narrows which tools a hijacked turn
-  can use; once one is approved, the sandbox is the only thing between a
-  prompt-injected call to it and your files. No per-call prompt (#165).
+- **Approval is per tool per run unless asked for per call.** The gate narrows
+  which tools a hijacked turn can use; by default, once one is approved, the
+  sandbox is the only thing between a prompt-injected call to it and your files.
+  `--approve call` puts each write and each command to the operator first, which
+  needs a terminal and so is no use to a run that has none.
 - **`unsafe` is forbidden workspace-wide** and spawning outside `sandbx-core` is
   a clippy error, but convention plus tooling is not a capability system.
 - **A variable passed through is passed whole.** The environment allowlist is by

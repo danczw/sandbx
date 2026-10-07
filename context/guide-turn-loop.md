@@ -7,12 +7,12 @@ run any tools it asked for, and go round again until it stops asking.
 
 ```rust
 pub async fn run_turn<F, O, G>(
-    open: F, turn: Turn<'_>, ctx: &ExecutionContext, observe: O, approve: G,
+    open: F, turn: Turn<'_>, ctx: &ExecutionContext, observe: O, gate: G,
 ) -> Result<TurnOutcome, TurnError>
 where
     F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
-    G: FnMut(ToolCall<'_>) -> ApprovalDecision,
+    G: CallGate,
 ```
 
 Generic over a **closure that opens a stream**, not over a provider. So the loop
@@ -30,16 +30,18 @@ predicts.
 `observe` stays generic for the mirror reason: `dyn FnMut` is not `Send`, so
 taking one would make the whole future non-`Send`.
 
-`approve` is the third closure for the same two reasons, plus a third: it is
-mandatory, so a caller cannot acquire a gate-less loop by omitting an argument.
-See `decision-approval-gate.md` for why it is not a trait.
+`gate` is a trait rather than a third closure because it has two methods:
+`approve`, per resolved call before the spawn, and `settled`, per `tool_use`
+block once the call has an outcome (#169). Still one generic and still not `dyn`,
+for `observe`'s reason, and still mandatory — a caller cannot acquire a gate-less
+loop by omitting an argument. `decision-approval-gate.md` has the rest.
 
-It runs on the async task with no `spawn_blocking` of its own, so **it must not
-wait** — a gate that waits on an operator, a channel or a lock stalls every
-other task on the runtime, and on a current-thread one deadlocks the turn it is
-deciding. A bounded write is not that; `agent-run`'s gate prints a line. That is
-a real bound on #165: a per-call prompt cannot be a blocking read from inside the
-gate.
+Both methods run on the async task with no `spawn_blocking` of their own, so
+**neither may wait on the runtime** — on a tokio primitive, a channel a task
+feeds or a lock a task holds. That stalls every other task on the runtime, and on
+a current-thread one deadlocks the turn it is deciding. A descriptor no task
+feeds is not that class: `agent-run` prints its report, and under
+`--approve call` reads the operator's answer from `/dev/tty`, inside the gate.
 
 ## Round structure
 
@@ -51,7 +53,8 @@ gate.
 │  consume stream ──► flush text before ToolUse, keep Usage   │
 │  no ToolUse blocks?  ──► return TurnOutcome                 │
 │  answer_calls (sequential)                                  │
-│    resolve ──► offered? ──► approve(call) ──► spawn_blocking│
+│    resolve ─► offered? ─► approve ─► spawn_blocking         │
+│    and each one, however it ended ─► settled                │
 └─ loop ──────────────────────────────────────────────────────┘
 ```
 

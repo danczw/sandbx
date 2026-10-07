@@ -167,12 +167,13 @@ accident — see [decision-provider-seam.md](decision-provider-seam.md).
 
 ```
 src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
-                          PromptUsage, Compaction, ToolCall, ApprovalDecision,
-                          run_turn
+                          PromptUsage, Compaction, CallGate, ToolCall,
+                          ApprovalDecision, Settled, Outcome, run_turn
    turn.rs    run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
-   approval.rs  what a gate is asked, and the two answers it may give
+   approval.rs  what a gate is asked, the two answers it may give, and the
+                five outcomes it is told a call reached
    compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
    error.rs   TurnError (5 variants)
@@ -216,7 +217,10 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    sandbox.rs   SandboxRun
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller
-      gate.rs   which tools --allow-tool approved, and the refusal the rest get
+      gate.rs   which tools --allow-tool approved, the refusal the rest get,
+                and the one line per call the operator reads
+      prompt.rs --approve call: the question put on /dev/tty, the three answers
+                it takes, and the refusal an unanswerable one gets
       orientation.rs
                 the approved tools and the roots the model is told about before
                 the first request
