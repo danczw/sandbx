@@ -13,7 +13,7 @@ use sandbx_tools::BuiltinTool;
 
 mod support;
 
-use support::{Script, allow_all, call, ctx, stop, text, turn};
+use support::{AllowAll, Script, call, ctx, stop, text, turn};
 
 /// An in-memory stand-in for stderr.
 ///
@@ -69,7 +69,7 @@ async fn a_model_issued_call_records_its_access() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap()

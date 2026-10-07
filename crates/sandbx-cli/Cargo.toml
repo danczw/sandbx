@@ -44,11 +44,13 @@ toml = { version = "1.1.6", default-features = false, features = [
   "serde",
 ] }
 tempfile = "3.27.0"
+# A tool call's arguments arrive as `serde_json::Value`, and the gate reads a subject out
+# of them to report; the version must match whatever `sandbx-agent` resolves.
+serde_json = "1.0.151"
 
 [dev-dependencies]
 tracing = "0.1.44"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
-serde_json = "1.0.151"
 
 [lints]
 workspace = true

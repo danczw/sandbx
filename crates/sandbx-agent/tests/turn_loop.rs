@@ -3,14 +3,17 @@
 //! Driven through the closure seam with `support::Script`, so the suite needs no network
 //! and no API key.
 
-use sandbx_agent::{ApprovalDecision, ToolCall, TurnError, TurnLimits, TurnStop, run_turn};
+use sandbx_agent::{
+    ApprovalDecision, CallGate, Outcome, Settled, ToolCall, TurnError, TurnLimits, TurnStop,
+    run_turn,
+};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{AgentEvent, ContentBlock, EventStream, RequestMessage, Role, StopReason};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 mod support;
 
-use support::{Script, allow_all, call, ctx, stop, text, turn};
+use support::{AllowAll, Script, call, ctx, stop, text, turn};
 
 /// An assistant turn of prose, the shape most of these end on.
 fn replied(text: &str) -> RequestMessage {
@@ -35,6 +38,49 @@ fn result_of(block: &ContentBlock) -> (&str, Option<bool>) {
     }
 }
 
+/// A gate whose verdict is a closure's, keeping what it was asked and what it was told.
+///
+/// Lent to `run_turn` as `&mut gate`, so both records survive the turn. Here rather than
+/// in `support`, which only holds what both halves of the suite use.
+struct Gate<F> {
+    decide: F,
+
+    /// One entry per call that reached [`CallGate::approve`], which three outcomes do not.
+    asked: Vec<(BuiltinTool, String, serde_json::Value)>,
+
+    /// One `{name}:{outcome}` per `tool_use` block, in the order the round settled them.
+    settled: Vec<String>,
+}
+
+impl<F: FnMut(ToolCall<'_>) -> ApprovalDecision> Gate<F> {
+    fn new(decide: F) -> Self {
+        Self {
+            decide,
+            asked: Vec::new(),
+            settled: Vec::new(),
+        }
+    }
+}
+
+impl<F: FnMut(ToolCall<'_>) -> ApprovalDecision> CallGate for Gate<F> {
+    fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
+        self.asked
+            .push((call.tool, call.id.to_string(), call.input.clone()));
+        (self.decide)(call)
+    }
+
+    fn settled(&mut self, call: Settled<'_>) {
+        let outcome = match call.outcome {
+            Outcome::Unknown => "unknown",
+            Outcome::NotOffered => "not-offered",
+            Outcome::Denied { .. } => "denied",
+            Outcome::Ran => "ran",
+            Outcome::Errored(_) => "errored",
+        };
+        self.settled.push(format!("{}:{outcome}", call.name));
+    }
+}
+
 /// The single `tool_result` block a scripted call produced.
 fn tool_error(messages: &[RequestMessage]) -> (&str, Option<bool>) {
     result_of(&messages[1].content[0])
@@ -49,7 +95,7 @@ async fn text_deltas_accumulate_into_one_block() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -94,7 +140,7 @@ async fn thinking_is_replayed_in_turn_and_never_out() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx(SandboxPolicy::default().allow_read(root.path())),
         |event: &AgentEvent| seen.push(event.clone()),
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -137,7 +183,7 @@ async fn redacted_thinking_is_stripped_from_the_outcome() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -162,7 +208,7 @@ async fn a_turn_of_only_thinking_produces_no_message() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -200,7 +246,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |event: &AgentEvent| seen.push(event.clone()),
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -219,7 +265,7 @@ async fn a_round_that_produced_nothing_appends_no_message() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -239,7 +285,7 @@ async fn a_stream_that_never_reports_a_stop_is_an_error() {
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .expect_err("a stream with no Stop event must not succeed");
@@ -265,7 +311,7 @@ async fn a_definition_per_offered_tool_reaches_the_request() {
         turn(&history, &[BuiltinTool::Read]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -302,7 +348,7 @@ async fn a_tool_result_is_fed_into_the_next_round() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap()
@@ -365,7 +411,7 @@ async fn a_tool_call_runs_without_a_stop_reason() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap()
@@ -403,7 +449,7 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap()
@@ -443,7 +489,7 @@ async fn bad_tool_arguments_are_reported_as_an_error() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap()
@@ -471,7 +517,7 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
         turn(&[], &[BuiltinTool::Write]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap()
@@ -502,14 +548,15 @@ async fn a_denied_call_never_reaches_the_tool() {
         vec![text("Understood."), stop(StopReason::EndTurn)],
     ]);
 
+    let mut gate = Gate::new(|_| ApprovalDecision::Deny {
+        reason: "write is not approved for this run".to_string(),
+    });
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
-        |_| ApprovalDecision::Deny {
-            reason: "write is not approved for this run".to_string(),
-        },
+        &mut gate,
     )
     .await
     .unwrap()
@@ -520,6 +567,11 @@ async fn a_denied_call_never_reaches_the_tool() {
     assert_eq!(
         tool_error(&messages),
         ("write is not approved for this run", Some(true))
+    );
+    assert_eq!(
+        gate.settled,
+        ["write:denied"],
+        "the gate's own refusal was not reported back to it"
     );
 }
 
@@ -552,17 +604,18 @@ async fn a_denial_never_ends_the_turn() {
         vec![text("Listed instead."), stop(StopReason::EndTurn)],
     ]);
 
+    let mut gate = Gate::new(|requested: ToolCall<'_>| match requested.tool {
+        BuiltinTool::Write => ApprovalDecision::Deny {
+            reason: "write is not approved".to_string(),
+        },
+        _ => ApprovalDecision::Allow,
+    });
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write, BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        |requested: ToolCall<'_>| match requested.tool {
-            BuiltinTool::Write => ApprovalDecision::Deny {
-                reason: "write is not approved".to_string(),
-            },
-            _ => ApprovalDecision::Allow,
-        },
+        &mut gate,
     )
     .await
     .unwrap()
@@ -572,6 +625,11 @@ async fn a_denial_never_ends_the_turn() {
         script.sent.len(),
         3,
         "the turn should have re-entered twice"
+    );
+    assert_eq!(
+        gate.settled,
+        ["write:denied", "ls:ran"],
+        "the gate latched shut after refusing once"
     );
 
     // The second call's result: the same gate, asked again, let this one through.
@@ -592,30 +650,28 @@ async fn the_gate_sees_a_call_before_it_runs() {
         vec![call("write", input.clone()), stop(StopReason::ToolUse)],
         vec![text("Done."), stop(StopReason::EndTurn)],
     ]);
-    let mut seen = Vec::new();
+    // Asserted inside the gate rather than after the turn: afterwards the file exists
+    // either way, so only the verdict's own moment can show the order.
+    let mut gate = Gate::new(|_| {
+        assert!(!file.exists(), "the call ran before the gate was asked");
+        ApprovalDecision::Allow
+    });
 
     run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
-        |requested: ToolCall<'_>| {
-            seen.push((
-                requested.tool,
-                requested.id.to_string(),
-                requested.input.clone(),
-                file.exists(),
-            ));
-            ApprovalDecision::Allow
-        },
+        &mut gate,
     )
     .await
     .unwrap();
 
     assert_eq!(
-        seen,
-        vec![(BuiltinTool::Write, "call_1".to_string(), input, false)]
+        gate.asked,
+        vec![(BuiltinTool::Write, "call_1".to_string(), input)]
     );
+    assert_eq!(gate.settled, ["write:ran"]);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
 }
 
@@ -626,23 +682,26 @@ async fn an_unknown_name_never_reaches_the_gate() {
         vec![call("rm", serde_json::json!({})), stop(StopReason::ToolUse)],
         vec![text("Using a real tool."), stop(StopReason::EndTurn)],
     ]);
-    let mut asked = 0usize;
+    let mut gate = Gate::new(|_| ApprovalDecision::Allow);
 
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx(SandboxPolicy::default()),
         |_| {},
-        |_| {
-            asked += 1;
-            ApprovalDecision::Allow
-        },
+        &mut gate,
     )
     .await
     .unwrap()
     .messages;
 
-    assert_eq!(asked, 0, "a name no tool answers to reached the gate");
+    assert!(
+        gate.asked.is_empty(),
+        "a name no tool answers to reached the gate"
+    );
+    // The refusal still reaches the gate as a settled call, which is the record #169
+    // found missing.
+    assert_eq!(gate.settled, ["rm:unknown"]);
     assert_eq!(tool_error(&messages).1, Some(true));
 }
 
@@ -664,7 +723,7 @@ async fn an_un_offered_tool_never_reaches_the_gate() {
         ],
         vec![text("Understood."), stop(StopReason::EndTurn)],
     ]);
-    let mut asked = 0usize;
+    let mut gate = Gate::new(|_| ApprovalDecision::Allow);
 
     // The policy would let the write through, so the offered set is the single thing
     // standing between the call and the file.
@@ -673,16 +732,17 @@ async fn an_un_offered_tool_never_reaches_the_gate() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        |_| {
-            asked += 1;
-            ApprovalDecision::Allow
-        },
+        &mut gate,
     )
     .await
     .unwrap()
     .messages;
 
-    assert_eq!(asked, 0, "a tool the turn never offered reached the gate");
+    assert!(
+        gate.asked.is_empty(),
+        "a tool the turn never offered reached the gate"
+    );
+    assert_eq!(gate.settled, ["write:not-offered"]);
     assert!(!file.exists(), "an un-offered call must not have run");
     assert_eq!(tool_error(&messages).1, Some(true));
 }
@@ -714,23 +774,29 @@ async fn a_round_of_two_calls_gets_a_verdict_each() {
         vec![text("One of two."), stop(StopReason::EndTurn)],
     ]);
 
+    let mut gate = Gate::new(|requested: ToolCall<'_>| match requested.tool {
+        BuiltinTool::Write => ApprovalDecision::Deny {
+            reason: "write is not approved".to_string(),
+        },
+        _ => ApprovalDecision::Allow,
+    });
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write, BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        |requested: ToolCall<'_>| match requested.tool {
-            BuiltinTool::Write => ApprovalDecision::Deny {
-                reason: "write is not approved".to_string(),
-            },
-            _ => ApprovalDecision::Allow,
-        },
+        &mut gate,
     )
     .await
     .unwrap()
     .messages;
 
     assert!(!file.exists(), "the refused call must not have run");
+    assert_eq!(
+        gate.settled,
+        ["write:denied", "ls:ran"],
+        "a two-call round did not report each call once, in order"
+    );
 
     let results = &messages[1].content;
     assert_eq!(
@@ -791,7 +857,7 @@ async fn a_turn_stops_asking_once_it_runs_out_of_rounds() {
         capped_at_three(),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .expect("a turn out of rounds still returns what it did");
@@ -815,7 +881,7 @@ async fn a_turn_out_of_rounds_hands_back_what_it_did() {
         capped_at_three(),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .unwrap();
@@ -856,7 +922,7 @@ async fn a_round_that_never_finishes_streaming_times_out() {
         stalling,
         &ctx(SandboxPolicy::default()),
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .expect_err("a stream that never finishes must not hold the turn open");
@@ -892,7 +958,7 @@ fn documented_call_shape_stays_spawnable(
         turn(&[], &[]),
         ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     ));
 }
 
@@ -919,7 +985,7 @@ async fn an_empty_round_mid_tool_use_is_an_error() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .expect_err("a transcript ending in an unanswered tool_result is not a turn");
@@ -958,7 +1024,7 @@ async fn a_reasoning_only_round_mid_tool_use_is_the_same_error() {
         turn(&[], &[BuiltinTool::Ls]),
         &ctx,
         |_| {},
-        allow_all,
+        AllowAll,
     )
     .await
     .expect_err("reasoning is not an answer to a tool_result");

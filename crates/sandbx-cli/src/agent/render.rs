@@ -140,9 +140,8 @@ impl<W: Write> Render<W> {
                 // reasoning line.
                 self.end_thinking_line();
             }
-            // A requested call is announced where it is decided, which knows whether it
-            // ran. So a refusal above the gate, or in the wrap-up round, reaches only the
-            // model and the turn's own stderr line (#169).
+            // A call is reported once it has settled, by the gate, which is the only thing
+            // that knows what became of it.
             //
             // The two reasoning blocks are the replayable form of what the deltas above
             // already showed, and carry a signature nothing here may write.
