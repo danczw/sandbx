@@ -26,9 +26,23 @@ const USERNS_RESTRICTION: &str = "/proc/sys/kernel/apparmor_restrict_unprivilege
 /// skip on a genuine regression, and the regression nobody sees is the one that unbounds every
 /// name. Set, the kernel lets `unshare` succeed and then denies `CAP_SYS_ADMIN` inside the new
 /// namespace, so `helper::resolver` cannot detach mount propagation and refuses the run.
+///
+/// The same host property `enforcement.rs`'s `bounding_set_is_droppable` reads, asked the
+/// other way round and with the same root exemption.
 fn host_forbids_the_mounts() -> bool {
-    let restricted = std::fs::read_to_string(USERNS_RESTRICTION)
-        .is_ok_and(|value| value.trim().parse::<u32>().is_ok_and(|flag| flag != 0));
+    use std::os::unix::fs::MetadataExt as _;
+
+    // The restriction covers *unprivileged* userns only, so a run as root holds
+    // `CAP_SYS_ADMIN` in the new namespace whatever the sysctl says — and skipping under
+    // `sudo cargo test` would lose the coverage on the one host that has it. Off
+    // `/proc/self`'s owner because `libc::geteuid` is `unsafe` and this crate forbids that.
+    let root = std::fs::metadata("/proc/self")
+        .map(|proc_self| proc_self.uid() == 0)
+        .unwrap_or(false);
+
+    let restricted = !root
+        && std::fs::read_to_string(USERNS_RESTRICTION)
+            .is_ok_and(|value| value.trim().parse::<u32>().is_ok_and(|flag| flag != 0));
 
     if restricted {
         eprintln!(
@@ -356,6 +370,12 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
 
 /// The namespace is the command's own. A run that mutated the host's `/etc` would bound this
 /// command's names by changing every other process's.
+///
+/// Both branches assert, and this is the one test here that runs its body on a host the mounts
+/// are forbidden on: an early return would report `ok` having checked only that a refused run
+/// changes nothing, which is true of a deleted feature too. So the restricted branch pins the
+/// refusal the docs promise instead — the one assertion anywhere on `helper::resolver`'s
+/// `EACCES` path.
 #[test]
 fn the_host_etc_survives_a_bounded_run() {
     let (name, address, accepting) = local_listener("UNUSED");
@@ -367,14 +387,35 @@ fn the_host_etc_survives_a_bounded_run() {
         .allow_dns(&name)
         .allow_write("/etc")
         .allow_network_port(address.port());
-    let _ = probe(policy, &["write", "/etc/hosts"]);
+    let output = probe(policy, &["write", "/etc/hosts"]);
 
     let after = std::fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert_eq!(
         before, after,
         "a bounded run changed the host's /etc/hosts, so the mounts are propagating out of \
          the command's namespace"
+    );
+    assert!(
+        !output.status.success(),
+        "the command appended a name of its own to /etc/hosts: {stderr}"
+    );
+
+    if host_forbids_the_mounts() {
+        assert!(
+            stderr.contains("CAP_SYS_ADMIN"),
+            "this host denies CAP_SYS_ADMIN inside an unprivileged user namespace, so the run \
+             should have been refused saying so — any other failure here means the refusal \
+             names something else, or that resolution ran unbounded: {stderr}"
+        );
+        return;
+    }
+
+    assert!(
+        stderr.contains("WRITE DENIED"),
+        "the command never reached its write, so nothing here says the host's /etc survived \
+         a run that was bounded rather than refused: {stderr}"
     );
 }
 
