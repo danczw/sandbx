@@ -87,8 +87,10 @@ impl FsGuard {
         let grants_area = requested
             .ancestors()
             .skip(1)
-            .find_map(|ancestor| ancestor.canonicalize().ok())
-            .is_some_and(|existing| within(&existing, roots));
+            .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)))
+            .is_some_and(|(ancestor, existing)| {
+                within(&existing, roots) && reaches_plainly(requested, ancestor)
+            });
 
         let subject = requested.display().to_string();
         if !grants_area {
@@ -352,6 +354,23 @@ fn canonical_roots<'a>(roots: impl IntoIterator<Item = &'a Path>) -> Vec<PathBuf
         .into_iter()
         .filter_map(|root| root.canonicalize().ok())
         .collect()
+}
+
+/// Whether `requested` reaches past `ancestor` by components that are what they look like.
+///
+/// What resolved is `ancestor`, so it speaks for `requested` only this far. A symlink below
+/// it resolves elsewhere, and then ENOENT is its *target's* absence: a dangling link planted
+/// inside a granted root would otherwise answer "does this host path exist" for any target,
+/// which is the oracle the concealment exists to deny. A `..` leaks nothing — resolution
+/// never passed it — but it would print a path outside the roots as an absence's subject.
+fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
+    !requested
+        .components()
+        .any(|part| part == std::path::Component::ParentDir)
+        && requested
+            .ancestors()
+            .take_while(|step| *step != ancestor)
+            .all(|step| !step.symlink_metadata().is_ok_and(|at| at.is_symlink()))
 }
 
 /// Whether `resolved` sits inside one of `roots`.
