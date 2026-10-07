@@ -345,7 +345,7 @@ a misplaced `--` obvious, since `--allow-tool -- write the file` is the bare fla
 plus a prompt.
 
 ```console
-sandbx: write /work/notes.md
+sandbx: write /work/notes.md — ran
 sandbx: write /etc/hosts — refused by the policy: outside every writable root
 sandbx: bash — refused: the `bash` tool is not approved for this run: …
 ```

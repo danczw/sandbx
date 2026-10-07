@@ -188,7 +188,9 @@ to drop, since dropping it is the whole remedy.
 **The model's answer shares that terminal.** stdout is usually the same device,
 and the whole round's text streams before the gate asks anything, so the model
 can leave an SGR state behind or print prose that reads like a question. The
-reset covers the first. The second is worse than it looks: a counterfeit question
+reset covers the first, and is written before the account as well as before the
+question — concealing the record of what ran is the same attack one line later —
+including on stderr when stderr is a terminal, which a redirected one is not. The second is worse than it looks: a counterfeit question
 cannot *consume* an answer, since only `approve` ever reads, but canonical mode
 queues a finished line until something reads it, so a `y` typed at the forgery
 was still sitting in the kernel's input queue when the real question's read

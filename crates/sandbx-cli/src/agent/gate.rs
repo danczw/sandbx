@@ -8,7 +8,7 @@
 use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
-use super::prompt::Operator;
+use super::prompt::{Operator, to_stderr};
 
 /// The flag that lifts the default refusal.
 ///
@@ -114,7 +114,7 @@ impl<T: Operator> CallGate for ArgvGate<'_, T> {
             // Where the question was asked, not on stderr: an operator who redirected it
             // would answer the next call never having seen what this one did.
             Some(terminal) => terminal.report(&line),
-            None => eprintln!("{line}"),
+            None => to_stderr(&line),
         }
     }
 }
@@ -125,7 +125,7 @@ impl<T: Operator> CallGate for ArgvGate<'_, T> {
 /// same account: a call the wrap-up refused reached no operator at all before #169. That
 /// round asks nobody, so it has no terminal to write to either.
 pub(super) fn settled(call: Settled<'_>) {
-    eprintln!("{}", line(call));
+    to_stderr(&line(call));
 }
 
 /// The operator's whole line for one call, prefixed and stripped.
@@ -149,7 +149,10 @@ fn report(call: Settled<'_>) -> String {
     };
 
     match call.outcome {
-        Outcome::Ran => head,
+        // A tail like the other four, not the bare head: nothing is printed when a call is
+        // requested, so a 90-second `bash` is silent and then prints one line, which an
+        // operator who has just answered `y` would otherwise read as it starting.
+        Outcome::Ran => format!("{head} — ran"),
         Outcome::Unknown => format!("{head} — no tool answers to that name"),
         Outcome::NotOffered => format!("{head} — not offered this turn"),
         // The gate's own reason verbatim, not a second wording of it: two gates refuse
@@ -256,17 +259,28 @@ fn stripped(text: &str) -> String {
 ///
 /// `char::is_control` is `Cc` exactly, so the `Cf` codepoints pass it: U+202E and the
 /// directional isolates make a path *display* as a different path, which an operator then
-/// consents to. Spelled out as ranges because `char` has no predicate for the category.
+/// consents to. Spelled out as ranges because `char` has no predicate for the category,
+/// which also makes this a denylist — every `Cf` block plus the blank-rendering fillers and
+/// variation selectors, and a new Unicode version can add to it without failing a build.
 fn invisible(c: char) -> bool {
     matches!(c,
-        '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{feff}'
+        '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
+        | '\u{180e}' | '\u{3164}' | '\u{feff}' | '\u{ffa0}' | '\u{110bd}' | '\u{110cd}'
+        | '\u{0600}'..='\u{0605}'
+        | '\u{0890}'..='\u{0891}'
+        // The Hangul fillers: not `Cf`, and they render as blank width.
+        | '\u{115f}'..='\u{1160}'
         | '\u{200b}'..='\u{200f}'
         | '\u{202a}'..='\u{202e}'
         | '\u{2060}'..='\u{2064}'
         | '\u{2066}'..='\u{206f}'
+        | '\u{fe00}'..='\u{fe0f}'
         | '\u{fff9}'..='\u{fffb}'
+        | '\u{1bca0}'..='\u{1bca3}'
         | '\u{1d173}'..='\u{1d17a}'
-        | '\u{e0000}'..='\u{e007f}')
+        | '\u{13430}'..='\u{1343f}'
+        | '\u{e0000}'..='\u{e007f}'
+        | '\u{e0100}'..='\u{e01ef}')
 }
 
 /// Accept a tool `--allow-tool` can actually approve, and refuse anything else.
