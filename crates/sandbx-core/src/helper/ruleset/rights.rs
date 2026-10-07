@@ -89,19 +89,18 @@ pub(super) fn fs_rules(
     abi: landlock::ABI,
 ) -> Vec<(
     crate::Axis,
-    std::path::PathBuf,
+    &std::path::Path,
     landlock::BitFlags<landlock::AccessFs>,
 )> {
+    // Annotated, the paths being `&'static`: chaining them onto a borrow of the policy would
+    // otherwise have inference demand the policy live as long.
+    let resolver: Vec<(crate::Axis, &std::path::Path)> =
+        resolver_paths(policy.bounds_resolution()).collect();
+
     policy
         .granted_paths()
-        // A granted path keeps the spelling the operator vetted, resolved by nothing here:
-        // that spelling is the whole of what `ruleset::opened::open_grant` confirms (#205).
-        .map(|(axis, path)| (axis, path.to_path_buf()))
-        .chain(resolver_paths(policy.bounds_resolution()))
-        .map(|(axis, path)| {
-            let rights = rights_for(axis, path.is_dir(), abi);
-            (axis, path, rights)
-        })
+        .chain(resolver)
+        .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir(), abi)))
         .collect()
 }
 
@@ -116,20 +115,24 @@ pub(super) fn fs_rules(
 /// refuses a rule for a path it cannot open, and a host may legitimately have no
 /// `/etc/resolv.conf`.
 ///
-/// Resolved, and the one place a path this crate installs rules for is: `mount(2)` followed
-/// the symlink, so the bind landed on the target and `open_grant`'s readback names the target
-/// — a rule spelled `/etc/resolv.conf` would be refused as `GrantRedirected` on every host
-/// where systemd-resolved owns that name. Resolving the spelling sandbx chose is not resolving
-/// one an operator vetted; the inode is the one the bind just put there either way.
+/// A symlink is skipped too, and resolving it here would be worse than skipping it. `mount(2)`
+/// follows one, so the bind landed on the target and `open_grant`'s readback names the target:
+/// a rule spelled `/etc/resolv.conf` is refused as `GrantRedirected` on every host where
+/// systemd-resolved owns that name. Naming the target instead makes that readback a tautology
+/// — the kernel resolves the link at mount time in stage 1, this would resolve it again in
+/// stage 2, and a retarget between the two would install a rule on a file the bind never
+/// placed, with nothing left to catch it. So the command reads no `resolv.conf` on such a
+/// host, which is where a run without `--allow-dns` already leaves it, and the bound rests on
+/// `nsswitch.conf` for glibc and on the port allowlist for musl.
 ///
 /// [`SandboxPolicy::allow_system_executables`]: crate::SandboxPolicy::allow_system_executables
-fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, std::path::PathBuf)> {
+fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static std::path::Path)> {
     bounded
         .then_some(crate::RESOLVER_FILES)
         .into_iter()
         .flatten()
         .map(std::path::Path::new)
-        .filter_map(|path| path.canonicalize().ok())
+        .filter(|path| path.symlink_metadata().is_ok_and(|at| !at.is_symlink()))
         .map(|path| (crate::Axis::Read, path))
 }
 
