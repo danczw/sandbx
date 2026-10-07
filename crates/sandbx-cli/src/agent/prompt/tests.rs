@@ -255,3 +255,23 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
         "the `y` typed before the question was read as the answer to it: {decision:?}"
     );
 }
+/// A hangup is not an EOF the operator sent: the master is gone, so the read cannot block.
+#[test]
+fn a_terminal_that_hung_up_denies_without_blocking() {
+    let (master, slave) = pty();
+    drop(master);
+
+    let mut terminal = Terminal::on(slave).expect("the terminal");
+    let input = serde_json::json!({ "path": "/work/out.rs" });
+
+    let decision = terminal.ask(ToolCall {
+        tool: BuiltinTool::Write,
+        id: "call_1",
+        input: &input,
+    });
+
+    assert!(
+        matches!(decision, ApprovalDecision::Deny { .. }),
+        "a dead terminal approved a call: {decision:?}"
+    );
+}
