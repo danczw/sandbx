@@ -94,7 +94,8 @@ pub enum SessionError {
         uid: u32,
     },
 
-    /// Two turns of the same role in a row, which only a hand edit can produce.
+    /// Two turns of the same role in a row, or a transcript opening on the model's reply
+    /// — both of which only a hand edit can produce.
     Disordered {
         /// The transcript that was refused.
         path: PathBuf,
@@ -104,9 +105,10 @@ pub enum SessionError {
     /// send two user turns in a row and brick the session from a run that exited zero.
     IncompleteTurn,
 
-    /// The turn holds two messages of the same role in a row, or joins the stored history
-    /// on the role it ends with. [`Disordered`] is the same defect found on the way back
-    /// in, by which time the write cannot be undone.
+    /// The turn holds two messages of the same role in a row, joins the stored history on
+    /// the role it ends with, or opens an empty transcript on the model's reply.
+    /// [`Disordered`] is the same defect found on the way back in, by which time the
+    /// write cannot be undone.
     ///
     /// [`Disordered`]: Self::Disordered
     DisorderedTurn,
@@ -179,8 +181,8 @@ impl std::fmt::Display for SessionError {
             ),
             Self::Disordered { path } => write!(
                 f,
-                "{} holds two turns of the same role in a row, which the API rejects — \
-                 it has been edited since sandbx wrote it",
+                "{} is not in an order the API accepts — it has been edited since sandbx \
+                 wrote it",
                 path.display()
             ),
             Self::IncompleteTurn => write!(
@@ -189,8 +191,8 @@ impl std::fmt::Display for SessionError {
             ),
             Self::DisorderedTurn => write!(
                 f,
-                "the turn holds two messages of the same role in a row, which the API \
-                 rejects — appending it would leave the session unreadable"
+                "the turn is not in an order the API accepts — appending it would leave \
+                 the session unreadable"
             ),
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
         }

@@ -134,12 +134,16 @@ consistent in; refusing it, as the first cut of this did, made one torn append
 cost the whole conversation, unresumable until somebody hand-edited it. A line
 that parses badly *with* a newline after it was written whole and still refuses.
 
-A transcript must be empty or end on an assistant message, and no two
-neighbouring messages may share a role. Both halves are checked on the way in and
-again on the way out. `append` checks the batch and the join between it and what
-is stored; `resume` checks the whole history, because a hand-edited file can hold
-a pair of user turns anywhere and the API rejects an interior pair exactly as it
-rejects a trailing one — a session otherwise bricked by a run that exited zero.
+A transcript must be empty or start on a user message and end on an assistant one,
+with no two neighbouring messages sharing a role. All three are checked on the way
+in and again on the way out. `append` checks the batch, and the join between it and
+what is stored; `resume` checks the whole history, because a hand-edited file can
+hold a pair of user turns anywhere and the API rejects an interior pair exactly as
+it rejects a trailing one — a session otherwise bricked by a run that exited zero.
+
+The opening role is its own condition, not a corollary of the other two: a history
+of even length that opens on the model's reply alternates and ends settled, and the
+API still refuses it.
 
 The two guards have to agree, and for a while they did not: `append` checked only
 the end, on the reasoning that the end was all it could break. It could also

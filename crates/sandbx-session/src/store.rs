@@ -157,12 +157,13 @@ impl SessionStore {
 
         let (messages, observed, withheld) = fold(&path, &body)?;
         // The whole history, not just its end: a hand-edited file can hold a pair of user
-        // turns anywhere. No messages at all is a session not yet talked to.
+        // turns anywhere, or open on the model's reply. No messages at all is a session
+        // not yet talked to.
         if !messages.is_empty() {
             if !settled(&messages) {
                 return Err(SessionError::IncompleteTurn);
             }
-            if !alternating(&messages) {
+            if !alternating(&messages) || !opens(&messages) {
                 return Err(SessionError::Disordered { path: path.clone() });
             }
         }
@@ -330,10 +331,20 @@ impl Session {
     }
 }
 
-/// True when no two neighbouring messages carry the same role, which together with
-/// [`settled`] also pins the first message as the user's.
+/// True when no two neighbouring messages carry the same role.
+///
+/// Says nothing about which role comes first: an even-length history opening on the
+/// model's reply alternates and ends settled, so [`opens`] is a condition of its own.
 fn alternating(messages: &[Message]) -> bool {
     messages.windows(2).all(|pair| pair[0].role != pair[1].role)
+}
+
+/// True when the history starts where the API requires: on a user turn.
+///
+/// An empty one is true, having no first role yet — [`follows`] is what holds the rule
+/// over the batch that eventually supplies it.
+fn opens(messages: &[Message]) -> bool {
+    messages.first().map(|message| message.role) != Some(Role::Assistant)
 }
 
 /// True when `batch` can follow `stored` without putting two turns of the same role
@@ -341,7 +352,10 @@ fn alternating(messages: &[Message]) -> bool {
 fn follows(stored: &[Message], batch: &[Message]) -> bool {
     match (stored.last(), batch.first()) {
         (Some(last), Some(first)) => last.role != first.role,
-        // Nothing to join: a first batch, or an empty one.
+        // Nothing to join, so `batch` is the transcript's opening and [`opens`] is the
+        // rule over it instead.
+        (None, _) => opens(batch),
+        // An empty batch joins nothing.
         _ => true,
     }
 }
