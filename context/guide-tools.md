@@ -102,6 +102,17 @@ does.
 `TimedOut` is split from `Failed` deliberately: a command that failed will fail
 again, while one that ran out of time might succeed if narrowed.
 
+`SandboxError::NotFound` is the one guard verdict that becomes a `Failed` rather
+than a `Denied`: a path missing inside a root the policy already grants was
+refused by nothing, so the agent's move is to fix the name, not to ask for a
+wider grant (#180). `crate::guard_error` is where that is decided, once, for all
+six tools that reach the guard. Everything else a guard hands back is a refusal.
+
+A `reason` or `detail` travels back inside a `tool_result`, which a
+prompt-injected model relays, so neither may name a grant the caller does not
+already hold — the refusal for a path outside every root stays indistinguishable
+from any other.
+
 ## What bounds a tool call
 
 **Time bounds the spawned command only.** `ExecutionContext::timeout` (90 s
