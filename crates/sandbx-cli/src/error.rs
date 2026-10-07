@@ -420,6 +420,12 @@ pub enum AgentError {
     /// `--session` resuming a conversation missing its last turn.
     Session(SessionError),
 
+    /// `--approve call` was asked for and there is no terminal to ask on.
+    NoTerminal {
+        /// Opening `/dev/tty`, which is `ENXIO` with no controlling terminal.
+        source: std::io::Error,
+    },
+
     /// The turn itself ended without an answer.
     Turn(TurnError),
 }
@@ -466,6 +472,14 @@ impl std::fmt::Display for AgentError {
             // Forwarded rather than prefixed: the session's own prose already names the
             // path and carries the advice.
             Self::Session(error) => write!(f, "{error}"),
+            // The flag is named because dropping it is the whole remedy, and the run
+            // refuses rather than serving the weaker regime it asks to replace.
+            Self::NoTerminal { source } => write!(
+                f,
+                "`{}` needs a terminal to ask on and there is none: {source}. \
+                 Drop the flag to take the answer from `--allow-tool` instead",
+                crate::agent::APPROVE_CALL
+            ),
             Self::Turn(error) => write!(f, "{error}"),
         }
     }
@@ -480,6 +494,7 @@ impl std::error::Error for AgentError {
             Self::Credential(error) => Some(error),
             Self::Provider(error) => Some(error),
             Self::Session(error) => Some(error),
+            Self::NoTerminal { source } => Some(source),
             Self::Turn(error) => Some(error),
         }
     }

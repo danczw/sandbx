@@ -444,12 +444,13 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
         ],
     ]);
 
+    let mut gate = Gate::new(|_| ApprovalDecision::Allow);
     let messages = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Write]),
         &ctx,
         |_| {},
-        AllowAll,
+        &mut gate,
     )
     .await
     .unwrap()
@@ -464,6 +465,10 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
         "got {content:?}"
     );
     assert_eq!(messages.len(), 3, "the turn should have carried on");
+    // #169's misleading row: the gate said yes and the policy then said no, so a report
+    // built from the verdict alone would announce a write that never happened.
+    assert_eq!(gate.asked.len(), 1, "the gate approved nothing");
+    assert_eq!(gate.settled, ["write:errored"]);
 }
 
 /// Arguments off the schema are the model's mistake to fix, not the turn's to die of.

@@ -8,6 +8,8 @@
 use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
+use super::prompt::Ask;
+
 /// The flag that lifts the default refusal.
 ///
 /// Named once because a refusal is read twice — on stderr and in the `tool_result` — and
@@ -52,29 +54,45 @@ pub(super) fn approved_tools(allowed: Option<&[BuiltinTool]>) -> Vec<&'static st
         .collect()
 }
 
-/// The gate `agent-run` drives: argv decides, and every call is reported once.
-pub(super) struct ArgvGate<'a> {
+/// The gate `agent-run` drives: argv decides, an operator may narrow it, and every call
+/// is reported once.
+///
+/// `terminal` is `Some` under `--approve call` alone. Absent, argv is the whole answer and
+/// the run asks nobody, which is what makes it usable from a script.
+pub(super) struct ArgvGate<'a, T> {
     allowed: Option<&'a [BuiltinTool]>,
+    terminal: Option<T>,
 }
 
-impl<'a> ArgvGate<'a> {
-    pub(super) fn new(allowed: Option<&'a [BuiltinTool]>) -> Self {
-        Self { allowed }
+impl<'a, T> ArgvGate<'a, T> {
+    pub(super) fn new(allowed: Option<&'a [BuiltinTool]>, terminal: Option<T>) -> Self {
+        Self { allowed, terminal }
     }
 }
 
-impl CallGate for ArgvGate<'_> {
+impl<T: Ask> CallGate for ArgvGate<'_, T> {
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        if approves(self.allowed, call.tool) {
+        // Argv is the ceiling, asked first: a prompt that could only ever be refused is
+        // fatigue with no decision in it, and it would teach an operator to answer `y`.
+        if !approves(self.allowed, call.tool) {
+            let name = call.tool.name();
+            return ApprovalDecision::Deny {
+                reason: format!(
+                    "the `{name}` tool is not approved for this run: \
+                     it runs only when sandbx is started with `{ALLOW_TOOL} {name}`"
+                ),
+            };
+        }
+
+        // A read-only call is never asked about. #165's twenty-prompt turn is what this
+        // and the `a` answer exist to avoid, and a `read` has no answer worth taking.
+        if call.tool.risk() == RiskLevel::ReadOnly {
             return ApprovalDecision::Allow;
         }
 
-        let name = call.tool.name();
-        ApprovalDecision::Deny {
-            reason: format!(
-                "the `{name}` tool is not approved for this run: \
-                 it runs only when sandbx is started with `{ALLOW_TOOL} {name}`"
-            ),
+        match &mut self.terminal {
+            Some(terminal) => terminal.ask(call),
+            None => ApprovalDecision::Allow,
         }
     }
 
@@ -98,10 +116,7 @@ pub(super) fn settled(call: Settled<'_>) {
 /// call was *requested* would claim a run the policy then refused.
 fn report(call: Settled<'_>) -> String {
     let head = match call.tool {
-        Some(tool) => match subject(call.input) {
-            Some(subject) => format!("{} {subject}", tool.name()),
-            None => tool.name().to_string(),
-        },
+        Some(tool) => describe(tool, call.input),
         None => printable(call.name),
     };
 
@@ -122,6 +137,18 @@ fn report(call: Settled<'_>) -> String {
                 format!("{head} — timed out after {after:?} and was killed")
             }
         },
+    }
+}
+
+/// One call as both the report and the consent prompt name it.
+///
+/// Shared so an operator reads a call the same way whether they are being asked about it
+/// or told what became of it — and so the control-byte strip cannot be had in one place
+/// and missed in the other.
+pub(super) fn describe(tool: BuiltinTool, input: &serde_json::Value) -> String {
+    match subject(input) {
+        Some(subject) => format!("{} {subject}", tool.name()),
+        None => tool.name().to_string(),
     }
 }
 
