@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::{HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
 
-mod dispatch;
+pub(crate) mod dispatch;
 
 pub use dispatch::{
     HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, dispatch_helper_mode, with_helper_dispatch,
@@ -158,15 +158,15 @@ impl SandboxedCommand {
         }
         .emit();
 
-        match refused {
-            None => result,
-            // The same precedence the emit above uses, so the record and the returned error
-            // cannot disagree. The `Err` arm has no `Output` to relay — those paths return
-            // before the drained bytes are taken — so the parent's own account stands in.
-            Some(refusal) => Err(match &result {
-                Ok(output) => refusal.relayed(&output.stderr),
-                Err(error) => refusal.relayed(error.to_string().as_bytes()),
-            }),
+        // A record replaces a status, never an error: an `Err` here is the parent's own
+        // account of a kill it performed or a spawn it watched fail, and the one thing the
+        // channel must not be able to do is suppress that — the same reason `timeout` and
+        // `spawn_failed` are not labels it admits. So a refusal racing a deadline stays on
+        // the trail as the cause and leaves `TimedOut` to reach the caller, which is the
+        // only one of the two that says retrying longer might work.
+        match (result, refused) {
+            (Ok(output), Some(refusal)) => Err(refusal.relayed(&output.stderr)),
+            (result, _) => result,
         }
     }
 }
