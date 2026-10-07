@@ -7,11 +7,12 @@
 mod gate;
 mod orientation;
 mod render;
+mod wrapup;
 
 use std::io::Write;
 
 use gate::tool_name;
-use render::Render;
+use render::{Capped, Render};
 use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
@@ -68,6 +69,16 @@ pub struct AgentRun {
         value_parser = round_cap,
     )]
     max_rounds: usize,
+
+    /// Do not spend one more request answering a turn that ran out of rounds.
+    ///
+    /// A turn that reaches `--max-rounds` is otherwise asked once more with no tools
+    /// offered, so the reply is prose: stdout gets an answer and the conversation ends
+    /// somewhere `--session` can store. This refuses that request, leaving stdout with
+    /// whatever arrived before the cap and the session unchanged. The exit code is 2
+    /// either way.
+    #[arg(long = "no-wrap-up")]
+    no_wrap_up: bool,
 
     /// Give the model a system prompt.
     ///
@@ -228,7 +239,7 @@ impl AgentRun {
     /// read back what the request carried — the only way to check either without a key.
     async fn drive<W: Write>(
         &self,
-        open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
+        mut open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         prompt: String,
         system: Option<String>,
@@ -267,9 +278,12 @@ impl AgentRun {
             withheld: session.as_ref().map_or(0, Session::withheld),
         };
 
+        // Read off before `run_turn` takes the turn by value.
+        let next = wrapup::Next::after(&turn);
+
         let mut render = Render::new(out);
         let outcome = run_turn(
-            open,
+            &mut open,
             turn,
             ctx,
             |event| render.event(event),
@@ -287,9 +301,25 @@ impl AgentRun {
             _ => None,
         };
 
+        let (outcome, capped) = match (out_of_rounds, outcome) {
+            (Some(rounds), Ok(first)) if !self.no_wrap_up => {
+                let gate = self.allow_tool.as_deref();
+                let (outcome, summarised) = next
+                    .run(&mut open, ctx, gate, history, first, &mut render)
+                    .await;
+                let capped = if summarised {
+                    Capped::Summarised(rounds)
+                } else {
+                    Capped::CutShort(rounds)
+                };
+                (Ok(outcome), Some(capped))
+            }
+            (rounds, outcome) => (outcome, rounds.map(Capped::CutShort)),
+        };
+
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
-        let code = render.finish(out_of_rounds);
+        let code = render.finish(capped);
         // Before the append: a `TurnError` discards the turn's own messages, and a prompt
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
@@ -411,6 +441,9 @@ mod tests {
             .expect("a current-thread runtime")
     }
 
+    /// What a scripted run reports: every request it sent, its stdout, and its exit code.
+    type Driven = (Vec<MessagesRequest>, String, Result<i32, AgentError>);
+
     /// Drive one scripted round through `drive`, and report what was sent and written.
     ///
     /// A default policy grants nothing, so the request carries the approved tools and
@@ -420,29 +453,38 @@ mod tests {
         prompt: &str,
         events: Vec<AgentEvent>,
         session: Option<Session>,
-    ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
-        under(SandboxPolicy::default(), args, prompt, events, session)
+    ) -> Driven {
+        under(
+            SandboxPolicy::default(),
+            args,
+            prompt,
+            vec![events],
+            session,
+        )
     }
 
-    /// `one_round` under a policy of its caller's choosing, composing the system prompt
-    /// the way `execute` does.
+    /// `one_round` over a script of several rounds, under a policy of its caller's
+    /// choosing, composing the system prompt the way `execute` does.
+    ///
+    /// A script, not one round: a turn out of rounds is asked again with no tools, so the
+    /// round-limited cases here open two streams.
     fn under(
         policy: SandboxPolicy,
         args: &AgentRun,
         prompt: &str,
-        events: Vec<AgentEvent>,
+        rounds: Vec<Vec<AgentEvent>>,
         session: Option<Session>,
-    ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
+    ) -> Driven {
         let system = orientation::system_prompt(&policy, args.allow_tool.as_deref(), args.system());
         let ctx = ExecutionContext::new(policy);
         let mut sent = Vec::new();
-        let mut events = Some(events);
+        let mut rounds = rounds.into_iter();
         let mut out = Vec::new();
 
         let code = runtime().block_on(args.drive(
             |request| {
                 sent.push(request);
-                let round = events.take().expect("a second round was asked for");
+                let round = rounds.next().expect("one more round was asked for");
                 std::future::ready(Ok(canned(round)))
             },
             &ctx,
@@ -558,7 +600,7 @@ mod tests {
                 .allow_write(work.path()),
             &args,
             &args.prompt(),
-            vec![text("ok"), stop(StopReason::EndTurn)],
+            vec![vec![text("ok"), stop(StopReason::EndTurn)]],
             None,
         );
         code.expect("clean turn");
@@ -682,28 +724,96 @@ mod tests {
         ]
     }
 
+    /// A round-limited run, scripted as the two requests it now sends.
+    fn capped(args: &AgentRun, wrap_up: Vec<AgentEvent>, session: Option<Session>) -> Driven {
+        under(
+            SandboxPolicy::default(),
+            args,
+            &args.prompt(),
+            vec![asking_for_ls(), wrap_up],
+            session,
+        )
+    }
+
+    /// The wrap-up round answering, which is the whole point of spending it (#189).
+    fn summarising() -> Vec<AgentEvent> {
+        vec![text("I found nothing"), stop(StopReason::EndTurn)]
+    }
+
     /// A provider failure exits 1 with an empty stdout; this must not read as one (#178).
     #[test]
-    fn a_turn_out_of_rounds_exits_two_with_its_text() {
+    fn a_turn_out_of_rounds_exits_two_with_an_answer() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
 
-        let (sent, written, code) = one_round(&args, &args.prompt(), asking_for_ls(), None);
+        let (sent, written, code) = capped(&args, summarising(), None);
 
-        assert_eq!(sent.len(), 1, "the cap should have allowed one request");
-        assert_eq!(written, "looking\n");
+        assert_eq!(sent.len(), 2, "the cap should have bought a wrap-up round");
+        // The cap cut the tool work off whatever prose followed, so the code is unchanged.
         assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+        assert_eq!(written, "looking\n\nI found nothing\n");
+    }
+
+    /// The round the cap buys has to be one the model cannot spend on another tool, and a
+    /// second user turn behind the unanswered `tool_result` is the pair the API rejects.
+    #[test]
+    fn the_wrap_up_round_offers_no_tools_and_adds_no_turn() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+
+        let (sent, _, _) = capped(&args, summarising(), None);
+
+        let body = serde_json::to_value(&sent).expect("a serializable request");
+        assert!(body[0]["tools"].is_array(), "got {:?}", body[0]["tools"]);
+        assert!(body[1]["tools"].is_null(), "got {:?}", body[1]["tools"]);
+
+        let last = body[1]["messages"]
+            .as_array()
+            .expect("a history")
+            .last()
+            .expect("a last message");
+        assert_eq!(last["role"], "user");
+        for block in last["content"].as_array().expect("blocks") {
+            assert_eq!(block["type"], "tool_result", "got {last:?}");
+        }
+    }
+
+    /// Nothing may append it to the history, so the only place left to say it is the
+    /// system prompt — which is also the one place a resume will not replay.
+    #[test]
+    fn the_wrap_up_round_says_the_tools_are_gone() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+
+        let (sent, _, _) = capped(&args, summarising(), None);
+
+        let body = serde_json::to_value(&sent).expect("a serializable request");
+        assert!(body[0]["system"].is_null(), "got {:?}", body[0]["system"]);
+        let system = body[1]["system"].as_str().expect("a system prompt");
+        assert!(system.contains("no tool calls left"), "got {system:?}");
     }
 
     #[test]
-    fn a_turn_out_of_rounds_leaves_the_session_alone() {
-        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+    fn no_wrap_up_leaves_the_cap_a_dead_end() {
+        let args = agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--max-rounds",
+            "1",
+            "--no-wrap-up",
+            "--",
+            "go",
+        ]);
         let (_root, store, session) = new_session();
 
-        let (_, _, code) = one_round(&args, &args.prompt(), asking_for_ls(), Some(session));
+        let (sent, written, code) = under(
+            SandboxPolicy::default(),
+            &args,
+            &args.prompt(),
+            vec![asking_for_ls()],
+            Some(session),
+        );
 
+        assert_eq!(sent.len(), 1, "no request should have followed the cap");
+        assert_eq!(written, "looking\n");
         assert_eq!(code.expect("a reported turn"), INCOMPLETE);
-        // The batch ends on a `tool_result` the model never answered, which the store
-        // refuses: resuming it would hand the model its own unanswered call.
         assert!(
             store
                 .resume(&only_session(&store))
@@ -711,6 +821,45 @@ mod tests {
                 .messages()
                 .is_empty()
         );
+    }
+
+    /// The round trip is the assertion: a batch `append` takes but `resume` refuses would
+    /// brick the session from a run that exited 2 (#188).
+    #[test]
+    fn a_turn_out_of_rounds_is_stored_and_resumable() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+        let (_root, store, session) = new_session();
+
+        let (_, _, code) = capped(&args, summarising(), Some(session));
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+
+        let stored = store
+            .resume(&only_session(&store))
+            .expect("a resumable turn");
+        // The prompt, the round that asked for a tool, its result, and the summary.
+        assert_eq!(stored.messages().len(), 4);
+        let last = stored.messages().last().expect("a last message");
+        assert_eq!(last.role, sandbx_session::Role::Assistant);
+    }
+
+    /// Without it the first turn's work is unstorable and the exit code already says so;
+    /// a `?` here would cost the turn its text and report a provider failure instead.
+    #[test]
+    fn a_failed_wrap_up_round_costs_the_turn_nothing() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+        let (_root, store, session) = new_session();
+        let before = std::fs::read(session.path()).expect("the transcript exists");
+
+        // An empty round with a `tool_result` outstanding is `EndedMidToolUse`, which is
+        // the wrap-up round failing without a provider that can be made to fail.
+        let (sent, written, code) = capped(&args, Vec::new(), Some(session));
+
+        assert_eq!(sent.len(), 2, "the wrap-up round should have been tried");
+        assert_eq!(written, "looking\n");
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+        let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
+            .expect("the transcript exists");
+        assert_eq!(after, before);
     }
 
     /// The id of the one session in `store`.

@@ -198,8 +198,12 @@ Nor is running out of rounds. The turn comes back `Ok` with
 real work before the bound arrived and discarding it would lose the work with the answer.
 No truncation of that transcript would make it storable: it ends on a `tool_result` the
 model never answered, and so does every prefix of it, the alternative being a `tool_use`
-with nothing answering it. `TurnStop` is what says it is not an answer — `agent-run`
-reports it as an incomplete one, and `Session::append` refuses the batch.
+with nothing answering it. `TurnStop` is what says it is not an answer.
+
+What a caller does with that is the caller's. `agent-run` asks once more with no tools
+offered, so the reply is prose and the batch ends somewhere `Session::append` takes —
+see `decision-round-limit-answer.md`. Under `--no-wrap-up`, or when that second request
+fails, it reports an incomplete turn and `append` refuses the batch.
 
 `TurnError` is only for what *ends* the turn:
 

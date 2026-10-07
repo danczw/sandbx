@@ -311,6 +311,7 @@ approves all seven names none of them: there is nothing left to refuse.
 | `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
 | `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
 | `--max-rounds N`  | cap how many times the model may be asked in one turn. Default 8 |
+| `--no-wrap-up`    | do not spend one more request answering a turn that hit `--max-rounds` |
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
 | `--system TEXT`   | a system prompt, sent after whatever lines name the run's approved tools and roots |
 
@@ -334,7 +335,7 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 | `agent-run` exit | means |
 |---|---|
 | `0` | the model finished its answer |
-| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Stdout holds the text that arrived before it, which is nothing at all if the model opened with a tool call |
+| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. A turn out of rounds is asked once more with no tools, so stdout holds a summary of what it found, a blank line below whatever arrived before the cap; `--no-wrap-up` leaves that text alone, which is nothing at all if the model opened with a tool call |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
 > **Nothing asks you before an approved tool call runs.** `--allow-tool` is a

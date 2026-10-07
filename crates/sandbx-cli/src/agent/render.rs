@@ -11,6 +11,16 @@ use sandbx_providers::{AgentEvent, StopReason};
 use super::INCOMPLETE;
 use crate::AgentError;
 
+/// How a turn that ran out of rounds ended, which no event reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Capped {
+    /// Nothing followed the cap, so stdout holds only what arrived before it.
+    CutShort(usize),
+
+    /// A tool-less round answered from what the turn had already found.
+    Summarised(usize),
+}
+
 /// Writes a turn out, split so stdout can be piped to something that wants the answer
 /// alone.
 pub(super) struct Render<W> {
@@ -24,6 +34,14 @@ pub(super) struct Render<W> {
     /// the model did not terminate it already.
     mid_line: bool,
 
+    /// Whether anything has reached stdout, so a gap is never the first thing on it.
+    wrote: bool,
+
+    /// Whether a gap is owed before the next text. Deferred rather than written when
+    /// asked for, so a wrap-up round that answers with nothing leaves no stray blank
+    /// line.
+    separating: bool,
+
     /// The first write that failed, kept because `observe` has no way to end the turn.
     failed: Option<std::io::Error>,
 }
@@ -34,14 +52,27 @@ impl<W: Write> Render<W> {
             out,
             truncated: false,
             mid_line: false,
+            wrote: false,
+            separating: false,
             failed: None,
         }
+    }
+
+    /// Ask for a blank line before whatever is written next.
+    ///
+    /// Owed, not written: the wrap-up round it separates may answer with nothing at all.
+    pub(super) fn separate(&mut self) {
+        self.separating = self.wrote;
     }
 
     /// Put one event where it belongs.
     pub(super) fn event(&mut self, event: &AgentEvent) {
         match event {
             AgentEvent::Text { delta } => {
+                if !delta.is_empty() && std::mem::take(&mut self.separating) {
+                    // Two newlines from mid-line, one from a line already terminated.
+                    self.write(if self.mid_line { b"\n\n" } else { b"\n" });
+                }
                 self.write(delta.as_bytes());
                 if !delta.is_empty() {
                     self.mid_line = !delta.ends_with('\n');
@@ -60,9 +91,10 @@ impl<W: Write> Render<W> {
 
     /// Close the answer off, and report what the way it ended means for the exit code.
     ///
-    /// `rounds` is `Some` when the turn ran out of them, which outranks the last round's
-    /// `max_tokens`: the bound that ended the turn is the one to name.
-    pub(super) fn finish(&mut self, rounds: Option<usize>) -> Result<i32, AgentError> {
+    /// `capped` is `Some` when the turn ran out of rounds, which outranks the last
+    /// round's `max_tokens`: the bound that ended the turn is the one to name. A summary
+    /// still exits [`INCOMPLETE`] — the tool work was cut off whatever prose followed.
+    pub(super) fn finish(&mut self, capped: Option<Capped>) -> Result<i32, AgentError> {
         if self.mid_line {
             self.write(b"\n");
         }
@@ -71,12 +103,23 @@ impl<W: Write> Render<W> {
             return Err(AgentError::Output(error));
         }
 
-        if let Some(rounds) = rounds {
-            eprintln!(
-                "sandbx: stopped after {rounds} rounds of tool calls; \
-                 raise --max-rounds to let the turn go further"
-            );
-            return Ok(INCOMPLETE);
+        match capped {
+            Some(Capped::CutShort(rounds)) => {
+                eprintln!(
+                    "sandbx: stopped after {rounds} rounds of tool calls; \
+                     raise --max-rounds to let the turn go further"
+                );
+                return Ok(INCOMPLETE);
+            }
+            Some(Capped::Summarised(rounds)) => {
+                eprintln!(
+                    "sandbx: stopped after {rounds} rounds of tool calls; \
+                     the answer above summarises what was found, \
+                     and raising --max-rounds would let the turn go further"
+                );
+                return Ok(INCOMPLETE);
+            }
+            None => {}
         }
 
         if self.truncated {
@@ -97,6 +140,8 @@ impl<W: Write> Render<W> {
 
         if let Err(error) = self.out.write_all(bytes).and_then(|()| self.out.flush()) {
             self.failed = Some(error);
+        } else {
+            self.wrote |= !bytes.is_empty();
         }
     }
 }
@@ -169,17 +214,58 @@ pub(super) mod tests {
     /// The turn's own bound, which no event reports: a round-limited turn ends on a
     /// `ToolUse` stop, the same one a healthy round ends on.
     #[test]
-    fn a_turn_out_of_rounds_is_reported_as_incomplete() {
-        let mut render = Render::new(Vec::new());
-        render.event(&text("looking"));
-        render.event(&stop(StopReason::ToolUse));
+    fn a_turn_out_of_rounds_reports_incomplete_either_way() {
+        for capped in [Capped::CutShort(3), Capped::Summarised(3)] {
+            let mut render = Render::new(Vec::new());
+            render.event(&text("looking"));
+            render.event(&stop(StopReason::ToolUse));
 
-        assert_eq!(render.finish(Some(3)).expect("a reported turn"), INCOMPLETE);
+            // A summary is prose on stdout, not a complete turn: the cap still cut the
+            // tool work off, so a script reading the status sees the same thing.
+            let code = render.finish(Some(capped)).expect("a reported turn");
+            assert_eq!(code, INCOMPLETE, "got {code} for {capped:?}");
+        }
+
         assert_eq!(
             Render::new(Vec::new()).finish(None).expect("clean turn"),
             0,
             "a turn with rounds to spare should still exit 0"
         );
+    }
+
+    /// Everything stdout received across a cap, and the gap that marks it.
+    fn across_the_cap(before: &[AgentEvent], after: &[AgentEvent]) -> String {
+        let mut render = Render::new(Vec::new());
+        for event in before {
+            render.event(event);
+        }
+
+        render.separate();
+        for event in after {
+            render.event(event);
+        }
+
+        render
+            .finish(Some(Capped::Summarised(1)))
+            .expect("rendered");
+        String::from_utf8(render.out).expect("utf-8")
+    }
+
+    #[test]
+    fn a_summary_sits_one_blank_line_below_the_cut() {
+        let mid_line = across_the_cap(&[text("looking")], &[text("found three")]);
+        assert_eq!(mid_line, "looking\n\nfound three\n");
+
+        let terminated = across_the_cap(&[text("looking\n")], &[text("found three")]);
+        assert_eq!(terminated, "looking\n\nfound three\n");
+    }
+
+    /// The gap is owed, not written, so neither end of it can strand a blank line.
+    #[test]
+    fn a_gap_with_nothing_either_side_is_never_written() {
+        assert_eq!(across_the_cap(&[text("looking")], &[]), "looking\n");
+        assert_eq!(across_the_cap(&[], &[text("found three")]), "found three\n");
+        assert_eq!(across_the_cap(&[], &[]), "");
     }
 
     #[test]
