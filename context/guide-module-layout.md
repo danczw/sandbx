@@ -53,6 +53,40 @@ and keeping its tests inside the crate is what lets it stay that way.
 | drives the crate's public API | `crates/<crate>/tests/<topic>.rs` |
 | needs a sandbox-capable kernel | `crates/sandbx-core/tests/`, behind `sandbox-integration` |
 
+## What a test has to assert to assert anything
+
+A test pins a defect only when the defect's answer differs from the answer the
+test expects. So a test expecting a refusal catches nothing whose failure mode is
+to refuse, and most of this repo's mechanisms fail that way: a ruleset the kernel
+would not take, a filter that did not install, a fixture whose directory dropped
+before the assertion read it, a comparison that fell through. Each of those denies
+everything, and a suite of denials stays green through all of them. Mirroring a
+positive case to get a negative one buys nothing for the same reason — the mirror
+expects the answer the break already gives.
+
+Two things make a negative test real, and the stronger one is executable:
+
+- **Assert the fixture is not vacuous before relying on it.**
+  `helper/seccomp/tests/denylist.rs` asserts `!BLOCKED_SYSCALLS.is_empty()` with
+  "the denylist is empty, so this test is vacuous", and
+  `helper/ruleset/tests/rules.rs` asserts the handled set moves with the ABI
+  rather than letting the agreement above it hold trivially. A loop over an empty
+  set passes; so does an agreement between two things neither of which was
+  computed.
+- **Pair the negative with evidence the mechanism ran** — the stderr it writes,
+  the exit code it chose, the audit record it emits. `!status.success()` alone
+  cannot tell a denial from a helper that never started.
+
+Hard-code the expected value rather than reading it off the thing under test.
+`tools/bash.rs`'s `NOT_RETRYABLE` and `guide-tools.md`'s risk-level test both say
+why: read off the source, the assertion only proves it agrees with itself, and a
+reclassification passes.
+
+A set of negative cases also needs one positive per mechanism, or the mechanism's
+total absence is indistinguishable from it working. `enforcement.rs` grants
+`/bin/touch` everything it needs for exactly that reason — without the grant the
+exec itself would be denied and the test would stay green for the wrong reason.
+
 ## Measuring
 
 ```sh
