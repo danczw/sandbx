@@ -30,13 +30,10 @@ pub struct LsInput {
 /// List a directory's entries, marking directories with a trailing `/` so the model
 /// need not spend a call per entry to find what it can descend into.
 pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let resolved = ctx
+    let entries = ctx
         .guard()
-        .check_read(&input.path)
+        .read_dir(&input.path)
         .map_err(|error| crate::guard_error(&input.path, error))?;
-
-    let entries =
-        std::fs::read_dir(&resolved).map_err(|error| crate::failed("list", &input.path, error))?;
 
     let mut names = Vec::new();
     for entry in entries {

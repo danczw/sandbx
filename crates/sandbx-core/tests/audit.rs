@@ -83,17 +83,162 @@ fn records_a_refusal_with_its_reason() {
     assert!(line.contains("outside every readable root"), "got: {line}");
 }
 
-/// No policy objected, so `denied` would name a refusal nothing made.
+/// No policy objected, so `denied` would name a refusal nothing made — but the attempt
+/// is still an attempt, and a model guessing filenames inside a grant leaves these.
 #[test]
-fn an_in_grant_miss_records_no_denial() {
+fn an_in_grant_miss_records_an_absence() {
+    let root = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let missing = root.path().join("absent.txt");
+
+    let lines = capture(|| {
+        let _ = guard.check_read(&missing);
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    let line = &lines[0];
+    assert!(line.contains("decision=absent"), "got: {line}");
+    assert!(line.contains("tool=read"), "got: {line}");
+    assert!(line.contains(&missing.display().to_string()), "got: {line}");
+    assert!(!line.contains("reason"), "absence explains nothing: {line}");
+}
+
+/// The record must not say what the refusal conceals: outside every root, that a path
+/// does not exist is exactly the fact withheld.
+#[test]
+fn a_miss_outside_every_root_is_not_an_absence() {
+    let root = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    // Not named "absent": the subject is the path, and a substring assertion on the
+    // decision must not be satisfiable by the filename.
+    let lines = capture(|| {
+        let _ = guard.check_read(&elsewhere.path().join("nope.txt"));
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
+    assert!(!lines[0].contains("decision=absent"), "got: {}", lines[0]);
+}
+
+/// `decision=` records the access, and a check is not one (#182).
+#[test]
+fn a_check_that_opens_nothing_records_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("present.txt");
+    std::fs::write(&file, b"x").unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let lines = capture(|| {
+        guard.check_read(&file).unwrap();
+    });
+
+    assert!(lines.is_empty(), "got: {lines:?}");
+}
+
+#[test]
+fn an_opened_file_records_the_access() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("present.txt");
+    std::fs::write(&file, b"x").unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let lines = capture(|| {
+        guard.open_read(&file).unwrap();
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=allowed"), "got: {}", lines[0]);
+    assert!(lines[0].contains("tool=read"), "got: {}", lines[0]);
+}
+
+/// An access that passed the gate and still failed for any reason but absence. EISDIR
+/// stands in for the class because a real check-to-open swap cannot be raced here; the
+/// `ELOOP` that swap produces maps to the same `Unresolvable`, which `fs_guard`'s
+/// `a_swapped_leaf_opens_as_unresolvable` pins.
+#[test]
+fn an_access_that_fails_after_the_check_is_a_refusal() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("not-a-file");
+    std::fs::create_dir(&dir).unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+
+    let lines = capture(|| {
+        let _ = guard.open_write(&dir);
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
+    assert!(
+        lines[0].contains("path does not resolve"),
+        "got: {}",
+        lines[0]
+    );
+}
+
+/// One record for the whole walk, naming the root: a record per entry would name
+/// thousands of files the walk only listed.
+#[test]
+fn a_walk_records_one_access() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("a.txt"), b"x").unwrap();
+    std::fs::create_dir(root.path().join("sub")).unwrap();
+    std::fs::write(root.path().join("sub").join("b.txt"), b"x").unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let lines = capture(|| {
+        guard.walk_readable(root.path(), 100).unwrap();
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=allowed"), "got: {}", lines[0]);
+    assert!(
+        lines[0].contains(&root.path().display().to_string()),
+        "got: {}",
+        lines[0]
+    );
+}
+
+#[test]
+fn a_listed_directory_records_the_access() {
     let root = tempfile::tempdir().unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
 
     let lines = capture(|| {
-        let _ = guard.check_read(&root.path().join("absent.txt"));
+        guard.read_dir(root.path()).unwrap();
     });
 
-    assert!(lines.is_empty(), "got: {lines:?}");
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=allowed"), "got: {}", lines[0]);
+}
+
+#[test]
+fn an_absent_write_parent_records_an_absence() {
+    let root = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+
+    let lines = capture(|| {
+        let _ = guard.check_write(&root.path().join("nodir").join("out.txt"));
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=absent"), "got: {}", lines[0]);
+    assert!(lines[0].contains("tool=write"), "got: {}", lines[0]);
+}
+
+/// `Denied` carries a reason because "denied" alone is not actionable; `Absent` has
+/// none to carry, and `tracing` would otherwise vary the event's field set.
+#[test]
+fn records_an_absence_without_a_reason() {
+    let lines = capture(|| {
+        AuditEvent::absent("read", "/srv/nope").emit();
+    });
+
+    let line = &lines[0];
+    assert!(line.contains("decision=absent"), "got: {line}");
+    assert!(line.contains("subject=/srv/nope"), "got: {line}");
+    assert!(!line.contains("reason"), "got: {line}");
 }
 
 /// The one `check_write` refusal that emitted nothing, where every sibling did (#183).

@@ -1,3 +1,9 @@
+//! The in-process filesystem gate: the policy check, and the accesses it guards.
+//!
+//! Over the 400-line module budget for one sequence — check, then access, then record —
+//! which a split would spread across two files a reader has to hold together to know
+//! whether a path was recorded. `decision=` names the access; see `context/guide-logging.md`.
+
 use std::path::{Path, PathBuf};
 
 use crate::{Access, SandboxError, SandboxPolicy};
@@ -61,8 +67,8 @@ impl FsGuard {
     ///
     /// The nearest ancestor that does resolve decides: inside an allowed root the caller could
     /// already enumerate the area, so "no such file" is honest; anywhere else the refusal is
-    /// indistinguishable from any other. Absence inside a grant is no verdict, so it gets no
-    /// record — `allowed` would name a file nothing read.
+    /// indistinguishable from any other — and so is its record, which stays `denied`. Naming
+    /// the absence there would hand back over the trail what the refusal conceals.
     ///
     /// `failed` is the component resolution tripped on, the parent for a write, and is named
     /// only on the granted path, where it is inside the roots already.
@@ -91,13 +97,14 @@ impl FsGuard {
 
         let failed = failed.to_path_buf();
         if names_nothing(&source) {
+            crate::AuditEvent::absent(access.operation(), &subject).emit();
             return SandboxError::NotFound {
                 requested: failed,
                 source,
             };
         }
 
-        crate::AuditEvent::denied(access.operation(), &subject, "path does not resolve").emit();
+        crate::AuditEvent::denied(access.operation(), &subject, UNRESOLVABLE).emit();
         SandboxError::Unresolvable {
             requested: failed,
             source,
@@ -112,7 +119,26 @@ impl FsGuard {
     /// but guards the final component only; a swapped parent needs `openat`-chain resolution.
     pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
         let resolved = self.check_read(path)?;
-        open(std::fs::OpenOptions::new().read(true), &resolved, path)
+        open(
+            std::fs::OpenOptions::new().read(true),
+            &resolved,
+            path,
+            Access::Read,
+        )
+    }
+
+    /// Read the entries of `path`, refusing anything the policy does not allow.
+    ///
+    /// Here rather than in the caller because the record has to name what was read, and the
+    /// audit target is this crate's alone. `read_dir` has no handle form that `O_NOFOLLOW`
+    /// could guard, so this closes the check-to-open window no more than a bare
+    /// [`check_read`](FsGuard::check_read) does — what it closes is the gap between the
+    /// verdict and the trail.
+    pub fn read_dir(&self, path: &Path) -> Result<std::fs::ReadDir, SandboxError> {
+        let resolved = self.check_read(path)?;
+        let entries = std::fs::read_dir(&resolved).map_err(|source| classify(source, path));
+
+        record(entries, Access::Read, path)
     }
 
     /// Open `path` for writing, creating or truncating it; closes the check-to-open window
@@ -126,6 +152,7 @@ impl FsGuard {
                 .truncate(true),
             &resolved,
             path,
+            Access::Write,
         )
     }
 
@@ -143,9 +170,10 @@ impl FsGuard {
         root: &Path,
         max_files: usize,
     ) -> Result<ReadableWalk, SandboxError> {
-        // One check for the root, and so one audit decision for the walk: checking every
-        // entry would put thousands of "agent read this" records on the trail for files
-        // never opened.
+        // One record for the walk, naming the root: a record per entry would name thousands
+        // of files the walk only listed. A caller that goes on to read them — `grep` does —
+        // adds its own `allowed` per file it actually opens.
+        let requested = root;
         let root = self.check_read(root)?;
 
         let mut files = Vec::new();
@@ -208,6 +236,10 @@ impl FsGuard {
         }
 
         files.sort();
+        // Directly, not through `record`: the walk skips what it cannot read, so by here
+        // there is no outcome but success left to sort.
+        crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
+            .emit();
         Ok(ReadableWalk { files, truncated })
     }
 
@@ -269,6 +301,11 @@ impl FsGuard {
     }
 }
 
+/// What a trail calls a path that exists and still would not resolve — an unreadable parent,
+/// or a leaf swapped for a symlink. One string, so the record reads the same whether the
+/// gate caught it or the access did.
+const UNRESOLVABLE: &str = "path does not resolve";
+
 /// Whether resolution failed because the name denotes no file, rather than because something
 /// refused the lookup.
 ///
@@ -299,7 +336,11 @@ fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| resolved.starts_with(root))
 }
 
-/// Allow `resolved` only if it sits inside one of `roots`, recording the verdict.
+/// Allow `resolved` only if it sits inside one of `roots`, recording a refusal.
+///
+/// Only a refusal: passing the gate is not yet an access, and `decision=` records the
+/// access. So the entry points that go on to perform one carry the `allowed`, and a bare
+/// check that succeeds leaves no record at all (#182).
 ///
 /// `roots` has to be the set `access` names: a denial reports the access, so handing it the
 /// other axis's roots would record a true verdict with a false reason.
@@ -309,18 +350,42 @@ fn permit(
     requested: &Path,
     access: Access,
 ) -> Result<PathBuf, SandboxError> {
-    let subject = requested.display().to_string();
-
     if within(&resolved, roots) {
-        crate::AuditEvent::allowed(access.operation(), &subject).emit();
-        Ok(resolved)
-    } else {
-        crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
-        Err(SandboxError::PathNotAllowed {
-            requested: requested.to_path_buf(),
-            access,
-        })
+        return Ok(resolved);
     }
+
+    crate::AuditEvent::denied(
+        access.operation(),
+        &requested.display().to_string(),
+        access.outside(),
+    )
+    .emit();
+    Err(SandboxError::PathNotAllowed {
+        requested: requested.to_path_buf(),
+        access,
+    })
+}
+
+/// Record what an approved path's access actually did, and nothing about the verdict.
+///
+/// The three outcomes a post-gate access has: it happened, the name turned out to denote
+/// nothing, or the leaf was swapped since the check. `PathNotAllowed` cannot reach here —
+/// the gate returns it before any access is attempted.
+fn record<T>(
+    outcome: Result<T, SandboxError>,
+    access: Access,
+    requested: &Path,
+) -> Result<T, SandboxError> {
+    let subject = requested.display().to_string();
+    let tool = access.operation();
+
+    match &outcome {
+        Ok(_) => crate::AuditEvent::allowed(tool, &subject).emit(),
+        Err(SandboxError::NotFound { .. }) => crate::AuditEvent::absent(tool, &subject).emit(),
+        Err(_) => crate::AuditEvent::denied(tool, &subject, UNRESOLVABLE).emit(),
+    }
+
+    outcome
 }
 
 /// Open an already-approved path without following a symlink at the leaf, which — the path
@@ -332,20 +397,26 @@ fn open(
     options: &mut std::fs::OpenOptions,
     resolved: &Path,
     requested: &Path,
+    access: Access,
 ) -> Result<std::fs::File, SandboxError> {
     use std::os::unix::fs::OpenOptionsExt;
 
-    options
+    let opened = options
         .custom_flags(libc::O_NOFOLLOW)
         .open(resolved)
-        .map_err(|source| {
-            let requested = requested.to_path_buf();
-            if names_nothing(&source) {
-                SandboxError::NotFound { requested, source }
-            } else {
-                SandboxError::Unresolvable { requested, source }
-            }
-        })
+        .map_err(|source| classify(source, requested));
+
+    record(opened, access, requested)
+}
+
+/// Sort an error from an already-approved access into absence or refusal.
+fn classify(source: std::io::Error, requested: &Path) -> SandboxError {
+    let requested = requested.to_path_buf();
+    if names_nothing(&source) {
+        SandboxError::NotFound { requested, source }
+    } else {
+        SandboxError::Unresolvable { requested, source }
+    }
 }
 
 /// The files a walk returned, and whether it stopped before the tree ended.
@@ -370,7 +441,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let gone = root.path().join("deleted-after-the-check");
 
-        let error = open(std::fs::OpenOptions::new().read(true), &gone, &gone).unwrap_err();
+        let error = open(
+            std::fs::OpenOptions::new().read(true),
+            &gone,
+            &gone,
+            Access::Read,
+        )
+        .unwrap_err();
 
         assert!(
             matches!(error, SandboxError::NotFound { .. }),
@@ -388,7 +465,13 @@ mod tests {
         let link = root.path().join("swapped");
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        let error = open(std::fs::OpenOptions::new().read(true), &link, &link).unwrap_err();
+        let error = open(
+            std::fs::OpenOptions::new().read(true),
+            &link,
+            &link,
+            Access::Read,
+        )
+        .unwrap_err();
 
         assert!(
             matches!(error, SandboxError::Unresolvable { .. }),
