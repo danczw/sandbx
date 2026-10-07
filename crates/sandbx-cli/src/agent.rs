@@ -304,7 +304,7 @@ impl AgentRun {
             turn,
             ctx,
             |event| render.event(event),
-            |requested| gate::decide(self.allow_tool.as_deref(), requested),
+            gate::ArgvGate::new(self.allow_tool.as_deref()),
         )
         .await;
 

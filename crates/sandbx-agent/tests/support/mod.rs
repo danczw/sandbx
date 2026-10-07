@@ -5,7 +5,7 @@
 
 use std::collections::VecDeque;
 
-use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits};
+use sandbx_agent::{ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, StopReason,
@@ -71,8 +71,14 @@ pub(crate) fn ctx(policy: SandboxPolicy) -> ExecutionContext {
 }
 
 /// For the tests whose subject is not the gate: the policy in `ctx` scopes those.
-pub(crate) fn allow_all(_: ToolCall<'_>) -> ApprovalDecision {
-    ApprovalDecision::Allow
+pub(crate) struct AllowAll;
+
+impl CallGate for AllowAll {
+    fn approve(&mut self, _: ToolCall<'_>) -> ApprovalDecision {
+        ApprovalDecision::Allow
+    }
+
+    fn settled(&mut self, _: Settled<'_>) {}
 }
 
 pub(crate) fn text(delta: &str) -> AgentEvent {

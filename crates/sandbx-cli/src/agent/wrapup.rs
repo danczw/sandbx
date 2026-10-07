@@ -7,12 +7,13 @@
 use std::io::Write;
 
 use sandbx_agent::{
-    ApprovalDecision, PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn,
+    ApprovalDecision, CallGate, PromptUsage, Settled, ToolCall, Turn, TurnLimits, TurnOutcome,
+    TurnStop, run_turn,
 };
 use sandbx_providers::{EventStream, Prompt, ProviderError, RequestMessage, Thinking, ToolChoice};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use super::Render;
+use super::{Render, gate};
 
 /// What the model is told in place of the tools it may no longer call.
 ///
@@ -28,6 +29,24 @@ const NUDGE: &str = "You have no tool calls left. Answer now from what you have 
 /// Reached only by a model that ignored both the nudge and `tool_choice`, so the sentence
 /// is about the round rather than about a flag: `--allow-tool` would not lift it.
 const REFUSED: &str = "no tool may be called while answering a turn that ran out of rounds";
+
+/// The wrap-up round's gate: nothing runs, whatever this run's `--allow-tool` said.
+///
+/// Not `ArgvGate`, which would let a model that ignored both the nudge and `tool_choice`
+/// reach `sandbx-tools` on the strength of a flag meant for the turn before this one.
+struct RefuseAll;
+
+impl CallGate for RefuseAll {
+    fn approve(&mut self, _: ToolCall<'_>) -> ApprovalDecision {
+        ApprovalDecision::Deny {
+            reason: REFUSED.to_owned(),
+        }
+    }
+
+    fn settled(&mut self, call: Settled<'_>) {
+        gate::settled(call);
+    }
+}
 
 /// What the wrap-up round reuses from the turn that ran out of rounds.
 ///
@@ -89,11 +108,7 @@ impl Next {
             self.turn(&continued, &first),
             ctx,
             |event| render.event(event),
-            // Not `gate::decide`: a model that asks for a tool anyway must not reach
-            // `sandbx-tools` on the strength of this run's `--allow-tool`.
-            |_| ApprovalDecision::Deny {
-                reason: REFUSED.to_owned(),
-            },
+            RefuseAll,
         )
         .await;
 
