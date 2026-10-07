@@ -290,9 +290,10 @@ which it refused, goes to stderr. Read that first stderr line — it is what mak
 a misplaced `--` obvious, since `--allow-tool -- write the file` is the bare flag
 plus a prompt.
 
-Every run opens by telling the model which tools it approved and which roots
-those tools can reach, so it does not spend the turn guessing at paths the
-sandbox refuses or at tools the gate does.
+Every run opens by telling the model which roots its tools can reach, and a run
+that refuses a tool names the ones it approved too, so the turn is not spent
+guessing at paths the sandbox refuses or at tools the gate does. A run that
+approves all seven names none of them: there is nothing left to refuse.
 
 | flag | |
 |------|--|
@@ -301,7 +302,7 @@ sandbox refuses or at tools the gate does.
 | `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
 | `--max-rounds N`  | cap how many times the model may be asked in one turn. Default 8 |
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
-| `--system TEXT`   | a system prompt, sent after the lines naming the run's approved tools and roots |
+| `--system TEXT`   | a system prompt, sent after whatever lines name the run's approved tools and roots |
 
 Each run is one question and one answer, then the process ends; there is no way
 to interrupt a turn mid-flight. `--session` carries a conversation across runs:
