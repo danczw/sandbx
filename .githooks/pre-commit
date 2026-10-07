@@ -1,5 +1,5 @@
 #!/bin/sh
-# Both commands are byte-identical to ci.yml's Format and Clippy steps.
+# All three commands are byte-identical to ci.yml's Format, Clippy and Doc steps.
 
 set -e
 
@@ -8,5 +8,10 @@ cargo fmt --all -- --check
 
 echo "pre-commit: cargo clippy -D warnings"
 cargo clippy --workspace --all-targets -- -D warnings
+
+# Not the test suite, which is minutes; this is seconds on a warm target dir, and
+# it is the only one of the three that reads a doc comment at all.
+echo "pre-commit: cargo doc -D warnings"
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --all-features
 
 echo "pre-commit: ok"

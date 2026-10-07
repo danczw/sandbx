@@ -8,8 +8,8 @@ Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
                     included; zero unsafe anywhere)
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
-.githooks/          pre-commit: fmt --check, clippy -D warnings; commit-msg:
-                    Conventional Commits and a 72-character subject
+.githooks/          pre-commit: fmt --check, clippy -D warnings, doc -D warnings;
+                    commit-msg: Conventional Commits and a 72-character subject
 .github/            CI and release workflows, their action pins, and dependabot
 .github/scripts/    what a workflow calls but must be runnable without one
                     ◄── all three: guide-ci.md
