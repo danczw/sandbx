@@ -168,7 +168,7 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
    approval.rs  what a gate is asked, and the two answers it may give
    compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
-   error.rs   TurnError (6 variants)
+   error.rs   TurnError (5 variants)
 tests/       turn_loop (22), turn_compaction (23),
              support/mod.rs — the Script double and the request builders
 ```
