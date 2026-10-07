@@ -153,10 +153,11 @@ fn an_opened_file_records_the_access() {
     assert!(lines[0].contains("tool=read"), "got: {}", lines[0]);
 }
 
-/// An access that passed the gate and still failed for any reason but absence. EISDIR
-/// stands in for the class because a real check-to-open swap cannot be raced here; the
-/// `ELOOP` that swap produces maps to the same `Unresolvable`, which `fs_guard`'s
-/// `a_swapped_leaf_opens_as_unresolvable` pins.
+/// An access that passed the gate and still failed for any reason but absence, and whose
+/// reason does not say the path would not resolve — it had, and the policy had allowed it.
+/// EISDIR stands in for the class because a check-to-open swap cannot be raced here; the
+/// `ELOOP` that swap produces is the one post-gate failure that keeps the resolution
+/// reason, and `fs_guard`'s `a_swapped_leaf_opens_as_unresolvable` pins its error.
 #[test]
 fn an_access_that_fails_after_the_check_is_a_refusal() {
     let root = tempfile::tempdir().unwrap();
@@ -171,7 +172,7 @@ fn an_access_that_fails_after_the_check_is_a_refusal() {
     assert_eq!(lines.len(), 1, "got: {lines:?}");
     assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
     assert!(
-        lines[0].contains("path does not resolve"),
+        lines[0].contains("access did not complete"),
         "got: {}",
         lines[0]
     );
@@ -206,7 +207,7 @@ fn a_listed_directory_records_the_access() {
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
 
     let lines = capture(|| {
-        guard.read_dir(root.path()).unwrap();
+        guard.read_dir(root.path()).unwrap().unwrap();
     });
 
     assert_eq!(lines.len(), 1, "got: {lines:?}");
@@ -214,7 +215,8 @@ fn a_listed_directory_records_the_access() {
 }
 
 /// ENOTDIR from a directory read is the leaf being a regular file, which `check_read`
-/// just resolved — so `absent` would name a path that is demonstrably there.
+/// just resolved — so `absent` would name a path that is demonstrably there. It is still
+/// an attempt, so it is still recorded.
 #[test]
 fn listing_a_regular_file_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
@@ -226,7 +228,35 @@ fn listing_a_regular_file_is_not_an_absence() {
         let _ = guard.read_dir(&file);
     });
 
-    assert!(lines.is_empty(), "got: {lines:?}");
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
+}
+
+/// A read the host refuses on a path the policy granted. Silence here would be an access
+/// attempt with no record; `absent` would be a lie, the directory being there.
+#[test]
+fn a_listing_the_host_refuses_records_a_refusal() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let locked = root.path().join("locked");
+    std::fs::create_dir(&locked).unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let lines = capture(|| {
+        let _ = guard.read_dir(&locked);
+    });
+
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
+    assert!(
+        lines[0].contains("access did not complete"),
+        "got: {}",
+        lines[0]
+    );
 }
 
 #[test]

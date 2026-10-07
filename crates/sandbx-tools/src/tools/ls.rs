@@ -33,7 +33,8 @@ pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, Too
     let entries = ctx
         .guard()
         .read_dir(&input.path)
-        .map_err(|error| crate::guard_error(&input.path, error))?;
+        .map_err(|error| crate::guard_error(&input.path, error))?
+        .map_err(|error| crate::failed("list", &input.path, error))?;
 
     let mut names = Vec::new();
     for entry in entries {
