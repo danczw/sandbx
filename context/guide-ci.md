@@ -43,7 +43,7 @@ Two things fall out of that pattern that are easy to trip over:
 | `sandbox (x86_64)`, `sandbox (aarch64)` | the enforcement suite on a real kernel, gnu then the published musl triple |
 | `msrv` | the suite still builds at the floor the manifest states |
 | `notes` | every release-notes file is within budget, and the manifest's version has one |
-| `audit` | cargo-deny, the release-channel table, and zizmor over the workflows |
+| `audit` | cargo-deny, both release-channel tables, and zizmor over the workflows |
 
 `permissions: contents: read` replaces the repo default and
 `persist-credentials: false` drops the clone's token, so a compromised action
@@ -87,6 +87,61 @@ whole class, including lints a future toolchain adds.
 
 The Doc step also passes `--all-features`, unlike Clippy: a feature-gated item's
 intra-doc links are checked there or nowhere.
+
+## Publication: the two questions a tag answers
+
+`release.yml` asks `release-channel.sh` two things, and neither answer may be a
+default — a mis-marked release cannot be un-pushed, which is why both are decided
+in a script with a table in `--self-test` rather than inline in the workflow.
+
+**Which channel.** Only an exact 1.0-or-later version is a `release`; everything
+else is a `prerelease`. This implements the support policy in `SECURITY.md`.
+
+**Whether it takes GitHub's "latest" link.** Highest semver wins: a tag takes the
+link only if no published non-draft release carries a higher version. A
+pre-release never takes it. The rule exists because the REST API defaults
+`make_latest` to `true`, so omitting the flag lets *publication* order decide —
+post-1.0, a `v1.5.1` backport tagged after `v2.0.0` would demote `v2.0.0`.
+`gh release create` is therefore always passed an explicit `--latest=true|false`.
+
+The rejected alternative is worth naming because it reads as the simpler one:
+"only the newest `MAJOR.MINOR` line may be latest" still needs the set of
+published releases to know which line is newest, so it buys no simplicity, and it
+re-promotes an older patch of the current line — `v1.5.1` published while
+`v1.5.3` exists would take the link back.
+
+**A published tag the comparison cannot parse is an error, not a skip.** Every
+unrecognised shape classifies `prerelease`, so skipping one would read as
+"nothing higher is published" and hand the link away — the exact demotion this
+rule exists to stop. A tag therefore has to be `M.m.p` with optional pre-release
+and build parts to be skipped as a non-competitor; anything else fails the step,
+which is recoverable, where a wrong `latest` is not. Version fields are capped at
+nine digits for the same reason: a wider one reaches `[ -gt ]`, which reports a
+parse error rather than an order, and `if` reads that as "not higher".
+
+### Why the query is in the workflow and the comparison is not
+
+`guide-repo-map.md` requires everything in `.github/scripts/` to run without a
+workflow, and this decision needs the published set, which only an API call
+supplies. So `release-channel.sh --latest <tag>` reads candidate tags on
+**stdin**: the script makes no network call, stays runnable by hand, and the
+self-test feeds it synthetic sets. The `gh api` call lives in the `notes` job,
+which is the only one with a checkout — `publish` deliberately has none, so that
+`contents: write` is confined to a job holding no source.
+
+Two traps in that step, both of which have bitten:
+
+- **The handoff is validated, not defaulted.** An empty `$CHANNEL` or `$LATEST`
+  means the job-output wiring broke; the step errors. Defaulting either would be
+  right for every pre-1.0 tag and would hide the break until 1.0.
+- **`gh api` gets its own statement, not a pipe into the script.** The default
+  shell has no `pipefail`, so a pipeline reports the script's status and a failed
+  API call reads as an empty release set — which answers `true`. The empty set is
+  tested for separately, because a call that succeeds and matches nothing lands
+  in the same place by a route no exit status reports.
+
+The version compare is hand-rolled and field-wise rather than `sort -V`, which is
+GNU-only; the scripts are `#!/bin/sh` and the self-test runs under `dash`.
 
 ## Pinned actions, and what updates them
 
