@@ -1,9 +1,8 @@
 //! Reports when it is up, conceals itself when told to, and holds until stdin closes.
 //! Test-only.
 //!
-//! Two stages driven from the parent, because `/proc/self/environ` answers its own reader
-//! whatever the dumpable flag says: only another process can see the concealment, and it has
-//! to look both before and after to know the refusal came from this call.
+//! Two stages driven from the parent, because the reader the flag is about is another
+//! process: it has to look both before and after this call to pin the refusal on it.
 
 use std::io::{BufRead, Write};
 

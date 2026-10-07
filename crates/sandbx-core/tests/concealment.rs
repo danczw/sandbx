@@ -1,8 +1,8 @@
 //! What another process running as the same user can read out of sandbx's procfs entry.
 //!
-//! Cross-process throughout: a self-read of `/proc/self/environ` passes
-//! `__ptrace_may_access` whatever the dumpable flag says, so the probe is spawned and
-//! inspected from here.
+//! Cross-process because that is the claim: what the flag stops is a same-uid reader, and
+//! only a second process can be one. So the probe is spawned and read from here, before and
+//! after it conceals itself, which is what pins the refusal on the call.
 // `Command::new` spawns this crate's own probe; the workspace ban exists to stop code
 // executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
@@ -51,7 +51,7 @@ fn stop(child: &mut Child) {
 }
 
 /// #192: a `--allow-read /proc` grant must not reach the key the harness was handed in its
-/// own environment.
+/// environment.
 #[test]
 fn a_concealed_process_hides_its_environment_from_its_parent() {
     let mut child = probe();
