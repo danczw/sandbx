@@ -1,8 +1,32 @@
 //! Public contract of [`SandboxPolicy`].
 
 use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
-use sandbx_core::{NetworkPolicy, SandboxPolicy};
+use sandbx_core::{NetworkPolicy, SandboxPolicy, VettedPath};
+
+/// `path`, pinned to the object it names.
+///
+/// A grant carries the object the harness measured (#212), so a policy test grants somewhere
+/// that exists rather than a spelling no process has to be able to open.
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
+
+/// A directory to grant, resolved — `vet` resolves, so a host reaching its temporary
+/// directory through a symlink would otherwise pin a path these tests never spelled.
+fn scratch() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = dir.path().canonicalize().expect("its resolved path");
+
+    (dir, root)
+}
+
+/// What a policy granted on `axis`, as paths — the grants also carry an object, which only
+/// the tests about the pin itself have anything to say about.
+fn granted_on(policy: &SandboxPolicy, axis: sandbx_core::Axis) -> Vec<&Path> {
+    policy.paths(axis).iter().map(VettedPath::path).collect()
+}
 
 /// If the default ever grants an access, a caller that forgets to configure the
 /// policy silently gets an unsandboxed agent.
@@ -57,7 +81,10 @@ fn system_executables_grants_what_a_command_needs() {
             continue;
         };
         assert!(
-            policy.executable_paths().contains(&path),
+            policy
+                .executable_paths()
+                .iter()
+                .any(|granted| granted.path() == path),
             "{expected} exists but was not granted as {}",
             path.display()
         );
@@ -80,9 +107,10 @@ fn system_executables_grants_no_write_or_network() {
 /// separation has to be made here.
 #[test]
 fn read_and_write_grants_do_not_confer_execute() {
+    let (_dir, root) = scratch();
     let policy = SandboxPolicy::default()
-        .allow_read("/srv/data")
-        .allow_write("/srv/data");
+        .allow_read(vetted(&root))
+        .allow_write(vetted(&root));
 
     assert!(
         policy.executable_paths().is_empty(),
@@ -92,11 +120,12 @@ fn read_and_write_grants_do_not_confer_execute() {
 
 #[test]
 fn read_execute_grants_both_axes_deliberately() {
-    let policy = SandboxPolicy::default().allow_read_execute("/opt/tool");
+    let (_dir, root) = scratch();
+    let policy = SandboxPolicy::default().allow_read_execute(vetted(&root));
 
     assert_eq!(
-        policy.executable_paths(),
-        [std::path::PathBuf::from("/opt/tool")]
+        granted_on(&policy, sandbx_core::Axis::ReadExecute),
+        [root.as_path()]
     );
     assert!(
         policy.readable_paths().is_empty(),
@@ -110,20 +139,25 @@ fn read_execute_grants_both_axes_deliberately() {
 fn system_executables_skips_paths_this_system_lacks() {
     let policy = SandboxPolicy::default().allow_system_executables();
 
-    for path in policy.executable_paths() {
-        assert!(path.exists(), "{} does not exist here", path.display());
+    for granted in policy.executable_paths() {
+        assert!(
+            granted.path().exists(),
+            "{} does not exist here",
+            granted.path().display()
+        );
     }
 }
 
 #[test]
 fn system_executables_keeps_what_was_already_granted() {
+    let (_dir, root) = scratch();
     let policy = SandboxPolicy::default()
-        .allow_write("/srv/out")
+        .allow_write(vetted(&root))
         .allow_system_executables();
 
     assert_eq!(
-        policy.writable_paths(),
-        [std::path::PathBuf::from("/srv/out")]
+        granted_on(&policy, sandbx_core::Axis::Write),
+        [root.as_path()]
     );
 }
 
@@ -235,8 +269,9 @@ fn granting_a_variable_widens_nothing_else() {
 
 #[test]
 fn granting_a_path_passes_no_variable() {
+    let (_dir, root) = scratch();
     let policy = SandboxPolicy::default()
-        .allow_read("/srv")
+        .allow_read(vetted(&root))
         .allow_system_executables();
 
     assert!(
@@ -349,19 +384,19 @@ fn axis_grants_are_the_documented_three_way_claim() {
 fn a_grant_lands_only_on_its_own_axis() {
     use sandbx_core::Axis;
 
-    let granted = std::path::PathBuf::from("/srv/data");
+    let (_dir, granted) = scratch();
 
     for axis in Axis::ALL {
-        let policy = SandboxPolicy::default().grant(axis, &granted);
+        let policy = SandboxPolicy::default().grant(axis, vetted(&granted));
 
         for other in Axis::ALL {
-            let expected: &[std::path::PathBuf] = if other == axis {
-                std::slice::from_ref(&granted)
+            let expected: &[&Path] = if other == axis {
+                &[granted.as_path()]
             } else {
                 &[]
             };
             assert_eq!(
-                policy.paths(other),
+                granted_on(&policy, other),
                 expected,
                 "a grant on {axis:?} showed up under {other:?}"
             );
@@ -375,24 +410,32 @@ fn a_grant_lands_only_on_its_own_axis() {
 fn granted_paths_yields_each_grant_in_axis_order() {
     use sandbx_core::Axis;
 
+    let (_dir, root) = scratch();
+    let at = |name: &str| {
+        let path = root.join(name);
+        std::fs::create_dir(&path).expect("a directory to grant");
+        path
+    };
+    let (a, b, c, d) = (at("a"), at("b"), at("c"), at("d"));
+
     let policy = SandboxPolicy::default()
-        .allow_read("/a")
-        .allow_write("/b")
-        .allow_read_execute("/c")
-        .allow_read("/d");
+        .allow_read(vetted(&a))
+        .allow_write(vetted(&b))
+        .allow_read_execute(vetted(&c))
+        .allow_read(vetted(&d));
 
     let visited: Vec<_> = policy
         .granted_paths()
-        .map(|(axis, path)| (axis, path.display().to_string()))
+        .map(|(axis, granted)| (axis, granted.path().to_path_buf()))
         .collect();
 
     assert_eq!(
         visited,
         [
-            (Axis::Read, "/a".to_string()),
-            (Axis::Read, "/d".to_string()),
-            (Axis::Write, "/b".to_string()),
-            (Axis::ReadExecute, "/c".to_string()),
+            (Axis::Read, a),
+            (Axis::Read, d),
+            (Axis::Write, b),
+            (Axis::ReadExecute, c),
         ]
     );
 }
@@ -471,10 +514,10 @@ fn an_unhinted_policy_permits_no_resolver_variable() {
 }
 
 /// Two directories that exist, since a start directory is one a `chdir` would reach.
-fn two_roots() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
-    let dir = tempfile::tempdir().expect("a temporary directory");
-    let first = dir.path().join("first");
-    let second = dir.path().join("second");
+fn two_roots() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let (dir, root) = scratch();
+    let first = root.join("first");
+    let second = root.join("second");
     std::fs::create_dir(&first).expect("the first root");
     std::fs::create_dir(&second).expect("the second root");
 
@@ -487,9 +530,9 @@ fn two_roots() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
 fn a_command_starts_in_the_first_writable_root() {
     let (dir, first, second) = two_roots();
     let policy = SandboxPolicy::default()
-        .allow_read(dir.path())
-        .allow_write(&first)
-        .allow_write(&second);
+        .allow_read(vetted(dir.path()))
+        .allow_write(vetted(&first))
+        .allow_write(vetted(&second));
 
     assert_eq!(policy.working_root(), Some(first.as_path()));
 }
@@ -498,8 +541,8 @@ fn a_command_starts_in_the_first_writable_root() {
 fn a_read_only_policy_starts_in_its_first_readable_root() {
     let (_dir, first, second) = two_roots();
     let policy = SandboxPolicy::default()
-        .allow_read(&first)
-        .allow_read(second);
+        .allow_read(vetted(&first))
+        .allow_read(vetted(second));
 
     assert_eq!(policy.working_root(), Some(first.as_path()));
 }
@@ -512,8 +555,8 @@ fn a_grant_naming_a_file_is_not_somewhere_to_start() {
     std::fs::write(&file, b"x").expect("a file to grant");
 
     let policy = SandboxPolicy::default()
-        .allow_write(&file)
-        .allow_write(&second);
+        .allow_write(vetted(&file))
+        .allow_write(vetted(&second));
 
     assert_eq!(policy.working_root(), Some(second.as_path()));
 }
@@ -524,7 +567,7 @@ fn a_grant_naming_a_file_is_not_somewhere_to_start() {
 fn an_execute_only_policy_names_nowhere_to_start() {
     let (_dir, first, _) = two_roots();
     let policy = SandboxPolicy::default()
-        .allow_read_execute(first)
+        .allow_read_execute(vetted(first))
         .allow_system_executables();
 
     assert_eq!(policy.working_root(), None);
@@ -578,6 +621,46 @@ fn a_bounded_policy_with_no_route_to_a_nameserver_is_enforceable() {
             policy.unbounded_resolution(),
             None,
             "a policy that bounds what it says was refused"
+        );
+    }
+}
+
+/// Every file the resolver binds over, not `resolv.conf` alone: the collision is a property of
+/// being bound over, so a refusal naming one path would leave the other two pinning rules to
+/// objects sandbx itself replaces.
+#[test]
+fn a_grant_naming_a_file_the_resolver_binds_over_is_refused() {
+    for bound in sandbx_core::RESOLVER_FILES {
+        let policy = SandboxPolicy::default()
+            .allow_dns("example.com")
+            .allow_network_port(443)
+            .allow_read(vetted(bound));
+
+        assert_eq!(
+            policy.grant_bound_by_resolver(),
+            Some(Path::new(bound)),
+            "a grant on {bound} was not reported, so the pin is measured against sandbx's \
+             own copy and the run refuses as a substituted object"
+        );
+    }
+}
+
+/// The negative half, and the one shape the refusal must not grow to cover: binding a file
+/// inside `/etc` leaves `/etc`'s own inode alone, so the directory grant's pin still holds.
+#[test]
+fn a_grant_above_the_bind_and_a_bind_with_no_allowlist_are_both_kept() {
+    let dns = || SandboxPolicy::default().allow_dns("example.com");
+
+    for policy in [
+        dns().allow_read(vetted("/etc")),
+        dns().allow_read(vetted("/")),
+        // No allowlist, so nothing is bound and the host's own files are what is granted.
+        SandboxPolicy::default().allow_read(vetted("/etc/hosts")),
+    ] {
+        assert_eq!(
+            policy.grant_bound_by_resolver(),
+            None,
+            "a grant the resolver does not bind over was refused"
         );
     }
 }

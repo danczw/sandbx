@@ -2,6 +2,11 @@
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+    sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
+
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
@@ -51,12 +56,15 @@ fn asks_the_helper_to_report_on_the_channel() {
 /// it should not have had.
 #[test]
 fn carries_the_policy_into_the_command_line() {
-    let (_, argv) = SandboxedCommand::new("/bin/sh", SandboxPolicy::default().allow_read("/usr"))
-        .arg("-c")
-        .arg("true")
-        .helper("/nonexistent/helper")
-        .command_line()
-        .unwrap();
+    let (_, argv) = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default().allow_read(vetted("/usr")),
+    )
+    .arg("-c")
+    .arg("true")
+    .helper("/nonexistent/helper")
+    .command_line()
+    .unwrap();
 
     assert!(argv.windows(2).any(|w| w == ["--ro", "/usr"]));
     assert_eq!(&argv[argv.len() - 3..], &["/bin/sh", "-c", "true"]);
@@ -97,7 +105,7 @@ fn the_start_directory_is_not_in_the_command_line() {
     let dir = scratch();
     let root = dir.path().to_str().unwrap().to_string();
 
-    let policy = SandboxPolicy::default().allow_write(dir.path());
+    let policy = SandboxPolicy::default().allow_write(vetted(dir.path()));
     let (_, argv) = SandboxedCommand::new("/bin/true", policy.clone())
         .helper("/nonexistent/helper")
         .command_line()
@@ -125,7 +133,7 @@ fn runs_a_command_under_the_policy() {
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
-        .allow_read(dir.path());
+        .allow_read(vetted(dir.path()));
 
     let output = SandboxedCommand::new("/bin/cat", policy)
         .arg(file.to_str().unwrap())
@@ -151,8 +159,8 @@ fn starts_the_command_in_a_granted_root() {
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
-        .allow_read(&root)
-        .allow_write(&root);
+        .allow_read(vetted(&root))
+        .allow_write(vetted(&root));
 
     let output = SandboxedCommand::new("/bin/pwd", policy)
         .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
@@ -367,9 +375,9 @@ fn a_backgrounded_descendant_dies_with_the_command() {
         "/bin/sh",
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read("/dev/null")
-            .allow_write("/dev/null")
-            .allow_write(dir.path()),
+            .allow_read(vetted("/dev/null"))
+            .allow_write(vetted("/dev/null"))
+            .allow_write(vetted(dir.path())),
     )
     .arg("-c")
     // Braces matter: without them `&` backgrounds only the `echo`, and the command
@@ -416,8 +424,8 @@ fn without_a_timeout_a_descendant_does_not_block() {
         "/bin/sh",
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read("/dev/null")
-            .allow_write("/dev/null"),
+            .allow_read(vetted("/dev/null"))
+            .allow_write(vetted("/dev/null")),
     )
     .arg("-c")
     .arg("sleep 10 & echo started")
@@ -451,9 +459,9 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
         "/bin/sh",
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read("/dev/null")
-            .allow_write("/dev/null")
-            .allow_write(dir.path()),
+            .allow_read(vetted("/dev/null"))
+            .allow_write(vetted("/dev/null"))
+            .allow_write(vetted(dir.path())),
     )
     .arg("-c")
     .arg(format!(
@@ -519,4 +527,25 @@ fn a_policy_that_bounds_no_name_cannot_be_turned_into_an_argv() {
         .expect_err("an argv was built for a policy whose allowlist bounds nothing");
 
     assert_eq!(refusal.label(), "unbounded_resolution", "got {refusal:?}");
+}
+
+/// At this level and not the CLI's: an embedder spawning the argv itself would otherwise reach
+/// the helper, where the pin is measured against the copy sandbx bound and the run refuses as
+/// a substituted object — a false `GrantReplaced` on a legitimate pair.
+#[test]
+fn a_policy_granting_a_file_its_own_resolver_replaces_cannot_be_turned_into_an_argv() {
+    let policy = SandboxPolicy::default()
+        .allow_dns("example.com")
+        .allow_network_port(443)
+        .allow_read(vetted("/etc/hosts"));
+
+    let refusal = SandboxedCommand::new("/bin/true", policy)
+        .command_line()
+        .expect_err("an argv was built for a grant the run's own resolver binds over");
+
+    assert_eq!(
+        refusal.label(),
+        "grant_bound_by_resolver",
+        "got {refusal:?}"
+    );
 }

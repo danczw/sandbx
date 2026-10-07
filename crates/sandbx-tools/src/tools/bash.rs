@@ -108,6 +108,7 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
                 HelperRefusal::BadHelperArgs
                 | HelperRefusal::Landlock
                 | HelperRefusal::GrantRedirected
+                | HelperRefusal::GrantReplaced
                 | HelperRefusal::Seccomp
                 | HelperRefusal::NamespaceSetupFailed
                 | HelperRefusal::ProcessHardening
@@ -163,7 +164,7 @@ mod tests {
         )
     }
 
-    /// The `match` inside is exhaustive, so a thirteenth refusal fails to compile until someone
+    /// The `match` inside is exhaustive, so a fourteenth refusal fails to compile until someone
     /// decides which kind of wrong the model is told it is.
     #[test]
     fn every_refusal_is_a_denial_or_a_sandbox_that_would_not_apply() {
@@ -175,6 +176,7 @@ mod tests {
                 HelperRefusal::BadHelperArgs
                 | HelperRefusal::Landlock
                 | HelperRefusal::GrantRedirected
+                | HelperRefusal::GrantReplaced
                 | HelperRefusal::Seccomp
                 | HelperRefusal::NamespaceSetupFailed
                 | HelperRefusal::ProcessHardening

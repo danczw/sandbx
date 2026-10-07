@@ -5,9 +5,14 @@
 //! explains what the agent was doing. The marker matters as much as the cap: a
 //! silently truncated list looks complete, and the model concludes from it.
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
 use serde_json::json;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
     ExecutionContext::new(policy).with_limits(limits)
@@ -26,7 +31,7 @@ fn tree_with_matches(count: usize) -> tempfile::TempDir {
 fn grep_caps_the_number_of_hits() {
     let root = tree_with_matches(50);
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_entries(10),
     );
 
@@ -49,7 +54,7 @@ fn grep_caps_the_number_of_hits() {
 fn grep_says_when_it_truncated() {
     let root = tree_with_matches(50);
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_entries(10),
     );
 
@@ -72,7 +77,7 @@ fn grep_says_when_it_truncated() {
 fn grep_does_not_mark_a_complete_result() {
     let root = tree_with_matches(3);
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_entries(10),
     );
 
@@ -94,7 +99,7 @@ fn grep_does_not_mark_a_complete_result() {
 fn find_caps_and_marks() {
     let root = tree_with_matches(50);
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_entries(5),
     );
 
@@ -120,7 +125,7 @@ fn find_caps_and_marks() {
 fn ls_caps_and_marks() {
     let root = tree_with_matches(50);
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_entries(7),
     );
 
@@ -147,7 +152,7 @@ fn read_caps_by_bytes_and_marks() {
     std::fs::write(&file, "x".repeat(10_000)).unwrap();
 
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_bytes(100),
     );
 
@@ -174,7 +179,7 @@ fn read_does_not_mark_a_file_that_fits() {
     std::fs::write(&file, "short").unwrap();
 
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_bytes(100),
     );
 
@@ -193,7 +198,7 @@ fn read_truncates_on_a_character_boundary() {
     std::fs::write(&file, "日".repeat(1000)).unwrap();
 
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_bytes(100),
     );
 

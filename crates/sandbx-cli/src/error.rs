@@ -124,6 +124,18 @@ pub enum PolicyError {
         source: std::io::Error,
     },
 
+    /// A path flag named something that could not be pinned to the object it names, so the
+    /// grant the helper would check against does not exist (#212).
+    ///
+    /// Separate from [`UnresolvableGrant`](Self::UnresolvableGrant), where the flag's own
+    /// spelling was unusable: here the spelling is fine and what it names is not.
+    UnpinnableGrant {
+        /// The path as the flag gave it, which is what the operator can go and change.
+        granted: PathBuf,
+        /// What vetting it reported.
+        source: SandboxError,
+    },
+
     /// A no-flag run was made from a working directory reaching one of those paths.
     ///
     /// Separate from [`GrantReachesOwned`](Self::GrantReachesOwned): the operator granted
@@ -155,6 +167,15 @@ pub enum PolicyError {
 
     /// `--allow-dns` was given alongside `--allow-unix-sockets`.
     DnsWithUnixSockets,
+
+    /// A path flag named a file `--allow-dns` replaces with sandbx's own.
+    ///
+    /// Not one of the five: the allowlist still bounds what it says. The grant is the problem
+    /// — it pins a rule to the host's file, and the bind leaves the command reading another.
+    DnsGrantsBoundFile {
+        /// The path as the flag gave it, before resolving.
+        granted: PathBuf,
+    },
 
     /// `--pin-sha256` was given more than once.
     RepeatedPin,
@@ -261,6 +282,12 @@ impl std::fmt::Display for PolicyError {
                  it against could not be read: {source} — write the grant as an absolute path",
                 granted.display()
             ),
+            Self::UnpinnableGrant { granted, source } => write!(
+                f,
+                "refusing to grant {}: {source} — a grant is checked against the object it \
+                 named, so name a path that exists",
+                granted.display()
+            ),
             Self::CwdReachesOwned { cwd, owned, holds } if cwd == owned => write!(
                 f,
                 "refusing to derive a policy from {}, where sandbx keeps {holds} and the \
@@ -305,6 +332,13 @@ impl std::fmt::Display for PolicyError {
                  nscd's socket, which glibc asks before it reads nsswitch.conf and which \
                  answers for every name — pass one of the two, not both"
             ),
+            Self::DnsGrantsBoundFile { granted } => write!(
+                f,
+                "--allow-dns replaces {} with sandbx's own copy, so a grant naming it reaches \
+                 a file the command never reads — drop it, and grant the directory instead if \
+                 the command needs the rest of it",
+                granted.display()
+            ),
             Self::RepeatedPin => write!(
                 f,
                 "one run execs one program, so there is one digest to pin — \
@@ -338,11 +372,13 @@ impl std::error::Error for PolicyError {
             | Self::DnsWithNameserverPort
             | Self::DnsWithoutEgress
             | Self::DnsWithUnixSockets
+            | Self::DnsGrantsBoundFile { .. }
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } | Self::UnresolvableGrant { source, .. } => {
                 Some(source)
             }
+            Self::UnpinnableGrant { source, .. } => Some(source),
         }
     }
 }

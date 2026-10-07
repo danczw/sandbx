@@ -4,9 +4,14 @@
 //! sees it. `FsGuard` is the only thing keeping it inside the policy, which is why
 //! these dwell on refusal.
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
@@ -18,7 +23,7 @@ fn reads_a_file_inside_an_allowed_root() {
     let file = root.path().join("notes.txt");
     std::fs::write(&file, b"hello from the workspace").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Read
         .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
         .unwrap();
@@ -33,7 +38,7 @@ fn refuses_a_path_outside_every_allowed_root() {
     let secret = elsewhere.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(allowed.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(allowed.path())));
     let err = BuiltinTool::Read
         .execute(json!({ "path": secret.to_str().unwrap() }), &ctx)
         .unwrap_err();
@@ -48,7 +53,7 @@ fn distinguishes_a_missing_file_from_a_refusal() {
     let elsewhere = tempfile::tempdir().unwrap();
     let secret = elsewhere.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let missing = BuiltinTool::Read
         .execute(
@@ -74,7 +79,7 @@ fn distinguishes_a_missing_file_from_a_refusal() {
 #[test]
 fn a_missing_file_reports_why_not_a_refusal() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let err = BuiltinTool::Read
         .execute(
@@ -92,7 +97,7 @@ fn a_missing_file_reports_why_not_a_refusal() {
 #[test]
 fn rejects_input_that_does_not_match_the_schema() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let err = BuiltinTool::Read
         .execute(json!({ "wrong_field": 1 }), &ctx)
@@ -121,7 +126,7 @@ fn an_empty_file_is_reported_as_empty() {
     let file = root.path().join("empty.txt");
     std::fs::write(&file, b"").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Read
         .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
         .unwrap();

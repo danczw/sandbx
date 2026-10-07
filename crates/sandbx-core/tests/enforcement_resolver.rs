@@ -10,7 +10,7 @@ mod support;
 use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
 
 use sandbx_core::SandboxPolicy;
-use support::{allow_probe, run, runtime_paths};
+use support::{allow_probe, run, runtime_paths, vetted};
 
 /// The names sandbx's own hosts file writes, which prove nothing about the allowlist: a name
 /// from this set resolves whether the policy asked for it or not.
@@ -242,7 +242,11 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
 
 /// What `ruleset::opened::open_grant` compares a granted path against. A bind whose source had
 /// been unlinked reads back from `/proc/self/fd` with `" (deleted)"` appended, so every grant
-/// naming one of these three files would be refused.
+/// reaching one of these three files would be refused.
+///
+/// `/etc` and not `/etc/hosts`: a grant naming a bound file exactly is refused for its pin,
+/// which is `SandboxPolicy::grant_bound_by_resolver`, and `/etc`'s own inode is what a grant
+/// above the bind is pinned to.
 #[test]
 fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
     if host_forbids_the_mounts() {
@@ -255,8 +259,8 @@ fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
     // `/proc` read is the probe's own need, `/proc/self/fd` being where the kernel answers.
     let policy = SandboxPolicy::default()
         .allow_dns(&name)
-        .allow_read("/proc")
-        .allow_read("/etc/hosts");
+        .allow_read(vetted("/proc"))
+        .allow_read(vetted("/etc"));
 
     let output = probe(policy, &["fdpath", "/etc/hosts"]);
 
@@ -348,8 +352,8 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
 
     let policy = SandboxPolicy::default()
         .allow_dns(&name)
-        .allow_write("/etc")
-        .allow_write(scratch.path());
+        .allow_write(vetted("/etc"))
+        .allow_write(vetted(scratch.path()));
 
     let control = probe(policy.clone(), &["write", &writable.display().to_string()]);
     let refused = probe(policy, &["write", "/etc/hosts"]);
@@ -382,7 +386,7 @@ fn the_host_etc_survives_a_bounded_run() {
 
     let policy = SandboxPolicy::default()
         .allow_dns(&name)
-        .allow_write("/etc")
+        .allow_write(vetted("/etc"))
         .allow_network_port(address.port());
     let output = probe(policy, &["write", "/etc/hosts"]);
 
@@ -424,7 +428,7 @@ fn a_run_without_the_flag_resolves_as_it_did_before() {
     drain(address, accepting);
 
     let policy = SandboxPolicy::default()
-        .allow_read("/etc")
+        .allow_read(vetted("/etc"))
         .allow_network_port(address.port());
 
     let resolved = probe(policy.clone(), &["resolve", &name]);

@@ -70,6 +70,11 @@ pub(crate) fn ctx(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
 }
 
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+pub(crate) fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+    sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
+
 /// For the tests whose subject is not the gate: the policy in `ctx` scopes those.
 pub(crate) struct AllowAll;
 

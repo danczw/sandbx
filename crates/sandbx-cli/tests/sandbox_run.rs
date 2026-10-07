@@ -22,6 +22,37 @@ fn cwd() -> std::path::PathBuf {
         .expect("an openable working directory")
 }
 
+/// The paths of a set of grants. Each also carries the object at its path (#212), derived
+/// from the path, so these tests assert over the spelling and the pin follows.
+fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&std::path::Path> {
+    granted.iter().map(sandbx_core::VettedPath::path).collect()
+}
+
+/// A scratch root holding `names`, each a real directory, and their absolute spellings.
+///
+/// A flag's path has to name something now that a grant carries the object at it, so a
+/// fixture cannot grant `/srv` and hope. Rooted at the resolved `$TMPDIR` because vetting
+/// resolves, and the spellings a test compares against are the ones the policy holds.
+fn scratch(names: &[&str]) -> (tempfile::TempDir, Vec<String>) {
+    let root = std::env::temp_dir()
+        .canonicalize()
+        .expect("a resolved temporary directory");
+    let dir = tempfile::Builder::new()
+        .tempdir_in(root)
+        .expect("a temporary directory");
+
+    let made = names
+        .iter()
+        .map(|name| {
+            let path = dir.path().join(name);
+            std::fs::create_dir(&path).expect("a directory to grant");
+            path.to_str().expect("utf-8").to_owned()
+        })
+        .collect();
+
+    (dir, made)
+}
+
 #[test]
 fn grants_only_what_a_command_needs_to_start() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -74,13 +105,13 @@ fn the_working_directory_is_readable_and_writable() {
         .expect("the flags describe a policy");
 
     assert_eq!(
-        policy.readable_paths(),
-        [cwd()],
+        spellings(policy.readable_paths()),
+        [cwd().as_path()],
         "the default read grant is not the working directory alone"
     );
     assert_eq!(
-        policy.writable_paths(),
-        [cwd()],
+        spellings(policy.writable_paths()),
+        [cwd().as_path()],
         "the default write grant is not the working directory alone"
     );
 }
@@ -130,14 +161,16 @@ fn a_path_flag_moves_where_the_command_starts() {
 /// over the working directory too.
 #[test]
 fn a_path_flag_replaces_the_working_directory() {
+    let (_scratch, granted) = scratch(&["srv"]);
+
     for flag in ["--allow-read", "--allow-write", "--allow-exec"] {
-        let policy = sandbox_run(&["sandbx", "sandbox-run", flag, "/srv", "--", "true"])
+        let policy = sandbox_run(&["sandbx", "sandbox-run", flag, &granted[0], "--", "true"])
             .policy()
             .expect("the flags describe a policy");
 
         for axis in sandbx_core::Axis::ALL {
             assert!(
-                !policy.paths(axis).contains(&cwd()),
+                !spellings(policy.paths(axis)).contains(&cwd().as_path()),
                 "{flag} left the working directory on the {axis:?} axis"
             );
         }
@@ -152,8 +185,8 @@ fn an_env_flag_keeps_the_working_directory() {
         .expect("the flags describe a policy");
 
     assert_eq!(
-        policy.writable_paths(),
-        [cwd()],
+        spellings(policy.writable_paths()),
+        [cwd().as_path()],
         "a flag naming no path suppressed the working-directory default"
     );
 }
@@ -177,11 +210,12 @@ fn the_default_root_is_not_executable() {
 
 #[test]
 fn each_allow_flag_widens_only_its_own_axis() {
+    let (_scratch, granted) = scratch(&["srv"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
         "--allow-read",
-        "/srv",
+        &granted[0],
         "--",
         "true",
     ])
@@ -189,9 +223,7 @@ fn each_allow_flag_widens_only_its_own_axis() {
     .expect("the flags describe a policy");
 
     assert!(
-        policy
-            .readable_paths()
-            .contains(&std::path::PathBuf::from("/srv")),
+        spellings(policy.readable_paths()).contains(&std::path::Path::new(&granted[0])),
         "the requested path was not granted"
     );
     assert!(policy.writable_paths().is_empty(), "read implied write");
@@ -200,30 +232,32 @@ fn each_allow_flag_widens_only_its_own_axis() {
 
 #[test]
 fn allow_flags_repeat_to_grant_several_paths() {
+    let (_scratch, dirs) = scratch(&["a", "b", "c"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
         "--allow-read",
-        "/a",
+        &dirs[0],
         "--allow-read",
-        "/b",
+        &dirs[1],
         "--allow-write",
-        "/c",
+        &dirs[2],
         "--",
         "true",
     ])
     .policy()
     .expect("the flags describe a policy");
 
-    for granted in ["/a", "/b"] {
+    for granted in &dirs[..2] {
         assert!(
-            policy
-                .readable_paths()
-                .contains(&std::path::PathBuf::from(granted)),
+            spellings(policy.readable_paths()).contains(&std::path::Path::new(granted)),
             "{granted} was not granted"
         );
     }
-    assert_eq!(policy.writable_paths(), [std::path::PathBuf::from("/c")]);
+    assert_eq!(
+        spellings(policy.writable_paths()),
+        [std::path::Path::new(&dirs[2])]
+    );
 }
 
 #[test]
@@ -426,53 +460,47 @@ fn unix_sockets_are_opt_in() {
 /// onto the execute axis would silently widen it.
 #[test]
 fn exec_grants_are_repeatable_and_separate_from_read() {
+    let (_scratch, dirs) = scratch(&["one", "two", "data"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
         "--allow-exec",
-        "/opt/one",
+        &dirs[0],
         "--allow-exec",
-        "/opt/two",
+        &dirs[1],
         "--allow-read",
-        "/srv/data",
+        &dirs[2],
         "--",
         "true",
     ])
     .policy()
     .expect("the flags describe a policy");
 
+    let executable = spellings(policy.executable_paths());
+
+    assert!(executable.contains(&std::path::Path::new(&dirs[0])));
+    assert!(executable.contains(&std::path::Path::new(&dirs[1])));
     assert!(
-        policy
-            .executable_paths()
-            .contains(&std::path::PathBuf::from("/opt/one"))
-    );
-    assert!(
-        policy
-            .executable_paths()
-            .contains(&std::path::PathBuf::from("/opt/two"))
-    );
-    assert!(
-        !policy
-            .executable_paths()
-            .contains(&std::path::PathBuf::from("/srv/data")),
+        !executable.contains(&std::path::Path::new(&dirs[2])),
         "a read grant reached the execute axis"
     );
 }
 
 #[test]
 fn nothing_user_supplied_is_executable_by_default() {
+    let (_scratch, granted) = scratch(&["srv"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
         "--allow-read",
-        "/srv",
+        &granted[0],
         "--",
         "true",
     ])
     .policy()
     .expect("the flags describe a policy");
 
-    for path in policy.executable_paths() {
+    for path in spellings(policy.executable_paths()) {
         assert!(
             path.starts_with("/usr")
                 || path.starts_with("/bin")
@@ -489,24 +517,25 @@ fn nothing_user_supplied_is_executable_by_default() {
 /// let a tool write a tree it cannot `cat` back.
 #[test]
 fn allow_write_also_grants_read_at_the_command_line() {
+    let (_scratch, granted) = scratch(&["srv"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
         "--allow-write",
-        "/srv",
+        &granted[0],
         "--",
         "true",
     ])
     .policy()
     .expect("the flags describe a policy");
 
-    let srv = std::path::PathBuf::from("/srv");
+    let srv = std::path::Path::new(&granted[0]);
     assert!(
-        policy.writable_paths().contains(&srv),
+        spellings(policy.writable_paths()).contains(&srv),
         "--allow-write did not grant write"
     );
     assert!(
-        policy.readable_paths().contains(&srv),
+        spellings(policy.readable_paths()).contains(&srv),
         "--allow-write did not grant read alongside it"
     );
 }
@@ -516,14 +545,15 @@ fn allow_write_also_grants_read_at_the_command_line() {
 fn every_path_flag_grants_only_its_own_axis() {
     use sandbx_core::Axis;
 
-    let granted = std::path::PathBuf::from("/srv/subject");
+    let (_scratch, dirs) = scratch(&["subject"]);
+    let granted = std::path::Path::new(&dirs[0]);
 
     for (flag, axis) in [
         ("--allow-read", Axis::Read),
         ("--allow-write", Axis::Write),
         ("--allow-exec", Axis::ReadExecute),
     ] {
-        let policy = sandbox_run(&["sandbx", "sandbox-run", flag, "/srv/subject", "--", "true"])
+        let policy = sandbox_run(&["sandbx", "sandbox-run", flag, &dirs[0], "--", "true"])
             .policy()
             .expect("the flags describe a policy");
 
@@ -532,7 +562,7 @@ fn every_path_flag_grants_only_its_own_axis() {
             let expected = other == axis || (axis == Axis::Write && other == Axis::Read);
 
             assert_eq!(
-                policy.paths(other).contains(&granted),
+                spellings(policy.paths(other)).contains(&granted),
                 expected,
                 "{flag} granted {:?} on {other:?}",
                 granted.display()
@@ -694,7 +724,7 @@ fn the_resolver_hint_keeps_the_working_directory() {
         .policy()
         .expect("the flags describe a policy");
 
-    assert_eq!(policy.writable_paths(), [cwd()]);
+    assert_eq!(spellings(policy.writable_paths()), [cwd().as_path()]);
 }
 
 /// Refused rather than resolved: honouring the hint would drop the value the operator
@@ -798,12 +828,19 @@ fn the_name_allowlist_grants_no_path_and_keeps_the_working_directory() {
     .policy()
     .expect("the flags describe a policy");
 
-    assert_eq!(policy.writable_paths(), [cwd()]);
+    assert_eq!(
+        policy
+            .writable_paths()
+            .iter()
+            .map(|granted| granted.path())
+            .collect::<Vec<_>>(),
+        [cwd().as_path()]
+    );
     assert!(
         !policy
             .readable_paths()
             .iter()
-            .any(|path| path == std::path::Path::new("/etc")),
+            .any(|granted| granted.path() == std::path::Path::new("/etc")),
         "the flag granted read on /etc, which is what it exists to make unnecessary: {:?}",
         policy.readable_paths()
     );
@@ -853,6 +890,68 @@ fn a_reachable_nameserver_beside_the_allowlist_is_refused() {
             "the refusal of {flags:?} does not name both flags: {message}"
         );
     }
+}
+
+/// Every file the resolver binds over, not `resolv.conf` alone — and both spellings of one,
+/// since `mount(2)` follows a symlink while the pin does not.
+#[test]
+fn a_grant_naming_a_file_the_allowlist_replaces_is_refused() {
+    for bound in sandbx_core::RESOLVER_FILES {
+        let error = sandbox_run(&[
+            "sandbx",
+            "sandbox-run",
+            "--allow-dns",
+            "example.com",
+            "--allow-network",
+            "443",
+            "--allow-read",
+            bound,
+            "--",
+            "true",
+        ])
+        .policy()
+        .expect_err(&format!(
+            "--allow-read {bound} was accepted beside --allow-dns"
+        ));
+
+        assert!(
+            matches!(error, sandbx_cli::PolicyError::DnsGrantsBoundFile { .. }),
+            "--allow-read {bound} was refused for an unrelated reason: {error}"
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains("--allow-dns") && message.contains(bound),
+            "the refusal does not name both the flag and the path: {message}"
+        );
+    }
+}
+
+/// The grant the flag is for, so this must not be refused along with the names above: binding
+/// a file inside `/etc` leaves `/etc`'s own inode alone, and that inode is the grant's pin.
+#[test]
+fn a_grant_above_the_bind_is_accepted_beside_the_allowlist() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-dns",
+        "example.com",
+        "--allow-network",
+        "443",
+        "--allow-read",
+        "/etc",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("a grant on the directory the bind lands inside");
+
+    assert!(
+        policy
+            .readable_paths()
+            .iter()
+            .any(|granted| granted.path() == std::path::Path::new("/etc")),
+        "the directory grant did not survive"
+    );
 }
 
 /// A port the command connects to is the shape the flag is for, so this must not be refused
@@ -931,9 +1030,9 @@ fn a_pin_never_suppresses_the_cwd_default() {
     .expect("the flags describe a policy");
 
     assert!(
-        policy.writable_paths().contains(&cwd()),
+        spellings(policy.writable_paths()).contains(&cwd().as_path()),
         "a pin replaced the working-directory default: {:?}",
-        policy.writable_paths()
+        spellings(policy.writable_paths())
     );
 }
 

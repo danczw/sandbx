@@ -20,6 +20,11 @@ use sandbx_core::{
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+    sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
+
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
@@ -155,8 +160,8 @@ fn the_command_cannot_write_the_audit_channel() {
         r"printf 'capability_bounding_set\tforged-by-the-command\n' >&0 || true",
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read("/dev/null")
-            .allow_write("/dev/null"),
+            .allow_read(vetted("/dev/null"))
+            .allow_write(vetted("/dev/null")),
     );
 
     assert!(
@@ -379,7 +384,7 @@ fn a_pin_refusal_names_itself_on_the_channel() {
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
-        .allow_read_execute(dir.path());
+        .allow_read_execute(vetted(dir.path()));
 
     let (result, lines) = capture(|| {
         SandboxedCommand::new(program.to_str().unwrap(), policy)
@@ -414,19 +419,23 @@ fn a_pin_refusal_names_itself_on_the_channel() {
 /// Only the stage holding the descriptor can say what it opened, so the mismatch has to cross
 /// the channel as a refusal rather than reach the caller as a sandbox never installed (#205).
 ///
-/// The fixture grants a symlink because the harness resolves every grant: a policy still
-/// carrying one is a policy whose target moved after the check.
+/// The fixture redirects the grant *after* vetting it, because vetting resolves: the name the
+/// policy carries is a real directory, and it is a symlink to somewhere else by the time the
+/// helper opens it.
 #[test]
 fn a_redirected_grant_names_itself_on_the_channel() {
     let dir = scratch();
-    let target = dir.path().join("work");
-    let link = dir.path().join("granted");
-    std::fs::create_dir(&target).unwrap();
-    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let granted_at = dir.path().join("work");
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir(&granted_at).unwrap();
+    std::fs::create_dir(&elsewhere).unwrap();
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
-        .allow_read(&link);
+        .allow_read(vetted(&granted_at));
+
+    std::fs::remove_dir(&granted_at).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, &granted_at).unwrap();
 
     let (result, lines) = capture(|| {
         SandboxedCommand::new("/bin/true", policy)
@@ -453,11 +462,62 @@ fn a_redirected_grant_names_itself_on_the_channel() {
     );
     // Both spellings, or the operator cannot tell which grant moved or where it went.
     let message = error.to_string();
-    for named in [&link, &target] {
+    for named in [&granted_at, &elsewhere] {
         assert!(
             message.contains(named.to_str().unwrap()),
             "{} did not reach the caller: {message}",
             named.display()
         );
     }
+}
+
+/// The sibling the pin adds (#212): only the stage holding the descriptor can `fstat` it, so
+/// a substituted object has to cross the channel as a refusal too, under a label of its own.
+///
+/// No symlink and no change of spelling, so the readback cannot see this one — a record
+/// carrying `grant_redirected` here would mean the two checks had been collapsed into one.
+#[test]
+fn a_substituted_grant_names_itself_on_the_channel() {
+    let dir = scratch();
+    let granted_at = dir.path().join("work");
+    let substitute = dir.path().join("substitute");
+    std::fs::create_dir(&granted_at).unwrap();
+    std::fs::create_dir(&substitute).unwrap();
+
+    let policy = SandboxPolicy::default()
+        .allow_system_executables()
+        .allow_read(vetted(&granted_at));
+
+    std::fs::remove_dir(&granted_at).unwrap();
+    std::fs::rename(&substitute, &granted_at).unwrap();
+
+    let (result, lines) = capture(|| {
+        SandboxedCommand::new("/bin/true", policy)
+            .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+            .output()
+    });
+    let error = result.expect_err("a grant whose object was replaced is not a command that ran");
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("decision=failed") && line.contains("grant_replaced")),
+        "a substituted grant left no record naming itself: {lines:?}"
+    );
+    assert!(
+        matches!(
+            error,
+            SandboxError::HelperRefused {
+                refusal: HelperRefusal::GrantReplaced,
+                ..
+            }
+        ),
+        "the refusal reached the caller as something else: {error:?}"
+    );
+    // The grant's own name, or the operator cannot tell which of several moved.
+    assert!(
+        error.to_string().contains(granted_at.to_str().unwrap()),
+        "{} did not reach the caller: {error}",
+        granted_at.display()
+    );
 }

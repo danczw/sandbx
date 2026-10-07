@@ -89,7 +89,7 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
         // Named as `FsGuard::new` holds it: it canonicalizes every root and discards the
         // ones that do not resolve, so a grant resolving to nothing reaches nothing, and a
         // relative one is reachable only by the absolute form the tools demand.
-        let Ok(path) = path.canonicalize() else {
+        let Ok(path) = path.path().canonicalize() else {
             continue;
         };
 
@@ -142,7 +142,7 @@ fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<
 fn canonical(policy: &SandboxPolicy) -> Vec<PathBuf> {
     policy
         .granted_paths()
-        .filter_map(|(_, path)| path.canonicalize().ok())
+        .filter_map(|(_, path)| path.path().canonicalize().ok())
         .collect()
 }
 
@@ -151,6 +151,12 @@ mod tests {
     use super::*;
 
     use clap::Parser;
+    use sandbx_core::VettedPath;
+
+    /// `path`, pinned to the object it names — the shape every grant takes (#212).
+    fn vetted(path: impl AsRef<Path>) -> VettedPath {
+        VettedPath::vet(path).expect("an existing path to pin the grant to")
+    }
 
     /// A directory that exists, an unresolvable grant being named by neither the guard nor
     /// the prompt, and its canonical name, which is the form the prompt holds.
@@ -194,8 +200,8 @@ mod tests {
         let (work, named) = work();
         let prompt = granted(
             SandboxPolicy::default()
-                .allow_read(work.path())
-                .allow_write(work.path()),
+                .allow_read(vetted(work.path()))
+                .allow_write(vetted(work.path())),
         );
 
         assert!(
@@ -230,15 +236,26 @@ mod tests {
 
     /// The flags take a path verbatim, and the tools take only absolute ones — so a grant
     /// named as given would send the model looking for the form it can actually pass.
+    ///
+    /// Driven through argv, that being the only route a non-canonical spelling still has:
+    /// the policy holds vetted paths, which resolve at the vet, so the flag is where the two
+    /// forms are still distinguishable.
     #[test]
     fn a_grant_is_named_in_the_form_the_guard_holds() {
         let (work, named) = work();
         // Absolute but not canonical, which `..` makes without a `chdir` a sibling test
         // would race against.
-        let detour = work.path().join("inner").join("..");
         std::fs::create_dir(work.path().join("inner")).expect("a nested dir");
+        let detour = work.path().join("inner").join("..");
 
-        let prompt = granted(SandboxPolicy::default().allow_read(&detour));
+        let prompt = derived(&[
+            "sandbx",
+            "agent-run",
+            "--allow-read",
+            detour.to_str().expect("utf-8"),
+            "--",
+            "go",
+        ]);
 
         assert!(
             prompt.contains(&format!("{named} (read)")),
@@ -257,8 +274,8 @@ mod tests {
     fn the_prompt_names_where_a_command_starts() {
         let (work, named) = work();
         let policy = SandboxPolicy::default()
-            .allow_read("/etc")
-            .allow_write(work.path());
+            .allow_read(vetted("/etc"))
+            .allow_write(vetted(work.path()));
         let start = policy
             .working_root()
             .expect("a writable root to start in")
@@ -282,8 +299,8 @@ mod tests {
     fn a_start_directory_the_roots_leave_out_is_not_named() {
         let (work, named) = work();
         let policy = SandboxPolicy::default()
-            .allow_read("/usr")
-            .allow_read(work.path());
+            .allow_read(vetted("/usr"))
+            .allow_read(vetted(work.path()));
 
         assert_eq!(
             policy.working_root(),
@@ -304,7 +321,7 @@ mod tests {
     #[test]
     fn a_run_granted_nowhere_to_be_is_told_nothing_about_starting() {
         let (work, named) = work();
-        let prompt = granted(SandboxPolicy::default().allow_read_execute(work.path()));
+        let prompt = granted(SandboxPolicy::default().allow_read_execute(vetted(work.path())));
 
         assert!(prompt.contains(&format!("{named} (run)")), "got {prompt:?}");
         assert!(!prompt.contains("starts in"), "got {prompt:?}");
@@ -312,9 +329,19 @@ mod tests {
 
     /// Compared against the whole tools sentence: a roots sentence over an empty list names
     /// no path either, so a check for one would pass with the guard gone.
+    ///
+    /// Granted while it exists and removed after, a grant naming nothing being unconstructible
+    /// now that one carries the object it was vetted against (#212).
     #[test]
     fn a_grant_that_resolves_to_nothing_is_not_named() {
-        let prompt = granted(SandboxPolicy::default().allow_read("/no/such/root"));
+        let (work, _) = work();
+        let gone = work.path().join("granted-then-gone");
+        std::fs::create_dir(&gone).expect("a dir to grant");
+
+        let policy = SandboxPolicy::default().allow_read(vetted(&gone));
+        std::fs::remove_dir(&gone).expect("it goes away before the prompt is built");
+
+        let prompt = granted(policy);
 
         assert_eq!(
             prompt,
@@ -326,7 +353,7 @@ mod tests {
     #[test]
     fn a_read_only_root_is_never_named_as_writable() {
         let (work, named) = work();
-        let prompt = granted(SandboxPolicy::default().allow_read(work.path()));
+        let prompt = granted(SandboxPolicy::default().allow_read(vetted(work.path())));
 
         assert!(
             prompt.contains(&format!("{named} (read)")),
@@ -351,7 +378,7 @@ mod tests {
     #[test]
     fn the_sentence_admits_the_system_binaries_exist() {
         let (work, _) = work();
-        let prompt = granted(SandboxPolicy::default().allow_read(work.path()));
+        let prompt = granted(SandboxPolicy::default().allow_read(vetted(work.path())));
 
         assert!(prompt.contains("system binaries"), "got {prompt:?}");
         assert!(
@@ -389,7 +416,7 @@ mod tests {
     fn no_tool_is_named_when_every_tool_is_approved() {
         let (work, named) = work();
         let prompt = system_prompt(
-            &SandboxPolicy::default().allow_read(work.path()),
+            &SandboxPolicy::default().allow_read(vetted(work.path())),
             Some(&[]),
             None,
         )
@@ -421,7 +448,7 @@ mod tests {
     fn the_roots_sit_between_the_tools_and_the_operator() {
         let (work, named) = work();
         let prompt = system_prompt(
-            &SandboxPolicy::default().allow_read(work.path()),
+            &SandboxPolicy::default().allow_read(vetted(work.path())),
             None,
             Some("be terse"),
         )

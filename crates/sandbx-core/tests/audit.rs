@@ -12,6 +12,11 @@ use sandbx_core::{
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+    sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
+
 /// Collects audit events so a test can assert on what was recorded.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
@@ -88,7 +93,7 @@ fn records_a_refusal_with_its_reason() {
 #[test]
 fn an_in_grant_miss_records_an_absence() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let missing = root.path().join("absent.txt");
 
     let lines = capture(|| {
@@ -108,7 +113,7 @@ fn an_in_grant_miss_records_an_absence() {
 fn a_miss_outside_every_root_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     // Not named "absent": the subject is the path, and a substring assertion on the
     // decision must not be satisfiable by the filename.
@@ -130,7 +135,7 @@ fn an_absence_behind_a_symlink_is_not_an_absence() {
     let elsewhere = tempfile::tempdir().unwrap();
     let probe = root.path().join("probe");
     std::os::unix::fs::symlink(elsewhere.path().join("gone.txt"), &probe).unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
         let _ = guard.check_read(&probe);
@@ -147,7 +152,7 @@ fn a_check_that_opens_nothing_records_nothing() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("present.txt");
     std::fs::write(&file, b"x").unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
         guard.check_read(&file).unwrap();
@@ -161,7 +166,7 @@ fn an_opened_file_records_the_access() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("present.txt");
     std::fs::write(&file, b"x").unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
         guard.open_read(&file).unwrap();
@@ -179,7 +184,7 @@ fn an_access_that_fails_after_the_check_is_a_refusal() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("not-a-file");
     std::fs::create_dir(&dir).unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let lines = capture(|| {
         let _ = guard.open_write(&dir);
@@ -201,7 +206,7 @@ fn a_walk_records_one_access() {
     std::fs::write(root.path().join("a.txt"), b"x").unwrap();
     std::fs::create_dir(root.path().join("sub")).unwrap();
     std::fs::write(root.path().join("sub").join("b.txt"), b"x").unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
         guard.walk_readable(root.path(), 100).unwrap();
@@ -219,7 +224,7 @@ fn a_walk_records_one_access() {
 #[test]
 fn a_listed_directory_records_the_access() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
         guard.read_dir(root.path()).unwrap().unwrap();
@@ -236,7 +241,7 @@ fn listing_a_regular_file_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("not-a-dir.txt");
     std::fs::write(&file, b"x").unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
         let _ = guard.read_dir(&file);
@@ -254,7 +259,7 @@ fn a_listing_the_host_refuses_records_a_refusal() {
     let root = tempfile::tempdir().unwrap();
     let locked = root.path().join("locked");
     std::fs::create_dir(&locked).unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
 
     let lines = capture(|| {
@@ -275,7 +280,7 @@ fn a_listing_the_host_refuses_records_a_refusal() {
 #[test]
 fn an_absent_write_parent_records_an_absence() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let lines = capture(|| {
         let _ = guard.check_write(&root.path().join("nodir").join("out.txt"));
@@ -304,7 +309,7 @@ fn records_an_absence_without_a_reason() {
 #[test]
 fn a_path_naming_no_file_records_its_refusal() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     // The tail needs an absent parent: a bare `..` canonicalizes and never reaches
     // the branch, so the obvious fixture passes whether the fix is there or not.
@@ -348,9 +353,9 @@ fn is_emitted_at_info_not_debug() {
 #[test]
 fn records_the_policy_shape_of_a_spawn() {
     let policy = SandboxPolicy::default()
-        .allow_read("/usr")
-        .allow_write("/tmp/work")
-        .allow_read_execute("/bin")
+        .allow_read(vetted("/usr"))
+        .allow_write(vetted("/tmp"))
+        .allow_read_execute(vetted("/bin"))
         .allow_unix_sockets()
         .allow_env("PATH")
         .allow_env("HOME");

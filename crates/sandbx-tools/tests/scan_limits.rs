@@ -6,9 +6,14 @@
 //! in-process tools have no timeout — `ExecutionContext`'s bounds the spawned
 //! command alone — so this budget is all that bounds one broad search.
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
 use serde_json::json;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
     ExecutionContext::new(policy).with_limits(limits)
@@ -31,7 +36,7 @@ fn tree(count: usize, body: &str) -> tempfile::TempDir {
 fn grep_stops_at_the_file_scan_cap() {
     let root = tree(50, "");
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_files_scanned(5),
     );
 
@@ -56,7 +61,7 @@ fn grep_stops_at_the_file_scan_cap() {
 fn grep_reports_that_it_stopped_early() {
     let root = tree(50, "");
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_files_scanned(5),
     );
 
@@ -79,7 +84,7 @@ fn grep_reports_that_it_stopped_early() {
 fn grep_stops_at_the_byte_scan_budget() {
     let root = tree(50, &"filler\n".repeat(500));
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_bytes_scanned(4 * 1024),
     );
 
@@ -108,7 +113,7 @@ fn grep_stops_at_the_byte_scan_budget() {
 fn find_reports_a_truncated_walk() {
     let root = tree(50, "");
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default().with_max_files_scanned(5),
     );
 
@@ -131,7 +136,7 @@ fn find_reports_a_truncated_walk() {
 fn a_search_within_the_budget_is_not_marked() {
     let root = tree(3, "");
     let ctx = context(
-        SandboxPolicy::default().allow_read(root.path()),
+        SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default(),
     );
 
