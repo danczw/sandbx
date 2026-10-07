@@ -4,7 +4,7 @@
 set -eu
 
 file="${1:?usage: check-release-notes.sh <file>}"
-paragraphs=2
+paragraphs=3
 lines=30
 
 [ -f "$file" ] || { echo "::error::$file does not exist"; exit 1; }

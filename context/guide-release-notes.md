@@ -1,6 +1,6 @@
 # Release notes
 
-A release body is two parts: one or two short paragraphs written by hand, and
+A release body is two parts: two or three short paragraphs written by hand, and
 GitHub's generated list of merged PRs appended beneath them.
 
 The prose is a **claim about what changed**, in the same register as
@@ -46,9 +46,10 @@ per-branch shares (#193).
 
 ## The budget
 
-Two paragraphs, thirty lines, no headings and no bullets. The checker enforces
+Three paragraphs, thirty lines, no headings and no bullets. The checker enforces
 all of it. Anything longer belongs in `context/` or on an issue, linked from
-the prose.
+the prose. A paragraph break is a change of subject, not a way to spend the
+allowance: two that share one are one paragraph.
 
 Thirty is a ceiling, not a target, and the shortest notes that carry every claim
 are the best ones. A reader who stops after the first sentence must not be
@@ -82,8 +83,8 @@ not in the committed file. Exercise the archive, then amend the published body:
 gh release edit <tag> --notes-file notes.md
 ```
 
-Two paragraphs still. A verification note that pushes the prose over budget is
-a sign it belongs on an issue.
+Within the same budget still. A verification note that pushes the prose over it
+is a sign it belongs on an issue.
 
 ## Two things that are not release notes
 
