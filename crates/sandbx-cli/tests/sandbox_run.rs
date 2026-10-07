@@ -923,6 +923,10 @@ fn a_grant_naming_a_file_the_allowlist_replaces_is_refused() {
             message.contains("--allow-dns") && message.contains(bound),
             "the refusal does not name both the flag and the path: {message}"
         );
+        assert!(
+            message.contains("directory"),
+            "the refusal names no way forward, and the directory grant is legal: {message}"
+        );
     }
 }
 

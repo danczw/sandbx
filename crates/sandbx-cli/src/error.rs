@@ -361,9 +361,10 @@ impl std::fmt::Display for PolicyError {
             ),
             Self::DnsGrantsBoundFile { granted } => write!(
                 f,
-                "--allow-dns replaces {} with sandbx's own copy, so a grant naming it reaches \
-                 a file the command never reads — drop it, and grant the directory instead if \
-                 the command needs the rest of it",
+                "--allow-dns replaces {} with sandbx's own copy, so a grant naming it pins the \
+                 rule to the host's file while the command reads another object at that same \
+                 path — drop it, and grant the directory instead if the command needs the rest \
+                 of it",
                 granted.display()
             ),
             Self::RepeatedPin => write!(
