@@ -411,7 +411,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // `Requested` decides what to install; this loop only opens the paths. The axis is for
     // the tests that assert the mapping — the kernel is told the rights and nothing else.
     for (_, path, rights) in rules {
-        let fd = open_grant(path)?;
+        let fd = open_grant(&path)?;
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))
             .map_err(landlock_failed)?;

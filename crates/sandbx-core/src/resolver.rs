@@ -57,11 +57,25 @@ pub(crate) struct File {
     pub(crate) required: bool,
 }
 
+/// What a bounded policy resolved to, and how much of it did not resolve.
+pub(crate) struct Resolved {
+    /// The three files to be bind-mounted over their `/etc` counterparts.
+    pub(crate) files: [File; 3],
+
+    /// How many allowlisted names resolved to no address at all.
+    ///
+    /// Carried out rather than reported here, this running in the re-exec'd helper: without
+    /// it, a lookup that failed is indistinguishable from the flag working, and the command
+    /// meets `EAI_NONAME` for the one name the operator allowlisted. A count and not the
+    /// names, `guide-logging.md` keeping values off the trail.
+    pub(crate) unresolved: usize,
+}
+
 /// Resolve the policy's names and render the files that bound resolution to them.
 ///
 /// `None` when the policy bounds nothing, which keeps a run with no `--allow-dns` off the
 /// mount path entirely.
-pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
+pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
     if !policy.bounds_resolution() {
         return None;
     }
@@ -72,7 +86,12 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
         .map(|name| (name.as_str(), addresses(name)))
         .collect();
 
-    Some([
+    let unresolved = resolved
+        .iter()
+        .filter(|(_, addresses)| addresses.is_empty())
+        .count();
+
+    let files = [
         File {
             target: Path::new(HOSTS),
             body: hosts_body(&resolved),
@@ -93,7 +112,9 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
             // with anyway, so there is nothing to refuse over.
             required: false,
         },
-    ])
+    ];
+
+    Some(Resolved { files, unresolved })
 }
 
 /// Every address `name` resolves to right now, in the order the resolver returned them.
@@ -104,12 +125,21 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
 /// Empty for a name that does not resolve, which contributes no line rather than failing the
 /// run, as an absent path contributes no Landlock rule. A lookup that hangs is bounded by the
 /// run's own `timeout` and by nothing here.
+///
+/// A link-local IPv6 address is dropped: `ip()` discards the `scope_id` that makes one
+/// routable, a hosts file has no column to carry it back, and `connect` to a scopeless
+/// `fe80::/10` address is `EINVAL`. Keeping it would leave the command a line it cannot use.
 fn addresses(name: &str) -> Vec<IpAddr> {
     let mut found = Vec::new();
 
     if let Ok(resolved) = (name, 0u16).to_socket_addrs() {
         for address in resolved.map(|socket| socket.ip()) {
-            if !found.contains(&address) {
+            let scoped = match address {
+                IpAddr::V6(v6) => v6.is_unicast_link_local(),
+                IpAddr::V4(_) => false,
+            };
+
+            if !scoped && !found.contains(&address) {
                 found.push(address);
             }
         }
@@ -336,7 +366,9 @@ networks: files dns
     #[test]
     fn only_the_file_musl_can_do_without_is_optional() {
         let policy = crate::SandboxPolicy::default().allow_dns("localhost");
-        let rendered = files(&policy).expect("a bounded policy renders its files");
+        let rendered = files(&policy)
+            .expect("a bounded policy renders its files")
+            .files;
 
         for file in rendered {
             assert_eq!(
@@ -352,7 +384,9 @@ networks: files dns
     #[test]
     fn every_rendered_file_is_one_the_policy_grants_read_on() {
         let policy = crate::SandboxPolicy::default().allow_dns("localhost");
-        let rendered = files(&policy).expect("a bounded policy renders its files");
+        let rendered = files(&policy)
+            .expect("a bounded policy renders its files")
+            .files;
 
         for file in rendered {
             assert!(

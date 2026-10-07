@@ -33,11 +33,25 @@ pub(super) fn prepare_supervisor(
     // namespace — where a lookup resolves nothing at all.
     let resolved = crate::resolver::files(policy);
 
+    // A name that resolved to nothing bounds resolution all the same, so the run goes on —
+    // reported because a command exiting 0 unable to reach the one name the operator
+    // allowlisted is the outcome that reads as the flag working.
+    if let Some(count) = resolved
+        .as_ref()
+        .map(|resolved| resolved.unresolved)
+        .filter(|unresolved| *unresolved > 0)
+    {
+        degraded.push((
+            Degradation::UnresolvedDnsName,
+            format!("{count} allowlisted name(s) resolved to no address"),
+        ));
+    }
+
     degraded.extend(isolate(policy)?);
 
     // Between the unshare and the capability drops: the mounts need the namespace `isolate`
     // just made, and `CAP_SYS_ADMIN` within it, which the drops below take away.
-    super::resolver::bound_resolution(resolved)?;
+    super::resolver::bound_resolution(resolved.map(|resolved| resolved.files))?;
 
     // After the unshare, not before: entering a fresh user namespace grants the full
     // capability set *within it*, so dropping earlier would be undone.

@@ -32,18 +32,32 @@ fn cannot_resolve(policy: &SandboxPolicy) -> bool {
 /// What such a run most likely needed, once it has failed.
 ///
 /// Hedged: sandbx cannot see the command's own `getaddrinfo`, so a failure for any other
-/// reason gets this too. Names both answers, the flag that bounds which names resolve first.
-fn resolver_advice(cannot_resolve: bool, code: i32) -> Option<&'static str> {
-    match cannot_resolve && code != 0 {
-        true => Some(
+/// reason gets this too. Names both answers, the flag that bounds which names resolve first —
+/// except where `--allow-unix-sockets` is already held, `PolicyError::DnsWithUnixSockets`
+/// refusing that pair, and advice sending an operator from a failed run to a refused one is
+/// worse than advice naming one answer.
+fn resolver_advice(cannot_resolve: bool, unix_sockets: bool, code: i32) -> Option<&'static str> {
+    if !cannot_resolve || code == 0 {
+        return None;
+    }
+
+    Some(match unix_sockets {
+        true => {
+            "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
+             resolve. If that was the failure, add --dns-over-tcp --allow-network 53 \
+             --allow-read /etc, remembering that a path flag replaces the working-directory \
+             default. --allow-dns is the other answer, and this run cannot take it: a name \
+             allowlist and --allow-unix-sockets are refused together, a local resolver \
+             socket answering for every name"
+        }
+        false => {
             "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
              resolve. If that was the failure, either add --allow-dns NAME for each name the \
              command needs, which resolves them here and needs no further grant — or add \
              --dns-over-tcp --allow-network 53 --allow-read /etc, which lets any name \
-             resolve, remembering that a path flag replaces the working-directory default",
-        ),
-        false => None,
-    }
+             resolve, remembering that a path flag replaces the working-directory default"
+        }
+    })
 }
 
 /// `sandbx sandbox-run [--allow-…] -- <command> [args…]`
@@ -138,6 +152,7 @@ impl SandboxRun {
         let policy = self.policy()?;
         let pin = self.pin()?;
         let unresolvable = cannot_resolve(&policy);
+        let unix_sockets = policy.allows_unix_sockets();
         let mut command = SandboxedCommand::new(self.program(), policy).args(self.arguments());
         if let Some(limit) = self.timeout() {
             command = command.timeout(limit);
@@ -154,7 +169,7 @@ impl SandboxRun {
 
         let code = sandbx_core::exit_code(&output.status);
         // After the command's own stderr, so sandbx's line is the last thing read.
-        if let Some(advice) = resolver_advice(unresolvable, code) {
+        if let Some(advice) = resolver_advice(unresolvable, unix_sockets, code) {
             eprintln!("sandbx: {advice}");
         }
 
@@ -263,7 +278,7 @@ mod tests {
     /// flags it names.
     #[test]
     fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
-        let advice = resolver_advice(true, 6).expect("a failure with no way to resolve");
+        let advice = resolver_advice(true, false, 6).expect("a failure with no way to resolve");
 
         assert!(advice.contains("--allow-dns NAME"), "got: {advice}");
         assert!(advice.contains("--dns-over-tcp"), "got: {advice}");
@@ -277,7 +292,20 @@ mod tests {
 
     #[test]
     fn a_successful_run_is_silent() {
-        assert_eq!(resolver_advice(true, 0), None);
+        assert_eq!(resolver_advice(true, false, 0), None);
+    }
+
+    /// Advice naming a flag `policy()` would refuse sends an operator from a failed run to a
+    /// refused one, which is worse than naming one answer.
+    #[test]
+    fn a_run_holding_unix_sockets_is_not_advised_to_add_a_name_allowlist() {
+        let advice = resolver_advice(true, true, 6).expect("a failure with no way to resolve");
+
+        assert!(
+            !advice.contains("add --allow-dns"),
+            "advised a flag --allow-unix-sockets makes PolicyError::DnsWithUnixSockets: {advice}"
+        );
+        assert!(advice.contains("--dns-over-tcp"), "got: {advice}");
     }
 
     #[test]

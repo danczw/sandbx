@@ -54,11 +54,20 @@ pub(crate) enum Degradation {
     /// The uid/gid map could not be written, so the process reads back as the overflow
     /// uid. Costs uid fidelity only, and is if anything more restrictive.
     UsernsIdentityMap,
+
+    /// A name `--allow-dns` listed resolved to no address, so nothing in the command's hosts
+    /// file reaches it. More restrictive, as above — and the one outcome an operator cannot
+    /// otherwise tell apart from the flag working.
+    UnresolvedDnsName,
 }
 
 impl Degradation {
     /// Every step that can report here; drives `from_label` and [`RECORD_LIMIT`].
-    pub(crate) const ALL: [Self; 2] = [Self::CapabilityBoundingSet, Self::UsernsIdentityMap];
+    pub(crate) const ALL: [Self; 3] = [
+        Self::CapabilityBoundingSet,
+        Self::UsernsIdentityMap,
+        Self::UnresolvedDnsName,
+    ];
 
     /// The stable name this step carries on the wire and in the audit trail.
     ///
@@ -68,6 +77,7 @@ impl Degradation {
         match self {
             Self::CapabilityBoundingSet => "capability_bounding_set",
             Self::UsernsIdentityMap => "userns_identity_map",
+            Self::UnresolvedDnsName => "unresolved_dns_name",
         }
     }
 
