@@ -59,10 +59,12 @@ Re-entry is decided by the **presence of `ToolUse` blocks**, not by
 `StopReason::ToolUse` — the blocks are what have to be answered, and trusting the
 stop reason would mean trusting the provider to label its own output correctly.
 
-Neither `Thinking` nor `Usage` enters the rebuilt history, but only one of them is
-thrown away. `Thinking` is observed and lost: no `ContentBlock` can carry it and the
-signature needed to replay it is discarded upstream (#85). `Usage` is observed **and
-kept** — the latest round's prompt counters come back as `TurnOutcome::usage`, which
+`Thinking` is the renderer's increment and enters nothing; the replayable block
+arrives separately as `ThinkingBlock` or `RedactedThinking`, carries a signature, and
+does enter the rebuilt history — for the length of the turn only, which
+[decision-thinking-replay.md](decision-thinking-replay.md) is about. `Usage` enters
+no history either but is **kept** — the latest round's prompt counters come back as
+`TurnOutcome::usage`, which
 a caller threads into the next turn's `Turn::observed` with
 `observed = outcome.usage.or(observed)`. That is half of the loop compaction runs on;
 `withheld = outcome.withheld` is the other half, and neither works alone.
@@ -78,6 +80,10 @@ a caller threads into the next turn's `Turn::observed` with
 The last one breaks the request *after* the one that went wrong, which is why it
 is an error rather than a short turn. An empty *first* round is not this: nothing
 is unanswered behind it, so it comes back as an empty turn.
+
+"Empty" means no block that is not reasoning. A reasoning block is stripped on the
+way out, so a round carrying only one leaves exactly the empty content array above —
+and answers nothing either way. Reading it as content is how both rows get skipped.
 
 ## Compaction (opt-in)
 
