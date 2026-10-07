@@ -419,17 +419,17 @@ fn record<T>(
     match &outcome {
         Ok(_) => crate::AuditEvent::allowed(tool, &subject).emit(),
         Err(source) if absent(source) => crate::AuditEvent::absent(tool, &subject).emit(),
-        Err(source) => crate::AuditEvent::denied(tool, &subject, refusal(source)).emit(),
+        Err(source) => crate::AuditEvent::denied(tool, &subject, reason(source)).emit(),
     }
 
     outcome
 }
 
-/// Why an access on an approved path did not happen.
+/// The `reason=` an access on an approved path carries when it did not happen.
 ///
 /// `ELOOP` is the leaf swapped since the check, the one post-gate failure that really is a
 /// resolution failure; the rest found the path and stopped there.
-fn refusal(source: &std::io::Error) -> &'static str {
+fn reason(source: &std::io::Error) -> &'static str {
     if source.raw_os_error() == Some(libc::ELOOP) {
         UNRESOLVABLE
     } else {
