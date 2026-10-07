@@ -136,11 +136,11 @@ pub enum PolicyError {
         source: SandboxError,
     },
 
-    /// A path flag resolved to one path when the refusals were checked and to another when
-    /// the pin was taken, so the grant is not the one that was judged (#212).
+    /// A path flag resolved to one path when the refusals were checked and to another when the
+    /// pin was taken, so the grant is not the one that was judged (#212).
     ///
-    /// Only a path moving mid-run reaches this: both resolutions are a `canonicalize` of the
-    /// same name, so they agree unless a component changed between them.
+    /// Both resolutions are a `canonicalize` of one name, so only a path moving mid-run
+    /// reaches this.
     GrantMovedWhileVetting {
         /// The path as the flag gave it, which is what the operator can go and change.
         granted: PathBuf,

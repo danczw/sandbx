@@ -495,7 +495,9 @@ mod tests {
     }
 
     /// One of every variant. The `match` below is exhaustive, so a new variant fails to
-    /// compile until someone decides whether it is a [`HelperRefusal`] too.
+    /// compile until someone decides whether it is a [`HelperRefusal`] too — but the arm is
+    /// all it forces: a variant left out of the array below compiles, and every test deriving
+    /// from this skips it in silence.
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
