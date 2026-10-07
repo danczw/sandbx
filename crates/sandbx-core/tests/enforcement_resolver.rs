@@ -24,7 +24,7 @@ const LOOPBACK_NAMES: [&str; 3] = ["localhost", "ip6-localhost", "ip6-loopback"]
 /// on the next. Addresses are trial-bound, because a name is only usable here if the test can
 /// answer on what it resolves to.
 fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::JoinHandle<()>) {
-    let hosts = std::fs::read_to_string("/etc/hosts").expect("a host with no /etc/hosts");
+    let hosts = std::fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
 
     let bound = hosts
         .lines()
@@ -77,6 +77,18 @@ fn probe(policy: SandboxPolicy, args: &[&str]) -> std::process::Output {
 fn directives(body: &str) -> String {
     body.lines()
         .filter_map(|line| line.split('#').next())
+        .collect()
+}
+
+/// The `nsswitch.conf` lines that decide how a name resolves, which are the only ones bounding
+/// resolution may touch: a `passwd` or `group` line is the host's and is asserted elsewhere.
+fn resolution_databases(body: &str) -> Vec<&str> {
+    body.lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .filter(|line| {
+            let database = line.split(':').next().unwrap_or_default().trim();
+            database == "hosts" || database == "networks"
+        })
         .collect()
 }
 
@@ -183,11 +195,10 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
     }
 }
 
-/// Each bound file still reads back under its own path. `ruleset::opened` compares the path
-/// `/proc/self/fd` gives a granted descriptor against the spelling the policy carries, and a
-/// bind whose source had been unlinked reads back with `" (deleted)"` appended — which would
-/// turn a grant naming one of these files into a refusal, reported against the grant rather
-/// than against the mount that moved it.
+/// Each bound file still reads back under its own path. A bind whose source had been unlinked
+/// reads back from `/proc/self/fd` with `" (deleted)"` appended, so the command would find its
+/// own `/etc/hosts` under a path no policy names, and anything comparing a descriptor against
+/// the path it was opened by would be comparing two different strings.
 #[test]
 fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
     let (name, address, accepting) = local_listener("UNUSED");
@@ -232,10 +243,29 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
          default, which includes the dns source: {}",
         String::from_utf8_lossy(&nsswitch.stderr)
     );
-    assert!(
-        !directives(&switch).contains("dns"),
-        "the nsswitch.conf the command reads keeps a dns source: {switch}"
-    );
+    for line in resolution_databases(&switch) {
+        assert!(
+            !line.contains("dns"),
+            "the nsswitch.conf the command reads keeps a dns source: {line:?}"
+        );
+    }
+
+    // Resolution is all that may be bounded. A `passwd` or `group` line reaching `systemd`,
+    // `sss` or LDAP is how a command resolves its own uid to a name, and losing it breaks
+    // every tool that asks — on a host where sandbx has no business touching the answer.
+    let host = std::fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
+    let kept = host
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#') && line.contains(':'))
+        .filter(|line| resolution_databases(line).is_empty());
+
+    for line in kept {
+        assert!(
+            switch.contains(line),
+            "the host configures {line:?} and the command no longer sees it, so bounding \
+             resolution took a lookup that is not a name with it"
+        );
+    }
 
     // Skipped where the host has no `/etc/resolv.conf` to bind over, as `helper::resolver`
     // does: there is then no file for a resolver to read a nameserver out of either.

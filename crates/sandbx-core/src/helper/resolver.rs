@@ -86,21 +86,31 @@ fn detach_mount_propagation() -> Result<(), SandboxError> {
 
 /// Write `file`'s body and bind-mount it over its `/etc` counterpart.
 ///
-/// Skips a target that does not exist unless the file says an absent one must refuse — a bind
-/// mount needs the target to be there already, and `crate::resolver::File::required` is where
-/// the difference between "nothing to bound here" and "nothing can be bounded" is decided.
+/// Skips a target that does not exist, or is a symlink, unless the file says it must refuse —
+/// a bind mount needs the target to be there already, and `crate::resolver::File::required` is
+/// where the difference between "nothing to bound here" and "nothing can be bounded" is decided.
 fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     let name = file.target.file_name().unwrap_or(file.target.as_os_str());
     let written = source.join(name);
 
-    if !file.target.exists() {
+    let Ok(target) = std::fs::symlink_metadata(file.target) else {
         return match file.required {
             false => Ok(()),
-            true => Err(SandboxError::NamespaceSetupFailed {
-                detail: "this host has no /etc/hosts or /etc/nsswitch.conf to replace, so \
-                         resolution cannot be bounded to the names --allow-dns named",
-            }),
+            true => Err(absent(file.target)),
         };
+    };
+
+    // `mount(2)` resolves the target path, so a bind over a symlink lands on what the link
+    // points to and leaves the link itself an ordinary dentry — one that a policy granting
+    // write under `/etc` can unlink and replace with a hosts file of the command's own, the
+    // read-only remount below being on a path nothing then opens. NixOS links every `/etc`
+    // entry into the store, so this is a host shape and not a contrived one.
+    //
+    // `resolv.conf` is exempt, systemd-resolved making it a symlink nearly everywhere: a
+    // forged one names a nameserver that no policy bounding resolution can reach, every shape
+    // that could reach one being refused before the run starts.
+    if target.is_symlink() && file.required {
+        return Err(symlinked(file.target));
     }
 
     write_body(&written, &file.body)?;
@@ -126,6 +136,41 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
         None::<&Path>,
     )
     .map_err(|_| mount_failed(file.target))
+}
+
+/// Why a host with no `target` cannot bound resolution, and what would let it.
+fn absent(target: &Path) -> SandboxError {
+    SandboxError::NamespaceSetupFailed {
+        detail: match target.to_str() {
+            Some("/etc/hosts") => {
+                "this host has no /etc/hosts, and that file is the whole of a bounded \
+                 resolver, so --allow-dns cannot be honoured here"
+            }
+            _ => {
+                "this host has no /etc/nsswitch.conf, so glibc would keep its built-in dns \
+                 source and resolve a name --allow-dns never listed; an empty file at that \
+                 path is enough, and is what a musl-only image is missing"
+            }
+        },
+    }
+}
+
+/// Why a symlinked `target` cannot bound resolution.
+fn symlinked(target: &Path) -> SandboxError {
+    SandboxError::NamespaceSetupFailed {
+        detail: match target.to_str() {
+            Some("/etc/hosts") => {
+                "/etc/hosts is a symlink on this host, so replacing it would leave the link \
+                 itself writable under a write grant on /etc — refusing rather than claiming \
+                 a bound the command could undo"
+            }
+            _ => {
+                "/etc/nsswitch.conf is a symlink on this host, so replacing it would leave \
+                 the link itself writable under a write grant on /etc, and a restored dns \
+                 source resolves every name"
+            }
+        },
+    }
 }
 
 /// Why a bind over `target` failed, naming the consequence rather than the call.
@@ -168,16 +213,22 @@ fn write_body(path: &Path, body: &str) -> Result<(), SandboxError> {
 ///
 /// A tmpfs and not a plain directory, because the bodies must never be *unlinked* while the
 /// binds are up: `/proc/self/fd` reads an unlinked file's path back with `" (deleted)"`
-/// appended, and `ruleset::opened` compares exactly that spelling against the granted path —
-/// so an unlinked source would turn a grant on one of these files into a refusal, and
-/// `remove_source` below is the only tidy way left to take the bodies out of every namespace's
-/// reach without unlinking them.
+/// appended, so the command would see its own `/etc/hosts` under a path no policy names, and
+/// anything comparing a descriptor against the path it was opened by is comparing two
+/// different strings. `remove_source` takes the bodies out of reach without unlinking them.
 ///
 /// Under `std::env::temp_dir`, which needs no grant: nothing of this outlives the mounts, and
-/// the command never reads it by name. Named for this process, and created rather than opened,
-/// so a name already taken is a refusal.
+/// the command never reads it by name. Created rather than opened, so a name already taken is
+/// a refusal, and named for this process *and* the clock, so a name a local user can predict
+/// is not one they can plant ahead of a run.
 fn source_dir() -> Result<PathBuf, SandboxError> {
-    let path = std::env::temp_dir().join(format!("sandbx-resolver-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "sandbx-resolver-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.subsec_nanos())
+    ));
 
     std::fs::DirBuilder::new()
         .mode(SOURCE_DIR_MODE)
@@ -193,8 +244,14 @@ fn source_dir() -> Result<PathBuf, SandboxError> {
         MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
         Some(format!("mode={SOURCE_DIR_MODE:o}").as_str()),
     )
-    .map_err(|_| SandboxError::NamespaceSetupFailed {
-        detail: "could not mount a tmpfs to write the files that bound resolution into",
+    .map_err(|_| {
+        // The directory was created and nothing is mounted on it, so this is the one path out
+        // that `bound_resolution`'s `remove_source` does not cover.
+        let _ = std::fs::remove_dir(&path);
+
+        SandboxError::NamespaceSetupFailed {
+            detail: "could not mount a tmpfs to write the files that bound resolution into",
+        }
     })?;
 
     Ok(path)
@@ -205,8 +262,7 @@ fn source_dir() -> Result<PathBuf, SandboxError> {
 /// Best-effort, and after the mounts: each bind over `/etc` holds its own reference to that
 /// filesystem, so the command goes on reading the bodies while no process — this namespace's
 /// or the host's — has a path to them any more. Lazily, because the binds are references to
-/// it; and *not* by unlinking, which would append `" (deleted)"` to what `/proc/self/fd` reads
-/// back for each bound file and so refuse a grant naming one.
+/// it; and *not* by unlinking, for the reason `source_dir` gives.
 ///
 /// A failure leaves an empty 0700 directory in `/tmp` and changes nothing the policy claims,
 /// so it is not worth failing a run that is otherwise fully bounded.

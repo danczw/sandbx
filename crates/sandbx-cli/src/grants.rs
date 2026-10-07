@@ -561,6 +561,13 @@ impl Grants {
             if self.dns_over_tcp {
                 return Err(PolicyError::DnsWithResolverHint);
             }
+            // glibc asks nscd over `/var/run/nscd/socket` before it reads `nsswitch.conf`, and
+            // the rendered file cannot turn that off: the nscd path is gated on a flag only
+            // `__nss_configure_lookup` sets. One pathname socket is every pathname socket, so
+            // on a host running nscd the daemon would resolve whatever it likes.
+            if self.allow_unix_sockets {
+                return Err(PolicyError::DnsWithUnixSockets);
+            }
             match self.allow_network.as_deref() {
                 None => return Err(PolicyError::DnsWithoutEgress),
                 Some([]) => return Err(PolicyError::DnsWithEveryPort),

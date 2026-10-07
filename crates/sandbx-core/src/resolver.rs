@@ -32,15 +32,15 @@ pub const RESOLVER_FILES: [&str; 3] = [HOSTS, NSSWITCH, RESOLV_CONF];
 /// source left there is nothing to resolve it by.
 const LOOPBACK: &str = "127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n";
 
-/// `hosts: files` is the load-bearing line: a database absent from this file falls back to
-/// glibc's built-in default, which for `hosts` and `networks` *includes* `dns`.
-const NSSWITCH_BODY: &str = "\
-# sandbx: `files` throughout and no `dns` source, so /etc/hosts is the whole of resolution.
+/// The two databases that bear on resolution, set to the only source left.
+///
+/// Prepended rather than edited in, and appended to by nothing: a database absent from
+/// `nsswitch.conf` falls back to glibc's built-in default, which for `hosts` and `networks`
+/// *includes* `dns`, so these lines go in whether the host's file named them or not.
+const BOUNDED_SOURCES: &str = "\
+# sandbx: `hosts` and `networks` read files alone, so /etc/hosts is the whole of resolution.
 hosts: files
 networks: files
-passwd: files
-group: files
-shadow: files
 ";
 
 /// No `nameserver` line, and the bound does not rest on that alone — see the body.
@@ -88,7 +88,7 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<[File; 3]> {
         },
         File {
             target: Path::new(NSSWITCH),
-            body: NSSWITCH_BODY.to_string(),
+            body: nsswitch_body(&std::fs::read_to_string(NSSWITCH).unwrap_or_default()),
             // Absent, glibc uses `hosts: files dns`, so skipping this would leave the `dns`
             // source alive and the bound empty.
             required: true,
@@ -125,6 +125,35 @@ fn addresses(name: &str) -> Vec<IpAddr> {
     }
 
     found
+}
+
+/// The host's `nsswitch.conf` with `hosts` and `networks` rewritten and every other line kept.
+///
+/// Line by line rather than a file of sandbx's own, because `passwd`, `group` and `shadow`
+/// reach `systemd`, `sss` or LDAP on an ordinary host: writing `files` over those would leave a
+/// command whose own account lives there unable to look its user up, which bounding resolution
+/// has no business doing. Only `hosts` and `networks` bear on a name.
+///
+/// `BOUNDED_SOURCES` alone for an empty `host`, which is also what an unreadable file renders.
+fn nsswitch_body(host: &str) -> String {
+    let mut body = String::from(BOUNDED_SOURCES);
+
+    for line in host.lines() {
+        if !matches!(database(line), Some("hosts" | "networks")) {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+
+    body
+}
+
+/// The database an `nsswitch.conf` line configures: the name before its first colon, as glibc
+/// reads it. `None` for a comment, and for a line configuring nothing.
+fn database(line: &str) -> Option<&str> {
+    let name = line.split_once(':')?.0.trim();
+
+    (!name.is_empty() && !name.starts_with('#')).then_some(name)
 }
 
 /// A hosts file holding `resolved` and the loopback lines, and nothing else.
@@ -232,20 +261,49 @@ mod tests {
         );
     }
 
+    /// A host's `nsswitch.conf` in the shape the two findings this rendering answers need: a
+    /// `hosts` line with `dns` in it, and a `passwd` line reaching somewhere other than `files`.
+    const HOST_NSSWITCH: &str = "\
+# a comment mentioning hosts: and dns
+passwd: files systemd
+group: files systemd
+hosts: files mymachines resolve [!UNAVAIL=return] myhostname dns
+networks: files dns
+";
+
     /// The one line that makes the bound airtight under glibc rather than dependent on a
     /// nameserver being unreachable.
     #[test]
     fn the_nsswitch_body_leaves_no_dns_source() {
-        assert!(
-            NSSWITCH_BODY.contains("hosts: files\n"),
-            "the hosts database does not read the files source: {NSSWITCH_BODY}"
-        );
+        for host in ["", HOST_NSSWITCH] {
+            let rendered = nsswitch_body(host);
 
-        for line in NSSWITCH_BODY.lines().filter(|line| !line.starts_with('#')) {
             assert!(
-                !line.contains("dns"),
-                "{line:?} leaves a dns source, so a name the allowlist does not hold still \
-                 resolves"
+                rendered.contains("hosts: files\n") && rendered.contains("networks: files\n"),
+                "a database bearing on resolution does not read the files source: {rendered}"
+            );
+
+            for line in rendered.lines().filter(|line| !line.starts_with('#')) {
+                assert!(
+                    !matches!(database(line), Some("hosts" | "networks")) || !line.contains("dns"),
+                    "{line:?} leaves a dns source, so a name the allowlist does not hold still \
+                     resolves"
+                );
+            }
+        }
+    }
+
+    /// Only resolution is bounded: a host that looks its users up through `systemd`, `sss` or
+    /// LDAP keeps doing so, or a command cannot resolve its own uid to a name.
+    #[test]
+    fn a_database_that_is_not_about_a_name_is_left_as_the_host_had_it() {
+        let rendered = nsswitch_body(HOST_NSSWITCH);
+
+        for line in ["passwd: files systemd", "group: files systemd"] {
+            assert!(
+                rendered.contains(line),
+                "{line:?} did not survive, so the command cannot look up a user the host \
+                 resolves through a source other than files: {rendered}"
             );
         }
     }

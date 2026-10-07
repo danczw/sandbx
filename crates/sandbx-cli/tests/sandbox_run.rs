@@ -814,11 +814,17 @@ fn the_name_allowlist_grants_no_path_and_keeps_the_working_directory() {
 /// true in the shapes that survive this.
 #[test]
 fn a_reachable_nameserver_beside_the_allowlist_is_refused() {
-    let shapes: [(&[&str], &str); 4] = [
+    let shapes: [(&[&str], &str); 5] = [
         (&["--dns-over-tcp"], "--dns-over-tcp"),
         (&["--allow-network"], "--allow-network"),
         (&["--allow-network", "53"], "53"),
         (&[], "--allow-network"),
+        // nscd answers over a unix socket, which glibc asks before it reads the rendered
+        // `nsswitch.conf` — so this one is refused even with the ports named.
+        (
+            &["--allow-network", "443", "--allow-unix-sockets"],
+            "--allow-unix-sockets",
+        ),
     ];
 
     for (flags, named) in shapes {
@@ -837,6 +843,7 @@ fn a_reachable_nameserver_beside_the_allowlist_is_refused() {
                     | sandbx_cli::PolicyError::DnsWithEveryPort
                     | sandbx_cli::PolicyError::DnsWithNameserverPort
                     | sandbx_cli::PolicyError::DnsWithoutEgress
+                    | sandbx_cli::PolicyError::DnsWithUnixSockets
             ),
             "{flags:?} was refused for an unrelated reason: {error}"
         );
@@ -849,7 +856,7 @@ fn a_reachable_nameserver_beside_the_allowlist_is_refused() {
 }
 
 /// A port the command connects to is the shape the flag is for, so this must not be refused
-/// along with the four above.
+/// along with the five above.
 #[test]
 fn a_port_allowlist_without_53_is_accepted() {
     let policy = sandbox_run(&[
