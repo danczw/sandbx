@@ -103,10 +103,24 @@ pub enum PolicyError {
     /// A path flag covered somewhere sandbx keeps state of its own.
     ///
     /// `&'static str` for `holds`, so no shape of this variant can carry a key.
-    OwnedPath {
+    GrantReachesOwned {
         /// The path as the flag gave it, before resolving.
         granted: PathBuf,
         /// The sandbx-owned path the grant reaches.
+        owned: PathBuf,
+        /// What sandbx keeps there, for the message to name.
+        holds: &'static str,
+    },
+
+    /// A no-flag run was made from a working directory reaching one of those paths, which
+    /// the derived default would then grant read and write over.
+    ///
+    /// Separate from [`GrantReachesOwned`](Self::GrantReachesOwned) because the operator
+    /// granted nothing, so the message is a working-directory refusal like its neighbours.
+    CwdReachesOwned {
+        /// Where sandbx was run from.
+        cwd: PathBuf,
+        /// The sandbx-owned path it reaches.
         owned: PathBuf,
         /// What sandbx keeps there, for the message to name.
         holds: &'static str,
@@ -187,23 +201,41 @@ impl std::fmt::Display for PolicyError {
                  a process the model chose the arguments for — drop the flag, or use \
                  sandbox-run, where the program and its arguments are yours"
             ),
-            Self::OwnedPath {
+            // No `ADVICE`: the flags it names are the ones that were just refused, so this
+            // pair says what to change about them instead.
+            Self::GrantReachesOwned {
                 granted,
                 owned,
                 holds,
             } if granted == owned => write!(
                 f,
-                "refusing to grant {}, where sandbx keeps {holds} — {ADVICE}",
+                "refusing to grant {}, where sandbx keeps {holds} — grant the tree the \
+                 command needs, which is never one sandbx keeps its own state in",
                 owned.display()
             ),
-            Self::OwnedPath {
+            Self::GrantReachesOwned {
                 granted,
                 owned,
                 holds,
             } => write!(
                 f,
-                "refusing to grant {}: it reaches {}, where sandbx keeps {holds} — {ADVICE}",
+                "refusing to grant {}: it reaches {}, where sandbx keeps {holds} — grant \
+                 the tree the command needs, which is never one sandbx keeps its own \
+                 state in",
                 granted.display(),
+                owned.display()
+            ),
+            Self::CwdReachesOwned { cwd, owned, holds } if cwd == owned => write!(
+                f,
+                "refusing to derive a policy from {}, where sandbx keeps {holds} and the \
+                 default would grant write — {ADVICE}",
+                owned.display()
+            ),
+            Self::CwdReachesOwned { cwd, owned, holds } => write!(
+                f,
+                "refusing to derive a policy from {}: it reaches {}, where sandbx keeps \
+                 {holds}, and the default would grant write over it — {ADVICE}",
+                cwd.display(),
                 owned.display()
             ),
             // No `ADVICE` either, for the same reason, and both say what to write instead.
@@ -233,7 +265,8 @@ impl std::error::Error for PolicyError {
             | Self::FilesystemRoot
             | Self::ImposedVariable { .. }
             | Self::HarnessCredential { .. }
-            | Self::OwnedPath { .. }
+            | Self::GrantReachesOwned { .. }
+            | Self::CwdReachesOwned { .. }
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } => Some(source),

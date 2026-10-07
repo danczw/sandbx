@@ -191,8 +191,8 @@ fn a_grant_reaching_an_owned_path_is_refused_on_both() {
         assert!(
             stderr.contains(&home)
                 && stderr.contains("sandbx/sessions")
-                && stderr.contains("--allow-read"),
-            "{stderr} does not name the grant, what it reaches, and what to type instead"
+                && stderr.contains("grant the tree the command needs"),
+            "{stderr} does not name the grant, what it reaches, and what to grant instead"
         );
         assert!(
             !stderr.contains(FAKE_KEY),
@@ -220,8 +220,8 @@ fn naming_the_credential_file_itself_is_refused() {
         "a grant over the credential file was honoured: {stderr}"
     );
     assert!(
-        stderr.contains("credentials.toml") && stderr.contains("--allow-read"),
-        "{stderr} does not name the file, or what to type instead"
+        stderr.contains("credentials.toml") && stderr.contains("grant the tree the command needs"),
+        "{stderr} does not name the file, or what to grant instead"
     );
 }
 

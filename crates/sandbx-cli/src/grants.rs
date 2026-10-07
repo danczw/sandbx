@@ -223,8 +223,8 @@ fn vetted_root<'a>(
     // A no-flag run from inside the session directory is #173's hazard by another route: the
     // default grants write over the cwd, and the cwd would be the history.
     if let Some(found) = reaches_owned(cwd, owned) {
-        return Err(PolicyError::OwnedPath {
-            granted: cwd.to_path_buf(),
+        return Err(PolicyError::CwdReachesOwned {
+            cwd: cwd.to_path_buf(),
             owned: found.path.clone(),
             holds: found.holds,
         });
@@ -302,6 +302,16 @@ fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
 /// not, so comparing canonical forms alone would miss the host where `/home` links to
 /// `/var/home` — Fedora Silverblue — and let the unresolved spelling through.
 fn resolved(path: &Path) -> PathBuf {
+    // A relative grant is joined to the working directory first, which is also what the
+    // helper opens it against. The walk below bottoms out at the empty path, which
+    // canonicalizes to nothing, so a relative grant whose first component does not exist
+    // yet would otherwise stay relative and match no absolute owned path at all.
+    let path = &if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(path)
+    };
+
     for (depth, ancestor) in path.ancestors().enumerate() {
         if let Ok(base) = ancestor.canonicalize() {
             return path
@@ -315,7 +325,7 @@ fn resolved(path: &Path) -> PathBuf {
         }
     }
 
-    path.to_path_buf()
+    path.clone()
 }
 
 /// The path in `owned` that `granted` reaches, if it reaches one.
@@ -409,7 +419,7 @@ impl Grants {
                 // Outside the branch above, which is the whole point: every other path
                 // refusal guards only the derived default, so a flag bypassed all of them.
                 if let Some(found) = reaches_owned(path, &owned) {
-                    return Err(PolicyError::OwnedPath {
+                    return Err(PolicyError::GrantReachesOwned {
                         granted: path.clone(),
                         owned: found.path.clone(),
                         holds: found.holds,
@@ -1037,6 +1047,22 @@ mod tests {
         );
     }
 
+    /// The grant `--session` creates during the very run it was given to: nothing on disk
+    /// resolves it, so joining the working directory is the only thing that can.
+    #[test]
+    fn a_relative_grant_resolves_before_it_exists() {
+        let cwd = std::env::current_dir().expect("a test runs from a real directory");
+        let owned = vec![OwnedPath {
+            path: cwd.join("nothing-stored-yet/sandbx/sessions"),
+            holds: "the session transcripts a resumed run replays to the model",
+        }];
+
+        assert!(
+            reaches_owned(Path::new("nothing-stored-yet"), &owned).is_some(),
+            "a relative grant naming no existing directory reached no owned path"
+        );
+    }
+
     /// Fedora Silverblue ships `/home -> /var/home`, so a comparison against one spelling of
     /// an owned root is bypassed by granting the other.
     #[test]
@@ -1068,7 +1094,7 @@ mod tests {
             .expect_err("the session directory as a root");
 
         assert!(
-            matches!(error, PolicyError::OwnedPath { .. }),
+            matches!(error, PolicyError::CwdReachesOwned { .. }),
             "{error} is not the owned-path refusal"
         );
     }
