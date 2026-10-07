@@ -59,13 +59,13 @@ impl FsGuard {
 
     /// Report why a path could not be resolved, but only inside a granted area.
     ///
-    /// The nearest ancestor that does resolve decides: inside an allowed root the caller was
-    /// already entitled to know what is there, so "no such file" is honest. Anywhere else
-    /// the refusal is indistinguishable from any other. Absence inside a grant is no
-    /// verdict, so it gets no record; `allowed` would name a file nothing read.
+    /// The nearest ancestor that does resolve decides: inside an allowed root the caller could
+    /// already enumerate the area, so "no such file" is honest; anywhere else the refusal is
+    /// indistinguishable from any other. Absence inside a grant is no verdict, so it gets no
+    /// record — `allowed` would name a file nothing read.
     ///
-    /// `failed` is the component resolution actually tripped on, which is the parent for a
-    /// write; it is named only on the granted path, where it is inside the roots already.
+    /// `failed` is the component resolution tripped on, the parent for a write, and is named
+    /// only on the granted path, where it is inside the roots already.
     fn conceal_unless_granted(
         &self,
         requested: &Path,
@@ -237,9 +237,7 @@ impl FsGuard {
                     return Err(not_allowed());
                 }
 
-                // `file_name` is the half that can be `None` here: it normalizes a `.` tail
-                // away, so only a `..` tail reaches this, and `parent` is `None` only for
-                // `/`, which resolves and never gets here at all.
+                // `file_name` normalizes a `.` tail away, so only a `..` tail reaches this.
                 let Some((parent, file_name)) = path.parent().zip(path.file_name()) else {
                     crate::AuditEvent::denied(
                         Access::Write.operation(),
@@ -252,9 +250,8 @@ impl FsGuard {
 
                 match parent.canonicalize() {
                     Ok(dir) => dir.join(file_name),
-                    // The concealment decision is about the path the caller asked for; the
-                    // parent is what the message names, a `write` told it cannot find the
-                    // file it is creating having nothing to act on.
+                    // Concealment is decided on the caller's path; the parent is what the
+                    // message names, the missing directory being what there is to act on.
                     Err(source) => {
                         return Err(self.conceal_unless_granted(
                             path,
@@ -272,13 +269,12 @@ impl FsGuard {
     }
 }
 
-/// Whether resolution failed because the name does not denote a file, rather than because
-/// something refused the lookup.
+/// Whether resolution failed because the name denotes no file, rather than because something
+/// refused the lookup.
 ///
-/// The split is what the agent acts on: a wrong name is for it to fix, where EACCES or the
-/// `ELOOP` of a swapped leaf it cannot. ENOTDIR and ENAMETOOLONG are as much a wrong name as
-/// ENOENT, and reading back as refusals is what sent the model asking for a wider grant
-/// (#180). By errno because `ErrorKind` has no stable spelling for ENAMETOOLONG.
+/// A wrong name is the caller's to fix; EACCES and the `ELOOP` of a swapped leaf are not, and
+/// stay refusals. ENOTDIR and ENAMETOOLONG are as much a wrong name as ENOENT (#180). By
+/// errno because `ErrorKind` has no stable spelling for ENAMETOOLONG.
 fn names_nothing(source: &std::io::Error) -> bool {
     matches!(
         source.raw_os_error(),

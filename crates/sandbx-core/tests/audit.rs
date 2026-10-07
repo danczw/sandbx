@@ -83,8 +83,7 @@ fn records_a_refusal_with_its_reason() {
     assert!(line.contains("outside every readable root"), "got: {line}");
 }
 
-/// No policy objected, so there is no verdict to record: `denied` would name a refusal
-/// that never happened and `allowed` a file nothing read.
+/// No policy objected, so `denied` would name a refusal nothing made.
 #[test]
 fn an_in_grant_miss_records_no_denial() {
     let root = tempfile::tempdir().unwrap();
@@ -97,15 +96,14 @@ fn an_in_grant_miss_records_no_denial() {
     assert!(lines.is_empty(), "got: {lines:?}");
 }
 
-/// The one write refusal that used to leave no record, where every sibling in
-/// `check_write` emitted one (#183).
+/// The one `check_write` refusal that emitted nothing, where every sibling did (#183).
 #[test]
 fn a_path_naming_no_file_records_its_refusal() {
     let root = tempfile::tempdir().unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
 
-    // Resolution has to fail before the halves are taken, so the tail needs an
-    // absent parent: a bare `..` canonicalizes and never reaches the branch.
+    // The tail needs an absent parent: a bare `..` canonicalizes and never reaches
+    // the branch, so the obvious fixture passes whether the fix is there or not.
     let lines = capture(|| {
         let _ = guard.check_write(&root.path().join("nodir").join(".."));
     });

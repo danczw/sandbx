@@ -365,8 +365,7 @@ mod tests {
                 requested: PathBuf::from("/sample"),
                 source: io(),
             },
-            // Its own kind, not `io()`: the variant is only ever built behind an
-            // `ErrorKind::NotFound` gate.
+            // Not `io()`: the variant is only built behind `fs_guard::names_nothing`.
             SandboxError::NotFound {
                 requested: PathBuf::from("/sample"),
                 source: std::io::Error::from(std::io::ErrorKind::NotFound),
