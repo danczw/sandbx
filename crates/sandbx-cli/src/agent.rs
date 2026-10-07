@@ -548,11 +548,15 @@ mod tests {
     #[test]
     fn the_request_carries_the_granted_root_as_system() {
         let args = agent_run(&["sandbx", "agent-run", "--system", "be terse", "--", "go"]);
+        // A root that exists, and its canonical name: a grant the guard cannot resolve is
+        // named by neither it nor the prompt.
+        let work = tempfile::tempdir().expect("a temp dir");
+        let named = work.path().canonicalize().expect("it exists");
 
         let (sent, _, code) = under(
             SandboxPolicy::default()
-                .allow_read("/work")
-                .allow_write("/work"),
+                .allow_read(work.path())
+                .allow_write(work.path()),
             &args,
             &args.prompt(),
             vec![text("ok"), stop(StopReason::EndTurn)],
@@ -562,7 +566,10 @@ mod tests {
 
         let body = serde_json::to_value(&sent).expect("a serializable request");
         let system = body[0]["system"].as_str().expect("a system prompt");
-        assert!(system.contains("/work (read, write)"), "got {system:?}");
+        assert!(
+            system.contains(&format!("{} (read, write)", named.display())),
+            "got {system:?}"
+        );
         assert!(system.ends_with("be terse"), "got {system:?}");
     }
 
