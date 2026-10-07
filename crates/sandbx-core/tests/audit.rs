@@ -213,6 +213,22 @@ fn a_listed_directory_records_the_access() {
     assert!(lines[0].contains("decision=allowed"), "got: {}", lines[0]);
 }
 
+/// ENOTDIR from a directory read is the leaf being a regular file, which `check_read`
+/// just resolved — so `absent` would name a path that is demonstrably there.
+#[test]
+fn listing_a_regular_file_is_not_an_absence() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("not-a-dir.txt");
+    std::fs::write(&file, b"x").unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let lines = capture(|| {
+        let _ = guard.read_dir(&file);
+    });
+
+    assert!(lines.is_empty(), "got: {lines:?}");
+}
+
 #[test]
 fn an_absent_write_parent_records_an_absence() {
     let root = tempfile::tempdir().unwrap();
