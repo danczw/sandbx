@@ -24,9 +24,11 @@ under *Known weaknesses* gets the issue number rather than a new one.
 Pre-1.0 every tag publishes as a pre-release, so "latest pre-release" means the
 highest version number on the
 [releases page](https://github.com/danczw/sandbx/releases); GitHub's own "latest"
-link stays empty until 1.0. There are no backports: fixes land on `main` and ship
-in the next tag, and a release is cut per security fix rather than per phase. If
-you are running an alpha, run the newest one.
+link stays empty until 1.0, because a pre-release cannot hold it. From 1.0 the
+link follows the highest published version, never publication order, so a patch
+released for an older line does not claim it. There are no backports: fixes land
+on `main` and ship in the next tag, and a release is cut per security fix rather
+than per phase. If you are running an alpha, run the newest one.
 
 ## What sandbx claims to enforce
 

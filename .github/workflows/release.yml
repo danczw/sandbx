@@ -104,6 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       channel: ${{ steps.classify.outputs.channel }}
+      latest: ${{ steps.latest.outputs.latest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -128,6 +129,27 @@ jobs:
           channel="$(.github/scripts/release-channel.sh "$GITHUB_REF_NAME")"
           echo "channel=$channel"
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      # Here rather than in `publish`, which has no checkout to run the script
+      # from. The query is in the workflow because the script may not make one.
+      - name: Decide whether this tag takes the latest link
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Two statements: the default shell has no `pipefail`, so piping `gh`
+          # into the script would report the script's status and hide a failed API
+          # call as an empty release set — which answers `true`.
+          gh api --paginate "repos/$GH_REPO/releases" \
+            --jq '.[] | select(.draft == false) | .tag_name' > published.txt
+          # A call that succeeds and matches nothing answers `true` unchallenged.
+          # This repository has published releases, so empty means the query broke.
+          [ -s published.txt ] || { echo "::error::no releases returned"; exit 1; }
+          latest="$(.github/scripts/release-channel.sh --latest \
+            "$GITHUB_REF_NAME" < published.txt)"
+          echo "latest=$latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
   # Separate so `gh release create` runs once whatever the matrix size, and so
   # `contents: write` is confined to a job that checks out no source.
@@ -165,6 +187,7 @@ jobs:
       - name: Publish
         env:
           CHANNEL: ${{ needs.notes.outputs.channel }}
+          LATEST: ${{ needs.notes.outputs.latest }}
         run: |
           # An empty `$CHANNEL` means the handoff broke, and defaulting it to
           # pre-release would be right for every pre-1.0 tag and hide that until 1.0.
@@ -174,9 +197,16 @@ jobs:
             prerelease) prerelease=(--prerelease) ;;
             *) echo "::error::unusable channel: '$CHANNEL'"; exit 1 ;;
           esac
+          case "$LATEST" in
+            true | false) ;;
+            *) echo "::error::unusable latest: '$LATEST'"; exit 1 ;;
+          esac
+          # `make_latest` defaults to true in the API, so omitting this lets
+          # publication order decide the link; a backport would demote its own line.
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file notes.md \
+            --latest="$LATEST" \
             "${prerelease[@]}" \
             dist/*.tar.gz \
             dist/*.tar.gz.sha256
