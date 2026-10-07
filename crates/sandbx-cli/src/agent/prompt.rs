@@ -5,7 +5,7 @@
 //! why once per run is still the default.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 
 use sandbx_agent::{ApprovalDecision, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel};
@@ -133,6 +133,19 @@ fn deny(reason: &str) -> ApprovalDecision {
     }
 }
 
+/// Write one account of a call to stderr, from a known graphic rendition.
+///
+/// The reset only when stderr is a terminal: the model's answer streams to stdout, usually
+/// this same device, so a concealing SGR in it would hide every later line — but `2>
+/// run.log` would otherwise carry the escape into the log instead.
+pub(super) fn to_stderr(line: &str) {
+    if std::io::stderr().is_terminal() {
+        eprintln!("{RESET}{line}");
+    } else {
+        eprintln!("{line}");
+    }
+}
+
 /// The operator, as the gate reaches them: asked about a call, then told what became of
 /// it.
 ///
@@ -236,9 +249,15 @@ impl Operator for Terminal {
     }
 
     fn report(&mut self, line: &str) {
-        // A failed write is not handled here either: the next question's own write fails
-        // too, and denies.
-        let _ = writeln!(self.out, "{line}");
+        // Reset for the same reason the question is: the model's text reached this device
+        // too, and a concealing SGR left behind would hide the operator's only account of
+        // what ran. One write, so the reset cannot land without the line it covers.
+        if writeln!(self.out, "{RESET}{line}").is_err() {
+            // The fallback the question has no use for: a refusal reaches the model, but a
+            // dropped account reaches nobody, and the last call of a run has no later
+            // question whose own failure would stand in for it (#218).
+            to_stderr(line);
+        }
     }
 }
 

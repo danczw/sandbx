@@ -1,6 +1,6 @@
 use super::*;
 
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 
 /// Drive one exchange over `consent`, and report the verdict with what the operator saw.
 ///
@@ -255,6 +255,7 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
         "the `y` typed before the question was read as the answer to it: {decision:?}"
     );
 }
+
 /// A hangup is not an EOF the operator sent: the master is gone, so the read cannot block.
 #[test]
 fn a_terminal_that_hung_up_denies_without_blocking() {
@@ -274,4 +275,27 @@ fn a_terminal_that_hung_up_denies_without_blocking() {
         matches!(decision, ApprovalDecision::Deny { .. }),
         "a dead terminal approved a call: {decision:?}"
     );
+}
+
+/// The account is written from a reset too, not only the question: the model's text reaches
+/// this same device, and a concealing SGR left in it would hide the one record of what ran.
+#[test]
+fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
+    let (mut master, slave) = pty();
+    let mut terminal = Terminal::on(slave).expect("the terminal");
+
+    terminal.report("sandbx: write /work/out.rs — ran");
+
+    wait_readable(&master);
+    let mut buffer = [0u8; 128];
+    let read = master
+        .read(&mut buffer)
+        .expect("what the terminal was sent");
+    let seen = String::from_utf8_lossy(&buffer[..read]);
+
+    assert!(
+        seen.starts_with(RESET),
+        "the account was written from whatever state the model left behind: {seen:?}"
+    );
+    assert!(seen.contains("write /work/out.rs — ran"), "got {seen:?}");
 }
