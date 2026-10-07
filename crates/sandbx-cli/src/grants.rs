@@ -435,9 +435,11 @@ fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
 /// Whether a flag names a file a bounded resolver bind-mounts sandbx's own copy over, which
 /// `SandboxPolicy::grant_bound_by_resolver` refuses the policy for.
 ///
-/// Both of the operator's spellings: a flag left relative is spelled like no entry and
-/// resolves *to* one, and the resolved form is what the policy carries. Which names count is
-/// `sandbx_core::bound_by_resolver`, so the CLI and the library refuse the same set.
+/// Both spellings the flag passes through, and they overlap on purpose. `granted` is the form
+/// the policy carries, and is what matches a flag spelled relative or through a symlink.
+/// `typed` is what still matches where an entry cannot be canonicalized at all — a host whose
+/// `/etc` is a link and whose entry is absent resolves to a path no entry names. Which names
+/// count is `sandbx_core::bound_by_resolver`, so the CLI and the library refuse the same set.
 fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
     sandbx_core::bound_by_resolver(typed) || sandbx_core::bound_by_resolver(granted)
 }

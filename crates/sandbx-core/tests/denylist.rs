@@ -95,8 +95,11 @@ fn every_denied_syscall_is_one_the_docs_claim() {
 
     assert!(
         unclaimed.is_empty(),
-        "these syscall numbers are denied but named by no claim: {unclaimed:?}. The boundary \
-         is wider than the docs describe, which is how a count in SECURITY.md or \
+        "these syscall numbers are denied but named by no claim: {unclaimed:?}. Numbers and \
+         not names because an unclaimed entry is one nothing here names — each is spelled \
+         `libc::SYS_*` in BLOCKED_SYSCALLS, in \
+         crates/sandbx-core/src/helper/seccomp/rules.rs, which is where to read the name off. \
+         The boundary is wider than the docs describe, which is how a count in SECURITY.md or \
          context/guide-sandboxing.md goes stale. Fix by adding them to CLAIMED above and to \
          the syscalls row in SECURITY.md."
     );
