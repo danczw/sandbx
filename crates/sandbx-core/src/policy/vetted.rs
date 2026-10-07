@@ -1,9 +1,8 @@
 //! A granted path, and the object it named when the harness vetted it.
 //!
-//! The policy is judged in the harness and its rules are opened in the helper, so a `rename(2)`
-//! in between can put one real directory where another was vetted — the spelling is identical,
-//! and the readback in `helper/ruleset/opened.rs` agrees (#212). What travels here is what the
-//! readback cannot carry: which object the harness measured.
+//! Rules are opened in the helper and the policy is judged in the harness, so a `rename(2)` in
+//! between can put one real directory where another was vetted — identical spelling, so the
+//! readback in `helper/ruleset/opened.rs` agrees and only the object tells the two apart (#212).
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::MetadataExt as _;
@@ -91,14 +90,11 @@ pub struct VettedPath {
 impl VettedPath {
     /// `path`, resolved, and pinned to the object it names now.
     ///
-    /// The only producer that touches the filesystem, and it runs in the harness. The helper
+    /// The only producer that touches the filesystem, and it runs in the harness: the helper
     /// decodes a policy through [`grant`](crate::SandboxPolicy::grant) too, where resolving or
-    /// stat'ing would measure whatever the links point at by then — the process a grant is
-    /// meant to be safe from.
-    ///
-    /// Resolved here and not by the caller, so what is pinned is the object the path led to
-    /// when it was pinned and the two cannot be taken a step apart. A path naming nothing
-    /// cannot be vetted, and so cannot be granted: Landlock refuses a rule for one anyway.
+    /// stat'ing would measure whatever the links point at by then — the process a grant is meant
+    /// to be safe from. Resolving here rather than in the caller keeps the path and the object
+    /// from being taken a step apart, and a path naming nothing cannot be vetted at all.
     pub fn vet(path: impl AsRef<Path>) -> Result<Self, SandboxError> {
         let requested = path.as_ref();
         let unpinnable = |source| SandboxError::GrantUnpinnable {

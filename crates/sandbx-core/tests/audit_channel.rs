@@ -471,11 +471,9 @@ fn a_redirected_grant_names_itself_on_the_channel() {
     }
 }
 
-/// The sibling the pin adds (#212): only the stage holding the descriptor can `fstat` it, so
-/// a substituted object has to cross the channel as a refusal too, under a label of its own.
-///
-/// No symlink and no change of spelling, so the readback cannot see this one — a record
-/// carrying `grant_redirected` here would mean the two checks had been collapsed into one.
+/// The sibling the pin adds (#212): only the stage holding the descriptor can `fstat` it, so a
+/// substituted object crosses the channel as a refusal of its own. No symlink and no change of
+/// spelling, so a record carrying `grant_redirected` would mean the two checks had collapsed.
 #[test]
 fn a_substituted_grant_names_itself_on_the_channel() {
     let dir = scratch();

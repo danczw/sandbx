@@ -408,16 +408,13 @@ fn resolved(path: &Path) -> PathBuf {
 }
 
 /// `granted` as a grant: the object it names now, carried beside the path so the helper can
-/// confirm it opened that one and not whatever was renamed over the name since (#212).
-///
-/// `typed` is what the flag gave, which is the spelling a refusal names — the resolved one is
-/// derived and nothing the operator can go and change.
+/// confirm it opened that one and not whatever was renamed over the name since (#212). `typed`
+/// is the spelling a refusal names.
 ///
 /// `granted` has to arrive [`resolved`], and vetting resolves again, so the two are compared:
-/// every path refusal above ran against the first resolution, and a component swapped for a
-/// symlink in between would have the policy hold the second — a path no guard here ever saw,
-/// pinned to the object at it, so neither the readback nor the pin disagrees downstream. The
-/// comparison is what keeps the judged path and the granted path one path.
+/// every path refusal above ran against the first, and a component swapped for a symlink in
+/// between would have the policy hold the second — a path no guard here saw, pinned to the
+/// object at it, so nothing downstream disagrees.
 fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
     let vetted = VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
         granted: typed.to_path_buf(),
@@ -1351,10 +1348,8 @@ mod tests {
         );
     }
 
-    /// The window the comparison in [`pinned`] closes: a symlinked spelling stands in for a
-    /// component swapped between the path refusals and the pin, which is the one way the two
-    /// resolutions of one name disagree. Granting the second would grant a path no refusal
-    /// here was evaluated against — and it would be pinned, so nothing downstream objects.
+    /// A symlinked spelling stands in for a component swapped between the path refusals and
+    /// the pin, that being the one way two resolutions of one name disagree.
     #[test]
     fn a_grant_that_moved_under_the_checks_is_refused() {
         let directory = tempfile::tempdir().expect("a temporary directory");
