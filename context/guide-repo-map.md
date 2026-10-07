@@ -213,6 +213,8 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
                 the approved tools and the roots the model is told about before
                 the first request
       render.rs the answer on stdout, everything about it on stderr
+      wrapup.rs the tool-less second turn a round limit earns, and the two
+                outcomes merged into the one a session stores
    auth.rs      Auth — which source the provider key comes from: the
                 environment, then a file, and the login/logout/status over it
    auth/store.rs
@@ -266,6 +268,8 @@ that users reasonably read as the same flags.
     directory, and who may read it
 16. `decision-harness-owned-paths.md` — what happens when a grant covers one of
     those paths, and how the same hazard through `/proc` is closed instead
+17. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
+    more, and what that costs
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
