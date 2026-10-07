@@ -207,6 +207,10 @@ pub fn stored_messages(sent: &[RequestMessage]) -> Vec<Message> {
             },
             content: message.content.iter().filter_map(stored_block).collect(),
         })
+        // A message emptied by that filter would come back out of the store as an empty
+        // content array, which no provider accepts, so the next resumed turn would fail
+        // rather than this one.
+        .filter(|message| !message.content.is_empty())
         .collect()
 }
 

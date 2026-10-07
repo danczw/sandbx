@@ -927,3 +927,44 @@ async fn an_empty_round_mid_tool_use_is_an_error() {
 
     assert!(matches!(error, TurnError::EndedMidToolUse), "got {error:?}");
 }
+
+/// Reasoning is stripped on the way out, so a round carrying nothing else is the empty
+/// round above wearing a block — and it must not buy its way past the check.
+///
+/// The failure it would otherwise be is silent and durable: `Answered` over a transcript
+/// ending on an unanswered `tool_result`, which a caller stores and the next request is
+/// rejected for.
+#[tokio::test]
+async fn a_reasoning_only_round_mid_tool_use_is_the_same_error() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        // Answered the tool, then reasoned and stopped.
+        vec![
+            AgentEvent::ThinkingBlock {
+                text: "weighing it up".to_string(),
+                signature: "sig-1".to_string(),
+            },
+            stop(StopReason::EndTurn),
+        ],
+    ]);
+
+    let error = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx,
+        |_| {},
+        allow_all,
+    )
+    .await
+    .expect_err("reasoning is not an answer to a tool_result");
+
+    assert!(matches!(error, TurnError::EndedMidToolUse), "got {error:?}");
+}

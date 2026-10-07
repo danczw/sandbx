@@ -298,7 +298,7 @@ impl AgentRun {
         // Read off before `run_turn` takes the turn by value.
         let next = wrapup::Next::after(&turn);
 
-        let mut render = Render::new(out);
+        let mut render = Render::new(out).showing_thinking(self.show_thinking);
         let outcome = run_turn(
             &mut open,
             turn,
