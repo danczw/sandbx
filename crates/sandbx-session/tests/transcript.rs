@@ -34,6 +34,40 @@ fn exchange(ask: &str, reply: &str) -> Vec<Message> {
     vec![said(Role::User, ask), said(Role::Assistant, reply)]
 }
 
+/// A call and its answer, the pair a turn that runs out of rounds breaks off on.
+fn called(id: &str) -> Vec<Message> {
+    vec![
+        Message {
+            role: Role::Assistant,
+            content: vec![Content::ToolUse {
+                id: id.to_owned(),
+                name: "ls".to_owned(),
+                input: serde_json::json!({ "path": "/srv" }),
+            }],
+        },
+        answered(id),
+    ]
+}
+
+/// The answer alone, which is where such a turn ends.
+fn answered(id: &str) -> Message {
+    Message {
+        role: Role::User,
+        content: vec![Content::ToolResult {
+            tool_use_id: id.to_owned(),
+            content: "notes.txt".to_owned(),
+            is_error: None,
+        }],
+    }
+}
+
+/// A turn out of rounds: a prompt, a call, and its result, with no reply after it.
+fn out_of_rounds(ask: &str, id: &str) -> Vec<Message> {
+    let mut messages = vec![said(Role::User, ask)];
+    messages.extend(called(id));
+    messages
+}
+
 #[test]
 fn a_stored_turn_comes_back_as_it_went_in() {
     let (_root, store) = store();
@@ -164,6 +198,82 @@ fn a_turn_with_no_reply_is_refused_not_written() {
 
     assert!(matches!(err, SessionError::IncompleteTurn), "got {err:?}");
     assert_eq!(std::fs::read(session.path()).unwrap(), before);
+}
+
+/// The round trip is the assertion: a batch `append` takes and `resume` refuses would
+/// brick the session from a run that already exited (#188).
+#[test]
+fn a_turn_out_of_rounds_is_stored_and_read_back() {
+    let (_root, store) = store();
+    let mut session = store.create().unwrap();
+
+    session
+        .append(CompletedTurn {
+            messages: &out_of_rounds("what is in /srv?", "toolu_01"),
+            observed: Some(usage(1204)),
+            withheld: 0,
+        })
+        .unwrap();
+
+    let stored = store.resume(session.id()).unwrap();
+    assert_eq!(
+        stored.messages(),
+        out_of_rounds("what is in /srv?", "toolu_01")
+    );
+    assert!(stored.pending_call());
+}
+
+/// Two user turns in a row, which every other shape is refused for: the prompt is sent
+/// merged into the results it answers beside, so the pair never reaches the wire.
+#[test]
+fn a_prompt_may_follow_the_call_it_answers_beside() {
+    let (_root, store) = store();
+    let mut session = store.create().unwrap();
+    session
+        .append(CompletedTurn {
+            messages: &out_of_rounds("what is in /srv?", "toolu_01"),
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap();
+
+    session
+        .append(CompletedTurn {
+            messages: &exchange("what did you find?", "notes.txt"),
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap();
+
+    let stored = store.resume(session.id()).unwrap();
+    assert_eq!(stored.messages().len(), 5);
+    assert!(!stored.pending_call());
+}
+
+/// The exception is one turn of results followed by a prompt, not an answer followed by
+/// another answer — a chain of results nothing asked for is what a hand edit writes.
+#[test]
+fn a_second_turn_of_results_is_still_refused() {
+    let (_root, store) = store();
+    let mut session = store.create().unwrap();
+    session
+        .append(CompletedTurn {
+            messages: &out_of_rounds("what is in /srv?", "toolu_01"),
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap();
+
+    let err = session
+        .append(CompletedTurn {
+            messages: &[answered("toolu_02"), said(Role::Assistant, "both, then")],
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap_err();
+
+    assert!(matches!(err, SessionError::DisorderedTurn), "got {err:?}");
+    assert_eq!(store.resume(session.id()).unwrap().messages().len(), 3);
 }
 
 /// Refused before the write, the file being append-only: a later resume cannot undo it.

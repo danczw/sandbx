@@ -111,7 +111,9 @@ Append-only JSONL, one record per line, never rewritten. `withheld` — how many
 leading messages a turn left out to fit the context window — is an *index* into
 the history (`guide-turn-loop.md`), so it is exact only as long as nothing moves
 a prefix. A store that rewrote the whole conversation on every save would
-invalidate every figure it had already written.
+invalidate every figure it had already written. Merging a run of user turns into
+one request message moves them too, which is why `merge_user_runs` reports where
+the floor landed rather than handing the stored figure straight to the turn.
 
 Three record kinds: a `header` carrying the format version, a `message`, and a
 `turn` carrying what the prompt cost and what it cut. The turn record is its own
@@ -138,12 +140,48 @@ A transcript must be empty or start on a user message and end on an assistant on
 with no two neighbouring messages sharing a role. All three are checked on the way
 in and again on the way out. `append` checks the batch, and the join between it and
 what is stored; `resume` checks the whole history, because a hand-edited file can
-hold a pair of user turns anywhere and the API rejects an interior pair exactly as
-it rejects a trailing one — a session otherwise bricked by a run that exited zero.
+hold an illegal pair of user turns anywhere and the API rejects an interior pair
+exactly as it rejects a trailing one — a session otherwise bricked by a run that
+exited zero.
 
 The opening role is its own condition, not a corollary of the other two: a history
 of even length that opens on the model's reply alternates and ends settled, and the
 API still refuses it.
+
+### One user turn may end a transcript, and one may follow another
+
+A turn that runs out of rounds ends on the `tool_result` the model never answered,
+and every prefix of it does too — the alternative being a `tool_use` with nothing
+answering it (`guide-turn-loop.md`). Refusing that batch cost the run everything it
+had done: tokens spent, `write` calls landed, `--session` unchanged (#188). So a
+user turn of **nothing but tool results** may end a transcript, and the prompt that
+resumes one may follow it, which is the only legal pair of user turns.
+
+It is legal because the pair never reaches the wire: `request_history` and
+`merge_user_runs` in `sandbx-cli/src/session.rs` collapse a run of user messages
+into the one message the API takes, results first. The rule the API enforces is
+about messages in a request, not lines in a file, and those stopped being the same
+thing here.
+
+Three predicates in `store.rs` carry it, and `settled` — "ends on the model's
+reply" — is not one of them. It keeps its definition and `resumable` composes
+beside it, because a reader asking whether a conversation ended on an answer still
+wants that answer. What relaxes:
+
+| Predicate | What it now admits |
+|---|---|
+| `resumable` (`settled` plus) | a history ending on a user turn that is only results |
+| `alternating`, via `joins` | a `user, user` pair where the earlier is only results |
+| `follows`, via `joins` | the same pair at the join between a batch and the store |
+
+Shape, not provenance: no `tool_use_id` is matched against the call it claims to
+answer. The load path matches none anywhere, so an interior fabricated result
+already passes and checking this one junction would buy nothing it does not already
+have. What the shape does refuse is the case that matters — a trailing *prompt*,
+with nothing answering it, and a user turn with no blocks at all.
+
+Both guards take the relaxation, which is not a choice. `append` writing a shape
+`resume` refuses is precisely the bricked session the paragraph below is about.
 
 The two guards have to agree, and for a while they did not: `append` checked only
 the end, on the reasoning that the end was all it could break. It could also

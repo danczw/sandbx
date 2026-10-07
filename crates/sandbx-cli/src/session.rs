@@ -51,6 +51,15 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
                 session.id(),
                 session.messages().len()
             );
+            // Said because the prompt is answered *beside* those calls rather than after
+            // them: the model sees its own unanswered work, which is what a turn that ran
+            // out of rounds left (#188).
+            if session.pending_call() {
+                eprintln!(
+                    "sandbx: its last turn ran out of rounds; this prompt goes to the \
+                     model beside a tool call it never answered"
+                );
+            }
             session
         }
     };
@@ -87,6 +96,46 @@ pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
             content: message.content.iter().map(request_block).collect(),
         })
         .collect()
+}
+
+/// Collapse each run of consecutive user messages into one, and report where `withheld`
+/// lands once they have.
+///
+/// A transcript may end on the tool results a turn out of rounds never answered, so the
+/// prompt resuming it is stored as a second user message (#188). Consecutive user
+/// *messages* are what the API rejects, not the unanswered call, and merging their blocks
+/// is what makes the pair sendable — results first, as they are stored and as the API
+/// wants them.
+///
+/// `withheld` is an index into the history and merging moves the indices after a run, so
+/// the floor is translated rather than threaded through unchanged; one inside a run names
+/// the message the run became. `guide-turn-loop.md` is where that index's exactness is a
+/// requirement and not a nicety.
+#[must_use]
+pub fn merge_user_runs(
+    history: Vec<RequestMessage>,
+    withheld: usize,
+) -> (Vec<RequestMessage>, usize) {
+    let mut merged: Vec<RequestMessage> = Vec::with_capacity(history.len());
+    let mut floor = withheld;
+
+    for (index, message) in history.into_iter().enumerate() {
+        let onto = matches!(message.role, Role::User)
+            && merged
+                .last()
+                .is_some_and(|previous| matches!(previous.role, Role::User));
+
+        if index == withheld {
+            floor = merged.len() - usize::from(onto);
+        }
+
+        match merged.last_mut() {
+            Some(previous) if onto => previous.content.extend(message.content),
+            _ => merged.push(message),
+        }
+    }
+
+    (merged, floor)
 }
 
 /// One stored block, in the shape a request carries it.
@@ -218,6 +267,71 @@ mod tests {
             panic!("the fourth block is a tool result");
         };
         assert_eq!(*is_error, Some(true));
+    }
+
+    /// A history ending on an unanswered call, with the prompt that resumed it and the
+    /// reply to that: `[user, assistant, user(tool_result), user, assistant]`.
+    fn resumed() -> Vec<RequestMessage> {
+        vec![
+            RequestMessage {
+                role: Role::User,
+                content: vec![ContentBlock::Text {
+                    text: "what is in /srv?".to_owned(),
+                }],
+            },
+            RequestMessage {
+                role: Role::Assistant,
+                content: vec![ContentBlock::ToolUse {
+                    id: "toolu_01".to_owned(),
+                    name: "ls".to_owned(),
+                    input: serde_json::json!({ "path": "/srv" }),
+                }],
+            },
+            RequestMessage {
+                role: Role::User,
+                content: vec![ContentBlock::ToolResult {
+                    tool_use_id: "toolu_01".to_owned(),
+                    content: "notes.txt".to_owned(),
+                    is_error: None,
+                }],
+            },
+            RequestMessage {
+                role: Role::User,
+                content: vec![ContentBlock::Text {
+                    text: "what did you find?".to_owned(),
+                }],
+            },
+            RequestMessage {
+                role: Role::Assistant,
+                content: vec![ContentBlock::Text {
+                    text: "notes.txt".to_owned(),
+                }],
+            },
+        ]
+    }
+
+    #[test]
+    fn a_run_of_user_turns_travels_as_one_message() {
+        let (merged, _) = merge_user_runs(resumed(), 0);
+
+        let stored = stored_messages(&merged);
+        assert_eq!(stored.len(), 4);
+        // The results stay ahead of the prompt, which is the order the API takes.
+        assert!(matches!(
+            stored[2].content.as_slice(),
+            [Content::ToolResult { .. }, Content::Text { .. }]
+        ));
+    }
+
+    /// `withheld` is an index into the history, and merging is the one thing that moves
+    /// the indices after it — so the floor is translated, not carried over.
+    #[test]
+    fn the_floor_names_the_message_it_named_before() {
+        for (before, after) in [(0, 0), (1, 1), (2, 2), (3, 2), (4, 3)] {
+            let (_, floor) = merge_user_runs(resumed(), before);
+
+            assert_eq!(floor, after, "a floor of {before}");
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //! prefix, so every operation reads the whole file or writes to its end.
 
 mod record;
+mod shape;
 mod vet;
 
 use std::ffi::OsString;
@@ -14,13 +15,14 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use record::{Accounting, Header, Record, VERSION, fold};
+use shape::{alternating, answers_only, follows, opens, resumable};
 use vet::{
     DIR_OWNER_ONLY, DIR_SHARED_BITS, OWNER_ONLY, READABLE_BITS, WRITABLE_BITS, open_root,
     open_transcript, ownership, reopen_for_append,
 };
 
 use crate::id::clock_millis;
-use crate::{CompletedTurn, Message, Role, SessionError, SessionId, Usage, sessions_directory};
+use crate::{CompletedTurn, Message, SessionError, SessionId, Usage, sessions_directory};
 
 /// How many ids to try before concluding the clock is stuck, two sessions starting in
 /// the same millisecond being ordinary.
@@ -156,11 +158,11 @@ impl SessionStore {
             })?;
 
         let (messages, observed, withheld) = fold(&path, &body)?;
-        // The whole history, not just its end: a hand-edited file can hold a pair of user
-        // turns anywhere, or open on the model's reply. No messages at all is a session
-        // not yet talked to.
+        // The whole history, not just its end: a hand-edited file can hold an illegal pair
+        // of user turns anywhere, or open on the model's reply. No messages at all is a
+        // session not yet talked to.
         if !messages.is_empty() {
-            if !settled(&messages) {
+            if !resumable(&messages) {
                 return Err(SessionError::IncompleteTurn);
             }
             if !alternating(&messages) || !opens(&messages) {
@@ -259,6 +261,17 @@ impl Session {
         self.withheld
     }
 
+    /// True when the conversation breaks off on tool calls the model never answered,
+    /// which is a turn that ran out of rounds (#188).
+    ///
+    /// The next prompt is sent *beside* those results rather than after them, so a caller
+    /// that merges has to know, and only the store can say without reimplementing the
+    /// predicate `append` and `resume` are checked against.
+    #[must_use]
+    pub fn pending_call(&self) -> bool {
+        self.messages.last().is_some_and(answers_only)
+    }
+
     /// True when somebody else can read the transcript, which resumed anyway: by the
     /// time it is known the conversation has been readable, and it cannot be rotated.
     #[must_use]
@@ -268,9 +281,9 @@ impl Session {
 
     /// Add a finished turn to the end of the transcript.
     ///
-    /// Refuses a turn not ending on an assistant message, since the next resume would
-    /// send two user turns in a row. A turn with no messages leaves the last role where
-    /// it was, so it writes its accounting line and nothing else.
+    /// Refuses a turn ending on a user message that is not purely answers to tool calls:
+    /// a prompt nothing replied to. A turn with no messages leaves the last role where it
+    /// was, so it writes its accounting line and nothing else.
     ///
     /// Both of [`SessionStore::resume`]'s conditions are checked here, over the batch and
     /// over its boundary with what is stored. The file is append-only, so one that lands
@@ -278,7 +291,7 @@ impl Session {
     /// after a run that exited zero.
     pub fn append(&mut self, turn: CompletedTurn<'_>) -> Result<(), SessionError> {
         if !turn.messages.is_empty() {
-            if !settled(turn.messages) {
+            if !resumable(turn.messages) {
                 return Err(SessionError::IncompleteTurn);
             }
             if !alternating(turn.messages) || !follows(&self.messages, turn.messages) {
@@ -329,39 +342,4 @@ impl Session {
                 source,
             })
     }
-}
-
-/// True when no two neighbouring messages carry the same role.
-///
-/// Says nothing about which role comes first: an even-length history opening on the
-/// model's reply alternates and ends settled, so [`opens`] is a condition of its own.
-fn alternating(messages: &[Message]) -> bool {
-    messages.windows(2).all(|pair| pair[0].role != pair[1].role)
-}
-
-/// True when the history starts where the API requires: on a user turn.
-///
-/// An empty one is true, having no first role yet — [`follows`] is what holds the rule
-/// over the batch that eventually supplies it.
-fn opens(messages: &[Message]) -> bool {
-    messages.first().map(|message| message.role) != Some(Role::Assistant)
-}
-
-/// True when `batch` can follow `stored` without putting two turns of the same role
-/// together — the one join [`alternating`] cannot see, each half being alternating alone.
-fn follows(stored: &[Message], batch: &[Message]) -> bool {
-    match (stored.last(), batch.first()) {
-        (Some(last), Some(first)) => last.role != first.role,
-        // Nothing to join, so `batch` is the transcript's opening and [`opens`] is the
-        // rule over it instead.
-        (None, _) => opens(batch),
-        // An empty batch joins nothing.
-        _ => true,
-    }
-}
-
-/// True when the history ends where a conversation may be left: on the model's reply.
-/// An empty history is not settled, which refuses a prompt with no answer behind it.
-fn settled(messages: &[Message]) -> bool {
-    messages.last().map(|message| message.role) == Some(Role::Assistant)
 }
