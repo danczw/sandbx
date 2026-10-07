@@ -286,9 +286,8 @@ impl AgentRun {
     /// # Errors
     ///
     /// [`AgentError::NoTerminal`] when `--approve call` was passed and there is no
-    /// controlling terminal. Serving the argv answer instead would be fail-closed against
-    /// the default and fail-open against the request: an operator who asked to decide per
-    /// call would silently get approve-once-per-run.
+    /// controlling terminal. Refused rather than served the argv answer, which would be
+    /// fail-open against the request; `context/decision-approval-gate.md` has why.
     fn terminal(&self) -> Result<Option<Terminal>, AgentError> {
         match self.approve {
             Approve::Run => Ok(None),

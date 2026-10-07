@@ -193,9 +193,8 @@ fn an_escape_sequence_in_a_path_cannot_rewrite_the_question() {
 
 /// Wait for `fd` to carry something, or fail the test.
 ///
-/// Not a sleep: a pty's line discipline may move a written line into the reader's queue
-/// from a workqueue, and a drain that ran before the line was queued would leave the
-/// test asserting nothing.
+/// Not a sleep: a pty queues a written line from a workqueue, and a drain that ran before
+/// it was queued would leave the test asserting nothing.
 fn wait_readable(fd: &impl std::os::fd::AsFd) {
     use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
@@ -218,9 +217,8 @@ fn pty() -> (File, File) {
     (File::from(pair.master), File::from(pair.slave))
 }
 
-/// The branch's own invariant, over a real terminal because what the drain clears is the
-/// kernel's input queue: a `y` typed at a question the model counterfeited in the round's
-/// text is not read as the answer to the question that follows it.
+/// Over a real terminal because what the drain clears is the kernel's input queue: a `y`
+/// typed at a counterfeit question is not read as the answer to the real one.
 #[test]
 fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
     let (mut master, slave) = pty();

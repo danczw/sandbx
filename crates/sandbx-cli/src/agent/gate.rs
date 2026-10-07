@@ -1,9 +1,8 @@
 //! Which tools this run approved, what the model is told about the rest, and the one line
 //! per call an operator reads.
 //!
-//! Its own module because it changes for a different reason than the rest of `agent-run`:
-//! who may approve a call and when. The report is here and not in `render.rs` because only
-//! the gate knows what became of a call.
+//! The report is here and not in `render.rs` because only the gate knows what became of a
+//! call.
 
 use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
@@ -18,8 +17,9 @@ pub(super) const ALLOW_TOOL: &str = "--allow-tool";
 
 /// How much of a model-chosen argument reaches a terminal.
 ///
-/// High enough that a `bash` command an operator is asked to consent to is not cut in
-/// practice: consenting to a truncated command is consenting to something unread.
+/// The only bound on this path: `ToolError::Failed` builds its subject from the command
+/// with none of its own, and its `detail` carries up to `max_bytes`. Cut here is cut
+/// unread, so a `bash` command an operator consents to should not reach it (#169).
 const SUBJECT_CAP: usize = 512;
 
 /// Whether the model may call `tool` in this run.
@@ -56,9 +56,8 @@ pub(super) fn approved_tools(allowed: Option<&[BuiltinTool]>) -> Vec<&'static st
 
 /// Whether `--approve call` will put anything to the operator in this run.
 ///
-/// Argv is the ceiling and is checked first, and a read-only call is never asked about, so
-/// with no `--allow-tool` the flag asks about nothing at all — and a line announcing that
-/// every write will be asked for is false for that run.
+/// Argv is checked first and a read-only call is never asked about, so with no
+/// `--allow-tool` the flag asks about nothing — and announcing otherwise would be false.
 pub(super) fn asks_about_anything(allowed: Option<&[BuiltinTool]>) -> bool {
     BuiltinTool::ALL
         .iter()
@@ -83,8 +82,8 @@ impl<'a, T> ArgvGate<'a, T> {
 
 impl<T: Operator> CallGate for ArgvGate<'_, T> {
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        // Argv is the ceiling, asked first: a prompt that could only ever be refused is
-        // fatigue with no decision in it, and it would teach an operator to answer `y`.
+        // Argv is the ceiling, asked first: a prompt that could only ever be refused
+        // teaches an operator to answer `y`.
         if !approves(self.allowed, call.tool) {
             let name = call.tool.name();
             return ApprovalDecision::Deny {
@@ -95,8 +94,8 @@ impl<T: Operator> CallGate for ArgvGate<'_, T> {
             };
         }
 
-        // A read-only call is never asked about. #165's twenty-prompt turn is what this
-        // and the `a` answer exist to avoid, and a `read` has no answer worth taking.
+        // Never asked about: a `read` has no answer worth taking, and asking would be
+        // #165's twenty-prompt turn.
         if call.tool.risk() == RiskLevel::ReadOnly {
             return ApprovalDecision::Allow;
         }
@@ -121,27 +120,25 @@ impl<T: Operator> CallGate for ArgvGate<'_, T> {
 
 /// Write the operator's line for one call, to stderr.
 ///
-/// Shared with the wrap-up round's gate, which refuses for a different reason but owes the
-/// same account: a call the wrap-up refused reached no operator at all before #169. That
-/// round asks nobody, so it has no terminal to write to either.
+/// Shared with the wrap-up round's gate, which refuses for its own reason and owes the same
+/// account. That round asks nobody, so it has no terminal to write to either.
 pub(super) fn settled(call: Settled<'_>) {
     to_stderr(&line(call));
 }
 
 /// The operator's whole line for one call, prefixed and stripped.
 ///
-/// Stripped here and not only field by field: this is the one place a report reaches a
-/// terminal, so a `Display` impl that starts carrying model text cannot re-open the hole
-/// behind a formatter nobody re-audited. `SandboxError`'s already did once.
+/// Stripped at the sink and not only field by field, so a `Display` impl that starts
+/// carrying model text cannot re-open the hole — `SandboxError`'s did once.
 fn line(call: Settled<'_>) -> String {
     format!("sandbx: {}", stripped(&report(call)))
 }
 
 /// The operator's account of one call, without the `sandbx: ` prefix.
 ///
-/// One function for all five outcomes, so a call that was refused cannot read as one that
-/// ran (#169) — and nothing announces a call before this, since a line printed when the
-/// call was *requested* would claim a run the policy then refused.
+/// All five outcomes here, so a refused call cannot read as one that ran (#169). Nothing
+/// announces a call before this: a line printed when it was *requested* would claim a run
+/// the policy then refused.
 fn report(call: Settled<'_>) -> String {
     let head = match call.tool {
         Some(tool) => describe(tool, call.input),
@@ -149,9 +146,8 @@ fn report(call: Settled<'_>) -> String {
     };
 
     match call.outcome {
-        // A tail like the other four, not the bare head: nothing is printed when a call is
-        // requested, so a 90-second `bash` is silent and then prints one line, which an
-        // operator who has just answered `y` would otherwise read as it starting.
+        // A tail like the other four: nothing prints when a call is requested, so a bare
+        // head after a 90-second `bash` reads as the call starting rather than ending.
         Outcome::Ran => format!("{head} — ran"),
         Outcome::Unknown => format!("{head} — no tool answers to that name"),
         Outcome::NotOffered => format!("{head} — not offered this turn"),
@@ -160,10 +156,6 @@ fn report(call: Settled<'_>) -> String {
         Outcome::Denied { reason } => format!("{head} — refused: {}", printable(reason)),
         // Exhaustive rather than `to_string()`: the error's own `Display` names its subject,
         // which the head has already printed from the arguments.
-        //
-        // Every field here is stripped too, and not only the head: `SandboxError`'s own
-        // `Display` writes the requested path, and serde's quotes the arguments back, so
-        // an escape sequence refused by the policy arrives on this line by the tail.
         Outcome::Errored(error) => match error {
             ToolError::Denied { reason, .. } => {
                 format!("{head} — refused by the policy: {}", printable(reason))
@@ -194,10 +186,8 @@ pub(super) fn describe(tool: BuiltinTool, input: &serde_json::Value) -> String {
 /// What one call is about, read off the arguments the model sent.
 ///
 /// Keyed off the tool, never off which key is present: no input type refuses an unknown
-/// field, so `{"command": "curl … | sh", "path": "/work/notes.md"}` deserialises, runs the
-/// command, and read by presence order would be named by the decoy path — in the consent
-/// question as well as in the report. A tool whose arguments carry no subject at all is
-/// named alone rather than by a guess.
+/// field, so `{"command": "curl … | sh", "path": "/work/notes.md"}` runs the command while
+/// read by presence order it would be named — and consented to — by the decoy path.
 fn subject(tool: BuiltinTool, input: &serde_json::Value) -> Option<String> {
     let key = match tool {
         BuiltinTool::Bash => "command",
@@ -232,12 +222,10 @@ pub(super) fn printable(text: &str) -> String {
 
 /// `text` with everything that could rewrite the line around it replaced.
 ///
-/// Model-chosen text reaches a terminal here, and an escape sequence in it would rewrite
-/// the surrounding line — which for the consent prompt means rewriting the question being
-/// answered. A stripped codepoint becomes U+FFFD rather than being dropped: dropped, a
-/// hostile string reads as a plausible path, which is a worse account than a mangled one.
-///
-/// Idempotent, so composing it with itself costs only time.
+/// An escape sequence in model-chosen text rewrites the surrounding line, which for the
+/// consent prompt is the question being answered. Replaced with U+FFFD rather than dropped:
+/// dropped, a hostile string reads as a plausible path. Idempotent, so the two layers
+/// compose.
 fn stripped(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
 
@@ -257,11 +245,9 @@ fn stripped(text: &str) -> String {
 
 /// Whether `c` renders as nothing, or reorders what follows it.
 ///
-/// `char::is_control` is `Cc` exactly, so the `Cf` codepoints pass it: U+202E and the
-/// directional isolates make a path *display* as a different path, which an operator then
-/// consents to. Spelled out as ranges because `char` has no predicate for the category,
-/// which also makes this a denylist — every `Cf` block plus the blank-rendering fillers and
-/// variation selectors, and a new Unicode version can add to it without failing a build.
+/// `char::is_control` is `Cc` exactly, so U+202E and the directional isolates pass it and
+/// make a path *display* as a different path. Ranges because `char` has no predicate for
+/// the category — so a denylist, which a new Unicode version can outgrow silently.
 fn invisible(c: char) -> bool {
     matches!(c,
         '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
