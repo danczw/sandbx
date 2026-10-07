@@ -387,6 +387,17 @@ fn an_escape_sequence_in_a_refusal_cannot_rewrite_the_line_either() {
     }
 }
 
+/// The strip is at the sink and not only per field, so a `Display` impl that starts
+/// carrying model text cannot re-open the hole behind a formatter nobody re-audited.
+/// Idempotent, or composing the two layers would mangle what the first already marked.
+#[test]
+fn the_whole_line_is_stripped_and_stripping_twice_changes_nothing() {
+    let once = stripped("write /work/a\x1b[2K\rb");
+
+    assert_eq!(once, "write /work/a\u{fffd}[2K\u{fffd}b");
+    assert_eq!(stripped(&once), once, "the strip is not idempotent");
+}
+
 /// Serde quotes the arguments back, so the detail is as model-chosen as the head is.
 #[test]
 fn a_bad_argument_detail_is_stripped_and_capped() {

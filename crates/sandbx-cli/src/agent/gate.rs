@@ -106,7 +106,10 @@ impl<T: Ask> CallGate for ArgvGate<'_, T> {
 /// Shared with the wrap-up round's gate, which refuses for a different reason but owes the
 /// same account: a call the wrap-up refused reached no operator at all before #169.
 pub(super) fn settled(call: Settled<'_>) {
-    eprintln!("sandbx: {}", report(call));
+    // Stripped here and not only field by field: this is the one place a report reaches a
+    // terminal, so a `Display` impl that starts carrying model text cannot re-open the hole
+    // behind a formatter nobody re-audited. `SandboxError`'s already did once.
+    eprintln!("sandbx: {}", stripped(&report(call)));
 }
 
 /// The operator's account of one call, without the `sandbx: ` prefix.
@@ -182,17 +185,35 @@ fn subject(tool: BuiltinTool, input: &serde_json::Value) -> Option<String> {
     }))
 }
 
-/// `text` as it may be written to a terminal.
+/// One model-chosen field as it may be written to a terminal: stripped, and cut to length.
 ///
-/// Model-chosen, so an escape sequence in it would rewrite the surrounding line — which
-/// for the consent prompt means rewriting the question being answered. A stripped
-/// codepoint becomes U+FFFD rather than being dropped: dropped, a hostile string reads as
-/// a plausible path, which is a worse account than a visibly mangled one.
+/// The cap is per field rather than per line, so one long argument cannot push the words
+/// that frame it off the end.
 pub(super) fn printable(text: &str) -> String {
-    let mut out = String::new();
     let mut rest = text.chars();
+    let head: String = rest.by_ref().take(SUBJECT_CAP).collect();
+    let mut out = stripped(&head);
 
-    for c in rest.by_ref().take(SUBJECT_CAP) {
+    // Marked, not silent: an operator who cannot see the whole argument can still refuse.
+    if rest.next().is_some() {
+        out.push('…');
+    }
+
+    out
+}
+
+/// `text` with everything that could rewrite the line around it replaced.
+///
+/// Model-chosen text reaches a terminal here, and an escape sequence in it would rewrite
+/// the surrounding line — which for the consent prompt means rewriting the question being
+/// answered. A stripped codepoint becomes U+FFFD rather than being dropped: dropped, a
+/// hostile string reads as a plausible path, which is a worse account than a mangled one.
+///
+/// Idempotent, so composing it with itself costs only time.
+fn stripped(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+
+    for c in text.chars() {
         match c {
             // Spelled, not replaced: a heredoc shown as a row of U+FFFD is a command
             // consented to unread, which `SUBJECT_CAP` exists to avoid.
@@ -201,11 +222,6 @@ pub(super) fn printable(text: &str) -> String {
             c if c.is_control() || invisible(c) => out.push('\u{fffd}'),
             c => out.push(c),
         }
-    }
-
-    // Marked, not silent: an operator who cannot see the whole argument can still refuse.
-    if rest.next().is_some() {
-        out.push('…');
     }
 
     out
