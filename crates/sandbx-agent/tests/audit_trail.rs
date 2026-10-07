@@ -8,12 +8,12 @@
 
 use sandbx_agent::run_turn;
 use sandbx_core::SandboxPolicy;
-use sandbx_providers::StopReason;
+use sandbx_providers::{ContentBlock, StopReason};
 use sandbx_tools::BuiltinTool;
 
 mod support;
 
-use support::{Script, allow_all, call, ctx, stop, text, turn, wire};
+use support::{Script, allow_all, call, ctx, stop, text, turn};
 
 /// An in-memory stand-in for stderr.
 ///
@@ -94,5 +94,15 @@ async fn a_model_issued_call_records_its_access() {
         3,
         "the turn should have re-entered twice"
     );
-    assert_eq!(wire(&messages)[3]["content"][0]["is_error"], true);
+    assert!(
+        matches!(
+            messages[3].content[0],
+            ContentBlock::ToolResult {
+                is_error: Some(true),
+                ..
+            }
+        ),
+        "got {:?}",
+        messages[3]
+    );
 }

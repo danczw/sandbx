@@ -2,16 +2,17 @@
 //! shape, `EventStream`, never over which type produced it.
 
 use futures_util::StreamExt;
-use sandbx_providers::{AgentEvent, MessagesRequest, MockProvider, ProviderError, StopReason};
+use sandbx_providers::{AgentEvent, MockProvider, Prompt, ProviderError, StopReason};
 
-fn a_request() -> MessagesRequest {
-    MessagesRequest {
+fn a_request() -> Prompt {
+    Prompt {
         model: "claude-opus-5".to_string(),
-        max_tokens: 100,
+        max_output_tokens: 100,
         system: None,
         messages: vec![],
         tools: vec![],
         tool_choice: None,
+        thinking: None,
     }
 }
 

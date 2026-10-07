@@ -96,6 +96,6 @@ pub(super) fn definition(tool: BuiltinTool) -> ToolDefinition {
     ToolDefinition {
         name: tool.name().to_string(),
         description: tool.description().to_string(),
-        input_schema: tool.input_schema(),
+        schema: tool.input_schema(),
     }
 }

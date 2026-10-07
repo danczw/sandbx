@@ -80,8 +80,8 @@ fn shapes() -> Vec<Vec<RequestMessage>> {
 fn usage(input: Option<u32>, read: Option<u32>, creation: Option<u32>) -> PromptUsage {
     PromptUsage {
         input_tokens: input,
-        cache_read_input_tokens: read,
-        cache_creation_input_tokens: creation,
+        cache_read_tokens: read,
+        cache_write_tokens: creation,
     }
 }
 

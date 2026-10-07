@@ -6,20 +6,20 @@
 
 use sandbx_agent::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
-use sandbx_providers::{AgentEvent, RequestMessage, Role, StopReason};
+use sandbx_providers::{AgentEvent, ContentBlock, RequestMessage, Role, StopReason};
 use sandbx_tools::BuiltinTool;
 
 mod support;
 
-use support::{Script, allow_all, call, ctx, stop, text, turn, wire};
+use support::{Script, allow_all, call, ctx, stop, text, turn};
 
 /// Large enough to put any test over the budgets used below.
 fn measured(input: u32) -> AgentEvent {
     AgentEvent::Usage {
         input_tokens: Some(input),
         output_tokens: Some(1),
-        cache_creation_input_tokens: None,
-        cache_read_input_tokens: None,
+        cache_write_tokens: None,
+        cache_read_tokens: None,
     }
 }
 
@@ -27,7 +27,7 @@ fn measured(input: u32) -> AgentEvent {
 fn said(text: &str) -> RequestMessage {
     RequestMessage {
         role: Role::User,
-        content: vec![sandbx_providers::ContentBlock::Text {
+        content: vec![ContentBlock::Text {
             text: text.to_string(),
         }],
     }
@@ -37,7 +37,7 @@ fn said(text: &str) -> RequestMessage {
 fn replied(text: &str) -> RequestMessage {
     RequestMessage {
         role: Role::Assistant,
-        content: vec![sandbx_providers::ContentBlock::Text {
+        content: vec![ContentBlock::Text {
             text: text.to_string(),
         }],
     }
@@ -66,7 +66,7 @@ fn tool_chain() -> Vec<RequestMessage> {
         said("first"),
         RequestMessage {
             role: Role::Assistant,
-            content: vec![sandbx_providers::ContentBlock::ToolUse {
+            content: vec![ContentBlock::ToolUse {
                 id: "a".to_string(),
                 name: "ls".to_string(),
                 input: serde_json::json!({}),
@@ -74,7 +74,7 @@ fn tool_chain() -> Vec<RequestMessage> {
         },
         RequestMessage {
             role: Role::User,
-            content: vec![sandbx_providers::ContentBlock::ToolResult {
+            content: vec![ContentBlock::ToolResult {
                 tool_use_id: "a".to_string(),
                 content: "ok".to_string(),
                 is_error: None,
@@ -86,8 +86,8 @@ fn tool_chain() -> Vec<RequestMessage> {
 }
 
 /// What the request at `round` carried as its messages.
-fn sent(script: &Script, round: usize) -> serde_json::Value {
-    serde_json::to_value(&script.sent[round]).unwrap()["messages"].clone()
+fn sent(script: &Script, round: usize) -> &[RequestMessage] {
+    &script.sent[round].messages
 }
 
 /// Pinned literally because the value is the claim: on by default would silently send a
@@ -116,8 +116,8 @@ async fn the_outcome_carries_the_last_reported_usage() {
         outcome.usage,
         Some(PromptUsage {
             input_tokens: Some(4_000),
-            cache_read_input_tokens: None,
-            cache_creation_input_tokens: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
         }),
         "got {:?}",
         outcome.usage
@@ -168,7 +168,7 @@ async fn compaction_cannot_fire_on_a_turns_first_round() {
     .await
     .unwrap();
 
-    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(sent(&script, 0), history);
     assert_eq!(outcome.withheld, 0);
 }
 
@@ -206,13 +206,12 @@ async fn a_first_turn_compacts_after_it_measures_itself() {
     .unwrap();
 
     // Round one goes out whole — there was no figure to go on yet.
-    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(sent(&script, 0), history);
     // Round two acts on round one's own 500, which is over the budget of 100.
     assert_eq!(outcome.withheld, 2, "got {:?}", sent(&script, 1));
-    let second = sent(&script, 1);
-    let kept = second.as_array().unwrap();
-    assert_eq!(kept.len(), 4, "got {second:?}");
-    assert_eq!(&kept[..2], &wire(&history[2..]).as_array().unwrap()[..]);
+    let kept = sent(&script, 1);
+    assert_eq!(kept.len(), 4, "got {kept:?}");
+    assert_eq!(&kept[..2], &history[2..]);
 }
 
 /// Without this, compaction is unconditional truncation wearing a budget.
@@ -227,8 +226,8 @@ async fn a_turn_under_budget_sends_the_whole_history() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(9_999),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -241,7 +240,7 @@ async fn a_turn_under_budget_sends_the_whole_history() {
     .await
     .unwrap();
 
-    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(sent(&script, 0), history);
     assert_eq!(outcome.withheld, 0);
 }
 
@@ -258,8 +257,8 @@ async fn a_turn_over_budget_sends_only_the_recent_messages() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -273,7 +272,7 @@ async fn a_turn_over_budget_sends_only_the_recent_messages() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 2, "got {:?}", sent(&script, 0));
-    assert_eq!(sent(&script, 0), wire(&history[2..]));
+    assert_eq!(sent(&script, 0), &history[2..]);
 }
 
 /// `outcome.usage` measures the *already compacted* request, so a caller threading only
@@ -292,8 +291,8 @@ async fn the_turn_after_a_compaction_keeps_the_cut() {
     first.limits.compaction = Some(policy);
     first.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let first_outcome = run_turn(
@@ -343,7 +342,7 @@ async fn the_turn_after_a_compaction_keeps_the_cut() {
         "got {:?}",
         sent(&second_script, 0)
     );
-    assert_eq!(sent(&second_script, 0), wire(&second_history[2..]));
+    assert_eq!(sent(&second_script, 0), &second_history[2..]);
 }
 
 /// A conversation back over budget has to be cut deeper, or it is bounded exactly once.
@@ -358,8 +357,8 @@ async fn a_turn_still_over_budget_deepens_the_cut() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
     turn.withheld = 2;
 
@@ -374,7 +373,7 @@ async fn a_turn_still_over_budget_deepens_the_cut() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 6, "got {:?}", sent(&script, 0));
-    assert_eq!(sent(&script, 0), wire(&history[6..]));
+    assert_eq!(sent(&script, 0), &history[6..]);
 }
 
 /// Every turn after a compaction carries a floor, so a floor that froze the cut would
@@ -409,12 +408,72 @@ async fn a_carried_floor_deepens_on_the_turns_own_figure() {
     .await
     .unwrap();
 
-    assert_eq!(sent(&script, 0), wire(&history[2..]));
+    assert_eq!(sent(&script, 0), &history[2..]);
     // Round two acts on round one's own 500, over the budget of 100.
     assert_eq!(outcome.withheld, 6, "got {:?}", sent(&script, 1));
-    let kept = sent(&script, 1);
-    let kept = kept.as_array().unwrap();
-    assert_eq!(&kept[..2], &wire(&history[6..]).as_array().unwrap()[..]);
+    assert_eq!(&sent(&script, 1)[..2], &history[6..]);
+}
+
+/// A reasoning block is signed against the messages that came before it, so the round that
+/// cuts deeper than the round that produced it must not replay it — the provider rejects
+/// the request outright. The same setup as
+/// [`a_carried_floor_deepens_on_the_turns_own_figure`], with round one reasoning.
+#[tokio::test]
+async fn a_deepened_cut_drops_the_reasoning_already_sent() {
+    let history = long_conversation();
+    let mut script = Script::new([
+        vec![
+            AgentEvent::ThinkingBlock {
+                text: "weighing it up".to_string(),
+                signature: "sig-1".to_string(),
+            },
+            call("rm", serde_json::json!({})),
+            measured(500),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("done"), stop(StopReason::EndTurn)],
+    ]);
+    let mut turn = turn(&history, &[BuiltinTool::Write]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    turn.observed = None;
+    turn.withheld = 2;
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        allow_all,
+    )
+    .await
+    .unwrap();
+
+    // The deepening is the premise: without it the block is required, not forbidden.
+    assert_eq!(outcome.withheld, 6, "the cut did not deepen");
+    assert!(
+        !sent(&script, 1)
+            .iter()
+            .flat_map(|message| &message.content)
+            .any(|block| matches!(
+                block,
+                ContentBlock::Thinking { .. } | ContentBlock::RedactedThinking { .. }
+            )),
+        "got {:?}",
+        sent(&script, 1)
+    );
+    // The turn still ran: the tool call survived the strip, so the `tool_result` is there
+    // to answer it.
+    assert!(
+        sent(&script, 1)
+            .iter()
+            .flat_map(|message| &message.content)
+            .any(|block| matches!(block, ContentBlock::ToolResult { .. })),
+        "got {:?}",
+        sent(&script, 1)
+    );
 }
 
 /// A caller that rewrites history carries back a count that no longer names a boundary.
@@ -430,8 +489,8 @@ async fn an_illegal_carried_floor_still_compacts() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
     // Index 4 is an assistant turn, nothing above it is legal, so the floor is met from
     // below at 3.
@@ -449,9 +508,9 @@ async fn an_illegal_carried_floor_still_compacts() {
 
     let messages = sent(&script, 0);
     assert_eq!(outcome.withheld, 3, "got {messages:?}");
-    assert_eq!(messages, wire(&history[3..]));
-    assert_eq!(
-        messages[0]["content"][0]["type"], "text",
+    assert_eq!(messages, &history[3..]);
+    assert!(
+        matches!(messages[0].content[0], ContentBlock::Text { .. }),
         "the request opened on an orphaned tool_result: {messages:?}"
     );
 }
@@ -469,8 +528,8 @@ async fn a_floor_past_the_history_sends_it_whole() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
     turn.withheld = 99;
 
@@ -485,7 +544,7 @@ async fn a_floor_past_the_history_sends_it_whole() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 0, "got {:?}", sent(&script, 0));
-    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(sent(&script, 0), history);
 }
 
 /// `Usage` is nullable on the wire, and deepening on a figure already acted on would shed
@@ -506,8 +565,8 @@ async fn a_round_with_no_usage_leaves_the_cut_alone() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -521,9 +580,7 @@ async fn a_round_with_no_usage_leaves_the_cut_alone() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 2, "got {:?}", sent(&script, 1));
-    let kept = sent(&script, 1);
-    let kept = kept.as_array().unwrap();
-    assert_eq!(&kept[..6], &wire(&history[2..]).as_array().unwrap()[..]);
+    assert_eq!(&sent(&script, 1)[..6], &history[2..]);
 }
 
 /// The same setup with round one reporting: the cut deepens rather than reversing.
@@ -545,8 +602,8 @@ async fn a_cut_already_taken_is_never_undone() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -559,11 +616,9 @@ async fn a_cut_already_taken_is_never_undone() {
     .await
     .unwrap();
 
-    assert_eq!(sent(&script, 0), wire(&history[2..]));
+    assert_eq!(sent(&script, 0), &history[2..]);
     assert_eq!(outcome.withheld, 4, "got {:?}", sent(&script, 1));
-    let kept = sent(&script, 1);
-    let kept = kept.as_array().unwrap();
-    assert_eq!(&kept[..4], &wire(&history[4..]).as_array().unwrap()[..]);
+    assert_eq!(&sent(&script, 1)[..4], &history[4..]);
 }
 
 /// Compaction narrows the request, not `TurnOutcome::messages`: a caller appends those to
@@ -579,8 +634,8 @@ async fn compaction_never_shortens_the_transcript() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -594,12 +649,7 @@ async fn compaction_never_shortens_the_transcript() {
     .unwrap();
 
     assert!(outcome.withheld > 0, "the test needs compaction to fire");
-    assert_eq!(
-        wire(&outcome.messages),
-        serde_json::json!([
-            { "role": "assistant", "content": [{ "type": "text", "text": "hi" }] },
-        ])
-    );
+    assert_eq!(outcome.messages, vec![replied("hi")]);
 }
 
 /// The API rejects a conversation that does not open on a user turn; index 1 here is the
@@ -615,8 +665,8 @@ async fn a_compacted_request_opens_with_a_user_message() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     run_turn(
@@ -630,8 +680,8 @@ async fn a_compacted_request_opens_with_a_user_message() {
     .unwrap();
 
     assert_eq!(
-        sent(&script, 0)[0]["role"],
-        "user",
+        sent(&script, 0)[0].role,
+        Role::User,
         "got {:?}",
         sent(&script, 0)
     );
@@ -650,8 +700,8 @@ async fn compaction_keeps_a_tool_result_with_its_call() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     run_turn(
@@ -665,9 +715,9 @@ async fn compaction_keeps_a_tool_result_with_its_call() {
     .unwrap();
 
     let messages = sent(&script, 0);
-    assert_eq!(messages, wire(&history[3..]), "got {messages:?}");
-    assert_eq!(
-        messages[0]["content"][0]["type"], "text",
+    assert_eq!(messages, &history[3..], "got {messages:?}");
+    assert!(
+        matches!(messages[0].content[0], ContentBlock::Text { .. }),
         "the request opened on an orphaned tool_result: {messages:?}"
     );
 }
@@ -680,7 +730,7 @@ async fn an_unbreakable_history_is_sent_oversized() {
     for id in ["a", "b", "c"] {
         history.push(RequestMessage {
             role: Role::Assistant,
-            content: vec![sandbx_providers::ContentBlock::ToolUse {
+            content: vec![ContentBlock::ToolUse {
                 id: id.to_string(),
                 name: "ls".to_string(),
                 input: serde_json::json!({}),
@@ -688,7 +738,7 @@ async fn an_unbreakable_history_is_sent_oversized() {
         });
         history.push(RequestMessage {
             role: Role::User,
-            content: vec![sandbx_providers::ContentBlock::ToolResult {
+            content: vec![ContentBlock::ToolResult {
                 tool_use_id: id.to_string(),
                 content: "ok".to_string(),
                 is_error: None,
@@ -703,8 +753,8 @@ async fn an_unbreakable_history_is_sent_oversized() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -718,7 +768,7 @@ async fn an_unbreakable_history_is_sent_oversized() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 0);
-    assert_eq!(sent(&script, 0), wire(&history));
+    assert_eq!(sent(&script, 0), history);
 }
 
 /// A cut survives the rounds after it, however `produced` grows behind it.
@@ -743,8 +793,8 @@ async fn a_cut_is_reused_by_every_later_round() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -758,9 +808,8 @@ async fn a_cut_is_reused_by_every_later_round() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 2);
-    assert_eq!(sent(&script, 0), wire(&history[2..]));
-    assert_eq!(sent(&script, 1)[0], wire(&history[2..])[0]);
-    assert_eq!(sent(&script, 1)[1], wire(&history[2..])[1]);
+    assert_eq!(sent(&script, 0), &history[2..]);
+    assert_eq!(&sent(&script, 1)[..2], &history[2..]);
 }
 
 /// Round one's own measurement comes back *under* budget, so round two re-plans with
@@ -788,8 +837,8 @@ async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(101),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -803,7 +852,7 @@ async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
     .unwrap();
 
     assert_eq!(outcome.withheld, 2);
-    assert_eq!(sent(&script, 1)[0], wire(&history[2..])[0]);
+    assert_eq!(sent(&script, 1)[0], history[2]);
     // And the turn still reports what it last measured, low as it was.
     assert_eq!(outcome.usage.unwrap().prompt_tokens(), 1);
 }
@@ -832,8 +881,8 @@ async fn a_keep_recent_under_the_turns_output_sends_it() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -849,11 +898,12 @@ async fn a_keep_recent_under_the_turns_output_sends_it() {
     // Round two's request ends in the two messages round one produced, the call and its
     // result, whatever was withheld in front of them.
     let second = sent(&script, 1);
-    let own = wire(&outcome.messages[..2]);
-    let count = second.as_array().unwrap().len();
-    assert!(count >= 2, "got {second:?}");
-    assert_eq!(second[count - 2], own[0], "got {second:?}");
-    assert_eq!(second[count - 1], own[1], "got {second:?}");
+    assert!(second.len() >= 2, "got {second:?}");
+    assert_eq!(
+        &second[second.len() - 2..],
+        &outcome.messages[..2],
+        "got {second:?}"
+    );
 }
 
 /// Defined rather than rejected: `Compaction` has public fields and no constructor.
@@ -868,8 +918,8 @@ async fn a_budget_of_zero_compacts_every_measured_turn() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let outcome = run_turn(
@@ -909,8 +959,8 @@ async fn a_compacted_turn_ending_mid_tool_use_is_an_error() {
     });
     turn.observed = Some(PromptUsage {
         input_tokens: Some(1),
-        cache_read_input_tokens: None,
-        cache_creation_input_tokens: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
     });
 
     let error = run_turn(

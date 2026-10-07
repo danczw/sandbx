@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
-    AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, StopReason,
+    AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, StopReason,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
@@ -19,7 +19,7 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 /// `context/guide-turn-loop.md`.
 pub(crate) struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
-    pub(crate) sent: Vec<MessagesRequest>,
+    pub(crate) sent: Vec<Prompt>,
 }
 
 impl Script {
@@ -30,11 +30,8 @@ impl Script {
         }
     }
 
-    pub(crate) async fn open(
-        &mut self,
-        request: MessagesRequest,
-    ) -> Result<EventStream, ProviderError> {
-        self.sent.push(request.clone());
+    pub(crate) async fn open(&mut self, prompt: Prompt) -> Result<EventStream, ProviderError> {
+        self.sent.push(prompt.clone());
         // Not `unwrap_or_default`: an empty round surfaces as `StreamEndedWithoutStop`,
         // so a miscounted script would fail with a misleading cause.
         let events = self
@@ -57,10 +54,11 @@ fn canned(events: Vec<AgentEvent>) -> EventStream {
 pub(crate) fn turn<'a>(history: &'a [RequestMessage], tools: &'a [BuiltinTool]) -> Turn<'a> {
     Turn {
         model: "claude-opus-5".to_string(),
-        max_tokens: 1024,
+        max_output_tokens: 1024,
         system: None,
         tools,
         tool_choice: None,
+        thinking: None,
         history,
         limits: TurnLimits::default(),
         observed: None,
@@ -96,9 +94,4 @@ pub(crate) fn call(name: &str, input: serde_json::Value) -> AgentEvent {
         name: name.to_string(),
         input,
     }
-}
-
-/// The rebuilt history in the only form `ContentBlock` can be compared in.
-pub(crate) fn wire(messages: &[RequestMessage]) -> serde_json::Value {
-    serde_json::to_value(messages).unwrap()
 }

@@ -2,8 +2,13 @@ use secrecy::{ExposeSecret, SecretString};
 
 use crate::EventStream;
 use crate::error::ProviderError;
-use crate::request::MessagesRequest;
-use crate::{credentials, ensure_crypto_provider_installed, sse, wire};
+use crate::prompt::Prompt;
+use crate::{credentials, ensure_crypto_provider_installed, sse};
+
+mod body;
+mod wire;
+
+use body::Body;
 
 /// A hand-rolled streaming client for the Anthropic Messages API.
 ///
@@ -73,17 +78,14 @@ impl AnthropicClient {
     ///
     /// The returned `Result` covers everything knowable before the first event;
     /// anything that goes wrong once events are flowing arrives as an `Err` item in
-    /// the stream. A caller that may retry clones the request first.
-    pub async fn stream_chat(
-        &self,
-        request: MessagesRequest,
-    ) -> Result<EventStream, ProviderError> {
+    /// the stream. A caller that may retry clones the prompt first.
+    pub async fn stream_chat(&self, prompt: Prompt) -> Result<EventStream, ProviderError> {
         let response = self
             .http
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", self.api_key.expose_secret())
             .header("anthropic-version", Self::ANTHROPIC_VERSION)
-            .json(&request)
+            .json(&Body(&prompt))
             .send()
             .await
             .map_err(|source| ProviderError::Transport {
@@ -211,6 +213,9 @@ async fn map_error_response(
             kind,
             message,
             retry_after,
+            // Every 5xx, including the 529 Anthropic uses for an overload. A 4xx
+            // other than the 429 handled above is a request this client built wrong.
+            transient: status.as_u16() >= 500,
         }
     }
 }

@@ -50,6 +50,10 @@ pub(super) struct Render<W> {
     /// tell a round that wrote and then failed from one that wrote nothing.
     after_gap: bool,
 
+    /// Whether stderr is part-way through a line of reasoning, so the round's own stderr
+    /// lines do not continue one.
+    thinking_mid_line: bool,
+
     /// The first write that failed, kept because `observe` has no way to end the turn.
     failed: Option<std::io::Error>,
 }
@@ -63,6 +67,7 @@ impl<W: Write> Render<W> {
             wrote: false,
             separating: false,
             after_gap: false,
+            thinking_mid_line: false,
             failed: None,
         }
     }
@@ -94,14 +99,33 @@ impl<W: Write> Render<W> {
                     self.after_gap = true;
                 }
             }
+            // Stderr, stdout being the answer: reasoning is about the answer, and a
+            // summary of it at that. Empty on a run that did not ask for one, the API
+            // sending the increment either way.
+            AgentEvent::Thinking { delta } => {
+                if !delta.is_empty() {
+                    eprint!("{delta}");
+                    self.thinking_mid_line = !delta.ends_with('\n');
+                }
+            }
             AgentEvent::Stop { reason } => {
                 self.truncated = matches!(reason, StopReason::MaxTokens);
+                // Here and not at the block's close, which an unsigned block never
+                // reaches: a round's own stderr lines follow, and none may continue a
+                // reasoning line.
+                if std::mem::take(&mut self.thinking_mid_line) {
+                    eprintln!();
+                }
             }
             // A requested call is announced where it is decided, which knows whether it
             // ran. So a refusal above the gate, or in the wrap-up round, reaches only the
             // model and the turn's own stderr line (#169).
+            //
+            // The two reasoning blocks are the replayable form of what the deltas above
+            // already showed, and carry a signature this must not write anywhere.
             AgentEvent::ToolCallRequested { .. }
-            | AgentEvent::Thinking { .. }
+            | AgentEvent::ThinkingBlock { .. }
+            | AgentEvent::RedactedThinking { .. }
             | AgentEvent::Usage { .. } => {}
         }
     }
@@ -204,6 +228,45 @@ pub(super) mod tests {
 
         let code = render.finish(None);
         (String::from_utf8(render.out).expect("utf-8"), code)
+    }
+
+    /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Stderr
+    /// cannot be captured here — `eprint!` writes to the process's own — so what this
+    /// pins is the half that would corrupt a caller's output.
+    #[test]
+    fn no_part_of_the_reasoning_reaches_stdout() {
+        let (written, code) = rendered(&[
+            AgentEvent::Thinking {
+                delta: "weighing it up".to_string(),
+            },
+            AgentEvent::ThinkingBlock {
+                text: "weighing it up".to_string(),
+                signature: "sig-1".to_string(),
+            },
+            AgentEvent::RedactedThinking {
+                data: "EvgBCkgIBR".to_string(),
+            },
+            text("the answer"),
+            stop(StopReason::EndTurn),
+        ]);
+
+        assert_eq!(written, "the answer\n");
+        assert_eq!(code.expect("clean turn"), 0);
+    }
+
+    /// A turn that only reasoned wrote nothing, so the "no answer" report is still owed —
+    /// reasoning on stderr must not count as having written one.
+    #[test]
+    fn reasoning_alone_is_not_an_answer() {
+        let (written, code) = rendered(&[
+            AgentEvent::Thinking {
+                delta: "weighing it up".to_string(),
+            },
+            stop(StopReason::EndTurn),
+        ]);
+
+        assert_eq!(written, "");
+        assert_eq!(code.expect("clean turn"), 0);
     }
 
     #[test]

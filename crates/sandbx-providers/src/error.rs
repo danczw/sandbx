@@ -41,6 +41,12 @@ pub enum ProviderError {
         /// From `Retry-After`, which a 529 carries as often as a 429 does — so it is
         /// read on every status, not only the rate-limited path.
         retry_after: Option<std::time::Duration>,
+        /// Whether the adapter judged this one worth retrying, which
+        /// [`is_retryable`](Self::is_retryable) then reports unchanged.
+        ///
+        /// Set where the error is built, because deciding it needs the provider's own
+        /// status codes and error-type strings — neither of which belongs here.
+        transient: bool,
     },
 
     /// The API answered 429.
@@ -65,25 +71,15 @@ pub enum ProviderError {
 }
 
 impl ProviderError {
-    /// The two `type` strings Anthropic documents as transient, for an in-band SSE
-    /// `error` event, which carries no HTTP status to classify by.
-    const RETRYABLE_KINDS: &'static [&'static str] = &["overloaded_error", "api_error"];
-
     /// Whether retrying the identical request could plausibly succeed.
     ///
-    /// A transport failure, a rate limit, and any 5xx; a 4xx other than 429 is not. A
-    /// truncated stream reports `false` because the turn was already partly delivered,
-    /// so re-sending is the caller's judgement call.
+    /// A transport failure and a rate limit always; an API error as its adapter
+    /// judged it. A truncated stream reports `false` because the turn was already
+    /// partly delivered, so re-sending is the caller's judgement call.
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::Transport { .. } | Self::RateLimited { .. } => true,
-            Self::ApiError {
-                status: Some(status),
-                ..
-            } => *status >= 500,
-            Self::ApiError {
-                status: None, kind, ..
-            } => Self::RETRYABLE_KINDS.contains(&kind.as_str()),
+            Self::ApiError { transient, .. } => *transient,
             Self::MissingCredential { .. }
             | Self::InvalidBaseUrl { .. }
             | Self::MalformedEvent { .. }

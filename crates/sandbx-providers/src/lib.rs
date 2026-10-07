@@ -3,6 +3,10 @@
 //! The seam is the return type: every client's `stream_chat` hands back
 //! [`EventStream`], so there is no trait or enum over the backends. No vendor SDK
 //! sits between sandbx and the wire format; see `context/decision-provider-seam.md`.
+//!
+//! [`Prompt`], [`AgentEvent`] and [`ProviderError`] are this crate's own vocabulary.
+//! Everything that knows one API's field names, string tables and body rules lives
+//! under `anthropic`.
 
 mod anthropic;
 mod credentials;
@@ -10,9 +14,8 @@ mod error;
 mod event;
 #[cfg(feature = "mock")]
 mod mock;
-mod request;
+mod prompt;
 mod sse;
-mod wire;
 
 pub use anthropic::AnthropicClient;
 pub use credentials::{anthropic_api_key, resolve_api_key};
@@ -22,8 +25,8 @@ pub use event::{AgentEvent, StopReason};
 /// `mock` feature; `Cargo.toml` records why no self dev-dependency enables it.
 #[cfg(feature = "mock")]
 pub use mock::MockProvider;
-pub use request::{
-    ContentBlock, MessagesRequest, RequestMessage, Role, ToolChoice, ToolDefinition,
+pub use prompt::{
+    ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
 
 /// The event stream every provider client returns: owned, boxed, and fused.

@@ -14,12 +14,39 @@ use crate::sse::RawSseEvent;
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 
-/// Per-index accumulation state for an in-flight `tool_use` block, the only block
-/// type whose deltas mean nothing until they are buffered whole.
-struct ToolUseBlock {
-    id: String,
-    name: String,
-    partial_json: String,
+/// The two `type` strings Anthropic documents as transient, for an in-band SSE
+/// `error` event, which carries no HTTP status to classify by.
+const RETRYABLE_KINDS: &[&str] = &["overloaded_error", "api_error"];
+
+/// Map Anthropic's `stop_reason` onto this crate's own.
+fn stop_reason(value: &str) -> StopReason {
+    match value {
+        "end_turn" => StopReason::EndTurn,
+        "tool_use" => StopReason::ToolUse,
+        "max_tokens" => StopReason::MaxTokens,
+        "stop_sequence" => StopReason::StopSequence,
+        other => StopReason::Other(other.to_string()),
+    }
+}
+
+/// Per-index accumulation state for a block whose deltas mean nothing until they are
+/// buffered whole.
+///
+/// Both kinds here for one reason: their pieces arrive across frames and only the
+/// complete block can be replayed. `text` needs no entry — its deltas are each
+/// useful on their own.
+enum OpenBlock {
+    ToolUse {
+        id: String,
+        name: String,
+        partial_json: String,
+    },
+    Thinking {
+        text: String,
+        /// `None` until the block's one `signature_delta` arrives. A block that
+        /// closes still holding `None` is dropped rather than emitted.
+        signature: Option<String>,
+    },
 }
 
 /// Map a stream of raw SSE frames into [`AgentEvent`]s.
@@ -46,7 +73,7 @@ struct WireState<S> {
     /// Keyed by block index. A `BTreeMap`, not a `HashMap`: blocks still open when the
     /// turn ends flush in index order, which a randomized iteration order would make
     /// unreproducible.
-    blocks: BTreeMap<u32, ToolUseBlock>,
+    blocks: BTreeMap<u32, OpenBlock>,
     /// The turn's counts so far, each field the most recent value reported for it.
     usage: RawUsage,
     /// Held until `message_stop` — `message_delta` reporting a reason is not itself
@@ -92,28 +119,44 @@ impl<S> WireState<S> {
         self.pending.push_back(Ok(AgentEvent::Usage {
             input_tokens,
             output_tokens,
-            cache_creation_input_tokens,
-            cache_read_input_tokens,
+            cache_write_tokens: cache_creation_input_tokens,
+            cache_read_tokens: cache_read_input_tokens,
         }));
     }
 
-    /// Queue every tool call still open when the turn ended.
+    /// Queue every block still open when the turn ended.
     ///
-    /// From `message_stop` only, covering a turn that ends properly with a `tool_use`
-    /// block whose `content_block_stop` went missing: dropping the call would leave
+    /// From `message_stop` only, covering a turn that ends properly with a block whose
+    /// `content_block_stop` went missing: dropping a tool call would leave
     /// `Stop { reason: ToolUse }` telling the caller to run a tool it never got. The
     /// paths that end without `message_stop` do not flush — a truncated block's JSON
     /// is incomplete, so flushing would put a `MalformedEvent` ahead of the honest
     /// [`ProviderError::StreamEndedUnexpectedly`].
     fn flush_open_blocks(&mut self) {
         for (index, block) in std::mem::take(&mut self.blocks) {
-            self.pending.push_back(tool_call_event(
-                index,
-                block.id,
-                block.name,
-                &block.partial_json,
-            ));
+            if let Some(event) = closed_block_event(index, block) {
+                self.pending.push_back(event);
+            }
         }
+    }
+}
+
+/// What a block that just closed is worth, or `None` for one worth nothing.
+///
+/// An unsigned thinking block is the `None` case: its signature is what makes it
+/// replayable, so passing one on would seed a caller's history with a block the next
+/// request is rejected for.
+fn closed_block_event(index: u32, block: OpenBlock) -> Option<Result<AgentEvent, ProviderError>> {
+    match block {
+        OpenBlock::ToolUse {
+            id,
+            name,
+            partial_json,
+        } => Some(tool_call_event(index, id, name, &partial_json)),
+        OpenBlock::Thinking { text, signature } => Some(Ok(AgentEvent::ThinkingBlock {
+            text,
+            signature: signature?,
+        })),
     }
 }
 
@@ -202,22 +245,38 @@ where
                 index,
                 content_block,
             } => {
-                // A non-tool start still clears the index: a stream that reuses one
-                // without closing it — `tool_use` at 0, then `text` at 0 — would
+                // An unaccumulated start still clears the index: a stream that reuses
+                // one without closing it — `tool_use` at 0, then `text` at 0 — would
                 // otherwise accumulate the text deltas into the abandoned tool call
                 // and emit a `ToolCallRequested` the model never asked for.
                 match content_block {
                     RawContentBlockStart::ToolUse { id, name } => {
                         state.blocks.insert(
                             index,
-                            ToolUseBlock {
+                            OpenBlock::ToolUse {
                                 id,
                                 name,
                                 partial_json: String::new(),
                             },
                         );
                     }
-                    _ => {
+                    RawContentBlockStart::Thinking { thinking } => {
+                        state.blocks.insert(
+                            index,
+                            OpenBlock::Thinking {
+                                text: thinking,
+                                signature: None,
+                            },
+                        );
+                    }
+                    // Whole already, so it is emitted here rather than accumulated.
+                    RawContentBlockStart::RedactedThinking { data } => {
+                        state.blocks.remove(&index);
+                        state
+                            .pending
+                            .push_back(Ok(AgentEvent::RedactedThinking { data }));
+                    }
+                    RawContentBlockStart::Text { .. } | RawContentBlockStart::Unknown => {
                         state.blocks.remove(&index);
                     }
                 }
@@ -229,28 +288,38 @@ where
                         .push_back(Ok(AgentEvent::Text { delta: text }));
                 }
                 RawDelta::ThinkingDelta { thinking } => {
+                    // Emitted for a renderer *and* accumulated for the replay: one
+                    // pass, two consumers with different needs.
+                    if let Some(OpenBlock::Thinking { text, .. }) = state.blocks.get_mut(&index) {
+                        text.push_str(&thinking);
+                    }
                     state
                         .pending
                         .push_back(Ok(AgentEvent::Thinking { delta: thinking }));
                 }
-                RawDelta::SignatureDelta { .. } => {
-                    // Discarded — see AgentEvent::Thinking's doc.
+                RawDelta::SignatureDelta { signature: value } => {
+                    if let Some(OpenBlock::Thinking { signature, .. }) =
+                        state.blocks.get_mut(&index)
+                    {
+                        *signature = Some(value);
+                    }
                 }
                 RawDelta::InputJsonDelta { partial_json } => {
-                    if let Some(block) = state.blocks.get_mut(&index) {
-                        block.partial_json.push_str(&partial_json);
+                    if let Some(OpenBlock::ToolUse {
+                        partial_json: buffered,
+                        ..
+                    }) = state.blocks.get_mut(&index)
+                    {
+                        buffered.push_str(&partial_json);
                     }
                 }
                 RawDelta::Unknown => {}
             },
             RawStreamEvent::ContentBlockStop { index } => {
-                if let Some(block) = state.blocks.remove(&index) {
-                    state.pending.push_back(tool_call_event(
-                        index,
-                        block.id,
-                        block.name,
-                        &block.partial_json,
-                    ));
+                if let Some(block) = state.blocks.remove(&index)
+                    && let Some(event) = closed_block_event(index, block)
+                {
+                    state.pending.push_back(event);
                 }
             }
             RawStreamEvent::MessageDelta { delta, usage } => {
@@ -258,7 +327,7 @@ where
                 // these arrive, so one `Usage` is queued at the end of the turn.
                 state.usage.absorb(usage);
                 if let Some(reason) = delta.stop_reason {
-                    state.stop_reason = Some(StopReason::from_wire(&reason));
+                    state.stop_reason = Some(stop_reason(&reason));
                 }
             }
             RawStreamEvent::MessageStop => {
@@ -276,6 +345,7 @@ where
                 state.ended = true;
                 state.push_usage();
                 state.pending.push_back(Err(ProviderError::ApiError {
+                    transient: RETRYABLE_KINDS.contains(&error.kind.as_str()),
                     status: None,
                     kind: error.kind,
                     message: error.message,

@@ -18,8 +18,8 @@ async fn start_and_delta_combine_into_one_usage_event() {
             AgentEvent::Usage {
                 input_tokens: Some(10),
                 output_tokens: Some(5),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
+                cache_write_tokens: None,
+                cache_read_tokens: None,
             },
             stop(StopReason::EndTurn),
         ]
@@ -42,8 +42,8 @@ async fn a_delta_restating_input_tokens_wins_over_start() {
         AgentEvent::Usage {
             input_tokens: Some(10682),
             output_tokens: Some(510),
-            cache_creation_input_tokens: Some(0),
-            cache_read_input_tokens: Some(4),
+            cache_write_tokens: Some(0),
+            cache_read_tokens: Some(4),
         }
     );
 }
@@ -67,8 +67,8 @@ async fn several_deltas_produce_exactly_one_usage_event() {
             AgentEvent::Usage {
                 input_tokens: Some(10),
                 output_tokens: Some(12),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
+                cache_write_tokens: None,
+                cache_read_tokens: None,
             },
             stop(StopReason::EndTurn),
         ],

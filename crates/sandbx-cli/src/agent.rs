@@ -16,8 +16,8 @@ use render::{Capped, Render};
 use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
-    AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError, RequestMessage,
-    Role,
+    AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
+    Thinking,
 };
 use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -79,6 +79,16 @@ pub struct AgentRun {
     /// the tool work and resumes either way. The exit code is 2 either way.
     #[arg(long = "no-wrap-up")]
     no_wrap_up: bool,
+
+    /// Show the model's reasoning on stderr as it arrives.
+    ///
+    /// Asks for a summary of it, not the reasoning itself, which the API does not return.
+    /// Stderr because stdout is the answer. Nothing of it is stored: a session transcript
+    /// holds the same turns either way.
+    ///
+    /// Models before Claude 4.6 refuse the request outright rather than ignoring it.
+    #[arg(long = "show-thinking")]
+    show_thinking: bool,
 
     /// Give the model a system prompt.
     ///
@@ -239,7 +249,7 @@ impl AgentRun {
     /// read back what the request carried — the only way to check either without a key.
     async fn drive<W: Write>(
         &self,
-        mut open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
+        mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         prompt: String,
         system: Option<String>,
@@ -265,11 +275,12 @@ impl AgentRun {
 
         let turn = Turn {
             model: self.model.clone(),
-            max_tokens: self.max_tokens,
+            max_output_tokens: self.max_tokens,
             system,
             tools: &BuiltinTool::ALL,
             // The model's to make: this is the turn that may use a tool.
             tool_choice: None,
+            thinking: self.show_thinking.then_some(Thinking::Visible),
             history: &merged.history,
             limits: TurnLimits {
                 max_rounds: self.max_rounds,
@@ -400,7 +411,7 @@ fn session_id(value: &str) -> Result<SessionId, String> {
 
 #[cfg(test)]
 mod tests {
-    use sandbx_providers::{AgentEvent, StopReason};
+    use sandbx_providers::{AgentEvent, StopReason, ToolChoice};
 
     use super::render::tests::{stop, text};
     use super::*;
@@ -431,6 +442,25 @@ mod tests {
         assert_eq!(round_cap("1"), Ok(1));
     }
 
+    /// A user turn of prose, the only shape a prompt reaches a request as.
+    fn asked(text: &str) -> RequestMessage {
+        RequestMessage {
+            role: Role::User,
+            content: vec![ContentBlock::Text {
+                text: text.to_string(),
+            }],
+        }
+    }
+
+    fn answered(text: &str) -> RequestMessage {
+        RequestMessage {
+            role: Role::Assistant,
+            content: vec![ContentBlock::Text {
+                text: text.to_string(),
+            }],
+        }
+    }
+
     /// An `EventStream` that replays `events` and then ends.
     ///
     /// `fuse()` because `EventStream` promises a `FusedStream`: a caller may poll it
@@ -451,7 +481,7 @@ mod tests {
     }
 
     /// What a scripted run reports: every request it sent, its stdout, and its exit code.
-    type Driven = (Vec<MessagesRequest>, String, Result<i32, AgentError>);
+    type Driven = (Vec<Prompt>, String, Result<i32, AgentError>);
 
     /// Drive one scripted round through `drive`, and report what was sent and written.
     ///
@@ -513,6 +543,7 @@ mod tests {
         runtime().block_on(args.drive(
             |_| {
                 std::future::ready(Err(ProviderError::ApiError {
+                    transient: true,
                     status: Some(500),
                     kind: "api_error".to_owned(),
                     message: "overloaded".to_owned(),
@@ -548,13 +579,69 @@ mod tests {
 
         assert_eq!(written, "etc\n");
         assert_eq!(code.expect("clean turn"), 0);
-        let body = serde_json::to_value(&sent).unwrap();
-        assert_eq!(
-            body[0]["messages"],
-            serde_json::json!([{
-                "role": "user",
-                "content": [{ "type": "text", "text": "what is in /srv?" }],
-            }])
+        assert_eq!(sent[0].messages, vec![asked("what is in /srv?")]);
+    }
+
+    /// Both halves: the default has to be absent and not `Visible`, because asking for a
+    /// summary is a 400 on every model before Claude 4.6, and a flag nobody set must not
+    /// cost a run its turn.
+    #[test]
+    fn show_thinking_asks_for_it_and_nothing_else_does() {
+        let round = || vec![text("etc"), stop(StopReason::EndTurn)];
+
+        let quiet = agent_run(&["sandbx", "agent-run", "--", "hi"]);
+        let (sent, _, code) = one_round(&quiet, "hi", round(), None);
+        code.expect("clean turn");
+        assert_eq!(sent[0].thinking, None);
+
+        let loud = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
+        let (sent, _, code) = one_round(&loud, "hi", round(), None);
+        code.expect("clean turn");
+        assert_eq!(sent[0].thinking, Some(Thinking::Visible));
+    }
+
+    /// The replay the provider requires is `run_turn`'s; what this pins is the last edge
+    /// before the file, where a signature is a provider token of no use to a resumed
+    /// conversation. Asserted on the bytes, not the parse: a variant added later would
+    /// store it somewhere this does not know to look.
+    #[test]
+    fn a_stored_turn_carries_no_reasoning() {
+        let args = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
+        let (_root, store, session) = new_session();
+
+        let (_, _, code) = one_round(
+            &args,
+            "hi",
+            vec![
+                AgentEvent::Thinking {
+                    delta: "weighing it up".to_string(),
+                },
+                AgentEvent::ThinkingBlock {
+                    text: "weighing it up".to_string(),
+                    signature: "sig-1".to_string(),
+                },
+                AgentEvent::RedactedThinking {
+                    data: "EvgBCkgIBR".to_string(),
+                },
+                text("etc"),
+                stop(StopReason::EndTurn),
+            ],
+            Some(session),
+        );
+        code.expect("clean turn");
+
+        let path = store.root().join(format!("{}.jsonl", only_session(&store)));
+        let on_disk = std::fs::read_to_string(&path).expect("the transcript exists");
+
+        for token in ["sig-1", "EvgBCkgIBR", "thinking", "weighing it up"] {
+            assert!(
+                !on_disk.contains(token),
+                "{token} reached the transcript: {on_disk}"
+            );
+        }
+        assert!(
+            on_disk.contains("etc"),
+            "the answer was lost too: {on_disk}"
         );
     }
 
@@ -583,14 +670,13 @@ mod tests {
         );
         code.expect("clean turn");
 
-        let body = serde_json::to_value(&sent).expect("a serializable request");
         assert_eq!(
-            body[0]["messages"],
-            serde_json::json!([
-                { "role": "user", "content": [{ "type": "text", "text": "the first question" }] },
-                { "role": "assistant", "content": [{ "type": "text", "text": "the first answer" }] },
-                { "role": "user", "content": [{ "type": "text", "text": "and the second?" }] },
-            ])
+            sent[0].messages,
+            vec![
+                asked("the first question"),
+                answered("the first answer"),
+                asked("and the second?"),
+            ]
         );
     }
 
@@ -614,8 +700,7 @@ mod tests {
         );
         code.expect("clean turn");
 
-        let body = serde_json::to_value(&sent).expect("a serializable request");
-        let system = body[0]["system"].as_str().expect("a system prompt");
+        let system = sent[0].system.as_deref().expect("a system prompt");
         assert!(
             system.contains(&format!("{} (read, write)", named.display())),
             "got {system:?}"
@@ -637,8 +722,7 @@ mod tests {
         );
         code.expect("clean turn");
 
-        let body = serde_json::to_value(&sent).expect("a serializable request");
-        let system = body[0]["system"].as_str().expect("a system prompt");
+        let system = sent[0].system.as_deref().expect("a system prompt");
         assert!(
             system.contains("read, edit, ls, grep, find"),
             "got {system:?}"
@@ -811,23 +895,18 @@ mod tests {
 
         let (sent, _, _) = capped(&args, summarising(), None);
 
-        let body = serde_json::to_value(&sent).expect("a serializable request");
-        assert!(
-            body[0]["tool_choice"].is_null(),
-            "the first round was bound"
-        );
-        assert!(body[1]["tools"].is_array(), "got {:?}", body[1]["tools"]);
-        assert_eq!(body[1]["tools"], body[0]["tools"], "the set changed");
-        assert_eq!(body[1]["tool_choice"], serde_json::json!({"type": "none"}));
+        assert!(sent[0].tool_choice.is_none(), "the first round was bound");
+        assert!(!sent[1].tools.is_empty(), "got {:?}", sent[1].tools);
+        assert_eq!(sent[1].tools, sent[0].tools, "the set changed");
+        assert_eq!(sent[1].tool_choice, Some(ToolChoice::None));
 
-        let last = body[1]["messages"]
-            .as_array()
-            .expect("a history")
-            .last()
-            .expect("a last message");
-        assert_eq!(last["role"], "user");
-        for block in last["content"].as_array().expect("blocks") {
-            assert_eq!(block["type"], "tool_result", "got {last:?}");
+        let last = sent[1].messages.last().expect("a last message");
+        assert_eq!(last.role, Role::User);
+        for block in &last.content {
+            assert!(
+                matches!(block, ContentBlock::ToolResult { .. }),
+                "got {last:?}"
+            );
         }
     }
 
@@ -839,15 +918,14 @@ mod tests {
 
         let (sent, _, _) = capped(&args, summarising(), None);
 
-        let body = serde_json::to_value(&sent).expect("a serializable request");
-        // Not `is_null`: #197 gives the first round a prompt naming its approved tools, so
-        // the property is that the nudge is absent there, not that nothing is.
-        let first = body[0]["system"].as_str().unwrap_or_default();
+        // Not `is_none`: #197 gives the first round a prompt naming its approved tools,
+        // so the property is that the nudge is absent there, not that nothing is.
+        let first = sent[0].system.as_deref().unwrap_or_default();
         assert!(
             !first.contains("no tool calls left"),
             "the first round already said it: {first:?}"
         );
-        let system = body[1]["system"].as_str().expect("a system prompt");
+        let system = sent[1].system.as_deref().expect("a system prompt");
         assert!(system.contains("no tool calls left"), "got {system:?}");
     }
 
@@ -957,26 +1035,22 @@ mod tests {
         );
         code.expect("clean turn");
 
-        let body = serde_json::to_value(&sent).expect("a serializable request");
-        let messages = body[0]["messages"].as_array().expect("a history");
+        let messages = &sent[0].messages;
         // Three stored turns and a prompt, three sent: the result and the prompt travel
         // as one message.
         assert_eq!(messages.len(), 3, "got {messages:?}");
         assert!(
-            messages
-                .windows(2)
-                .all(|pair| pair[0]["role"] != pair[1]["role"]),
+            messages.windows(2).all(|pair| pair[0].role != pair[1].role),
             "got {messages:?}"
         );
         // Results first, which is where the API wants them.
-        assert_eq!(
-            messages[2]["content"]
-                .as_array()
-                .expect("blocks")
-                .iter()
-                .map(|block| block["type"].as_str().expect("a tagged block"))
-                .collect::<Vec<_>>(),
-            ["tool_result", "text"]
+        assert!(
+            matches!(
+                &messages[2].content[..],
+                [ContentBlock::ToolResult { .. }, ContentBlock::Text { .. }]
+            ),
+            "got {:?}",
+            messages[2]
         );
     }
 
