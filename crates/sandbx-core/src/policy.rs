@@ -232,8 +232,6 @@ impl SandboxPolicy {
     }
 
     /// Host names the process may resolve; empty leaves resolution exactly as the host has it.
-    ///
-    /// Names and not addresses: what each resolves to is decided per run, in the helper.
     pub fn allowed_dns_names(&self) -> &[String] {
         &self.dns_names
     }
@@ -378,10 +376,9 @@ impl SandboxPolicy {
     /// Let `name` resolve, and bound resolution to the names granted this way; repeat for
     /// several, duplicates collapsing.
     ///
-    /// The first call imposes the bound: the helper resolves each name before the command
-    /// starts and gives it a hosts file holding those addresses and no nameserver, so a name
-    /// nothing granted stops resolving. Bounds resolution and not connection —
-    /// `context/decision-egress-proxy.md`.
+    /// The first call imposes the bound: the helper renders a hosts file holding what these
+    /// resolve to and no nameserver, so a name nothing granted stops resolving. Resolution and
+    /// not connection — `context/decision-egress-proxy.md`.
     ///
     /// A name that is empty, over [`DNS_NAME_LIMIT`] bytes, or carries a NUL, whitespace or
     /// `#` is skipped and not refused, as in [`allow_env`](Self::allow_env); the last three

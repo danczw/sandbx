@@ -295,8 +295,6 @@ mod tests {
         assert_eq!(resolver_advice(true, false, 0), None);
     }
 
-    /// Advice naming a flag `policy()` would refuse sends an operator from a failed run to a
-    /// refused one, which is worse than naming one answer.
     #[test]
     fn a_run_holding_unix_sockets_is_not_advised_to_add_a_name_allowlist() {
         let advice = resolver_advice(true, true, 6).expect("a failure with no way to resolve");
