@@ -19,7 +19,8 @@ SandboxPolicy ──► FsGuard::new ──► readable[] / writable[]     (exec
 
 Tools hold **handles, not paths**. That is what closes the TOCTOU window: if the
 leaf became a symlink between check and use, the open fails. `ls` is the one
-exception, because `read_dir` has no handle form.
+exception: `FsGuard::read_dir` hands it a `ReadDir`, but there is no `O_NOFOLLOW`
+for a directory read, so that handle closes the window no more than a path would.
 
 ### A refusal says nothing, except inside a grant
 
@@ -32,8 +33,10 @@ refusal outside the roots is therefore the same refusal.
 `conceal_unless_granted` is the one exception, and it has a single rule: the
 nearest ancestor that *does* resolve decides. Inside a granted root the caller
 could enumerate the directory anyway, so absence there is honest, and it is
-`SandboxError::NotFound`. Absence is no verdict, so it emits no audit record,
-and `sandbx-tools` maps it to `ToolError::Failed` rather than `Denied` (#180).
+`SandboxError::NotFound`, which `sandbx-tools` maps to `ToolError::Failed` rather
+than `Denied` (#180) and the trail records as `absent` (#187). Outside a grant it
+is a `denied` like any other: naming the absence there would disclose over the
+trail what the refusal conceals.
 
 What counts as absence is `names_nothing`: ENOENT, ENOTDIR and ENAMETOOLONG, by
 errno because `ErrorKind` cannot spell the last one. The line is what the agent

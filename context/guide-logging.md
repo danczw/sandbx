@@ -11,12 +11,13 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 
 ## What is built
 
-`AuditEvent` in `sandbx-core/src/audit.rs` — six variants, all emitted at
+`AuditEvent` in `sandbx-core/src/audit.rs` — seven variants, all emitted at
 `INFO`:
 
 | Variant | `decision` | Fields |
 |---|---|---|
 | `Allowed` | `allowed` | `tool`, `subject` |
+| `Absent` | `absent` | `tool`, `subject` |
 | `Denied` | `denied` | `tool`, `subject`, `reason` |
 | `Degraded` | `degraded` | `mechanism`, `detail` |
 | `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env`, `dns_over_tcp`, `pinned` |
@@ -52,17 +53,35 @@ filter can rely on (#146).
 **Denials always carry a reason.** `Denied.reason` is non-optional; "denied"
 alone is not actionable.
 
-**An absence is not a verdict.** A path that names nothing inside a root the
-policy already grants draws no `denied`: there is no refusal to record, no policy
-having made one. It reaches the model as a `Failed`, so the next move is to fix
-the name rather than widen the grant (#180). A path missing *outside* every root
-is still a `denied` — that one the guard refuses, and the refusal is deliberately
-indistinguishable from any other.
+**`decision=` records the access, not the verdict** (#182, #187). So `allowed` is
+emitted *after* the open, the walk or the `read_dir` succeeds, and the trail
+answers "what did the agent see" rather than "what did the policy decide". The
+reasoning, and what the verdict reading would have cost, is in
+`decision-audit-records-access.md`.
 
-The guard decides on resolution, so that is what `allowed` stands for too: the
-*verdict*, not the access. `permit` emits before the open, and a leaf deleted or
-swapped in between leaves `allowed` on the trail for a file nothing read (#182).
-So the trail answers what the policy decided, and not what the agent saw.
+Three consequences a reader of the trail depends on:
+
+- **A check that performs no access records nothing.** `check_read` and
+  `check_write` emit a refusal and no pass; the `allowed` belongs to whichever
+  entry point goes on to hold a handle. A bare check succeeding is not an event.
+- **An absence is its own value.** `absent` is a path that names nothing inside a
+  root the policy already grants — a model guessing filenames leaves these, and
+  nothing else on the trail would show the guesses. It carries no `reason`:
+  nothing refused it, so there is no refusal to explain. It still reaches the
+  model as a `Failed`, so the next move is to fix the name rather than widen the
+  grant (#180).
+- **`absent` never escapes a grant.** A path missing *outside* every root stays a
+  `denied`, indistinguishable from any other refusal. Naming the absence there
+  would hand back over the trail exactly what the refusal conceals.
+
+What separates the two is `names_nothing` — ENOENT, ENOTDIR, ENAMETOOLONG. An
+EACCES parent or the `ELOOP` of a leaf swapped between the check and the open is
+a refusal, recorded `denied` with reason `path does not resolve` whether the gate
+caught it or the access did.
+
+One record per operation, with one exception: a `grep` leaves one `allowed` for
+the walk, naming the directory, and then one more per file it actually opens. All
+of them are true, which is the point of recording the access.
 
 **A run is two records** (#96). `Spawned` is the policy, settled before the exec,
 so it stands for an attempt — including one that never starts. Exactly one
