@@ -21,20 +21,19 @@ The case that made this concrete is sandbx's own key. `agent-run` resolves
 handed a live provider key to a process whose arguments a model chose while
 reading untrusted text.
 
-## A placeholder needs a proxy, and the proxy is #145
+## A placeholder needs a proxy, and the proxy was declined
 
 The shape this project sketched first, and the one OpenShell implements: the
 sandboxed process sees an opaque placeholder, and a TLS-terminating proxy
 substitutes the real credential per request, only for a destination matching the
 credential's scope. The secret never enters the child's memory.
 
-Every component of it belongs to #145 — the listener the command can reach, the
-interception that catches an uncooperative program, the TLS termination that makes
-the allowlist about names, and the resolver that answers for those names. That
-issue already owns the resolver on the grounds that it should not be built twice.
-`decision-egress-proxy.md` prices all four and reaches the same verdict from the
-destination side: substitution leaves with the termination it needs to read a
-request, and the resolver is the one piece left standing.
+Every component of it — the listener the command can reach, the interception that
+catches an uncooperative program, the TLS termination that makes the allowlist
+about names, and the resolver that answers for those names — is priced in
+`decision-egress-proxy.md`, which reaches the same verdict from the destination
+side. Substitution leaves with the termination it needs to read a request, and
+the resolver is the one piece left standing (#145).
 
 Nor is the dependency free. No crate depends on a server-side HTTP stack; hyper
 arrives only through `wiremock`, a dev-dependency, and `tokio`'s `net` feature is
@@ -254,7 +253,8 @@ know which subcommand is asking, and should not have to.
 Nothing a tool could do before stops working, and no generality was bought either.
 The refusal removes one flag from one subcommand, and that flag had no legitimate
 use there. What it does not do is answer the question in the title: a brokered
-capability needs a channel that does not exist, and a placeholder needs #145.
+capability needs a channel that does not exist, and a placeholder needs a proxy
+`decision-egress-proxy.md` declines.
 
 The honest summary is that #41 ends in a decision rather than a mechanism, and in
 one refusal that is enforceable today.

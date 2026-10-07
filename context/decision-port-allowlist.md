@@ -90,9 +90,9 @@ the policy does not hold. And it is a **hint, not enforcement**: the API spells 
 resolver's choice. A command carrying its own resolver ignores `RES_OPTIONS`
 entirely, and musl has no equivalent — it starts on UDP and falls back to TCP only
 on a truncated reply, so a statically linked musl binary does not resolve by this
-route at all. Enforcing it would mean a resolver proxy — the one piece of #145's
-proxy `decision-egress-proxy.md` finds claimable, and the only route a static musl
-binary has to a name.
+route at all. Enforcing it would mean a resolver answering for the sandboxed
+command — the one piece `decision-egress-proxy.md` finds claimable out of the
+proxy it prices, and the only route a static musl binary has to a name (#145).
 
 ## The host network namespace is shared, not narrowed
 
