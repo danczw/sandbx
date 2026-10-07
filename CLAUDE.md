@@ -42,13 +42,18 @@ comment pass still applies to a comment-only branch, which is the one case where
 it is the whole diff.
 
 **Confirm what each review read, before believing it.** Both commands collect
-their own diff. First step of every `/code-review` and `/security-review`: compare
-the SHA and diffstat the pass reports against `git diff --stat origin/main...HEAD`.
-If they disagree, the review read a different tree — state the diff explicitly and
-run it again. Two variants, both of which report "no findings" indistinguishably
-from a clean branch: an **empty** diff (a review run from another checkout, e.g. a
-`git worktree` — two sessions), and a **stale** diff (a tree some commits behind
-the branch head — two reviews in one round, where the diffstat was the only tell).
+their own diff, from the session's working directory. First step of every
+`/code-review` and `/security-review`: compare the SHA and diffstat the pass
+reports against `git diff --stat origin/main...HEAD`. If they disagree, the
+review read a different tree — state the diff explicitly and run it again. Two
+variants, both of which report "no findings" indistinguishably from a clean
+branch. An **empty** diff, from a cwd that is not where the work is: a session
+sitting in the main checkout while its branch lives in a `git worktree` reads a
+clean tree and finds nothing. The tell is a cwd on a different branch than the
+work, not only a diffstat mismatch — so pass the worktree path and the expected
+diffstat to every invocation. And a **stale** diff, a tree some commits behind
+the branch head, where the diffstat is the only tell; `git diff | wc -l` is not
+the diffstat, and matching the wrong number makes a stale pass read as current.
 A review over the wrong lines is not a pass.
 
 The comment pass: read every comment the branch added or touched against
