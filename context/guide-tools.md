@@ -94,7 +94,10 @@ So no tool can tell the model what its roots are, and no refusal does either:
 `conceal_unless_granted` has to keep one outside every root indistinguishable, or
 a sequence of probes reads back as a map of the host. `agent-run` names the roots
 in the system prompt instead, above the tool boundary, where the policy is still
-the operator's own text rather than something a `tool_result` carries back.
+the operator's own text rather than something a `tool_result` carries back. The
+tools `--allow-tool` approved are named in the same place, for the cost rather
+than the concealment: a refusal already carries that set back to the model, one
+tool and one round at a time (#197).
 
 ## Errors say which kind of wrong
 
