@@ -11,13 +11,35 @@ pub enum AgentEvent {
         /// The new text to append; not the accumulated text so far.
         delta: String,
     },
-    /// An incremental chunk of the model's extended-thinking text.
+    /// An incremental chunk of the model's reasoning text, for a renderer.
     ///
-    /// The signature that would replay a thinking block into a later turn is
-    /// discarded; [`ContentBlock`](crate::ContentBlock) has no variant for one (#85).
+    /// Empty unless [`Thinking::Visible`](crate::Thinking) was asked for, and never
+    /// the whole block: [`ThinkingBlock`](Self::ThinkingBlock) is what carries one
+    /// back into a later request.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
+    },
+    /// A reasoning block whose text and signature have both fully arrived.
+    ///
+    /// Only ever emitted for a block that carries a signature: one without is
+    /// unreplayable, and passing it on would put a rejected request in a caller's
+    /// history rather than lose one block.
+    ThinkingBlock {
+        /// The accumulated reasoning text, empty when the summary was not asked for.
+        text: String,
+        /// Opaque. Never log, render or store it; see
+        /// `context/decision-thinking-replay.md`.
+        signature: String,
+    },
+    /// Reasoning the provider withheld, carrying an opaque blob in place of text.
+    ///
+    /// Replayed on the same terms as [`ThinkingBlock`](Self::ThinkingBlock): a
+    /// consumer that handles one and drops the other leaves the gap the provider
+    /// checks for.
+    RedactedThinking {
+        /// Opaque. Never log, render or store it.
+        data: String,
     },
     /// A tool call whose JSON input has fully arrived and parsed, once per call.
     ToolCallRequested {
@@ -39,9 +61,9 @@ pub enum AgentEvent {
         /// Tokens generated, extended thinking included, so it can exceed the reply.
         output_tokens: Option<u32>,
         /// Tokens written to the prompt cache.
-        cache_creation_input_tokens: Option<u32>,
+        cache_write_tokens: Option<u32>,
         /// Tokens read from the prompt cache.
-        cache_read_input_tokens: Option<u32>,
+        cache_read_tokens: Option<u32>,
     },
     /// The turn ended, and why.
     ///
@@ -68,18 +90,7 @@ pub enum StopReason {
     /// `message_delta.stop_reason` is nullable, so a stream can reach `message_stop`
     /// with nothing having said why.
     Unspecified,
-    /// An unrecognized vendor string, verbatim: new stop reasons ship over time.
+    /// A reason this enum does not model, verbatim: new ones ship over time, and
+    /// which strings map here is an adapter's business.
     Other(String),
-}
-
-impl StopReason {
-    pub(crate) fn from_wire(value: &str) -> Self {
-        match value {
-            "end_turn" => Self::EndTurn,
-            "tool_use" => Self::ToolUse,
-            "max_tokens" => Self::MaxTokens,
-            "stop_sequence" => Self::StopSequence,
-            other => Self::Other(other.to_string()),
-        }
-    }
 }

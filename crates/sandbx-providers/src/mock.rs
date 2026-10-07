@@ -1,7 +1,7 @@
 use crate::EventStream;
 use crate::error::ProviderError;
 use crate::event::AgentEvent;
-use crate::request::MessagesRequest;
+use crate::prompt::Prompt;
 
 /// A test double that replays a canned sequence of events instead of calling a real
 /// API, interchangeable with a real client through the returned [`EventStream`]
@@ -23,10 +23,7 @@ impl MockProvider {
 
     /// Replays the canned sequence, by value: throwaway per-test data, unlike
     /// [`AnthropicClient::stream_chat`](crate::AnthropicClient::stream_chat).
-    pub async fn stream_chat(
-        self,
-        _request: MessagesRequest,
-    ) -> Result<EventStream, ProviderError> {
+    pub async fn stream_chat(self, _prompt: Prompt) -> Result<EventStream, ProviderError> {
         use futures_util::StreamExt;
 
         Ok(Box::pin(futures_util::stream::iter(self.events).fuse()))

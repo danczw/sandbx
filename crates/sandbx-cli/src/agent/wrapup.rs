@@ -9,7 +9,7 @@ use std::io::Write;
 use sandbx_agent::{
     ApprovalDecision, PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn,
 };
-use sandbx_providers::{EventStream, MessagesRequest, ProviderError, RequestMessage, ToolChoice};
+use sandbx_providers::{EventStream, Prompt, ProviderError, RequestMessage, Thinking, ToolChoice};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use super::Render;
@@ -35,8 +35,9 @@ const REFUSED: &str = "no tool may be called while answering a turn that ran out
 /// are read off before the first call rather than after it.
 pub(super) struct Next {
     model: String,
-    max_tokens: u32,
+    max_output_tokens: u32,
     system: Option<String>,
+    thinking: Option<Thinking>,
 
     /// The same set the first turn offered, owned so the second [`Turn`] can borrow it.
     ///
@@ -52,11 +53,12 @@ impl Next {
     pub(super) fn after(turn: &Turn<'_>) -> Self {
         Self {
             model: turn.model.clone(),
-            max_tokens: turn.max_tokens,
+            max_output_tokens: turn.max_output_tokens,
             system: Some(match turn.system.as_deref() {
                 Some(system) => format!("{system}\n\n{NUDGE}"),
                 None => NUDGE.to_owned(),
             }),
+            thinking: turn.thinking,
             tools: turn.tools.to_vec(),
             limits: turn.limits,
             observed: turn.observed,
@@ -72,7 +74,7 @@ impl Next {
     /// reports back out of the request's index space.
     pub(super) async fn run<W: Write>(
         &self,
-        open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
+        open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         history: &[RequestMessage],
         first: TurnOutcome,
@@ -127,10 +129,11 @@ impl Next {
     fn turn<'a>(&'a self, history: &'a [RequestMessage], first: &TurnOutcome) -> Turn<'a> {
         Turn {
             model: self.model.clone(),
-            max_tokens: self.max_tokens,
+            max_output_tokens: self.max_output_tokens,
             system: self.system.clone(),
             tools: &self.tools,
             tool_choice: Some(ToolChoice::None),
+            thinking: self.thinking,
             history,
             limits: TurnLimits {
                 max_rounds: 1,

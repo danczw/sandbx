@@ -8,18 +8,18 @@
 #![cfg(feature = "live-anthropic-tests")]
 
 use futures_util::StreamExt;
-use sandbx_providers::{AnthropicClient, ContentBlock, MessagesRequest, RequestMessage, Role};
+use sandbx_providers::{AnthropicClient, ContentBlock, Prompt, RequestMessage, Role};
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {
     let client = AnthropicClient::from_env()
         .expect("ANTHROPIC_API_KEY must be set to run live-anthropic-tests");
 
-    let request = MessagesRequest {
+    let request = Prompt {
         model: "claude-opus-5".to_string(),
-        // Generous: `max_tokens` also covers whatever thinking the model does first,
-        // and a small budget can be spent before any text is emitted.
-        max_tokens: 1024,
+        // Generous: the cap also covers whatever thinking the model does first, and a
+        // small budget can be spent before any text is emitted.
+        max_output_tokens: 1024,
         system: None,
         messages: vec![RequestMessage {
             role: Role::User,
@@ -29,6 +29,7 @@ async fn streams_a_real_response_from_the_anthropic_api() {
         }],
         tools: vec![],
         tool_choice: None,
+        thinking: None,
     };
 
     let events: Vec<_> = client

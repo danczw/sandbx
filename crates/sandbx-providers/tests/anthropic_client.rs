@@ -3,8 +3,8 @@
 
 use futures_util::StreamExt;
 use sandbx_providers::{
-    AgentEvent, AnthropicClient, ContentBlock, MessagesRequest, ProviderError, RequestMessage,
-    Role, StopReason,
+    AgentEvent, AnthropicClient, ContentBlock, Prompt, ProviderError, RequestMessage, Role,
+    StopReason, Thinking, ToolChoice, ToolDefinition,
 };
 use secrecy::SecretString;
 use wiremock::matchers::{body_json, header, method, path};
@@ -19,10 +19,10 @@ fn client_for(server: &MockServer) -> AnthropicClient {
         .unwrap()
 }
 
-fn a_request() -> MessagesRequest {
-    MessagesRequest {
+fn a_request() -> Prompt {
+    Prompt {
         model: "claude-opus-5".to_string(),
-        max_tokens: 1_000,
+        max_output_tokens: 1_000,
         system: None,
         messages: vec![RequestMessage {
             role: Role::User,
@@ -32,6 +32,7 @@ fn a_request() -> MessagesRequest {
         }],
         tools: vec![],
         tool_choice: None,
+        thinking: None,
     }
 }
 
@@ -88,6 +89,50 @@ async fn sends_the_right_headers_and_body() {
     // above held.
 }
 
+/// Every field at once, because the per-field rules are `body.rs`'s own tests and what
+/// this adds is that the client posts *that* body: a `.json(&request)` on the neutral type
+/// would compile and send `max_output_tokens`, `schema` and no `stream`.
+#[tokio::test]
+async fn the_body_on_the_wire_is_the_adapter_shape() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(body_json(serde_json::json!({
+            "model": "claude-opus-5",
+            "max_tokens": 1000,
+            "system": "be brief",
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+            "tools": [{
+                "name": "ls",
+                "description": "list a directory",
+                "input_schema": {"type": "object"},
+            }],
+            "tool_choice": {"type": "none"},
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "stream": true,
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(FULL_TURN_SSE, "text/event-stream"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = Prompt {
+        system: Some("be brief".to_string()),
+        tools: vec![ToolDefinition {
+            name: "ls".to_string(),
+            description: "list a directory".to_string(),
+            schema: serde_json::json!({"type": "object"}),
+        }],
+        tool_choice: Some(ToolChoice::None),
+        thinking: Some(Thinking::Visible),
+        ..a_request()
+    };
+
+    let client = client_for(&server);
+    let stream = client.stream_chat(request).await.unwrap();
+    let _: Vec<_> = stream.collect().await;
+}
+
 #[tokio::test]
 async fn a_full_turn_produces_the_expected_event_sequence() {
     let server = MockServer::start().await;
@@ -118,8 +163,8 @@ async fn a_full_turn_produces_the_expected_event_sequence() {
             AgentEvent::Usage {
                 input_tokens: Some(10),
                 output_tokens: Some(8),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
+                cache_write_tokens: None,
+                cache_read_tokens: None,
             },
             AgentEvent::Stop {
                 reason: StopReason::ToolUse

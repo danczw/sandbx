@@ -29,8 +29,8 @@ async fn a_null_stop_reason_still_ends_the_turn_with_a_stop() {
             AgentEvent::Usage {
                 input_tokens: None,
                 output_tokens: Some(8),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
+                cache_write_tokens: None,
+                cache_read_tokens: None,
             },
             stop(StopReason::Unspecified),
         ]

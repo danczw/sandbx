@@ -1,21 +1,43 @@
 //! Public contract of `run_turn`: what one streamed turn becomes.
 //!
 //! Driven through the closure seam with `support::Script`, so the suite needs no network
-//! and no API key. Assertions go through `serde_json::to_value`: `ContentBlock` has no
-//! `PartialEq`.
+//! and no API key.
 
 use sandbx_agent::{ApprovalDecision, ToolCall, TurnError, TurnLimits, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
-use sandbx_providers::{AgentEvent, EventStream, RequestMessage, Role, StopReason};
+use sandbx_providers::{AgentEvent, ContentBlock, EventStream, RequestMessage, Role, StopReason};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 mod support;
 
-use support::{Script, allow_all, call, ctx, stop, text, turn, wire};
+use support::{Script, allow_all, call, ctx, stop, text, turn};
+
+/// An assistant turn of prose, the shape most of these end on.
+fn replied(text: &str) -> RequestMessage {
+    RequestMessage {
+        role: Role::Assistant,
+        content: vec![ContentBlock::Text {
+            text: text.to_string(),
+        }],
+    }
+}
+
+/// A `tool_result`'s answer and verdict, for the assertions whose subject is one.
+///
+/// Panics on anything else: a round scripted to call a tool produces one, so another
+/// block here is the script's bug rather than a verdict to report.
+fn result_of(block: &ContentBlock) -> (&str, Option<bool>) {
+    match block {
+        ContentBlock::ToolResult {
+            content, is_error, ..
+        } => (content, *is_error),
+        other => panic!("not a tool_result: {other:?}"),
+    }
+}
 
 /// The single `tool_result` block a scripted call produced.
-fn tool_error(messages: &[RequestMessage]) -> serde_json::Value {
-    wire(messages)[1]["content"][0].clone()
+fn tool_error(messages: &[RequestMessage]) -> (&str, Option<bool>) {
+    result_of(&messages[1].content[0])
 }
 
 #[tokio::test]
@@ -32,47 +54,129 @@ async fn text_deltas_accumulate_into_one_block() {
     .await
     .unwrap();
 
-    assert_eq!(
-        wire(&outcome.messages),
-        serde_json::json!([
-            { "role": "assistant", "content": [{ "type": "text", "text": "Hello" }] }
-        ])
-    );
+    assert_eq!(outcome.messages, vec![replied("Hello")]);
     assert_eq!(outcome.stop, TurnStop::Answered);
 }
 
-/// The signature Anthropic streams alongside a thinking block is discarded upstream, so
-/// it cannot be replayed — but a TUI still has to see it (#85).
+/// Both halves, because either on its own passes for the wrong reason: a loop that never
+/// replayed thinking would satisfy the second, and one that never stripped it the first.
+/// The provider requires the block inside the tool-use turn that produced it, and rejects
+/// it against any later prefix — see `context/decision-thinking-replay.md`.
 #[tokio::test]
-async fn thinking_reaches_the_observer_not_the_replay() {
-    let thinking = AgentEvent::Thinking {
+async fn thinking_is_replayed_in_turn_and_never_out() {
+    let root = tempfile::tempdir().unwrap();
+    let delta = AgentEvent::Thinking {
         delta: "weighing it up".to_string(),
     };
-    let mut script = Script::new([vec![
-        thinking.clone(),
-        text("done"),
-        stop(StopReason::EndTurn),
-    ]]);
+    let block = ContentBlock::Thinking {
+        text: "weighing it up".to_string(),
+        signature: "sig-1".to_string(),
+    };
+
+    let mut script = Script::new([
+        vec![
+            delta.clone(),
+            AgentEvent::ThinkingBlock {
+                text: "weighing it up".to_string(),
+                signature: "sig-1".to_string(),
+            },
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("done"), stop(StopReason::EndTurn)],
+    ]);
     let mut seen = Vec::new();
 
-    let messages = run_turn(
+    let outcome = run_turn(
         async |r| script.open(r).await,
-        turn(&[], &[]),
-        &ctx(SandboxPolicy::default()),
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx(SandboxPolicy::default().allow_read(root.path())),
         |event: &AgentEvent| seen.push(event.clone()),
         allow_all,
     )
     .await
-    .unwrap()
-    .messages;
+    .unwrap();
 
-    assert_eq!(
-        wire(&messages),
-        serde_json::json!([
-            { "role": "assistant", "content": [{ "type": "text", "text": "done" }] }
-        ])
+    // Round two replays it, signature and all.
+    let replayed = &script.sent[1].messages;
+    assert!(
+        replayed
+            .iter()
+            .any(|message| message.content.contains(&block)),
+        "got {replayed:?}"
     );
-    assert!(seen.contains(&thinking), "got {seen:?}");
+
+    // And nothing a caller stores carries one.
+    assert!(
+        !outcome
+            .messages
+            .iter()
+            .any(|message| message.content.iter().any(is_thinking)),
+        "got {:?}",
+        outcome.messages
+    );
+
+    assert!(seen.contains(&delta), "got {seen:?}");
+}
+
+/// Reasoning of either kind, since the provider checks for a gap rather than for a type.
+#[tokio::test]
+async fn redacted_thinking_is_stripped_from_the_outcome() {
+    let mut script = Script::new([vec![
+        AgentEvent::RedactedThinking {
+            data: "opaque".to_string(),
+        },
+        text("done"),
+        stop(StopReason::EndTurn),
+    ]]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        allow_all,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.messages, vec![replied("done")]);
+}
+
+/// A round that reasoned and said nothing else leaves a message with no content, which no
+/// provider accepts — so the message goes too, not just the block.
+#[tokio::test]
+async fn a_turn_of_only_thinking_produces_no_message() {
+    let mut script = Script::new([vec![
+        AgentEvent::ThinkingBlock {
+            text: "quietly".to_string(),
+            signature: "sig-1".to_string(),
+        },
+        stop(StopReason::EndTurn),
+    ]]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        allow_all,
+    )
+    .await
+    .unwrap();
+
+    assert!(outcome.messages.is_empty(), "got {:?}", outcome.messages);
+    assert_eq!(outcome.stop, TurnStop::Answered);
+}
+
+fn is_thinking(block: &ContentBlock) -> bool {
+    matches!(
+        block,
+        ContentBlock::Thinking { .. } | ContentBlock::RedactedThinking { .. }
+    )
 }
 
 /// Text arrives as increments, so a renderer needs each event as it lands.
@@ -84,8 +188,8 @@ async fn the_observer_sees_every_event_in_arrival_order() {
         AgentEvent::Usage {
             input_tokens: Some(3),
             output_tokens: Some(4),
-            cache_creation_input_tokens: None,
-            cache_read_input_tokens: None,
+            cache_write_tokens: None,
+            cache_read_tokens: None,
         },
         stop(StopReason::EndTurn),
     ];
@@ -121,11 +225,7 @@ async fn a_round_that_produced_nothing_appends_no_message() {
     .await
     .unwrap();
 
-    assert!(
-        outcome.messages.is_empty(),
-        "got {:?}",
-        wire(&outcome.messages)
-    );
+    assert!(outcome.messages.is_empty(), "got {:?}", outcome.messages);
     assert_eq!(outcome.stop, TurnStop::Answered);
 }
 
@@ -155,7 +255,7 @@ async fn a_stream_that_never_reports_a_stop_is_an_error() {
 async fn a_definition_per_offered_tool_reaches_the_request() {
     let history = vec![RequestMessage {
         role: Role::User,
-        content: vec![sandbx_providers::ContentBlock::Text {
+        content: vec![ContentBlock::Text {
             text: "hello".to_string(),
         }],
     }];
@@ -171,19 +271,14 @@ async fn a_definition_per_offered_tool_reaches_the_request() {
     .await
     .unwrap();
 
-    let sent = serde_json::to_value(&script.sent[0]).unwrap();
-    assert_eq!(sent["model"], "claude-opus-5");
-    assert_eq!(sent["max_tokens"], 1024);
-    assert_eq!(sent["messages"], wire(&history));
-    assert_eq!(sent["tools"][0]["name"], BuiltinTool::Read.name());
-    assert_eq!(
-        sent["tools"][0]["description"],
-        BuiltinTool::Read.description()
-    );
-    assert_eq!(
-        sent["tools"][0]["input_schema"],
-        BuiltinTool::Read.input_schema()
-    );
+    let sent = &script.sent[0];
+    assert_eq!(sent.model, "claude-opus-5");
+    assert_eq!(sent.max_output_tokens, 1024);
+    assert_eq!(sent.messages, history);
+    assert_eq!(sent.tools.len(), 1, "got {:?}", sent.tools);
+    assert_eq!(sent.tools[0].name, BuiltinTool::Read.name());
+    assert_eq!(sent.tools[0].description, BuiltinTool::Read.description());
+    assert_eq!(sent.tools[0].schema, BuiltinTool::Read.input_schema());
 }
 
 /// The loop end to end, including that the second round carries the first.
@@ -217,30 +312,35 @@ async fn a_tool_result_is_fed_into_the_next_round() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
 
     assert_eq!(
-        wire(&messages),
-        serde_json::json!([
-            {
-                "role": "assistant",
-                "content": [
-                    { "type": "text", "text": "Writing it now." },
-                    { "type": "tool_use", "id": "call_1", "name": "write", "input": input },
+        messages,
+        vec![
+            RequestMessage {
+                role: Role::Assistant,
+                content: vec![
+                    ContentBlock::Text {
+                        text: "Writing it now.".to_string(),
+                    },
+                    ContentBlock::ToolUse {
+                        id: "call_1".to_string(),
+                        name: "write".to_string(),
+                        input,
+                    },
                 ],
             },
-            {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": "call_1",
-                    "content": format!("wrote 7 bytes to {}", file.display()),
+            RequestMessage {
+                role: Role::User,
+                content: vec![ContentBlock::ToolResult {
+                    tool_use_id: "call_1".to_string(),
+                    content: format!("wrote 7 bytes to {}", file.display()),
+                    is_error: None,
                 }],
             },
-            { "role": "assistant", "content": [{ "type": "text", "text": "Done." }] },
-        ])
+            replied("Done."),
+        ]
     );
 
     // The second round has to carry the first one, or the model answers blind.
-    let second = serde_json::to_value(&script.sent[1]).unwrap();
-    assert_eq!(second["messages"], wire(&messages[..2]));
+    assert_eq!(script.sent[1].messages, messages[..2]);
 }
 
 /// `message_delta.stop_reason` is nullable, so keying re-entry off the reason rather
@@ -272,7 +372,7 @@ async fn a_tool_call_runs_without_a_stop_reason() {
     .unwrap()
     .messages;
 
-    assert_eq!(messages.len(), 3, "got {:?}", wire(&messages));
+    assert_eq!(messages.len(), 3, "got {messages:?}");
     assert_eq!(script.sent.len(), 2, "the turn should have re-entered");
 }
 
@@ -312,14 +412,11 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
 
     assert!(!outside.exists(), "the write must not have happened");
 
-    let result = tool_error(&messages);
-    assert_eq!(result["is_error"], true);
+    let (content, is_error) = tool_error(&messages);
+    assert_eq!(is_error, Some(true));
     assert!(
-        result["content"]
-            .as_str()
-            .unwrap()
-            .contains("refused by the sandbox policy"),
-        "got {result:?}"
+        content.contains("refused by the sandbox policy"),
+        "got {content:?}"
     );
     assert_eq!(messages.len(), 3, "the turn should have carried on");
 }
@@ -353,14 +450,11 @@ async fn bad_tool_arguments_are_reported_as_an_error() {
     .unwrap()
     .messages;
 
-    let result = tool_error(&messages);
-    assert_eq!(result["is_error"], true);
+    let (content, is_error) = tool_error(&messages);
+    assert_eq!(is_error, Some(true));
     assert!(
-        result["content"]
-            .as_str()
-            .unwrap()
-            .contains("invalid tool arguments"),
-        "got {result:?}"
+        content.contains("invalid tool arguments"),
+        "got {content:?}"
     );
 }
 
@@ -384,12 +478,9 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
     .unwrap()
     .messages;
 
-    let result = tool_error(&messages);
-    assert_eq!(result["is_error"], true);
-    assert!(
-        result["content"].as_str().unwrap().contains("rm"),
-        "got {result:?}"
-    );
+    let (content, is_error) = tool_error(&messages);
+    assert_eq!(is_error, Some(true));
+    assert!(content.contains("rm"), "got {content:?}");
     assert_eq!(messages.len(), 3, "the turn should have carried on");
 }
 
@@ -427,9 +518,10 @@ async fn a_denied_call_never_reaches_the_tool() {
 
     assert!(!file.exists(), "a refused call must not have run");
 
-    let result = tool_error(&messages);
-    assert_eq!(result["is_error"], true);
-    assert_eq!(result["content"], "write is not approved for this run");
+    assert_eq!(
+        tool_error(&messages),
+        ("write is not approved for this run", Some(true))
+    );
 }
 
 /// The gate that refused once is asked again rather than latched shut.
@@ -484,12 +576,8 @@ async fn a_denial_never_ends_the_turn() {
     );
 
     // The second call's result: the same gate, asked again, let this one through.
-    let listed = wire(&messages)[3]["content"][0].clone();
-    assert_eq!(
-        listed["is_error"],
-        serde_json::Value::Null,
-        "got {listed:?}"
-    );
+    let listed = result_of(&messages[3].content[0]);
+    assert_eq!(listed.1, None, "got {listed:?}");
 }
 
 /// Before, not alongside: `spawn_blocking` cannot be cancelled, so a late decision would
@@ -556,7 +644,7 @@ async fn an_unknown_name_never_reaches_the_gate() {
     .messages;
 
     assert_eq!(asked, 0, "a name no tool answers to reached the gate");
-    assert_eq!(tool_error(&messages)["is_error"], true);
+    assert_eq!(tool_error(&messages).1, Some(true));
 }
 
 /// `from_name` resolves against every built-in, so resolving alone would let an
@@ -597,7 +685,7 @@ async fn an_un_offered_tool_never_reaches_the_gate() {
 
     assert_eq!(asked, 0, "a tool the turn never offered reached the gate");
     assert!(!file.exists(), "an un-offered call must not have run");
-    assert_eq!(tool_error(&messages)["is_error"], true);
+    assert_eq!(tool_error(&messages).1, Some(true));
 }
 
 /// Each answer needs its own `tool_use_id`, or the model reads the refusal as belonging
@@ -645,14 +733,19 @@ async fn a_round_of_two_calls_gets_a_verdict_each() {
 
     assert!(!file.exists(), "the refused call must not have run");
 
-    let results = wire(&messages)[1]["content"].clone();
-    assert_eq!(results[0]["tool_use_id"], "denied");
-    assert_eq!(results[0]["is_error"], true);
-    assert_eq!(results[0]["content"], "write is not approved");
-    assert_eq!(results[1]["tool_use_id"], "allowed");
+    let results = &messages[1].content;
     assert_eq!(
-        results[1]["is_error"],
-        serde_json::Value::Null,
+        results[0],
+        ContentBlock::ToolResult {
+            tool_use_id: "denied".to_string(),
+            content: "write is not approved".to_string(),
+            is_error: Some(true),
+        }
+    );
+    // Not pinned on its content, which is the `ls` tool's to answer for.
+    assert!(
+        matches!(&results[1], ContentBlock::ToolResult { tool_use_id, is_error: None, .. }
+            if tool_use_id == "allowed"),
         "got {:?}",
         results[1]
     );

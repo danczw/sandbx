@@ -4,7 +4,7 @@
 //! Rebuilding a round's message is `accumulate`; running what it asked for is `tools`.
 
 use sandbx_providers::{
-    AgentEvent, EventStream, MessagesRequest, ProviderError, RequestMessage, Role, ToolChoice,
+    AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, Thinking, ToolChoice,
     ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -19,10 +19,10 @@ use tools::{answer_calls, definition};
 
 /// What to ask the model for. Borrows the history, which [`run_turn`] never appends to.
 pub struct Turn<'a> {
-    /// The model to ask. A freeform string, as `MessagesRequest` takes it.
+    /// The model to ask. A freeform string, as [`Prompt`] takes it.
     pub model: String,
     /// The cap on the model's reply. This crate has no default opinion.
-    pub max_tokens: u32,
+    pub max_output_tokens: u32,
     /// The system prompt, omitted from the request entirely when `None`.
     pub system: Option<String>,
     /// The built-ins to offer. An empty slice offers none, not all of them.
@@ -44,7 +44,19 @@ pub struct Turn<'a> {
     /// [`tools`]: Self::tools
     /// [`ApprovalDecision`]: crate::ApprovalDecision
     pub tool_choice: Option<ToolChoice>,
+
+    /// Whether to ask for the model's reasoning text, which only a renderer sees.
+    ///
+    /// Changes nothing about replay: on current models the model reasons either way,
+    /// and the blocks this loop carries between rounds are the same ones. All this
+    /// sets is whether `observe` receives any [`AgentEvent::Thinking`] text to show.
+    pub thinking: Option<Thinking>,
+
     /// The conversation so far, oldest first.
+    ///
+    /// Carries no reasoning blocks: [`TurnOutcome::messages`] strips them, so a
+    /// history built the documented way cannot hold one. See
+    /// `context/decision-thinking-replay.md`.
     pub history: &'a [RequestMessage],
     /// The bounds this turn runs within.
     pub limits: TurnLimits,
@@ -79,9 +91,9 @@ pub struct PromptUsage {
     /// Tokens in the request, excluding anything served from cache.
     pub input_tokens: Option<u32>,
     /// Tokens read from the prompt cache.
-    pub cache_read_input_tokens: Option<u32>,
+    pub cache_read_tokens: Option<u32>,
     /// Tokens written to the prompt cache.
-    pub cache_creation_input_tokens: Option<u32>,
+    pub cache_write_tokens: Option<u32>,
 }
 
 impl PromptUsage {
@@ -95,8 +107,8 @@ impl PromptUsage {
     #[must_use]
     pub fn prompt_tokens(&self) -> u64 {
         u64::from(self.input_tokens.unwrap_or(0))
-            + u64::from(self.cache_read_input_tokens.unwrap_or(0))
-            + u64::from(self.cache_creation_input_tokens.unwrap_or(0))
+            + u64::from(self.cache_read_tokens.unwrap_or(0))
+            + u64::from(self.cache_write_tokens.unwrap_or(0))
     }
 }
 
@@ -105,8 +117,12 @@ impl PromptUsage {
 pub struct TurnOutcome {
     /// The turns this call produced, oldest first, to be appended to the caller's history.
     ///
-    /// Always complete: compaction narrows the *request*, never this, since a loss in a
-    /// caller's stored history would compound every turn.
+    /// Complete but for reasoning: compaction narrows the *request*, never this, since a
+    /// loss in a caller's stored history would compound every turn. Reasoning blocks are
+    /// the one exception — they are valid only against the prefix they were produced
+    /// against, so carrying them past the turn that made them is what a provider rejects.
+    /// A turn left holding nothing but reasoning drops out entirely rather than becoming
+    /// a message with no content, which no provider accepts.
     pub messages: Vec<RequestMessage>,
 
     /// What this turn's last round reported, or `None` if no round reported anything.
@@ -198,10 +214,15 @@ impl Default for TurnLimits {
 /// *generic* wrapper cannot add its own `Send` bound to it.
 ///
 /// Every event reaches `observe` in arrival order before being accumulated, so one pass
-/// serves both a renderer's increments and the replayable form. `AgentEvent::Thinking`
-/// reaches `observe` but never the returned messages: the signature needed to replay one
-/// is discarded upstream (#85). Re-entry keys off the *presence* of tool calls, never
-/// `StopReason::ToolUse`, which is nullable on the wire.
+/// serves both a renderer's increments and the replayable form. Re-entry keys off the
+/// *presence* of tool calls, never `StopReason::ToolUse`, which is nullable on the wire.
+///
+/// Reasoning blocks live for the length of one turn: every round after the first replays
+/// the ones before it, which is what the provider requires inside a tool-use turn, and
+/// [`TurnOutcome::messages`] carries none, which is what keeps a signature out of a
+/// caller's history and off its disk. A cut that deepens mid-turn drops the reasoning
+/// already sent, that prefix no longer being the one it was signed against. See
+/// `context/decision-thinking-replay.md`.
 ///
 /// Compaction is off unless [`TurnLimits::compaction`] says otherwise, and needs both
 /// `observed = outcome.usage.or(observed)` *and* `withheld = outcome.withheld` threaded
@@ -232,7 +253,7 @@ pub async fn run_turn<F, O, G>(
     mut approve: G,
 ) -> Result<TurnOutcome, TurnError>
 where
-    F: AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
+    F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
     G: FnMut(ToolCall<'_>) -> ApprovalDecision,
 {
@@ -252,6 +273,8 @@ where
     // A figure no plan has acted on — the caller's absent one included, which is what
     // holds the floor on a first round.
     let mut measured = true;
+    // What the last request withheld, `None` before there was one.
+    let mut sent_cut: Option<usize> = None;
 
     for _ in 0..turn.limits.max_rounds {
         if measured && let Some(policy) = turn.limits.compaction {
@@ -268,19 +291,29 @@ where
         }
         let withheld = cut;
 
+        // A reasoning block is valid only against the messages that preceded it, so a
+        // deepened cut invalidates every one already sent. Dropping the oldest reasoning
+        // is the one edit the provider's check permits; leaving it in is a rejected
+        // request.
+        if sent_cut.is_some_and(|previous| previous != withheld) {
+            drop_thinking(&mut produced);
+        }
+        sent_cut = Some(withheld);
+
         let mut messages = turn.history[withheld..].to_vec();
         messages.extend_from_slice(&produced);
 
-        let request = MessagesRequest {
+        let prompt = Prompt {
             model: turn.model.clone(),
-            max_tokens: turn.max_tokens,
+            max_output_tokens: turn.max_output_tokens,
             system: turn.system.clone(),
             messages,
             tools: definitions.clone(),
             tool_choice: turn.tool_choice,
+            thinking: turn.thinking,
         };
 
-        let mut stream = open(request).await.map_err(TurnError::Provider)?;
+        let mut stream = open(prompt).await.map_err(TurnError::Provider)?;
 
         // Only the consumption: opening the stream is bounded by the provider's own
         // connect and read timeouts.
@@ -310,12 +343,7 @@ where
                 return Err(TurnError::EndedMidToolUse);
             }
 
-            return Ok(TurnOutcome {
-                messages: produced,
-                usage,
-                withheld,
-                stop: TurnStop::Answered,
-            });
+            return Ok(outcome(produced, usage, withheld, TurnStop::Answered));
         }
 
         // Before the assistant turn is pushed: answering borrows the blocks, pushing
@@ -328,12 +356,7 @@ where
         });
 
         if results.is_empty() {
-            return Ok(TurnOutcome {
-                messages: produced,
-                usage,
-                withheld,
-                stop: TurnStop::Answered,
-            });
+            return Ok(outcome(produced, usage, withheld, TurnStop::Answered));
         }
 
         produced.push(RequestMessage {
@@ -345,14 +368,43 @@ where
     // Returned rather than dropped: every prefix of this transcript ends on an unanswered
     // `tool_result` too, or on a `tool_use` with nothing answering it, so no truncation of
     // it reads as a finished turn. `stop` is what says it is not one.
-    Ok(TurnOutcome {
-        messages: produced,
+    Ok(outcome(
+        produced,
         usage,
         // `cut`, the loop's `withheld` having gone out of scope with it; the two hold the
         // same figure, since a cut only ever deepens at the top of a round.
-        withheld: cut,
-        stop: TurnStop::RoundLimit {
+        cut,
+        TurnStop::RoundLimit {
             rounds: turn.limits.max_rounds,
         },
-    })
+    ))
+}
+
+/// The one exit from [`run_turn`], so no path can return reasoning to a caller.
+fn outcome(
+    mut produced: Vec<RequestMessage>,
+    usage: Option<PromptUsage>,
+    withheld: usize,
+    stop: TurnStop,
+) -> TurnOutcome {
+    drop_thinking(&mut produced);
+    TurnOutcome {
+        messages: produced,
+        usage,
+        withheld,
+        stop,
+    }
+}
+
+/// Drop every reasoning block, and any turn left with nothing else in it.
+///
+/// Both kinds go together: the provider checks for a gap, so keeping redacted reasoning
+/// while dropping the rest is worse than dropping all of it. An emptied turn can only be
+/// the last one — a round that produced nothing but reasoning asks for no tools, which
+/// ends the loop — so removing it cannot leave two user turns adjacent.
+fn drop_thinking(messages: &mut Vec<RequestMessage>) {
+    for message in messages.iter_mut() {
+        message.content.retain(|block| !block.is_thinking());
+    }
+    messages.retain(|message| !message.content.is_empty());
 }

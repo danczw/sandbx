@@ -205,14 +205,19 @@ pub fn stored_messages(sent: &[RequestMessage]) -> Vec<Message> {
                 Role::User => StoredRole::User,
                 Role::Assistant => StoredRole::Assistant,
             },
-            content: message.content.iter().map(stored_block).collect(),
+            content: message.content.iter().filter_map(stored_block).collect(),
         })
         .collect()
 }
 
-/// One sent block, in the shape the transcript stores it.
-fn stored_block(sent: &ContentBlock) -> Content {
-    match sent {
+/// One sent block, in the shape the transcript stores it, or `None` for one not stored.
+///
+/// Reasoning is the `None` case, and the second place it is dropped: `run_turn` already
+/// strips it from what it returns, so nothing here is reachable today. Kept because a
+/// signature is a provider replay token with no value to a resumed conversation, and this
+/// is the last edge before the file. See `context/decision-thinking-replay.md`.
+fn stored_block(sent: &ContentBlock) -> Option<Content> {
+    Some(match sent {
         ContentBlock::Text { text } => Content::Text { text: text.clone() },
         ContentBlock::ToolUse { id, name, input } => Content::ToolUse {
             id: id.clone(),
@@ -228,7 +233,8 @@ fn stored_block(sent: &ContentBlock) -> Content {
             content: content.clone(),
             is_error: *is_error,
         },
-    }
+        ContentBlock::Thinking { .. } | ContentBlock::RedactedThinking { .. } => return None,
+    })
 }
 
 /// What a resumed session last measured, in the shape the turn loop takes it.
@@ -236,8 +242,8 @@ fn stored_block(sent: &ContentBlock) -> Content {
 pub fn request_usage(stored: Usage) -> PromptUsage {
     PromptUsage {
         input_tokens: stored.input_tokens,
-        cache_read_input_tokens: stored.cache_read_input_tokens,
-        cache_creation_input_tokens: stored.cache_creation_input_tokens,
+        cache_read_tokens: stored.cache_read_input_tokens,
+        cache_write_tokens: stored.cache_creation_input_tokens,
     }
 }
 
@@ -246,8 +252,8 @@ pub fn request_usage(stored: Usage) -> PromptUsage {
 pub fn stored_usage(observed: PromptUsage) -> Usage {
     Usage {
         input_tokens: observed.input_tokens,
-        cache_read_input_tokens: observed.cache_read_input_tokens,
-        cache_creation_input_tokens: observed.cache_creation_input_tokens,
+        cache_read_input_tokens: observed.cache_read_tokens,
+        cache_creation_input_tokens: observed.cache_write_tokens,
     }
 }
 
@@ -389,14 +395,14 @@ mod tests {
     fn a_figure_nobody_reported_stays_unreported() {
         let observed = PromptUsage {
             input_tokens: Some(1204),
-            cache_read_input_tokens: None,
-            cache_creation_input_tokens: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
         };
 
         let back = request_usage(stored_usage(observed));
 
         assert_eq!(back.input_tokens, Some(1204));
-        assert_eq!(back.cache_read_input_tokens, None);
-        assert_eq!(back.cache_creation_input_tokens, None);
+        assert_eq!(back.cache_read_tokens, None);
+        assert_eq!(back.cache_write_tokens, None);
     }
 }

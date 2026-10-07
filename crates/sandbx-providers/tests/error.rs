@@ -38,6 +38,7 @@ fn transport_carries_its_source() {
 #[test]
 fn api_error_with_a_status_reports_it() {
     let error = ProviderError::ApiError {
+        transient: false,
         status: Some(400),
         kind: "invalid_request_error".to_string(),
         message: "model field is required".to_string(),
@@ -56,6 +57,7 @@ fn api_error_with_a_status_reports_it() {
 #[test]
 fn api_error_without_a_status_still_reports_the_body() {
     let error = ProviderError::ApiError {
+        transient: true,
         status: None,
         kind: "overloaded_error".to_string(),
         message: "the API is temporarily overloaded".to_string(),
@@ -122,45 +124,31 @@ fn invalid_base_url_reports_the_url_and_reason() {
 }
 
 /// A retry loop classifies by the accessors, not by matching the enum.
+///
+/// `ApiError` answers from its flag alone, never from `status` or `kind`: which vendor
+/// codes and statuses are worth retrying is the adapter's to decide, and only one adapter
+/// knows its own. The two below are otherwise identical.
 #[test]
 fn transient_is_retryable_client_error_is_not() {
-    let overloaded_http = ProviderError::ApiError {
+    let overloaded = ProviderError::ApiError {
+        transient: true,
         status: Some(529),
         kind: "overloaded_error".to_string(),
         message: "overloaded".to_string(),
         retry_after: None,
     };
-    let overloaded_in_band = ProviderError::ApiError {
-        status: None,
+    let bad_request = ProviderError::ApiError {
+        transient: false,
+        status: Some(529),
         kind: "overloaded_error".to_string(),
         message: "overloaded".to_string(),
         retry_after: None,
     };
-    let bad_request = ProviderError::ApiError {
-        status: Some(400),
-        kind: "invalid_request_error".to_string(),
-        message: "bad model".to_string(),
-        retry_after: None,
-    };
-    let not_authorized = ProviderError::ApiError {
-        status: None,
-        kind: "authentication_error".to_string(),
-        message: "bad key".to_string(),
-        retry_after: None,
-    };
 
-    assert!(overloaded_http.is_retryable(), "5xx is transient");
-    assert!(
-        overloaded_in_band.is_retryable(),
-        "an in-band overloaded_error carries no status but is still transient"
-    );
+    assert!(overloaded.is_retryable());
     assert!(
         !bad_request.is_retryable(),
-        "4xx will fail again identically"
-    );
-    assert!(
-        !not_authorized.is_retryable(),
-        "a bad key does not fix itself"
+        "the flag is what decides, not the status or the kind beside it"
     );
 
     assert!(
@@ -208,6 +196,7 @@ fn retry_after_is_exposed_from_both_carrying_variants() {
     );
     assert_eq!(
         ProviderError::ApiError {
+            transient: true,
             status: Some(529),
             kind: "overloaded_error".to_string(),
             message: "overloaded".to_string(),

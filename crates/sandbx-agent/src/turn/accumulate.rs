@@ -46,24 +46,41 @@ where
                 flush(&mut text, &mut blocks);
                 blocks.push(ContentBlock::ToolUse { id, name, input });
             }
+            // Each flushed before its own block, for `ToolCallRequested`'s reason:
+            // reasoning precedes the text and the call it introduced.
+            AgentEvent::ThinkingBlock {
+                text: reasoning,
+                signature,
+            } => {
+                flush(&mut text, &mut blocks);
+                blocks.push(ContentBlock::Thinking {
+                    text: reasoning,
+                    signature,
+                });
+            }
+            AgentEvent::RedactedThinking { data } => {
+                flush(&mut text, &mut blocks);
+                blocks.push(ContentBlock::RedactedThinking { data });
+            }
             AgentEvent::Usage {
                 input_tokens,
-                cache_read_input_tokens,
-                cache_creation_input_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
                 // The reply, not the request; `observe` saw the whole event above.
                 output_tokens: _,
             } => {
                 usage = Some(PromptUsage {
                     input_tokens,
-                    cache_read_input_tokens,
-                    cache_creation_input_tokens,
+                    cache_read_tokens,
+                    cache_write_tokens,
                 });
             }
             AgentEvent::Stop { .. } => {
                 flush(&mut text, &mut blocks);
                 return Ok(Round { blocks, usage });
             }
-            // Observed above, carried no further — see `run_turn`'s docs.
+            // A renderer's increment. The block it belongs to arrives whole as
+            // `ThinkingBlock`, which is what can be replayed.
             AgentEvent::Thinking { .. } => {}
         }
     }

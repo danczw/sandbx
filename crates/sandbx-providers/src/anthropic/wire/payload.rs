@@ -72,8 +72,13 @@ pub(super) enum RawContentBlockStart {
         text: String,
     },
     Thinking {
-        #[allow(dead_code)]
+        /// Always `""` in practice; the text arrives as deltas.
         thinking: String,
+    },
+    /// Reasoning the API withheld. Complete at `content_block_start`: it has no
+    /// deltas and no signature, the `data` blob standing in for both.
+    RedactedThinking {
+        data: String,
     },
     // `input` on a tool_use start is always `{}` and so not modeled — the real
     // value only exists after accumulation.
@@ -97,8 +102,9 @@ pub(super) enum RawDelta {
     ThinkingDelta {
         thinking: String,
     },
+    /// Exactly one per thinking block, immediately before its
+    /// `content_block_stop`.
     SignatureDelta {
-        #[allow(dead_code)] // discarded; see AgentEvent::Thinking's doc
         signature: String,
     },
     InputJsonDelta {
