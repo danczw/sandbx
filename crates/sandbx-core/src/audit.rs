@@ -18,6 +18,18 @@ pub enum AuditEvent<'a> {
         subject: &'a str,
     },
 
+    /// An operation the policy permitted, against a name that denotes nothing.
+    ///
+    /// No `reason`, unlike [`Denied`](Self::Denied): nothing refused this, so there is no
+    /// refusal to explain. Emitted only inside a granted root — outside one, that a path
+    /// does not exist is what the refusal conceals.
+    Absent {
+        /// Who asked, in the same form as in [`Allowed`](Self::Allowed).
+        tool: &'a str,
+        /// The name that denotes nothing.
+        subject: &'a str,
+    },
+
     /// An operation the policy refused.
     Denied {
         /// Who asked, in the same form as in [`Allowed`](Self::Allowed).
@@ -94,6 +106,11 @@ impl<'a> AuditEvent<'a> {
     /// Record a permitted operation.
     pub fn allowed(tool: &'a str, subject: &'a str) -> Self {
         Self::Allowed { tool, subject }
+    }
+
+    /// Record an attempt on a name that denotes nothing.
+    pub fn absent(tool: &'a str, subject: &'a str) -> Self {
+        Self::Absent { tool, subject }
     }
 
     /// Record a refusal and its reason.
@@ -176,6 +193,12 @@ impl<'a> AuditEvent<'a> {
             Self::Allowed { tool, subject } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "allowed",
+                tool,
+                subject,
+            ),
+            Self::Absent { tool, subject } => tracing::info!(
+                target: AUDIT_TARGET,
+                decision = "absent",
                 tool,
                 subject,
             ),
