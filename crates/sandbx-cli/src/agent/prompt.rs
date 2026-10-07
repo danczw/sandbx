@@ -18,6 +18,12 @@ use super::gate;
 /// prompt arrives on argv, so neither end is free to hold a conversation.
 const TTY: &str = "/dev/tty";
 
+/// Reset the graphic rendition, written before each question.
+///
+/// Not part of the question itself, so the text the strip covers stays free of escapes:
+/// this one is sandbx's own, on a real terminal only.
+const RESET: &str = "\x1b[0m";
+
 /// The flag that asks per call.
 ///
 /// Named once because the refusal that needs it is written where no clap error is.
@@ -162,6 +168,11 @@ impl Terminal {
 
 impl Ask for Terminal {
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
+        // The model's answer streams to this same device and may leave an SGR state behind
+        // — concealed, or black on black — so the question is written from a known one. A
+        // failed write is not handled here: the question's own write fails too, and denies.
+        let _ = self.out.write_all(RESET.as_bytes());
+
         self.consent.ask(call, &mut self.input, &mut self.out)
     }
 }

@@ -126,13 +126,21 @@ fn report(call: Settled<'_>) -> String {
         Outcome::NotOffered => format!("{head} — not offered this turn"),
         // The gate's own reason verbatim, not a second wording of it: two gates refuse
         // here for different causes, and the wrap-up round's is not lifted by any flag.
-        Outcome::Denied { reason } => format!("{head} — refused: {reason}"),
+        Outcome::Denied { reason } => format!("{head} — refused: {}", printable(reason)),
         // Exhaustive rather than `to_string()`: the error's own `Display` names its subject,
         // which the head has already printed from the arguments.
+        //
+        // Every field here is stripped too, and not only the head: `SandboxError`'s own
+        // `Display` writes the requested path, and serde's quotes the arguments back, so
+        // an escape sequence refused by the policy arrives on this line by the tail.
         Outcome::Errored(error) => match error {
-            ToolError::Denied { reason, .. } => format!("{head} — refused by the policy: {reason}"),
-            ToolError::BadInput { detail } => format!("{head} — bad arguments: {detail}"),
-            ToolError::Failed { detail, .. } => format!("{head} — failed: {detail}"),
+            ToolError::Denied { reason, .. } => {
+                format!("{head} — refused by the policy: {}", printable(reason))
+            }
+            ToolError::BadInput { detail } => {
+                format!("{head} — bad arguments: {}", printable(detail))
+            }
+            ToolError::Failed { detail, .. } => format!("{head} — failed: {}", printable(detail)),
             ToolError::TimedOut { after, .. } => {
                 format!("{head} — timed out after {after:?} and was killed")
             }
@@ -146,7 +154,7 @@ fn report(call: Settled<'_>) -> String {
 /// or told what became of it — and so the control-byte strip cannot be had in one place
 /// and missed in the other.
 pub(super) fn describe(tool: BuiltinTool, input: &serde_json::Value) -> String {
-    match subject(input) {
+    match subject(tool, input) {
         Some(subject) => format!("{} {subject}", tool.name()),
         None => tool.name().to_string(),
     }
@@ -154,10 +162,17 @@ pub(super) fn describe(tool: BuiltinTool, input: &serde_json::Value) -> String {
 
 /// What one call is about, read off the arguments the model sent.
 ///
-/// A closed set of keys: every built-in takes a `path` but `bash`, which takes a `command`.
-/// A tool whose arguments carry neither is reported by name alone rather than by guessing.
-fn subject(input: &serde_json::Value) -> Option<String> {
-    let value = input.get("path").or_else(|| input.get("command"))?;
+/// Keyed off the tool, never off which key is present: no input type refuses an unknown
+/// field, so `{"command": "curl … | sh", "path": "/work/notes.md"}` deserialises, runs the
+/// command, and read by presence order would be named by the decoy path — in the consent
+/// question as well as in the report. A tool whose arguments carry no subject at all is
+/// named alone rather than by a guess.
+fn subject(tool: BuiltinTool, input: &serde_json::Value) -> Option<String> {
+    let key = match tool {
+        BuiltinTool::Bash => "command",
+        _ => "path",
+    };
+    let value = input.get(key)?;
 
     Some(printable(&match value.as_str() {
         Some(text) => text.to_string(),
@@ -170,22 +185,47 @@ fn subject(input: &serde_json::Value) -> Option<String> {
 /// `text` as it may be written to a terminal.
 ///
 /// Model-chosen, so an escape sequence in it would rewrite the surrounding line — which
-/// for the consent prompt means rewriting the question being answered. Every `Cc`
-/// codepoint (C0, C1 and DEL) becomes U+FFFD rather than being dropped, since a dropped
-/// one makes a different string look like a plausible path.
+/// for the consent prompt means rewriting the question being answered. A stripped
+/// codepoint becomes U+FFFD rather than being dropped: dropped, a hostile string reads as
+/// a plausible path, which is a worse account than a visibly mangled one.
 pub(super) fn printable(text: &str) -> String {
-    let mut out: String = text
-        .chars()
-        .take(SUBJECT_CAP)
-        .map(|c| if c.is_control() { '\u{fffd}' } else { c })
-        .collect();
+    let mut out = String::new();
+    let mut rest = text.chars();
+
+    for c in rest.by_ref().take(SUBJECT_CAP) {
+        match c {
+            // Spelled, not replaced: a heredoc shown as a row of U+FFFD is a command
+            // consented to unread, which `SUBJECT_CAP` exists to avoid.
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() || invisible(c) => out.push('\u{fffd}'),
+            c => out.push(c),
+        }
+    }
 
     // Marked, not silent: an operator who cannot see the whole argument can still refuse.
-    if text.chars().nth(SUBJECT_CAP).is_some() {
+    if rest.next().is_some() {
         out.push('…');
     }
 
     out
+}
+
+/// Whether `c` renders as nothing, or reorders what follows it.
+///
+/// `char::is_control` is `Cc` exactly, so the `Cf` codepoints pass it: U+202E and the
+/// directional isolates make a path *display* as a different path, which an operator then
+/// consents to. Spelled out as ranges because `char` has no predicate for the category.
+fn invisible(c: char) -> bool {
+    matches!(c,
+        '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{feff}'
+        | '\u{200b}'..='\u{200f}'
+        | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206f}'
+        | '\u{fff9}'..='\u{fffb}'
+        | '\u{1d173}'..='\u{1d17a}'
+        | '\u{e0000}'..='\u{e007f}')
 }
 
 /// Accept a tool `--allow-tool` can actually approve, and refuse anything else.
