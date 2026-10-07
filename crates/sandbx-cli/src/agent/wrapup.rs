@@ -65,17 +65,21 @@ impl Next {
 
     /// Ask once more, and report whether an answer came back.
     ///
-    /// A wrap-up round that fails leaves `first` exactly as it was — unstorable, exit 2,
-    /// its text already on stdout — rather than costing it either. That residue is #188.
+    /// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
+    /// already on stdout — rather than costing it either, and the caller stores it on the
+    /// strength of ending on results nothing answered (#188).
+    ///
+    /// `history` is borrowed and not taken: the caller keeps it to translate the figure
+    /// this round reports back out of the request's index space.
     pub(super) async fn run<W: Write>(
         &self,
         open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
-        history: Vec<RequestMessage>,
+        history: &[RequestMessage],
         first: TurnOutcome,
         render: &mut Render<W>,
     ) -> (TurnOutcome, bool) {
-        let mut continued = history;
+        let mut continued = history.to_vec();
         continued.extend(first.messages.iter().cloned());
 
         render.separate();
@@ -134,8 +138,9 @@ impl Next {
                 ..self.limits
             },
             observed: first.usage.or(self.observed),
-            // The floor stays exact: `history` is the first turn's history with its
-            // messages appended, and appending does not move a prefix's indices.
+            // Exact in the request's index space, which is the one `first` counted in:
+            // `history` is that request with the turn's messages appended, and appending
+            // does not move a prefix's indices.
             withheld: first.withheld,
         }
     }

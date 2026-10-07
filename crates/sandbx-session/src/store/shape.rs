@@ -74,5 +74,19 @@ fn settled(messages: &[Message]) -> bool {
 /// and the prompt that resumes it appendable (#188).
 fn joins(earlier: &Message, later: &Message) -> bool {
     earlier.role != later.role
-        || (earlier.role == Role::User && answers_only(earlier) && !answers_only(later))
+        || (earlier.role == Role::User && answers_only(earlier) && asks_only(later))
+}
+
+/// True when `message` answers no tool call — the only user turn that may follow one which
+/// is nothing but answers.
+///
+/// The merge concatenates the pair's blocks, so a second turn carrying results would send
+/// one message whose later blocks name calls no earlier message made, which the API
+/// refuses as an orphan.
+fn asks_only(message: &Message) -> bool {
+    !message.content.is_empty()
+        && !message
+            .content
+            .iter()
+            .any(|block| matches!(block, Content::ToolResult { .. }))
 }

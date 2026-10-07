@@ -112,7 +112,8 @@ appending does not move the indices of a prefix, so last turn's count still name
 messages. A caller that rewrites history instead is absorbed by the second rung below,
 which cuts to the deepest boundary under the floor rather than dropping it. `agent-run`
 does rewrite one thing — it merges a run of user messages into one (#188) — and translates
-the floor itself rather than leaning on that rung.
+the index itself rather than leaning on that rung: into the request's space on the way in,
+and back out of it before the figure the turn reports is stored.
 
 **The cut points are not arbitrary.** Dropping a prefix can only break the conversation
 at its new front, so the whole question is three conditions on what becomes the first
@@ -122,6 +123,11 @@ consequence worth internalising:
 
 > In a tool-heavy transcript the legal cut points are exactly the human prose turns —
 > one per exchange, not one per message.
+
+With one subtraction since #188: the prompt that resumes a turn which ran out of rounds is
+sent merged into the results it answers beside, so that message carries a `ToolResult` and
+is not a boundary. A session that caps on *every* turn therefore has no cut point but its
+first, which `cut == 0` excludes — compaction finds none and takes the third rung below.
 
 When nothing legal is deep enough, three rungs:
 
