@@ -50,10 +50,9 @@ pub(super) struct Render<W> {
     /// tell a round that wrote and then failed from one that wrote nothing.
     after_gap: bool,
 
-    /// Whether reasoning was asked for. Off by default, so a provider that streams a
-    /// summary unasked is dropped here rather than put in front of an operator who did
-    /// not want it — [`crate::agent::AgentRun::show_thinking`] is the only thing that
-    /// turns it on.
+    /// Whether reasoning was asked for. Off unless
+    /// [`crate::agent::AgentRun::show_thinking`] set it, so a summary streamed unasked is
+    /// dropped here rather than put in front of an operator who did not want it.
     show_thinking: bool,
 
     /// Whether stderr is part-way through a line of reasoning, so the round's own stderr
@@ -120,10 +119,8 @@ impl<W: Write> Render<W> {
                     self.after_gap = true;
                 }
             }
-            // Stderr, stdout being the answer: reasoning is about the answer, and a
-            // summary of it at that. Empty on a run that did not ask for one, the API
-            // sending the increment either way — and gated anyway, rather than trusting
-            // that it stays empty.
+            // Stderr, stdout being the answer. Gated rather than trusted to be empty: the
+            // API sends the increment whether or not a summary was asked for.
             AgentEvent::Thinking { delta } => {
                 if self.show_thinking && !delta.is_empty() {
                     eprint!("{delta}");
@@ -142,7 +139,7 @@ impl<W: Write> Render<W> {
             // model and the turn's own stderr line (#169).
             //
             // The two reasoning blocks are the replayable form of what the deltas above
-            // already showed, and carry a signature this must not write anywhere.
+            // already showed, and carry a signature nothing here may write.
             AgentEvent::ToolCallRequested { .. }
             | AgentEvent::ThinkingBlock { .. }
             | AgentEvent::RedactedThinking { .. }

@@ -48,8 +48,7 @@ pub struct Turn<'a> {
     /// Whether to ask for the model's reasoning text, which only a renderer sees.
     ///
     /// Changes nothing about replay: on current models the model reasons either way,
-    /// and the blocks this loop carries between rounds are the same ones. All this
-    /// sets is whether `observe` receives any [`AgentEvent::Thinking`] text to show.
+    /// and the blocks this loop carries between rounds are the same ones.
     pub thinking: Option<Thinking>,
 
     /// The conversation so far, oldest first.
@@ -118,11 +117,10 @@ pub struct TurnOutcome {
     /// The turns this call produced, oldest first, to be appended to the caller's history.
     ///
     /// Complete but for reasoning: compaction narrows the *request*, never this, since a
-    /// loss in a caller's stored history would compound every turn. Reasoning blocks are
-    /// the one exception — they are valid only against the prefix they were produced
-    /// against, so carrying them past the turn that made them is what a provider rejects.
-    /// A turn left holding nothing but reasoning drops out entirely rather than becoming
-    /// a message with no content, which no provider accepts.
+    /// loss in a caller's stored history would compound every turn. Reasoning is valid
+    /// only against the prefix it was produced against, so carrying it past the turn that
+    /// made it is what a provider rejects. A turn left holding nothing else drops out
+    /// entirely rather than becoming a message with no content, which no provider accepts.
     pub messages: Vec<RequestMessage>,
 
     /// What this turn's last round reported, or `None` if no round reported anything.
@@ -217,11 +215,9 @@ impl Default for TurnLimits {
 /// serves both a renderer's increments and the replayable form. Re-entry keys off the
 /// *presence* of tool calls, never `StopReason::ToolUse`, which is nullable on the wire.
 ///
-/// Reasoning blocks live for the length of one turn: every round after the first replays
-/// the ones before it, which is what the provider requires inside a tool-use turn, and
-/// [`TurnOutcome::messages`] carries none, which is what keeps a signature out of a
-/// caller's history and off its disk. A cut that deepens mid-turn drops the reasoning
-/// already sent, that prefix no longer being the one it was signed against. See
+/// Reasoning blocks live for the length of one turn: a round replays the ones before it,
+/// which the provider requires inside a tool-use turn; a cut that deepens mid-turn drops
+/// what was already sent; and [`TurnOutcome::messages`] carries none. See
 /// `context/decision-thinking-replay.md`.
 ///
 /// Compaction is off unless [`TurnLimits::compaction`] says otherwise, and needs both
@@ -291,10 +287,9 @@ where
         }
         let withheld = cut;
 
-        // A reasoning block is valid only against the messages that preceded it, so a
-        // deepened cut invalidates every one already sent. Dropping the oldest reasoning
-        // is the one edit the provider's check permits; leaving it in is a rejected
-        // request.
+        // A reasoning block is valid only against the messages before it, so a deepened
+        // cut invalidates every one already sent. Dropping them is the one edit the
+        // provider's check permits.
         if sent_cut.is_some_and(|previous| previous != withheld) {
             drop_thinking(&mut produced);
         }
@@ -335,9 +330,8 @@ where
         }
         let blocks = round.blocks;
 
-        // Reasoning does not count: it is stripped on the way out, so a round that
-        // produced only that leaves a message with an empty content array, which the API
-        // rejects — and it answers nothing, which is what the two exits below are for.
+        // Reasoning does not count: it is stripped on the way out, so a round producing
+        // only that answers nothing and leaves an empty content array the API rejects.
         if !blocks.iter().any(|block| !block.is_thinking()) {
             // Unless a `tool_result` is waiting to be answered; see `EndedMidToolUse`.
             if matches!(produced.last(), Some(last) if matches!(last.role, Role::User)) {
@@ -399,10 +393,10 @@ fn outcome(
 
 /// Drop every reasoning block, and any turn left with nothing else in it.
 ///
-/// Both kinds go together: the provider checks for a gap, so keeping redacted reasoning
-/// while dropping the rest is worse than dropping all of it. An emptied turn can only be
-/// the last one — a round that produced nothing but reasoning asks for no tools, which
-/// ends the loop — so removing it cannot leave two user turns adjacent.
+/// Both kinds go together, the provider checking for a gap rather than for a type. An
+/// emptied turn can only be the last one — a round that produced nothing but reasoning
+/// asks for no tools, which ends the loop — so removing it cannot leave two user turns
+/// adjacent.
 fn drop_thinking(messages: &mut Vec<RequestMessage>) {
     for message in messages.iter_mut() {
         message.content.retain(|block| !block.is_thinking());

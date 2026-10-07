@@ -89,9 +89,9 @@ async fn sends_the_right_headers_and_body() {
     // above held.
 }
 
-/// Every field at once, because the per-field rules are `body.rs`'s own tests and what
-/// this adds is that the client posts *that* body: a `.json(&request)` on the neutral type
-/// would compile and send `max_output_tokens`, `schema` and no `stream`.
+/// That the client posts *that* body, the per-field rules being `body.rs`'s own tests: a
+/// `.json(&prompt)` on the neutral type would compile and send `max_output_tokens`,
+/// `schema` and no `stream`.
 #[tokio::test]
 async fn the_body_on_the_wire_is_the_adapter_shape() {
     let server = MockServer::start().await;

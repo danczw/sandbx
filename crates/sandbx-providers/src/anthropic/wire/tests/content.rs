@@ -89,8 +89,7 @@ async fn a_signed_thinking_block_is_emitted_whole_at_its_stop() {
 }
 
 /// The default on a Claude 5 model (`display: "omitted"`): an empty text and a real
-/// signature. The block is the whole of what the replay needs, so it is not the empty
-/// text that decides whether to emit.
+/// signature, which is the whole of what a replay needs. The text does not decide.
 #[tokio::test]
 async fn an_empty_thinking_block_is_still_emitted_for_its_signature() {
     let out = ok_events(vec![
@@ -187,9 +186,8 @@ async fn a_redacted_thinking_block_carries_its_opaque_data() {
     );
 }
 
-/// Reusing an index without closing it, which the index-reuse guard covers for one block
-/// kind at a time. Two kinds share the map now, so a thinking block's deltas could feed a
-/// tool call's buffer and either could be emitted as the other.
+/// Reusing an index without closing it. Two block kinds share the map, so a thinking
+/// block's deltas could feed a tool call's buffer and either be emitted as the other.
 #[tokio::test]
 async fn thinking_and_tool_use_do_not_contaminate_one_index() {
     let out = ok_events(vec![

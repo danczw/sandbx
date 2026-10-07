@@ -60,8 +60,7 @@ async fn text_deltas_accumulate_into_one_block() {
 
 /// Both halves, because either on its own passes for the wrong reason: a loop that never
 /// replayed thinking would satisfy the second, and one that never stripped it the first.
-/// The provider requires the block inside the tool-use turn that produced it, and rejects
-/// it against any later prefix — see `context/decision-thinking-replay.md`.
+/// See `context/decision-thinking-replay.md`.
 #[tokio::test]
 async fn thinking_is_replayed_in_turn_and_never_out() {
     let root = tempfile::tempdir().unwrap();
@@ -929,11 +928,9 @@ async fn an_empty_round_mid_tool_use_is_an_error() {
 }
 
 /// Reasoning is stripped on the way out, so a round carrying nothing else is the empty
-/// round above wearing a block — and it must not buy its way past the check.
-///
-/// The failure it would otherwise be is silent and durable: `Answered` over a transcript
-/// ending on an unanswered `tool_result`, which a caller stores and the next request is
-/// rejected for.
+/// round above wearing a block. Reading it as content returns `Answered` over a
+/// transcript ending on an unanswered `tool_result`, which a caller stores and the next
+/// request is rejected for.
 #[tokio::test]
 async fn a_reasoning_only_round_mid_tool_use_is_the_same_error() {
     let root = tempfile::tempdir().unwrap();

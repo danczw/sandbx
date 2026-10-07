@@ -414,10 +414,9 @@ async fn a_carried_floor_deepens_on_the_turns_own_figure() {
     assert_eq!(&sent(&script, 1)[..2], &history[6..]);
 }
 
-/// A reasoning block is signed against the messages that came before it, so the round that
-/// cuts deeper than the round that produced it must not replay it — the provider rejects
-/// the request outright. The same setup as
-/// [`a_carried_floor_deepens_on_the_turns_own_figure`], with round one reasoning.
+/// A reasoning block is signed against the messages before it, so a round that cuts deeper
+/// than the round that produced one must not replay it. The setup is
+/// [`a_carried_floor_deepens_on_the_turns_own_figure`]'s, with round one reasoning.
 #[tokio::test]
 async fn a_deepened_cut_drops_the_reasoning_already_sent() {
     let history = long_conversation();

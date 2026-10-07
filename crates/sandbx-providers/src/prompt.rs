@@ -80,9 +80,9 @@ pub enum ContentBlock {
     },
     /// The model's reasoning on a turn being replayed back.
     ///
-    /// Both fields go back exactly as they arrived. The signature is the provider's
-    /// proof that the text is the model's own, and it is checked against everything
-    /// ahead of the block; see `context/decision-thinking-replay.md`.
+    /// Both fields go back exactly as they arrived, the signature being checked
+    /// against every message ahead of the block; see
+    /// `context/decision-thinking-replay.md`.
     Thinking {
         /// The reasoning text, which is empty unless [`Thinking::Visible`] was set.
         text: String,
@@ -91,8 +91,7 @@ pub enum ContentBlock {
     },
     /// Reasoning the provider withheld, carrying an opaque blob in place of text.
     ///
-    /// Replayed on the same terms as [`Thinking`](Self::Thinking): dropping these
-    /// while keeping those leaves a gap the provider rejects.
+    /// Replayed on the same terms as [`Thinking`](Self::Thinking).
     RedactedThinking {
         /// Opaque, and never logged, rendered or stored.
         data: String,
