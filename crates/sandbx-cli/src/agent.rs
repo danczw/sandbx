@@ -4,6 +4,7 @@
 //! is decided from argv before the first request goes out. `--session` carries a
 //! conversation between runs as a transcript on disk, not a live session.
 
+mod orientation;
 mod render;
 
 use std::io::Write;
@@ -61,7 +62,8 @@ pub struct AgentRun {
 
     /// Give the model a system prompt.
     ///
-    /// Unset sends none, so the model is told only what the tools' own descriptions say.
+    /// Sent after the line naming the roots this run's tools can reach, which it does not
+    /// replace. Unset sends that line alone.
     #[arg(long, value_name = "TEXT")]
     system: Option<String>,
 
@@ -131,7 +133,7 @@ impl AgentRun {
         self.max_tokens
     }
 
-    /// The system prompt, or `None` to send none.
+    /// The system prompt `--system` gave, before the roots are prepended to it.
     pub fn system(&self) -> Option<&str> {
         self.system.as_deref()
     }
@@ -226,7 +228,12 @@ impl AgentRun {
         // No `with_helper`: the default path re-execs this binary, and `main` dispatches
         // helper mode before parsing, so the shipped binary is its own helper. Derived
         // before the client, so a refused policy never reads the credential.
-        let ctx = ExecutionContext::new(self.policy()?);
+        let policy = self.policy()?;
+        // Read off the one policy the context is about to take by value: a second
+        // `self.policy()?` re-reads `getcwd`, and a cwd that moved in between would name
+        // the model a root the sandbox did not grant.
+        let system = orientation::system_prompt(&policy, self.system());
+        let ctx = ExecutionContext::new(policy);
 
         eprintln!(
             "sandbx: tools approved: {}",
@@ -243,6 +250,7 @@ impl AgentRun {
             |request| client.stream_chat(request),
             &ctx,
             prompt,
+            system,
             std::io::stdout(),
             session,
         )
@@ -259,6 +267,7 @@ impl AgentRun {
         open: impl AsyncFnMut(MessagesRequest) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         prompt: String,
+        system: Option<String>,
         out: W,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
@@ -278,7 +287,7 @@ impl AgentRun {
         let turn = Turn {
             model: self.model.clone(),
             max_tokens: self.max_tokens,
-            system: self.system.clone(),
+            system,
             tools: &BuiltinTool::ALL,
             history: &history,
             limits: TurnLimits::default(),
@@ -539,13 +548,29 @@ mod tests {
     }
 
     /// Drive one scripted round through `drive`, and report what was sent and written.
+    ///
+    /// A default policy grants nothing, so the orientation line is empty and the request
+    /// carries whatever `--system` held, as it did before #178.
     fn one_round(
         args: &AgentRun,
         prompt: &str,
         events: Vec<AgentEvent>,
         session: Option<Session>,
     ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
-        let ctx = ExecutionContext::new(SandboxPolicy::default());
+        under(SandboxPolicy::default(), args, prompt, events, session)
+    }
+
+    /// `one_round` under a policy of its caller's choosing, composing the system prompt
+    /// the way `execute` does.
+    fn under(
+        policy: SandboxPolicy,
+        args: &AgentRun,
+        prompt: &str,
+        events: Vec<AgentEvent>,
+        session: Option<Session>,
+    ) -> (Vec<MessagesRequest>, String, Result<i32, AgentError>) {
+        let system = orientation::system_prompt(&policy, args.system());
+        let ctx = ExecutionContext::new(policy);
         let mut sent = Vec::new();
         let mut events = Some(events);
         let mut out = Vec::new();
@@ -558,6 +583,7 @@ mod tests {
             },
             &ctx,
             prompt.to_owned(),
+            system,
             &mut out,
             session,
         ));
@@ -580,6 +606,7 @@ mod tests {
             },
             &ctx,
             "hi".to_owned(),
+            None,
             Vec::new(),
             session,
         ))
@@ -650,6 +677,29 @@ mod tests {
                 { "role": "user", "content": [{ "type": "text", "text": "and the second?" }] },
             ])
         );
+    }
+
+    /// What ends the probing the round cap used to be reached by: the model is told the
+    /// roots before the first request, not after a refusal (#178).
+    #[test]
+    fn the_request_carries_the_granted_root_as_system() {
+        let args = agent_run(&["sandbx", "agent-run", "--system", "be terse", "--", "go"]);
+
+        let (sent, _, code) = under(
+            SandboxPolicy::default()
+                .allow_read("/work")
+                .allow_write("/work"),
+            &args,
+            &args.prompt(),
+            vec![text("ok"), stop(StopReason::EndTurn)],
+            None,
+        );
+        code.expect("clean turn");
+
+        let body = serde_json::to_value(&sent).expect("a serializable request");
+        let system = body[0]["system"].as_str().expect("a system prompt");
+        assert!(system.contains("/work (read, write)"), "got {system:?}");
+        assert!(system.ends_with("be terse"), "got {system:?}");
     }
 
     #[test]

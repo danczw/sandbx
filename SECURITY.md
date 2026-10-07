@@ -164,7 +164,9 @@ Three properties matter as much as the list:
   one reaches, so the policy `agent-run` derives is the whole of what an approved
   call can touch — with no path flag, read *and write* over the directory you ran
   it from. sandbx bounds what a tool call can reach; it does not decide whether it
-  should run.
+  should run. The request `agent-run` sends names those roots to the model as
+  absolute host paths, so it does not probe for them; a refusal outside them is
+  still indistinguishable from one for a path that is simply absent.
 - **A saved session is a plaintext transcript on your disk.** `agent-run
   --session` writes the whole conversation — your prompts, the model's replies,
   every tool call's arguments and every tool's output — as JSON lines under

@@ -277,8 +277,10 @@ fn max_tokens_has_a_default_and_takes_an_override() {
     );
 }
 
+/// The flag's own text only: every request also carries the line naming the run's roots,
+/// which `the_request_carries_the_granted_root_as_system` pins.
 #[test]
-fn no_system_prompt_is_sent_unless_asked_for() {
+fn no_system_text_is_added_unless_asked_for() {
     assert_eq!(
         agent_run(&["sandbx", "agent-run", "--", "hello"]).system(),
         None
