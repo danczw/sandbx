@@ -42,6 +42,31 @@ fn grants_only_what_a_command_needs_to_start() {
     );
 }
 
+/// The asymmetry `agent-run` refuses, pinned here so dropping it is a visible choice
+/// rather than a silent tightening. Legitimate because the child may *be* the thing
+/// calling the provider, and here the operator named the program and typed its arguments.
+#[test]
+fn sandbox_run_still_passes_the_harness_credential() {
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-env",
+        "ANTHROPIC_API_KEY",
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("the flags describe a policy");
+
+    assert!(
+        policy
+            .allowed_env()
+            .iter()
+            .any(|name| name == "ANTHROPIC_API_KEY"),
+        "sandbox-run dropped a variable the operator named"
+    );
+}
+
 /// A write grant the operator did not type, which is what `grants.rs` guards.
 #[test]
 fn the_working_directory_is_readable_and_writable() {

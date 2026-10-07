@@ -14,9 +14,9 @@ use secrecy::SecretString;
 
 use crate::AuthError;
 
-/// The variable checked before the file, and the name `--allow-env` would have to repeat
-/// to hand the value to a tool.
-const ENV_VAR: &str = "ANTHROPIC_API_KEY";
+/// The variable checked before the file, and the one name `agent-run` refuses to
+/// `--allow-env` — see `context/decision-tool-credentials.md`.
+pub(crate) const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 
 /// The credential file, below whichever config home is in play.
 const FILE: &str = "sandbx/credentials.toml";
@@ -203,6 +203,13 @@ mod tests {
     use secrecy::ExposeSecret;
 
     use super::*;
+
+    /// Against a literal, because `SECURITY.md`, the README, `--help` and `agent-run`'s
+    /// refusal all name this variable in prose that cannot follow a rename.
+    #[test]
+    fn the_refused_variable_is_spelled_out() {
+        assert_eq!(ENV_VAR, "ANTHROPIC_API_KEY");
+    }
 
     /// An env lookup over a fixed list, standing in for `var_os`.
     fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {

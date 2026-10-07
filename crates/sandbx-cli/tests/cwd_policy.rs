@@ -2,7 +2,9 @@
 //!
 //! Spawned rather than called, because the guard reads `getcwd` and `HOME` off the real
 //! process and `set_current_dir` is process-global — under parallel tests one case would
-//! decide another's verdict.
+//! decide another's verdict. The credential refusal joins them for the other half of that
+//! reason: `set_var` is `unsafe fn`, so a case keyed on an exported variable can only be
+//! a child's environment.
 // `Command::new` here spawns sandbx itself, never a command that bypasses it; the
 // workspace ban exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
@@ -12,29 +14,39 @@ use std::process::Command;
 /// The package root: cargo's own cwd for a test, and what the home cases pretend is `$HOME`.
 const PACKAGE: &str = env!("CARGO_MANIFEST_DIR");
 
+/// What each subcommand takes after `--`: a command to run, or a prompt to ask.
+const SANDBOX_RUN: (&str, &str) = ("sandbox-run", "true");
+const AGENT_RUN: (&str, &str) = ("agent-run", "hello");
+
 /// Whether `sandbox-run` succeeded from `cwd` with `HOME` set to `home`, and its stderr.
 fn run(cwd: &str, home: &str, flags: &[&str]) -> (bool, String) {
-    spawn(cwd, flags, |command| command.env("HOME", home))
+    spawn(SANDBOX_RUN, cwd, flags, |command| command.env("HOME", home))
 }
 
 /// [`run`], but with `HOME` removed from the child's environment entirely.
 fn run_without_home(cwd: &str, flags: &[&str]) -> (bool, String) {
-    spawn(cwd, flags, |command| command.env_remove("HOME"))
+    spawn(SANDBOX_RUN, cwd, flags, |command| {
+        command.env_remove("HOME")
+    })
 }
 
 fn spawn(
+    subcommand: (&str, &str),
     cwd: &str,
     flags: &[&str],
-    home: impl FnOnce(&mut Command) -> &mut Command,
+    environment: impl FnOnce(&mut Command) -> &mut Command,
 ) -> (bool, String) {
+    let (name, tail) = subcommand;
     let mut command = Command::new(env!("CARGO_BIN_EXE_sandbx"));
     command
-        .arg("sandbox-run")
+        .arg(name)
         .args(flags)
-        .args(["--", "true"])
+        .args(["--", tail])
         .current_dir(cwd);
 
-    let output = home(&mut command).output().expect("sandbx should start");
+    let output = environment(&mut command)
+        .output()
+        .expect("sandbx should start");
 
     (
         output.status.success(),
@@ -136,5 +148,56 @@ fn a_path_flag_runs_from_the_home_directory() {
     assert!(
         !stderr.contains("refusing to derive"),
         "an explicit policy was refused over a directory it never asked for: {stderr}"
+    );
+}
+
+/// A fake key, so a failure to refuse cannot leak a real one into a test log.
+const FAKE_KEY: &str = "sk-ant-not-a-real-key";
+
+/// The refusal does not consult the environment, so an exported key changes nothing — and
+/// the message naming the variable must still not quote its value.
+#[test]
+fn an_exported_credential_is_refused_too() {
+    let (ok, stderr) = spawn(
+        AGENT_RUN,
+        PACKAGE,
+        &["--allow-env", "ANTHROPIC_API_KEY"],
+        |command| {
+            command
+                .env("HOME", PACKAGE)
+                .env("ANTHROPIC_API_KEY", FAKE_KEY)
+        },
+    );
+
+    assert!(!ok, "agent-run passed the harness credential: {stderr}");
+    assert!(
+        stderr.contains("ANTHROPIC_API_KEY") && stderr.contains("--allow-env"),
+        "{stderr} does not name the variable and the flag it was given to"
+    );
+    assert!(
+        !stderr.contains(FAKE_KEY),
+        "the refusal printed the value it exists to withhold: {stderr}"
+    );
+}
+
+/// Both refusals apply, and the order is the point: a cwd message would say nothing about
+/// the credential, so the operator would fix the directory and hand over the key anyway.
+#[test]
+fn the_credential_refusal_outranks_the_home_directory_refusal() {
+    let (ok, stderr) = spawn(
+        AGENT_RUN,
+        PACKAGE,
+        &["--allow-env", "ANTHROPIC_API_KEY"],
+        |command| command.env("HOME", PACKAGE),
+    );
+
+    assert!(!ok, "neither refusal landed: {stderr}");
+    assert!(
+        stderr.contains("ANTHROPIC_API_KEY"),
+        "the home-directory refusal masked the credential one: {stderr}"
+    );
+    assert!(
+        !stderr.contains("refusing to derive"),
+        "{stderr} reports the directory, which the operator can fix without the key being safe"
     );
 }
