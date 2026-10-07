@@ -146,7 +146,7 @@ impl SandboxError {
             // Decided here or by `FsGuard`, so a record claiming one would outrank an
             // outcome the parent watched happen. `HelperRefused` is this relay's own output
             // and exists only parent-side, so reporting it would be a second crossing.
-            // `ProcessConcealment` is sandbx's own startup state, which no helper can see.
+            // `ProcessConcealment` is decided past dispatch, which no helper runs (#192).
             Self::PathNotAllowed { .. }
             | Self::Unresolvable { .. }
             | Self::NotFound { .. }
@@ -192,6 +192,7 @@ mod tests {
             "path_not_allowed",
             "unresolvable",
             "not_found",
+            "process_concealment",
         ] {
             assert_eq!(
                 HelperRefusal::from_label(label),
