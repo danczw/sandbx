@@ -158,25 +158,26 @@ there is nothing to protect, so stdin stays inherited — a hand-invoked
 unconditional `null` quietly took away.
 
 **Defence in depth behind that line.** `decode` accepts only labels in
-`Degradation::ALL` and `SandboxError::REPORTED_BY_HELPER`, two closed sets kept
-disjoint by a test, so nothing can name a mechanism or a reason sandbx did not
-define; the record count is capped at the steps that exist plus the one refusal that
-can cross however many stages write — see the stage 1 note above; and `encode` strips
-the separator characters from a detail so one record cannot forge a second. A refusal
-carries no detail at all — the reason reaches the operator on the helper's forwarded
-stderr.
+`Degradation::ALL` and `HelperRefusal::ALL`, two closed sets kept disjoint by a
+test, so nothing can name a mechanism or a reason sandbx did not define; the record
+count is capped at the steps that exist plus the one refusal that can cross however
+many stages write — see the stage 1 note above; and `encode` strips the separator
+characters from a detail so one record cannot forge a second. A refusal carries no
+detail at all. The reason reaches the operator on the helper's forwarded stderr, and
+the parent lifts it off there into `SandboxError::HelperRefused` for its caller, so
+the prose crosses once and is relayed, never re-encoded on the wire (#185).
 
-`REPORTED_BY_HELPER` is a *subset* of what `SandboxError::label` can return, not all
-of it, and the five it leaves out are the point: `timeout`, `spawn_failed`,
+`HelperRefusal` is a *subset* of what `SandboxError::label` can return, not all of
+it, and the five it leaves out are the point: `timeout`, `spawn_failed`,
 `path_not_allowed`, `unresolvable` and `not_found` are decisions sandbx and
-`FsGuard` make for themselves. A channel record outranks the exit status, so
-admitting `timeout` would let a forged line claim a kill that never happened *and*
-suppress the real outcome — on a trail whose whole purpose is that
-`reason="timeout"` can be filtered. What the criterion turns on is whether the label
-names one decider, not what failed: `inner_stage_failed` is in and `spawn_failed` is
-out although both name a process that would not start. The subset is hand-maintained
-against `label`, which the compiler cannot help with; a helper refusal missing from it
-is dropped rather than mistrusted, leaving the trail saying what it said before #157.
+`FsGuard` make for themselves. A channel record outranks the exit status — and now
+the returned `Result` too — so admitting `timeout` would let a forged line claim a
+kill that never happened *and* suppress the real outcome, on a trail whose whole
+purpose is that `reason="timeout"` can be filtered. What the criterion turns on is
+whether the label names one decider, not what failed: `inner_stage_failed` is in and
+`spawn_failed` is out although both name a process that would not start.
+`SandboxError::refusal` is the one exhaustive place the two sets are mapped, so a
+new variant cannot be left out of the set by omission.
 
 ## What this is not
 

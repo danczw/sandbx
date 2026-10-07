@@ -68,6 +68,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    spawn.rs          spawn::command — the one Command::new; env_clear, then
                      the allowlist and the policy's own constants
    error.rs
+      refusal.rs     HelperRefusal — the closed set the channel admits, and
+                     SandboxError::refusal, the one place the two are mapped
    bin/sandbx-helper.rs
    helper/
       mod.rs         the two stages — exec_sandboxed, then exec_inner as PID 1;
@@ -98,7 +100,8 @@ tests/support/       mod.rs — runtime_paths, allow_probe, run, run_pinned,
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
 `HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
-`with_helper_dispatch`, `SandboxError`, `Access`, `FsGuard`, `ReadableWalk`,
+`with_helper_dispatch`, `SandboxError`, `Access`, `HelperRefusal`, `FsGuard`,
+`ReadableWalk`,
 `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
 `NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`.
 
