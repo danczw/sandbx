@@ -231,10 +231,15 @@ impl FsGuard {
 
                 // The only inputs where the halves disagree are `.`/`..`-tailed, refused
                 // either way, so one failure covers both.
-                let (parent, file_name) = path
-                    .parent()
-                    .zip(path.file_name())
-                    .ok_or_else(not_allowed)?;
+                let Some((parent, file_name)) = path.parent().zip(path.file_name()) else {
+                    crate::AuditEvent::denied(
+                        Access::Write.operation(),
+                        &path.display().to_string(),
+                        "path names no file to write",
+                    )
+                    .emit();
+                    return Err(not_allowed());
+                };
 
                 match parent.canonicalize() {
                     Ok(dir) => dir.join(file_name),

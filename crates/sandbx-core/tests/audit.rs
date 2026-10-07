@@ -97,6 +97,28 @@ fn an_in_grant_miss_records_no_denial() {
     assert!(lines.is_empty(), "got: {lines:?}");
 }
 
+/// The one write refusal that used to leave no record, where every sibling in
+/// `check_write` emitted one (#183).
+#[test]
+fn a_path_naming_no_file_records_its_refusal() {
+    let root = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+
+    // Resolution has to fail before the halves are taken, so the tail needs an
+    // absent parent: a bare `..` canonicalizes and never reaches the branch.
+    let lines = capture(|| {
+        let _ = guard.check_write(&root.path().join("nodir").join(".."));
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
+    assert!(
+        lines[0].contains("path names no file to write"),
+        "got: {}",
+        lines[0]
+    );
+}
+
 /// Audit that only appears under `RUST_LOG=debug` is off for everyone who did
 /// not opt in.
 #[test]
