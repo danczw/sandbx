@@ -250,7 +250,9 @@ that users reasonably read as the same flags.
     much it claims
 13. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
-14. `decision-on-disk-state.md` — what sandbx writes outside the working
+14. `decision-tool-credentials.md` — why a tool is handed none, and the one name
+    that is refused
+15. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
