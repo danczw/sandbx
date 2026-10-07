@@ -200,14 +200,34 @@ command's own stderr with it, including the permission denials.
 | `--allow-network PORT` | IP connect and bind on `PORT` alone — on every host, since the kernel matches the port and not the destination. Denies UDP and raw sockets with it, so names resolve only over TCP (see `--dns-over-tcp`), and shares the host's network namespace. Repeatable |
 | `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
 | `--allow-env NAME`   | let the command inherit `NAME`, with the value `sandbx` itself holds. No flag sets a value, bar the one below. Repeatable |
-| `--dns-over-tcp`     | ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc`. Allowlists no port of its own |
+| `--allow-dns NAME`   | let `NAME` resolve, and nothing else. `sandbx` resolves it itself before the command starts and gives the command a hosts file holding those addresses and no nameserver at all. Grants no path — it needs no `--allow-read /etc` — and no port. Repeatable |
+| `--dns-over-tcp`     | ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc`. Allowlists no port of its own. Not with `--allow-dns` |
 | `--timeout SECONDS`  | kill the command, and every process it spawned, if it runs longer. Unset means no limit |
 
 ### Resolving a name
 
-Resolution needs `--allow-read /etc` under *any* network policy, bare
-`--allow-network` included: `resolv.conf` and `nsswitch.conf` are granted by
-nothing else. A port allowlist also needs TCP 53 and the resolver on TCP:
+Two routes. Name the hosts the command may resolve, which grants nothing else:
+
+```console
+$ sandbx sandbox-run --allow-dns example.com --allow-network 443 \
+    -- curl -sSI https://example.com
+```
+
+`sandbx` resolves `example.com` before the command starts and gives it a hosts
+file holding that address, `hosts: files` so glibc has no DNS source, and a
+`resolv.conf` naming no nameserver. A name you did not list does not resolve,
+at once rather than after a timeout. The working-directory default survives:
+this is the one flag that makes a policy *smaller*, needing no
+`--allow-read /etc`.
+
+It bounds resolution, not connection: an IP literal reaches any allowlisted
+port exactly as before. So the run is refused where a nameserver would still
+answer for every name — alongside `--dns-over-tcp`, alongside bare
+`--allow-network`, with 53 in the port list, or with no `--allow-network` at
+all.
+
+Or leave every name resolvable, over TCP, which is what a port allowlist leaves
+room for:
 
 ```console
 $ sandbx sandbox-run --dns-over-tcp \
@@ -223,7 +243,9 @@ $ sandbx sandbox-run --dns-over-tcp \
 - `--dns-over-tcp` is a request to the resolver inside the command, not something
   `sandbx` enforces. A command that ignores `RES_OPTIONS` is unaffected, and musl
   has no equivalent: a static musl binary starts on UDP and falls back to TCP
-  only on a truncated reply, so this route does not open it.
+  only on a truncated reply, so this route does not open it. `--allow-dns` works
+  on both libcs, and for a static binary, because it replaces the files every
+  resolver reads rather than asking one to behave differently.
 
 ## Authenticate
 

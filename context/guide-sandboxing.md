@@ -321,7 +321,8 @@ only an x32 caller reaches for those numbers.
 
 | Step | Hard or best-effort | Note |
 |---|---|---|
-| `unshare(CLONE_NEWUSER\|CLONE_NEWPID[\|CLONE_NEWNET])` | **hard** — EPERM refuses | unconditional for every policy; `CLONE_NEWNET` is dropped whenever network is granted *at all*, a bare grant and a port allowlist alike, because a port rule inside an empty netns has nothing to permit |
+| `unshare(CLONE_NEWUSER\|CLONE_NEWPID[\|CLONE_NEWNET][\|CLONE_NEWNS])` | **hard** — EPERM refuses | one call; the user and PID namespaces are unconditional for every policy. `CLONE_NEWNET` is dropped whenever network is granted *at all*, a bare grant and a port allowlist alike, because a port rule inside an empty netns has nothing to permit. `CLONE_NEWNS` is added only when the policy bounds resolution — `--allow-dns` — and `helper::resolver` is what fills it; a mount namespace with nothing mounted into it confines nothing |
+| the three resolver binds | **hard** — a failed mount refuses | only for a policy that bounds resolution. `MS_REC\|MS_PRIVATE` on `/` first, or every bind propagates into the host's own `/etc`; then `hosts`, `nsswitch.conf` and `resolv.conf` bound from a tmpfs and remounted `MS_RDONLY`, since `MS_RDONLY` does not take on the first bind and stage 2 denies `mount(2)`. The tmpfs is detached, never unlinked: an unlinked bind source reads back from `/proc/self/fd` with `" (deleted)"` appended, and `ruleset::opened` compares that spelling against the granted path |
 | `no_new_privs` | **hard** | set in both stages |
 | effective/permitted/inheritable/ambient capsets | **hard** | |
 | `RLIMIT_CORE = 0` | **hard** | chosen over `PR_SET_DUMPABLE`: only the rlimit survives `execve` |
@@ -429,8 +430,9 @@ Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
   and nothing else, so `--allow-network 443` reaches port 443 on every routable
   host. Per-host needs a userspace proxy, whose interception is cooperation rather
   than enforcement — `decision-egress-proxy.md` prices every piece of it, and
-  carves out the one that is claimable: a resolver bounding which names resolve
-  (#145).
+  carves out the one that is claimable: `--allow-dns NAME`, which bounds which
+  names resolve (#145) and leaves an IP literal reaching anything the port
+  allowlist allows.
 - **A port allowlist is not uniformly narrower than withholding network.** It
   refuses `bind` on every unlisted port, `bind(0)` included, and it shares the
   host's netns where `Denied` had an empty one — so host loopback is reachable.
@@ -441,7 +443,7 @@ Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
 
 | Gap | Residual |
 |---|---|
-| Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have, and that proxy is declined rather than pending: its interception is cooperation and TLS termination widens the boundary it would narrow, per `decision-egress-proxy.md`. What that note carves out is a resolver bounding which *names* resolve, which is not a destination control and is #145. The UDP denial breaks name resolution, which `--dns-over-tcp` routes around under glibc and not under musl. |
+| Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have, and that proxy is declined rather than pending: its interception is cooperation and TLS termination widens the boundary it would narrow, per `decision-egress-proxy.md`. What that note carves out is `--allow-dns NAME`, which bounds which *names* resolve (#145) and is not a destination control: an IP literal, or an address the command already holds, reaches any allowlisted port exactly as before. The UDP denial breaks name resolution, which `--allow-dns` closes on both libcs and `--dns-over-tcp` routes around under glibc only. |
 | Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. It is one all-or-nothing toggle. |
 | `FsGuard` TOCTOU | **A parent-directory swap mid-open**, which needs full `openat`-chain resolution. `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. |
 | Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |

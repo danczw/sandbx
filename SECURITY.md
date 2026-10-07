@@ -40,6 +40,7 @@ run through `SandboxedCommand`:
 | filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper/ruleset/compat.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
 | entry point | SHA-256 over the descriptor the helper execs, when `--pin-sha256` names a digest (`SandboxedCommand::pin_sha256`) | the bytes of the one program sandbx itself executes, and nothing that program then spawns. The file is opened once after the policy is applied, hashed through that handle, and run as `/proc/self/fd/N`, so no path is re-resolved between the check and the `execve`. A mismatch refuses the run before anything executes, as does an image a pin cannot be checked against: a `#!` script, whose interpreter would re-open the exec'd path, and a program granted execute but not read. See the non-claim below |
 | network | an empty network namespace, or — when a port allowlist is given — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when it is granted per port |
+| name resolution | when `--allow-dns NAME` is given: each name resolved in the harness before the command starts, then sandbx's own `hosts`, `nsswitch.conf` (`hosts: files`, leaving glibc no `dns` source) and nameserver-less `resolv.conf` bind-mounted read-only over `/etc` in a mount namespace of the command's own | which names resolve. A name the flag did not list does not resolve, immediately rather than by timeout, and the command is left no nameserver to ask instead. It bounds resolution and **not** connection — an IP literal, or an address the command already holds, is reachable on an allowlisted port exactly as before. It grants no path: the read rules are on the bound files themselves, so the flag needs no `--allow-read /etc`, and it is the one flag that makes a policy smaller. The run is refused in each shape where a nameserver the command could still reach would answer for every name — alongside `--dns-over-tcp`, alongside bare `--allow-network`, with 53 in the port list, or with no IP egress at all |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
 | syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create`. Namespace creation is denied on every route: `clone` is filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`. A foreign architecture is killed outright rather than refused per call — an i386 binary on x86\_64, or AArch32 on aarch64 — since its syscall numbers mean something else. On x86\_64 the x32 ABI is refused wholesale for the same reason, and needs a rule of its own because it shares the architecture the filter gates on |
@@ -259,13 +260,14 @@ Five properties matter as much as the list:
   been priced and declined rather than merely postponed: its interception is
   cooperation, not enforcement, since `HTTP_PROXY` binds only programs that read it
   and an `LD_PRELOAD` shim on `connect` is stepped around by a static binary —
-  which sandbx's own release artifacts are. One piece of it is claimable, a
-  resolver bounding which *names* resolve, and that is not a destination control
-  either ([#145](https://github.com/danczw/sandbx/issues/145);
+  which sandbx's own release artifacts are. One piece of it was claimable and is
+  built: `--allow-dns NAME` bounds which *names* resolve, which is not a
+  destination control either — an IP literal walks straight past it
+  ([#145](https://github.com/danczw/sandbx/issues/145);
   [context/decision-egress-proxy.md](context/decision-egress-proxy.md) prices each
-  piece). Treat the flag as a reduction in blast radius, not a destination control:
-  it stops a command reaching an SSH port or a database, not one exfiltrating over
-  HTTPS.
+  piece). Treat the port flag as a reduction in blast radius, not a destination
+  control: it stops a command reaching an SSH port or a database, not one
+  exfiltrating over HTTPS.
 
   It also costs more than it looks. The claim holds only if everything Landlock
   cannot police is shut, so while a port list is in force seccomp denies UDP, raw
@@ -275,8 +277,10 @@ Five properties matter as much as the list:
   inside a `sendmsg` and never passes the hook the port rules hang off. So **name
   resolution fails** under `--allow-network <port>` — `getaddrinfo` can reach
   neither a UDP resolver nor `AF_NETLINK` — and so do QUIC, HTTP/3, `ping` and
-  in-process kTLS. A name can still be resolved over TCP, with `--dns-over-tcp`
-  and TCP 53 allowlisted; the README's *Resolving a name* has the recipe and its
+  in-process kTLS. Two ways to resolve a name anyway: `--allow-dns NAME`, which
+  resolves the names it lists in the harness and asks no nameserver at all, or
+  `--dns-over-tcp` with TCP 53 allowlisted and `/etc` readable, which leaves every
+  name resolvable. The README's *Resolving a name* has both recipes and their
   limits, and `context/decision-port-allowlist.md` why the denial is not narrower.
 
   **And it is not uniformly narrower than withholding network.** `bind` is refused
