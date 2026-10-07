@@ -8,6 +8,13 @@
 
 use crate::SandboxError;
 
+/// How much of the helper's stderr a relayed refusal carries.
+///
+/// It reaches an operator on one line and a model inside a `tool_result`, and nothing
+/// downstream bounds it — `ToolLimits::max_bytes` caps a command's output, not an error's
+/// detail. Four `Display` lines' worth, which is more than any refusal the helper writes.
+const STDERR_LIMIT: usize = 4096;
+
 /// A refusal a helper stage reported for itself, rather than running the command.
 ///
 /// A type and not a string: the parent turns one of these back into an audit record and an
@@ -96,6 +103,23 @@ impl HelperRefusal {
     pub(crate) fn from_label(label: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|known| known.label() == label)
     }
+
+    /// This refusal as the error the caller gets, carrying what the helper said about it.
+    ///
+    /// From the stderr and not the channel: a refusal record carries no detail, so the
+    /// helper's own `Display` — which the parent relays verbatim — is the only prose about it
+    /// that exists. Truncated on a character boundary, and lossily decoded because these
+    /// bytes are a pipe rather than a bounded record.
+    pub(crate) fn relayed(self, stderr: &[u8]) -> SandboxError {
+        SandboxError::HelperRefused {
+            refusal: self,
+            detail: String::from_utf8_lossy(stderr)
+                .trim()
+                .chars()
+                .take(STDERR_LIMIT)
+                .collect(),
+        }
+    }
 }
 
 impl SandboxError {
@@ -117,11 +141,13 @@ impl SandboxError {
             Self::PinnedScript { .. } => Some(HelperRefusal::PinnedScript),
             Self::Unsupported { .. } => Some(HelperRefusal::Unsupported),
             // Decided here or by `FsGuard`, so a record claiming one would outrank an
-            // outcome the parent watched happen.
+            // outcome the parent watched happen. `HelperRefused` is this relay's own output
+            // and exists only parent-side, so reporting it would be a second crossing.
             Self::PathNotAllowed { .. }
             | Self::Unresolvable { .. }
             | Self::NotFound { .. }
             | Self::SpawnFailed { .. }
+            | Self::HelperRefused { .. }
             | Self::TimedOut { .. } => None,
         }
     }

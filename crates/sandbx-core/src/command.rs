@@ -128,7 +128,10 @@ impl SandboxedCommand {
     /// Run the command to completion and collect its output.
     ///
     /// Blocks until the command exits, or — with a [`timeout`](Self::timeout) set — until
-    /// the limit expires, which kills it and returns [`SandboxError::TimedOut`].
+    /// the limit expires, which kills it and returns [`SandboxError::TimedOut`]. A helper
+    /// stage that refused instead of reaching the command returns
+    /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
+    /// otherwise indistinguishable from the command's own.
     pub fn output(&self) -> Result<std::process::Output, SandboxError> {
         let (helper, argv) = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
@@ -155,7 +158,16 @@ impl SandboxedCommand {
         }
         .emit();
 
-        result
+        match refused {
+            None => result,
+            // The same precedence the emit above uses, so the record and the returned error
+            // cannot disagree. The `Err` arm has no `Output` to relay — those paths return
+            // before the drained bytes are taken — so the parent's own account stands in.
+            Some(refusal) => Err(match &result {
+                Ok(output) => refusal.relayed(&output.stderr),
+                Err(error) => refusal.relayed(error.to_string().as_bytes()),
+            }),
+        }
     }
 }
 

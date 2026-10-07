@@ -14,7 +14,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use sandbx_core::{AUDIT_TARGET, HelperArgs, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{
+    AUDIT_TARGET, HelperArgs, HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand,
+};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -352,8 +354,8 @@ fn every_record_names_a_real_mechanism_once() {
     );
 }
 
-/// Without the label the trail cannot tell a refused pin from a command that ran and
-/// exited 1; the digests reach the operator on stderr instead.
+/// Without the label neither the trail nor the caller can tell a refused pin from a command
+/// that ran and exited 1; the digests ride along on the helper's stderr.
 #[test]
 fn a_pin_refusal_names_itself_on_the_channel() {
     let dir = tempfile::tempdir().unwrap();
@@ -374,7 +376,7 @@ fn a_pin_refusal_names_itself_on_the_channel() {
             .pin_sha256(pinned)
             .output()
     });
-    let output = result.expect("the helper should have run");
+    let error = result.expect_err("a refused pin is not a command that ran");
 
     assert!(
         lines
@@ -383,8 +385,17 @@ fn a_pin_refusal_names_itself_on_the_channel() {
         "a refused pin left no record naming itself: {lines:?}"
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains(&pinned.to_string()),
-        "the expected digest did not reach the operator: {}",
-        String::from_utf8_lossy(&output.stderr)
+        matches!(
+            error,
+            SandboxError::HelperRefused {
+                refusal: HelperRefusal::PinMismatch,
+                ..
+            }
+        ),
+        "the refusal reached the caller as something else: {error:?}"
+    );
+    assert!(
+        error.to_string().contains(&pinned.to_string()),
+        "the expected digest did not reach the caller: {error}"
     );
 }
