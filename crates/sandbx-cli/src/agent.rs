@@ -828,7 +828,13 @@ mod tests {
         let (sent, _, _) = capped(&args, summarising(), None);
 
         let body = serde_json::to_value(&sent).expect("a serializable request");
-        assert!(body[0]["system"].is_null(), "got {:?}", body[0]["system"]);
+        // Not `is_null`: #197 gives the first round a prompt naming its approved tools, so
+        // the property is that the nudge is absent there, not that nothing is.
+        let first = body[0]["system"].as_str().unwrap_or_default();
+        assert!(
+            !first.contains("no tool calls left"),
+            "the first round already said it: {first:?}"
+        );
         let system = body[1]["system"].as_str().expect("a system prompt");
         assert!(system.contains("no tool calls left"), "got {system:?}");
     }
