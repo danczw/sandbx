@@ -631,7 +631,12 @@ fn a_bounded_policy_with_no_route_to_a_nameserver_is_enforceable() {
 #[test]
 fn a_grant_naming_a_file_the_resolver_binds_over_is_refused() {
     for bound in sandbx_core::RESOLVER_FILES {
-        let pinned = vetted(bound);
+        // A host that does not have the entry has nothing to vet — musl leaves no
+        // `nsswitch.conf` — and a grant naming nothing refuses as unpinnable before any pair
+        // is looked at. `resolver`'s fixture tests assert the matcher without a host entry.
+        let Ok(pinned) = VettedPath::vet(bound) else {
+            continue;
+        };
         let policy = SandboxPolicy::default()
             .allow_dns("example.com")
             .allow_network_port(443)
@@ -648,11 +653,12 @@ fn a_grant_naming_a_file_the_resolver_binds_over_is_refused() {
     }
 }
 
-/// Degenerate where the host's three files are regular; `resolver`'s own
-/// `a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on` asserts that case with
-/// fixtures.
+/// Over the host's own entries, so it says nothing about a symlinked one unless the host has
+/// one: where the three files are regular this is the first arm of the matcher twice.
+/// `resolver`'s own `a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on` asserts the
+/// resolving arm from fixtures, and is where that claim lives.
 #[test]
-fn the_name_a_bind_lands_on_is_bound_whether_or_not_it_is_the_name_in_the_list() {
+fn every_entry_this_host_has_is_bound_under_the_name_it_resolves_to() {
     for bound in sandbx_core::RESOLVER_FILES {
         let Ok(real) = Path::new(bound).canonicalize() else {
             continue;

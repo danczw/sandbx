@@ -215,6 +215,7 @@ mod tests {
             "unresolvable",
             "not_found",
             "grant_unpinnable",
+            "grant_bound_by_resolver",
             "process_concealment",
         ] {
             assert_eq!(
