@@ -185,6 +185,7 @@ src/lib.rs        re-exports
                   shapes, declared rather than imported
    store.rs       SessionStore, Session; which bit refuses and which reports
       record.rs   the three line kinds, and the fold that replays them
+      shape.rs    which orders of messages a request may carry, as predicates
       vet.rs      the modes, O_NOFOLLOW, and reading one off a descriptor
    error.rs       SessionError
 tests/            identifier, permissions, recovery, transcript

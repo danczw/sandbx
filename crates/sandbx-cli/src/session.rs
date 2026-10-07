@@ -98,8 +98,43 @@ pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
         .collect()
 }
 
-/// Collapse each run of consecutive user messages into one, and report where `withheld`
-/// lands once they have.
+/// A stored conversation in the shape a request carries it, and the index translation
+/// collapsing it cost.
+///
+/// Two index spaces meet here: the transcript stores every message separately, and the
+/// request carries each run of user messages as one. `withheld` is an *index*, so a figure
+/// crossing between them has to be translated in whichever direction it is going.
+pub struct Merged {
+    /// What the request carries, each run of user messages collapsed into one.
+    pub history: Vec<RequestMessage>,
+
+    /// The compaction floor in [`Merged::history`]'s index space, which is what a `Turn`
+    /// takes.
+    pub withheld: usize,
+
+    /// Where each merged message began in the unmerged history.
+    starts: Vec<usize>,
+
+    /// The unmerged length, so an index past the history maps by its distance past it.
+    length: usize,
+}
+
+impl Merged {
+    /// A turn's reported `withheld` in the transcript's index space, which is what a
+    /// caller stores.
+    ///
+    /// A figure at or past [`Merged::history`]'s length names one of the turn's own
+    /// messages, which the merge never saw and append does not move.
+    #[must_use]
+    pub fn unmerged(&self, withheld: usize) -> usize {
+        match self.starts.get(withheld) {
+            Some(start) => *start,
+            None => self.length + (withheld - self.starts.len()),
+        }
+    }
+}
+
+/// Collapse each run of consecutive user messages into one.
 ///
 /// A transcript may end on the tool results a turn out of rounds never answered, so the
 /// prompt resuming it is stored as a second user message (#188). Consecutive user
@@ -107,16 +142,14 @@ pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
 /// is what makes the pair sendable — results first, as they are stored and as the API
 /// wants them.
 ///
-/// `withheld` is an index into the history and merging moves the indices after a run, so
-/// the floor is translated rather than threaded through unchanged; one inside a run names
-/// the message the run became. `guide-turn-loop.md` is where that index's exactness is a
-/// requirement and not a nicety.
+/// `withheld` arrives in the transcript's index space and comes back in the request's; one
+/// inside a run names the message the run became. `guide-turn-loop.md` is where that
+/// index's exactness is a requirement and not a nicety.
 #[must_use]
-pub fn merge_user_runs(
-    history: Vec<RequestMessage>,
-    withheld: usize,
-) -> (Vec<RequestMessage>, usize) {
-    let mut merged: Vec<RequestMessage> = Vec::with_capacity(history.len());
+pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged {
+    let length = history.len();
+    let mut merged: Vec<RequestMessage> = Vec::with_capacity(length);
+    let mut starts: Vec<usize> = Vec::with_capacity(length);
     let mut floor = withheld;
 
     for (index, message) in history.into_iter().enumerate() {
@@ -131,11 +164,19 @@ pub fn merge_user_runs(
 
         match merged.last_mut() {
             Some(previous) if onto => previous.content.extend(message.content),
-            _ => merged.push(message),
+            _ => {
+                merged.push(message);
+                starts.push(index);
+            }
         }
     }
 
-    (merged, floor)
+    Merged {
+        history: merged,
+        withheld: floor,
+        starts,
+        length,
+    }
 }
 
 /// One stored block, in the shape a request carries it.
@@ -312,9 +353,9 @@ mod tests {
 
     #[test]
     fn a_run_of_user_turns_travels_as_one_message() {
-        let (merged, _) = merge_user_runs(resumed(), 0);
+        let merged = merge_user_runs(resumed(), 0);
 
-        let stored = stored_messages(&merged);
+        let stored = stored_messages(&merged.history);
         assert_eq!(stored.len(), 4);
         // The results stay ahead of the prompt, which is the order the API takes.
         assert!(matches!(
@@ -328,10 +369,26 @@ mod tests {
     #[test]
     fn the_floor_names_the_message_it_named_before() {
         for (before, after) in [(0, 0), (1, 1), (2, 2), (3, 2), (4, 3)] {
-            let (_, floor) = merge_user_runs(resumed(), before);
+            let merged = merge_user_runs(resumed(), before);
 
-            assert_eq!(floor, after, "a floor of {before}");
+            assert_eq!(merged.withheld, after, "a floor of {before}");
         }
+    }
+
+    /// The figure a turn reports goes back to a transcript that stores the run apart, so
+    /// the translation has to invert — a merged index names where its run began.
+    #[test]
+    fn a_reported_floor_returns_to_the_stored_index() {
+        let merged = merge_user_runs(resumed(), 0);
+
+        for (reported, stored) in [(0, 0), (1, 1), (2, 2), (3, 4)] {
+            assert_eq!(merged.unmerged(reported), stored, "a cut at {reported}");
+        }
+
+        // Past the history: the turn's own messages, which no merge saw. Five stored
+        // messages, four sent, so the first produced one is 4 out and 5 back.
+        assert_eq!(merged.unmerged(4), 5);
+        assert_eq!(merged.unmerged(6), 7);
     }
 
     #[test]

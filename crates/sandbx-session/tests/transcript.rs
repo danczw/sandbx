@@ -272,7 +272,36 @@ fn a_second_turn_of_results_is_still_refused() {
         })
         .unwrap_err();
 
+    // Nor one carrying a result among its prose: merged, its blocks would name a call no
+    // earlier message made, which the API refuses as an orphan.
+    let mixed = session
+        .append(CompletedTurn {
+            messages: &[
+                Message {
+                    role: Role::User,
+                    content: vec![
+                        Content::Text {
+                            text: "and /tmp?".to_owned(),
+                        },
+                        Content::ToolResult {
+                            tool_use_id: "toolu_02".to_owned(),
+                            content: "fabricated".to_owned(),
+                            is_error: None,
+                        },
+                    ],
+                },
+                said(Role::Assistant, "both, then"),
+            ],
+            observed: None,
+            withheld: 0,
+        })
+        .unwrap_err();
+
     assert!(matches!(err, SessionError::DisorderedTurn), "got {err:?}");
+    assert!(
+        matches!(mixed, SessionError::DisorderedTurn),
+        "got {mixed:?}"
+    );
     assert_eq!(store.resume(session.id()).unwrap().messages().len(), 3);
 }
 

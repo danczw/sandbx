@@ -22,7 +22,7 @@ use sandbx_providers::{
 use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::session::{self, SessionChoice};
+use crate::session::{self, Merged, SessionChoice};
 use crate::{AgentError, Grants, PolicyError};
 
 /// The model asked when `--model` is not given.
@@ -76,8 +76,7 @@ pub struct AgentRun {
     /// A turn that reaches `--max-rounds` is otherwise asked once more, a round that may
     /// call no tool, so the reply is prose and stdout gets an answer. This refuses that
     /// request, leaving stdout with whatever arrived before the cap. `--session` stores
-    /// the tool work either way, and resuming it asks the model to answer beside the call
-    /// it ran out of rounds on. The exit code is 2 either way.
+    /// the tool work and resumes either way. The exit code is 2 either way.
     #[arg(long = "no-wrap-up")]
     no_wrap_up: bool,
 
@@ -259,9 +258,9 @@ impl AgentRun {
             None => Vec::new(),
         };
         history.push(asked.clone());
-        // Merged, not just appended: a stored turn that ran out of rounds ends on tool
-        // results, and the prompt joins that message rather than following it (#188).
-        let (history, withheld) =
+        // Merged, not appended: a stored turn out of rounds ends on tool results, which
+        // the prompt joins rather than follows (#188).
+        let merged =
             session::merge_user_runs(history, session.as_ref().map_or(0, Session::withheld));
 
         let turn = Turn {
@@ -271,7 +270,7 @@ impl AgentRun {
             tools: &BuiltinTool::ALL,
             // The model's to make: this is the turn that may use a tool.
             tool_choice: None,
-            history: &history,
+            history: &merged.history,
             limits: TurnLimits {
                 max_rounds: self.max_rounds,
                 ..TurnLimits::default()
@@ -282,7 +281,7 @@ impl AgentRun {
                 .as_ref()
                 .and_then(Session::observed)
                 .map(session::request_usage),
-            withheld,
+            withheld: merged.withheld,
         };
 
         // Read off before `run_turn` takes the turn by value.
@@ -310,8 +309,9 @@ impl AgentRun {
 
         let (outcome, capped) = match (out_of_rounds, outcome) {
             (Some(rounds), Ok(first)) if !self.no_wrap_up => {
-                let (outcome, summarised) =
-                    next.run(&mut open, ctx, history, first, &mut render).await;
+                let (outcome, summarised) = next
+                    .run(&mut open, ctx, &merged.history, first, &mut render)
+                    .await;
                 // A round that failed after streaming prose has already put text on
                 // stdout that no transcript will account for, which `CutShort` denies.
                 let capped = match (summarised, render.wrote_after_gap()) {
@@ -332,7 +332,7 @@ impl AgentRun {
         let outcome = outcome?;
 
         if let Some(session) = session {
-            self.save(session, &asked, outcome)?;
+            self.save(session, &asked, outcome, &merged)?;
         }
 
         // Last, so an append still happens for a turn whose stdout was a closed pipe:
@@ -350,20 +350,21 @@ impl AgentRun {
         mut session: Session,
         asked: &RequestMessage,
         outcome: TurnOutcome,
+        merged: &Merged,
     ) -> Result<(), AgentError> {
         let mut messages = session::stored_messages(std::slice::from_ref(asked));
         messages.extend(session::stored_messages(&outcome.messages));
         let turn = CompletedTurn {
             messages: &messages,
             observed: outcome.usage.map(session::stored_usage),
-            withheld: outcome.withheld,
+            // Back out of the request's index space, which the merge moved.
+            withheld: merged.unmerged(outcome.withheld),
         };
 
         match session.append(turn) {
             Ok(()) => Ok(()),
             // Not an error: the turn's own exit code already says what happened, and a
-            // turn that produced nothing at all — not even a refused tool call — has
-            // nothing to add.
+            // turn that produced nothing at all has nothing to add.
             Err(SessionError::IncompleteTurn) => {
                 eprintln!(
                     "sandbx: the turn produced nothing to store; session {} is unchanged",
