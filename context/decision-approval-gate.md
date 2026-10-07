@@ -168,7 +168,9 @@ one per call, asked on `/dev/tty`, for the tools that write or run a program.
 | why not stdin | stdout carries the model's answer and is piped, and `agent-run`'s prompt comes from argv. `/dev/tty` is the one channel the operator still holds |
 | why read-only is never asked | the twenty-prompt turn #165 describes is what this and the `a` answer exist to avoid, and a `read` has no answer worth taking |
 | why `a` is per tool | an operator who has judged one `write` has judged the tool for the run; carrying it across tools would make a single `a` a bare `--allow-tool` |
-| why the arguments are capped and stripped | they are model-chosen, and a `path` carrying ANSI escapes rewrites the question being answered. Shared with the report, so one strip covers both |
+| why the arguments are capped and stripped | they are model-chosen, and a `path` carrying ANSI escapes rewrites the question being answered. Shared with the report, so one strip covers both — and it covers the whole line, a policy refusal's own text included, since `SandboxError`'s `Display` writes the path back |
+| why a newline is spelled, not replaced | a heredoc shown as a row of U+FFFD is a command consented to unread, which the cap exists to avoid |
+| why the subject is keyed off the tool | no input type refuses an unknown field, so a `bash` call carrying a decoy `path` beside its `command` would be named by the path in both the question and the report |
 
 **No consent channel, no consent.** `--approve call` with no `/dev/tty` refuses
 before the first request rather than taking the argv answer. Falling back is
@@ -176,6 +178,16 @@ fail-closed against the default and fail-**open** against the request: an operat
 who passed the flag chose a decision per call, and quietly serving them one per
 run hands the run a weaker regime than they asked for. The refusal names the flag
 to drop, since dropping it is the whole remedy.
+
+**The model's answer shares that terminal.** stdout is usually the same device,
+and it streams before the gate asks, so the model can leave an SGR state behind
+or print text that reads like a question. The question is written after a
+`\x1b[0m` reset for the first of those. For the second the bound is positional
+rather than visual: the read happens inside `approve`, so an answer applies to
+the call being decided whatever else is on screen, and a counterfeit question
+cannot consume it. A counterfeit that makes the real one *look* already answered
+is not covered — stripping the model's own prose would mangle the answer the
+operator asked for.
 
 **What this is not.** Neither mode decides whether a call *should* happen, only
 whether it may. `SECURITY.md`'s standing commitment holds under both — a tool call
