@@ -36,8 +36,7 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// The exit code for an answer a bound cut short.
 ///
 /// Neither success nor failure: what reached stdout is a real answer and an incomplete
-/// one, which a script consuming it has to tell apart. The stderr line names which bound
-/// stopped it.
+/// one, which a script consuming it has to tell apart. Stderr names the bound.
 const INCOMPLETE: i32 = 2;
 
 /// `sandbx agent-run [--allow-…] -- <prompt>`
@@ -413,8 +412,8 @@ mod tests {
 
     /// Drive one scripted round through `drive`, and report what was sent and written.
     ///
-    /// A default policy grants nothing, so the orientation line is empty and the request
-    /// carries whatever `--system` held, as it did before #178.
+    /// A default policy grants nothing, so no orientation line is composed and the
+    /// request carries whatever `--system` held.
     fn one_round(
         args: &AgentRun,
         prompt: &str,
@@ -543,8 +542,7 @@ mod tests {
         );
     }
 
-    /// What ends the probing the round cap used to be reached by: the model is told the
-    /// roots before the first request, not after a refusal (#178).
+    /// The model is told the roots before the first request, not after a refusal (#178).
     #[test]
     fn the_request_carries_the_granted_root_as_system() {
         let args = agent_run(&["sandbx", "agent-run", "--system", "be terse", "--", "go"]);
@@ -646,9 +644,8 @@ mod tests {
         );
     }
 
-    /// A round that asks for a tool and so would be followed by another. The policy
-    /// grants nothing, so the call comes back `is_error` — still a `tool_result`, which
-    /// is what makes the turn re-enter and meet the cap.
+    /// The policy grants nothing, so the call comes back `is_error` — still a
+    /// `tool_result`, which is what makes the turn re-enter and meet the cap.
     fn asking_for_ls() -> Vec<AgentEvent> {
         vec![
             text("looking"),
@@ -661,8 +658,7 @@ mod tests {
         ]
     }
 
-    /// What the bound used to cost: exit 1 with an empty stdout, indistinguishable from a
-    /// provider failure, with the work already on disk (#178).
+    /// A provider failure exits 1 with an empty stdout; this must not read as one (#178).
     #[test]
     fn a_turn_out_of_rounds_exits_two_with_its_text() {
         let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);

@@ -667,8 +667,7 @@ fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
     }
 }
 
-/// Three rounds of a model that will not stop asking. Exactly as many as the cap allows:
-/// an endless supply would hide the dependency.
+/// Exactly as many rounds as the cap allows: an endless supply would hide the dependency.
 fn asking_forever(root: &std::path::Path) -> Script {
     Script::new(std::iter::repeat_n(
         vec![
@@ -679,7 +678,6 @@ fn asking_forever(root: &std::path::Path) -> Script {
     ))
 }
 
-/// A turn of three rounds, however many the model would have asked for.
 fn capped_at_three() -> sandbx_agent::Turn<'static> {
     let mut turn = turn(&[], &[BuiltinTool::Ls]);
     turn.limits = TurnLimits {
@@ -689,8 +687,7 @@ fn capped_at_three() -> sandbx_agent::Turn<'static> {
     turn
 }
 
-/// A model that keeps asking for tools, looping on its own or steered into it by
-/// injected content, would otherwise drive tool execution without bound.
+/// A model looping on its own or steered into it would otherwise drive tools unbounded.
 #[tokio::test]
 async fn a_turn_stops_asking_once_it_runs_out_of_rounds() {
     let root = tempfile::tempdir().unwrap();
@@ -714,9 +711,7 @@ async fn a_turn_stops_asking_once_it_runs_out_of_rounds() {
     );
 }
 
-/// The work is the caller's whatever the bound did to the answer. The shape is also why
-/// no truncation of it would help: it ends on a `tool_result` the model never answered,
-/// and every prefix of it ends on one too.
+/// The shape no truncation would help: every prefix ends on an unanswered `tool_result`.
 #[tokio::test]
 async fn a_turn_out_of_rounds_hands_back_what_it_did() {
     let root = tempfile::tempdir().unwrap();

@@ -1,8 +1,7 @@
 //! What the model is told about where it is, before the first request.
 //!
-//! Its own module because it changes for a different reason than the rest of `agent-run`:
-//! what the model is told, not what was asked or allowed. A run that names its roots up
-//! front spends no rounds probing paths the sandbox refuses (#178).
+//! Its own module because it changes for a different reason than the rest of `agent-run`.
+//! A run that names its roots up front spends no rounds probing refused paths (#178).
 
 use std::path::PathBuf;
 
@@ -10,8 +9,8 @@ use sandbx_core::{Axis, SandboxPolicy};
 
 /// The system prompt one run sends: the roots its tools can reach, then the operator's.
 ///
-/// The orientation comes first and `--system` does not replace it: the roots are a fact
-/// about the run, and an operator who overrode them by accident would be back to probing.
+/// `--system` is appended rather than replacing: an operator who overrode the roots by
+/// accident would be back to probing.
 pub(super) fn system_prompt(policy: &SandboxPolicy, operator: Option<&str>) -> Option<String> {
     let roots = work_roots(policy);
 
@@ -24,8 +23,8 @@ pub(super) fn system_prompt(policy: &SandboxPolicy, operator: Option<&str>) -> O
 
 /// The roots sentence, as the model reads it.
 ///
-/// The system binaries are owned up to without being listed: a model told every other path
-/// is refused may decline to run a command that would in fact have started.
+/// It admits the system binaries without listing them: a model told every other path is
+/// refused may decline a command that would in fact have started.
 fn orientation(roots: &[String]) -> String {
     format!(
         "Your tools take absolute paths and reach only these directories and what they \
@@ -37,18 +36,16 @@ fn orientation(roots: &[String]) -> String {
 
 /// The granted roots worth naming, each with the access it carries.
 ///
-/// The system binaries every run gets are left out: they are noise to a model, and a host
-/// map in a transcript. One entry per path and not per grant, since the derived default
-/// grants read and write on the same root.
+/// The system binaries every run gets are left out, being a host map in a transcript. One
+/// entry per path and not per grant, the derived default granting read and write on one root.
 fn work_roots(policy: &SandboxPolicy) -> Vec<String> {
     let system = canonical(&SandboxPolicy::default().allow_system_executables());
     let mut roots: Vec<(PathBuf, Vec<&str>)> = Vec::new();
 
     for (axis, path) in policy.granted_paths() {
         // Named as `FsGuard::new` holds it: it canonicalizes every root and discards the
-        // ones that do not resolve, so a grant that resolves to nothing reaches nothing,
-        // and a relative one — the flags take a path verbatim — is reachable only by its
-        // absolute form, which is the form the tools demand.
+        // ones that do not resolve, so a grant resolving to nothing reaches nothing, and a
+        // relative one is reachable only by the absolute form the tools demand.
         let Ok(path) = path.canonicalize() else {
             continue;
         };
@@ -92,8 +89,8 @@ mod tests {
 
     use clap::Parser;
 
-    /// A directory that exists, since an unresolvable grant is named by neither the guard
-    /// nor the prompt, and its canonical name, which is what the prompt will hold.
+    /// A directory that exists, an unresolvable grant being named by neither the guard nor
+    /// the prompt, and its canonical name, which is the form the prompt holds.
     fn work() -> (tempfile::TempDir, String) {
         let dir = tempfile::tempdir().expect("a temp dir");
         let named = dir
@@ -109,11 +106,10 @@ mod tests {
         system_prompt(&policy, None)
     }
 
-    /// The prompt a real invocation produces, grants and all.
+    /// The prompt a real invocation produces.
     ///
-    /// Driven through argv rather than the `sandbx-core` builder, because the duplicate
-    /// `read` the builder cannot produce is exactly what `Grants::policy` adds: it grants
-    /// read alongside every write, so `--allow-read X --allow-write X` holds read twice.
+    /// Driven through argv because the duplicate `read` the `sandbx-core` builder cannot
+    /// produce is what `Grants::policy` adds alongside every write.
     fn derived(argv: &[&str]) -> String {
         let args = match crate::Cli::parse_from(argv).command {
             crate::Command::AgentRun(args) => args,
@@ -139,8 +135,8 @@ mod tests {
         );
     }
 
-    /// The README's own `agent-run` line. `Grants::policy` grants read twice for it, and
-    /// `(read, read, write)` would read as a grant the run does not hold.
+    /// The README's own `agent-run` line, for which `(read, read, write)` would read as a
+    /// grant the run does not hold.
     #[test]
     fn a_root_granted_read_and_write_is_named_once_each() {
         let (work, named) = work();
