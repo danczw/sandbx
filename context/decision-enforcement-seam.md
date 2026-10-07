@@ -183,7 +183,7 @@ power available in the negotiable range.
 | 2 | nothing asserted the axis→rights mapping | asserted |
 | 3 | nothing pinned the *exact* right set | #74 — `each_axis_confers_exactly_the_documented_set` pins every axis's whole `BitFlags` at `BASELINE_ABI` and `LATEST_ABI`, and asserts a row exists per `Axis::ALL` |
 | 4 | partial enforcement accepted | #76 — `enforcement_verdict` refuses it |
-| 5 | per-endpoint egress | #42 — a TCP port allowlist, which is all the kernel can match on. Per-host is not enforced and needs a userspace proxy (#145) |
+| 5 | per-endpoint egress | #42 — a TCP port allowlist, which is all the kernel can match on. Per-host is not enforced and needs a userspace proxy, which `decision-egress-proxy.md` declines: the interception it would rest on is cooperation. One piece of it is claimable, a resolver bounding which names resolve (#145) |
 
 53 real-kernel enforcement tests, split by what enforces them: 39 in
 `tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`

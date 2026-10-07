@@ -222,10 +222,17 @@ Three properties matter as much as the list:
   bounds egress to port 443 — on *every* routable host. Landlock's network rules
   match the port and nothing else, and seccomp cannot read the `sockaddr` behind
   `connect`'s pointer, so neither can see where a connection is going. Per-host
-  would mean terminating every connection in a userspace proxy, which sandbx does
-  not have ([#145](https://github.com/danczw/sandbx/issues/145)). Treat the flag
-  as a reduction in blast radius, not a destination control: it stops a command
-  reaching an SSH port or a database, not one exfiltrating over HTTPS.
+  would mean terminating every connection in a userspace proxy, and that proxy has
+  been priced and declined rather than merely postponed: its interception is
+  cooperation, not enforcement, since `HTTP_PROXY` binds only programs that read it
+  and an `LD_PRELOAD` shim on `connect` is stepped around by a static binary —
+  which sandbx's own release artifacts are. One piece of it is claimable, a
+  resolver bounding which *names* resolve, and that is not a destination control
+  either ([#145](https://github.com/danczw/sandbx/issues/145);
+  [context/decision-egress-proxy.md](context/decision-egress-proxy.md) prices each
+  piece). Treat the flag as a reduction in blast radius, not a destination control:
+  it stops a command reaching an SSH port or a database, not one exfiltrating over
+  HTTPS.
 
   It also costs more than it looks. The claim holds only if everything Landlock
   cannot police is shut, so while a port list is in force seccomp denies UDP, raw
@@ -365,7 +372,8 @@ These are documented behaviour, and reports of them will be closed as such:
   allowlisted port after `--allow-network <port>` — see *A port allowlist is not a
   destination allowlist* above — and including name resolution *failing*, `bind`
   being refused on an unlisted port, and host loopback being reachable under that
-  form.
+  form. A host you did not name, reached on a port you did, is what the flag says
+  it does.
 - A command reading an environment variable you passed with `--allow-env`,
   including the startup set (`PATH`, `HOME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE`,
   `TZ`) the CLI grants so that a program named without a leading `/` is looked up
