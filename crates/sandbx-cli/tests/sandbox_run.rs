@@ -898,8 +898,7 @@ fn a_reachable_nameserver_beside_the_allowlist_is_refused() {
 fn a_grant_naming_a_file_the_allowlist_replaces_is_refused() {
     for bound in sandbx_core::RESOLVER_FILES {
         // The pair is only looked at after every grant vets, so on a host without the entry —
-        // musl leaves no `nsswitch.conf` — the grant refuses as unpinnable first. That order
-        // is the useful one for an operator: a path that names nothing is the nearer problem.
+        // musl leaves no `nsswitch.conf` — the grant refuses as unpinnable first.
         if std::path::Path::new(bound).canonicalize().is_err() {
             continue;
         }

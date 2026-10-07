@@ -27,14 +27,12 @@ pub const RESOLVER_FILES: [&str; 3] = [HOSTS, NSSWITCH, RESOLV_CONF];
 ///
 /// Each entry is matched by its own name and by what it resolves to, because `mount(2)`
 /// resolves its target and a pin does not: a systemd `/etc/resolv.conf` is a symlink, so the
-/// bind replaces the stub it points at — and that is the name `VettedPath::vet` pins a grant
-/// on it to. An entry resolving to nothing matches by name alone; `helper::resolver::install`
-/// decides what an absent one costs.
+/// bind replaces the stub it points at, which is the name a grant on it is pinned to. An entry
+/// resolving to nothing matches by name alone.
 ///
-/// The resolving is of the entries and never of `path`, which arrives resolved already.
-/// Re-resolving it here is the window `sandbx-cli`'s `GrantMovedWhileVetting` closes, and an
-/// entry retargeted between this and the bind fails closed: the pair is kept, and the pin
-/// refuses the run in the helper.
+/// Never of `path`, which arrives resolved: resolving it here would judge a spelling no caller
+/// vetted. An entry retargeted between this and the bind fails closed — the pair is kept, and
+/// the pin refuses the run in the helper.
 pub fn bound_by_resolver(path: &Path) -> bool {
     bound_by_any(&RESOLVER_FILES.map(Path::new), path)
 }

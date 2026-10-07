@@ -81,10 +81,9 @@ fn every_claimed_syscall_is_actually_denied() {
     );
 }
 
-/// The other direction, which is the one that drifts: the test above passes while a syscall
-/// added to the filter goes unclaimed, and a claim nobody wrote is one no doc can be checked
-/// against. It does not reach the markdown — `CLAIMED` is a hand mirror of it, so a number
-/// stated in prose still drifts silently (#212).
+/// The direction that drifts: the test above passes while a syscall added to the filter goes
+/// unclaimed. It stops at the arrays — `CLAIMED` is a hand mirror, so a count stated in prose
+/// is still unchecked (#212).
 #[test]
 fn every_denied_syscall_is_one_the_docs_claim() {
     let unclaimed: Vec<libc::c_long> = BLOCKED_SYSCALLS

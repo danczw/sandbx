@@ -549,9 +549,8 @@ fn a_policy_granting_a_file_its_own_resolver_replaces_cannot_be_turned_into_an_a
         "got {refusal:?}"
     );
 
-    // The remedy and not only the refusal: `--allow-dns` beside a grant on the directory is
-    // legal, so a message naming no way forward leaves a library caller to find it by reading
-    // the source. The CLI's `DnsGrantsBoundFile` says the same thing at the flag.
+    // The remedy and not only the refusal: a grant on the directory is legal beside the flag,
+    // and a library caller has nowhere but the source to learn that.
     let message = refusal.to_string();
     assert!(
         message.contains("/etc/hosts") && message.contains("directory"),
