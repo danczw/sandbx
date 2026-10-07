@@ -2,8 +2,9 @@
 
 Two halves of one set of checks: `.githooks/` runs before a commit exists,
 `.github/workflows/` runs after a push. They are deliberately not independent —
-`pre-commit` and `ci.yml`'s first two steps are byte-identical, so a red CI run
-is a hook someone skipped rather than a check only CI knows about.
+`pre-commit` and `ci.yml`'s `Format`, `Clippy` and `Doc` steps are
+byte-identical, so a red CI run is a hook someone skipped rather than a check
+only CI knows about.
 
 ## The local half
 
@@ -13,9 +14,13 @@ Wired by one line, which is why there is no hook-manager dependency:
 git config core.hooksPath .githooks
 ```
 
-`pre-commit` is `cargo fmt --all -- --check` then
-`cargo clippy --workspace --all-targets -- -D warnings`. Not the test suite: a
-hook that takes minutes is a hook people pass `--no-verify` to.
+`pre-commit` is `cargo fmt --all -- --check`, then
+`cargo clippy --workspace --all-targets -- -D warnings`, then the `Doc` step
+under `RUSTDOCFLAGS: -D warnings`. Not the test suite: a hook that takes minutes
+is a hook people pass `--no-verify` to, and the three together are seconds on a
+warm target dir. The doc build earns its place by being the only one of them that
+reads a doc comment at all — a broken intra-doc link passes fmt and clippy, so
+without it the first thing to notice is CI after the push.
 
 `commit-msg` checks the **subject only**; the body is free-form. Eight types
 (`feat fix docs refactor test chore build ci`), the scope and the breaking-change
