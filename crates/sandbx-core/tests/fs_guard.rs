@@ -375,6 +375,29 @@ fn a_missing_write_parent_in_a_grant_is_absent() {
         matches!(error, SandboxError::NotFound { .. }),
         "got {error:?}"
     );
+    // The directory is what is missing. Naming the leaf tells a tool that creates files it
+    // cannot find the file it is creating, which is nothing to act on.
+    let message = error.to_string();
+    assert!(message.contains("nodir"), "got {message}");
+    assert!(!message.contains("f.txt"), "got {message}");
+}
+
+/// A name that cannot denote a file is the agent's to fix exactly as a missing one is:
+/// reading back as a refusal is what sent the model asking for a wider grant (#180).
+#[test]
+fn a_path_through_a_file_in_a_grant_is_not_a_refusal() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("notes.txt"), b"x").unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+
+    let error = guard
+        .check_read(&root.path().join("notes.txt/nested"))
+        .unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::NotFound { .. }),
+        "got {error:?}"
+    );
 }
 
 /// The write path resolves the parent, so without the concealment gate a missing parent
