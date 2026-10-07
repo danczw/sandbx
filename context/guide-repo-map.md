@@ -62,6 +62,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
                      into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx,
                      --allow-network-port, --env, --dns-over-tcp, --pin-sha256
+   concealment.rs    conceal_process_state — the one step aimed at sandbx's own
+                     process rather than a sandboxed child's
    digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
    audit.rs          AuditEvent, AUDIT_TARGET
    degradation.rs    the helper's channel to the parent, and its wire format
@@ -88,21 +90,23 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          rights.rs   rights_for, fs_rules, net_rules
          tests/      unit tests: compat, grants, net, rules
 tests/               audit, audit_channel, audit_outcome (6, how a real run
-                     ends), capability_coverage, command, denylist,
+                     ends), capability_coverage, command, concealment, denylist,
                      enforcement (39 real-kernel tests, paths and grants),
                      enforcement_syscalls (8, calls Landlock cannot express),
                      enforcement_network (6, the TCP ports it can),
                      fs_guard, helper_args, policy
 tests/support/       mod.rs — runtime_paths, allow_probe, run, run_pinned,
-                     shared by the three enforcement targets; plus 6 [[bin]] probes,
-                     required-features = ["sandbox-integration"]
+                     shared by the three enforcement targets; plus 7 [[bin]] probes,
+                     required-features = ["sandbox-integration"] on every one but
+                     concealment_probe, which needs no Landlock ABI
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
 `HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
 `with_helper_dispatch`, `SandboxError`, `Access`, `HelperRefusal`, `FsGuard`,
 `ReadableWalk`, `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
-`NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`.
+`NetworkPolicy`, `SandboxPolicy`, `Sha256Digest`, `DigestParseError`,
+`conceal_process_state`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
 in-process meaning, and a refusal carries an `Access` so it can name the grant it
@@ -198,9 +202,9 @@ roots, the mode rule and the line format.
 ```
 src/lib.rs      Cli, Command — the clap surface and nothing else
    grants.rs    Grants — the --allow-… flags, flattened into both subcommands,
-                the policy they derive, and the working-directory default a
-                no-flag run gets (unit-testable without a sandbox-capable
-                kernel)
+                the policy they derive, the working-directory default a
+                no-flag run gets, and the refusal of a grant reaching a path
+                sandbx owns (unit-testable without a sandbox-capable kernel)
    sandbox.rs   SandboxRun
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller
@@ -260,6 +264,8 @@ that users reasonably read as the same flags.
     that is refused
 15. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
+16. `decision-harness-owned-paths.md` — what happens when a grant covers one of
+    those paths, and how the same hazard through `/proc` is closed instead
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.

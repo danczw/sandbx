@@ -98,9 +98,12 @@ and column that are the only useful thing to say about a torn file.
 
 A tool running inside your own `agent-run`, granted write over the session root,
 rewrites the transcript with your uid and leaves the mode at `0600`. Nothing the
-read path can see distinguishes that from you editing it. The defence has to be
-a policy that refuses to grant write over `SessionStore::root()`; see #173.
-`SECURITY.md` says so under what sandbx does not claim.
+read path can see distinguishes that from you editing it, so the defence is not
+here: the CLI refuses the grant instead, for a path reaching the sessions
+directory on either run subcommand (#173, `decision-harness-owned-paths.md`).
+That leaves the mode check what it can actually answer — a transcript another
+user owns or can write — and it stays, because a grant is not the only way one
+gets there.
 
 ## Why a transcript is a file of lines
 

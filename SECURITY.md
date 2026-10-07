@@ -45,7 +45,7 @@ run through `SandboxedCommand`:
 | process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` to leave its process group |
 | process signalling | PID namespace | a command cannot signal, or even name, any process outside its own namespace |
 
-Three properties matter as much as the list:
+Four properties matter as much as the list:
 
 - **It fails closed.** A kernel that cannot enforce the baseline is refused, and
   so is a ruleset it only *partly* applies — Landlock leaves an access type
@@ -95,6 +95,19 @@ Three properties matter as much as the list:
   is built on. A static binary loads no interpreter, so what must be granted
   before a command can start differs between the two; enforcement is asserted
   under both at merge time and again before a release is published.
+- **What sandbx keeps for itself is out of a grant's reach.** Two paths are the
+  harness's rather than the project's — the session transcripts a resumed run
+  replays to the model, and the credential file `auth login` writes — and the
+  `sandbx` CLI refuses a path grant reaching either one, in either direction, on
+  every path axis and on both run subcommands. It does not ask whether anything is
+  stored there, so the same flags get the same answer on every host; `--allow-read
+  ~` and `--allow-read /` are refused as a result, and there is no override flag.
+  The same key reached through procfs is closed by a different mechanism: sandbx
+  clears its own dumpable flag at startup, so `/proc/<harness-pid>/environ` is
+  refused even to a reader running as you, and a `--allow-read /proc` grant no
+  longer reaches a key you exported. See
+  [context/decision-harness-owned-paths.md](context/decision-harness-owned-paths.md),
+  and the non-claims below for what each of the two leaves open.
 
 ## What sandbx does *not* claim
 
@@ -148,7 +161,11 @@ Three properties matter as much as the list:
   are not: depth is not sensitivity, and a guard holding a list of dangerous
   directories has a silent first omission. A no-flag run from `/etc` as root
   derives write over `/etc` — which DAC would have allowed that command anyway,
-  and which the path flags state out loud.
+  and which the path flags state out loud. What *is* refused is a grant reaching a
+  path sandbx itself owns, which is a claim about sandbx's own state rather than a
+  list of sensitive directories; `/proc` is on no list either, and the key a grant
+  over it would expose is put out of reach by concealing the harness's own entry
+  instead.
 - **The boundary is enforced by convention plus tooling**, not by a capability
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
@@ -185,14 +202,15 @@ Three properties matter as much as the list:
   the mode is read, and unlike a credential a conversation cannot be rotated.
 
   The store sits outside the working directory on purpose, so a no-flag run does
-  not grant a tool write over its own history. A path flag can put it back in
-  reach, and that is not refused: `--allow-read ~` hands the model every
-  transcript you have, and `--allow-write` over the session root lets one turn
-  choose what the next is told it said. The mode check cannot see that one — a
-  tool in your own run writes with your own uid and leaves the mode at `0600` —
-  so the defence has to be a policy that refuses the grant
-  ([#173](https://github.com/danczw/sandbx/issues/173)). Until it lands, keep path
-  grants off your home directory and off the session root.
+  not grant a tool write over its own history, and a path flag putting it back in
+  reach is refused rather than honoured — `--allow-read ~` would hand the model
+  every transcript you have, and `--allow-write` over the session root would let
+  one turn choose what the next is told it said. The mode check cannot see that
+  route, since a tool in your own run writes with your own uid and leaves the mode
+  at `0600`, so the defence has to be the policy declining the grant
+  ([#173](https://github.com/danczw/sandbx/issues/173)). What is still unprotected
+  is a copy: a transcript you move into a tree you then grant is an ordinary file
+  there, and so is one any other program of yours reads.
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
   an opt-in `--timeout`; those calls always return by then. The other six tools
@@ -283,16 +301,16 @@ Three properties matter as much as the list:
   in full, and `sandbox-run` still passes this one, because there the program and
   its arguments are yours and the command may *be* the thing calling the provider.
   It closes the `--allow-env` route only, and that is narrower than "the
-  environment". A key stored by `sandbx auth login` is still reachable through a
-  read grant covering your config directory, which is the next bullet; a key you
-  *exported* is still in the harness's own environment, and the harness is not
-  sandboxed against a procfs it shares, so a grant reaching `/proc` reaches
-  `/proc/<harness-pid>/environ` and the key in it
-  ([#192](https://github.com/danczw/sandbx/issues/192)). That is the hazard the
-  audit socket bullet names below, arriving by the same route: do not grant
-  `/proc`.
-  And the flags are the operator's, so what this removes is a
-  mistake rather than an attacker — a hijacked turn cannot pass `--allow-env`.
+  environment" — the other two routes to the same key are closed elsewhere rather
+  than here. A key stored by `sandbx auth login` lives under your config
+  directory, and a grant covering it is refused: the next bullet. A key you
+  *exported* is in the harness's own environment, which a shared procfs would
+  publish to any process running as you, so sandbx conceals its own `/proc` entry
+  ([#192](https://github.com/danczw/sandbx/issues/192)) — which leaves every
+  *other* same-uid process's `environ` reachable through a `/proc` grant, and the
+  audit channel the bullet below names, so "do not grant `/proc`" stands. And the
+  flags are the operator's, so what this removes is a mistake rather than an
+  attacker — a hijacked turn cannot pass `--allow-env`.
 - **A stored credential is protected from other users, not from the agent.**
   `sandbx auth login` writes the key to
   `$XDG_CONFIG_HOME/sandbx/credentials.toml` with mode `0600` in a directory at
@@ -308,12 +326,13 @@ Three properties matter as much as the list:
   plaintext, readable by your own uid and by root, and the process holding it is
   the harness, which is not sandboxed. Storing it removes one exposure — a key in
   the file is not in the harness's environment, so no `--allow-env` has it to hand
-  over, on either subcommand — and adds the one to plan around:
-  the file lives under your config directory, so a filesystem grant covering it
-  (`--allow-read ~/.config`) reads the credential into the agent's reach
-  ([#184](https://github.com/danczw/sandbx/issues/184)). The
-  working-directory default refuses `$HOME` and the directories holding it, so
-  reaching the file takes an explicit flag; it takes only one. An OS keyring would
+  over, on either subcommand. The file lives under your config directory, where a
+  filesystem grant would otherwise reach it, so a path grant covering it is
+  refused — `--allow-read ~/.config` and the file's own path alike, with no
+  narrower spelling that is honoured
+  ([#184](https://github.com/danczw/sandbx/issues/184)). What that leaves is
+  anything on the host reading the file as you outside sandbx: a shell, an editor,
+  a backup. An OS keyring would
   not change this and is not offered — see
   [context/decision-credentials.md](context/decision-credentials.md).
 - **The policy itself is visible to the command.** It crosses into the helper as
@@ -354,7 +373,11 @@ Three properties matter as much as the list:
   setting it in the helper would affect only the helper's own process, not the
   command it re-execs into. Core dumps are still fully suppressed via
   `RLIMIT_CORE=0`, which does persist across exec; the ptrace-attach protection
-  `PR_SET_DUMPABLE=0` would otherwise add is not achievable here.
+  `PR_SET_DUMPABLE=0` would otherwise add is not achievable here. sandbx's own
+  process *is* marked non-dumpable — a claim about a different process, in *What
+  sandbx keeps for itself is out of a grant's reach* above — and that same reset
+  is why it costs the command nothing: the command's environment holds only what
+  `--allow-env` named.
 
 ## Known weaknesses
 
@@ -384,6 +407,16 @@ These are documented behaviour, and reports of them will be closed as such:
   `sandbox-run` continuing to pass it, since there the program and its arguments
   are yours — see *`agent-run` refuses to pass the harness's own provider
   credential to a tool* above.
+- A path grant being refused because it reaches the session store or the
+  credential file — `--allow-read ~` and `--allow-read /` included, on a host with
+  no transcript saved and no key stored, and whichever path axis it was given to.
+  The verdict comes from the flags rather than from what is on disk, and naming
+  the credential file exactly is refused too; see *What sandbx keeps for itself is
+  out of a grant's reach* above. Name the trees the command needs instead.
+- No core dump of sandbx itself, and `gdb -p` or `strace -p` against a running
+  sandbx being refused. Both are what clearing the harness's own dumpable flag
+  costs, and it is cleared so that a `/proc` grant cannot read an exported
+  provider key out of its environment.
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
