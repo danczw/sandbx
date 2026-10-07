@@ -325,10 +325,11 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 > fewest tools the task needs, grant the narrowest tree that lets it finish, and
 > read [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
 >
-> No tool sees an exported API key unless you name it to `--allow-env`, which
-> hands over the value in full; that is the one flag to think twice about here. A
-> stored key is not in the harness's environment at all, but it is on disk under
-> your config directory, where a read grant reaches it instead.
+> `--allow-env ANTHROPIC_API_KEY` is refused here: sandbx makes the provider call
+> itself, so no tool call needs that value. Every other variable you name is still
+> passed in full, so that is the flag to think twice about. A stored key is not in
+> the harness's environment at all, but it is on disk under your config directory,
+> where a read grant reaches it instead.
 
 ## Install
 
