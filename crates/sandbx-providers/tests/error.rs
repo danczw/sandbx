@@ -125,9 +125,8 @@ fn invalid_base_url_reports_the_url_and_reason() {
 
 /// A retry loop classifies by the accessors, not by matching the enum.
 ///
-/// `ApiError` answers from its flag alone, never from `status` or `kind`: which vendor
-/// codes and statuses are worth retrying is the adapter's to decide, and only one adapter
-/// knows its own. The two below are otherwise identical.
+/// `ApiError` answers from its flag alone, never from `status` or `kind`, which only its
+/// own adapter can classify. The two below are otherwise identical.
 #[test]
 fn transient_is_retryable_client_error_is_not() {
     let overloaded = ProviderError::ApiError {

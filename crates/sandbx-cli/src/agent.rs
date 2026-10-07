@@ -442,7 +442,6 @@ mod tests {
         assert_eq!(round_cap("1"), Ok(1));
     }
 
-    /// A user turn of prose, the only shape a prompt reaches a request as.
     fn asked(text: &str) -> RequestMessage {
         RequestMessage {
             role: Role::User,
@@ -582,9 +581,8 @@ mod tests {
         assert_eq!(sent[0].messages, vec![asked("what is in /srv?")]);
     }
 
-    /// Both halves: the default has to be absent and not `Visible`, because asking for a
-    /// summary is a 400 on every model before Claude 4.6, and a flag nobody set must not
-    /// cost a run its turn.
+    /// Both halves: the default has to be absent and not `Visible`, asking for a summary
+    /// being a 400 on every model before Claude 4.6.
     #[test]
     fn show_thinking_asks_for_it_and_nothing_else_does() {
         let round = || vec![text("etc"), stop(StopReason::EndTurn)];
@@ -600,10 +598,9 @@ mod tests {
         assert_eq!(sent[0].thinking, Some(Thinking::Visible));
     }
 
-    /// The replay the provider requires is `run_turn`'s; what this pins is the last edge
-    /// before the file, where a signature is a provider token of no use to a resumed
-    /// conversation. Asserted on the bytes, not the parse: a variant added later would
-    /// store it somewhere this does not know to look.
+    /// The last edge before the file, the replay itself being `run_turn`'s. Asserted on
+    /// the bytes, not the parse: a variant added later would store it somewhere this does
+    /// not know to look.
     #[test]
     fn a_stored_turn_carries_no_reasoning() {
         let args = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);

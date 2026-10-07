@@ -42,10 +42,9 @@ pub enum ProviderError {
         /// read on every status, not only the rate-limited path.
         retry_after: Option<std::time::Duration>,
         /// Whether the adapter judged this one worth retrying, which
-        /// [`is_retryable`](Self::is_retryable) then reports unchanged.
-        ///
-        /// Set where the error is built, because deciding it needs the provider's own
-        /// status codes and error-type strings — neither of which belongs here.
+        /// [`is_retryable`](Self::is_retryable) reports unchanged. Decided where the
+        /// error is built, that being the only place the vendor's status codes and
+        /// error-type strings are known.
         transient: bool,
     },
 
