@@ -4,20 +4,22 @@
 //! is decided from argv before the first request goes out. `--session` carries a
 //! conversation between runs as a transcript on disk, not a live session.
 
+mod gate;
 mod orientation;
 mod render;
 
 use std::io::Write;
 
+use gate::tool_name;
 use render::Render;
-use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError, RequestMessage,
     Role,
 };
 use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
-use sandbx_tools::{BuiltinTool, ExecutionContext, RiskLevel};
+use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::session::{self, SessionChoice};
 use crate::{AgentError, Grants, PolicyError};
@@ -37,12 +39,6 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// one, which a script consuming it has to tell apart. The stderr line names which bound
 /// stopped it.
 const INCOMPLETE: i32 = 2;
-
-/// The flag that lifts the default refusal.
-///
-/// Named once because a refusal is read twice — on stderr and in the `tool_result` — and
-/// the two accounts must not advise differently.
-const ALLOW_TOOL: &str = "--allow-tool";
 
 /// `sandbx agent-run [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]
@@ -166,58 +162,6 @@ impl AgentRun {
         }
     }
 
-    /// Whether the model may call `tool` in this run.
-    ///
-    /// Fail-closed, there being no operator to ask: a tool that does more than read runs
-    /// only when a flag named it, or when the bare flag approved every tool.
-    fn approves(&self, tool: BuiltinTool) -> bool {
-        if tool.risk() == RiskLevel::ReadOnly {
-            return true;
-        }
-
-        match self.allow_tool.as_deref() {
-            None => false,
-            // An empty `Vec` is the bare flag, so `--allow-tool --allow-tool write`
-            // approves `write` alone: the broader spelling yields the narrower set.
-            Some([]) => true,
-            Some(named) => named.contains(&tool),
-        }
-    }
-
-    /// The tools this run approved, in `BuiltinTool::ALL` order.
-    ///
-    /// Reported before the first request, the fail-open spelling being a typo away: clap
-    /// reads `--allow-tool -- write the file` as the bare flag plus a prompt, which the
-    /// per-call lines would not show until a `bash` ran.
-    fn approved_tools(&self) -> Vec<&'static str> {
-        BuiltinTool::ALL
-            .iter()
-            .filter(|tool| self.approves(**tool))
-            .map(|tool| tool.name())
-            .collect()
-    }
-
-    /// The decision for one call, and the operator's line about it.
-    ///
-    /// Printed here and not from `observe`, which fires while the round is still streaming
-    /// and so would announce a call this then refuses.
-    fn gate(&self, requested: ToolCall<'_>) -> ApprovalDecision {
-        let name = requested.tool.name();
-
-        if self.approves(requested.tool) {
-            eprintln!("sandbx: running {name}");
-            return ApprovalDecision::Allow;
-        }
-
-        eprintln!("sandbx: refused {name}, which needs `{ALLOW_TOOL} {name}`");
-        ApprovalDecision::Deny {
-            reason: format!(
-                "the `{name}` tool is not approved for this run: \
-                 it runs only when sandbx is started with `{ALLOW_TOOL} {name}`"
-            ),
-        }
-    }
-
     /// The prompt, as one string.
     ///
     /// Cannot panic: `required = true` on a `last` argument means clap rejects an empty
@@ -257,7 +201,7 @@ impl AgentRun {
 
         eprintln!(
             "sandbx: tools approved: {}",
-            self.approved_tools().join(", ")
+            gate::approved_tools(self.allow_tool.as_deref()).join(", ")
         );
 
         // Before the session: the credential chain can fail for want of a key, and a
@@ -329,7 +273,7 @@ impl AgentRun {
             turn,
             ctx,
             |event| render.event(event),
-            |requested| self.gate(requested),
+            |requested| gate::decide(self.allow_tool.as_deref(), requested),
         )
         .await;
 
@@ -405,26 +349,6 @@ fn round_cap(value: &str) -> Result<usize, String> {
     }
 }
 
-/// Accept a tool `--allow-tool` can actually approve, and refuse anything else.
-///
-/// `BuiltinTool::from_name` is exact-match, so taking a near miss would approve nothing
-/// and exit 0, leaving whoever typed `--allow-tool shell` believing `bash` was approved.
-fn tool_name(value: &str) -> Result<BuiltinTool, String> {
-    BuiltinTool::from_name(value).ok_or_else(|| {
-        // Only the tools the flag can change: listing all seven would invite
-        // `--allow-tool read`, which parses and widens nothing.
-        let names: Vec<&str> = BuiltinTool::ALL
-            .iter()
-            .filter(|tool| tool.risk() != RiskLevel::ReadOnly)
-            .map(|tool| tool.name())
-            .collect();
-        format!(
-            "no tool is called `{value}`; the tools needing approval are {}",
-            names.join(", ")
-        )
-    })
-}
-
 /// Accept an id the store could look up, and refuse anything else.
 ///
 /// At parse time rather than on open, so `--session ../../etc/passwd` is refused before
@@ -451,125 +375,13 @@ mod tests {
         }
     }
 
-    /// Spelled out rather than compared against `risk()`, the table `approves` itself
-    /// reads: derived, a `bash` reclassified as read-only would pass while running.
-    #[test]
-    fn the_read_only_tools_need_no_flag() {
-        let args = agent_run(&["sandbx", "agent-run", "--", "hello"]);
-
-        assert!(args.approves(BuiltinTool::Read));
-        assert!(args.approves(BuiltinTool::Ls));
-        assert!(args.approves(BuiltinTool::Grep));
-        assert!(args.approves(BuiltinTool::Find));
-        assert!(!args.approves(BuiltinTool::Write));
-        assert!(!args.approves(BuiltinTool::Edit));
-        assert!(!args.approves(BuiltinTool::Bash));
-    }
-
-    #[test]
-    fn a_named_tool_is_the_only_one_lifted() {
-        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "write", "--", "go"]);
-
-        assert!(args.approves(BuiltinTool::Write));
-        assert!(!args.approves(BuiltinTool::Edit));
-        assert!(!args.approves(BuiltinTool::Bash));
-        assert!(args.approves(BuiltinTool::Read), "a read was withdrawn");
-    }
-
-    #[test]
-    fn a_bare_allow_tool_approves_every_tool() {
-        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "go"]);
-
-        for tool in BuiltinTool::ALL {
-            assert!(
-                args.approves(tool),
-                "{tool:?} is refused under the bare flag"
-            );
-        }
-    }
-
-    /// The broader spelling yields the narrower set, as `--allow-network` does.
-    #[test]
-    fn mixing_a_bare_flag_with_a_tool_narrows_to_the_tool() {
-        let args = agent_run(&[
-            "sandbx",
-            "agent-run",
-            "--allow-tool",
-            "--allow-tool",
-            "write",
-            "--",
-            "go",
-        ]);
-
-        assert!(args.approves(BuiltinTool::Write));
-        assert!(!args.approves(BuiltinTool::Bash));
-    }
-
     /// A misplaced `--` turns `--allow-tool write -- "…"` into the bare flag plus a
-    /// prompt, approving all seven — which the announced set shows before a `bash` runs.
+    /// prompt. What that does to the approved set is `gate`'s to pin; this is the prompt.
     #[test]
-    fn a_bare_flag_from_a_misplaced_separator_announces_all_seven() {
+    fn a_misplaced_separator_leaves_the_flag_a_prompt() {
         let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "write", "it"]);
 
         assert_eq!(args.prompt(), "write it");
-        assert_eq!(
-            args.approved_tools(),
-            ["read", "write", "bash", "edit", "ls", "grep", "find"],
-            "the bare flag approved something other than every tool"
-        );
-    }
-
-    /// The line a default run prints: the four that need no flag, and nothing else.
-    #[test]
-    fn the_announced_set_is_the_read_only_four_by_default() {
-        let args = agent_run(&["sandbx", "agent-run", "--", "go"]);
-
-        assert_eq!(args.approved_tools(), ["read", "ls", "grep", "find"]);
-    }
-
-    /// The `tool_result` is the only account the model gets, so saying no is not enough.
-    #[test]
-    fn a_refusal_tells_the_model_which_flag_would_lift_it() {
-        let args = agent_run(&["sandbx", "agent-run", "--", "go"]);
-        let input = serde_json::Value::Null;
-
-        let ApprovalDecision::Deny { reason } = args.gate(ToolCall {
-            tool: BuiltinTool::Bash,
-            id: "call_1",
-            input: &input,
-        }) else {
-            panic!("bash was approved with no flag");
-        };
-
-        assert!(reason.contains("`--allow-tool bash`"), "got {reason}");
-    }
-
-    #[test]
-    fn an_approved_tool_is_allowed_not_merely_announced() {
-        let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "bash", "--", "go"]);
-        let input = serde_json::Value::Null;
-
-        let decision = args.gate(ToolCall {
-            tool: BuiltinTool::Bash,
-            id: "call_1",
-            input: &input,
-        });
-
-        assert_eq!(decision, ApprovalDecision::Allow);
-    }
-
-    /// `--allow-tool` can only widen, so offering a read-only name back would invite a
-    /// spelling that parses and changes nothing.
-    #[test]
-    fn the_unknown_name_advice_lists_only_what_needs_approving() {
-        let message = tool_name("shell").expect_err("a name no tool answers to was accepted");
-
-        assert!(message.contains("write"), "got {message}");
-        assert!(message.contains("bash"), "got {message}");
-        assert!(
-            !message.contains("grep"),
-            "a read-only tool was offered as approvable: {message}"
-        );
     }
 
     #[test]
