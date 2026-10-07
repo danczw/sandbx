@@ -10,7 +10,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sandbx_core::{AUDIT_TARGET, SandboxError, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{AUDIT_TARGET, HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -121,18 +121,35 @@ fn a_timeout_records_a_failure_not_an_exit() {
     assert!(record.contains("reason=timeout"), "got: {record}");
 }
 
-/// The one case the relayed status cannot answer by itself.
+/// The one case the relayed status cannot answer by itself — for the trail or the caller,
+/// whose `Ok(exit 1)` would read as the command's own.
 #[test]
 fn a_program_that_does_not_exist_never_exits() {
-    let (_, lines) = run(SandboxedCommand::new(
+    let (result, lines) = run(SandboxedCommand::new(
         "/nonexistent-binary",
         SandboxPolicy::default().allow_system_executables(),
     )
     .helper(env!("CARGO_BIN_EXE_sandbx-helper")));
 
+    let error = result.expect_err("a command that never ran did not exit");
+
     let record = outcome(&lines);
     assert!(record.contains("decision=failed"), "got: {record}");
     assert!(record.contains("reason=exec_failed"), "got: {record}");
+    assert!(
+        matches!(
+            error,
+            SandboxError::HelperRefused {
+                refusal: HelperRefusal::ExecFailed,
+                ..
+            }
+        ),
+        "the refusal reached the caller as something else: {error:?}"
+    );
+    assert!(
+        record.contains(&format!("reason={}", error.label())),
+        "the record and the error disagree: {record} against {error:?}"
+    );
 }
 
 /// Two records would double-count the run in any aggregate.

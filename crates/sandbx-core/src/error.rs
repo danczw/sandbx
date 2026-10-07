@@ -168,6 +168,19 @@ pub enum SandboxError {
         program: String,
     },
 
+    /// A helper stage refused the run and named itself on the audit channel, so the command
+    /// never ran — see [`HelperRefusal`].
+    ///
+    /// The relayed exit status says only that the helper exited non-zero, which is
+    /// indistinguishable from the command doing so. This is that status replaced by what the
+    /// channel said instead.
+    HelperRefused {
+        /// Which stage refused, and why.
+        refusal: HelperRefusal,
+        /// The helper's own stderr, which is where the reason travels.
+        detail: String,
+    },
+
     /// A sandboxed process outran its time limit and was killed.
     TimedOut {
         /// The limit it exceeded.
@@ -255,6 +268,16 @@ impl std::fmt::Display for SandboxError {
             Self::Seccomp { detail } => {
                 write!(f, "could not install the syscall filter: {detail}")
             }
+            // The detail is the helper's own `Display` as it printed it, already a whole
+            // sentence; wrapping it would say twice what the label says once.
+            Self::HelperRefused { refusal, detail } => match detail.is_empty() {
+                true => write!(
+                    f,
+                    "the sandbox refused to run the command: {}",
+                    refusal.label()
+                ),
+                false => write!(f, "{detail}"),
+            },
         }
     }
 }
@@ -271,6 +294,7 @@ impl std::error::Error for SandboxError {
             | Self::TimedOut { .. }
             | Self::PinMismatch { .. }
             | Self::PinnedScript { .. }
+            | Self::HelperRefused { .. }
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. }
             | Self::NotFound { source, .. }
@@ -302,6 +326,9 @@ impl SandboxError {
             Self::PinMismatch { .. } => "pin_mismatch",
             Self::PinUnreadable { .. } => "pin_unreadable",
             Self::PinnedScript { .. } => "pinned_script",
+            // Borrowed, so a trail filtered by `reason=` cannot tell which side of the
+            // channel decided it — the same refusal either way.
+            Self::HelperRefused { refusal, .. } => refusal.label(),
             // The word the operator typed and the docs use, so it is the word a trail
             // reader greps for.
             Self::TimedOut { .. } => "timeout",
@@ -380,6 +407,13 @@ mod tests {
                 after: std::time::Duration::from_secs(1),
             },
             SandboxError::Unsupported { detail: "sample" },
+            // `Landlock` because it is the refusal whose label collides, so an edit giving
+            // the relay a label of its own fails `no_two_variants_share_a_label` instead of
+            // passing it.
+            SandboxError::HelperRefused {
+                refusal: HelperRefusal::Landlock,
+                detail: "sample".to_string(),
+            },
         ];
 
         for error in &all {
@@ -399,6 +433,7 @@ mod tests {
                 | SandboxError::PinUnreadable { .. }
                 | SandboxError::PinnedScript { .. }
                 | SandboxError::TimedOut { .. }
+                | SandboxError::HelperRefused { .. }
                 | SandboxError::Unsupported { .. } => {}
             }
         }
@@ -406,9 +441,19 @@ mod tests {
         all
     }
 
+    /// Every label but the relay's, which borrows the label of the variant it relays — so a
+    /// set including it cannot check that the borrowed one is unique.
+    fn labels_decided_here() -> Vec<&'static str> {
+        every_variant()
+            .iter()
+            .filter(|error| !matches!(error, SandboxError::HelperRefused { .. }))
+            .map(SandboxError::label)
+            .collect()
+    }
+
     #[test]
     fn no_two_variants_share_a_label() {
-        let mut labels: Vec<_> = every_variant().iter().map(SandboxError::label).collect();
+        let mut labels = labels_decided_here();
         labels.sort_unstable();
         let total = labels.len();
         labels.dedup();
@@ -431,8 +476,18 @@ mod tests {
             }
         }
 
-        let labels: Vec<_> = every_variant().iter().map(SandboxError::label).collect();
+        let labels = labels_decided_here();
         for refusal in HelperRefusal::ALL {
+            let relayed = SandboxError::HelperRefused {
+                refusal,
+                detail: String::new(),
+            };
+
+            assert_eq!(
+                relayed.label(),
+                refusal.label(),
+                "a relayed refusal was renamed on the way to the caller"
+            );
             assert!(
                 labels.contains(&refusal.label()),
                 "{} crosses the channel but names no variant",
@@ -452,6 +507,7 @@ mod tests {
                     | SandboxError::Unresolvable { .. }
                     | SandboxError::NotFound { .. }
                     | SandboxError::SpawnFailed { .. }
+                    | SandboxError::HelperRefused { .. }
                     | SandboxError::TimedOut { .. }
             );
 
