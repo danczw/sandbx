@@ -107,7 +107,18 @@ pub struct AgentRun {
 
 impl AgentRun {
     /// The policy these flags describe.
+    ///
+    /// The credential refusal comes first because it is decidable from argv alone: a
+    /// working-directory refusal landing ahead of it would mask the security-relevant one.
+    /// It refuses where `sandbox-run` grants, and only ever that way round — the two
+    /// subcommands may differ by a refusal, never by a policy.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
+        if self.grants.names_env(crate::auth::ENV_VAR) {
+            return Err(PolicyError::HarnessCredential {
+                name: crate::auth::ENV_VAR,
+            });
+        }
+
         self.grants.policy()
     }
 

@@ -92,6 +92,15 @@ pub enum PolicyError {
         name: String,
     },
 
+    /// `agent-run`'s `--allow-env` named the credential the harness spends itself.
+    ///
+    /// `&'static str` and not `String`: the variant has no shape that could carry the
+    /// value, so the refusal printing no key is a property of the type.
+    HarnessCredential {
+        /// The one name refused, from `auth::ENV_VAR`.
+        name: &'static str,
+    },
+
     /// `--pin-sha256` was given more than once.
     RepeatedPin,
 
@@ -160,6 +169,13 @@ impl std::fmt::Display for PolicyError {
                 "--dns-over-tcp sets {name} itself, so --allow-env {name} would be dropped \
                  rather than honoured — pass one of the two, not both"
             ),
+            Self::HarnessCredential { name } => write!(
+                f,
+                "agent-run refuses --allow-env {name}: sandbx makes the provider call \
+                 itself, so no tool call needs that value, and naming it hands the key to \
+                 a process the model chose the arguments for — drop the flag, or use \
+                 sandbox-run, where the program and its arguments are yours"
+            ),
             // No `ADVICE` either, for the same reason, and both say what to write instead.
             Self::RepeatedPin => write!(
                 f,
@@ -186,6 +202,7 @@ impl std::error::Error for PolicyError {
             | Self::SystemExecutables { .. }
             | Self::FilesystemRoot
             | Self::ImposedVariable { .. }
+            | Self::HarnessCredential { .. }
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } => Some(source),

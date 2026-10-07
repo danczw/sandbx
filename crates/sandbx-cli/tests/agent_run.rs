@@ -100,6 +100,140 @@ fn the_policy_matches_what_sandbox_run_derives() {
     assert_eq!(agent.allows_unix_sockets(), sandbox.allows_unix_sockets());
 }
 
+/// Spelled as a literal and never read from `auth::ENV_VAR`: an expectation derived from
+/// the constant it checks moves with a mutation and so asserts nothing.
+#[test]
+fn agent_run_refuses_the_harness_credential() {
+    let error = agent_run(&[
+        "sandbx",
+        "agent-run",
+        "--allow-env",
+        "ANTHROPIC_API_KEY",
+        "--",
+        "hello",
+    ])
+    .policy()
+    .expect_err("agent-run derived a policy carrying its own credential");
+
+    assert!(
+        matches!(
+            error,
+            sandbx_cli::PolicyError::HarnessCredential {
+                name: "ANTHROPIC_API_KEY"
+            }
+        ),
+        "{error:?} is not the credential refusal"
+    );
+    let message = error.to_string();
+    assert!(
+        message.contains("--allow-env") && message.contains("sandbox-run"),
+        "{message} does not name the flag refused, or what to write instead"
+    );
+}
+
+/// The test that says the refusal is an identity and not a pattern: no prefix, no suffix,
+/// no case folding. A denylist over credential-looking names is what
+/// `context/decision-environment-allowlist.md` rejected.
+#[test]
+fn the_credential_refusal_matches_one_exact_name() {
+    for name in [
+        "GH_TOKEN",
+        "ANTHROPIC_API_KEY_OLD",
+        "MY_ANTHROPIC_API_KEY",
+        "anthropic_api_key",
+        "ANTHROPIC_API_KE",
+    ] {
+        let policy = agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--allow-read",
+            "/usr",
+            "--allow-env",
+            name,
+            "--",
+            "hello",
+        ])
+        .policy()
+        .unwrap_or_else(|error| panic!("{name} was refused as a credential: {error}"));
+
+        assert!(
+            policy.allowed_env().iter().any(|named| named == name),
+            "{name} derived a policy without it"
+        );
+    }
+}
+
+/// The one way the two subcommands are allowed to differ, pinned beside
+/// `the_policy_matches_what_sandbox_run_derives`: a refusal, never a quietly narrower
+/// policy. That test does not notice this refusal going away, which is why this exists.
+#[test]
+fn a_divergence_between_the_run_subcommands_is_a_refusal() {
+    let flags = ["--allow-read", "/usr", "--allow-env", "ANTHROPIC_API_KEY"];
+
+    let mut agent = vec!["sandbx", "agent-run"];
+    agent.extend(flags);
+    agent.extend(["--", "hello"]);
+
+    let mut sandbox = vec!["sandbx", "sandbox-run"];
+    sandbox.extend(flags);
+    sandbox.extend(["--", "true"]);
+
+    let error = agent_run(&agent)
+        .policy()
+        .expect_err("agent-run passed its own credential to a tool");
+    assert!(
+        matches!(
+            error,
+            sandbx_cli::PolicyError::HarnessCredential {
+                name: "ANTHROPIC_API_KEY"
+            }
+        ),
+        "{error:?} is a divergence, but not the refusal this pins"
+    );
+
+    let sandbox = match Cli::parse_from(&sandbox).command {
+        Command::SandboxRun(args) => args.policy().expect("the flags describe a policy"),
+        other => panic!("{other:?} is not sandbox-run"),
+    };
+    assert!(
+        sandbox
+            .allowed_env()
+            .iter()
+            .any(|named| named == "ANTHROPIC_API_KEY"),
+        "sandbox-run was narrowed where it should only ever have been refused"
+    );
+}
+
+/// Decidable from argv alone, so it lands first. Explicit path flags, because without one
+/// the cwd default is derived and a test run from a refusable directory would pass for the
+/// wrong reason.
+#[test]
+fn the_refusal_lands_before_the_policy_is_derived() {
+    let error = agent_run(&[
+        "sandbx",
+        "agent-run",
+        "--allow-read",
+        "/usr",
+        "--allow-env",
+        "ANTHROPIC_API_KEY",
+        "--dns-over-tcp",
+        "--allow-env",
+        "RES_OPTIONS",
+        "--",
+        "hello",
+    ])
+    .policy()
+    .expect_err("the credential reached a derived policy");
+
+    assert!(
+        matches!(
+            error,
+            sandbx_cli::PolicyError::HarnessCredential { name: _ }
+        ),
+        "{error:?} reports something other than the credential, which would mask it"
+    );
+}
+
 #[test]
 fn a_write_grant_confers_read_here_too() {
     let policy = agent_run(&["sandbx", "agent-run", "--allow-write", "/tmp", "--", "go"])

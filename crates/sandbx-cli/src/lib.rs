@@ -71,9 +71,11 @@ pub enum Command {
     /// the model calls runs under the same boundary `sandbox-run` uses, derived
     /// from the same flags: denied unless a flag grants it, refused rather than
     /// run unrestricted on a kernel that cannot enforce it. Needs a key, from
-    /// `ANTHROPIC_API_KEY` or from `sandbx auth login`; no tool sees an exported
-    /// one unless you pass that name to `--allow-env`, which hands over the value
-    /// in full.
+    /// `ANTHROPIC_API_KEY` or from `sandbx auth login`. The key is sandbx's own:
+    /// `--allow-env ANTHROPIC_API_KEY` is refused here, since sandbx makes the
+    /// provider call itself and no tool call needs that value. A stored key is
+    /// not in the environment at all, but it is on disk under your config
+    /// directory, where a read grant reaches it instead.
     ///
     /// That includes the working-directory default, which here is what a prompt
     /// injection reaches: with no path flag the model may rewrite anything under
