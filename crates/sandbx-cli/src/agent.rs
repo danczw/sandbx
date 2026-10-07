@@ -1,17 +1,22 @@
 //! `agent-run`: one prompt, one streamed answer, tool calls through the boundary.
 //!
-//! Single-shot and non-interactive, so there is nobody to ask mid-turn: the approval gate
-//! is decided from argv before the first request goes out. `--session` carries a
-//! conversation between runs as a transcript on disk, not a live session.
+//! Single-shot: the approval gate is decided from argv before the first request goes out,
+//! and `--approve call` narrows that answer per call on the controlling terminal rather
+//! than widening it. `--session` carries a conversation between runs as a transcript on
+//! disk, not a live session.
 
 mod gate;
 mod orientation;
+mod prompt;
 mod render;
 mod wrapup;
 
 use std::io::Write;
 
 use gate::tool_name;
+use prompt::{Approve, Terminal};
+
+pub(crate) use prompt::APPROVE_CALL;
 use render::{Capped, Render};
 use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
@@ -39,6 +44,19 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// Neither success nor failure: stdout holds the text that arrived before the bound, and
 /// nothing at all when the model opened with a tool call. Stderr names the bound.
 const INCOMPLETE: i32 = 2;
+
+/// Where one run writes, and where it asks.
+///
+/// One argument rather than two because they are the same operator seen twice: stdout
+/// carries the model's answer and is piped, so a question has to go somewhere else.
+struct Channels<W> {
+    /// The answer, streamed as it arrives.
+    out: W,
+
+    /// The controlling terminal, `Some` under `--approve call` alone. Every test passes
+    /// `None`: opening a real one is what `prompt`'s own suite leaves uncovered.
+    terminal: Option<Terminal>,
+}
 
 /// `sandbx agent-run [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]
@@ -105,8 +123,9 @@ pub struct AgentRun {
     /// or pass the flag bare to approve all seven.
     ///
     /// Approval is for the run, not for the call: `--allow-tool bash` lets the
-    /// model run every command it chooses to, and nothing asks you in between.
-    /// The policy flags are still what bounds where an approved call can reach.
+    /// model run every command it chooses to, and nothing asks you in between
+    /// unless `--approve call` does. The policy flags are still what bounds
+    /// where an approved call can reach.
     // `Option<Vec<_>>` is what gives three states, as on `--allow-network`.
     #[arg(
         long = "allow-tool",
@@ -115,6 +134,19 @@ pub struct AgentRun {
         value_parser = tool_name,
     )]
     allow_tool: Option<Vec<BuiltinTool>>,
+
+    /// Ask before each call instead of once from argv.
+    ///
+    /// `run`, the default, takes the whole answer from `--allow-tool`. `call` asks
+    /// you on your terminal before each call that does more than read, within
+    /// what `--allow-tool` already approved — it can only narrow that set, never
+    /// widen it. Answer `y` for the one call, `n` to refuse it, or `a` to approve
+    /// every later call to that tool.
+    ///
+    /// `call` needs a terminal to ask on, and refuses the run without one rather
+    /// than falling back to the argv answer.
+    #[arg(long, value_name = "WHEN", default_value = "run")]
+    approve: Approve,
 
     /// Save the conversation, and resume one by id.
     ///
@@ -225,6 +257,10 @@ impl AgentRun {
             gate::approved_tools(self.allow_tool.as_deref()).join(", ")
         );
 
+        // Before the credential and the session: a run with no channel to ask on is
+        // refused, so neither is opened for a turn that will not happen.
+        let terminal = self.terminal()?;
+
         // Before the session: the credential chain can fail for want of a key, and a
         // session opened first would leave a header-only transcript nothing deletes.
         let client = AnthropicClient::new(crate::auth::api_key()?)?;
@@ -236,26 +272,56 @@ impl AgentRun {
             &ctx,
             prompt,
             system,
-            std::io::stdout(),
+            Channels {
+                out: std::io::stdout(),
+                terminal,
+            },
             session,
         )
         .await
     }
 
+    /// The terminal this run will ask on, or `None` where it asks nobody.
+    ///
+    /// # Errors
+    ///
+    /// [`AgentError::NoTerminal`] when `--approve call` was passed and there is no
+    /// controlling terminal. Serving the argv answer instead would be fail-closed against
+    /// the default and fail-open against the request: an operator who asked to decide per
+    /// call would silently get approve-once-per-run.
+    fn terminal(&self) -> Result<Option<Terminal>, AgentError> {
+        match self.approve {
+            Approve::Run => Ok(None),
+            Approve::Call => {
+                let terminal =
+                    Terminal::open().map_err(|source| AgentError::NoTerminal { source })?;
+                // After the open, not before: a line claiming the run will ask is false
+                // for the run that could not.
+                eprintln!(
+                    "sandbx: each call that writes or runs a program will be asked for on \
+                     this terminal"
+                );
+                Ok(Some(terminal))
+            }
+        }
+    }
+
     /// Run one turn against `open`, writing the answer to `out` and saving it to
     /// `session`.
     ///
-    /// The stream opener and the sink are arguments so a test can drive a canned turn and
-    /// read back what the request carried — the only way to check either without a key.
+    /// The stream opener and the channels are arguments so a test can drive a canned turn
+    /// and read back what the request carried — the only way to check either without a
+    /// key.
     async fn drive<W: Write>(
         &self,
         mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         prompt: String,
         system: Option<String>,
-        out: W,
+        channels: Channels<W>,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
+        let Channels { out, terminal } = channels;
         let asked = RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],
@@ -304,7 +370,7 @@ impl AgentRun {
             turn,
             ctx,
             |event| render.event(event),
-            gate::ArgvGate::new(self.allow_tool.as_deref()),
+            gate::ArgvGate::new(self.allow_tool.as_deref(), terminal),
         )
         .await;
 
@@ -434,6 +500,35 @@ mod tests {
         assert_eq!(args.prompt(), "write it");
     }
 
+    /// The default is what every existing run keeps, and the opt-in has to parse.
+    #[test]
+    fn approval_is_once_per_run_unless_asked_for_per_call() {
+        assert_eq!(
+            agent_run(&["sandbx", "agent-run", "--", "go"]).approve,
+            Approve::Run
+        );
+        assert_eq!(
+            agent_run(&["sandbx", "agent-run", "--approve", "call", "--", "go"]).approve,
+            Approve::Call
+        );
+    }
+
+    /// A run with no channel to ask on exits before the first request. Asserting only
+    /// that it exits nonzero would pass for a provider failure too, so the assertion is
+    /// that the refusal names the flag to drop.
+    #[test]
+    fn a_run_with_no_terminal_to_ask_on_names_the_flag() {
+        // ENXIO on Linux, which is what opening `/dev/tty` returns with no controlling
+        // terminal.
+        let error = AgentError::NoTerminal {
+            source: std::io::Error::from_raw_os_error(6),
+        };
+
+        let message = error.to_string();
+        assert!(message.contains(APPROVE_CALL), "got {message}");
+        assert!(message.contains("--allow-tool"), "got {message}");
+    }
+
     #[test]
     fn a_round_cap_of_zero_is_refused() {
         let message = round_cap("0").expect_err("a turn that asks nothing was accepted");
@@ -528,7 +623,10 @@ mod tests {
             &ctx,
             prompt.to_owned(),
             system,
-            &mut out,
+            Channels {
+                out: &mut out,
+                terminal: None,
+            },
             session,
         ));
 
@@ -552,7 +650,10 @@ mod tests {
             &ctx,
             "hi".to_owned(),
             None,
-            Vec::new(),
+            Channels {
+                out: Vec::new(),
+                terminal: None,
+            },
             session,
         ))
     }

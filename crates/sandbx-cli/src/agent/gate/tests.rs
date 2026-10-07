@@ -92,14 +92,100 @@ fn the_announced_set_is_the_read_only_four_by_default() {
     );
 }
 
+/// A consent channel that answers whatever it is told to, and counts being asked.
+struct Asked {
+    answer: ApprovalDecision,
+    count: usize,
+}
+
+impl Ask for Asked {
+    fn ask(&mut self, _: ToolCall<'_>) -> ApprovalDecision {
+        self.count += 1;
+        self.answer.clone()
+    }
+}
+
 /// The verdict for one call under one argv, with arguments the model might have sent.
 fn verdict(argv: &[&str], tool: BuiltinTool, input: &serde_json::Value) -> ApprovalDecision {
     let allowed = allowed(argv);
-    ArgvGate::new(allowed.as_deref()).approve(ToolCall {
+    ArgvGate::<Asked>::new(allowed.as_deref(), None).approve(ToolCall {
         tool,
         id: "call_1",
         input,
     })
+}
+
+/// The verdict for one call under one argv, with an operator giving `answer`, and how
+/// many times that operator was asked.
+fn asked(argv: &[&str], tool: BuiltinTool, answer: ApprovalDecision) -> (ApprovalDecision, usize) {
+    let allowed = allowed(argv);
+    let input = serde_json::json!({ "path": "/work/out.rs" });
+    let mut gate = ArgvGate::new(allowed.as_deref(), Some(Asked { answer, count: 0 }));
+
+    let decision = gate.approve(ToolCall {
+        tool,
+        id: "call_1",
+        input: &input,
+    });
+
+    (
+        decision,
+        gate.terminal.expect("the channel is still there").count,
+    )
+}
+
+/// A prompt that could only ever be refused is fatigue with no decision in it, and it
+/// would teach an operator to answer `y` to everything.
+#[test]
+fn a_tool_argv_never_approved_is_refused_without_asking() {
+    let (decision, count) = asked(
+        &["sandbx", "agent-run", "--", "go"],
+        BuiltinTool::Bash,
+        ApprovalDecision::Allow,
+    );
+
+    assert_eq!(
+        count, 0,
+        "an operator was asked to grant what argv withheld"
+    );
+    let ApprovalDecision::Deny { reason } = decision else {
+        panic!("bash ran under an answer the ceiling had already refused");
+    };
+    assert!(reason.contains("`--allow-tool bash`"), "got {reason}");
+}
+
+/// Twenty prompts in one turn is what #165 describes; a `read` has no answer worth taking.
+#[test]
+fn a_read_only_call_is_not_asked_about() {
+    let (decision, count) = asked(
+        &["sandbx", "agent-run", "--approve", "call", "--", "go"],
+        BuiltinTool::Grep,
+        ApprovalDecision::Deny {
+            reason: "refused".to_owned(),
+        },
+    );
+
+    assert_eq!(decision, ApprovalDecision::Allow);
+    assert_eq!(count, 0, "a read-only call was put to the operator");
+}
+
+/// The flag is the ceiling and the operator is the floor: a tool argv approved still runs
+/// only if the one call was.
+#[test]
+fn an_operator_can_refuse_what_argv_approved() {
+    let argv = &["sandbx", "agent-run", "--allow-tool", "write", "--", "go"];
+    let refusal = ApprovalDecision::Deny {
+        reason: "the operator refused this call".to_owned(),
+    };
+
+    let (denied, asked_once) = asked(argv, BuiltinTool::Write, refusal.clone());
+    assert_eq!(denied, refusal);
+    assert_eq!(asked_once, 1, "the call was decided without the operator");
+
+    // The same argv with a `y`, so the refusal above is the operator's and not the flag's.
+    let (allowed, asked_again) = asked(argv, BuiltinTool::Write, ApprovalDecision::Allow);
+    assert_eq!(allowed, ApprovalDecision::Allow);
+    assert_eq!(asked_again, 1);
 }
 
 /// The `tool_result` is the only account the model gets, so saying no is not enough.
