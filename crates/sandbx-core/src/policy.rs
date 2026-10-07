@@ -153,13 +153,15 @@ impl SandboxPolicy {
     ///
     /// An exact name and not a prefix: the pin is on the granted path's own inode, and a bind
     /// over a file inside `/etc` leaves `/etc`'s inode alone, so `--allow-read /etc` collides
-    /// with nothing. Off [`RESOLVER_FILES`], which is also where the rules and the binds come
-    /// from, so a fourth file reaches all three at once.
+    /// with nothing. Which names those are is [`bound_by_resolver`]'s, off the same list the
+    /// rules and the binds come from, so a fourth file reaches all three at once.
     ///
     /// On the policy and not `Grants` alone, the [`unbounded_resolution`](Self::unbounded_resolution)
-    /// precedent: an embedder spawning the argv itself meets the same refusal.
+    /// precedent: an embedder spawning the argv itself meets the same refusal. Unlike that one
+    /// this reads the filesystem, so it is the one refusal `HelperArgs::decode` does not re-run
+    /// — the harness has already refused the pair, and decoding stays I/O-free.
     ///
-    /// [`RESOLVER_FILES`]: crate::RESOLVER_FILES
+    /// [`bound_by_resolver`]: crate::bound_by_resolver
     pub fn grant_bound_by_resolver(&self) -> Option<&Path> {
         if !self.bounds_resolution() {
             return None;
@@ -167,11 +169,7 @@ impl SandboxPolicy {
 
         self.granted_paths()
             .map(|(_, granted)| granted.path())
-            .find(|path| {
-                crate::RESOLVER_FILES
-                    .iter()
-                    .any(|bound| path == &Path::new(bound))
-            })
+            .find(|path| crate::bound_by_resolver(path))
     }
 
     /// Where a command run under this policy starts, or `None` if it grants nowhere to be.

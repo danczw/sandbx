@@ -435,17 +435,11 @@ fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
 /// Whether a flag names a file a bounded resolver bind-mounts sandbx's own copy over, which
 /// `SandboxPolicy::grant_bound_by_resolver` refuses the policy for.
 ///
-/// Both spellings, because the bind follows a symlink and the pin does not: `/etc/resolv.conf`
-/// resolves to systemd's stub, the inode the bind lands on and no entry of `RESOLVER_FILES`,
-/// while a relative flag resolves *to* an entry and is spelled like none of them.
-///
-/// Exact names, not a subtree: the pin is on the granted path's own inode, and binding over a
-/// file inside `/etc` leaves `/etc`'s inode alone.
+/// Both of the operator's spellings: a flag left relative is spelled like no entry and
+/// resolves *to* one, and the resolved form is what the policy carries. Which names count is
+/// `sandbx_core::bound_by_resolver`, so the CLI and the library refuse the same set.
 fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
-    sandbx_core::RESOLVER_FILES
-        .iter()
-        .map(Path::new)
-        .any(|bound| bound == typed || bound == granted)
+    sandbx_core::bound_by_resolver(typed) || sandbx_core::bound_by_resolver(granted)
 }
 
 /// The path in `owned` that `granted` reaches, if it reaches one.

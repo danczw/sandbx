@@ -273,9 +273,24 @@ fn a_malformed_object_on_the_wire_is_refused() {
     }
 }
 
+/// A whole grant and not a bare pair: `--ro /usr` alone is refused for its absent object pin,
+/// which would leave the separator uncovered here.
 #[test]
 fn missing_separator_is_rejected() {
-    assert!(HelperArgs::decode(&["--ro".into(), "/usr".into()]).is_err());
+    let args = vec!["--ro".to_string(), "/usr".to_string(), "259:17".to_string()];
+
+    let Err(refusal) = HelperArgs::decode(&args) else {
+        panic!("an argv naming no program was accepted");
+    };
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("missing `--` separator")
+        ),
+        "refused for the wrong reason: {refusal:?}"
+    );
 }
 
 #[test]

@@ -23,6 +23,30 @@ const RESOLV_CONF: &str = "/etc/resolv.conf";
 /// those rules from this list.
 pub const RESOLVER_FILES: [&str; 3] = [HOSTS, NSSWITCH, RESOLV_CONF];
 
+/// Whether `path` names one of [`RESOLVER_FILES`] as the bind will land on it.
+///
+/// Each entry is matched by its own name and by what it resolves to, because `mount(2)`
+/// resolves its target and a pin does not: a systemd `/etc/resolv.conf` is a symlink, so the
+/// bind replaces the stub it points at — and that is the name `VettedPath::vet` pins a grant
+/// on it to. An entry resolving to nothing matches by name alone; `helper::resolver::install`
+/// decides what an absent one costs.
+///
+/// The resolving is of the entries and never of `path`, which arrives resolved already.
+/// Re-resolving it here is the window `sandbx-cli`'s `GrantMovedWhileVetting` closes, and an
+/// entry retargeted between this and the bind fails closed: the pair is kept, and the pin
+/// refuses the run in the helper.
+pub fn bound_by_resolver(path: &Path) -> bool {
+    bound_by_any(&RESOLVER_FILES.map(Path::new), path)
+}
+
+/// [`bound_by_resolver`] over an arbitrary list: on a host whose own three files are regular,
+/// resolving changes nothing and the branch that matters cannot be reached from the real one.
+fn bound_by_any(bound: &[&Path], path: &Path) -> bool {
+    bound
+        .iter()
+        .any(|bound| *bound == path || bound.canonicalize().is_ok_and(|real| real == path))
+}
+
 /// Lines every libc expects whatever else a hosts file holds: with no `dns` source left, there
 /// is nothing else to resolve `localhost` by.
 const LOOPBACK: &str = "127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n";
@@ -393,5 +417,34 @@ networks: files dns
                 file.target.display()
             );
         }
+    }
+
+    /// `mount(2)` resolves the target, so the bind lands on what the link points at — and that
+    /// is the name a grant on the link is pinned to.
+    #[test]
+    fn a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on() {
+        let dir = tempfile::tempdir().expect("a directory to link within");
+        let target = dir.path().join("stub-resolv.conf");
+        let link = dir.path().join("resolv.conf");
+        std::fs::write(&target, "options attempts:1\n").expect("a file to link to");
+        std::os::unix::fs::symlink(&target, &link).expect("a link to the file");
+
+        // Resolved, as every caller's path arrives: a grant carries what `vet` canonicalized.
+        let target = target.canonicalize().expect("the link's target to resolve");
+        let bound = [link.as_path()];
+
+        assert!(
+            bound_by_any(&bound, &target),
+            "the name the bind lands on was not reported, so a grant there is pinned to the \
+             host's file and the run refuses as a substituted object"
+        );
+        assert!(
+            bound_by_any(&bound, &link),
+            "the entry's own spelling was not reported"
+        );
+        assert!(
+            !bound_by_any(&bound, dir.path()),
+            "the directory holding a bound file was reported, and a bind leaves its inode alone"
+        );
     }
 }

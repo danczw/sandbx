@@ -631,16 +631,37 @@ fn a_bounded_policy_with_no_route_to_a_nameserver_is_enforceable() {
 #[test]
 fn a_grant_naming_a_file_the_resolver_binds_over_is_refused() {
     for bound in sandbx_core::RESOLVER_FILES {
+        let pinned = vetted(bound);
         let policy = SandboxPolicy::default()
             .allow_dns("example.com")
             .allow_network_port(443)
             .allow_read(vetted(bound));
 
+        // The vetted spelling and not `bound` itself: a grant carries what it canonicalized
+        // to, which on a systemd host is the stub `/etc/resolv.conf` points at.
         assert_eq!(
             policy.grant_bound_by_resolver(),
-            Some(Path::new(bound)),
+            Some(pinned.path()),
             "a grant on {bound} was not reported, so the pin is measured against sandbx's \
              own copy and the run refuses as a substituted object"
+        );
+    }
+}
+
+/// Degenerate where the host's three files are regular; `resolver`'s own
+/// `a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on` asserts that case with
+/// fixtures.
+#[test]
+fn the_name_a_bind_lands_on_is_bound_whether_or_not_it_is_the_name_in_the_list() {
+    for bound in sandbx_core::RESOLVER_FILES {
+        let Ok(real) = Path::new(bound).canonicalize() else {
+            continue;
+        };
+
+        assert!(
+            sandbx_core::bound_by_resolver(&real),
+            "{bound} resolves to {}, which the bind replaces and nothing reported",
+            real.display()
         );
     }
 }

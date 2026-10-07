@@ -40,4 +40,4 @@ pub use policy::{
     Axis, DNS_NAME_LIMIT, Grants, NAMESERVER_PORT, NetworkPolicy, ObjectId, SandboxPolicy,
     VettedPath,
 };
-pub use resolver::RESOLVER_FILES;
+pub use resolver::{RESOLVER_FILES, bound_by_resolver};
