@@ -147,19 +147,17 @@ impl SandboxPolicy {
     /// A grant naming a file this policy's own resolver will bind over, or `None` if none does.
     ///
     /// The one pair a pin cannot hold: the harness vets the host's file, `helper::resolver`
-    /// bind-mounts sandbx's over it, and `open_grant` then measures a grant against an object
-    /// sandbx itself replaced. Refusing the pair is the only fail-closed answer — waiving the
-    /// pin would have to decide the waiver in the process that made the substitution.
+    /// binds sandbx's over it, and `open_grant` measures the grant against an object sandbx
+    /// itself replaced. Waiving the pin would have to decide the waiver in the process that
+    /// made the substitution, so the pair is refused — `context/decision-grant-identity.md`.
     ///
     /// An exact name and not a prefix: the pin is on the granted path's own inode, and a bind
     /// over a file inside `/etc` leaves `/etc`'s inode alone, so `--allow-read /etc` collides
-    /// with nothing. Which names those are is [`bound_by_resolver`]'s, off the same list the
-    /// rules and the binds come from, so a fourth file reaches all three at once.
+    /// with nothing. Which names count is [`bound_by_resolver`]'s.
     ///
-    /// On the policy and not `Grants` alone, the [`unbounded_resolution`](Self::unbounded_resolution)
-    /// precedent: an embedder spawning the argv itself meets the same refusal. Unlike that one
-    /// this reads the filesystem, so it is the one refusal `HelperArgs::decode` does not re-run
-    /// — the harness has already refused the pair, and decoding stays I/O-free.
+    /// The one refusal `HelperArgs::decode` does not re-run, because this reads the filesystem
+    /// and decoding stays I/O-free. On the policy rather than `Grants` so an embedder spawning
+    /// the argv meets it too, as with [`unbounded_resolution`](Self::unbounded_resolution).
     ///
     /// [`bound_by_resolver`]: crate::bound_by_resolver
     pub fn grant_bound_by_resolver(&self) -> Option<&Path> {
