@@ -361,6 +361,46 @@ fn write_refusals_outside_the_policy_look_alike() {
     );
 }
 
+/// The directory to create is the agent's to fix, and the grant already covers it.
+#[test]
+fn a_missing_write_parent_in_a_grant_is_absent() {
+    let root = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+
+    let error = guard
+        .check_write(&root.path().join("nodir/f.txt"))
+        .unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::NotFound { .. }),
+        "got {error:?}"
+    );
+}
+
+/// The write path resolves the parent, so without the concealment gate a missing parent
+/// answers ENOENT where an existing one answers EACCES — the oracle the read path closes.
+#[test]
+fn write_to_a_missing_parent_outside_looks_alike() {
+    let allowed = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(allowed.path()));
+
+    let for_existing = guard
+        .check_write(&elsewhere.path().join("exists.txt"))
+        .unwrap_err()
+        .to_string();
+    let for_missing = guard
+        .check_write(&elsewhere.path().join("nodir/missing.txt"))
+        .unwrap_err()
+        .to_string();
+
+    assert!(!for_missing.contains("No such file"), "{for_missing}");
+    assert_eq!(
+        for_existing.replace("exists.txt", "X"),
+        for_missing.replace("nodir/missing.txt", "X")
+    );
+}
+
 /// A refusal and an absence are different next moves: widen the grant, or fix the name.
 #[test]
 fn a_missing_file_in_a_grant_is_not_a_refusal() {
