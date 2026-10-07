@@ -148,9 +148,8 @@ impl SandboxPolicy {
     /// `Write` and `ReadExecute` last: that would start a writable run read-only, and one
     /// granted only execute inside the system binaries.
     ///
-    /// A grant may name a file — `--allow-write /dev/null` is an ordinary one — and `chdir`
-    /// to a file fails the spawn, so one answer here for every caller is what keeps a tool's
-    /// orientation and the directory it is spawned in from disagreeing.
+    /// A directory and not merely the first path: `--allow-write /dev/null` is an ordinary
+    /// grant, and `chdir` to a file fails the spawn.
     pub fn working_root(&self) -> Option<&Path> {
         first_directory(&self.writable).or_else(|| first_directory(&self.readable))
     }
@@ -291,8 +290,7 @@ impl SandboxPolicy {
     /// rejects a rule for a path that does not exist, so a host without `/lib64` would fail to
     /// sandbox at all. Resolved and not as written because a merged-`/usr` host spells `/bin`
     /// as a symlink to `/usr/bin`, and a grant has to name what it opens — see
-    /// [`grant`](Self::grant). It also makes the subtree comparisons that bound the derived
-    /// default see `/usr/bin` on both sides.
+    /// [`grant`](Self::grant).
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS
