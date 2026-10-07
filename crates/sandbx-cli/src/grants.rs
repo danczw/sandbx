@@ -220,8 +220,8 @@ fn vetted_root<'a>(
         });
     }
 
-    // A no-flag run from inside the session directory is #173's hazard by another route: the
-    // default grants write over the cwd, and the cwd would be the history.
+    // The default grants write over the cwd, and inside the session directory the cwd is the
+    // history — #173 with no flag.
     if let Some(found) = reaches_owned(cwd, owned) {
         return Err(PolicyError::CwdReachesOwned {
             cwd: cwd.to_path_buf(),
@@ -302,10 +302,8 @@ fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
 /// not, so comparing canonical forms alone would miss the host where `/home` links to
 /// `/var/home` — Fedora Silverblue — and let the unresolved spelling through.
 fn resolved(path: &Path) -> PathBuf {
-    // A relative grant is joined to the working directory first, which is also what the
-    // helper opens it against. The walk below bottoms out at the empty path, which
-    // canonicalizes to nothing, so a relative grant whose first component does not exist
-    // yet would otherwise stay relative and match no absolute owned path at all.
+    // The cwd first, since that is what the helper opens a relative grant against and the
+    // walk below bottoms out at the empty path: a missing first component would stay relative.
     let path = &if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -330,10 +328,9 @@ fn resolved(path: &Path) -> PathBuf {
 
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
-/// Either direction, since Landlock rights cover a subtree: a grant above the session
-/// directory hands over every transcript, and one naming a single transcript inside it hands
-/// over that history. Both sides go through [`resolved`] so one symlinked spelling cannot be
-/// used to reach what the other spelling is refused for.
+/// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
+/// one naming something inside it both reach it. Both sides go through [`resolved`], so one
+/// symlinked spelling cannot reach what the other is refused for.
 fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
     let granted = resolved(granted);
 
@@ -416,8 +413,8 @@ impl Grants {
 
         for axis in Axis::ALL {
             for path in self.paths(axis) {
-                // Outside the branch above, which is the whole point: every other path
-                // refusal guards only the derived default, so a flag bypassed all of them.
+                // Outside the branch above: every other path refusal guards only the derived
+                // default, which is why a flag bypassed all of them.
                 if let Some(found) = reaches_owned(path, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
                         granted: path.clone(),
@@ -925,8 +922,7 @@ mod tests {
         }
     }
 
-    /// Both roots, since one rule covers them and a test naming one would pass while the
-    /// other went unguarded.
+    /// Both roots, since one rule covers them and naming one would pass with the other unguarded.
     #[test]
     fn both_owned_roots_are_derived_from_home() {
         let owned: Vec<PathBuf> = owned_under("/home/u")
@@ -944,8 +940,7 @@ mod tests {
         );
     }
 
-    /// `$HOME` unset leaves sandbx nowhere to keep either root, so there is nothing to reach
-    /// and an ordinary run must not be refused for it.
+    /// No `$HOME` leaves sandbx nowhere to keep either root, so an ordinary run still derives.
     #[test]
     fn a_host_with_no_home_owns_no_path() {
         assert!(
@@ -967,8 +962,8 @@ mod tests {
         }
     }
 
-    /// The other direction: naming one transcript hands over that history, and naming the
-    /// credential file itself is the hatch there deliberately is not.
+    /// The other direction, and the exact path: one transcript is the history, and the file is
+    /// the key.
     #[test]
     fn a_grant_inside_an_owned_root_is_refused() {
         let owned = owned_under("/home/u");
@@ -1002,8 +997,8 @@ mod tests {
         }
     }
 
-    /// Every axis, driven off `Axis::ALL` so a new path flag joins the refusal rather than
-    /// being the one spelling that still reaches a key.
+    /// Driven off `Axis::ALL`, so a new path flag joins the refusal instead of being the one
+    /// spelling that still reaches a key.
     #[test]
     fn every_path_axis_refuses_an_owned_root() {
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -1028,8 +1023,8 @@ mod tests {
         }
     }
 
-    /// A grant is taken as typed, so a relative one would evade a lexical comparison — and
-    /// `--allow-read .` from the config directory is the shortest spelling of #184.
+    /// `--allow-read .` from the config directory is the shortest spelling of #184, and
+    /// lexically it matches nothing.
     #[test]
     fn a_relative_grant_is_resolved_before_comparing() {
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -1047,8 +1042,8 @@ mod tests {
         );
     }
 
-    /// The grant `--session` creates during the very run it was given to: nothing on disk
-    /// resolves it, so joining the working directory is the only thing that can.
+    /// The grant `--session` creates during the run it was given to: nothing on disk resolves
+    /// it, so joining the cwd is the only thing that can.
     #[test]
     fn a_relative_grant_resolves_before_it_exists() {
         let cwd = std::env::current_dir().expect("a test runs from a real directory");
@@ -1063,8 +1058,8 @@ mod tests {
         );
     }
 
-    /// Fedora Silverblue ships `/home -> /var/home`, so a comparison against one spelling of
-    /// an owned root is bypassed by granting the other.
+    /// Fedora Silverblue ships `/home -> /var/home`, so granting one spelling of an owned root
+    /// must not bypass the other.
     #[test]
     fn a_symlinked_home_still_refuses_an_owned_root() {
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -1073,8 +1068,7 @@ mod tests {
         std::fs::create_dir_all(real.join(".config").join("sandbx")).expect("a real home");
         std::os::unix::fs::symlink(&real, &link).expect("a symlinked home");
 
-        // Owned under the link, granted through the real path: the spelling the operator
-        // typed and the one `$HOME` named are different strings for the same directory.
+        // Owned under the link, granted through the real path: two strings, one directory.
         let owned = owned_paths(&env(&[("HOME", link.to_str().expect("a UTF-8 home"))]));
 
         assert!(
@@ -1083,8 +1077,8 @@ mod tests {
         );
     }
 
-    /// The derived default is a write grant too, so standing in the session directory is
-    /// #173 without a flag.
+    /// The derived default is a write grant too, so standing in the session directory is #173
+    /// with no flag.
     #[test]
     fn a_root_inside_an_owned_path_is_refused() {
         let owned = owned_under("/home/u");

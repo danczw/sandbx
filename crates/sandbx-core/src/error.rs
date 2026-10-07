@@ -113,10 +113,10 @@ pub enum SandboxError {
     },
 
     /// The harness could not hide its own process state, so a granted `/proc` would still
-    /// read the provider key out of its environment.
+    /// reach the provider key in its environment.
     ///
     /// Separate from [`ProcessHardening`](Self::ProcessHardening), which is about the state a
-    /// sandboxed command is born into: this one is about sandbx itself.
+    /// sandboxed command is born into.
     ProcessConcealment {
         /// What failed, for the operator to act on.
         detail: String,

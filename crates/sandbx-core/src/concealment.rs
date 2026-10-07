@@ -9,10 +9,10 @@ use crate::SandboxError;
 /// Clear this process's dumpable flag, so its own `/proc` entry stops answering a same-uid
 /// reader.
 ///
-/// With the flag clear the kernel reparents `/proc/<pid>/` to root and `environ`, `mem`,
-/// `maps` and `fd/` fail `__ptrace_may_access`, which is what keeps an exported provider key
-/// out of a tool granted `/proc`. The cost is a core dump of sandbx and a same-uid debugger
-/// attach to it; a failure is a refusal, since what fails is the concealment itself.
+/// The kernel reparents `/proc/<pid>/` to root, so `environ`, `mem`, `maps` and `fd/` fail
+/// `__ptrace_may_access` — which keeps an exported provider key out of a tool granted `/proc`.
+/// A same-thread-group read of `fd/` and `exe` stays exempt and one of `environ` does not, so
+/// `digest` and the helper re-exec are unaffected while sandbx's own `environ` closes to it too.
 pub fn conceal_process_state() -> Result<(), SandboxError> {
     nix::sys::prctl::set_dumpable(false).map_err(|errno| SandboxError::ProcessConcealment {
         detail: format!("could not clear the dumpable flag: {errno}"),

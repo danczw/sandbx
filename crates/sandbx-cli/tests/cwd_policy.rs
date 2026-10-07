@@ -169,9 +169,8 @@ fn under(home: &str) -> impl FnOnce(&mut Command) -> &mut Command + use<'_> {
     }
 }
 
-/// #173 and #184, on both subcommands: a path flag reaching the session directory would let
-/// one turn choose what the next is told it said, and the two may differ by a refusal but
-/// never by a policy.
+/// #173 and #184, on both subcommands: a flag reaching the session directory lets one turn
+/// choose what the next is told it said, and the two may differ by a refusal, never a policy.
 #[test]
 fn a_grant_reaching_an_owned_path_is_refused_on_both() {
     let home = unstored_home();
@@ -201,8 +200,7 @@ fn a_grant_reaching_an_owned_path_is_refused_on_both() {
     }
 }
 
-/// There is no exact-path hatch: naming the credential file is the request the refusal is
-/// for, not a narrower one it can honour.
+/// No exact-path hatch: naming the credential file is the request the refusal is for.
 #[test]
 fn naming_the_credential_file_itself_is_refused() {
     let home = unstored_home();
