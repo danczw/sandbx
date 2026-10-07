@@ -61,10 +61,23 @@ marker: stdout is documented as holding the answer alone. The gap is *owed*
 rather than written when asked for, so a wrap-up round that answers with nothing
 strands no blank line.
 
+A summary can hit `--max-tokens` of its own — prose about a long tool session is
+exactly the reply that would — so both bounds are named when both were hit.
+Describing a summary cut off mid-sentence as the answer to a round limit is
+worse than naming one bound too many.
+
 ## When the wrap-up round itself fails
 
 A provider error, or a reply with no content, or a `stop` that is not `Answered`:
-the first turn's outcome is kept unchanged, stderr names the failure, and the run
-falls back to everything in "What the cap used to leave behind". Never
+the first turn's outcome is kept unchanged, stderr names what happened, and the
+run falls back to everything in "What the cap used to leave behind". Never
 `?`-propagated — that would turn a turn that did real work into exit `1` with its
 text already on stdout. That residue is #188.
+
+Stdout is the part that cannot be undone. A round that streams prose and *then*
+asks for a tool has already written an answer that no transcript will hold, and
+the blank line above it is already out. The text stays — it was paid for, and
+only the operator can judge it — but stderr says plainly that it is not an answer
+and was not saved. The alternative, reporting the ordinary round-limit line, tells
+the operator stdout holds only what arrived before the cap while it visibly does
+not.

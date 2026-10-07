@@ -335,7 +335,7 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 | `agent-run` exit | means |
 |---|---|
 | `0` | the model finished its answer |
-| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. A turn out of rounds is asked once more with no tools, so stdout holds a summary of what it found, a blank line below whatever arrived before the cap; `--no-wrap-up` leaves that text alone, which is nothing at all if the model opened with a tool call |
+| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. A turn out of rounds is asked once more with no tools, so stdout usually holds a summary one blank line below whatever arrived before the cap; stderr says when that round failed instead, and `--no-wrap-up` skips it, leaving stdout with whatever the cap cut off — nothing at all if the model opened with a tool call |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
 > **Nothing asks you before an approved tool call runs.** `--allow-tool` is a

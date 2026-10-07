@@ -307,10 +307,12 @@ impl AgentRun {
                 let (outcome, summarised) = next
                     .run(&mut open, ctx, gate, history, first, &mut render)
                     .await;
-                let capped = if summarised {
-                    Capped::Summarised(rounds)
-                } else {
-                    Capped::CutShort(rounds)
+                // A round that failed after streaming prose has already put text on
+                // stdout that no transcript will account for, which `CutShort` denies.
+                let capped = match (summarised, render.wrote_after_gap()) {
+                    (true, _) => Capped::Summarised(rounds),
+                    (false, true) => Capped::Discarded(rounds),
+                    (false, false) => Capped::CutShort(rounds),
                 };
                 (Ok(outcome), Some(capped))
             }
@@ -740,6 +742,41 @@ mod tests {
         vec![text("I found nothing"), stop(StopReason::EndTurn)]
     }
 
+    /// The wrap-up round streaming prose and then spending its one round asking for a
+    /// tool anyway, which is refused above the gate, no tools being offered.
+    fn stranding_text() -> Vec<AgentEvent> {
+        vec![
+            text("here is what I found"),
+            AgentEvent::ToolCallRequested {
+                id: "call_2".to_owned(),
+                name: "ls".to_owned(),
+                input: serde_json::json!({ "path": "/nowhere" }),
+            },
+            stop(StopReason::ToolUse),
+        ]
+    }
+
+    /// Streamed text cannot be taken back, so the run has to own it on stderr rather
+    /// than claim stdout holds only what arrived before the cap.
+    #[test]
+    fn a_discarded_wrap_up_round_owns_what_it_wrote() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+        let (_root, store, session) = new_session();
+        let before = std::fs::read(session.path()).expect("the transcript exists");
+
+        let (sent, written, code) = capped(&args, stranding_text(), Some(session));
+
+        assert_eq!(sent.len(), 2, "the cap should have bought a wrap-up round");
+        assert_eq!(written, "looking\n\nhere is what I found\n");
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+
+        // The round ended on an unanswered `tool_result` like the one before it, so
+        // there is still nothing storable — only text that says otherwise.
+        let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
+            .expect("the transcript exists");
+        assert_eq!(after, before);
+    }
+
     /// A provider failure exits 1 with an empty stdout; this must not read as one (#178).
     #[test]
     fn a_turn_out_of_rounds_exits_two_with_an_answer() {
@@ -850,8 +887,8 @@ mod tests {
         let (_root, store, session) = new_session();
         let before = std::fs::read(session.path()).expect("the transcript exists");
 
-        // An empty round with a `tool_result` outstanding is `EndedMidToolUse`, which is
-        // the wrap-up round failing without a provider that can be made to fail.
+        // A round with no events at all ends without a `Stop`, which is the wrap-up
+        // round failing without a provider that can be made to fail.
         let (sent, written, code) = capped(&args, Vec::new(), Some(session));
 
         assert_eq!(sent.len(), 2, "the wrap-up round should have been tried");

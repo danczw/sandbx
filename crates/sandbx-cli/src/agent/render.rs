@@ -14,11 +14,15 @@ use crate::AgentError;
 /// How a turn that ran out of rounds ended, which no event reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Capped {
-    /// Nothing followed the cap, so stdout holds only what arrived before it.
+    /// Nothing reached stdout after the cap, so it holds only what arrived before it.
     CutShort(usize),
 
     /// A tool-less round answered from what the turn had already found.
     Summarised(usize),
+
+    /// A tool-less round wrote to stdout and then did not answer, so the text below the
+    /// gap is neither an answer nor stored. Streamed, so it cannot be taken back.
+    Discarded(usize),
 }
 
 /// Writes a turn out, split so stdout can be piped to something that wants the answer
@@ -42,6 +46,10 @@ pub(super) struct Render<W> {
     /// line.
     separating: bool,
 
+    /// Whether any text has arrived since the last [`Render::separate`], so a caller can
+    /// tell a round that wrote and then failed from one that wrote nothing.
+    after_gap: bool,
+
     /// The first write that failed, kept because `observe` has no way to end the turn.
     failed: Option<std::io::Error>,
 }
@@ -54,6 +62,7 @@ impl<W: Write> Render<W> {
             mid_line: false,
             wrote: false,
             separating: false,
+            after_gap: false,
             failed: None,
         }
     }
@@ -63,6 +72,15 @@ impl<W: Write> Render<W> {
     /// Owed, not written: the wrap-up round it separates may answer with nothing at all.
     pub(super) fn separate(&mut self) {
         self.separating = self.wrote;
+        self.after_gap = false;
+    }
+
+    /// Whether anything has reached stdout since [`Render::separate`].
+    ///
+    /// What distinguishes a wrap-up round that answered from one that streamed prose and
+    /// then failed, leaving text on stdout that no transcript accounts for.
+    pub(super) fn wrote_after_gap(&self) -> bool {
+        self.after_gap
     }
 
     /// Put one event where it belongs.
@@ -76,6 +94,7 @@ impl<W: Write> Render<W> {
                 self.write(delta.as_bytes());
                 if !delta.is_empty() {
                     self.mid_line = !delta.ends_with('\n');
+                    self.after_gap = true;
                 }
             }
             AgentEvent::Stop { reason } => {
@@ -91,9 +110,10 @@ impl<W: Write> Render<W> {
 
     /// Close the answer off, and report what the way it ended means for the exit code.
     ///
-    /// `capped` is `Some` when the turn ran out of rounds, which outranks the last
-    /// round's `max_tokens`: the bound that ended the turn is the one to name. A summary
-    /// still exits [`INCOMPLETE`] — the tool work was cut off whatever prose followed.
+    /// `capped` is `Some` when the turn ran out of rounds. Both bounds are named when
+    /// both were hit: a summary cut off at `max_tokens` reads as a whole one otherwise,
+    /// and which bound ended the turn does not change the code. Every one of them exits
+    /// [`INCOMPLETE`] — the tool work was cut off whatever prose followed it.
     pub(super) fn finish(&mut self, capped: Option<Capped>) -> Result<i32, AgentError> {
         if self.mid_line {
             self.write(b"\n");
@@ -103,28 +123,32 @@ impl<W: Write> Render<W> {
             return Err(AgentError::Output(error));
         }
 
-        match capped {
-            Some(Capped::CutShort(rounds)) => {
-                eprintln!(
-                    "sandbx: stopped after {rounds} rounds of tool calls; \
-                     raise --max-rounds to let the turn go further"
-                );
-                return Ok(INCOMPLETE);
-            }
-            Some(Capped::Summarised(rounds)) => {
-                eprintln!(
-                    "sandbx: stopped after {rounds} rounds of tool calls; \
-                     the answer above summarises what was found, \
-                     and raising --max-rounds would let the turn go further"
-                );
-                return Ok(INCOMPLETE);
-            }
-            None => {}
-        }
-
         if self.truncated {
             // Otherwise a truncated answer reads as a complete one.
             eprintln!("sandbx: answer truncated at --max-tokens");
+        }
+
+        match capped {
+            Some(Capped::CutShort(rounds)) => eprintln!(
+                "sandbx: stopped after {rounds} rounds of tool calls; \
+                 raise --max-rounds to let the turn go further"
+            ),
+            Some(Capped::Summarised(rounds)) => eprintln!(
+                "sandbx: stopped after {rounds} rounds of tool calls; \
+                 the answer above summarises what was found, \
+                 and raising --max-rounds would let the turn go further"
+            ),
+            // The text is left where it is rather than disowned quietly: it was paid
+            // for, and the operator is the only one who can judge it.
+            Some(Capped::Discarded(rounds)) => eprintln!(
+                "sandbx: stopped after {rounds} rounds of tool calls; \
+                 the text after the blank line is not an answer and was not saved, \
+                 and raising --max-rounds would let the turn go further"
+            ),
+            None => {}
+        }
+
+        if capped.is_some() || self.truncated {
             return Ok(INCOMPLETE);
         }
 
@@ -214,8 +238,12 @@ pub(super) mod tests {
     /// The turn's own bound, which no event reports: a round-limited turn ends on a
     /// `ToolUse` stop, the same one a healthy round ends on.
     #[test]
-    fn a_turn_out_of_rounds_reports_incomplete_either_way() {
-        for capped in [Capped::CutShort(3), Capped::Summarised(3)] {
+    fn a_turn_out_of_rounds_is_always_incomplete() {
+        for capped in [
+            Capped::CutShort(3),
+            Capped::Summarised(3),
+            Capped::Discarded(3),
+        ] {
             let mut render = Render::new(Vec::new());
             render.event(&text("looking"));
             render.event(&stop(StopReason::ToolUse));
@@ -258,6 +286,22 @@ pub(super) mod tests {
 
         let terminated = across_the_cap(&[text("looking\n")], &[text("found three")]);
         assert_eq!(terminated, "looking\n\nfound three\n");
+    }
+
+    /// What tells a wrap-up round that answered from one that streamed prose and then
+    /// failed, leaving stdout holding text no transcript will account for.
+    #[test]
+    fn text_arriving_after_the_gap_is_noticed() {
+        let mut render = Render::new(Vec::new());
+        render.event(&text("looking"));
+        render.separate();
+        assert!(!render.wrote_after_gap());
+
+        render.event(&text(""));
+        assert!(!render.wrote_after_gap(), "an empty delta is not text");
+
+        render.event(&text("found three"));
+        assert!(render.wrote_after_gap());
     }
 
     /// The gap is owed, not written, so neither end of it can strand a blank line.
