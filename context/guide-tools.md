@@ -125,9 +125,17 @@ helper stage reports — a ruleset the kernel would not take, a filter that woul
 not install, a malformed argv — is a `Failed`, `Denied` reading as "refused by
 the sandbox policy" and that being false about a kernel that would not unshare.
 What separates those from a command that ran and exited non-zero is the
-`subject`: ``sandbox `cmd` `` against ``run `cmd` ``. A `Landlock` detail may
-name a path out of the policy, which the rule below permits only because
-`agent-run` already names its roots in the system prompt.
+`subject`: ``sandbox `cmd` `` against ``run `cmd` ``.
+
+`Landlock` is the one of them whose detail can name a host path — the crate
+stringifies the root it could not open — and that includes the two
+`agent-run` withholds from the system prompt on purpose: the
+`allow_system_executables` roots, and a grant that did not canonicalize
+(`agent/orientation.rs`). What keeps it inside the rule below is that no
+caller can provoke it: the open fails on an operator-supplied root, the same
+way on every call, so a sequence of probes reads back as one constant rather
+than as a map. The detail is capped at `STDERR_LIMIT`, which is narrower than
+the `max_bytes` a command's own output already travels under.
 
 A `reason` or `detail` travels back inside a `tool_result`, which a
 prompt-injected model relays, so neither may name a grant the caller does not
