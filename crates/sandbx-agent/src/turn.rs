@@ -335,9 +335,10 @@ where
         }
         let blocks = round.blocks;
 
-        // The API rejects an empty content array, and a blockless message would
-        // invalidate every later request.
-        if blocks.is_empty() {
+        // Reasoning does not count: it is stripped on the way out, so a round that
+        // produced only that leaves a message with an empty content array, which the API
+        // rejects — and it answers nothing, which is what the two exits below are for.
+        if !blocks.iter().any(|block| !block.is_thinking()) {
             // Unless a `tool_result` is waiting to be answered; see `EndedMidToolUse`.
             if matches!(produced.last(), Some(last) if matches!(last.role, Role::User)) {
                 return Err(TurnError::EndedMidToolUse);

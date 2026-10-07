@@ -50,6 +50,12 @@ pub(super) struct Render<W> {
     /// tell a round that wrote and then failed from one that wrote nothing.
     after_gap: bool,
 
+    /// Whether reasoning was asked for. Off by default, so a provider that streams a
+    /// summary unasked is dropped here rather than put in front of an operator who did
+    /// not want it — [`crate::agent::AgentRun::show_thinking`] is the only thing that
+    /// turns it on.
+    show_thinking: bool,
+
     /// Whether stderr is part-way through a line of reasoning, so the round's own stderr
     /// lines do not continue one.
     thinking_mid_line: bool,
@@ -67,9 +73,17 @@ impl<W: Write> Render<W> {
             wrote: false,
             separating: false,
             after_gap: false,
+            show_thinking: false,
             thinking_mid_line: false,
             failed: None,
         }
+    }
+
+    /// Let the model's reasoning through to stderr.
+    #[must_use]
+    pub(super) fn showing_thinking(mut self, show: bool) -> Self {
+        self.show_thinking = show;
+        self
     }
 
     /// Ask for a blank line before whatever is written next.
@@ -83,6 +97,13 @@ impl<W: Write> Render<W> {
     /// Whether anything has reached stdout since [`Render::separate`].
     pub(super) fn wrote_after_gap(&self) -> bool {
         self.after_gap
+    }
+
+    /// Terminate a part-written line of reasoning, so nothing continues it.
+    fn end_thinking_line(&mut self) {
+        if std::mem::take(&mut self.thinking_mid_line) {
+            eprintln!();
+        }
     }
 
     /// Put one event where it belongs.
@@ -101,9 +122,10 @@ impl<W: Write> Render<W> {
             }
             // Stderr, stdout being the answer: reasoning is about the answer, and a
             // summary of it at that. Empty on a run that did not ask for one, the API
-            // sending the increment either way.
+            // sending the increment either way — and gated anyway, rather than trusting
+            // that it stays empty.
             AgentEvent::Thinking { delta } => {
-                if !delta.is_empty() {
+                if self.show_thinking && !delta.is_empty() {
                     eprint!("{delta}");
                     self.thinking_mid_line = !delta.ends_with('\n');
                 }
@@ -113,9 +135,7 @@ impl<W: Write> Render<W> {
                 // Here and not at the block's close, which an unsigned block never
                 // reaches: a round's own stderr lines follow, and none may continue a
                 // reasoning line.
-                if std::mem::take(&mut self.thinking_mid_line) {
-                    eprintln!();
-                }
+                self.end_thinking_line();
             }
             // A requested call is announced where it is decided, which knows whether it
             // ran. So a refusal above the gate, or in the wrap-up round, reaches only the
@@ -137,6 +157,10 @@ impl<W: Write> Render<W> {
     /// and which bound ended the turn does not change the code. Every one of them exits
     /// [`INCOMPLETE`] — the tool work was cut off whatever prose followed it.
     pub(super) fn finish(&mut self, capped: Option<Capped>) -> Result<i32, AgentError> {
+        // Again here, for the round that never reached a `Stop` — a stream error or the
+        // per-round timeout — whose report is the next thing on stderr.
+        self.end_thinking_line();
+
         if self.mid_line {
             self.write(b"\n");
         }
@@ -230,12 +254,14 @@ pub(super) mod tests {
         (String::from_utf8(render.out).expect("utf-8"), code)
     }
 
-    /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Stderr
-    /// cannot be captured here — `eprint!` writes to the process's own — so what this
-    /// pins is the half that would corrupt a caller's output.
+    /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Asserted
+    /// with reasoning asked for as well as not, because that is the configuration where
+    /// stderr is written at all. Stderr itself cannot be captured here — `eprint!` writes
+    /// to the process's own — so what this pins is the half that would corrupt a caller's
+    /// output.
     #[test]
     fn no_part_of_the_reasoning_reaches_stdout() {
-        let (written, code) = rendered(&[
+        let events = [
             AgentEvent::Thinking {
                 delta: "weighing it up".to_string(),
             },
@@ -248,10 +274,22 @@ pub(super) mod tests {
             },
             text("the answer"),
             stop(StopReason::EndTurn),
-        ]);
+        ];
 
-        assert_eq!(written, "the answer\n");
-        assert_eq!(code.expect("clean turn"), 0);
+        for show in [false, true] {
+            let mut render = Render::new(Vec::new()).showing_thinking(show);
+            for event in &events {
+                render.event(event);
+            }
+            let code = render.finish(None);
+
+            assert_eq!(
+                String::from_utf8(render.out).expect("utf-8"),
+                "the answer\n",
+                "--show-thinking={show}"
+            );
+            assert_eq!(code.expect("clean turn"), 0);
+        }
     }
 
     /// A turn that only reasoned wrote nothing, so the "no answer" report is still owed —
