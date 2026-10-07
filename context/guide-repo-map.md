@@ -272,6 +272,8 @@ that users reasonably read as the same flags.
     those paths, and how the same hazard through `/proc` is closed instead
 17. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
     more, and what that costs
+18. `decision-grant-identity.md` — why a grant is pinned to the object the
+    harness vetted, and what an unpinned one costs
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.

@@ -196,6 +196,8 @@ Spellings, not inodes: a directory replaced by another real directory at the sam
 name — a `rename(2)`, not a link — reads back as the name it was granted. Closing
 that needs the vetted `(dev, ino)` to cross the seam, or the vetted descriptor
 itself to be inherited through the `exec`; both, and what each costs, are #212.
+`decision-grant-identity.md` records which of the two it is, and why a grant that
+reaches the helper unpinned is refused rather than opened.
 
 Three facts the readback rests on: a task may always read its own `/proc/self/fd`
 (`proc_fd_permission` exempts a same-thread-group reader, which is also why #192's
