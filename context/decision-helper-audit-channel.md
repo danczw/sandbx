@@ -167,9 +167,9 @@ carries no detail at all — the reason reaches the operator on the helper's for
 stderr.
 
 `REPORTED_BY_HELPER` is a *subset* of what `SandboxError::label` can return, not all
-of it, and the four it leaves out are the point: `timeout`, `spawn_failed`,
-`path_not_allowed` and `unresolvable` are decisions sandbx and `FsGuard` make for
-themselves. A channel record outranks the exit status, so admitting `timeout` would
+of it, and the five it leaves out are the point: `timeout`, `spawn_failed`,
+`path_not_allowed`, `unresolvable` and `not_found` are decisions sandbx and
+`FsGuard` make for themselves. A channel record outranks the exit status, so admitting `timeout` would
 let a forged line claim a kill that never happened *and* suppress the real outcome —
 on a trail whose whole purpose is that `reason="timeout"` can be filtered. What the
 criterion turns on is whether the label names one decider, not what failed:

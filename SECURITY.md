@@ -353,6 +353,10 @@ These are documented behaviour, and reports of them will be closed as such:
 - A command reading or executing files under a path you granted with
   `--allow-read`, including system binaries granted by default so that commands
   can start at all.
+- A tool error reporting that a file does not exist, where the path is inside a
+  root you granted. That area is already yours to enumerate with `ls`, and the
+  agent has to tell a wrong filename from a refused one. Outside every granted
+  root, absence and refusal stay indistinguishable.
 - A command *reading* a path the CLI granted write on — whether you typed
   `--allow-write` or the working-directory default derived it. The CLI grants read
   alongside write either way, because a tool that can rewrite a tree but not read

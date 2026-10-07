@@ -21,6 +21,26 @@ Tools hold **handles, not paths**. That is what closes the TOCTOU window: if the
 leaf became a symlink between check and use, the open fails. `ls` is the one
 exception, because `read_dir` has no handle form.
 
+### A refusal says nothing, except inside a grant
+
+`canonicalize` fails differently for a missing path (ENOENT), an unreadable
+parent (EACCES) and a path that resolves out of bounds. Handing the difference
+back makes the guard a filesystem oracle, and the refusal travels inside a
+`tool_result` — so a prompt-injected model can map the host with it. Every
+refusal outside the roots is therefore the same refusal.
+
+`conceal_unless_granted` is the one exception, and it has a single rule: the
+nearest ancestor that *does* resolve decides. Inside a granted root the caller
+could enumerate the directory anyway, so absence there is honest, and it is
+`SandboxError::NotFound` — gated on `ErrorKind::NotFound`, because a `000`
+directory inside a grant is still a refusal and keeps `Unresolvable`. Absence is
+no verdict, so it emits no audit record, and `sandbx-tools` maps it to
+`ToolError::Failed` rather than `Denied` (#180).
+
+Both entry points go through the gate. `check_write` resolves the parent, not the
+leaf, and reports the path the caller asked for rather than the parent that
+failed.
+
 ## Seam 2 — argv, into the helper process
 
 The policy crosses *two* process boundaries as argv:
