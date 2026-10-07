@@ -177,11 +177,13 @@ followed. A link redirected between the two is checked against one directory and
 granted on another (#205). Two halves close it:
 
 ```
-harness:  every grant resolved before it enters the policy
-          Grants::policy ──► resolved(absolute(flag))
-          allow_system_executables ──► canonicalize per path
+harness:  every grant resolved and pinned before it enters the policy
+          Grants::policy ──► resolved(absolute(flag)) ──► VettedPath::vet
+          allow_system_executables ──► vet per path
 helper:   open_grant ──► PathFd::new ──► read_link("/proc/self/fd/<n>")
-                            opened != granted  ──►  GrantRedirected, whole run refused
+                            opened != granted  ──►  GrantRedirected, run refused
+                        ──► ObjectId::of_fd
+                            opened != vetted   ──►  GrantReplaced, run refused
 ```
 
 So **a policy's granted paths must resolve to themselves** — a crate-wide
@@ -192,12 +194,15 @@ from, and the comparison would be against whatever the links point at by then.
 `open_grant` is the only way to get a `PathFd` in the crate, so a rule cannot be
 added without the confirmation.
 
-Spellings, not inodes: a directory replaced by another real directory at the same
-name — a `rename(2)`, not a link — reads back as the name it was granted. Closing
-that needs the vetted `(dev, ino)` to cross the seam, or the vetted descriptor
-itself to be inherited through the `exec`; both, and what each costs, are #212.
-`decision-grant-identity.md` records which of the two it is, and why a grant that
-reaches the helper unpinned is refused rather than opened.
+Spellings *and* inodes. A grant carries the `(dev, ino)` the harness vetted it as,
+so a directory replaced by another real directory at the same name — a `rename(2)`,
+not a link — is refused as `GrantReplaced` even though it reads back as the name it
+was granted. The two checks answer different questions: the readback asks whether
+the name still leads where it led, the pin asks whether the thing at the end of it
+is the same thing. Neither subsumes the other, and only the readback can name both
+paths in its refusal. `decision-grant-identity.md` records why the pin travels with
+the grant rather than beside it, and why an unpinned grant is unconstructible rather
+than refused.
 
 Three facts the readback rests on: a task may always read its own `/proc/self/fd`
 (`proc_fd_permission` exempts a same-thread-group reader, which is also why #192's
@@ -208,17 +213,21 @@ spellings are in one mount namespace; and a grant naming nothing still fails at
 
 The mount namespace is the one to be careful with, because `open_grant` runs in
 stage 2 — inside whatever stage 1 unshared, so a mount made there is a mount the
-comparison sees. The property to keep is about *spellings*, not about mounts: a
-file bind-mounted over `/etc/hosts` still reads back `/etc/hosts`, measured, and
-is fine. What is not fine is a `pivot_root`, an `MS_MOVE` over a granted root, or
+comparison sees. The readback is about *spellings*, not about mounts: a file
+bind-mounted over `/etc/hosts` still reads back `/etc/hosts`, measured, and
+passes. The pin is not — a bind over a granted path is fine only if it predates
+the vet, since one made after leaves the spelling alone and changes the object,
+which refuses as `grant_replaced`. What is not fine is a `pivot_root`, an
+`MS_MOVE` over a granted root, or
 a bind whose source is unlinked — `read_link` then appends `" (deleted)"`. Any of
 those makes every grant read back as something else, so the run refuses under a
 label naming the grant rather than the mount that moved it, which is the hardest
 shape to attribute: the message accuses the innocent party.
 
-Decided in the helper, so it carries a `HelperRefusal` and crosses the audit
-channel as `grant_redirected`: only the stage holding the descriptor can compare
-what it opened against what it was told to.
+Both are decided in the helper, so each carries a `HelperRefusal` and crosses the
+audit channel — `grant_redirected` and `grant_replaced`: only the stage holding the
+descriptor can compare what it opened against what it was told to open, or against
+the object it was told to find there.
 
 ## Where the command starts
 
@@ -245,14 +254,14 @@ itself gets its own directory — which that method's doc carries.
 
 ## Syscall denylist
 
-28 entries in `BLOCKED_SYSCALLS`; the filter is built from that list and nothing
+35 entries in `BLOCKED_SYSCALLS`; the filter is built from that list and nothing
 else. Three rungs of evidence, strongest first:
 
 | Rung | Where | Covers |
 |---|---|---|
-| a real kernel refuses the call | `tests/enforcement_syscalls.rs` | 4 of the 28 — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` rule, which is not a list entry |
-| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp/tests/mod.rs` | all 28, plus what the `AF_UNIX`, `clone`-flag and x32 rules compare against |
-| the documented set matches the list | `tests/denylist.rs` | all 28 |
+| a real kernel refuses the call | `tests/enforcement_syscalls.rs` | 4 of them — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` rule, which is not a list entry |
+| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp/tests/mod.rs` | every entry, plus what the `AF_UNIX`, `clone`-flag and x32 rules compare against |
+| the documented set matches the list | `tests/denylist.rs` | every entry |
 
 The middle rung is a test-only classic-BPF interpreter run over a synthetic
 `seccomp_data`, which is why it can cover every entry without spawning anything.
@@ -286,7 +295,7 @@ cannot loosen an earlier one.
 
 | Filter | Action | Why not `EPERM` |
 |---|---|---|
-| the 28 entries, the conditional `socket`, `setsockopt`, `sendto` and `sendmsg` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
+| every entry of the list, the conditional `socket`, `setsockopt`, `sendto` and `sendmsg` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
 | `clone3` | `ENOSYS` | glibc 2.34+ calls it from `pthread_create` and falls back to `clone` only on `ENOSYS`; `EPERM` breaks every threaded program instead of routing it onto the filtered `clone` |
 | any non-negative `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
 

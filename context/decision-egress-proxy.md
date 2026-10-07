@@ -133,13 +133,25 @@ It is also the only route to resolution for a statically linked musl binary.
 (`decision-port-allowlist.md`), so that gap closes here or nowhere. The files
 close it: musl reads `/etc/hosts`, and a static binary reads it too.
 
-One consequence worth stating in the other direction, because it is the only
-flag that has it: `--allow-dns` makes `--allow-read /etc` *unnecessary*.
-Landlock binds a rule to the inode, so by the time stage 2 opens those three
-paths they are sandbx's files, and the read rules `ruleset::rights` adds for
-them reach nothing else. The alternative route — `--dns-over-tcp
---allow-network 53 --allow-read /etc` — grants the command the whole directory
-and leaves every name resolvable.
+One consequence worth stating in the other direction, because it is the only flag
+that has it: `--allow-dns` makes `--allow-read /etc` unnecessary, and makes a grant
+naming one of the files it replaces a refusal. Landlock binds a rule to the inode,
+so by the time stage 2 opens those three paths they are sandbx's files, and the
+read rules `ruleset::rights` adds for them reach nothing else. A grant naming one
+of them is pinned to the host's file instead, which the bind has already replaced —
+so `SandboxPolicy::grant_bound_by_resolver` refuses the pair, as
+`GrantBoundByResolver` from `command_line` and as `PolicyError::DnsGrantsBoundFile`
+at the flag. Which names those are is `resolver::bound_by_resolver`, and it takes
+each entry both by its own name and by what that name resolves to: a systemd
+`/etc/resolv.conf` is a symlink, `mount(2)` resolves its target, so the bind lands
+on the stub and a grant spelling the stub directly is refused too. The resolving is
+of the entries and never of the operator's path, which arrives resolved already.
+Exact names and not the directory holding them: binding a file inside `/etc` leaves
+`/etc`'s own inode alone, so `--allow-read /etc` beside the flag still works, and it
+is what a command that needs the rest of the directory should pass — which is what
+both refusals now say. The alternative route — `--dns-over-tcp --allow-network 53
+--allow-read /etc` — grants the command the whole directory and leaves every name
+resolvable.
 
 ## A name outside the allowlist is absent, not refused
 

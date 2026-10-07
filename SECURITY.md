@@ -43,7 +43,7 @@ run through `SandboxedCommand`:
 | name resolution | when `--allow-dns NAME` is given: each name resolved in the harness before the command starts, then sandbx's own `hosts`, the host's `nsswitch.conf` with `hosts` and `networks` rewritten to `files` (leaving glibc no `dns` source, and every other database as the host had it) and a nameserver-less `resolv.conf`, bind-mounted read-only over `/etc` in a mount namespace of the command's own | which names resolve. A name the flag did not list does not resolve, immediately rather than by timeout, and the command is left no nameserver to ask instead. It bounds resolution and **not** connection — an IP literal, or an address the command already holds, is reachable on an allowlisted port exactly as before. It grants no path: the read rules are on the bound files themselves, so the flag needs no `--allow-read /etc`, and it is the one flag that makes a policy smaller. The run is refused in each shape where a nameserver the command could still reach would answer for every name — alongside `--dns-over-tcp`, alongside bare `--allow-network`, alongside `--allow-unix-sockets` (which reaches nscd's socket, asked before `nsswitch.conf` is read), or with 53 in the port list. Those four are decided on the policy itself (`SandboxPolicy::unbounded_resolution`), so an embedder calling `SandboxedCommand` meets them as well as an operator typing flags, and `HelperArgs::decode` refuses an argv carrying one; the `sandbx` CLI refuses a fifth of its own — a name allowlist with no IP egress at all, which bounds resolution to addresses nothing can reach, and is pointless rather than unenforceable. A host whose `/etc/hosts` or `/etc/nsswitch.conf` is a symlink refuses the run as well: a bind resolves the link, so it would land on the target and leave the link itself replaceable under a write grant. `resolv.conf` is exempt, a forged one naming a nameserver no bounded policy can reach: a symlinked one is bound over its target and gets no read rule, so the command reads `EACCES` there rather than sandbx's body unless some other grant reaches the target. The bound does not rest on that file — `nsswitch.conf` leaves glibc no `dns` source, and musl, which reads it and falls back to `127.0.0.1` when it cannot, is left no allowlisted port to reach a nameserver on. The flag also needs a host on which an unprivileged user namespace may mount, which a kernel restricting them does not give: under Ubuntu's `kernel.apparmor_restrict_unprivileged_userns=1` the `unshare` succeeds and `CAP_SYS_ADMIN` is then denied inside it, so the `MS_REC\|MS_PRIVATE` that precedes every bind fails with `EACCES`, no bind is attempted, and sandbx refuses the run rather than leave resolution unbounded |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
-| syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace and mount manipulation, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create`. Namespace creation is denied on every route: `clone` is filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`. A foreign architecture is killed outright rather than refused per call — an i386 binary on x86\_64, or AArch32 on aarch64 — since its syscall numbers mean something else. On x86\_64 the x32 ABI is refused wholesale for the same reason, and needs a rule of its own because it shares the architecture the filter gates on |
+| syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace manipulation, mounting by name (`mount`) and by descriptor (`open_tree`, `move_mount`, `fsopen`, `fsconfig`, `fsmount`, `fspick`), `mount_setattr`, which would clear `MS_RDONLY` on a mount already there, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create`. Namespace creation is denied on every route: `clone` is filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`. A foreign architecture is killed outright rather than refused per call — an i386 binary on x86\_64, or AArch32 on aarch64 — since its syscall numbers mean something else. On x86\_64 the x32 ABI is refused wholesale for the same reason, and needs a rule of its own because it shares the architecture the filter gates on |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (the bounding set is best-effort — see below) |
 | process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` to leave its process group |
 | process signalling | PID namespace | a command cannot signal, or even name, any process outside its own namespace |
@@ -119,11 +119,19 @@ Five properties matter as much as the list:
   `/proc/self/fd` and refuses the whole run when it names something other than what
   it was told to open (`open_grant` in
   `sandbx-core/src/helper/ruleset/opened.rs`). So a grant whose *own* spelling is
-  redirected is refused rather than opened, and the refusal names both paths. What
-  is compared is the path, not the inode: a directory swapped for another real
-  directory under the same name — a `rename(2)`, not a symlink — reads back as the
-  name it was granted; pinning the inode is #212. A symlink *inside* a grant is a
-  separate question, under *Not vulnerabilities* below.
+  redirected is refused rather than opened, and the refusal names both paths. Both
+  the path and the object are compared at the harness/helper seam, where a
+  descriptor exists to measure: a grant crosses carrying the `(dev, ino)` the
+  harness vetted, and the helper `fstat`s the descriptor it opened and refuses the
+  whole run as `grant_replaced` when the object differs. So a directory swapped for
+  another real directory under the same name — a `rename(2)`, not a symlink — is
+  refused although it reads back as the name it was granted
+  (`a_grant_renamed_over_after_it_was_vetted_is_refused` in
+  `sandbx-core/src/helper/ruleset/tests/opened.rs`). The in-process layer compares
+  the path alone, a non-claim below. An unpinned grant does not arise to be refused:
+  `SandboxPolicy::grant` takes a vetted path and nothing else, so the omission is a
+  compile error rather than a run that would not start. A symlink *inside* a grant
+  is a separate question, under *Not vulnerabilities* below.
 
 ## What sandbx does *not* claim
 
@@ -151,6 +159,13 @@ Five properties matter as much as the list:
   the directory holding the binary, so a no-flag run from a user-level install
   prefix (`~/.cargo/bin`, `~/.local/bin`) grants write there; a `/usr`-rooted
   prefix is still refused, as a path every command may execute.
+- **The object pin is the seam's, not the in-process layer's.** The six tools that
+  run in-process — `read`, `write`, `edit`, `ls`, `grep` and `find` — canonicalize
+  each requested path at every access and compare it against roots `FsGuard::new`
+  canonicalized once, never against the object, so a real directory put at a
+  granted name is in bounds for as long as it sits there: resolving once pins what
+  a granted *link* meant, and nothing about what a granted *name* holds. `bash`
+  crosses into the helper and is refused; #212 carries that half.
 - **Write access to a project tree is write access to what you run in it next.**
   A granted tree — typed, or derived from the working directory — almost always
   holds files that execute outside the sandbox later, under your own account:
