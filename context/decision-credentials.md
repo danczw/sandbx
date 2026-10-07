@@ -75,10 +75,14 @@ problem with a different answer:
 - A sandboxed command no longer inherits the harness's environment (#98). The
   policy names what crosses, so a key in sandbx's environment is not in the
   child's. See [decision-environment-allowlist.md](decision-environment-allowlist.md).
-- Handing a tool a credential it legitimately needs — `bash` running `gh` — is
-  #41. The shape sketched there is an opaque placeholder plus a TLS-terminating
-  proxy that resolves the real value per request, so the secret never enters the
-  child's memory. It waits on a tool needing one.
+- Handing a tool a credential it legitimately needs — `bash` running `gh` — has
+  no mechanism, and the sketch this document used to carry (an opaque placeholder
+  plus a TLS-terminating proxy) is not one either: every piece of it is #145's
+  proxy, its interception is cooperation rather than enforcement, and terminating
+  TLS widens the boundary it would narrow. What is offered instead is a single
+  refusal — `agent-run` will not take `--allow-env ANTHROPIC_API_KEY`, the one
+  name this document's tier 1 dereferences. See
+  [decision-tool-credentials.md](decision-tool-credentials.md).
 
 The ordering matters: #41 could not be designed while the environment was shared
 wholesale, which is why #98 landed first and separately.

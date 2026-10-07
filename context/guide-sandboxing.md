@@ -343,7 +343,10 @@ Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
   a clippy error, but convention plus tooling is not a capability system.
 - **A variable passed through is passed whole.** The environment allowlist is by
   name; there is no redaction and no per-tool scoping, and every descendant
-  inherits it. Credential injection without exposing the value is #41.
+  inherits it. One name is refused rather than passed — `agent-run` will not take
+  `--allow-env ANTHROPIC_API_KEY` — and that is the whole of it; handing a tool a
+  credential without exposing the value has no mechanism, and
+  `decision-tool-credentials.md` says why none is claimable.
 - **The policy is readable from inside.** Granted paths and allowlisted variable
   names cross as argv, and the command can read `/proc/self/cmdline`. Names only,
   never values — which is why there is no `--allow-env NAME=VALUE`, and why
