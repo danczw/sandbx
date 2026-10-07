@@ -85,6 +85,44 @@ fn the_working_directory_is_readable_and_writable() {
     );
 }
 
+/// What a no-flag run has always done, now said rather than inherited: the derived default
+/// grants write over the cwd, so the command starts where it already started (#191).
+#[test]
+fn a_no_flag_run_starts_in_the_working_directory() {
+    let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
+        .policy()
+        .expect("the flags describe a policy");
+
+    assert_eq!(policy.working_root(), Some(cwd().as_path()));
+}
+
+/// The case #191 is about: with a path flag the cwd is refused, so inheriting it starts the
+/// command outside its own sandbox.
+#[test]
+fn a_path_flag_moves_where_the_command_starts() {
+    let work = tempfile::tempdir().expect("a temporary directory");
+    let root = work.path().to_str().expect("a UTF-8 path");
+
+    let policy = sandbox_run(&[
+        "sandbx",
+        "sandbox-run",
+        "--allow-read",
+        "/etc",
+        "--allow-write",
+        root,
+        "--",
+        "true",
+    ])
+    .policy()
+    .expect("the flags describe a policy");
+
+    assert_eq!(
+        policy.working_root(),
+        Some(work.path()),
+        "the command would have started outside what the flags granted"
+    );
+}
+
 /// Not additive: a deliberately tight `--allow-read /srv` would otherwise gain write
 /// over the working directory too.
 #[test]

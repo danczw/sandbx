@@ -399,3 +399,55 @@ fn a_pin_refusal_names_itself_on_the_channel() {
         "the expected digest did not reach the caller: {error}"
     );
 }
+
+/// The policy is judged in one process and opened in another, and only the stage holding the
+/// descriptor can say which inode it landed on — so the mismatch has to cross the channel as
+/// a refusal rather than reaching the caller as a sandbox that was never installed (#205).
+///
+/// A grant naming a symlink, which is what a redirect leaves behind: the harness resolves
+/// every grant, so a policy still carrying a link is one whose target moved after the check.
+#[test]
+fn a_redirected_grant_names_itself_on_the_channel() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("work");
+    let link = dir.path().join("granted");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let policy = SandboxPolicy::default()
+        .allow_system_executables()
+        .allow_read(&link);
+
+    let (result, lines) = capture(|| {
+        SandboxedCommand::new("/bin/true", policy)
+            .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+            .output()
+    });
+    let error = result.expect_err("a grant that opened elsewhere is not a command that ran");
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("decision=failed") && line.contains("grant_redirected")),
+        "a redirected grant left no record naming itself: {lines:?}"
+    );
+    assert!(
+        matches!(
+            error,
+            SandboxError::HelperRefused {
+                refusal: HelperRefusal::GrantRedirected,
+                ..
+            }
+        ),
+        "the refusal reached the caller as something else: {error:?}"
+    );
+    // Both spellings, or the operator cannot tell which grant moved or where it went.
+    let message = error.to_string();
+    for named in [&link, &target] {
+        assert!(
+            message.contains(named.to_str().unwrap()),
+            "{} did not reach the caller: {message}",
+            named.display()
+        );
+    }
+}

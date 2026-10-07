@@ -138,7 +138,7 @@ requested(policy)  ──► Requested { handled, rules, net }   ◄── negot
   handle_access(handled)
   net == Ports  ──► handle_access(net handled)       ◄── both before create
                                    create
-  for rules: PathFd::new ──► add_rule
+  for rules: open_grant ──► add_rule        ◄── opens, then confirms what it opened
   net == Ports  ──► for ports: NetPort::new(port, granted) ──► add_rule
 restrict_self()
 enforcement_verdict()
@@ -168,6 +168,58 @@ A dir-only right on a regular file **fails `add_rule`** under `HardRequirement` 
 so the `& from_file(abi)` narrowing is not a tidying step. Dropping it would
 refuse every policy naming a regular file, which `--allow-read ./config.toml`
 does. It does not degrade quietly; there is no quiet left to degrade into.
+
+## The path checked is the path opened
+
+A policy is built in one process and its rules are opened in another, and
+`PathFd::new` opens `O_PATH | O_CLOEXEC` with no `O_NOFOLLOW` — every component is
+followed. A link redirected between the two is checked against one directory and
+granted on another (#205). Two halves close it:
+
+```
+harness:  every grant resolved before it enters the policy
+          Grants::policy ──► resolved(absolute(flag))
+          allow_system_executables ──► canonicalize per path
+helper:   open_grant ──► PathFd::new ──► read_link("/proc/self/fd/<n>")
+                            opened != granted  ──►  GrantRedirected, whole run refused
+```
+
+So **a policy's granted paths must resolve to themselves** — a crate-wide
+invariant, stated on `SandboxPolicy::grant`. A symlinked spelling is refused and
+not corrected, because `HelperArgs::decode` builds a policy through `grant` too:
+resolving there would resolve in the very process the grant is meant to be safe
+from, and the comparison would be against whatever the links point at by then.
+`open_grant` is the only way to get a `PathFd` in the crate, so a rule cannot be
+added without the confirmation.
+
+Three facts the readback rests on: a task may always read its own `/proc/self/fd`
+(`proc_fd_permission` exempts a same-thread-group reader, which is also why #192's
+dumpable clearing does not reach it, and stage 2 is a fresh `execve` that resets
+the flag anyway); `hardening::isolate` unshares no `CLONE_NEWNS`, so both
+spellings are in one mount namespace; and a grant naming nothing still fails at
+`PathFd::new` with `SandboxError::Landlock`, unchanged.
+
+Decided in the helper, so it carries a `HelperRefusal` and crosses the audit
+channel as `grant_redirected`: only the stage holding the descriptor can compare
+what it opened against what it was told to.
+
+## Where the command starts
+
+`SandboxPolicy::working_root` — the first writable *directory* the policy grants,
+else the first readable one — and `None` when it grants neither, where the caller's
+own directory is inherited. One derivation in the crate that owns the policy, so
+the spawn and the orientation line the model reads cannot disagree (#191).
+
+A directory and not merely the first path: `--allow-write /dev/null` is an ordinary
+grant and a `chdir` to a file fails the spawn with `ENOTDIR`. Not over
+`granted_paths()` either, whose `Axis::ALL` order would start a writable run
+read-only and an exec-only run inside the system binaries.
+
+Applied in `helper_command` (`command.rs`), not in `spawn::command`: that builder is
+also what stage 2 uses to *become* the command, after the ruleset is installed, and
+a post-Landlock `chdir` is a risk this does not need. Set once on stage 1, inherited
+across both `exec`s. It is not in the argv, so a caller spawning `command_line()`
+itself gets its own directory — which that method's doc carries.
 
 ## Syscall denylist
 

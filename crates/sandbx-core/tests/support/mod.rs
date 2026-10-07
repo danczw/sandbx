@@ -15,22 +15,29 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 /// `exec` happens *after* the restrictions are applied, so the interpreter and shared
 /// libraries must stay reachable. Program directories need read *and* execute;
 /// `ld.so.cache` the loader only reads.
+///
+/// Resolved, as every grant must be: a merged-`/usr` host spells `/bin` as a symlink, and
+/// the helper refuses a grant that opens as something else.
 pub(crate) fn runtime_paths(policy: SandboxPolicy) -> SandboxPolicy {
     let policy = ["/usr", "/bin", "/lib", "/lib64"]
         .iter()
-        .filter(|p| Path::new(p).exists())
-        .fold(policy, |acc, p| acc.allow_read_execute(p));
+        .filter_map(|p| Path::new(p).canonicalize().ok())
+        .fold(policy, SandboxPolicy::allow_read_execute);
 
     ["/etc/ld.so.cache"]
         .iter()
-        .filter(|p| Path::new(p).exists())
-        .fold(policy, |acc, p| acc.allow_read(p))
+        .filter_map(|p| Path::new(p).canonicalize().ok())
+        .fold(policy, SandboxPolicy::allow_read)
 }
 
 /// Probes live under `target/`, which `runtime_paths` does not cover; without this a denial
 /// test passes because nothing ran rather than because the kernel refused.
 pub(crate) fn allow_probe(policy: SandboxPolicy, probe: &str) -> SandboxPolicy {
-    let dir = Path::new(probe).parent().expect("probe path has a parent");
+    let dir = Path::new(probe)
+        .parent()
+        .expect("probe path has a parent")
+        .canonicalize()
+        .expect("the probe directory exists");
     policy.allow_read_execute(dir)
 }
 
