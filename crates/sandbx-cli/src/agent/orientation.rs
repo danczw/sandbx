@@ -57,8 +57,8 @@ fn tools_line(approved: &[&str]) -> String {
 /// It admits the system binaries without listing them: a model told every other path is
 /// refused may decline a command that would in fact have started.
 ///
-/// `start` is where a command is spawned, and is left out when the policy grants nowhere to
-/// be — the one case where the cwd is inherited, and nothing here is true to say about it.
+/// `start` is `None` where there is nothing true to say: either the policy grants nowhere to
+/// be and the cwd is inherited, or [`start_root`] dropped a directory this sentence leaves out.
 fn roots_line(roots: &[String], start: Option<&Path>) -> String {
     // Its own sentence: the roots are the bound, and this is a fact about the run inside it.
     let starts_in = match start {
@@ -126,9 +126,9 @@ fn named(roots: &[(PathBuf, Vec<&str>)]) -> Vec<String> {
 /// Where a command starts, when that is one of the roots [`work_roots`] named.
 ///
 /// Canonicalized because that list is, so the two cannot spell one directory two ways. Dropped
-/// when the list does not hold it at all: the system binaries are left out of it, and
-/// `--allow-read /usr --allow-read /work` would otherwise start a command in `/usr` in a
-/// sentence whose next clause calls every path it did not name refused.
+/// when the list does not hold it: under `--allow-read /usr --allow-read /work` a command
+/// starts in the system binaries, which the sentence leaves out and its next clause calls
+/// refused.
 fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<PathBuf> {
     let start = policy.working_root()?.canonicalize().ok()?;
 

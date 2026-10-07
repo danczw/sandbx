@@ -350,12 +350,12 @@ fn resolved(path: &Path) -> PathBuf {
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
-/// one naming something inside it both reach it. Both sides are [`resolved`], so one symlinked
-/// spelling cannot reach what the other is refused for.
+/// one naming something inside it both reach it.
 ///
-/// `granted` has to arrive resolved — and so absolute, or it resolves against nothing and
-/// reaches no owned path. Both callers pass what they grant, which is the point: a path vetted
-/// in one spelling and granted in another is the window this closes.
+/// `granted` has to arrive [`resolved`], and so absolute — otherwise one symlinked spelling
+/// reaches what the other is refused for, and a relative one resolves against nothing and
+/// reaches no owned path at all. Both callers pass what they grant: vetting one spelling and
+/// granting another is the window this closes.
 fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
     debug_assert!(
         granted == resolved(granted),
@@ -443,10 +443,9 @@ impl Grants {
             for path in self.paths(axis) {
                 // Outside the branch above: every other path refusal guards only the derived
                 // default, which is why a flag bypassed all of them.
-                // Granted in the form it was vetted in, not as the flag spelled it: the
-                // helper opens what the policy carries, and a grant left relative or
-                // unresolved is one the helper resolves itself, against its own working
-                // directory and whatever the links point at by then (#205).
+                // Granted in the form it was vetted in, not as the flag spelled it: a grant
+                // left relative or unresolved is one the helper resolves itself, against its
+                // own directory and whatever the links point at by then (#205).
                 let granted = resolved(&absolute(path, &std::env::current_dir)?);
                 if let Some(found) = reaches_owned(&granted, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
@@ -558,9 +557,9 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-directory")
     }
 
-    /// A cwd as `current_root` hands one over: resolved, which [`reaches_owned`] requires of
-    /// what it compares. A fixture spelling is not canonical by being written out — `/home` is
-    /// a symlink to `/var/home` on an ostree host.
+    /// A cwd as `current_root` hands one over: resolved, which [`reaches_owned`] requires. A
+    /// fixture spelling is not canonical by being written out — `/home` is a symlink to
+    /// `/var/home` on an ostree host.
     fn at(cwd: impl AsRef<Path>) -> PathBuf {
         resolved(cwd.as_ref())
     }

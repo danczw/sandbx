@@ -106,10 +106,10 @@ impl SandboxedCommand {
     /// telling the helper its stdin is a channel for audit records, and only
     /// [`output`](Self::output) sets that pipe up — with fd 0 a terminal, a degradation is
     /// written there as if the command had produced it. And the start directory is not in the
-    /// argv: `output` chdirs to the policy's [`working_root`](SandboxPolicy::working_root),
-    /// so a command spawned from here instead inherits your own and may begin somewhere the
-    /// policy refuses. Spawn it from this process too: the default helper path resolves
-    /// against whichever process execs it.
+    /// argv: `output` chdirs to the policy's [`working_root`](SandboxPolicy::working_root), so
+    /// spawning from here inherits your own and may begin somewhere the policy refuses. Spawn
+    /// it from this process too: the default helper path resolves against whichever process
+    /// execs it.
     pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
         let helper = match &self.helper {
             Some(path) => path.clone(),
@@ -179,9 +179,9 @@ impl SandboxedCommand {
 /// one. Via `spawn::command`, so a secret never enters even this helper, whose
 /// `/proc/<pid>/environ` is readable.
 ///
-/// Set here and not in `spawn::command`, which the inner stage also calls to *become* the
-/// command: by then the ruleset is installed, and a `chdir` under it is a risk this needs
-/// not take. Both stages and the command inherit it across the two `exec`s regardless.
+/// Not in `spawn::command`, which the inner stage also calls to *become* the command: that
+/// would `chdir` with the ruleset already installed. Both stages and the command inherit the
+/// directory across the two `exec`s regardless.
 fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> std::process::Command {
     let mut command = crate::spawn::command(helper, policy);
     command.args(argv);

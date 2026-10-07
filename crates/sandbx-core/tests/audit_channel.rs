@@ -411,12 +411,11 @@ fn a_pin_refusal_names_itself_on_the_channel() {
     );
 }
 
-/// The policy is judged in one process and opened in another, and only the stage holding the
-/// descriptor can say which inode it landed on — so the mismatch has to cross the channel as
-/// a refusal rather than reaching the caller as a sandbox that was never installed (#205).
+/// Only the stage holding the descriptor can say what it opened, so the mismatch has to cross
+/// the channel as a refusal rather than reach the caller as a sandbox never installed (#205).
 ///
-/// A grant naming a symlink, which is what a redirect leaves behind: the harness resolves
-/// every grant, so a policy still carrying a link is one whose target moved after the check.
+/// The fixture grants a symlink because the harness resolves every grant: a policy still
+/// carrying one is a policy whose target moved after the check.
 #[test]
 fn a_redirected_grant_names_itself_on_the_channel() {
     let dir = scratch();
