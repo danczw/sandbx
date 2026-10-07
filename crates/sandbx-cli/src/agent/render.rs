@@ -8,7 +8,7 @@ use std::io::Write;
 
 use sandbx_providers::{AgentEvent, StopReason};
 
-use super::TRUNCATED;
+use super::INCOMPLETE;
 use crate::AgentError;
 
 /// Writes a turn out, split so stdout can be piped to something that wants the answer
@@ -59,7 +59,10 @@ impl<W: Write> Render<W> {
     }
 
     /// Close the answer off, and report what the way it ended means for the exit code.
-    pub(super) fn finish(&mut self) -> Result<i32, AgentError> {
+    ///
+    /// `rounds` is `Some` when the turn ran out of them, which outranks the last round's
+    /// `max_tokens`: the bound that ended the turn is the one to name.
+    pub(super) fn finish(&mut self, rounds: Option<usize>) -> Result<i32, AgentError> {
         if self.mid_line {
             self.write(b"\n");
         }
@@ -68,10 +71,18 @@ impl<W: Write> Render<W> {
             return Err(AgentError::Output(error));
         }
 
+        if let Some(rounds) = rounds {
+            eprintln!(
+                "sandbx: stopped after {rounds} rounds of tool calls; \
+                 raise --max-rounds to let the turn go further"
+            );
+            return Ok(INCOMPLETE);
+        }
+
         if self.truncated {
             // Otherwise a truncated answer reads as a complete one.
             eprintln!("sandbx: answer truncated at --max-tokens");
-            return Ok(TRUNCATED);
+            return Ok(INCOMPLETE);
         }
 
         Ok(0)
@@ -124,7 +135,7 @@ pub(super) mod tests {
             render.event(event);
         }
 
-        let code = render.finish();
+        let code = render.finish(None);
         (String::from_utf8(render.out).expect("utf-8"), code)
     }
 
@@ -152,7 +163,23 @@ pub(super) mod tests {
         assert_eq!(intermediate.expect("clean turn"), 0);
 
         let (_, last) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
-        assert_eq!(last.expect("truncated turn"), TRUNCATED);
+        assert_eq!(last.expect("truncated turn"), INCOMPLETE);
+    }
+
+    /// The turn's own bound, which no event reports: a round-limited turn ends on a
+    /// `ToolUse` stop, the same one a healthy round ends on.
+    #[test]
+    fn a_turn_out_of_rounds_is_reported_as_incomplete() {
+        let mut render = Render::new(Vec::new());
+        render.event(&text("looking"));
+        render.event(&stop(StopReason::ToolUse));
+
+        assert_eq!(render.finish(Some(3)).expect("a reported turn"), INCOMPLETE);
+        assert_eq!(
+            Render::new(Vec::new()).finish(None).expect("clean turn"),
+            0,
+            "a turn with rounds to spare should still exit 0"
+        );
     }
 
     #[test]
@@ -186,6 +213,6 @@ pub(super) mod tests {
         render.event(&text("hi"));
         render.event(&stop(StopReason::EndTurn));
 
-        assert!(matches!(render.finish(), Err(AgentError::Output(_))));
+        assert!(matches!(render.finish(None), Err(AgentError::Output(_))));
     }
 }

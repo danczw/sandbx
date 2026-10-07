@@ -20,14 +20,6 @@ pub enum TurnError {
     /// a truncated turn.
     StreamEndedWithoutStop,
 
-    /// The model was still asking for tools when the turn ran out of rounds.
-    ///
-    /// The partial transcript is discarded rather than handed back looking complete.
-    RoundLimit {
-        /// The cap that was reached.
-        rounds: usize,
-    },
-
     /// The model stopped producing content while a tool call was still unanswered.
     ///
     /// The transcript ends in a `tool_result` the model never answered, so returning `Ok`
@@ -65,9 +57,6 @@ impl std::fmt::Display for TurnError {
             Self::StreamEndedWithoutStop => {
                 write!(f, "the turn's event stream ended without a stop event")
             }
-            Self::RoundLimit { rounds } => {
-                write!(f, "still asking for tools after {rounds} rounds")
-            }
             Self::EndedMidToolUse => {
                 write!(
                     f,
@@ -87,7 +76,6 @@ impl std::error::Error for TurnError {
         match self {
             Self::Provider(error) => Some(error),
             Self::StreamEndedWithoutStop
-            | Self::RoundLimit { .. }
             | Self::EndedMidToolUse
             | Self::TimedOut { .. }
             | Self::ToolPanicked { .. } => None,

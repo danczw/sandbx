@@ -4,7 +4,7 @@
 //! and no API key. Assertions go through `serde_json::to_value`: `ContentBlock` has no
 //! `PartialEq`.
 
-use sandbx_agent::{ApprovalDecision, ToolCall, TurnError, TurnLimits, run_turn};
+use sandbx_agent::{ApprovalDecision, ToolCall, TurnError, TurnLimits, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{AgentEvent, EventStream, RequestMessage, Role, StopReason};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -22,7 +22,7 @@ fn tool_error(messages: &[RequestMessage]) -> serde_json::Value {
 async fn text_deltas_accumulate_into_one_block() {
     let mut script = Script::new([vec![text("Hel"), text("lo"), stop(StopReason::EndTurn)]]);
 
-    let messages = run_turn(
+    let outcome = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
@@ -30,15 +30,15 @@ async fn text_deltas_accumulate_into_one_block() {
         allow_all,
     )
     .await
-    .unwrap()
-    .messages;
+    .unwrap();
 
     assert_eq!(
-        wire(&messages),
+        wire(&outcome.messages),
         serde_json::json!([
             { "role": "assistant", "content": [{ "type": "text", "text": "Hello" }] }
         ])
     );
+    assert_eq!(outcome.stop, TurnStop::Answered);
 }
 
 /// The signature Anthropic streams alongside a thinking block is discarded upstream, so
@@ -111,7 +111,7 @@ async fn the_observer_sees_every_event_in_arrival_order() {
 async fn a_round_that_produced_nothing_appends_no_message() {
     let mut script = Script::new([vec![stop(StopReason::EndTurn)]]);
 
-    let messages = run_turn(
+    let outcome = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[]),
         &ctx(SandboxPolicy::default()),
@@ -119,10 +119,14 @@ async fn a_round_that_produced_nothing_appends_no_message() {
         allow_all,
     )
     .await
-    .unwrap()
-    .messages;
+    .unwrap();
 
-    assert!(messages.is_empty(), "got {:?}", wire(&messages));
+    assert!(
+        outcome.messages.is_empty(),
+        "got {:?}",
+        wire(&outcome.messages)
+    );
+    assert_eq!(outcome.stop, TurnStop::Answered);
 }
 
 /// A real provider never ends with silence, and a silent end read as success is
@@ -663,49 +667,78 @@ fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
     }
 }
 
-/// A model that keeps asking for tools, looping on its own or steered into it by
-/// injected content, would otherwise drive tool execution without bound.
-#[tokio::test]
-async fn a_turn_ends_once_it_runs_out_of_rounds() {
-    let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
-    // Exactly as many as the cap allows: an endless supply would hide the dependency.
-    let mut script = Script::new(std::iter::repeat_n(
+/// Three rounds of a model that will not stop asking. Exactly as many as the cap allows:
+/// an endless supply would hide the dependency.
+fn asking_forever(root: &std::path::Path) -> Script {
+    Script::new(std::iter::repeat_n(
         vec![
-            call(
-                "ls",
-                serde_json::json!({ "path": root.path().to_str().unwrap() }),
-            ),
+            call("ls", serde_json::json!({ "path": root.to_str().unwrap() })),
             stop(StopReason::ToolUse),
         ],
         3,
-    ));
+    ))
+}
 
-    let mut asking_forever = turn(&[], &[BuiltinTool::Ls]);
-    asking_forever.limits = TurnLimits {
+/// A turn of three rounds, however many the model would have asked for.
+fn capped_at_three() -> sandbx_agent::Turn<'static> {
+    let mut turn = turn(&[], &[BuiltinTool::Ls]);
+    turn.limits = TurnLimits {
         max_rounds: 3,
         ..TurnLimits::default()
     };
+    turn
+}
 
-    let error = run_turn(
+/// A model that keeps asking for tools, looping on its own or steered into it by
+/// injected content, would otherwise drive tool execution without bound.
+#[tokio::test]
+async fn a_turn_stops_asking_once_it_runs_out_of_rounds() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let mut script = asking_forever(root.path());
+
+    run_turn(
         async |r| script.open(r).await,
-        asking_forever,
+        capped_at_three(),
         &ctx,
         |_| {},
         allow_all,
     )
     .await
-    .expect_err("a turn that never stops asking must not run forever");
+    .expect("a turn out of rounds still returns what it did");
 
-    assert!(
-        matches!(error, TurnError::RoundLimit { rounds: 3 }),
-        "got {error:?}"
-    );
     assert_eq!(
         script.sent.len(),
         3,
         "it should have asked exactly three times"
     );
+}
+
+/// The work is the caller's whatever the bound did to the answer. The shape is also why
+/// no truncation of it would help: it ends on a `tool_result` the model never answered,
+/// and every prefix of it ends on one too.
+#[tokio::test]
+async fn a_turn_out_of_rounds_hands_back_what_it_did() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let mut script = asking_forever(root.path());
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        capped_at_three(),
+        &ctx,
+        |_| {},
+        allow_all,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.stop, TurnStop::RoundLimit { rounds: 3 });
+    assert_eq!(outcome.messages.len(), 6, "three rounds, two messages each");
+    assert!(matches!(
+        outcome.messages.last().map(|last| last.role),
+        Some(Role::User)
+    ));
 }
 
 /// Pinned literally rather than read off the type: the value is the claim.

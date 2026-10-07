@@ -193,12 +193,19 @@ gate's `ApprovalDecision::Deny`, carrying its `reason` as the text. A refusal is
 therefore recoverable within `max_rounds`, which is also what bounds a model that
 keeps retrying one.
 
+Nor is running out of rounds. The turn comes back `Ok` with
+`TurnStop::RoundLimit { rounds }` and every message it produced, because the model did
+real work before the bound arrived and discarding it would lose the work with the answer.
+No truncation of that transcript would make it storable: it ends on a `tool_result` the
+model never answered, and so does every prefix of it, the alternative being a `tool_use`
+with nothing answering it. `TurnStop` is what says it is not an answer — `agent-run`
+reports it as an incomplete one, and `Session::append` refuses the batch.
+
 `TurnError` is only for what *ends* the turn:
 
 | Variant | Transcript |
 |---|---|
 | `Provider` | — |
-| `RoundLimit` | discarded |
 | `EndedMidToolUse` | discarded |
 | `TimedOut` | discarded |
 | `StreamEndedWithoutStop` | — |

@@ -10,7 +10,7 @@ mod render;
 use std::io::Write;
 
 use render::Render;
-use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, TurnOutcome, run_turn};
+use sandbx_agent::{ApprovalDecision, ToolCall, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, MessagesRequest, ProviderError, RequestMessage,
@@ -31,11 +31,12 @@ const DEFAULT_MODEL: &str = "claude-sonnet-5";
 /// The output ceiling for one turn when `--max-tokens` is not given.
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
-/// The exit code for an answer `--max-tokens` cut short.
+/// The exit code for an answer a bound cut short.
 ///
 /// Neither success nor failure: what reached stdout is a real answer and an incomplete
-/// one, which a script consuming it has to tell apart.
-const TRUNCATED: i32 = 2;
+/// one, which a script consuming it has to tell apart. The stderr line names which bound
+/// stopped it.
+const INCOMPLETE: i32 = 2;
 
 /// The flag that lifts the default refusal.
 ///
@@ -227,7 +228,8 @@ impl AgentRun {
 
     /// Run one turn, stream the answer, and report the code to exit with.
     ///
-    /// `0` for an answer the model finished, `2` for one `--max-tokens` cut off.
+    /// `0` for an answer the model finished, `2` for one a bound cut short —
+    /// `--max-tokens` or `--max-rounds`.
     ///
     /// # Errors
     ///
@@ -331,9 +333,19 @@ impl AgentRun {
         )
         .await;
 
+        // Read after the loop, where `observe`'s borrow on `render` has ended: no event
+        // carries the turn's own stop, only a round's.
+        let out_of_rounds = match &outcome {
+            Ok(TurnOutcome {
+                stop: TurnStop::RoundLimit { rounds },
+                ..
+            }) => Some(*rounds),
+            _ => None,
+        };
+
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
-        let code = render.finish();
+        let code = render.finish(out_of_rounds);
         // Before the append: a `TurnError` discards the turn's own messages, and a prompt
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
@@ -372,7 +384,7 @@ impl AgentRun {
             // turn with no reply to store has nothing to add.
             Err(SessionError::IncompleteTurn) => {
                 eprintln!(
-                    "sandbx: the turn produced no reply; session {} is unchanged",
+                    "sandbx: the turn did not end on an answer; session {} is unchanged",
                     session.id()
                 );
                 Ok(())
@@ -805,7 +817,54 @@ mod tests {
 
         // `IncompleteTurn` is a stderr line, not an error: the cut-short code is what a
         // script consuming stdout has to see.
-        assert_eq!(code.expect("a reported turn"), TRUNCATED);
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+        assert!(
+            store
+                .resume(&only_session(&store))
+                .unwrap()
+                .messages()
+                .is_empty()
+        );
+    }
+
+    /// A round that asks for a tool and so would be followed by another. The policy
+    /// grants nothing, so the call comes back `is_error` — still a `tool_result`, which
+    /// is what makes the turn re-enter and meet the cap.
+    fn asking_for_ls() -> Vec<AgentEvent> {
+        vec![
+            text("looking"),
+            AgentEvent::ToolCallRequested {
+                id: "call_1".to_owned(),
+                name: "ls".to_owned(),
+                input: serde_json::json!({ "path": "/nowhere" }),
+            },
+            stop(StopReason::ToolUse),
+        ]
+    }
+
+    /// What the bound used to cost: exit 1 with an empty stdout, indistinguishable from a
+    /// provider failure, with the work already on disk (#178).
+    #[test]
+    fn a_turn_out_of_rounds_exits_two_with_its_text() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+
+        let (sent, written, code) = one_round(&args, &args.prompt(), asking_for_ls(), None);
+
+        assert_eq!(sent.len(), 1, "the cap should have allowed one request");
+        assert_eq!(written, "looking\n");
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+    }
+
+    #[test]
+    fn a_turn_out_of_rounds_leaves_the_session_alone() {
+        let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
+        let (_root, store, session) = new_session();
+
+        let (_, _, code) = one_round(&args, &args.prompt(), asking_for_ls(), Some(session));
+
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+        // The batch ends on a `tool_result` the model never answered, which the store
+        // refuses: resuming it would hand the model its own unanswered call.
         assert!(
             store
                 .resume(&only_session(&store))
