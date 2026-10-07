@@ -5,8 +5,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxPolicy};
+use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxPolicy, VettedPath};
 use tracing_subscriber::util::SubscriberInitExt;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 /// An in-memory stand-in for stderr.
 ///
@@ -71,9 +76,14 @@ fn an_absence_reaches_the_output_without_a_reason() {
 
 #[test]
 fn a_spawn_records_the_policy_shape() {
+    // Two real directories, the record carrying a count and not a path: a grant names the
+    // object at its path, so one is vetted before the policy will take it (#212).
+    let readable = tempfile::tempdir().expect("a directory to grant read");
+    let writable = tempfile::tempdir().expect("a directory to grant write");
+
     let policy = SandboxPolicy::default()
-        .allow_read("/srv")
-        .allow_write("/tmp/out")
+        .allow_read(vetted(readable.path()))
+        .allow_write(vetted(writable.path()))
         .allow_unix_sockets()
         .allow_standard_env();
 

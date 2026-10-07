@@ -13,7 +13,7 @@ use sandbx_tools::BuiltinTool;
 
 mod support;
 
-use support::{AllowAll, Script, call, ctx, stop, text, turn};
+use support::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// An in-memory stand-in for stderr.
 ///
@@ -40,7 +40,7 @@ impl std::io::Write for Sink {
 async fn a_model_issued_call_records_its_access() {
     let root = tempfile::tempdir().unwrap();
     let missing = root.path().join("nope");
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let listing = |path: &std::path::Path| {
         vec![

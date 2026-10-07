@@ -1,5 +1,9 @@
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+mod vetted;
+
+pub use vetted::{ObjectId, VettedPath};
 
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 
@@ -9,10 +13,10 @@ const STANDARD_ENV_NAMES: [&str; 7] = ["PATH", "HOME", "TERM", "LANG", "LC_ALL",
 const DNS_OVER_TCP_ENV: [(&str, &str); 1] = [("RES_OPTIONS", "use-vc")];
 
 /// The first of `paths` that is a directory now; a grant naming nothing is not one.
-fn first_directory(paths: &[PathBuf]) -> Option<&Path> {
+fn first_directory(paths: &[VettedPath]) -> Option<&Path> {
     paths
         .iter()
-        .map(PathBuf::as_path)
+        .map(VettedPath::path)
         .find(|path| path.is_dir())
 }
 
@@ -93,9 +97,9 @@ pub enum NetworkPolicy {
 /// configure it yields a useless sandbox rather than an open one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SandboxPolicy {
-    readable: Vec<PathBuf>,
-    writable: Vec<PathBuf>,
-    executable: Vec<PathBuf>,
+    readable: Vec<VettedPath>,
+    writable: Vec<VettedPath>,
+    executable: Vec<VettedPath>,
     network: NetworkPolicy,
     unix_sockets: bool,
     /// Variable names, never values; the value is read at spawn time from the harness.
@@ -108,22 +112,22 @@ pub struct SandboxPolicy {
 
 impl SandboxPolicy {
     /// Paths the process may read.
-    pub fn readable_paths(&self) -> &[PathBuf] {
+    pub fn readable_paths(&self) -> &[VettedPath] {
         self.paths(Axis::Read)
     }
 
     /// Paths the process may write; writable does not imply readable.
-    pub fn writable_paths(&self) -> &[PathBuf] {
+    pub fn writable_paths(&self) -> &[VettedPath] {
         self.paths(Axis::Write)
     }
 
     /// Paths the process may read and execute; no other grant confers execute.
-    pub fn executable_paths(&self) -> &[PathBuf] {
+    pub fn executable_paths(&self) -> &[VettedPath] {
         self.paths(Axis::ReadExecute)
     }
 
     /// Paths granted on `axis`; pair with [`Axis::ALL`] to treat every axis alike.
-    pub fn paths(&self, axis: Axis) -> &[PathBuf] {
+    pub fn paths(&self, axis: Axis) -> &[VettedPath] {
         match axis {
             Axis::Read => &self.readable,
             Axis::Write => &self.writable,
@@ -134,12 +138,40 @@ impl SandboxPolicy {
     /// Every grant this policy holds, as `(axis, path)` pairs, in [`Axis::ALL`] order.
     ///
     /// One pair per grant, not per path: a path granted on two axes appears twice.
-    pub fn granted_paths(&self) -> impl Iterator<Item = (Axis, &Path)> {
-        Axis::ALL.into_iter().flat_map(move |axis| {
-            self.paths(axis)
-                .iter()
-                .map(move |path| (axis, path.as_path()))
-        })
+    pub fn granted_paths(&self) -> impl Iterator<Item = (Axis, &VettedPath)> {
+        Axis::ALL
+            .into_iter()
+            .flat_map(move |axis| self.paths(axis).iter().map(move |path| (axis, path)))
+    }
+
+    /// A grant naming a file this policy's own resolver will bind over, or `None` if none does.
+    ///
+    /// The one pair a pin cannot hold: the harness vets the host's file, `helper::resolver`
+    /// bind-mounts sandbx's over it, and `open_grant` then measures a grant against an object
+    /// sandbx itself replaced. Refusing the pair is the only fail-closed answer — waiving the
+    /// pin would have to decide the waiver in the process that made the substitution.
+    ///
+    /// An exact name and not a prefix: the pin is on the granted path's own inode, and a bind
+    /// over a file inside `/etc` leaves `/etc`'s inode alone, so `--allow-read /etc` collides
+    /// with nothing. Off [`RESOLVER_FILES`], which is also where the rules and the binds come
+    /// from, so a fourth file reaches all three at once.
+    ///
+    /// On the policy and not `Grants` alone, the [`unbounded_resolution`](Self::unbounded_resolution)
+    /// precedent: an embedder spawning the argv itself meets the same refusal.
+    ///
+    /// [`RESOLVER_FILES`]: crate::RESOLVER_FILES
+    pub fn grant_bound_by_resolver(&self) -> Option<&Path> {
+        if !self.bounds_resolution() {
+            return None;
+        }
+
+        self.granted_paths()
+            .map(|(_, granted)| granted.path())
+            .find(|path| {
+                crate::RESOLVER_FILES
+                    .iter()
+                    .any(|bound| path == &Path::new(bound))
+            })
     }
 
     /// Where a command run under this policy starts, or `None` if it grants nowhere to be.
@@ -158,20 +190,23 @@ impl SandboxPolicy {
 
     /// Grant `axis` access to `path`; the one place a path enters a policy.
     ///
-    /// Pass a path that resolves to itself. No I/O happens here — the helper decodes a policy
-    /// through this too, and resolving there is resolving in the process a grant is meant to
-    /// be safe from — so a symlinked spelling is not corrected but refused, when the helper
-    /// finds the grant opened as something else ([`SandboxError::GrantRedirected`]).
+    /// Takes a [`VettedPath`] and not a bare path, so a grant carries the object the harness
+    /// measured and the helper has no unpinned grant to decide about. No I/O happens here —
+    /// the helper decodes a policy through this too, and resolving or stat'ing there is doing
+    /// it in the process a grant is meant to be safe from. The helper refuses a grant whose
+    /// name opened as something else ([`GrantRedirected`]) or whose object is no longer the
+    /// vetted one ([`GrantReplaced`]).
     ///
-    /// [`SandboxError::GrantRedirected`]: crate::SandboxError::GrantRedirected
+    /// [`GrantRedirected`]: crate::SandboxError::GrantRedirected
+    /// [`GrantReplaced`]: crate::SandboxError::GrantReplaced
     #[must_use]
-    pub fn grant(mut self, axis: Axis, path: impl AsRef<Path>) -> Self {
+    pub fn grant(mut self, axis: Axis, path: VettedPath) -> Self {
         let paths = match axis {
             Axis::Read => &mut self.readable,
             Axis::Write => &mut self.writable,
             Axis::ReadExecute => &mut self.executable,
         };
-        paths.push(path.as_ref().to_path_buf());
+        paths.push(path);
         self
     }
 
@@ -317,14 +352,14 @@ impl SandboxPolicy {
 
     /// Grant read access to `path`.
     #[must_use]
-    pub fn allow_read(self, path: impl AsRef<Path>) -> Self {
+    pub fn allow_read(self, path: VettedPath) -> Self {
         self.grant(Axis::Read, path)
     }
 
     /// Grant write access to `path`, and nothing else — a drop directory granted here cannot
     /// be read back. The `sandbx` CLI's `--allow-write` grants read alongside it.
     #[must_use]
-    pub fn allow_write(self, path: impl AsRef<Path>) -> Self {
+    pub fn allow_write(self, path: VettedPath) -> Self {
         self.grant(Axis::Write, path)
     }
 
@@ -333,7 +368,7 @@ impl SandboxPolicy {
     /// The only grant that confers execute, and it confers read too (see [`Axis::grants`]).
     /// A directory granted here can run anything that appears in it later.
     #[must_use]
-    pub fn allow_read_execute(self, path: impl AsRef<Path>) -> Self {
+    pub fn allow_read_execute(self, path: VettedPath) -> Self {
         self.grant(Axis::ReadExecute, path)
     }
 
@@ -342,16 +377,19 @@ impl SandboxPolicy {
     /// Nothing runs without its loader and shared libraries; with a bare policy even
     /// `/bin/true` dies before `main`.
     ///
-    /// Granted as each resolves, which an absent path cannot do and is skipped by: Landlock
+    /// Granted as each vets, which an absent path cannot do and is skipped by: Landlock
     /// rejects a rule for a path that does not exist, so a host without `/lib64` would fail to
-    /// sandbox at all. Resolved and not as written because a merged-`/usr` host spells `/bin`
-    /// as a symlink to `/usr/bin`, and a grant has to name what it opens — see
-    /// [`grant`](Self::grant).
+    /// sandbox at all. [`vet`](VettedPath::vet) resolves, which a merged-`/usr` host needs —
+    /// it spells `/bin` as a symlink to `/usr/bin`, and a grant has to name what it opens.
+    ///
+    /// Pinned here and not left to the caller, this being the one grant set reached without
+    /// vetting a path: an unpinned arm would put the case back that [`grant`](Self::grant) has
+    /// none of.
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS
             .iter()
-            .filter_map(|path| Path::new(path).canonicalize().ok())
+            .filter_map(|path| VettedPath::vet(path).ok())
             .fold(self, Self::allow_read_execute)
     }
 

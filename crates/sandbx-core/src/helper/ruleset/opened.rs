@@ -1,30 +1,57 @@
-//! Opening a granted path, and confirming it is the path that was granted.
+//! Opening a granted path, and confirming it is the grant that was vetted.
 //!
 //! The policy is judged in the harness and the rules are opened here, so between the two a
 //! symlink can be redirected: the grant the operator vetted and the directory the kernel is
-//! told about would be different ones (#205).
+//! told about would be different ones (#205). A `rename(2)` does the same without a symlink,
+//! leaving the spelling identical, so the two questions are asked separately (#212).
 
 use std::os::fd::{AsFd, AsRawFd};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use landlock::PathFd;
 
-use crate::SandboxError;
+use super::rights::RuleTarget;
+use crate::{ObjectId, SandboxError};
 
-/// `path`, opened, having confirmed that it opened as itself.
+/// `granted`, opened, having confirmed that it opened as the object it was vetted as.
 ///
-/// The one way this crate gets a [`PathFd`], so the confirmation cannot be skipped by adding a
-/// rule somewhere else.
-pub(in crate::helper) fn open_grant(path: &Path) -> Result<PathFd, SandboxError> {
+/// The one way this crate gets a [`PathFd`], so neither confirmation can be skipped by adding
+/// a rule somewhere else.
+///
+/// After this the window is closed rather than narrowed: [`PathBeneath`] holds the descriptor,
+/// so the kernel attaches the rule to that inode and a later rename moves the name and not the
+/// rule.
+///
+/// [`PathBeneath`]: landlock::PathBeneath
+pub(in crate::helper) fn open_grant(target: &RuleTarget<'_>) -> Result<PathFd, SandboxError> {
     // `O_PATH | O_CLOEXEC` and no `O_NOFOLLOW`, so every component is followed and the
     // descriptor may name an inode no part of this spelling pointed at when it was vetted.
-    let fd = PathFd::new(path).map_err(super::landlock_failed)?;
-    let opened = reads_back(&fd)?;
+    let fd = PathFd::new(target.path()).map_err(super::landlock_failed)?;
 
-    if opened != path {
+    // The spellings first: it is the cheap check, and it is the one whose refusal can say what
+    // was substituted for what. It applies to both kinds — an installed path redirected under
+    // the bind is still a rule on an inode sandbx did not place.
+    let opened = reads_back(&fd)?;
+    if opened != target.path() {
         return Err(SandboxError::GrantRedirected {
-            granted: path.to_path_buf(),
+            granted: target.path().to_path_buf(),
             opened,
+        });
+    }
+
+    // Only a grant has a second answer to check against. `Installed` has none that would mean
+    // anything: the object was made in this process, so a pin taken here would be this
+    // process agreeing with itself.
+    let RuleTarget::Granted(granted) = target else {
+        return Ok(fd);
+    };
+
+    let object = ObjectId::of_fd(&fd)?;
+    if object != granted.object() {
+        return Err(SandboxError::GrantReplaced {
+            granted: granted.path().to_path_buf(),
+            vetted: granted.object(),
+            opened: object,
         });
     }
 

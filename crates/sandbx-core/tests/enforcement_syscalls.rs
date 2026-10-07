@@ -8,7 +8,7 @@
 mod support;
 
 use sandbx_core::SandboxPolicy;
-use support::{allow_probe, run, runtime_paths};
+use support::{allow_probe, run, runtime_paths, vetted};
 
 /// Reaching a host daemon over a unix socket is not IP egress: one grant covering both
 /// turns "let it talk to the internet" into "let it ask systemd to run something".
@@ -67,8 +67,8 @@ fn an_explicit_unix_grant_permits_the_connection() {
         runtime_paths(SandboxPolicy::default().allow_unix_sockets()),
         probe,
     )
-    .allow_read(dir.path())
-    .allow_write(dir.path());
+    .allow_read(vetted(dir.path()))
+    .allow_write(vetted(dir.path()));
     let output = run(&policy, probe, &[socket.to_str().unwrap()]);
 
     let _ = std::os::unix::net::UnixStream::connect(&socket);
@@ -160,8 +160,8 @@ fn perl_syscall_errno(nr: libc::c_long, args: &str) -> String {
     // perl opens /dev/null read-write on startup, so it needs both axes or it never
     // reaches the syscall at all.
     let policy = runtime_paths(SandboxPolicy::default())
-        .allow_read("/dev/null")
-        .allow_write("/dev/null");
+        .allow_read(vetted("/dev/null"))
+        .allow_write(vetted("/dev/null"));
     let output = run(&policy, "/usr/bin/perl", &["-e", &program]);
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();

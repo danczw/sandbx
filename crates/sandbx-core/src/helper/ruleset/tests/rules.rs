@@ -5,6 +5,7 @@
 //! installs — the wrapper is where a dropped grant or a re-fused narrowing would hide.
 
 use super::{AccessFs, BASELINE_ABI, LATEST_ABI, SandboxPolicy, requested_at};
+use crate::VettedPath;
 
 /// Keep the returned handle bound for the whole test: dropping it deletes the directory,
 /// and `fs_rules` would then take its regular-file branch.
@@ -12,11 +13,22 @@ fn tempdir() -> tempfile::TempDir {
     tempfile::tempdir().unwrap()
 }
 
+/// The directory's own resolved path, which is what a grant on it carries — `vet` resolves,
+/// so a spelling reaching `/tmp` through a symlink is not the one the rules are keyed by.
+fn root(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    dir.path().canonicalize().unwrap()
+}
+
 /// A regular file, since files and directories take different rights.
 fn plain_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
-    let file = dir.path().join("plain.txt");
+    let file = root(dir).join("plain.txt");
     std::fs::write(&file, b"x").unwrap();
     file
+}
+
+/// `path`, pinned to the object it names — the only shape a grant takes.
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
 /// The rule `axis` produced for `path`.
@@ -31,7 +43,7 @@ fn rule(
     let matches: Vec<_> = requested_at(policy, LATEST_ABI)
         .rules
         .into_iter()
-        .filter(|(a, p, _)| *a == axis && *p == path)
+        .filter(|(a, granted, _)| *a == axis && granted.path() == path)
         .map(|(_, _, rights)| rights)
         .collect();
 
@@ -58,7 +70,7 @@ fn union(
     requested_at(policy, abi)
         .rules
         .into_iter()
-        .filter(|(_, candidate, _)| *candidate == path)
+        .filter(|(_, candidate, _)| candidate.path() == path)
         .fold(landlock::BitFlags::EMPTY, |union, (_, _, rights)| {
             union | rights
         })
@@ -69,12 +81,13 @@ fn union(
 #[test]
 fn a_file_rule_drops_directory_only_rights() {
     let dir = tempdir();
+    let root = root(&dir);
     let file = plain_file(&dir);
     let policy = SandboxPolicy::default()
-        .allow_write(dir.path())
-        .allow_write(&file);
+        .allow_write(vetted(&root))
+        .allow_write(vetted(&file));
 
-    let on_dir = rule(&policy, crate::Axis::Write, dir.path());
+    let on_dir = rule(&policy, crate::Axis::Write, &root);
     let on_file = rule(&policy, crate::Axis::Write, &file);
 
     assert!(
@@ -94,12 +107,13 @@ fn a_file_rule_drops_directory_only_rights() {
 #[test]
 fn a_path_granted_on_two_axes_keeps_one_rule_per_axis() {
     let dir = tempdir();
+    let root = root(&dir);
     let policy = SandboxPolicy::default()
-        .allow_read(dir.path())
-        .allow_write(dir.path());
+        .allow_read(vetted(&root))
+        .allow_write(vetted(&root));
 
-    let read = rule(&policy, crate::Axis::Read, dir.path());
-    let write = rule(&policy, crate::Axis::Write, dir.path());
+    let read = rule(&policy, crate::Axis::Read, &root);
+    let write = rule(&policy, crate::Axis::Write, &root);
 
     assert!(
         read.contains(AccessFs::ReadDir) && !read.contains(AccessFs::WriteFile),
@@ -126,11 +140,12 @@ fn a_policy_with_no_paths_produces_no_rules() {
 #[test]
 fn every_grant_produces_a_rule_even_when_repeated() {
     let dir = tempdir();
+    let root = root(&dir);
     let file = plain_file(&dir);
     let policy = SandboxPolicy::default()
-        .allow_read(&file)
-        .allow_write(dir.path())
-        .allow_read_execute(dir.path());
+        .allow_read(vetted(&file))
+        .allow_write(vetted(&root))
+        .allow_read_execute(vetted(&root));
 
     assert_eq!(requested_at(&policy, LATEST_ABI).rules.len(), 3);
 }
@@ -145,6 +160,7 @@ fn every_grant_produces_a_rule_even_when_repeated() {
 #[test]
 fn no_combination_of_grants_confers_execute() {
     let dir = tempdir();
+    let root = root(&dir);
 
     for mask in 0..(1u32 << crate::Axis::ALL.len()) {
         let axes: Vec<_> = crate::Axis::ALL
@@ -155,11 +171,11 @@ fn no_combination_of_grants_confers_execute() {
             .collect();
 
         let policy = axes.iter().fold(SandboxPolicy::default(), |policy, &axis| {
-            policy.grant(axis, dir.path())
+            policy.grant(axis, vetted(&root))
         });
 
         assert_eq!(
-            union(&policy, dir.path(), LATEST_ABI).contains(AccessFs::Execute),
+            union(&policy, &root, LATEST_ABI).contains(AccessFs::Execute),
             axes.contains(&crate::Axis::ReadExecute),
             "{axes:?} on one path: execute must come from ReadExecute and \
              nothing else"
@@ -190,15 +206,16 @@ fn no_combination_of_grants_confers_execute() {
 #[test]
 fn the_handled_set_and_the_rules_come_from_one_abi() {
     let dir = tempdir();
+    let root = root(&dir);
     let policy = crate::Axis::ALL
         .into_iter()
         .fold(SandboxPolicy::default(), |policy, axis| {
-            policy.grant(axis, dir.path())
+            policy.grant(axis, vetted(&root))
         });
 
     for abi in [BASELINE_ABI, LATEST_ABI] {
         let requested = requested_at(&policy, abi);
-        let granted = union(&policy, dir.path(), abi);
+        let granted = union(&policy, &root, abi);
 
         // So the agreement below cannot hold by the policy quietly producing fewer grants.
         assert_eq!(

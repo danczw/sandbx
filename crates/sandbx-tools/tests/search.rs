@@ -8,9 +8,14 @@
 // escaping the sandbox, which is what the ban on `Command::new` exists to stop.
 #![allow(clippy::disallowed_methods)]
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
@@ -21,7 +26,7 @@ fn grep_finds_matching_lines_with_locations() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("a.rs"), "fn alpha() {}\nfn beta() {}\n").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "beta" }),
@@ -47,7 +52,7 @@ fn grep_searches_subdirectories() {
     std::fs::create_dir(root.path().join("sub")).unwrap();
     std::fs::write(root.path().join("sub/deep.txt"), "needle here\n").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
@@ -63,7 +68,7 @@ fn grep_reports_no_matches_rather_than_failing() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("a.txt"), "nothing\n").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "absent" }),
@@ -82,7 +87,7 @@ fn grep_does_not_follow_a_symlink_out_of_the_root() {
     std::fs::write(elsewhere.path().join("secret.txt"), "SECRET-NEEDLE\n").unwrap();
     std::os::unix::fs::symlink(elsewhere.path(), root.path().join("escape")).unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "SECRET-NEEDLE" }),
@@ -102,7 +107,7 @@ fn grep_refuses_a_root_outside_the_policy() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(allowed.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(allowed.path())));
     let err = BuiltinTool::Grep
         .execute(
             json!({ "path": elsewhere.path().to_str().unwrap(), "pattern": "x" }),
@@ -120,7 +125,7 @@ fn find_matches_file_names() {
     std::fs::write(root.path().join("sub/target.rs"), "").unwrap();
     std::fs::write(root.path().join("other.txt"), "").unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Find
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "name": "target" }),
@@ -148,7 +153,7 @@ fn find_does_not_follow_a_symlink_out_of_the_root() {
     std::fs::write(elsewhere.path().join("secret-name.txt"), "").unwrap();
     std::os::unix::fs::symlink(elsewhere.path(), root.path().join("escape")).unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Find
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "name": "secret-name" }),
@@ -171,7 +176,7 @@ fn grep_orders_hits_by_line_number() {
     let body: String = (1..=12).map(|_| "needle\n").collect();
     std::fs::write(root.path().join("many.txt"), body).unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
@@ -206,7 +211,7 @@ fn grep_orders_hits_across_files_by_path() {
         std::fs::write(root.path().join(name), "needle\n").unwrap();
     }
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
@@ -240,7 +245,7 @@ fn grep_does_not_block_on_a_fifo() {
         .expect("mkfifo should run");
     assert!(status.success());
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
@@ -265,7 +270,7 @@ fn grep_does_not_follow_a_file_symlink_out_of_root() {
     )
     .unwrap();
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Grep
         .execute(
             json!({ "path": root.path().to_str().unwrap(), "pattern": "SECRET-NEEDLE" }),

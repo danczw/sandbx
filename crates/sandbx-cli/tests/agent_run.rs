@@ -15,6 +15,26 @@ fn agent_run(argv: &[&str]) -> sandbx_cli::AgentRun {
     }
 }
 
+/// The paths of a set of grants. Each also carries the object at its path (#212), derived
+/// from the path, so these tests assert over the spelling and the pin follows.
+fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&std::path::Path> {
+    granted.iter().map(sandbx_core::VettedPath::path).collect()
+}
+
+/// A scratch directory to grant, resolved: a flag's path is vetted before it reaches the
+/// policy, so a fixture has to name something, and in the form the policy will hold.
+fn scratch() -> (tempfile::TempDir, String) {
+    let root = std::env::temp_dir()
+        .canonicalize()
+        .expect("a resolved temporary directory");
+    let dir = tempfile::Builder::new()
+        .tempdir_in(root)
+        .expect("a temporary directory");
+    let named = dir.path().to_str().expect("utf-8").to_owned();
+
+    (dir, named)
+}
+
 #[test]
 fn grants_only_what_a_tool_needs_to_start() {
     let policy = agent_run(&["sandbx", "agent-run", "--", "hello"])
@@ -232,16 +252,14 @@ fn the_refusal_lands_before_the_policy_is_derived() {
 
 #[test]
 fn a_write_grant_confers_read_here_too() {
-    let policy = agent_run(&["sandbx", "agent-run", "--allow-write", "/tmp", "--", "go"])
+    let (_scratch, granted) = scratch();
+    let policy = agent_run(&["sandbx", "agent-run", "--allow-write", &granted, "--", "go"])
         .policy()
         .expect("the flags describe a policy");
 
     assert!(
-        policy
-            .readable_paths()
-            .iter()
-            .any(|path| path == std::path::Path::new("/tmp")),
-        "a tool can rewrite /tmp but not read it back"
+        spellings(policy.readable_paths()).contains(&std::path::Path::new(&granted)),
+        "a tool can rewrite {granted} but not read it back"
     );
 }
 
@@ -325,11 +343,12 @@ fn flags_after_the_separator_are_part_of_the_prompt() {
 
     assert_eq!(args.prompt(), "explain --allow-read /etc");
     assert!(
-        args.policy()
-            .expect("the flags describe a policy")
-            .readable_paths()
-            .iter()
-            .all(|path| path != std::path::Path::new("/etc")),
+        !spellings(
+            args.policy()
+                .expect("the flags describe a policy")
+                .readable_paths()
+        )
+        .contains(&std::path::Path::new("/etc")),
         "a grant written inside the prompt widened the policy"
     );
 }

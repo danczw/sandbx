@@ -30,7 +30,7 @@ impl FsGuard {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
 
-        for (axis, path) in policy.granted_paths() {
+        for (axis, granted) in policy.granted_paths() {
             let crate::Grants {
                 read,
                 write,
@@ -38,10 +38,10 @@ impl FsGuard {
             } = axis.grants();
 
             if read {
-                readable.push(path);
+                readable.push(granted.path());
             }
             if write {
-                writable.push(path);
+                writable.push(granted.path());
             }
         }
 

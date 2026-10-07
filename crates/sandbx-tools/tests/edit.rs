@@ -1,8 +1,13 @@
 //! Public contract of the `edit` tool.
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
@@ -21,8 +26,8 @@ fn replaces_a_unique_occurrence() {
 
     let ctx = context(
         SandboxPolicy::default()
-            .allow_read(root.path())
-            .allow_write(root.path()),
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path())),
     );
     BuiltinTool::Edit
         .execute(
@@ -45,8 +50,8 @@ fn refuses_an_ambiguous_match() {
 
     let ctx = context(
         SandboxPolicy::default()
-            .allow_read(root.path())
-            .allow_write(root.path()),
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path())),
     );
     let err = BuiltinTool::Edit
         .execute(
@@ -72,8 +77,8 @@ fn refuses_a_missing_match() {
 
     let ctx = context(
         SandboxPolicy::default()
-            .allow_read(root.path())
-            .allow_write(root.path()),
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path())),
     );
     let err = BuiltinTool::Edit
         .execute(
@@ -92,7 +97,7 @@ fn read_grant_alone_does_not_permit_editing() {
     let original = "let x = 1;\n";
     let file = file_with(root.path(), original);
 
-    let ctx = context(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let err = BuiltinTool::Edit
         .execute(
             json!({ "path": file.to_str().unwrap(), "old": "let x = 1;", "new": "let x = 2;" }),
@@ -114,8 +119,8 @@ fn a_refused_edit_leaves_the_file_intact() {
 
     let ctx = context(
         SandboxPolicy::default()
-            .allow_read(root.path())
-            .allow_write(root.path()),
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path())),
     );
 
     assert!(

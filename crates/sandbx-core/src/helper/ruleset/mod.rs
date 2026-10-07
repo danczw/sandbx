@@ -39,7 +39,7 @@ pub(super) struct Requested<'policy> {
     /// One rule per grant, as `(axis, path, rights)`. See [`rights::fs_rules`].
     pub(super) rules: Vec<(
         crate::Axis,
-        &'policy std::path::Path,
+        rights::RuleTarget<'policy>,
         landlock::BitFlags<landlock::AccessFs>,
     )>,
     /// What to ask for on the network axis. See [`rights::net_rules`].

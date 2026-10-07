@@ -1,4 +1,4 @@
-use crate::{Axis, NetworkPolicy, SandboxError, SandboxPolicy, Sha256Digest};
+use crate::{Axis, NetworkPolicy, ObjectId, SandboxError, SandboxPolicy, Sha256Digest, VettedPath};
 
 const FLAG_NET: &str = "--allow-network";
 /// Introduces one allowlisted TCP port, and takes exactly one value.
@@ -22,6 +22,12 @@ const FLAG_PIN: &str = "--pin-sha256";
 const SEPARATOR: &str = "--";
 
 /// The flag that introduces a path granted on `axis`.
+///
+/// Takes two values, the path and then the `<dev>:<ino>` the harness vetted it as. Mandatory
+/// and not optional: "is this token a pin or the next flag?" is the lookahead
+/// `context/decision-enforcement-seam.md` rejects, and an unpinned grant is a case the helper
+/// has no answer for. It discloses nothing — a confined command can `stat` any path it can
+/// name, Landlock having no right that covers metadata.
 ///
 /// Here rather than on [`Axis`], the policy type having no business knowing how the helper
 /// is invoked; one exhaustive match serves both `encode` and `decode`.
@@ -74,9 +80,10 @@ impl HelperArgs {
     ) -> Vec<String> {
         let mut out = Vec::new();
 
-        for (axis, path) in policy.granted_paths() {
+        for (axis, granted) in policy.granted_paths() {
             out.push(path_flag(axis).to_string());
-            out.push(path.display().to_string());
+            out.push(granted.path().display().to_string());
+            out.push(granted.object().to_string());
         }
         // Exhaustive, so a network state added to the policy is a compile error here rather
         // than a grant that fails to cross into the stage that enforces it.
@@ -212,7 +219,16 @@ impl HelperArgs {
                     let path = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "path flag with no path after it",
                     })?;
-                    policy = policy.grant(axis, path);
+                    // Refused and not inferred: a grant the helper cannot confirm against the
+                    // object the harness vetted is the one case this decoder has no answer
+                    // for, so it has none — `context/decision-grant-identity.md`.
+                    let pin = rest.next().ok_or(SandboxError::BadHelperArgs {
+                        detail: "granted path with no object pin after it",
+                    })?;
+                    let object = ObjectId::parse(pin).ok_or(SandboxError::BadHelperArgs {
+                        detail: "object pin that is not a device and an inode parted by `:`",
+                    })?;
+                    policy = policy.grant(axis, VettedPath::from_wire(path.as_str(), object));
                 }
             }
         };

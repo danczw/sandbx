@@ -493,6 +493,11 @@ mod tests {
 
     use clap::Parser;
 
+    /// `path`, pinned to the object it names — the shape every grant takes (#212).
+    fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+        sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
+    }
+
     fn agent_run(argv: &[&str]) -> AgentRun {
         match crate::Cli::parse_from(argv).command {
             crate::Command::AgentRun(args) => args,
@@ -798,8 +803,8 @@ mod tests {
 
         let (sent, _, code) = under(
             SandboxPolicy::default()
-                .allow_read(work.path())
-                .allow_write(work.path()),
+                .allow_read(vetted(work.path()))
+                .allow_write(vetted(work.path())),
             &args,
             &args.prompt(),
             vec![vec![text("ok"), stop(StopReason::EndTurn)]],

@@ -116,6 +116,11 @@ impl SandboxedCommand {
         if let Some(detail) = self.policy.unbounded_resolution() {
             return Err(SandboxError::UnboundedResolution { detail });
         }
+        if let Some(granted) = self.policy.grant_bound_by_resolver() {
+            return Err(SandboxError::GrantBoundByResolver {
+                granted: granted.to_path_buf(),
+            });
+        }
 
         let helper = match &self.helper {
             Some(path) => path.clone(),

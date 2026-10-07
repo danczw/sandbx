@@ -30,6 +30,9 @@ pub enum HelperRefusal {
     /// A granted path opened as a different one — [`SandboxError::GrantRedirected`].
     GrantRedirected,
 
+    /// A granted path opened as a different object — [`SandboxError::GrantReplaced`].
+    GrantReplaced,
+
     /// The syscall filter would not install — [`SandboxError::Seccomp`].
     Seccomp,
 
@@ -62,10 +65,11 @@ pub enum HelperRefusal {
 
 impl HelperRefusal {
     /// Every refusal that can cross the channel; drives `from_label`.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::BadHelperArgs,
         Self::Landlock,
         Self::GrantRedirected,
+        Self::GrantReplaced,
         Self::Seccomp,
         Self::NamespaceSetupFailed,
         Self::ProcessHardening,
@@ -86,6 +90,7 @@ impl HelperRefusal {
             Self::BadHelperArgs => "bad_helper_args",
             Self::Landlock => "landlock",
             Self::GrantRedirected => "grant_redirected",
+            Self::GrantReplaced => "grant_replaced",
             Self::Seccomp => "seccomp",
             Self::NamespaceSetupFailed => "namespace_setup_failed",
             Self::ProcessHardening => "process_hardening",
@@ -142,6 +147,9 @@ impl SandboxError {
             // Only the stage holding the descriptor can compare what it opened against what
             // it was told to open, so this is helper-decided by construction.
             Self::GrantRedirected { .. } => Some(HelperRefusal::GrantRedirected),
+            // Same reason: only the stage holding the descriptor can `fstat` it, and the
+            // harness's own measurement is the pin it is compared against.
+            Self::GrantReplaced { .. } => Some(HelperRefusal::GrantReplaced),
             Self::Seccomp { .. } => Some(HelperRefusal::Seccomp),
             Self::NamespaceSetupFailed { .. } => Some(HelperRefusal::NamespaceSetupFailed),
             Self::ProcessHardening { .. } => Some(HelperRefusal::ProcessHardening),
@@ -155,14 +163,18 @@ impl SandboxError {
             // outcome the parent watched happen. `HelperRefused` is this relay's own output
             // and exists only parent-side, so reporting it would be a second crossing.
             // `ProcessConcealment` is decided past dispatch, which no helper runs (#192).
-            // `UnboundedResolution` is decided off the policy, before the spawn.
+            // `GrantUnpinnable` is the harness's: it is what vetting a path answers, and the
+            // helper never vets one. `UnboundedResolution` and `GrantBoundByResolver` are
+            // decided off the policy, before the spawn.
             Self::PathNotAllowed { .. }
             | Self::Unresolvable { .. }
             | Self::NotFound { .. }
+            | Self::GrantUnpinnable { .. }
             | Self::SpawnFailed { .. }
             | Self::HelperRefused { .. }
             | Self::ProcessConcealment { .. }
             | Self::UnboundedResolution { .. }
+            | Self::GrantBoundByResolver { .. }
             | Self::TimedOut { .. } => None,
         }
     }
@@ -202,6 +214,7 @@ mod tests {
             "path_not_allowed",
             "unresolvable",
             "not_found",
+            "grant_unpinnable",
             "process_concealment",
         ] {
             assert_eq!(

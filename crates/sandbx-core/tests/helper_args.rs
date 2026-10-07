@@ -3,7 +3,13 @@
 //! Round-tripping is a security property: a path dropped in encoding becomes a permission
 //! the helper never grants, and one wrongly added becomes one it grants by mistake.
 
-use sandbx_core::{HelperArgs, SandboxPolicy};
+use sandbx_core::{HelperArgs, SandboxPolicy, VettedPath};
+
+/// `path`, pinned to the object it names — the grant crosses as a path *and* an object, so a
+/// round trip is over something the encoding side could measure (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 #[test]
 fn round_trips_an_empty_policy() {
@@ -18,10 +24,10 @@ fn round_trips_an_empty_policy() {
 #[test]
 fn round_trips_paths_and_network() {
     let policy = SandboxPolicy::default()
-        .allow_read("/usr/lib")
-        .allow_read("/etc/ssl")
-        .allow_write("/tmp/work")
-        .allow_read_execute("/bin")
+        .allow_read(vetted("/usr/lib"))
+        .allow_read(vetted("/etc"))
+        .allow_write(vetted("/tmp"))
+        .allow_read_execute(vetted("/bin"))
         .allow_network()
         .allow_unix_sockets();
 
@@ -37,7 +43,7 @@ fn round_trips_paths_and_network() {
 /// like a helper flag must not be read as one.
 #[test]
 fn command_arguments_are_not_parsed_as_helper_flags() {
-    let policy = SandboxPolicy::default().allow_read("/usr");
+    let policy = SandboxPolicy::default().allow_read(vetted("/usr"));
 
     let args = HelperArgs::encode(
         &policy,
@@ -70,7 +76,7 @@ fn a_port_list_round_trips() {
     let policy = SandboxPolicy::default()
         .allow_network_port(443)
         .allow_network_port(80)
-        .allow_read("/usr/lib");
+        .allow_read(vetted("/usr/lib"));
 
     let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
     let decoded = HelperArgs::decode(&args).unwrap();
@@ -182,6 +188,91 @@ fn a_port_flag_without_a_port_is_refused() {
     );
 }
 
+/// Three tokens per grant, the third being the object the harness vetted — a decode reading
+/// only two would build the policy out of what the name says and not what it named.
+#[test]
+fn a_granted_path_crosses_beside_the_object_it_was_vetted_as() {
+    let granted = vetted("/usr/lib");
+    let policy = SandboxPolicy::default().allow_read(granted.clone());
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
+    let grant: Vec<_> = args
+        .iter()
+        .take_while(|arg| *arg != "--")
+        .cloned()
+        .collect();
+
+    assert_eq!(
+        grant,
+        [
+            "--ro".to_string(),
+            granted.path().display().to_string(),
+            granted.object().to_string(),
+        ],
+        "a grant no longer crosses as its flag, its path and its object"
+    );
+    assert_eq!(
+        HelperArgs::decode(&args)
+            .expect("the grant to decode")
+            .policy,
+        policy,
+        "the object did not survive the trip, so the helper would check the grant \
+         against a different one"
+    );
+}
+
+/// Carrying on would mean installing a rule over whatever the name reaches now, which is the
+/// substitution the pin exists to refuse.
+///
+/// Matched on the reason: this argv also lacks the `--` separator, which it has to — the
+/// object is read as the token after the path, so `--` in that position is a malformed object
+/// and not a missing one.
+#[test]
+fn a_granted_path_without_its_object_is_refused() {
+    let args = vec!["--ro".to_string(), "/usr".to_string()];
+
+    let refusal = HelperArgs::decode(&args).expect_err("a grant with no object after it");
+
+    assert!(
+        matches!(
+            refusal,
+            sandbx_core::SandboxError::BadHelperArgs { detail }
+                if detail.contains("granted path with no object pin")
+        ),
+        "refused for the wrong reason: {refusal:?}"
+    );
+}
+
+/// Every spelling `encode` could not have emitted, including the two halves on their own: a
+/// decode defaulting either one would pin the grant to an object nothing measured.
+#[test]
+fn a_malformed_object_on_the_wire_is_refused() {
+    for object in [
+        "", ":", "259", "259:", ":17", "259:17:4", "a:b", "-1:17", " 259:17",
+    ] {
+        let args = vec![
+            "--ro".to_string(),
+            "/usr".to_string(),
+            object.to_string(),
+            "--".to_string(),
+            "/bin/true".to_string(),
+        ];
+
+        let Err(refusal) = HelperArgs::decode(&args) else {
+            panic!("{object:?} was accepted as an object");
+        };
+
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("object pin that is not a device and an inode")
+            ),
+            "{object:?} was refused for the wrong reason: {refusal:?}"
+        );
+    }
+}
+
 #[test]
 fn missing_separator_is_rejected() {
     assert!(HelperArgs::decode(&["--ro".into(), "/usr".into()]).is_err());
@@ -212,7 +303,7 @@ fn round_trips_a_grant_on_every_axis() {
     use sandbx_core::Axis;
 
     for axis in Axis::ALL {
-        let policy = SandboxPolicy::default().grant(axis, "/srv/data");
+        let policy = SandboxPolicy::default().grant(axis, vetted("/usr/lib"));
 
         let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
         let decoded = HelperArgs::decode(&args)
@@ -233,7 +324,7 @@ fn every_axis_rejects_a_path_flag_without_its_path() {
 
     for axis in Axis::ALL {
         let emitted = HelperArgs::encode(
-            &SandboxPolicy::default().grant(axis, "/srv"),
+            &SandboxPolicy::default().grant(axis, vetted("/usr")),
             "/bin/true",
             &[],
             None,
@@ -477,7 +568,7 @@ const DIGEST: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b78
 #[test]
 fn round_trips_a_pinned_program() {
     let digest = sandbx_core::Sha256Digest::parse(DIGEST).expect("64 lowercase hex characters");
-    let policy = SandboxPolicy::default().allow_read_execute("/bin");
+    let policy = SandboxPolicy::default().allow_read_execute(vetted("/bin"));
 
     let args = HelperArgs::encode(&policy, "/bin/true", &[], Some(digest));
     let decoded = HelperArgs::decode(&args).unwrap();

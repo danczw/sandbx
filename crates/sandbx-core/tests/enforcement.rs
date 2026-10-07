@@ -14,7 +14,7 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 
 mod support;
 
-use support::{allow_probe, run, run_pinned, runtime_paths};
+use support::{allow_probe, run, run_pinned, runtime_paths, vetted};
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
@@ -35,7 +35,7 @@ fn allowed_path_can_be_read() {
     let file = dir.path().join("readable.txt");
     std::fs::write(&file, b"visible").unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run(&policy, "/bin/cat", &[file.to_str().unwrap()]);
 
     assert!(
@@ -72,7 +72,7 @@ fn read_only_grant_cannot_write() {
     let file = dir.path().join("readonly.txt");
     std::fs::write(&file, b"original").unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run(
         &policy,
         "/bin/sh",
@@ -91,7 +91,7 @@ fn read_only_grant_cannot_write() {
 fn write_grant_can_write() {
     let dir = scratch();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write(vetted(dir.path()));
     let created = dir.path().join("created.txt");
     let output = run(
         &policy,
@@ -182,7 +182,7 @@ fn the_inner_stage_refuses_an_unnarrowed_environment() {
 
     // Nothing in the environment allowlist, so the planted variable is outside it — as is
     // every variable cargo handed this process.
-    let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write(vetted(dir.path()));
     let args = [marker.to_str().unwrap().to_string()];
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
@@ -282,7 +282,7 @@ fn the_command_cannot_signal_outside_its_namespace() {
 /// netns has only loopback, so reading the interface list needs no external network.
 #[test]
 fn network_is_denied_by_default() {
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
     let output = run(&policy, "/bin/cat", &["/proc/self/net/dev"]);
 
     assert!(
@@ -311,7 +311,7 @@ fn network_is_denied_by_default() {
 #[test]
 fn allowed_network_keeps_host_interfaces() {
     let policy = runtime_paths(SandboxPolicy::default())
-        .allow_read("/proc")
+        .allow_read(vetted("/proc"))
         .allow_network();
     let output = run(&policy, "/bin/cat", &["/proc/self/net/dev"]);
 
@@ -327,7 +327,7 @@ fn allowed_network_keeps_host_interfaces() {
 /// tool that attempts a blocked syscall.
 #[test]
 fn seccomp_filter_is_installed() {
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
     assert!(
@@ -386,7 +386,7 @@ fn bounding_set_is_droppable() -> bool {
 /// `no_new_privs` is checked here too, off the same `/proc/self/status` read.
 #[test]
 fn capabilities_are_dropped() {
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
     assert!(
@@ -414,7 +414,8 @@ fn capabilities_are_dropped() {
 /// policy says, so this pins `CLONE_NEWNET` as the only thing the flag changes.
 #[test]
 fn capabilities_are_dropped_when_network_is_allowed() {
-    let policy = runtime_paths(SandboxPolicy::default().allow_network()).allow_read("/proc");
+    let policy =
+        runtime_paths(SandboxPolicy::default().allow_network()).allow_read(vetted("/proc"));
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
     assert!(
@@ -439,7 +440,7 @@ fn capabilities_are_dropped_when_network_is_allowed() {
 /// fallback.
 #[test]
 fn the_bounding_set_is_cleared_or_left_inherited() {
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
     let output = run(&policy, "/bin/cat", &["/proc/self/status"]);
 
     assert!(
@@ -476,7 +477,7 @@ fn the_bounding_set_is_cleared_or_left_inherited() {
 
 #[test]
 fn core_dumps_are_disabled() {
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read("/proc");
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
     let output = run(&policy, "/bin/cat", &["/proc/self/limits"]);
 
     assert!(
@@ -509,7 +510,7 @@ fn truncate_on_read_only_grant_is_denied() {
 
     let probe = env!("CARGO_BIN_EXE_sandbx-truncate-probe");
     let policy = allow_probe(
-        runtime_paths(SandboxPolicy::default()).allow_read(dir.path()),
+        runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path())),
         probe,
     );
     let output = run(&policy, probe, &[victim.to_str().unwrap()]);
@@ -549,7 +550,7 @@ fn truncate_on_write_grant_is_permitted() {
 
     let probe = env!("CARGO_BIN_EXE_sandbx-truncate-probe");
     let policy = allow_probe(
-        runtime_paths(SandboxPolicy::default()).allow_write(dir.path()),
+        runtime_paths(SandboxPolicy::default()).allow_write(vetted(dir.path())),
         probe,
     );
     let output = run(&policy, probe, &[target.to_str().unwrap()]);
@@ -566,6 +567,10 @@ fn truncate_on_write_grant_is_permitted() {
 /// grant naming a symlink would mean one thing in-process and another in the kernel. The
 /// resolved spelling is the one both layers agree about; the link is refused, not followed
 /// (#205).
+///
+/// Vetting resolves, so a `SandboxPolicy` cannot carry the link at all — the grant is forged
+/// onto argv instead, which is the only route left to it and the one the helper polices. Its
+/// object is the target's, so the pin agrees and the readback is what refuses.
 #[test]
 fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     let real = scratch();
@@ -575,8 +580,22 @@ fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     let link = staging.path().join("granted");
     std::os::unix::fs::symlink(real.path(), &link).unwrap();
 
-    let linked = runtime_paths(SandboxPolicy::default()).allow_read(&link);
-    let via_link = run(&linked, "/bin/cat", &[link.join("s.txt").to_str().unwrap()]);
+    let target = real.path().canonicalize().unwrap();
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(&target));
+
+    let readable = link.join("s.txt").to_str().unwrap().to_string();
+    let mut forged = HelperArgs::encode(&policy, "/bin/cat", &[readable], None);
+    let spelling = forged
+        .iter_mut()
+        .find(|arg| arg.as_str() == target.to_str().unwrap())
+        .expect("the granted path on the wire");
+    *spelling = link.to_str().unwrap().to_string();
+
+    let via_link = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
+        .arg(sandbx_core::HELPER_FLAG)
+        .args(&forged)
+        .output()
+        .expect("helper should start");
     let stderr = String::from_utf8_lossy(&via_link.stderr);
 
     assert!(
@@ -588,9 +607,6 @@ fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
         stderr.contains("opened as"),
         "the refusal is not the redirected grant: {stderr}"
     );
-
-    let target = real.path().canonicalize().unwrap();
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read(&target);
     let direct = run(
         &policy,
         "/bin/cat",
@@ -610,6 +626,50 @@ fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     );
 }
 
+/// The substitution #212 is about, end to end: one real directory renamed over another
+/// between the vet and the open. No symlink and no change of spelling, so the readback agrees
+/// and only the object the grant carries can refuse it.
+#[test]
+fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
+    let staging = scratch();
+    let granted_at = staging.path().join("granted");
+    let substitute = staging.path().join("substitute");
+    std::fs::create_dir(&granted_at).unwrap();
+    std::fs::create_dir(&substitute).unwrap();
+    std::fs::write(granted_at.join("s.txt"), b"vetted-side").unwrap();
+    std::fs::write(substitute.join("s.txt"), b"substituted").unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(&granted_at));
+    let readable = granted_at.join("s.txt");
+
+    // The baseline first, while the grant still names what it was vetted as: without it the
+    // refusal below would pass on a helper that refused this policy for any reason at all.
+    let before = run(&policy, "/bin/cat", &[readable.to_str().unwrap()]);
+    assert_eq!(
+        String::from_utf8_lossy(&before.stdout),
+        "vetted-side",
+        "the vetted grant was refused, so the refusal below proves nothing: {}",
+        String::from_utf8_lossy(&before.stderr)
+    );
+
+    std::fs::remove_dir_all(&granted_at).unwrap();
+    std::fs::rename(&substitute, &granted_at).unwrap();
+
+    let after = run(&policy, "/bin/cat", &[readable.to_str().unwrap()]);
+    let stderr = String::from_utf8_lossy(&after.stderr);
+
+    assert!(
+        !after.status.success(),
+        "a substituted directory was granted under the vetted one's name: {}",
+        String::from_utf8_lossy(&after.stdout)
+    );
+    // Named, so this cannot pass on a refusal the readback produced instead.
+    assert!(
+        stderr.contains("opened as object"),
+        "the refusal is not the substituted object: {stderr}"
+    );
+}
+
 /// The kernel gets read alongside execute, since `AccessFs::from_read` bundles
 /// `ReadFile`/`ReadDir` in with `Execute`. If `FsGuard` reads only the read and write axes,
 /// `bash` can `cat` a file the native `read` tool refuses under one policy.
@@ -619,7 +679,7 @@ fn an_execute_grant_reads_the_same_in_both_layers() {
     let file = dir.path().join("data.txt");
     std::fs::write(&file, b"exec-axis-readable").unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
 
     let output = run(&policy, "/bin/cat", &[file.to_str().unwrap()]);
     assert!(
@@ -645,7 +705,7 @@ fn a_write_grant_does_not_make_files_readable() {
     let secret = dir.path().join("dropped.txt");
     std::fs::write(&secret, b"WRITE-ONLY-SECRET").unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write(vetted(dir.path()));
 
     let output = run(&policy, "/bin/cat", &[secret.to_str().unwrap()]);
     assert!(
@@ -669,7 +729,7 @@ fn a_read_grant_does_not_make_files_executable() {
     let program = dir.path().join("true");
     std::fs::copy("/bin/true", &program).unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run(&policy, program.to_str().unwrap(), &[]);
 
     assert!(
@@ -685,7 +745,7 @@ fn a_read_execute_grant_does_make_files_executable() {
     let program = dir.path().join("true");
     std::fs::copy("/bin/true", &program).unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let output = run(&policy, program.to_str().unwrap(), &[]);
 
     assert!(
@@ -703,8 +763,8 @@ fn a_write_grant_does_not_make_files_executable() {
     let program = dir.path().join("planted");
 
     let policy = runtime_paths(SandboxPolicy::default())
-        .allow_read(dir.path())
-        .allow_write(dir.path());
+        .allow_read(vetted(dir.path()))
+        .allow_write(vetted(dir.path()));
 
     // Plant it from inside the sandbox, the way an agent would.
     let plant = run(
@@ -948,7 +1008,7 @@ fn a_matching_pin_runs_the_program() {
     let program = dir.path().join("tool");
     std::fs::copy("/bin/true", &program).unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let output = run_pinned(
         &policy,
         program.to_str().unwrap(),
@@ -974,7 +1034,7 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
 
     std::fs::copy("/bin/id", &program).unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let output = run_pinned(&policy, program.to_str().unwrap(), &[], Some(pinned));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1002,7 +1062,7 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
     let program = dir.path().join("tool");
     std::fs::copy("/bin/true", &program).unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run_pinned(
         &policy,
         program.to_str().unwrap(),
@@ -1030,7 +1090,7 @@ fn a_pinned_script_is_refused_rather_than_exec_d() {
     )
     .unwrap();
 
-    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(dir.path());
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let refused = run_pinned(
         &policy,
         program.to_str().unwrap(),

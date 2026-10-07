@@ -6,7 +6,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy};
+use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy, VettedPath};
 
 use crate::PolicyError;
 
@@ -238,7 +238,7 @@ struct Homes {
 fn vetted_root<'a>(
     cwd: &'a Path,
     homes: &Homes,
-    granted: &[PathBuf],
+    granted: &[VettedPath],
     owned: &[OwnedPath],
 ) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
@@ -274,11 +274,12 @@ fn vetted_root<'a>(
     // host compares `/usr/bin` with `/usr/bin` rather than with `/bin`.
     if let Some(path) = granted
         .iter()
+        .map(VettedPath::path)
         .find(|path| path.starts_with(cwd) || cwd.starts_with(path))
     {
         return Err(PolicyError::SystemExecutables {
             cwd: cwd.to_path_buf(),
-            path: path.clone(),
+            path: path.to_path_buf(),
         });
     }
 
@@ -406,6 +407,34 @@ fn resolved(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+/// `granted` as a grant: the object it names now, carried beside the path so the helper can
+/// confirm it opened that one and not whatever was renamed over the name since (#212).
+///
+/// `typed` is what the flag gave, which is the spelling a refusal names — the resolved one is
+/// derived and nothing the operator can go and change.
+fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
+    VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
+        granted: typed.to_path_buf(),
+        source,
+    })
+}
+
+/// Whether a flag names a file a bounded resolver bind-mounts sandbx's own copy over, which
+/// `SandboxPolicy::grant_bound_by_resolver` refuses the policy for.
+///
+/// Both spellings, because the bind follows a symlink and the pin does not: `/etc/resolv.conf`
+/// resolves to systemd's stub, the inode the bind lands on and no entry of `RESOLVER_FILES`,
+/// while a relative flag resolves *to* an entry and is spelled like none of them.
+///
+/// Exact names, not a subtree: the pin is on the granted path's own inode, and binding over a
+/// file inside `/etc` leaves `/etc`'s inode alone.
+fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
+    sandbx_core::RESOLVER_FILES
+        .iter()
+        .map(Path::new)
+        .any(|bound| bound == typed || bound == granted)
+}
+
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
@@ -428,7 +457,7 @@ fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a Owned
 }
 
 /// [`vetted_root`] over this process's own state.
-fn current_root(granted: &[PathBuf], owned: &[OwnedPath]) -> Result<PathBuf, PolicyError> {
+fn current_root(granted: &[VettedPath], owned: &[OwnedPath]) -> Result<PathBuf, PolicyError> {
     let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
         detail: "could not read the working directory to derive a policy from",
         source,
@@ -495,8 +524,13 @@ impl Grants {
             // Inside the branch, not above it: an invocation that typed its own flags never
             // depends on `HOME`, and on `getcwd` only to resolve a relative one.
             let root = current_root(policy.executable_paths(), &owned)?;
-            policy = policy.allow_read(&root).allow_write(&root);
+            let root = pinned(&root, &root)?;
+            policy = policy.allow_read(root.clone()).allow_write(root);
         }
+
+        // Noted in the loop and refused with the `Dns…` family below, which holds the more
+        // fundamental shapes: an operator with no egress at all should hear that first.
+        let mut bound_file = None;
 
         for axis in Axis::ALL {
             for path in self.paths(axis) {
@@ -505,7 +539,11 @@ impl Grants {
                 // Granted in the form it was vetted in, not as the flag spelled it: a grant
                 // left relative or unresolved is one the helper resolves itself, against its
                 // own directory and whatever the links point at by then (#205).
-                let granted = resolved(&absolute(path, &std::env::current_dir)?);
+                let typed = absolute(path, &std::env::current_dir)?;
+                let granted = resolved(&typed);
+                if bound_file.is_none() && bound_by_resolver(&typed, &granted) {
+                    bound_file = Some(path.clone());
+                }
                 if let Some(found) = reaches_owned(&granted, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
                         // As typed, which is what the operator can go and change.
@@ -515,13 +553,14 @@ impl Grants {
                     });
                 }
 
-                policy = policy.grant(axis, &granted);
+                let granted = pinned(&granted, path)?;
+                policy = policy.grant(axis, granted.clone());
 
                 // The one place this CLI grants more than the flag's own axis: a tree a
                 // tool can rewrite and not `cat` back is a trap. Keyed to what the axis
                 // confers, not to `Write`, so a second write-conferring axis inherits it.
                 if axis.grants().write {
-                    policy = policy.grant(Axis::Read, &granted);
+                    policy = policy.grant(Axis::Read, granted);
                 }
             }
         }
@@ -569,6 +608,10 @@ impl Grants {
                 }
                 Some(_) => {}
             }
+            // Last of the block: the grant is sound in itself, and only the pair collides.
+            if let Some(granted) = bound_file {
+                return Err(PolicyError::DnsGrantsBoundFile { granted });
+            }
         }
 
         for name in &self.allow_dns {
@@ -595,11 +638,17 @@ mod tests {
     use super::*;
 
     /// What every run may already execute, which `policy()` passes from the live policy.
-    fn granted() -> Vec<PathBuf> {
+    fn granted() -> Vec<VettedPath> {
         SandboxPolicy::default()
             .allow_system_executables()
             .executable_paths()
             .to_vec()
+    }
+
+    /// The paths of a set of grants. The object beside each is derived from the path, so these
+    /// tests assert over the spelling and the pin follows (#212).
+    fn spellings(granted: &[VettedPath]) -> Vec<&Path> {
+        granted.iter().map(VettedPath::path).collect()
     }
 
     fn bare() -> Grants {
@@ -974,8 +1023,9 @@ mod tests {
             "no granted path to overlap with, so this test asserts nothing"
         );
 
-        for path in granted() {
-            for cwd in [path.clone(), path.join("src/app")] {
+        for granted in granted() {
+            let path = granted.path();
+            for cwd in [path.to_path_buf(), path.join("src/app")] {
                 let error = root(&cwd, &homes(&["/home/u"])).expect_err("a system path");
 
                 assert!(
@@ -1280,8 +1330,8 @@ mod tests {
             .expect("the crate this test is in has a src directory");
 
         assert_eq!(
-            policy.readable_paths(),
-            [expected],
+            spellings(policy.readable_paths()),
+            [expected.as_path()],
             "a relative grant crossed the seam relative"
         );
     }
@@ -1301,13 +1351,13 @@ mod tests {
         let policy = grants.policy().expect("the flags describe a policy");
 
         assert_eq!(
-            policy.writable_paths(),
-            std::slice::from_ref(&real),
+            spellings(policy.writable_paths()),
+            [real.as_path()],
             "a symlinked grant crossed the seam unresolved"
         );
         assert_eq!(
-            policy.readable_paths(),
-            std::slice::from_ref(&real),
+            spellings(policy.readable_paths()),
+            [real.as_path()],
             "the read a write flag confers was granted in another form than the write"
         );
     }

@@ -13,7 +13,7 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 mod support;
 
-use support::{AllowAll, Script, call, ctx, stop, text, turn};
+use support::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// An assistant turn of prose, the shape most of these end on.
 fn replied(text: &str) -> RequestMessage {
@@ -138,7 +138,7 @@ async fn thinking_is_replayed_in_turn_and_never_out() {
     let outcome = run_turn(
         async |r| script.open(r).await,
         turn(&[], &[BuiltinTool::Ls]),
-        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
         |event: &AgentEvent| seen.push(event.clone()),
         AllowAll,
     )
@@ -332,7 +332,7 @@ async fn a_tool_result_is_fed_into_the_next_round() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
     let input = serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" });
-    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -393,7 +393,7 @@ async fn a_tool_result_is_fed_into_the_next_round() {
 #[tokio::test]
 async fn a_tool_call_runs_without_a_stop_reason() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -428,7 +428,7 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let outside = elsewhere.path().join("escape.txt");
-    let ctx = ctx(SandboxPolicy::default().allow_write(allowed.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(vetted(allowed.path())));
 
     let mut script = Script::new([
         vec![
@@ -475,7 +475,7 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
 #[tokio::test]
 async fn bad_tool_arguments_are_reported_as_an_error() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -540,7 +540,7 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
 async fn a_denied_call_never_reaches_the_tool() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
-    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -585,8 +585,8 @@ async fn a_denied_call_never_reaches_the_tool() {
 async fn a_denial_never_ends_the_turn() {
     let root = tempfile::tempdir().unwrap();
     let ctx = ctx(SandboxPolicy::default()
-        .allow_read(root.path())
-        .allow_write(root.path()));
+        .allow_read(vetted(root.path()))
+        .allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -649,7 +649,7 @@ async fn the_gate_sees_a_call_before_it_runs() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
     let input = serde_json::json!({ "path": file.to_str().unwrap(), "content": "written" });
-    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![call("write", input.clone()), stop(StopReason::ToolUse)],
@@ -716,7 +716,7 @@ async fn an_unknown_name_never_reaches_the_gate() {
 async fn an_un_offered_tool_never_reaches_the_gate() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
-    let ctx = ctx(SandboxPolicy::default().allow_write(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -759,8 +759,8 @@ async fn a_round_of_two_calls_gets_a_verdict_each() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("note.txt");
     let ctx = ctx(SandboxPolicy::default()
-        .allow_read(root.path())
-        .allow_write(root.path()));
+        .allow_read(vetted(root.path()))
+        .allow_write(vetted(root.path())));
 
     let mut script = Script::new([
         vec![
@@ -854,7 +854,7 @@ fn capped_at_three() -> sandbx_agent::Turn<'static> {
 #[tokio::test]
 async fn a_turn_stops_asking_once_it_runs_out_of_rounds() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
     let mut script = asking_forever(root.path());
 
     run_turn(
@@ -878,7 +878,7 @@ async fn a_turn_stops_asking_once_it_runs_out_of_rounds() {
 #[tokio::test]
 async fn a_turn_out_of_rounds_hands_back_what_it_did() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
     let mut script = asking_forever(root.path());
 
     let outcome = run_turn(
@@ -972,7 +972,7 @@ fn documented_call_shape_stays_spawnable(
 #[tokio::test]
 async fn an_empty_round_mid_tool_use_is_an_error() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
     let mut script = Script::new([
         vec![
             call(
@@ -1005,7 +1005,7 @@ async fn an_empty_round_mid_tool_use_is_an_error() {
 #[tokio::test]
 async fn a_reasoning_only_round_mid_tool_use_is_the_same_error() {
     let root = tempfile::tempdir().unwrap();
-    let ctx = ctx(SandboxPolicy::default().allow_read(root.path()));
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
     let mut script = Script::new([
         vec![
             call(

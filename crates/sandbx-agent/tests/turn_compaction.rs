@@ -11,7 +11,7 @@ use sandbx_tools::BuiltinTool;
 
 mod support;
 
-use support::{AllowAll, Script, call, ctx, stop, text, turn};
+use support::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// Large enough to put any test over the budgets used below.
 fn measured(input: u32) -> AgentEvent {
@@ -799,7 +799,7 @@ async fn a_cut_is_reused_by_every_later_round() {
     let outcome = run_turn(
         async |r| script.open(r).await,
         turn,
-        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
         |_| {},
         AllowAll,
     )
@@ -843,7 +843,7 @@ async fn usage_back_under_budget_mid_turn_keeps_the_cut() {
     let outcome = run_turn(
         async |r| script.open(r).await,
         turn,
-        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
         |_| {},
         AllowAll,
     )
@@ -887,7 +887,7 @@ async fn a_keep_recent_under_the_turns_output_sends_it() {
     let outcome = run_turn(
         async |r| script.open(r).await,
         turn,
-        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
         |_| {},
         AllowAll,
     )
@@ -965,7 +965,7 @@ async fn a_compacted_turn_ending_mid_tool_use_is_an_error() {
     let error = run_turn(
         async |r| script.open(r).await,
         turn,
-        &ctx(SandboxPolicy::default().allow_read(root.path())),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
         |_| {},
         AllowAll,
     )

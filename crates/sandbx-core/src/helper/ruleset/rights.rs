@@ -65,6 +65,33 @@ pub(super) fn rights_for(
     }
 }
 
+/// What a rule names: a grant the harness judged, or a path this process installed itself.
+///
+/// The two differ in what can be confirmed about them, not in the rule they get. A grant
+/// carries the object the harness vetted, so the open can be checked against it (#212). A
+/// resolver file was bind-mounted by [`bound_resolution`] a moment ago, in this process and
+/// after the harness judged the policy — so no harness-side pin exists, and measuring one
+/// here would compare this process's answer against itself.
+///
+/// [`bound_resolution`]: crate::helper::resolver::bound_resolution
+pub(in crate::helper) enum RuleTarget<'policy> {
+    /// A path the operator granted, pinned to the object it was vetted as.
+    Granted(&'policy crate::VettedPath),
+
+    /// A resolver file sandbx bind-mounted over, which no grant names.
+    Installed(&'static std::path::Path),
+}
+
+impl RuleTarget<'_> {
+    /// The path to open, whichever it is.
+    pub(in crate::helper) fn path(&self) -> &std::path::Path {
+        match self {
+            Self::Granted(granted) => granted.path(),
+            Self::Installed(path) => path,
+        }
+    }
+}
+
 /// The Landlock rules [`apply`](crate::helper::apply) will install, as `(axis, path, rights)`,
 /// one per grant, ordered after [`SandboxPolicy::granted_paths`].
 ///
@@ -89,7 +116,7 @@ pub(super) fn fs_rules(
     abi: landlock::ABI,
 ) -> Vec<(
     crate::Axis,
-    &std::path::Path,
+    RuleTarget<'_>,
     landlock::BitFlags<landlock::AccessFs>,
 )> {
     // Annotated, the paths being `&'static`: chaining them onto a borrow of the policy would
@@ -99,8 +126,16 @@ pub(super) fn fs_rules(
 
     policy
         .granted_paths()
-        .chain(resolver)
-        .map(|(axis, path)| (axis, path, rights_for(axis, path.is_dir(), abi)))
+        .map(|(axis, granted)| (axis, RuleTarget::Granted(granted)))
+        .chain(
+            resolver
+                .into_iter()
+                .map(|(axis, path)| (axis, RuleTarget::Installed(path))),
+        )
+        .map(|(axis, target)| {
+            let rights = rights_for(axis, target.path().is_dir(), abi);
+            (axis, target, rights)
+        })
         .collect()
 }
 

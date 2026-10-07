@@ -5,8 +5,13 @@
 //! tool needs the raw policy in order to spawn at all.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::ExecutionContext;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     // The test harness does not dispatch helper mode; point at a binary that does.
@@ -47,15 +52,15 @@ fn a_command_from_the_seam_is_confined_by_the_policy() {
 #[test]
 fn a_command_from_the_seam_reaches_a_granted_path() {
     let dir = tempfile::tempdir().unwrap();
-    // Resolved: the helper refuses a grant that opens as something else, and `$TMPDIR` is a
-    // symlink on some hosts.
+    // Resolved here as well as at the vet, because the command below names this spelling and
+    // has to land inside the granted tree; `$TMPDIR` is a symlink on some hosts.
     let root = dir.path().canonicalize().unwrap();
     std::fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
 
     let ctx = context(
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read(&root),
+            .allow_read(vetted(&root)),
     );
     let output = ctx
         .sandboxed_command("/bin/sh")

@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::ObjectId;
+
 mod refusal;
 
 pub use refusal::HelperRefusal;
@@ -96,6 +98,34 @@ pub enum SandboxError {
         granted: PathBuf,
         /// What opening it actually landed on.
         opened: PathBuf,
+    },
+
+    /// A granted path opened as the same name and a different object, so the sandbox would
+    /// have been granted on a directory the harness never judged.
+    ///
+    /// What [`GrantRedirected`](Self::GrantRedirected) cannot see: a `rename(2)` putting one
+    /// real directory where another was vetted leaves the spelling identical, so only the
+    /// object tells them apart (#212).
+    GrantReplaced {
+        /// The path the policy grants, as the harness resolved it.
+        granted: PathBuf,
+        /// The object the harness measured when it vetted that path.
+        vetted: ObjectId,
+        /// The object opening it actually landed on.
+        opened: ObjectId,
+    },
+
+    /// A granted path could not be pinned to an object, so the harness has nothing for the
+    /// helper to confirm its descriptor against.
+    ///
+    /// Harness-side and never reported by a helper stage: a path that names nothing is also
+    /// one Landlock refuses a rule for, so this is that refusal, moved to where it can say
+    /// which grant it was.
+    GrantUnpinnable {
+        /// The path as the caller supplied it, which is what they can go and change.
+        granted: PathBuf,
+        /// Why it could not be resolved and measured.
+        source: std::io::Error,
     },
 
     /// The syscall filter could not be installed; without it a sandboxed tool could reach
@@ -229,6 +259,17 @@ pub enum SandboxError {
         /// Which route to a nameserver is still open, for the operator to close.
         detail: &'static str,
     },
+
+    /// The policy grants a file its own bounded resolver will bind sandbx's copy over, so the
+    /// object the harness vetted is not the one the command would read.
+    ///
+    /// [`SandboxPolicy::grant_bound_by_resolver`] names the grant and decides this.
+    ///
+    /// [`SandboxPolicy::grant_bound_by_resolver`]: crate::SandboxPolicy::grant_bound_by_resolver
+    GrantBoundByResolver {
+        /// The granted path the bind lands on, for the operator to drop.
+        granted: PathBuf,
+    },
 }
 
 impl std::fmt::Display for SandboxError {
@@ -255,6 +296,15 @@ impl std::fmt::Display for SandboxError {
             }
             Self::UnboundedResolution { detail } => {
                 write!(f, "a name allowlist would bound nothing here: {detail}")
+            }
+            Self::GrantBoundByResolver { granted } => {
+                write!(
+                    f,
+                    "a name allowlist replaces {} with sandbx's own, so granting it would pin \
+                     the rule to a file the command never reads — a name allowlist needs no \
+                     grant there",
+                    granted.display()
+                )
             }
             Self::BadHelperArgs { detail } => {
                 write!(f, "malformed sandbox helper arguments: {detail}")
@@ -307,6 +357,25 @@ impl std::fmt::Display for SandboxError {
                     opened.display()
                 )
             }
+            Self::GrantReplaced {
+                granted,
+                vetted,
+                opened,
+            } => {
+                write!(
+                    f,
+                    "granted path {} opened as object {opened} and not the {vetted} it was \
+                     checked against, so it is no longer the directory the policy judged",
+                    granted.display()
+                )
+            }
+            Self::GrantUnpinnable { granted, source } => {
+                write!(
+                    f,
+                    "could not pin granted path {} to the object it names: {source}",
+                    granted.display()
+                )
+            }
             Self::NamespaceSetupFailed { detail } => {
                 write!(f, "could not create the sandbox namespaces: {detail}")
             }
@@ -343,9 +412,11 @@ impl std::error::Error for SandboxError {
             Self::PathNotAllowed { .. }
             | Self::Unsupported { .. }
             | Self::UnboundedResolution { .. }
+            | Self::GrantBoundByResolver { .. }
             | Self::BadHelperArgs { .. }
             | Self::Landlock { .. }
             | Self::GrantRedirected { .. }
+            | Self::GrantReplaced { .. }
             | Self::NamespaceSetupFailed { .. }
             | Self::ProcessHardening { .. }
             | Self::ProcessConcealment { .. }
@@ -356,6 +427,7 @@ impl std::error::Error for SandboxError {
             | Self::Seccomp { .. } => None,
             Self::Unresolvable { source, .. }
             | Self::NotFound { source, .. }
+            | Self::GrantUnpinnable { source, .. }
             | Self::SpawnFailed { source, .. }
             | Self::InnerStageFailed { source, .. }
             | Self::PinUnreadable { source, .. }
@@ -376,6 +448,8 @@ impl SandboxError {
             Self::BadHelperArgs { .. } => "bad_helper_args",
             Self::Landlock { .. } => "landlock",
             Self::GrantRedirected { .. } => "grant_redirected",
+            Self::GrantReplaced { .. } => "grant_replaced",
+            Self::GrantUnpinnable { .. } => "grant_unpinnable",
             Self::Seccomp { .. } => "seccomp",
             Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
             Self::ProcessHardening { .. } => "process_hardening",
@@ -394,6 +468,7 @@ impl SandboxError {
             Self::TimedOut { .. } => "timeout",
             Self::Unsupported { .. } => "unsupported",
             Self::UnboundedResolution { .. } => "unbounded_resolution",
+            Self::GrantBoundByResolver { .. } => "grant_bound_by_resolver",
         }
     }
 }
@@ -411,6 +486,12 @@ mod tests {
             parse("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
             parse("0000000000000000000000000000000000000000000000000000000000000001"),
         )
+    }
+
+    /// A pin in its wire form, the only spelling of one a test can write — the fields are
+    /// private so that the two measuring constructors stay the only producers.
+    fn object(token: &str) -> ObjectId {
+        ObjectId::parse(token).expect("a device and an inode parted by `:`")
     }
 
     /// One of every variant. The `match` below is exhaustive, so a new variant fails to
@@ -439,6 +520,15 @@ mod tests {
             SandboxError::GrantRedirected {
                 granted: PathBuf::from("/sample"),
                 opened: PathBuf::from("/elsewhere"),
+            },
+            SandboxError::GrantReplaced {
+                granted: PathBuf::from("/sample"),
+                vetted: object("259:17"),
+                opened: object("259:18"),
+            },
+            SandboxError::GrantUnpinnable {
+                granted: PathBuf::from("/sample"),
+                source: io(),
             },
             SandboxError::Seccomp {
                 detail: "sample".to_string(),
@@ -476,6 +566,9 @@ mod tests {
             },
             SandboxError::Unsupported { detail: "sample" },
             SandboxError::UnboundedResolution { detail: "sample" },
+            SandboxError::GrantBoundByResolver {
+                granted: PathBuf::from("/etc/hosts"),
+            },
             // `Landlock` because it is the refusal whose label collides, so an edit giving
             // the relay a label of its own fails `no_two_variants_share_a_label` instead of
             // passing it.
@@ -493,6 +586,8 @@ mod tests {
                 | SandboxError::BadHelperArgs { .. }
                 | SandboxError::Landlock { .. }
                 | SandboxError::GrantRedirected { .. }
+                | SandboxError::GrantReplaced { .. }
+                | SandboxError::GrantUnpinnable { .. }
                 | SandboxError::Seccomp { .. }
                 | SandboxError::NamespaceSetupFailed { .. }
                 | SandboxError::ProcessHardening { .. }
@@ -506,6 +601,7 @@ mod tests {
                 | SandboxError::TimedOut { .. }
                 | SandboxError::HelperRefused { .. }
                 | SandboxError::UnboundedResolution { .. }
+                | SandboxError::GrantBoundByResolver { .. }
                 | SandboxError::Unsupported { .. } => {}
             }
         }
@@ -594,10 +690,12 @@ mod tests {
                 SandboxError::PathNotAllowed { .. }
                     | SandboxError::Unresolvable { .. }
                     | SandboxError::NotFound { .. }
+                    | SandboxError::GrantUnpinnable { .. }
                     | SandboxError::SpawnFailed { .. }
                     | SandboxError::HelperRefused { .. }
                     | SandboxError::ProcessConcealment { .. }
                     | SandboxError::UnboundedResolution { .. }
+                    | SandboxError::GrantBoundByResolver { .. }
                     | SandboxError::TimedOut { .. }
             );
 

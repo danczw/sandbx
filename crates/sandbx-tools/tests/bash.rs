@@ -5,9 +5,14 @@
 //! would still look like it worked.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-use sandbx_core::SandboxPolicy;
+use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     // The test harness does not dispatch helper mode; point at a binary that does.
@@ -88,15 +93,15 @@ fn the_command_is_confined_by_the_policy() {
 #[test]
 fn granted_paths_are_reachable() {
     let dir = tempfile::tempdir().unwrap();
-    // Resolved: the helper refuses a grant that opens as something else, and `$TMPDIR` is a
-    // symlink on some hosts.
+    // Resolved here as well as at the vet, because the command below names this spelling and
+    // has to land inside the granted tree; `$TMPDIR` is a symlink on some hosts.
     let root = dir.path().canonicalize().unwrap();
     std::fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
 
     let ctx = context(
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read(&root),
+            .allow_read(vetted(&root)),
     );
     let out = BuiltinTool::Bash
         .execute(

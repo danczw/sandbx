@@ -6,7 +6,12 @@
 // The workspace ban on `Command::new` exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
 
-use sandbx_core::{Access, FsGuard, SandboxError, SandboxPolicy};
+use sandbx_core::{Access, FsGuard, SandboxError, SandboxPolicy, VettedPath};
+
+/// `path`, pinned to the object it names — the shape every grant takes (#212).
+fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+    VettedPath::vet(path).expect("an existing path to pin the grant to")
+}
 
 #[test]
 fn read_inside_allowed_root_is_permitted() {
@@ -14,7 +19,7 @@ fn read_inside_allowed_root_is_permitted() {
     let file = root.path().join("notes.txt");
     std::fs::write(&file, b"hello").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     assert!(guard.check_read(&file).is_ok());
 }
@@ -26,7 +31,7 @@ fn read_outside_allowed_root_is_denied() {
     let secret = elsewhere.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(allowed.path())));
 
     assert!(guard.check_read(&secret).is_err());
 }
@@ -41,7 +46,7 @@ fn parent_traversal_cannot_escape_root() {
     let outside = root.path().join("outside.txt");
     std::fs::write(&outside, b"nope").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(&inner));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&inner)));
 
     assert!(
         guard.check_read(&inner.join("../outside.txt")).is_err(),
@@ -61,7 +66,7 @@ fn symlink_cannot_escape_root() {
     let link = root.path().join("innocent.txt");
     std::os::unix::fs::symlink(&secret, &link).unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     assert!(
         guard.check_read(&link).is_err(),
@@ -74,7 +79,7 @@ fn symlink_cannot_escape_root() {
 #[test]
 fn write_to_new_file_in_allowed_root_is_permitted() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let new_file = root.path().join("created-later.txt");
     assert!(!new_file.exists());
@@ -88,7 +93,7 @@ fn write_to_new_file_outside_allowed_root_is_denied() {
     let inner = root.path().join("work");
     std::fs::create_dir(&inner).unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(&inner));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(&inner)));
 
     assert!(
         guard.check_write(&inner.join("../escaped.txt")).is_err(),
@@ -102,7 +107,7 @@ fn read_grant_does_not_imply_write() {
     let file = root.path().join("notes.txt");
     std::fs::write(&file, b"hello").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     assert!(guard.check_read(&file).is_ok());
     assert!(
@@ -118,7 +123,7 @@ fn a_refusal_names_the_grant_that_was_missing() {
     let file = root.path().join("notes.txt");
     std::fs::write(&file, b"hello").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let error = guard.check_write(&file).unwrap_err();
     assert!(
@@ -145,7 +150,7 @@ fn a_read_refusal_names_the_readable_roots() {
     let secret = elsewhere.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(allowed.path())));
 
     let error = guard.check_read(&secret).unwrap_err();
     assert!(
@@ -202,7 +207,7 @@ fn write_to_dangling_symlink_is_denied() {
     let link = root.path().join("notes.txt");
     std::os::unix::fs::symlink(&outside, &link).unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     assert!(
         guard.check_write(&link).is_err(),
@@ -219,7 +224,7 @@ fn write_to_dangling_symlink_is_denied() {
 #[test]
 fn write_to_new_file_beside_a_symlink_still_works() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     assert!(guard.check_write(&root.path().join("fresh.txt")).is_ok());
 }
@@ -238,7 +243,7 @@ fn walk_does_not_follow_a_symlink_out_of_the_root() {
     std::os::unix::fs::symlink(&secret, root.path().join("innocent.txt")).unwrap();
     std::fs::write(root.path().join("ours.txt"), b"ours").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert!(
@@ -257,7 +262,7 @@ fn walk_includes_a_symlink_to_a_file_inside_the_root() {
     std::fs::write(&real, b"real").unwrap();
     std::os::unix::fs::symlink(&real, root.path().join("alias.txt")).unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert!(
@@ -280,7 +285,7 @@ fn walk_skips_non_regular_files() {
         .expect("mkfifo should run");
     assert!(status.success());
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert!(
@@ -296,7 +301,7 @@ fn walk_descends_real_subdirectories() {
     std::fs::create_dir(root.path().join("sub")).unwrap();
     std::fs::write(root.path().join("sub/deep.txt"), b"d").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let found = guard.walk_readable(root.path(), usize::MAX).unwrap().files;
 
     assert_eq!(found.len(), 1, "got {found:?}");
@@ -308,7 +313,7 @@ fn walk_refuses_a_root_outside_the_policy() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(allowed.path())));
     assert!(guard.walk_readable(elsewhere.path(), usize::MAX).is_err());
 }
 
@@ -323,7 +328,7 @@ fn refusals_outside_the_policy_are_indistinguishable() {
     std::fs::write(&exists, b"x").unwrap();
     let missing = elsewhere.path().join("missing.txt");
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(allowed.path())));
 
     let for_existing = guard.check_read(&exists).unwrap_err().to_string();
     let for_missing = guard.check_read(&missing).unwrap_err().to_string();
@@ -346,7 +351,7 @@ fn write_refusals_outside_the_policy_look_alike() {
     let exists = elsewhere.path().join("exists.txt");
     std::fs::write(&exists, b"x").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(allowed.path())));
 
     let for_existing = guard.check_write(&exists).unwrap_err().to_string();
     let for_missing = guard
@@ -365,7 +370,7 @@ fn write_refusals_outside_the_policy_look_alike() {
 #[test]
 fn a_missing_write_parent_in_a_grant_is_absent() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let error = guard
         .check_write(&root.path().join("nodir/f.txt"))
@@ -386,7 +391,7 @@ fn a_missing_write_parent_in_a_grant_is_absent() {
 fn a_path_through_a_file_in_a_grant_is_not_a_refusal() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("notes.txt"), b"x").unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let error = guard
         .check_read(&root.path().join("notes.txt/nested"))
@@ -404,7 +409,7 @@ fn a_path_through_a_file_in_a_grant_is_not_a_refusal() {
 fn write_to_a_missing_parent_outside_looks_alike() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(allowed.path())));
 
     let for_existing = guard
         .check_write(&elsewhere.path().join("exists.txt"))
@@ -426,7 +431,7 @@ fn write_to_a_missing_parent_outside_looks_alike() {
 #[test]
 fn a_missing_file_in_a_grant_is_not_a_refusal() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let error = guard
         .check_read(&root.path().join("absent.txt"))
@@ -443,7 +448,7 @@ fn a_missing_file_in_a_grant_is_not_a_refusal() {
 fn a_missing_path_outside_a_grant_is_a_refusal() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(allowed.path())));
 
     let error = guard
         .check_read(&elsewhere.path().join("absent.txt"))
@@ -463,7 +468,7 @@ fn an_unresolvable_path_in_a_grant_is_not_absent() {
     let root = tempfile::tempdir().unwrap();
     let looped = root.path().join("loop");
     std::os::unix::fs::symlink(&looped, &looped).unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let error = guard.check_read(&looped).unwrap_err();
 
@@ -488,7 +493,7 @@ fn a_symlink_out_of_a_grant_conceals_its_target_either_way() {
     let resolving = root.path().join("probe-present");
     std::os::unix::fs::symlink(&present, &resolving).unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     for probe in [&dangling, &resolving] {
         let error = guard.check_read(probe).unwrap_err();
@@ -514,7 +519,7 @@ fn a_symlinked_parent_out_of_a_grant_conceals_its_target() {
     let resolving = root.path().join("to-there");
     std::os::unix::fs::symlink(elsewhere.path().join("there"), &resolving).unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     for parent in [&dangling, &resolving] {
         let error = guard.check_write(&parent.join("out.txt")).unwrap_err();
@@ -535,7 +540,7 @@ fn an_unreadable_parent_in_a_grant_stays_unresolvable() {
     let root = tempfile::tempdir().unwrap();
     let locked = root.path().join("locked");
     std::fs::create_dir(&locked).unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
 
     let error = guard.check_read(&locked.join("inner.txt")).unwrap_err();
@@ -553,7 +558,7 @@ fn an_unreadable_parent_in_a_grant_stays_unresolvable() {
 #[test]
 fn a_missing_file_in_an_allowed_root_says_so() {
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let error = guard
         .check_read(&root.path().join("absent.txt"))
@@ -570,7 +575,7 @@ fn a_missing_file_in_an_allowed_root_says_so() {
 fn a_missing_file_in_an_allowed_subdirectory_says_so() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("sub")).unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let error = guard
         .check_read(&root.path().join("sub/absent.txt"))
@@ -587,7 +592,7 @@ fn open_read_returns_a_handle_in_an_allowed_root() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("notes.txt"), b"hello").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let mut file = guard.open_read(&root.path().join("notes.txt")).unwrap();
 
     let mut got = String::new();
@@ -601,7 +606,7 @@ fn open_read_refuses_a_path_outside_every_root() {
     let elsewhere = tempfile::tempdir().unwrap();
     std::fs::write(elsewhere.path().join("secret.txt"), b"secret").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(allowed.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(allowed.path())));
 
     assert!(
         guard
@@ -615,7 +620,7 @@ fn open_write_creates_inside_an_allowed_root() {
     use std::io::Write;
 
     let root = tempfile::tempdir().unwrap();
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let target = root.path().join("created.txt");
     let mut file = guard.open_write(&target).unwrap();
@@ -630,7 +635,7 @@ fn open_write_refuses_a_read_only_grant() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("notes.txt"), b"original").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     assert!(guard.open_write(&root.path().join("notes.txt")).is_err());
     assert_eq!(
@@ -649,7 +654,7 @@ fn open_write_truncates_existing_content() {
     let target = root.path().join("existing.txt");
     std::fs::write(&target, b"a much longer original body").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
     let mut file = guard.open_write(&target).unwrap();
     file.write_all(b"short").unwrap();
     drop(file);
@@ -666,7 +671,7 @@ fn an_execute_grant_permits_reading() {
     let program = root.path().join("program");
     std::fs::write(&program, b"#!/bin/sh\nexit 0\n").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read_execute(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read_execute(vetted(root.path())));
 
     assert!(
         guard.check_read(&program).is_ok(),
@@ -681,7 +686,7 @@ fn an_execute_grant_does_not_permit_writing() {
     let program = root.path().join("program");
     std::fs::write(&program, b"#!/bin/sh\nexit 0\n").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read_execute(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read_execute(vetted(root.path())));
 
     assert!(
         guard.check_write(&program).is_err(),
@@ -701,7 +706,7 @@ fn every_axis_grants_exactly_what_the_table_says() {
         std::fs::write(&file, b"x").unwrap();
 
         let grants = axis.grants();
-        let guard = FsGuard::new(&SandboxPolicy::default().grant(axis, root.path()));
+        let guard = FsGuard::new(&SandboxPolicy::default().grant(axis, vetted(root.path())));
 
         assert_eq!(
             guard.check_read(&file).is_ok(),
@@ -720,20 +725,25 @@ fn every_axis_grants_exactly_what_the_table_says() {
 }
 
 /// `FsGuard::new` returns `Self` rather than a `Result` only because a root it cannot
-/// resolve is dropped: a policy may name a directory not created yet, and `canonicalize`
-/// fails identically on that and on a path it may not traverse, so dropping denies.
+/// resolve is dropped: `canonicalize` fails identically on a path that has gone and on one
+/// the process may not traverse, so dropping denies.
+///
+/// The root is granted while it exists and removed afterwards, because a grant is pinned to
+/// the object it named and so cannot be built over a path that never existed (#212).
 #[test]
 fn an_unresolvable_root_is_dropped_not_refused() {
     let root = tempfile::tempdir().unwrap();
-    let absent = root.path().join("not-created-yet");
+    let absent = root.path().join("granted-then-gone");
+    std::fs::create_dir(&absent).unwrap();
     let real = root.path().join("notes.txt");
     std::fs::write(&real, b"hello").unwrap();
 
-    let guard = FsGuard::new(
-        &SandboxPolicy::default()
-            .allow_read(&absent)
-            .allow_write(&absent),
-    );
+    let policy = SandboxPolicy::default()
+        .allow_read(vetted(&absent))
+        .allow_write(vetted(&absent));
+    std::fs::remove_dir(&absent).unwrap();
+
+    let guard = FsGuard::new(&policy);
 
     assert!(guard.check_read(&absent.join("inside.txt")).is_err());
     assert!(guard.check_write(&absent.join("inside.txt")).is_err());
@@ -750,7 +760,7 @@ fn walk_stops_at_the_file_cap() {
         std::fs::write(root.path().join(format!("f{n}.txt")), b"x").unwrap();
     }
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let walk = guard.walk_readable(root.path(), 5).unwrap();
 
     assert_eq!(walk.files.len(), 5, "cap not applied");
@@ -764,7 +774,7 @@ fn walk_under_the_cap_is_not_truncated() {
     std::fs::write(root.path().join("a.txt"), b"a").unwrap();
     std::fs::write(root.path().join("b.txt"), b"b").unwrap();
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let walk = guard.walk_readable(root.path(), 10).unwrap();
 
     assert_eq!(walk.files.len(), 2);
@@ -779,7 +789,7 @@ fn walk_of_exactly_the_cap_is_not_truncated() {
         std::fs::write(root.path().join(format!("f{n}.txt")), b"x").unwrap();
     }
 
-    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(root.path()));
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
     let walk = guard.walk_readable(root.path(), 4).unwrap();
 
     assert_eq!(walk.files.len(), 4);
