@@ -14,8 +14,8 @@ use secrecy::SecretString;
 
 use crate::AuthError;
 
-/// The variable checked before the file, and the one name `agent-run` refuses to
-/// `--allow-env` — see `context/decision-tool-credentials.md`.
+/// Checked before the file, and the one name `agent-run` refuses to `--allow-env`
+/// — see `context/decision-tool-credentials.md`.
 pub(crate) const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 
 /// The credential file, below whichever config home is in play.
@@ -204,8 +204,8 @@ mod tests {
 
     use super::*;
 
-    /// Against a literal, because `SECURITY.md`, the README, `--help` and `agent-run`'s
-    /// refusal all name this variable in prose that cannot follow a rename.
+    /// Against a literal: `SECURITY.md`, the README and `--help` name it in prose that
+    /// cannot follow a rename.
     #[test]
     fn the_refused_variable_is_spelled_out() {
         assert_eq!(ENV_VAR, "ANTHROPIC_API_KEY");

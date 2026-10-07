@@ -287,9 +287,6 @@ impl Grants {
     }
 
     /// Whether `--allow-env` named `name`, for a subcommand that refuses one.
-    ///
-    /// A predicate and not an accessor over the names: a list invites a second caller to
-    /// reason about the allowlist rather than ask about one name.
     pub(crate) fn names_env(&self, name: &str) -> bool {
         self.allow_env.iter().any(|named| named == name)
     }

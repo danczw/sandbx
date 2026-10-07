@@ -42,9 +42,8 @@ fn grants_only_what_a_command_needs_to_start() {
     );
 }
 
-/// The asymmetry `agent-run` refuses, pinned here so dropping it is a visible choice
-/// rather than a silent tightening. Legitimate because the child may *be* the thing
-/// calling the provider, and here the operator named the program and typed its arguments.
+/// Legitimate here, the child being possibly the thing calling the provider, and pinned so
+/// dropping it is a visible choice rather than a silent tightening.
 #[test]
 fn sandbox_run_still_passes_the_harness_credential() {
     let policy = sandbox_run(&[

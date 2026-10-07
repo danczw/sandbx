@@ -100,8 +100,8 @@ fn the_policy_matches_what_sandbox_run_derives() {
     assert_eq!(agent.allows_unix_sockets(), sandbox.allows_unix_sockets());
 }
 
-/// Spelled as a literal and never read from `auth::ENV_VAR`: an expectation derived from
-/// the constant it checks moves with a mutation and so asserts nothing.
+/// A literal, never `auth::ENV_VAR`: an expectation derived from the constant it checks
+/// moves with a mutation and so asserts nothing.
 #[test]
 fn agent_run_refuses_the_harness_credential() {
     let error = agent_run(&[
@@ -131,9 +131,7 @@ fn agent_run_refuses_the_harness_credential() {
     );
 }
 
-/// The test that says the refusal is an identity and not a pattern: no prefix, no suffix,
-/// no case folding. A denylist over credential-looking names is what
-/// `context/decision-environment-allowlist.md` rejected.
+/// An identity, not a pattern: no prefix, no suffix, no case folding.
 #[test]
 fn the_credential_refusal_matches_one_exact_name() {
     for name in [
@@ -163,9 +161,8 @@ fn the_credential_refusal_matches_one_exact_name() {
     }
 }
 
-/// The one way the two subcommands are allowed to differ, pinned beside
-/// `the_policy_matches_what_sandbox_run_derives`: a refusal, never a quietly narrower
-/// policy. That test does not notice this refusal going away, which is why this exists.
+/// Exists because `the_policy_matches_what_sandbox_run_derives` does not notice this
+/// refusal going away: a refusal is not a policy, and that test compares policies.
 #[test]
 fn a_divergence_between_the_run_subcommands_is_a_refusal() {
     let flags = ["--allow-read", "/usr", "--allow-env", "ANTHROPIC_API_KEY"];
@@ -204,9 +201,8 @@ fn a_divergence_between_the_run_subcommands_is_a_refusal() {
     );
 }
 
-/// Decidable from argv alone, so it lands first. Explicit path flags, because without one
-/// the cwd default is derived and a test run from a refusable directory would pass for the
-/// wrong reason.
+/// Explicit path flags: without one the cwd default is derived, and a run from a refusable
+/// directory would pass for the wrong reason.
 #[test]
 fn the_refusal_lands_before_the_policy_is_derived() {
     let error = agent_run(&[

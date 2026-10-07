@@ -94,8 +94,7 @@ pub enum PolicyError {
 
     /// `agent-run`'s `--allow-env` named the credential the harness spends itself.
     ///
-    /// `&'static str` and not `String`: the variant has no shape that could carry the
-    /// value, so the refusal printing no key is a property of the type.
+    /// `&'static str`, so no shape of this variant can carry a key.
     HarnessCredential {
         /// The one name refused, from `auth::ENV_VAR`.
         name: &'static str,
