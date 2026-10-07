@@ -300,9 +300,10 @@ impl std::fmt::Display for SandboxError {
             Self::GrantBoundByResolver { granted } => {
                 write!(
                     f,
-                    "a name allowlist replaces {} with sandbx's own, so granting it would pin \
-                     the rule to a file the command never reads — a name allowlist needs no \
-                     grant there",
+                    "a name allowlist replaces {} with sandbx's own copy, so a grant naming it \
+                     pins the rule to the host's file while the command reads another object \
+                     at that same path — drop the grant, and grant the directory holding it if \
+                     the command needs the rest of it",
                     granted.display()
                 )
             }

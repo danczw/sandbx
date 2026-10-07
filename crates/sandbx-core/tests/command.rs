@@ -548,4 +548,13 @@ fn a_policy_granting_a_file_its_own_resolver_replaces_cannot_be_turned_into_an_a
         "grant_bound_by_resolver",
         "got {refusal:?}"
     );
+
+    // The remedy and not only the refusal: `--allow-dns` beside a grant on the directory is
+    // legal, so a message naming no way forward leaves a library caller to find it by reading
+    // the source. The CLI's `DnsGrantsBoundFile` says the same thing at the flag.
+    let message = refusal.to_string();
+    assert!(
+        message.contains("/etc/hosts") && message.contains("directory"),
+        "the refusal names no path to go and look at, or no way forward: {message}"
+    );
 }
