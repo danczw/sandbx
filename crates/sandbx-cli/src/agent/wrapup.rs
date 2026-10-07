@@ -86,7 +86,18 @@ impl Next {
             // No tools were offered, so a `RoundLimit` means a round that asked for one
             // anyway, and no messages means the model declined to answer. Keeping either
             // would leave the batch ending on an unanswered `tool_result` regardless.
+            //
+            // Said out loud: the round may have streamed prose to stdout before getting
+            // here, and dropping it silently would leave an answer no transcript holds.
             Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
+                eprintln!(
+                    "sandbx: the wrap-up round {}",
+                    if second.messages.is_empty() {
+                        "replied with nothing"
+                    } else {
+                        "asked for a tool instead of answering"
+                    }
+                );
                 (first, false)
             }
             Ok(second) => (merge(first, second), true),
