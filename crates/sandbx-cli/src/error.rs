@@ -100,6 +100,18 @@ pub enum PolicyError {
         name: &'static str,
     },
 
+    /// A path flag covered somewhere sandbx keeps state of its own.
+    ///
+    /// `&'static str` for `holds`, so no shape of this variant can carry a key.
+    OwnedPath {
+        /// The path as the flag gave it, before resolving.
+        granted: PathBuf,
+        /// The sandbx-owned path the grant reaches.
+        owned: PathBuf,
+        /// What sandbx keeps there, for the message to name.
+        holds: &'static str,
+    },
+
     /// `--pin-sha256` was given more than once.
     RepeatedPin,
 
@@ -175,6 +187,25 @@ impl std::fmt::Display for PolicyError {
                  a process the model chose the arguments for — drop the flag, or use \
                  sandbox-run, where the program and its arguments are yours"
             ),
+            Self::OwnedPath {
+                granted,
+                owned,
+                holds,
+            } if granted == owned => write!(
+                f,
+                "refusing to grant {}, where sandbx keeps {holds} — {ADVICE}",
+                owned.display()
+            ),
+            Self::OwnedPath {
+                granted,
+                owned,
+                holds,
+            } => write!(
+                f,
+                "refusing to grant {}: it reaches {}, where sandbx keeps {holds} — {ADVICE}",
+                granted.display(),
+                owned.display()
+            ),
             // No `ADVICE` either, for the same reason, and both say what to write instead.
             Self::RepeatedPin => write!(
                 f,
@@ -202,6 +233,7 @@ impl std::error::Error for PolicyError {
             | Self::FilesystemRoot
             | Self::ImposedVariable { .. }
             | Self::HarnessCredential { .. }
+            | Self::OwnedPath { .. }
             | Self::RepeatedPin
             | Self::PinNeedsAbsoluteProgram { .. } => None,
             Self::Unavailable { source, .. } => Some(source),

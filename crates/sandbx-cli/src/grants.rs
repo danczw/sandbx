@@ -3,6 +3,7 @@
 //! Shared by every subcommand that runs something, so the axis loop, the one widening it
 //! applies, and the working-directory default exist once rather than once per subcommand.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use sandbx_core::{Axis, SandboxPolicy};
@@ -177,6 +178,7 @@ fn vetted_root<'a>(
     cwd: &'a Path,
     homes: &Homes,
     granted: &[PathBuf],
+    owned: &[OwnedPath],
 ) -> Result<&'a Path, PolicyError> {
     if cwd.parent().is_none() {
         return Err(PolicyError::FilesystemRoot);
@@ -218,6 +220,16 @@ fn vetted_root<'a>(
         });
     }
 
+    // A no-flag run from inside the session directory is #173's hazard by another route: the
+    // default grants write over the cwd, and the cwd would be the history.
+    if let Some(found) = reaches_owned(cwd, owned) {
+        return Err(PolicyError::OwnedPath {
+            granted: cwd.to_path_buf(),
+            owned: found.path.clone(),
+            holds: found.holds,
+        });
+    }
+
     Ok(cwd)
 }
 
@@ -253,8 +265,76 @@ fn named_homes(home: Option<&Path>) -> Homes {
     Homes { paths, usable }
 }
 
+/// Somewhere sandbx keeps state of its own, and what it keeps there.
+#[derive(Debug)]
+struct OwnedPath {
+    path: PathBuf,
+    /// `&'static str`, so no shape of this can carry a key into a message.
+    holds: &'static str,
+}
+
+/// The paths sandbx itself owns, below whichever config and state homes are in play.
+///
+/// A root that cannot be derived is one this host has nowhere to keep, so there is nothing
+/// to reach; `agent-run --session` and `auth login` refuse it on their own account.
+fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
+    let mut owned = Vec::new();
+
+    if let Ok(path) = sandbx_session::sessions_directory(lookup) {
+        owned.push(OwnedPath {
+            path,
+            holds: "the session transcripts a resumed run replays to the model",
+        });
+    }
+    if let Ok(path) = crate::auth::config_file(lookup) {
+        owned.push(OwnedPath {
+            path,
+            holds: "the provider key it spends",
+        });
+    }
+
+    owned
+}
+
+/// `path` with its deepest resolvable ancestor replaced by what that resolves to.
+///
+/// `canonicalize` needs the whole path to exist and a credential nobody has stored yet does
+/// not, so comparing canonical forms alone would miss the host where `/home` links to
+/// `/var/home` — Fedora Silverblue — and let the unresolved spelling through.
+fn resolved(path: &Path) -> PathBuf {
+    for (depth, ancestor) in path.ancestors().enumerate() {
+        if let Ok(base) = ancestor.canonicalize() {
+            return path
+                .components()
+                .rev()
+                .take(depth)
+                .collect::<Vec<_>>()
+                .iter()
+                .rev()
+                .fold(base, |resolved, name| resolved.join(name));
+        }
+    }
+
+    path.to_path_buf()
+}
+
+/// The path in `owned` that `granted` reaches, if it reaches one.
+///
+/// Either direction, since Landlock rights cover a subtree: a grant above the session
+/// directory hands over every transcript, and one naming a single transcript inside it hands
+/// over that history. Both sides go through [`resolved`] so one symlinked spelling cannot be
+/// used to reach what the other spelling is refused for.
+fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
+    let granted = resolved(granted);
+
+    owned.iter().find(|owned| {
+        let path = resolved(&owned.path);
+        path.starts_with(&granted) || granted.starts_with(&path)
+    })
+}
+
 /// [`vetted_root`] over this process's own state.
-fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
+fn current_root(granted: &[PathBuf], owned: &[OwnedPath]) -> Result<PathBuf, PolicyError> {
     let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
         detail: "could not read the working directory to derive a policy from",
         source,
@@ -272,7 +352,7 @@ fn current_root(granted: &[PathBuf]) -> Result<PathBuf, PolicyError> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let homes = named_homes(home.as_deref());
 
-    vetted_root(&cwd, &homes, granted).map(Path::to_path_buf)
+    vetted_root(&cwd, &homes, granted, owned).map(Path::to_path_buf)
 }
 
 impl Grants {
@@ -315,15 +395,27 @@ impl Grants {
             .allow_system_executables()
             .allow_standard_env();
 
+        let owned = owned_paths(&|name| std::env::var_os(name));
+
         if !self.paths_given() {
             // Inside the branch, not above it: an invocation that typed its own flags
             // depends on neither `getcwd` nor `HOME`, so must not be refused for them.
-            let root = current_root(policy.executable_paths())?;
+            let root = current_root(policy.executable_paths(), &owned)?;
             policy = policy.allow_read(&root).allow_write(&root);
         }
 
         for axis in Axis::ALL {
             for path in self.paths(axis) {
+                // Outside the branch above, which is the whole point: every other path
+                // refusal guards only the derived default, so a flag bypassed all of them.
+                if let Some(found) = reaches_owned(path, &owned) {
+                    return Err(PolicyError::OwnedPath {
+                        granted: path.clone(),
+                        owned: found.path.clone(),
+                        holds: found.holds,
+                    });
+                }
+
                 policy = policy.grant(axis, path);
 
                 // The one place this CLI grants more than the flag's own axis: a tree a
@@ -426,7 +518,27 @@ mod tests {
     }
 
     fn root(cwd: impl AsRef<Path>, homes: &Homes) -> Result<PathBuf, PolicyError> {
-        vetted_root(cwd.as_ref(), homes, &granted()).map(Path::to_path_buf)
+        vetted_root(cwd.as_ref(), homes, &granted(), &[]).map(Path::to_path_buf)
+    }
+
+    /// An environment of the pairs given, and nothing else.
+    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {
+        let pairs: Vec<(String, OsString)> = pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), OsString::from(*value)))
+            .collect();
+
+        move |name| {
+            pairs
+                .iter()
+                .find(|(stored, _)| stored == name)
+                .map(|(_, value)| value.clone())
+        }
+    }
+
+    /// The owned paths a host with this `$HOME` and nothing else set would have.
+    fn owned_under(home: &str) -> Vec<OwnedPath> {
+        owned_paths(&env(&[("HOME", home)]))
     }
 
     #[test]
@@ -801,6 +913,164 @@ mod tests {
                 "{axis:?} left the working-directory default in place"
             );
         }
+    }
+
+    /// Both roots, since one rule covers them and a test naming one would pass while the
+    /// other went unguarded.
+    #[test]
+    fn both_owned_roots_are_derived_from_home() {
+        let owned: Vec<PathBuf> = owned_under("/home/u")
+            .into_iter()
+            .map(|owned| owned.path)
+            .collect();
+
+        assert_eq!(
+            owned,
+            [
+                PathBuf::from("/home/u/.local/state/sandbx/sessions"),
+                PathBuf::from("/home/u/.config/sandbx/credentials.toml"),
+            ],
+            "the owned roots are not the two sandbx writes"
+        );
+    }
+
+    /// `$HOME` unset leaves sandbx nowhere to keep either root, so there is nothing to reach
+    /// and an ordinary run must not be refused for it.
+    #[test]
+    fn a_host_with_no_home_owns_no_path() {
+        assert!(
+            owned_paths(&env(&[])).is_empty(),
+            "a host with no HOME claimed an owned path anyway"
+        );
+    }
+
+    /// #184 and #173: the one flag it takes, on the axis each issue was reported with.
+    #[test]
+    fn a_grant_above_an_owned_root_is_refused() {
+        let owned = owned_under("/home/u");
+
+        for granted in ["/home/u", "/home/u/.config", "/home/u/.local/state"] {
+            assert!(
+                reaches_owned(Path::new(granted), &owned).is_some(),
+                "{granted} reached no owned path, so the grant would be honoured"
+            );
+        }
+    }
+
+    /// The other direction: naming one transcript hands over that history, and naming the
+    /// credential file itself is the hatch there deliberately is not.
+    #[test]
+    fn a_grant_inside_an_owned_root_is_refused() {
+        let owned = owned_under("/home/u");
+
+        for granted in [
+            "/home/u/.local/state/sandbx/sessions",
+            "/home/u/.local/state/sandbx/sessions/01JA.jsonl",
+            "/home/u/.config/sandbx/credentials.toml",
+        ] {
+            assert!(
+                reaches_owned(Path::new(granted), &owned).is_some(),
+                "{granted} reached no owned path, so the grant would be honoured"
+            );
+        }
+    }
+
+    /// Whole-component, so the rule claims no path merely spelled like an owned one.
+    #[test]
+    fn a_path_named_like_an_owned_root_is_granted() {
+        let owned = owned_under("/home/u");
+
+        for granted in [
+            "/home/u/.config/sandbx-notes",
+            "/home/u/.local/state/sandbx/sessions-old",
+            "/home/other/.config/sandbx",
+        ] {
+            assert!(
+                reaches_owned(Path::new(granted), &owned).is_none(),
+                "{granted} was taken for an owned path"
+            );
+        }
+    }
+
+    /// Every axis, driven off `Axis::ALL` so a new path flag joins the refusal rather than
+    /// being the one spelling that still reaches a key.
+    #[test]
+    fn every_path_axis_refuses_an_owned_root() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let home = directory.path();
+        let owned = owned_paths(&env(&[(
+            "HOME",
+            home.to_str().expect("a UTF-8 temporary path"),
+        )]));
+
+        for axis in Axis::ALL {
+            let mut grants = bare();
+            match axis {
+                Axis::Read => grants.allow_read.push(home.to_path_buf()),
+                Axis::Write => grants.allow_write.push(home.to_path_buf()),
+                Axis::ReadExecute => grants.allow_exec.push(home.to_path_buf()),
+            }
+
+            assert!(
+                reaches_owned(&grants.paths(axis)[0], &owned).is_some(),
+                "{axis:?} reached no owned path"
+            );
+        }
+    }
+
+    /// A grant is taken as typed, so a relative one would evade a lexical comparison — and
+    /// `--allow-read .` from the config directory is the shortest spelling of #184.
+    #[test]
+    fn a_relative_grant_is_resolved_before_comparing() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let home = directory.path().canonicalize().expect("a resolved home");
+        let config = home.join(".config").join("sandbx");
+        std::fs::create_dir_all(&config).expect("a config directory to stand in");
+
+        let owned = owned_paths(&env(&[("HOME", home.to_str().expect("a UTF-8 home"))]));
+        let relative = config.join("..").join("sandbx");
+
+        assert!(
+            reaches_owned(&relative, &owned).is_some(),
+            "{} reached no owned path once resolved",
+            relative.display()
+        );
+    }
+
+    /// Fedora Silverblue ships `/home -> /var/home`, so a comparison against one spelling of
+    /// an owned root is bypassed by granting the other.
+    #[test]
+    fn a_symlinked_home_still_refuses_an_owned_root() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let real = directory.path().join("var-home");
+        let link = directory.path().join("home");
+        std::fs::create_dir_all(real.join(".config").join("sandbx")).expect("a real home");
+        std::os::unix::fs::symlink(&real, &link).expect("a symlinked home");
+
+        // Owned under the link, granted through the real path: the spelling the operator
+        // typed and the one `$HOME` named are different strings for the same directory.
+        let owned = owned_paths(&env(&[("HOME", link.to_str().expect("a UTF-8 home"))]));
+
+        assert!(
+            reaches_owned(&real, &owned).is_some(),
+            "the real path reached no owned path named through the link"
+        );
+    }
+
+    /// The derived default is a write grant too, so standing in the session directory is
+    /// #173 without a flag.
+    #[test]
+    fn a_root_inside_an_owned_path_is_refused() {
+        let owned = owned_under("/home/u");
+        let cwd = "/home/u/.local/state/sandbx/sessions";
+
+        let error = vetted_root(Path::new(cwd), &homes(&["/home/u"]), &granted(), &owned)
+            .expect_err("the session directory as a root");
+
+        assert!(
+            matches!(error, PolicyError::OwnedPath { .. }),
+            "{error} is not the owned-path refusal"
+        );
     }
 
     /// Suppressing here would silently narrow a policy whose path axes were never touched.
