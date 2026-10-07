@@ -208,7 +208,7 @@ impl FsGuard {
     /// The target need not exist, writes creating files; only the parent is resolved, with
     /// the filename appended, so `..` is collapsed first either way.
     pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError> {
-        let resolved = match canonicalize(path) {
+        let resolved = match path.canonicalize() {
             Ok(existing) => existing,
             Err(_) => {
                 let not_allowed = || SandboxError::PathNotAllowed {
@@ -235,7 +235,20 @@ impl FsGuard {
                     .parent()
                     .zip(path.file_name())
                     .ok_or_else(not_allowed)?;
-                canonicalize(parent)?.join(file_name)
+
+                match parent.canonicalize() {
+                    Ok(dir) => dir.join(file_name),
+                    // The parent is what failed, but the caller's path is what gets
+                    // reported: handing back the parent would name a path never asked for.
+                    Err(source) => {
+                        return Err(self.conceal_unless_granted(
+                            path,
+                            source,
+                            &self.writable,
+                            Access::Write,
+                        ));
+                    }
+                }
             }
         };
 
@@ -249,14 +262,6 @@ fn canonical_roots<'a>(roots: impl IntoIterator<Item = &'a Path>) -> Vec<PathBuf
         .into_iter()
         .filter_map(|root| root.canonicalize().ok())
         .collect()
-}
-
-fn canonicalize(path: &Path) -> Result<PathBuf, SandboxError> {
-    path.canonicalize()
-        .map_err(|source| SandboxError::Unresolvable {
-            requested: path.to_path_buf(),
-            source,
-        })
 }
 
 /// Whether `resolved` sits inside one of `roots`.
