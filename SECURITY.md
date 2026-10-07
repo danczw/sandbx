@@ -186,20 +186,26 @@ Five properties matter as much as the list:
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
   can add raw syscalls.
-- **Approval is not enforcement, and it is per tool per run**
+- **Approval is not enforcement, and by default it is per tool per run**
   ([#165](https://github.com/danczw/sandbx/issues/165)). A gate sits between the
   model asking for a tool and `sandbx-tools` running it, and `agent-run` answers
   it from the flags you typed: the four read-only tools run, and a `write`, an
-  `edit` or a `bash` comes back refused until `--allow-tool` names it. Nothing
-  asks you in between, so once a tool is approved every call to it in that turn
-  runs, including one a prompt injection induced. The gate narrows *which* tools a
-  hijacked turn can use; the sandbox is the only thing bounding *where* an approved
-  one reaches, so the policy `agent-run` derives is the whole of what an approved
-  call can touch — with no path flag, read *and write* over the directory you ran
-  it from. sandbx bounds what a tool call can reach; it does not decide whether it
-  should run. The request `agent-run` sends names those roots to the model as
-  absolute host paths, so it does not probe for them; a refusal outside them is
-  still indistinguishable from one for a path that is simply absent.
+  `edit` or a `bash` comes back refused until `--allow-tool` names it. Under the
+  default `--approve run` nothing asks you in between, so once a tool is approved
+  every call to it in that turn runs, including one a prompt injection induced.
+  `--approve call` asks you on your terminal before each write and each command
+  instead — `y` for the one call, `n` to refuse it, `a` for every later call to
+  that tool — and refuses to start where there is no terminal to ask on. What it
+  shows you is the arguments the model chose, cut at 512 characters: the tail of a
+  longer command is not shown, and no answer to the prompt reveals it
+  ([#169](https://github.com/danczw/sandbx/issues/169)). The gate narrows *which*
+  tools a hijacked turn can use; the sandbox is the only thing bounding *where* an
+  approved one reaches, so the policy `agent-run` derives is the whole of what an
+  approved call can touch — with no path flag, read *and write* over the directory
+  you ran it from. sandbx bounds what a tool call can reach; it does not decide
+  whether it should run. The request `agent-run` sends names those roots to the
+  model as absolute host paths, so it does not probe for them; a refusal outside
+  them is still indistinguishable from one for a path that is simply absent.
 - **A saved session is a plaintext transcript on your disk.** `agent-run
   --session` writes the whole conversation — your prompts, the model's replies,
   every tool call's arguments and every tool's output — as JSON lines under
@@ -465,11 +471,12 @@ These are documented behaviour, and reports of them will be closed as such:
   write on, else the first it grants read on, and inherits sandbx's own directory
   only where the policy names no such directory — a run granted execute alone, or
   one whose read and write grants are all single files.
-- An agent running a tool call the gate approved — which, as things stand, means
-  any call to a tool approved for the run rather than that one call (see *Approval
-  is not enforcement* above). That includes a call a prompt injection induced, and
-  one reached through `agent-run`, which is a real path and not a library-only
-  one. What bounds it is the sandbox, not the asking.
+- An agent running a tool call the gate approved — which, unless `--approve call`
+  is passed, means any call to a tool approved for the run rather than that one
+  call; under `--approve call`, answering `a` for a tool returns it to exactly
+  those terms (see *Approval is not enforcement* above). That includes a call a
+  prompt injection induced, and one reached through `agent-run`, which is a real
+  path and not a library-only one. What bounds it is the sandbox, not the asking.
 - Refusal to run on a kernel older than 6.10, or on one with Landlock disabled at
   boot. That is fail-closed behaviour working as intended.
 - Failure to *build* for a non-Linux target. Also intended — see above.
