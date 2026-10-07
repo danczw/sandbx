@@ -155,12 +155,15 @@ impl SandboxError {
             // outcome the parent watched happen. `HelperRefused` is this relay's own output
             // and exists only parent-side, so reporting it would be a second crossing.
             // `ProcessConcealment` is decided past dispatch, which no helper runs (#192).
+            // `UnboundedResolution` is decided before the spawn, off the policy alone; an
+            // argv carrying that pair is `BadHelperArgs`, never this.
             Self::PathNotAllowed { .. }
             | Self::Unresolvable { .. }
             | Self::NotFound { .. }
             | Self::SpawnFailed { .. }
             | Self::HelperRefused { .. }
             | Self::ProcessConcealment { .. }
+            | Self::UnboundedResolution { .. }
             | Self::TimedOut { .. } => None,
         }
     }

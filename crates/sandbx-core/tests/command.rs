@@ -506,3 +506,18 @@ fn an_argv_with_no_arguments_is_not_helper_mode() {
         );
     }
 }
+
+/// `command_line` and not `output`: the argv is the thing an embedder may spawn itself, so a
+/// policy that bounds nothing has to be refused where it is built rather than where it is run.
+#[test]
+fn a_policy_that_bounds_no_name_cannot_be_turned_into_an_argv() {
+    let policy = SandboxPolicy::default()
+        .allow_dns("example.com")
+        .allow_unix_sockets();
+
+    let refusal = SandboxedCommand::new("/bin/true", policy)
+        .command_line()
+        .expect_err("an argv was built for a policy whose allowlist bounds nothing");
+
+    assert_eq!(refusal.label(), "unbounded_resolution", "got {refusal:?}");
+}

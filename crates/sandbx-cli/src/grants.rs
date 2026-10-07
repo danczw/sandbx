@@ -6,7 +6,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use sandbx_core::{Axis, SandboxPolicy};
+use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy};
 
 use crate::PolicyError;
 
@@ -125,9 +125,6 @@ pub struct Grants {
     #[arg(long = "allow-dns", value_name = "NAME", value_parser = host_name)]
     allow_dns: Vec<String>,
 }
-
-/// The port a nameserver answers on, which a run bounding resolution may not reach.
-const NAMESERVER_PORT: u16 = 53;
 
 /// Accept a name `--allow-dns` can actually bound, and refuse anything else.
 ///

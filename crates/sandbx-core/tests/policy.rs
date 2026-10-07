@@ -534,3 +534,54 @@ fn an_execute_only_policy_names_nowhere_to_start() {
 fn a_policy_granting_nothing_names_nowhere_to_start() {
     assert_eq!(SandboxPolicy::default().working_root(), None);
 }
+
+/// The four shapes in which a name allowlist reports as applied and bounds nothing. Decided
+/// here and not only in the CLI, `SECURITY.md` making the claim at this level: an embedder
+/// writing one of these pairs gets a refusal rather than three bound files and every name
+/// resolving anyway.
+#[test]
+fn a_name_allowlist_beside_a_reachable_nameserver_is_unenforceable() {
+    let bounded = || SandboxPolicy::default().allow_dns("example.com");
+
+    for (policy, expected) in [
+        (bounded().hint_dns_over_tcp(), "--dns-over-tcp"),
+        (bounded().allow_unix_sockets(), "pathname socket"),
+        (bounded().allow_network(), "every port"),
+        (
+            bounded().allow_network_port(sandbx_core::NAMESERVER_PORT),
+            "port 53",
+        ),
+    ] {
+        let reason = policy
+            .unbounded_resolution()
+            .unwrap_or_else(|| panic!("a nameserver stays reachable and nothing said so"));
+
+        assert!(
+            reason.contains(expected),
+            "the refusal does not name the route that is still open: {reason}"
+        );
+    }
+}
+
+/// The negative half, so the check above cannot be a method that refuses everything. A port
+/// list that is not 53 is the shape the claim is actually made about, and no allowlist at all
+/// leaves resolution as the host has it — nothing to bound and nothing to refuse.
+#[test]
+fn a_bounded_policy_with_no_route_to_a_nameserver_is_enforceable() {
+    for policy in [
+        SandboxPolicy::default()
+            .allow_dns("example.com")
+            .allow_network_port(443),
+        SandboxPolicy::default().allow_dns("example.com"),
+        SandboxPolicy::default()
+            .allow_unix_sockets()
+            .allow_network(),
+        SandboxPolicy::default(),
+    ] {
+        assert_eq!(
+            policy.unbounded_resolution(),
+            None,
+            "a policy that bounds what it says was refused"
+        );
+    }
+}
