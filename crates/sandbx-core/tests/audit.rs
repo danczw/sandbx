@@ -83,8 +83,8 @@ fn records_a_refusal_with_its_reason() {
     assert!(line.contains("outside every readable root"), "got: {line}");
 }
 
-/// No policy objected, so `denied` would name a refusal nothing made — but the attempt
-/// is still an attempt, and a model guessing filenames inside a grant leaves these.
+/// `denied` would name a refusal nothing made, and a model guessing filenames inside a
+/// grant leaves nothing else on the trail.
 #[test]
 fn an_in_grant_miss_records_an_absence() {
     let root = tempfile::tempdir().unwrap();
@@ -103,8 +103,7 @@ fn an_in_grant_miss_records_an_absence() {
     assert!(!line.contains("reason"), "absence explains nothing: {line}");
 }
 
-/// The record must not say what the refusal conceals: outside every root, that a path
-/// does not exist is exactly the fact withheld.
+/// Outside every root, that a path does not exist is exactly the fact withheld.
 #[test]
 fn a_miss_outside_every_root_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
@@ -122,9 +121,8 @@ fn a_miss_outside_every_root_is_not_an_absence() {
     assert!(!lines[0].contains("decision=absent"), "got: {}", lines[0]);
 }
 
-/// A dangling symlink in a granted root is in-grant by its own spelling and out of grant
-/// by where it points, and `absent` there would read as "this host path does not exist"
-/// for whatever target the agent chose. The one place the trail could still be an oracle.
+/// In-grant by its spelling, out of grant by where it points: `absent` here would read as
+/// "this host path does not exist" for whatever target the agent chose.
 #[cfg(unix)]
 #[test]
 fn an_absence_behind_a_symlink_is_not_an_absence() {
@@ -174,11 +172,8 @@ fn an_opened_file_records_the_access() {
     assert!(lines[0].contains("tool=read"), "got: {}", lines[0]);
 }
 
-/// An access that passed the gate and still failed for any reason but absence, and whose
-/// reason does not say the path would not resolve — it had, and the policy had allowed it.
-/// EISDIR stands in for the class because a check-to-open swap cannot be raced here; the
-/// `ELOOP` that swap produces is the one post-gate failure that keeps the resolution
-/// reason, and `fs_guard`'s `a_swapped_leaf_opens_as_unresolvable` pins its error.
+/// EISDIR stands in for the class, a check-to-open swap not being raceable here. The
+/// reason must not say the path would not resolve: it had, and the policy had allowed it.
 #[test]
 fn an_access_that_fails_after_the_check_is_a_refusal() {
     let root = tempfile::tempdir().unwrap();
@@ -199,8 +194,7 @@ fn an_access_that_fails_after_the_check_is_a_refusal() {
     );
 }
 
-/// One record for the whole walk, naming the root: a record per entry would name
-/// thousands of files the walk only listed.
+/// A record per entry would name thousands of files the walk only listed.
 #[test]
 fn a_walk_records_one_access() {
     let root = tempfile::tempdir().unwrap();
@@ -235,9 +229,8 @@ fn a_listed_directory_records_the_access() {
     assert!(lines[0].contains("decision=allowed"), "got: {}", lines[0]);
 }
 
-/// ENOTDIR from a directory read is the leaf being a regular file, which `check_read`
-/// just resolved — so `absent` would name a path that is demonstrably there. It is still
-/// an attempt, so it is still recorded.
+/// ENOTDIR here is the leaf being a regular file, which `check_read` just resolved, so
+/// `absent` would name a path demonstrably there. Still an attempt, so still recorded.
 #[test]
 fn listing_a_regular_file_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
@@ -253,8 +246,7 @@ fn listing_a_regular_file_is_not_an_absence() {
     assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
 }
 
-/// A read the host refuses on a path the policy granted. Silence here would be an access
-/// attempt with no record; `absent` would be a lie, the directory being there.
+/// Silence would be an access attempt with no record, and `absent` a lie — it is there.
 #[test]
 fn a_listing_the_host_refuses_records_a_refusal() {
     use std::os::unix::fs::PermissionsExt;

@@ -58,8 +58,7 @@ fn an_audit_event_reaches_the_output() {
     assert!(output.contains(r#"subject="/srv""#), "{output}");
 }
 
-/// The shipped subscriber renders the value the trail gained, and renders no `reason`
-/// field for it.
+/// The shipped subscriber renders the new value, and no `reason` field for it.
 #[test]
 fn an_absence_reaches_the_output_without_a_reason() {
     let output = captured(|| AuditEvent::absent("read", "/srv/nope").emit());

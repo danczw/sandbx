@@ -1,8 +1,8 @@
 //! The in-process filesystem gate: the policy check, and the accesses it guards.
 //!
-//! Over the 400-line module budget for one sequence — check, then access, then record —
-//! which a split would spread across two files a reader has to hold together to know
-//! whether a path was recorded. `decision=` names the access; see `context/guide-logging.md`.
+//! Over the 400-line budget on purpose: check, access and record are one sequence, and a
+//! split puts the record in a different file from the check it has to agree with.
+//! `decision=` names the access, not the verdict; see `context/guide-logging.md`.
 
 use std::path::{Path, PathBuf};
 
@@ -53,9 +53,8 @@ impl FsGuard {
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
     ///
-    /// Records a refusal and nothing else: whatever the caller then does with the path is the
-    /// access, and so is the record. Prefer [`open_read`](FsGuard::open_read) or
-    /// [`read_dir`](FsGuard::read_dir), which perform one and record it.
+    /// Records a refusal and nothing else — the `allowed` belongs to the access that follows,
+    /// so prefer [`open_read`](FsGuard::open_read) or [`read_dir`](FsGuard::read_dir).
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         match path.canonicalize() {
             Ok(resolved) => permit(resolved, &self.readable, path, Access::Read),
@@ -69,10 +68,10 @@ impl FsGuard {
 
     /// Report why a path could not be resolved, but only inside a granted area.
     ///
-    /// The nearest ancestor that does resolve decides: inside an allowed root the caller could
-    /// already enumerate the area, so "no such file" is honest; anywhere else the refusal is
-    /// indistinguishable from any other — and so is its record, which stays `denied`. Naming
-    /// the absence there would hand back over the trail what the refusal conceals.
+    /// The nearest ancestor that does resolve decides, and must speak for the path below it
+    /// (`reaches_plainly`): inside an allowed root the caller could already enumerate the
+    /// area, so "no such file" is honest. Anywhere else the refusal is indistinguishable from
+    /// any other — and so is its record, which stays `denied`.
     ///
     /// `failed` is the component resolution tripped on, the parent for a write, and is named
     /// only on the granted path, where it is inside the roots already.
@@ -135,14 +134,10 @@ impl FsGuard {
 
     /// Read the entries of `path`, refusing anything the policy does not allow.
     ///
-    /// Here rather than in the caller because the record has to name what was read, and the
-    /// audit target is this crate's alone. `read_dir` has no handle form that `O_NOFOLLOW`
-    /// could guard, so this closes the check-to-open window no more than a bare
-    /// [`check_read`](FsGuard::check_read) does — what it closes is the gap between the
-    /// verdict and the trail.
-    ///
-    /// The outer result is the policy's and the inner the host's, because the caller reports
-    /// them differently: a refusal is the sandbox's, a failed read is not.
+    /// Here and not in the caller because the audit target is this crate's alone. It closes
+    /// no check-to-use window that [`check_read`](FsGuard::check_read) leaves open — a
+    /// directory read has no `O_NOFOLLOW` handle form — only the gap to the trail. The outer
+    /// result is the policy's, the inner the host's; the caller reports them apart.
     pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<std::fs::ReadDir>, SandboxError> {
         let resolved = self.check_read(path)?;
 
@@ -183,9 +178,8 @@ impl FsGuard {
         root: &Path,
         max_files: usize,
     ) -> Result<ReadableWalk, SandboxError> {
-        // One record for the walk, naming the root: a record per entry would name thousands
-        // of files the walk only listed. A caller that goes on to read them — `grep` does —
-        // adds its own `allowed` per file it actually opens.
+        // One record for the walk, naming the root: per entry would name thousands of files
+        // it only listed. A caller that then reads them — `grep` — adds its own per open.
         let requested = root;
         let root = self.check_read(root)?;
 
@@ -260,8 +254,7 @@ impl FsGuard {
     ///
     /// The target need not exist, writes creating files; only the parent is resolved, with
     /// the filename appended, so `..` is collapsed first either way. Records a refusal and
-    /// nothing else, as [`check_read`](FsGuard::check_read) does; prefer
-    /// [`open_write`](FsGuard::open_write).
+    /// nothing else; prefer [`open_write`](FsGuard::open_write).
     pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         let resolved = match path.canonicalize() {
             Ok(existing) => existing,
@@ -316,14 +309,13 @@ impl FsGuard {
     }
 }
 
-/// What a trail calls a path that exists and still would not resolve — an unreadable parent,
-/// or a leaf swapped for a symlink. One string, so the record reads the same whether the
-/// gate caught it or the access did.
+/// A path that exists and still would not resolve: an unreadable parent, or a leaf swapped
+/// for a symlink. One string, so the gate and the access record it alike.
 const UNRESOLVABLE: &str = "path does not resolve";
 
-/// What it calls an access on a path that did resolve and the policy did permit: a full
-/// disk, a read-only mount, a directory opened as a file. Not `UNRESOLVABLE`, which an
-/// operator counting refusals reads as a traversal attempt.
+/// An access the policy permitted on a path that resolved, which the host refused anyway:
+/// a full disk, a read-only mount, a directory opened as a file. Not `UNRESOLVABLE`, which
+/// an operator counting refusals reads as a traversal attempt.
 const INCOMPLETE: &str = "access did not complete";
 
 /// Whether resolution failed because the name denotes no file, rather than because something
@@ -341,9 +333,9 @@ fn names_nothing(source: &std::io::Error) -> bool {
 
 /// The same question for a directory read, which ENOTDIR answers the other way.
 ///
-/// In a path lookup that errno is a component that turned out to be a regular file, so the
-/// name denotes nothing; on the leaf of an approved `read_dir` it is the leaf itself, which
-/// `check_read` had just resolved — there, and not a directory.
+/// In a lookup that errno is a component that turned out to be a regular file, so the name
+/// denotes nothing; on an approved `read_dir`'s leaf it is the leaf, which `check_read` had
+/// just resolved — there, and not a directory.
 fn listed_nothing(source: &std::io::Error) -> bool {
     names_nothing(source) && source.raw_os_error() != Some(libc::ENOTDIR)
 }
@@ -358,11 +350,10 @@ fn canonical_roots<'a>(roots: impl IntoIterator<Item = &'a Path>) -> Vec<PathBuf
 
 /// Whether `requested` reaches past `ancestor` by components that are what they look like.
 ///
-/// What resolved is `ancestor`, so it speaks for `requested` only this far. A symlink below
-/// it resolves elsewhere, and then ENOENT is its *target's* absence: a dangling link planted
-/// inside a granted root would otherwise answer "does this host path exist" for any target,
-/// which is the oracle the concealment exists to deny. A `..` leaks nothing — resolution
-/// never passed it — but it would print a path outside the roots as an absence's subject.
+/// Only `ancestor` resolved, so it speaks for `requested` only this far. A symlink below it
+/// points anywhere: ENOENT is then its *target's* absence, and a dangling link planted in a
+/// granted root would answer "does this host path exist" for any target. A `..` leaks
+/// nothing — resolution never passed it — but would name an out-of-grant path as absent.
 fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
     !requested
         .components()
@@ -384,9 +375,8 @@ fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
 
 /// Allow `resolved` only if it sits inside one of `roots`, recording a refusal.
 ///
-/// Only a refusal: passing the gate is not yet an access, and `decision=` records the
-/// access. So the entry points that go on to perform one carry the `allowed`, and a bare
-/// check that succeeds leaves no record at all (#182).
+/// Only a refusal: passing the gate is not yet an access, so the `allowed` belongs to the
+/// entry point that performs one, and a bare check that succeeds records nothing (#182).
 ///
 /// `roots` has to be the set `access` names: a denial reports the access, so handing it the
 /// other axis's roots would record a true verdict with a false reason.
@@ -414,10 +404,9 @@ fn permit(
 
 /// Record what an approved path's access actually did, and nothing about the verdict.
 ///
-/// Three outcomes: it happened, the name turned out to denote nothing, or something refused
-/// it. Which errnos are the second is the caller's — `names_nothing` for a path lookup,
-/// `listed_nothing` for a directory read — so that the record and the error the caller
-/// returns cannot disagree about whether a path was there.
+/// Which errnos count as absence is the caller's — `names_nothing` for a path lookup,
+/// `listed_nothing` for a directory read — so the record and the error the caller returns
+/// cannot disagree about whether the path was there.
 fn record<T>(
     outcome: std::io::Result<T>,
     access: Access,
@@ -438,8 +427,8 @@ fn record<T>(
 
 /// Why an access on an approved path did not happen.
 ///
-/// `ELOOP` is the leaf swapped for a symlink since the check, which is the one post-gate
-/// failure that is a resolution failure; the rest found the path and stopped there.
+/// `ELOOP` is the leaf swapped since the check, the one post-gate failure that really is a
+/// resolution failure; the rest found the path and stopped there.
 fn refusal(source: &std::io::Error) -> &'static str {
     if source.raw_os_error() == Some(libc::ELOOP) {
         UNRESOLVABLE
