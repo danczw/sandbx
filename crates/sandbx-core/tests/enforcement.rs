@@ -16,11 +16,22 @@ mod support;
 
 use support::{allow_probe, run, run_pinned, runtime_paths};
 
+/// A scratch directory whose own path is already resolved, so granting it grants a path that
+/// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
+fn scratch() -> tempfile::TempDir {
+    let root = std::env::temp_dir()
+        .canonicalize()
+        .expect("the temporary directory exists");
+    tempfile::Builder::new()
+        .tempdir_in(root)
+        .expect("a temporary directory")
+}
+
 /// Baseline: without it the denials below would pass on a sandbox that broke everything
 /// indiscriminately.
 #[test]
 fn allowed_path_can_be_read() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let file = dir.path().join("readable.txt");
     std::fs::write(&file, b"visible").unwrap();
 
@@ -37,7 +48,7 @@ fn allowed_path_can_be_read() {
 
 #[test]
 fn unallowed_path_cannot_be_read() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let secret = dir.path().join("secret.txt");
     std::fs::write(&secret, b"secret").unwrap();
 
@@ -57,7 +68,7 @@ fn unallowed_path_cannot_be_read() {
 
 #[test]
 fn read_only_grant_cannot_write() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let file = dir.path().join("readonly.txt");
     std::fs::write(&file, b"original").unwrap();
 
@@ -78,7 +89,7 @@ fn read_only_grant_cannot_write() {
 
 #[test]
 fn write_grant_can_write() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_write(dir.path());
     let created = dir.path().join("created.txt");
@@ -98,7 +109,7 @@ fn write_grant_can_write() {
 
 #[test]
 fn malformed_arguments_do_not_run_the_command() {
-    let marker = tempfile::tempdir().unwrap().path().join("should-not-exist");
+    let marker = scratch().path().join("should-not-exist");
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .args([
@@ -126,7 +137,7 @@ fn malformed_arguments_do_not_run_the_command() {
 fn the_inner_stage_refuses_a_foreign_supervisor() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of the
     // statement, leaving `!marker.exists()` below asserting nothing.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let marker = dir.path().join("should-not-exist");
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
@@ -166,7 +177,7 @@ fn the_inner_stage_refuses_a_foreign_supervisor() {
 fn the_inner_stage_refuses_an_unnarrowed_environment() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of the
     // statement, leaving `!marker.exists()` below asserting nothing.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let marker = dir.path().join("should-not-exist");
 
     // Nothing in the environment allowlist, so the planted variable is outside it — as is
@@ -492,7 +503,7 @@ fn core_dumps_are_disabled() {
 /// `truncate(2)` on a path exercises that right.
 #[test]
 fn truncate_on_read_only_grant_is_denied() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let victim = dir.path().join("victim.txt");
     std::fs::write(&victim, b"original contents").unwrap();
 
@@ -513,7 +524,7 @@ fn truncate_on_read_only_grant_is_denied() {
 
 #[test]
 fn truncate_on_ungranted_path_is_denied() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let victim = dir.path().join("victim.txt");
     std::fs::write(&victim, b"original contents").unwrap();
 
@@ -532,7 +543,7 @@ fn truncate_on_ungranted_path_is_denied() {
 
 #[test]
 fn truncate_on_write_grant_is_permitted() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let target = dir.path().join("scratch.txt");
     std::fs::write(&target, b"original contents").unwrap();
 
@@ -557,8 +568,8 @@ fn truncate_on_write_grant_is_permitted() {
 /// (#205).
 #[test]
 fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
-    let real = tempfile::tempdir().unwrap();
-    let staging = tempfile::tempdir().unwrap();
+    let real = scratch();
+    let staging = scratch();
     std::fs::write(real.path().join("s.txt"), b"target-side").unwrap();
 
     let link = staging.path().join("granted");
@@ -604,7 +615,7 @@ fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
 /// `bash` can `cat` a file the native `read` tool refuses under one policy.
 #[test]
 fn an_execute_grant_reads_the_same_in_both_layers() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let file = dir.path().join("data.txt");
     std::fs::write(&file, b"exec-axis-readable").unwrap();
 
@@ -630,7 +641,7 @@ fn an_execute_grant_reads_the_same_in_both_layers() {
 /// than `Execute` subtracted.
 #[test]
 fn a_write_grant_does_not_make_files_readable() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let secret = dir.path().join("dropped.txt");
     std::fs::write(&secret, b"WRITE-ONLY-SECRET").unwrap();
 
@@ -654,7 +665,7 @@ fn a_write_grant_does_not_make_files_readable() {
 /// mapped straight onto it carries execute.
 #[test]
 fn a_read_grant_does_not_make_files_executable() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("true");
     std::fs::copy("/bin/true", &program).unwrap();
 
@@ -670,7 +681,7 @@ fn a_read_grant_does_not_make_files_executable() {
 /// Without it the denial above would pass on a sandbox that refused to execute anything.
 #[test]
 fn a_read_execute_grant_does_make_files_executable() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("true");
     std::fs::copy("/bin/true", &program).unwrap();
 
@@ -688,7 +699,7 @@ fn a_read_execute_grant_does_make_files_executable() {
 /// side leaves this open.
 #[test]
 fn a_write_grant_does_not_make_files_executable() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("planted");
 
     let policy = runtime_paths(SandboxPolicy::default())
@@ -933,7 +944,7 @@ fn digest_of(path: &std::path::Path) -> sandbx_core::Sha256Digest {
 /// Without this the refusal below would pass on a pin that refused everything.
 #[test]
 fn a_matching_pin_runs_the_program() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("tool");
     std::fs::copy("/bin/true", &program).unwrap();
 
@@ -956,7 +967,7 @@ fn a_matching_pin_runs_the_program() {
 /// cannot tell the difference.
 #[test]
 fn a_binary_swapped_behind_its_pin_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("tool");
     std::fs::copy("/bin/true", &program).unwrap();
     let pinned = digest_of(&program);
@@ -987,7 +998,7 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
 /// pinning would be a way to execute a binary the policy only granted read on.
 #[test]
 fn a_pin_grants_no_execute_a_read_grant_withheld() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("tool");
     std::fs::copy("/bin/true", &program).unwrap();
 
@@ -1010,7 +1021,7 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
 /// pinned bytes and runs unpinned, so this is the script refusal, not a mismatch.
 #[test]
 fn a_pinned_script_is_refused_rather_than_exec_d() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = scratch();
     let program = dir.path().join("script");
     std::fs::write(&program, "#!/bin/sh\necho SCRIPT_RAN\n").unwrap();
     std::fs::set_permissions(

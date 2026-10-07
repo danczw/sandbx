@@ -88,16 +88,19 @@ fn the_command_is_confined_by_the_policy() {
 #[test]
 fn granted_paths_are_reachable() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("visible.txt"), b"VISIBLE").unwrap();
+    // Resolved: the helper refuses a grant that opens as something else, and `$TMPDIR` is a
+    // symlink on some hosts.
+    let root = dir.path().canonicalize().unwrap();
+    std::fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
 
     let ctx = context(
         SandboxPolicy::default()
             .allow_system_executables()
-            .allow_read(dir.path()),
+            .allow_read(&root),
     );
     let out = BuiltinTool::Bash
         .execute(
-            json!({ "command": format!("cat {}/visible.txt", dir.path().display()) }),
+            json!({ "command": format!("cat {}/visible.txt", root.display()) }),
             &ctx,
         )
         .unwrap();

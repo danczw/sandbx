@@ -558,8 +558,15 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-directory")
     }
 
+    /// A cwd as `current_root` hands one over: resolved, which [`reaches_owned`] requires of
+    /// what it compares. A fixture spelling is not canonical by being written out — `/home` is
+    /// a symlink to `/var/home` on an ostree host.
+    fn at(cwd: impl AsRef<Path>) -> PathBuf {
+        resolved(cwd.as_ref())
+    }
+
     fn root(cwd: impl AsRef<Path>, homes: &Homes) -> Result<PathBuf, PolicyError> {
-        vetted_root(cwd.as_ref(), homes, &granted(), &[]).map(Path::to_path_buf)
+        vetted_root(&at(cwd), homes, &granted(), &[]).map(Path::to_path_buf)
     }
 
     /// An environment of the pairs given, and nothing else.
@@ -599,7 +606,7 @@ mod tests {
     fn the_working_directory_is_the_default_root() {
         assert_eq!(
             root("/srv/app", &homes(&["/home/u"])).expect("an ordinary project directory"),
-            Path::new("/srv/app"),
+            at("/srv/app"),
             "the default root is not the working directory"
         );
     }
@@ -609,7 +616,7 @@ mod tests {
     fn a_subdirectory_of_home_is_a_valid_root() {
         assert_eq!(
             root("/home/u/code/project", &homes(&["/home/u"])).expect("a project under home"),
-            Path::new("/home/u/code/project"),
+            at("/home/u/code/project"),
             "a project inside home was refused"
         );
     }
@@ -794,7 +801,7 @@ mod tests {
         assert!(homes.usable, "$HOME=/root named no usable home");
         assert_eq!(
             root("/root/app", &homes).expect("root's own project directory"),
-            Path::new("/root/app"),
+            at("/root/app"),
             "a root container with $HOME=/root could not derive a root under it"
         );
     }
@@ -903,7 +910,7 @@ mod tests {
         for cwd in ["/usrlocal", "/libexec", "/srv/usr"] {
             assert_eq!(
                 root(cwd, &homes(&["/home/u"])).expect("an ordinary project directory"),
-                Path::new(cwd),
+                at(cwd),
                 "prefix matching crossed a component boundary"
             );
         }
@@ -915,7 +922,7 @@ mod tests {
     fn a_named_home_leaves_a_neighbour_alone() {
         assert_eq!(
             root("/home/other", &homes(&["/home/u"])).expect("a named home identifies itself"),
-            Path::new("/home/other"),
+            at("/home/other"),
             "the degraded rule fired where $HOME was readable"
         );
     }
@@ -925,7 +932,7 @@ mod tests {
     fn an_unset_home_still_derives_a_root() {
         assert_eq!(
             root("/app", &no_home()).expect("a container working directory"),
-            Path::new("/app"),
+            at("/app"),
             "an unset HOME refused an ordinary directory"
         );
     }
@@ -1164,9 +1171,9 @@ mod tests {
     #[test]
     fn a_root_inside_an_owned_path_is_refused() {
         let owned = owned_under("/home/u");
-        let cwd = "/home/u/.local/state/sandbx/sessions";
+        let cwd = at("/home/u/.local/state/sandbx/sessions");
 
-        let error = vetted_root(Path::new(cwd), &homes(&["/home/u"]), &granted(), &owned)
+        let error = vetted_root(&cwd, &homes(&["/home/u"]), &granted(), &owned)
             .expect_err("the session directory as a root");
 
         assert!(

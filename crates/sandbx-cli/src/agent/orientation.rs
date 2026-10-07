@@ -23,10 +23,11 @@ pub(super) fn system_prompt(
 ) -> Option<String> {
     let approved = gate::approved_tools(allowed);
     let roots = work_roots(policy);
+    let start = start_root(policy, &roots);
 
     let said = [
         (approved.len() < BuiltinTool::ALL.len()).then(|| tools_line(&approved)),
-        (!roots.is_empty()).then(|| roots_line(&roots, start_root(policy).as_deref())),
+        (!roots.is_empty()).then(|| roots_line(&named(&roots), start.as_deref())),
         operator.map(ToString::to_string),
     ];
 
@@ -80,9 +81,9 @@ fn roots_line(roots: &[String], start: Option<&Path>) -> String {
 ///
 /// The system binaries every run gets are left out, being a host map in a transcript. One
 /// entry per path and not per grant, the derived default granting read and write on one root.
-fn work_roots(policy: &SandboxPolicy) -> Vec<String> {
+fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
     let system = canonical(&SandboxPolicy::default().allow_system_executables());
-    let mut roots: Vec<(PathBuf, Vec<&str>)> = Vec::new();
+    let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
     for (axis, path) in policy.granted_paths() {
         // Named as `FsGuard::new` holds it: it canonicalizes every root and discards the
@@ -112,17 +113,29 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<String> {
     }
 
     roots
-        .into_iter()
+}
+
+/// [`work_roots`] as the sentence spells them.
+fn named(roots: &[(PathBuf, Vec<&str>)]) -> Vec<String> {
+    roots
+        .iter()
         .map(|(path, access)| format!("{} ({})", path.display(), access.join(", ")))
         .collect()
 }
 
-/// Where a command starts, named as [`work_roots`] names the root it is one of.
+/// Where a command starts, when that is one of the roots [`work_roots`] named.
 ///
-/// Canonicalized for that reason alone — the spawn uses the policy's own spelling — so the
-/// sentence cannot name a directory in a form that is nowhere in the list above it.
-fn start_root(policy: &SandboxPolicy) -> Option<PathBuf> {
-    policy.working_root()?.canonicalize().ok()
+/// Canonicalized because that list is, so the two cannot spell one directory two ways. Dropped
+/// when the list does not hold it at all: the system binaries are left out of it, and
+/// `--allow-read /usr --allow-read /work` would otherwise start a command in `/usr` in a
+/// sentence whose next clause calls every path it did not name refused.
+fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<PathBuf> {
+    let start = policy.working_root()?.canonicalize().ok()?;
+
+    roots
+        .iter()
+        .any(|(named, _)| *named == start)
+        .then_some(start)
 }
 
 /// Every path `policy` grants, in the form the guard compares against.
@@ -261,6 +274,29 @@ mod tests {
             named,
             "the prompt named a directory other than the one the spawn uses"
         );
+    }
+
+    /// A start directory the roots sentence left out would contradict its own next clause,
+    /// which calls every path it did not name refused.
+    #[test]
+    fn a_start_directory_the_roots_leave_out_is_not_named() {
+        let (work, named) = work();
+        let policy = SandboxPolicy::default()
+            .allow_read("/usr")
+            .allow_read(work.path());
+
+        assert_eq!(
+            policy.working_root(),
+            Some(Path::new("/usr")),
+            "the policy does not start where this asserts nothing is said about"
+        );
+
+        let prompt = granted(policy);
+        assert!(
+            prompt.contains(&format!("{named} (read)")),
+            "got {prompt:?}"
+        );
+        assert!(!prompt.contains("starts in"), "got {prompt:?}");
     }
 
     /// The one policy that inherits the cwd, so there is nothing true to tell the model. The
