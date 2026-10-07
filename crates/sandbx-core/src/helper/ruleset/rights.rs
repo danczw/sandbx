@@ -111,19 +111,8 @@ pub(super) fn fs_rules(
 /// — which is why `--allow-dns` makes `--allow-read /etc` unnecessary rather than necessary.
 /// Read and not read-execute: an NSS module is loaded from `/lib`, never from `/etc`.
 ///
-/// An absent path is skipped, as in [`SandboxPolicy::allow_system_executables`]: Landlock
-/// refuses a rule for a path it cannot open, and a host may legitimately have no
-/// `/etc/resolv.conf`.
-///
-/// A symlink is skipped too, and resolving it here would be worse than skipping it. `mount(2)`
-/// follows one, so the bind landed on the target and `open_grant`'s readback names the target:
-/// a rule spelled `/etc/resolv.conf` is refused as `GrantRedirected` on every host where
-/// systemd-resolved owns that name. Naming the target instead makes that readback a tautology
-/// — the kernel resolves the link at mount time in stage 1, this would resolve it again in
-/// stage 2, and a retarget between the two would install a rule on a file the bind never
-/// placed, with nothing left to catch it. So the command reads no `resolv.conf` on such a
-/// host, which is where a run without `--allow-dns` already leaves it, and the bound rests on
-/// `nsswitch.conf` for glibc and on the port allowlist for musl.
+/// A path [`opens_as_itself`] rejects is skipped, as an absent one is in
+/// [`SandboxPolicy::allow_system_executables`].
 ///
 /// [`SandboxPolicy::allow_system_executables`]: crate::SandboxPolicy::allow_system_executables
 fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static std::path::Path)> {
@@ -132,8 +121,27 @@ fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static 
         .into_iter()
         .flatten()
         .map(std::path::Path::new)
-        .filter(|path| path.symlink_metadata().is_ok_and(|at| !at.is_symlink()))
+        .filter(|path| opens_as_itself(path))
         .map(|path| (crate::Axis::Read, path))
+}
+
+/// Whether a rule naming `path` would reach the inode `path` spells — false if it is absent,
+/// and false if it is a symlink.
+///
+/// `mount(2)` follows a symlink, so `helper::resolver`'s bind landed on the target and
+/// `open_grant`'s readback names the target: a rule spelled `/etc/resolv.conf` is
+/// `GrantRedirected` wherever systemd-resolved owns that name. Naming the target instead is
+/// not the fix — stage 1's `mount` and stage 2's resolution are a re-exec apart, so the
+/// readback becomes a tautology and a retarget between them grants a file the bind never
+/// placed.
+///
+/// So this flag installs no rule on a symlinked `resolv.conf`, while `install` binds over its
+/// target anyway: the asymmetry is intended, and the bind is what leaves a command whose
+/// *other* grants reach the resolved path reading sandbx's body rather than the host's. With
+/// no such grant it reads nothing there, and the bound rests on `nsswitch.conf` for glibc and
+/// the port allowlist for musl.
+fn opens_as_itself(path: &std::path::Path) -> bool {
+    path.symlink_metadata().is_ok_and(|at| !at.is_symlink())
 }
 
 /// Whether [`apply`](crate::helper::apply) hands the network axis to Landlock at all, and on
@@ -166,5 +174,52 @@ pub(super) fn net_rules(
             granted: landlock::AccessNet::BindTcp | landlock::AccessNet::ConnectTcp,
             ports,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The branch that decides whether a resolver path gets a rule at all. Untested until now,
+    /// and `resolver_paths` reads the host's `/etc`: on a host whose `resolv.conf` is a plain
+    /// file nothing here runs the symlink arm, which is how it shipped refusing every run on a
+    /// systemd-resolved one.
+    #[test]
+    fn a_symlink_never_opens_as_itself() {
+        let scratch = tempfile::tempdir().expect("a temporary directory");
+        let real = scratch.path().join("real.conf");
+        let link = scratch.path().join("link.conf");
+        std::fs::write(&real, b"nameserver 203.0.113.1\n").expect("a file to point at");
+        std::os::unix::fs::symlink(&real, &link).expect("a symlink to it");
+
+        assert!(
+            opens_as_itself(&real),
+            "a plain file does not open as itself, so a bounded run installs no rule at all"
+        );
+        assert!(
+            !opens_as_itself(&link),
+            "a rule would be installed for a symlink, whose bind landed on the target — so \
+             `open_grant`'s readback disagrees with the spelling and refuses the run"
+        );
+        assert!(
+            !opens_as_itself(&scratch.path().join("absent.conf")),
+            "an absent path would get a rule Landlock cannot open"
+        );
+    }
+
+    /// A dangling link is still a link, which is the no-race half of the window that made
+    /// resolving the target fail-open: skipped at the bind, it must be skipped here too.
+    #[test]
+    fn a_dangling_symlink_is_skipped_like_an_absent_path() {
+        let scratch = tempfile::tempdir().expect("a temporary directory");
+        let link = scratch.path().join("dangling.conf");
+        std::os::unix::fs::symlink(scratch.path().join("nothing"), &link).expect("a dead link");
+
+        assert!(
+            !opens_as_itself(&link),
+            "a dangling link got a rule, so a target appearing before stage 2 would be granted \
+             without a bind over it"
+        );
     }
 }
