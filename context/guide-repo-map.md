@@ -142,7 +142,7 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    credentials.rs resolve_api_key, anthropic_api_key, SecretString
    error.rs       ProviderError
    event.rs       AgentEvent, StopReason
-   request.rs     MessagesRequest
+   request.rs     MessagesRequest, ToolChoice
    sse.rs         SSE framing
    mock.rs        MockProvider — behind the `mock` feature
    wire/          accumulate.rs, payload.rs + unit tests
@@ -213,8 +213,8 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
                 the approved tools and the roots the model is told about before
                 the first request
       render.rs the answer on stdout, everything about it on stderr
-      wrapup.rs the tool-less second turn a round limit earns, and the two
-                outcomes merged into the one a session stores
+      wrapup.rs the second turn a round limit earns, which may call no tool,
+                and the two outcomes merged into the one a session stores
    auth.rs      Auth — which source the provider key comes from: the
                 environment, then a file, and the login/logout/status over it
    auth/store.rs

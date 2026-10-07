@@ -22,7 +22,9 @@ pub use event::{AgentEvent, StopReason};
 /// `mock` feature; `Cargo.toml` records why no self dev-dependency enables it.
 #[cfg(feature = "mock")]
 pub use mock::MockProvider;
-pub use request::{ContentBlock, MessagesRequest, RequestMessage, Role, ToolDefinition};
+pub use request::{
+    ContentBlock, MessagesRequest, RequestMessage, Role, ToolChoice, ToolDefinition,
+};
 
 /// The event stream every provider client returns: owned, boxed, and fused.
 ///

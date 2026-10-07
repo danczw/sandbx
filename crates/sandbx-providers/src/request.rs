@@ -18,12 +18,32 @@ pub struct MessagesRequest {
     pub messages: Vec<RequestMessage>,
     /// Tools the model may call. Omitted from the body entirely when empty.
     pub tools: Vec<ToolDefinition>,
+    /// Whether the model may call one. Omitted when `None`, which the API reads as its
+    /// own default of leaving the choice to the model.
+    pub tool_choice: Option<ToolChoice>,
+}
+
+/// What the model may do with the tools a request defines.
+///
+/// One variant, an absent field already meaning the API's default: an `Auto` would
+/// serialize to a request indistinguishable from omitting this one.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolChoice {
+    /// Call none of them, so the reply is prose.
+    ///
+    /// Not the same as sending no `tools` at all. The API refuses a request whose
+    /// messages hold `tool_use` or `tool_result` blocks without the definitions those
+    /// blocks name, so a conversation that has used a tool must keep offering it even
+    /// when the next reply must not use one.
+    None,
 }
 
 impl Serialize for MessagesRequest {
     /// Hand-written so `stream` is a wire constant without being a public field, and
-    /// `system`/`tools` are omitted rather than sent as `null`/`[]`. The destructuring
-    /// `let` makes a field added later fail to compile until it is written out.
+    /// `system`/`tools`/`tool_choice` are omitted rather than sent as `null`/`[]`. The
+    /// destructuring `let` makes a field added later fail to compile until it is written
+    /// out.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let Self {
             model,
@@ -31,6 +51,7 @@ impl Serialize for MessagesRequest {
             system,
             messages,
             tools,
+            tool_choice,
         } = self;
 
         let mut map = serializer.serialize_map(None)?;
@@ -42,6 +63,11 @@ impl Serialize for MessagesRequest {
         map.serialize_entry("messages", messages)?;
         if !tools.is_empty() {
             map.serialize_entry("tools", tools)?;
+        }
+        // Only alongside `tools`: the API rejects a choice over tools that were not
+        // defined, so an empty list with a choice set is a request it refuses.
+        if let Some(tool_choice) = tool_choice.filter(|_| !tools.is_empty()) {
+            map.serialize_entry("tool_choice", &tool_choice)?;
         }
         map.serialize_entry("stream", &true)?;
         map.end()

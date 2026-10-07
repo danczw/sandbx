@@ -28,6 +28,7 @@ async fn streams_a_real_response_from_the_anthropic_api() {
             }],
         }],
         tools: vec![],
+        tool_choice: None,
     };
 
     let events: Vec<_> = client

@@ -11,6 +11,7 @@ fn a_request() -> MessagesRequest {
         system: None,
         messages: vec![],
         tools: vec![],
+        tool_choice: None,
     }
 }
 

@@ -31,6 +31,7 @@ fn a_request() -> MessagesRequest {
             }],
         }],
         tools: vec![],
+        tool_choice: None,
     }
 }
 
