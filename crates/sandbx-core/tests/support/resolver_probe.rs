@@ -87,8 +87,8 @@ fn read(path: &str) -> std::process::ExitCode {
 
 /// The path the kernel reads back for an open descriptor on `path`.
 ///
-/// A bind whose source had been unlinked reads back with `" (deleted)"` appended, so the
-/// command would find its own `/etc/hosts` under a path no policy names.
+/// What `ruleset::opened` reads to vet a grant: a bind whose source had been unlinked reads
+/// back with `" (deleted)"` appended, and the grant naming it would be refused.
 fn fd_path(path: &str) -> std::process::ExitCode {
     let opened = std::fs::File::open(path).and_then(|file| {
         use std::os::fd::AsRawFd as _;

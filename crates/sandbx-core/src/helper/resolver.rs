@@ -187,8 +187,9 @@ fn write_body(path: &Path, body: &str) -> Result<(), SandboxError> {
 ///
 /// A tmpfs and not a plain directory because the bodies must never be *unlinked* while the
 /// binds are up: `/proc/self/fd` reads an unlinked file's path back with `" (deleted)"`
-/// appended, so the command would find its own `/etc/hosts` under a path no policy names.
-/// `remove_source` takes them out of reach without unlinking them.
+/// appended, which is the spelling `ruleset::opened::open_grant` compares a granted path
+/// against — so every grant naming one of the three would be refused. `remove_source` takes
+/// them out of reach without unlinking them.
 ///
 /// Created rather than opened, so a name already taken is a refusal, and named for the clock
 /// as well as this process, so a predictable name is not one a local user can plant first.

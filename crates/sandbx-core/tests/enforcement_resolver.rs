@@ -193,8 +193,9 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
     }
 }
 
-/// A bind whose source had been unlinked reads back from `/proc/self/fd` with `" (deleted)"`
-/// appended, so the command would find its own `/etc/hosts` under a path no policy names.
+/// What `ruleset::opened::open_grant` compares a granted path against. A bind whose source had
+/// been unlinked reads back from `/proc/self/fd` with `" (deleted)"` appended, so every grant
+/// naming one of these three files would be refused.
 #[test]
 fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
     let (name, address, accepting) = local_listener("UNUSED");
