@@ -13,4 +13,4 @@ mod turn;
 pub use approval::{ApprovalDecision, ToolCall};
 pub use compact::Compaction;
 pub use error::TurnError;
-pub use turn::{PromptUsage, Turn, TurnLimits, TurnOutcome, run_turn};
+pub use turn::{PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};

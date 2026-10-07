@@ -106,6 +106,27 @@ pub struct TurnOutcome {
     /// budget with nothing carried in, or over budget with nothing it could legally
     /// withhold.
     pub withheld: usize,
+
+    /// What ended the turn, which [`messages`] cannot show.
+    ///
+    /// [`messages`]: Self::messages
+    pub stop: TurnStop,
+}
+
+/// How a turn came to an end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnStop {
+    /// The model stopped asking for tools, so the transcript ends on its reply.
+    Answered,
+
+    /// The turn ran out of rounds with a tool result the model never answered.
+    ///
+    /// The transcript is legal to send again but it is not an answer, and not somewhere a
+    /// caller may append a user turn of its own.
+    RoundLimit {
+        /// The cap that was reached.
+        rounds: usize,
+    },
 }
 
 /// The bounds one turn runs within.
@@ -117,8 +138,8 @@ pub struct TurnLimits {
     /// How many times the model may be asked within one turn.
     ///
     /// A turn re-enters once per batch of tool calls, so this bounds how far a looping or
-    /// injected-into model can drive tool execution. Reaching it is a
-    /// [`TurnError::RoundLimit`], not a quiet stop.
+    /// injected-into model can drive tool execution. Reaching it ends the turn as a
+    /// [`TurnStop::RoundLimit`] carrying the work it did, not a quiet stop.
     pub max_rounds: usize,
 
     /// How long one round may spend streaming before the turn is abandoned.
@@ -274,6 +295,7 @@ where
                 messages: produced,
                 usage,
                 withheld,
+                stop: TurnStop::Answered,
             });
         }
 
@@ -291,6 +313,7 @@ where
                 messages: produced,
                 usage,
                 withheld,
+                stop: TurnStop::Answered,
             });
         }
 
@@ -300,9 +323,17 @@ where
         });
     }
 
-    // `produced` is dropped rather than returned: it ends in a `tool_result` the model
-    // never answered, which would read as a finished turn.
-    Err(TurnError::RoundLimit {
-        rounds: turn.limits.max_rounds,
+    // Returned rather than dropped: every prefix of this transcript ends on an unanswered
+    // `tool_result` too, or on a `tool_use` with nothing answering it, so no truncation of
+    // it reads as a finished turn. `stop` is what says it is not one.
+    Ok(TurnOutcome {
+        messages: produced,
+        usage,
+        // `cut`, the loop's `withheld` having gone out of scope with it; the two hold the
+        // same figure, since a cut only ever deepens at the top of a round.
+        withheld: cut,
+        stop: TurnStop::RoundLimit {
+            rounds: turn.limits.max_rounds,
+        },
     })
 }

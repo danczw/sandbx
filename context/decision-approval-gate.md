@@ -74,7 +74,8 @@ So the model is told, and may answer in prose or ask for a tool the gate allows;
 `max_rounds` is what bounds one that keeps retrying. `TurnError` gained no variant
 and `agent-run` gained no exit code, because a refused call is a healthy turn, not
 a failed one. A gate that wants to *end* a turn can still do it — deny every call
-and the round limit arrives.
+and the round limit arrives, which `agent-run` reports as an answer a bound cut
+short rather than as a failure.
 
 No audit record either. `AuditEvent::Denied` records what the sandbox refused to
 let a *running* tool touch; a call that never ran touched nothing. The operator's
