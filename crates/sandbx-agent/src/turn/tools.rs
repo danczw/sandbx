@@ -8,14 +8,12 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall, TurnError};
 
-/// Ask `gate`, then run and answer every tool call in `blocks`, in the order the model
-/// asked for them.
+/// Ask `gate`, then run and answer every tool call in `blocks`, in the order the model asked.
 ///
 /// Sequential: concurrency would need the ordering semantics of two tools sharing one
 /// `ExecutionContext` settled first (#242). `BuiltinTool::execute` may sit in a `write`, a
 /// directory walk or a 90-second command, which on a current-thread runtime would freeze
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
-///
 /// Every block reports to [`CallGate::settled`], including the two refusals above the
 /// gate, which the gate's own verdict cannot account for.
 pub(super) async fn answer_calls<G>(
@@ -28,8 +26,8 @@ where
     G: CallGate,
 {
     let mut results = Vec::new();
-    // Set by the first `Abort`: the gate said it can no longer decide, so a later call in
-    // the round is not a later decision to ask for.
+    // Set by the first `Abort`: the gate can no longer decide, so a later call isn't a
+    // later decision to ask for.
     let mut aborted: Option<String> = None;
 
     for block in blocks {
@@ -38,8 +36,8 @@ where
         };
 
         let Some(tool) = BuiltinTool::from_name(name) else {
-            // Lookup is exact by design, so a miss is a prompt or schema bug rather than a
-            // near-miss to normalise away. Nothing runs; the model is told which name.
+            // Lookup is exact by design: a miss is a prompt or schema bug, not a near-miss
+            // to normalise. Nothing runs; the model is told which name.
             gate.settled(Settled {
                 name,
                 id,
@@ -52,8 +50,8 @@ where
         };
 
         if !offered.contains(&tool) {
-            // `from_name` resolves against every built-in, so resolving alone would hand
-            // the gate a call the caller never offered — which an allow-all gate then runs.
+            // `from_name` resolves against every built-in, so resolving alone would hand the
+            // gate a call the caller never offered — which an allow-all gate then runs.
             gate.settled(Settled {
                 name,
                 id,
@@ -65,8 +63,8 @@ where
             continue;
         }
 
-        // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
-        // so a late decision would not stop the call it refused (#26).
+        // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled, so
+        // a late decision would not stop the call it refused (#26).
         let verdict = match &aborted {
             Some(reason) => ApprovalDecision::Deny {
                 reason: reason.clone(),
@@ -74,8 +72,7 @@ where
             None => gate.approve(ToolCall { tool, id, input }),
         };
 
-        // Exhaustive rather than `if let`, so a fourth verdict is a compile error and not
-        // approval.
+        // Exhaustive rather than `if let`, so a fourth verdict is a compile error, not approval.
         match verdict {
             ApprovalDecision::Allow => {}
             ApprovalDecision::Deny { reason } => {
@@ -105,9 +102,8 @@ where
             }
         }
 
-        // Cloned because `spawn_blocking` needs `'static`, once per call because the
-        // closure consumes it. An `Arc` would pay off only if `ExecutionContext` grew
-        // costlier than a few path lists.
+        // Cloned because `spawn_blocking` needs `'static`, once per call since the closure
+        // consumes it; an `Arc` would only pay off past a few path lists.
         let arguments = input.clone();
         let context = ctx.clone();
         let outcome = tokio::task::spawn_blocking(move || tool.execute(arguments, &context))

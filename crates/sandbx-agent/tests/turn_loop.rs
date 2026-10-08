@@ -27,8 +27,7 @@ fn replied(text: &str) -> RequestMessage {
 
 /// A `tool_result`'s answer and verdict, for the assertions whose subject is one.
 ///
-/// Panics on anything else: a round scripted to call a tool produces one, so another
-/// block here is the script's bug rather than a verdict to report.
+/// Panics on anything else: a scripted tool call produces one, so another block is a bug.
 fn result_of(block: &ContentBlock) -> (&str, Option<bool>) {
     match block {
         ContentBlock::ToolResult {
