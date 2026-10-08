@@ -8,12 +8,13 @@ use std::io::Write;
 
 use sandbx_providers::AgentEvent;
 
-use super::INCOMPLETE;
+use super::prompt::APPROVE_CALL;
+use super::{INCOMPLETE, NO_CONSENT};
 use crate::AgentError;
 
-/// How a turn that ran out of rounds ended, which no event reports.
+/// How a turn ended short of a finished answer, which no event reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Capped {
+pub(super) enum Unfinished {
     /// Nothing reached stdout after the cap, so it holds only what arrived before it.
     CutShort(usize),
 
@@ -24,6 +25,9 @@ pub(super) enum Capped {
     /// neither an answer nor stored, unlike the turn before it. Streamed, so it cannot be
     /// taken back.
     Discarded(usize),
+
+    /// The gate lost the channel it decides on, so the turn ended where it was asked.
+    Aborted,
 }
 
 /// Writes a turn out, split so stdout can be piped to something that wants the answer
@@ -148,14 +152,16 @@ impl<W: Write> Render<W> {
 
     /// Close the answer off, and report what the way it ended means for the exit code.
     ///
-    /// `capped` is `Some` when the turn ran out of rounds; `truncated` is passed in rather
-    /// than inferred here, so a caller with no renderer sees the same figure. Both bounds
-    /// are named when both were hit: a summary cut off at `max_tokens` reads as a whole one
-    /// otherwise, and which bound ended the turn does not change the code. Every one of
-    /// them exits [`INCOMPLETE`] — the tool work was cut off whatever prose followed it.
+    /// `ending` is `Some` for a turn that ran out of rounds or lost its operator;
+    /// `truncated` is passed in rather than inferred here, so a caller with no renderer
+    /// sees the same figure. Both bounds are named when both were hit: a summary cut off
+    /// at `max_tokens` reads as a whole one otherwise, and which *bound* ended the turn
+    /// does not change the code — the three cap variants all exit [`INCOMPLETE`], the
+    /// tool work having been cut off whatever prose followed it. A lost operator is not a
+    /// bound and exits [`NO_CONSENT`].
     pub(super) fn finish(
         &mut self,
-        capped: Option<Capped>,
+        ending: Option<Unfinished>,
         truncated: bool,
     ) -> Result<i32, AgentError> {
         // Again here, for the round that never reached a `Stop` — a stream error or the
@@ -175,27 +181,41 @@ impl<W: Write> Render<W> {
             eprintln!("sandbx: answer truncated at --max-tokens");
         }
 
-        match capped {
-            Some(Capped::CutShort(rounds)) => eprintln!(
+        match ending {
+            Some(Unfinished::CutShort(rounds)) => eprintln!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
                  raise --max-rounds to let the turn go further"
             ),
-            Some(Capped::Summarised(rounds)) => eprintln!(
+            Some(Unfinished::Summarised(rounds)) => eprintln!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
                  the answer above summarises what was found, \
                  and raising --max-rounds would let the turn go further"
             ),
             // The text is left where it is rather than disowned quietly: it was paid
             // for, and the operator is the only one who can judge it.
-            Some(Capped::Discarded(rounds)) => eprintln!(
+            Some(Unfinished::Discarded(rounds)) => eprintln!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
                  nothing on stdout is an answer, and what followed the cap was \
                  not saved either — raising --max-rounds would let the turn go further"
             ),
+            // The operator's whole record of why: the gate's own account of the call went
+            // to the device that went away.
+            Some(Unfinished::Aborted) => eprintln!(
+                "sandbx: `{APPROVE_CALL}` could no longer ask on this terminal, \
+                 so the turn stopped where it was asked; that call and every call \
+                 behind it were refused, nothing after them ran, and no further \
+                 request was sent"
+            ),
             None => {}
         }
 
-        if capped.is_some() || truncated {
+        // Ahead of `INCOMPLETE`: a turn can hit a bound and lose its operator, and losing
+        // the operator is the one a caller cannot find out any other way.
+        if ending == Some(Unfinished::Aborted) {
+            return Ok(NO_CONSENT);
+        }
+
+        if ending.is_some() || truncated {
             return Ok(INCOMPLETE);
         }
 
@@ -359,9 +379,9 @@ pub(super) mod tests {
     #[test]
     fn a_turn_out_of_rounds_is_always_incomplete() {
         for capped in [
-            Capped::CutShort(3),
-            Capped::Summarised(3),
-            Capped::Discarded(3),
+            Unfinished::CutShort(3),
+            Unfinished::Summarised(3),
+            Unfinished::Discarded(3),
         ] {
             let mut render = Render::new(Vec::new());
             render.event(&text("looking"));
@@ -382,6 +402,40 @@ pub(super) mod tests {
         );
     }
 
+    /// The three codes a caller branches on, as literals: read off the consts, this would
+    /// only prove the module agrees with itself.
+    #[test]
+    fn a_turn_that_lost_its_operator_exits_three() {
+        let abandoned = |events: &[AgentEvent], truncated: bool| {
+            let mut render = Render::new(Vec::new());
+            for event in events {
+                render.event(event);
+            }
+            render
+                .finish(Some(Unfinished::Aborted), truncated)
+                .expect("a reported turn")
+        };
+
+        assert_eq!(
+            abandoned(&[text("looking"), stop(StopReason::ToolUse)], false),
+            3
+        );
+        // A truncated answer from a run whose operator went away is still that run: the
+        // bound is recoverable by raising a flag, and the lost operator is not.
+        assert_eq!(abandoned(&[], true), 3);
+
+        assert_eq!(
+            Render::new(Vec::new()).finish(None, false).expect("clean"),
+            0
+        );
+        assert_eq!(
+            Render::new(Vec::new())
+                .finish(Some(Unfinished::CutShort(3)), false)
+                .expect("capped"),
+            2
+        );
+    }
+
     /// Everything stdout received across a cap, and the gap that marks it.
     fn across_the_cap(before: &[AgentEvent], after: &[AgentEvent]) -> String {
         let mut render = Render::new(Vec::new());
@@ -395,7 +449,7 @@ pub(super) mod tests {
         }
 
         render
-            .finish(Some(Capped::Summarised(1)), false)
+            .finish(Some(Unfinished::Summarised(1)), false)
             .expect("rendered");
         String::from_utf8(render.out).expect("utf-8")
     }
