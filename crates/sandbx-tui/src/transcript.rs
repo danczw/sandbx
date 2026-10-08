@@ -38,8 +38,13 @@ pub struct Transcript {
     /// Rounds seen, counted from `Stop`: no event carries the turn's own bound.
     rounds: usize,
 
-    /// The last reported prompt and output counts, `None` while nothing was reported.
-    tokens: Option<(u32, u32)>,
+    /// The last reported prompt and output counts, each `None` until it is reported.
+    ///
+    /// Separately optional because the API omits either one: collapsing an absent count
+    /// into a zero would put `0 out` on the screen for a turn that generated text. The
+    /// figures are the last round's, which is what `TurnOutcome::usage` carries too, and
+    /// not the turn's sum.
+    tokens: (Option<u32>, Option<u32>),
 }
 
 impl Transcript {
@@ -52,7 +57,7 @@ impl Transcript {
             }],
             show_thinking,
             rounds: 0,
-            tokens: None,
+            tokens: (None, None),
         }
     }
 
@@ -71,7 +76,7 @@ impl Transcript {
                 input_tokens,
                 output_tokens,
                 ..
-            } => self.tokens = Some((input_tokens.unwrap_or(0), output_tokens.unwrap_or(0))),
+            } => self.tokens = (*input_tokens, *output_tokens),
             AgentEvent::Thinking { .. }
             | AgentEvent::ToolCallRequested { .. }
             | AgentEvent::ThinkingBlock { .. }
@@ -97,7 +102,7 @@ impl Transcript {
         self.rounds
     }
 
-    pub(crate) fn tokens(&self) -> Option<(u32, u32)> {
+    pub(crate) fn tokens(&self) -> (Option<u32>, Option<u32>) {
         self.tokens
     }
 
@@ -138,12 +143,42 @@ fn printable(text: &str) -> String {
         match c {
             '\n' => out.push('\n'),
             '\t' => out.push_str("    "),
-            c if c.is_control() => out.push('\u{fffd}'),
+            c if c.is_control() || invisible(c) => out.push('\u{fffd}'),
             c => out.push(c),
         }
     }
 
     out
+}
+
+/// Whether `c` renders as nothing, or reorders what follows it.
+///
+/// `char::is_control` is `Cc` exactly, so U+202E and the directional isolates pass it and
+/// make a line *display* as a different line — in the same pane, and the same grammar, as
+/// the gate's account of what a tool did. Ranges because `char` has no predicate for the
+/// category, so a denylist, which a new Unicode version can outgrow silently.
+///
+/// The same set as `sandbx-cli`'s `gate::invisible`, duplicated rather than shared: the
+/// two must not diverge.
+fn invisible(c: char) -> bool {
+    matches!(c,
+        '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
+        | '\u{180e}' | '\u{3164}' | '\u{feff}' | '\u{ffa0}' | '\u{110bd}' | '\u{110cd}'
+        | '\u{0600}'..='\u{0605}'
+        | '\u{0890}'..='\u{0891}'
+        // The Hangul fillers: not `Cf`, and they render as blank width.
+        | '\u{115f}'..='\u{1160}'
+        | '\u{200b}'..='\u{200f}'
+        | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206f}'
+        | '\u{fe00}'..='\u{fe0f}'
+        | '\u{fff9}'..='\u{fffb}'
+        | '\u{1bca0}'..='\u{1bca3}'
+        | '\u{1d173}'..='\u{1d17a}'
+        | '\u{13430}'..='\u{1343f}'
+        | '\u{e0000}'..='\u{e007f}'
+        | '\u{e0100}'..='\u{e01ef}')
 }
 
 #[cfg(test)]
@@ -314,6 +349,23 @@ mod tests {
         );
     }
 
+    /// `char::is_control` is `Cc` exactly, so an override and a zero-width space pass it
+    /// and the line *displays* as a different line — in the same pane, and the same
+    /// `sandbx: ` grammar, as the gate's account of what a tool ran.
+    #[test]
+    fn a_character_that_reorders_or_renders_as_nothing_does_not_survive_either() {
+        let entries = folded(&[text("ls \u{202e}gpj.exe\u{feff}")], false);
+
+        assert_eq!(
+            entries.last(),
+            Some(&entry(Kind::Answer, "ls \u{fffd}gpj.exe\u{fffd}"))
+        );
+
+        // Non-vacuous: neither character is control, so the escape test above would pass
+        // on a `printable` that let both of these through.
+        assert!(!'\u{202e}'.is_control() && !'\u{feff}'.is_control());
+    }
+
     /// The break the view splits on, and the tab nothing renders.
     #[test]
     fn a_newline_survives_and_a_tab_becomes_spaces() {
@@ -328,11 +380,24 @@ mod tests {
         );
     }
 
-    /// Anthropic restates the counts cumulatively, so the last figures are the turn's.
+    fn usage(input_tokens: Option<u32>, output_tokens: Option<u32>) -> AgentEvent {
+        AgentEvent::Usage {
+            input_tokens,
+            output_tokens,
+            cache_write_tokens: None,
+            cache_read_tokens: None,
+        }
+    }
+
+    /// Anthropic restates the counts cumulatively within a request, so the last figures
+    /// reported are the ones to show.
     #[test]
     fn rounds_are_counted_from_stops_and_usage_is_the_last_reported() {
         let mut transcript = Transcript::new(PROMPT, false);
-        assert_eq!((transcript.rounds(), transcript.tokens()), (0, None));
+        assert_eq!(
+            (transcript.rounds(), transcript.tokens()),
+            (0, (None, None))
+        );
 
         for reason in [
             sandbx_providers::StopReason::ToolUse,
@@ -341,15 +406,25 @@ mod tests {
             transcript.event(&AgentEvent::Stop { reason });
         }
         for tokens in [(900, 32), (1200, 64)] {
-            transcript.event(&AgentEvent::Usage {
-                input_tokens: Some(tokens.0),
-                output_tokens: Some(tokens.1),
-                cache_write_tokens: None,
-                cache_read_tokens: None,
-            });
+            transcript.event(&usage(Some(tokens.0), Some(tokens.1)));
         }
 
         assert_eq!(transcript.rounds(), 2);
-        assert_eq!(transcript.tokens(), Some((1200, 64)));
+        assert_eq!(transcript.tokens(), (Some(1200), Some(64)));
+    }
+
+    /// An omitted count stays omitted: a zero here would reach the status line as `0 out`
+    /// on a turn that generated text, which reads as a figure rather than as its absence.
+    #[test]
+    fn an_unreported_count_is_not_a_reported_zero() {
+        let mut transcript = Transcript::new(PROMPT, false);
+        transcript.event(&usage(Some(900), None));
+
+        assert_eq!(transcript.tokens(), (Some(900), None));
+
+        // Non-vacuous: a reported zero is kept as one, so the `None` above is the omission
+        // and not every small figure being dropped.
+        transcript.event(&usage(Some(900), Some(0)));
+        assert_eq!(transcript.tokens(), (Some(900), Some(0)));
     }
 }

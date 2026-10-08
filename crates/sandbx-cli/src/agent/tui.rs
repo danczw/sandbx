@@ -9,11 +9,12 @@ use std::io::IsTerminal;
 use std::sync::{Mutex, PoisonError};
 
 use sandbx_agent::{
-    ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits, TurnStop, run_turn,
+    ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits, TurnOutcome, TurnStop,
+    run_turn,
 };
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
-    Thinking,
+    StopReason, Thinking,
 };
 use sandbx_session::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -180,47 +181,61 @@ impl Tui {
         // The borrows the two seams held end with the future above.
         let mut pane = pane.into_inner().unwrap_or_else(PoisonError::into_inner);
 
-        let (code, outcome) = match outcome {
-            None => {
-                pane.transcript.note(
-                    "sandbx: interrupted. Nothing of this turn is stored, and a tool \
-                     already running finishes unseen (#26)",
-                );
-                (Ok(INCOMPLETE), None)
-            }
+        let (code, outcome, account) = match outcome {
+            None => (
+                Ok(INCOMPLETE),
+                None,
+                vec![
+                    "sandbx: interrupted. Nothing of this turn is stored, a tool call \
+                     already running finishes unseen, and the process waits for it \
+                     before it exits (#26)"
+                        .to_string(),
+                ],
+            ),
             Some(Ok(outcome)) => {
-                let (code, note) = ending(&outcome.stop);
-                if let Some(note) = note {
-                    pane.transcript.note(&note);
-                }
-                (Ok(code), Some(outcome))
+                let (code, account) = ending(&outcome);
+                (Ok(code), Some(outcome), account)
             }
-            // Drawn before it is returned: the screen is about to be torn down, and the
-            // operator reads the reason there rather than in what scrolls past after.
             Some(Err(error)) => {
-                pane.transcript.note(&format!("sandbx: {error}"));
-                (Err(AgentError::from(error)), None)
+                // Drawn before it is returned: the screen is about to be torn down, and
+                // the operator reads the reason there rather than in what scrolls past
+                // after.
+                let line = format!("sandbx: {error}");
+                (Err(AgentError::from(error)), None, vec![line])
             }
         };
 
-        // Held until a key, then put back: the alternate screen takes the transcript with
-        // it, and a turn whose last rounds nobody read was not watched.
-        pane.repaint(Hint::Done);
-        keys.press().await;
-        let failed = pane.screen.failure();
-        drop(pane);
+        for line in &account {
+            pane.transcript.note(line);
+        }
 
-        // Everything below writes to stderr, which only now has a screen it cannot
-        // overwrite.
-        let code = code?;
+        // Before the key, not after: the hold ends on an operator who may not come back,
+        // and a hangup there would lose a finished turn that was already paid for.
         if let Some(outcome) = outcome
             && let Some(session) = session
         {
             self.run.save(session, &asked, outcome, &merged)?;
         }
 
-        // After the save: what the turn did is stored either way, and the operator is told
-        // that the account they were watching stopped partway.
+        // Held until a key, then put back: the alternate screen takes the transcript with
+        // it, and a turn whose last rounds nobody read was not watched. Repainted first,
+        // over anything the save wrote to a stderr the screen does not redirect.
+        pane.repaint(Hint::Done);
+        keys.press().await;
+        let failed = pane.screen.failure();
+        drop(pane);
+
+        // Only now is there a stderr with no screen over it. The account is written again
+        // here because the pane went with the screen, and the line saying why a run exited
+        // 3 rather than 2 is the one a redirected log needs most (#224). Not on the error
+        // path, where `main` reports the same error itself.
+        if code.is_ok() {
+            for line in &account {
+                eprintln!("{line}");
+            }
+        }
+
+        let code = code?;
         match failed {
             Some(error) => Err(AgentError::Screen(error)),
             None => Ok(code),
@@ -228,37 +243,59 @@ impl Tui {
     }
 }
 
-/// The code a finished turn exits with, and the line the screen ends on.
+/// The code a finished turn exits with, and every line accounting for it.
 ///
 /// Apart from the drawing so the code is an assertion rather than a screenshot: a
 /// `GateAborted` outcome holds its messages and its usage like an answered one, so nothing
 /// but the code tells a caller the operator went away.
-fn ending(stop: &TurnStop) -> (i32, Option<String>) {
-    match stop {
-        // Ahead of the bound, as `render.rs:219` has it: a turn can hit `--max-rounds` and
+///
+/// Two bounds can cut one turn, so the account is a list: `--max-rounds` ends the turn and
+/// `--max-tokens` ends a round inside it, and a turn that met both has to say both.
+fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
+    let mut account = Vec::new();
+
+    let code = match &outcome.stop {
+        // Ahead of the bounds, as `render.rs:219` has it: a turn can hit `--max-rounds` and
         // lose its operator in the same round, and the operator is the one a caller cannot
         // find out about any other way.
-        TurnStop::GateAborted => (
-            NO_CONSENT,
-            Some(
+        TurnStop::GateAborted => {
+            account.push(
                 "sandbx: the gate could no longer be asked, so the turn stopped where it \
                  was asked. That call and every call behind it were refused, and nothing \
                  further was sent"
                     .to_string(),
-            ),
-        ),
-        TurnStop::RoundLimit { rounds } => (
-            INCOMPLETE,
-            Some(format!(
+            );
+            NO_CONSENT
+        }
+        TurnStop::RoundLimit { rounds } => {
+            account.push(format!(
                 "sandbx: out of rounds after {rounds}. No wrap-up round is sent under \
                  `tui`, so the answer ends on tool work"
-            )),
-        ),
+            ));
+            INCOMPLETE
+        }
         // Not matched exhaustively: a stop this does not know about is an answer it has no
-        // account of, which is 0. One that documents an exit code of its own needs an arm
-        // above instead, or `tui` contradicts a code `agent-run` already claims.
-        _ => (0, None),
+        // account of. One that documents an exit code of its own needs an arm above
+        // instead, or `tui` contradicts a code `agent-run` already claims.
+        _ => 0,
+    };
+
+    // The outcome's own figure, not the stream's, and read whatever the stop was: the
+    // round that carried the reply can be cut at `--max-tokens` by itself, which is an
+    // answer that stops mid-sentence and must not exit 0.
+    if outcome.round_stop == Some(StopReason::MaxTokens) {
+        account.push(
+            "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
+             model's own end of turn"
+                .to_string(),
+        );
+
+        // Never over a code already chosen: a turn can lose its operator and be cut in the
+        // same round, and the cut is the recoverable one.
+        return (if code == 0 { INCOMPLETE } else { code }, account);
     }
+
+    (code, account)
 }
 
 /// The transcript and the screen it is drawn on.
@@ -363,6 +400,17 @@ mod tests {
         }
     }
 
+    /// A turn that stopped `stop`, whose last round stopped `round_stop`.
+    fn outcome(stop: TurnStop, round_stop: Option<StopReason>) -> TurnOutcome {
+        TurnOutcome {
+            messages: Vec::new(),
+            usage: None,
+            withheld: 0,
+            stop,
+            round_stop,
+        }
+    }
+
     /// A lost operator outranks a cut round, and both outrank an answer.
     ///
     /// Asserting the code and not the note: `GateAborted` keeps the turn's messages and
@@ -371,24 +419,59 @@ mod tests {
     /// for it in a shipped claim (#218).
     #[test]
     fn a_gate_that_could_not_be_asked_exits_three_and_a_cut_round_two() {
-        assert_eq!(ending(&TurnStop::GateAborted).0, NO_CONSENT);
-        assert_eq!(ending(&TurnStop::RoundLimit { rounds: 4 }).0, INCOMPLETE);
+        let code = |stop| ending(&outcome(stop, None)).0;
+
+        assert_eq!(code(TurnStop::GateAborted), NO_CONSENT);
+        assert_eq!(code(TurnStop::RoundLimit { rounds: 4 }), INCOMPLETE);
 
         // Non-vacuous in the other direction: a finished answer takes the `_` arm and
         // exits 0, so the two codes above are the stops and not the function.
-        assert_eq!(ending(&TurnStop::Answered), (0, None));
+        assert_eq!(ending(&outcome(TurnStop::Answered, None)), (0, Vec::new()));
+    }
+
+    /// The bound `TurnStop` does not carry: a round cut at `--max-tokens` ends the answer
+    /// mid-sentence and still stops as `Answered`, so reading the stop alone would exit 0
+    /// on a truncated reply — and the exit table this branch widened to `tui` says 2.
+    #[test]
+    fn an_answer_cut_at_max_tokens_exits_two_whatever_the_stop_was() {
+        let cut = || Some(StopReason::MaxTokens);
+
+        assert_eq!(ending(&outcome(TurnStop::Answered, cut())).0, INCOMPLETE);
+        assert_eq!(
+            ending(&outcome(TurnStop::RoundLimit { rounds: 4 }, cut())).0,
+            INCOMPLETE
+        );
+
+        // The cut does not lower a code already chosen, and it adds its own line to a turn
+        // that met both bounds.
+        let (code, account) = ending(&outcome(TurnStop::GateAborted, cut()));
+        assert_eq!(code, NO_CONSENT);
+        assert_eq!(account.len(), 2, "{account:?}");
+
+        // Non-vacuous: the same stop with a round that was not cut exits 0, so the code
+        // above is the cut and not the fixture.
+        assert_eq!(
+            ending(&outcome(TurnStop::Answered, Some(StopReason::EndTurn))).0,
+            0
+        );
     }
 
     /// Every code the screen reports comes with the line that explains it: a bare 3 in a
     /// shell is not an account of where the turn stopped.
     #[test]
-    fn a_stop_that_is_not_an_answer_says_why_on_the_screen() {
-        for stop in [TurnStop::GateAborted, TurnStop::RoundLimit { rounds: 4 }] {
-            let (code, note) = ending(&stop);
+    fn a_stop_that_is_not_an_answer_says_why() {
+        let stops = [
+            outcome(TurnStop::GateAborted, None),
+            outcome(TurnStop::RoundLimit { rounds: 4 }, None),
+            outcome(TurnStop::Answered, Some(StopReason::MaxTokens)),
+        ];
+
+        for stop in &stops {
+            let (code, account) = ending(stop);
             assert_ne!(code, 0, "{stop:?}");
             assert!(
-                note.is_some_and(|note| note.starts_with("sandbx: ")),
-                "{stop:?}"
+                account.iter().all(|line| line.starts_with("sandbx: ")),
+                "{account:?}"
             );
         }
     }

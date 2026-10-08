@@ -77,10 +77,19 @@ fn style(kind: Kind) -> Style {
 fn status(transcript: &Transcript, hint: Hint) -> Paragraph<'static> {
     let mut fields = vec![format!("rounds {}", transcript.rounds())];
 
-    // Absent until the provider reports, never a zero: "0 in" would read as a turn that
-    // sent nothing rather than one whose counts have not arrived.
-    if let Some((input, output)) = transcript.tokens() {
-        fields.push(format!("{input} in / {output} out"));
+    // Each absent until the provider reports it, never a zero: "0 in" would read as a turn
+    // that sent nothing rather than one whose count has not arrived. Separately, the API
+    // omits either one.
+    let (input, output) = transcript.tokens();
+    let spend: Vec<String> = [
+        input.map(|n| format!("{n} in")),
+        output.map(|n| format!("{n} out")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !spend.is_empty() {
+        fields.push(spend.join(" / "));
     }
 
     fields.push(
