@@ -78,6 +78,51 @@ Three more properties of the sink, each with a counterexample attached:
 `tracing::info!` per variant, each with a literal `decision = "…"`. The field
 names are a wire format in all but name.
 
+Each arm spells its own value, and nothing derives one from the variant's name:
+
+```rust
+            Self::Denied {
+                tool,
+                subject,
+                reason,
+            } => tracing::info!(
+                target: AUDIT_TARGET,
+                decision = "denied",
+                tool,
+                subject,
+                reason,
+            ),
+```
+
+The field *set* is per-variant and fixed within one, which is why a run that
+ended without a status of its own is `Failed` rather than an `Exited` whose
+`code` is absent: `tracing` omits a `None` field, so one variant covering both
+would vary its own field set and a filter could not rely on it.
+
+**A run is two records** (#96). `spawned` carries the policy, which is settled
+once the argv is built, so it is emitted *before* the exec and stands for an
+attempt rather than a start — a command that does not exist still leaves a
+`spawned` line. Exactly one `exited` or `failed` closes it, from `output` in
+[`core/src/command.rs`](../../crates/sandbx-core/src/command.rs) and nowhere
+else:
+
+```rust
+        // Exactly one of these per `spawned`, nothing between the two emits returning early.
+        // The channel outranks the status: a command that never ran exited as the refusing
+        // helper.
+        match (&result, refused) {
+            (_, Some(refusal)) => crate::AuditEvent::failed(&self.program, refusal.label()),
+            (Ok(output), None) => crate::AuditEvent::exited(&self.program, &output.status),
+            (Err(error), None) => crate::AuditEvent::failed(&self.program, error.label()),
+        }
+        .emit();
+```
+
+`refused` is what the helper said over its own channel, the next section's
+subject, and the first arm is the ordering rule: a stage that refused exits
+non-zero and stage 1 relays that on the command's behalf, so the status alone
+reads as a command that ran and exited 1.
+
 The load-bearing decision is which *proposition* a record states. The guard
 natively produces a verdict — it decides on resolution, before any syscall — and
 that is the cheaper reading, and the one the code had by accident. It was
@@ -93,9 +138,19 @@ record; three consequences fall out of it that a reader of a trail depends on:
   *inside* a root already granted — what a model guessing filenames leaves
   behind, and nothing else on the trail would show the guesses. It carries no
   `reason`, because nothing refused it.
-- **`absent` never escapes a grant.** A path missing *outside* every root stays
-  `denied`, indistinguishable from any other refusal. Naming the absence there
-  would hand back over the trail exactly what the refusal conceals.
+- **`absent` never escapes a grant**, and that is a disclosure property rather
+  than a nicety. A path missing *outside* every root stays `denied`,
+  indistinguishable from any other refusal, so no sequence of guesses turns the
+  trail into a map of the host: an ENOENT told apart from an EACCES over
+  arbitrary paths *is* that map. The variant's own doc states the rule where the
+  value is defined —
+
+  > Emitted only inside a granted root — outside one, a path's absence is what
+  > the refusal conceals.
+
+  — and which errnos count as a name denoting nothing, with the predicate that
+  decides whose area a path is in, belong to
+  [11 — the two seams](11-the-two-seams.md).
 
 That last one is the pattern to carry away: the trail is an output, so what it
 declines to say is part of the policy. The same instinct governs the metadata
@@ -165,10 +220,54 @@ output.
 
 So: sandbx creates a pipe and puts the write end in stage 1's fd 0.
 [`core/src/degradation.rs`](../../crates/sandbx-core/src/degradation.rs) owns
-both ends of the format — `label<TAB>detail` lines — `hardening.rs` *returns*
-what degraded instead of emitting it, and sandbx decodes and emits the audit
-events itself. One subscriber in the tree, one timestamp source, and the
-command's streams stay byte-exact.
+both ends of the format — `label<TAB>detail` lines — and `hardening.rs`
+*returns* what degraded instead of emitting it. One subscriber in the tree, one
+timestamp source, and the command's streams stay byte-exact.
+
+Four hops, none of them implied:
+
+1. **fd 0 is a channel only because argv said so.** `--sandbx-audit-stdin`,
+   which [08 — the two-stage helper](08-the-two-stage-helper.md) covers; without
+   it a hand-invoked helper would write records into whatever fd 0 happens to
+   be, and a terminal is writable.
+2. **The helper writes once.** `start_inner_stage` renders what
+   `prepare_supervisor` returned with `encode` and hands it to `report`, which
+   clones fd 0 with `try_clone_to_owned` — `Stdin` is a reader over a descriptor
+   opened for writing — and does one `write_all` for the whole batch, a short
+   write otherwise splitting a record in two. It writes *before* spawning
+   stage 2, so stage 1's records precede anything the stage below reports. A
+   stage that refused writes `encode_refusal` instead.
+3. **The harness reads after waiting.** `record_reports` in `command.rs` reads
+   the read end to EOF and gives the text to `decode`, which yields what the
+   stage said it was.
+4. **The harness emits.** A `Degraded` becomes
+   `AuditEvent::degraded(step.label(), detail).emit()` here, in the one process
+   with a subscriber. A `Failed` is returned rather than emitted, and becomes
+   the `failed` record the `match` above writes in place of the exit status.
+
+Which makes `Report` the type the whole channel is about:
+
+```rust
+pub(crate) enum Report<'a> {
+    /// A hardening step that did not take effect, and why.
+    Degraded(Degradation, &'a str),
+
+    /// A helper stage refused rather than reaching the command. On the channel because the
+    /// stage's non-zero exit is relayed on the command's behalf, so it would otherwise read
+    /// as the command's own.
+    Failed(crate::HelperRefusal),
+}
+```
+
+`Degradation`'s three variants are the whole of what a `degraded` record can
+name, and what a missed step costs differs enough that the label carries which
+one rather than `degraded` implying a single answer:
+
+| mechanism | what it cost |
+|---|---|
+| `capability_bounding_set` | `PR_CAPBSET_DROP` was refused, so the set is left as inherited — a weaker sandbox, and the only one of the three [`SECURITY.md`](../../SECURITY.md) weakens a claim for |
+| `userns_identity_map` | the uid/gid map could not be written, so the process reads back as the overflow uid: uid fidelity only, and if anything more restrictive |
+| `unresolved_dns_name` | a name `--allow-dns` listed resolved to no address, so nothing in the command's hosts file reaches it — more restrictive, and indistinguishable from the flag working |
 
 Four details make it a boundary rather than a pipe:
 
@@ -259,6 +358,33 @@ not to merge them:
 pub(super) const WRITABLE_BITS: u32 = 0o022;
 ```
 
+The table's two rows are the two interesting cases rather than the whole test.
+The credential side tests one constant, `SHARED_BITS` — `0o077`, the entire
+non-owner triad with execute in it — against a mode `File::metadata` read off
+the open descriptor, so a lone group-execute bit is refused as well. The session
+*root* is that same width, and `DIR_SHARED_BITS`'s own doc gives the reason: a
+transcript's name is clock-derived and so guessable, and group or other execute
+alone lets somebody else traverse to it. Only the transcript file splits the
+triad into the two constants above.
+
+Either refusal ends in the command to type, which is why the mode is printed at
+all:
+
+```rust
+            // The mode and not just the fact: seeing 644 is what tells an operator a umask
+            // or a copy widened it rather than sandbx.
+            Self::Permissions { path, mode } => write!(
+                f,
+                "refusing to read {} at mode {mode:o}: a credential readable by anyone but \
+                 you is already disclosed — run `chmod 600 {}`",
+                path.display(),
+                path.display()
+            ),
+```
+
+`SessionError::Writable` is the twin on the transcript side, with `chmod 700`
+for the directory — [22 — the session crate](22-crate-session.md) has both.
+
 **Refused, never repaired.** This is the direction worth internalising, because
 the instinct runs the other way: a tool finding a too-wide mode usually fixes
 it. Here a wide `credentials.toml` makes sandbx *refuse to read it*, and a quiet
@@ -277,15 +403,20 @@ enum Shared {
 }
 ```
 
-The session root is the one place a mode is **narrowed**, and only at create
-time: `narrow_root` does an `fchmod` on the descriptor it just stat'd, not a
-`chmod` by path, "so the directory narrowed is the one vetted". `resume` refuses
-instead, and the record explains why that is not an inconsistency — at create
-time the directory holds nothing a refusal would protect, and at resume time it
-holds the transcript about to be replayed to the model. The explicit `fchmod` is
-also not optional: `DirBuilderExt::mode` is ignored outright for a directory
-that already exists, so a root somebody widened would otherwise stay wide
-forever.
+A **directory** is narrowed rather than refused where it is written, and both
+crates do it: the session store in `create`, where `narrow_root` does an
+`fchmod` on the descriptor it just stat'd and not a `chmod` by path, "so the
+directory narrowed is the one vetted"; the credential store on every `write`,
+through a descriptor it then reuses for the `fsync`. On the read path both still
+refuse, as the bullet above says. The explicit call is not optional in
+either — `DirBuilderExt::mode` is masked by the umask and ignored outright for a
+directory that already exists, so a root somebody widened, or that predates the
+first run, would otherwise stay wide for every session after it. `resume`
+refuses where `create` narrows, and the record explains why that is not an
+inconsistency: at create time the directory holds nothing a refusal would
+protect, and at resume time it holds the transcript about to be replayed to the
+model. The one *file* whose mode is repaired is the one `auth logout` keeps —
+rewriting it at `0600` on the way out, with no key left in it to protect.
 
 One more thing a parse failure is allowed to say. A torn transcript line reports
 `serde_json`'s error as its `source`; the credential file deliberately drops
@@ -308,6 +439,18 @@ which two are live.
 states it as a property of *when the file is located*: "The file is located only
 once the environment has come up empty, so an exported key works on a host with
 no config home for `config_file` to name."
+
+Three actions reach the tier-3 file, and this is the whole of `auth`.
+`auth login` takes the key on **stdin** and refuses a tty rather than prompting:
+a prompt echoes it into the terminal's scrollback, and the obvious alternative —
+an argument — would publish it through `/proc/<pid>/cmdline` to every process on
+the host, so the documented idiom is
+`read -rs KEY && printf %s "$KEY" | sandbx auth login`. `auth logout` discards
+it. `auth status` says which source answered, never the key, and spends three
+exit codes doing it — 0 found, 1 neither source holds one, 2 a source could not
+be read — because `auth status || auth login` would otherwise log in over a
+credential it was merely refused. [24 — the cli crate](24-crate-cli.md) has the
+table.
 
 Two small rules that save a long debugging session each:
 
@@ -345,9 +488,25 @@ pub(crate) const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 That refusal is decidable from argv alone, which is why it can exist at all —
 [decision-tool-credentials.md](../decision-tool-credentials.md) establishes the
 rule that the two run subcommands may differ by a *refusal*, never by a policy.
-And in `AgentRun::policy` it is checked **first**, ahead of the
+`AgentRun::policy` is the whole of it, and its shape is that rule:
+
+```rust
+    pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
+        if self.grants.names_env(crate::auth::ENV_VAR) {
+            return Err(PolicyError::HarnessCredential {
+                name: crate::auth::ENV_VAR,
+            });
+        }
+
+        self.grants.policy()
+    }
+```
+
+An `Err` of its own, then the same `Grants::policy` `sandbox-run` calls — never
+a narrower `Ok` derived on the side. The check is **first**, ahead of the
 working-directory guard, because a working-directory refusal landing before it
-would mask it.
+would mask it. `tui` flattens `AgentRun`'s flags, so it inherits the refusal
+along with them.
 
 By name and not by pattern, which the record is explicit about: a denylist over
 `*_KEY`, `*_TOKEN`, `*_SECRET` is a *prediction* about naming, and the honest
@@ -485,6 +644,8 @@ enforcing it is that the translation does not compile when they diverge.
 - Why the audit trail is separated from diagnostics by target rather than by
   level, and what each half of `Targets::new().with_target(…)` keeps out.
 - Why every audit event is at `INFO`, in terms of the defect that made it so.
+- Why a `spawned` record can name a command that never ran, and which single
+  record closes it.
 - Why `allowed` is emitted after the open rather than after the check, and what
   `absent` exists to record.
 - Why `absent` is never used for a path outside a grant.
@@ -492,12 +653,16 @@ enforcing it is that the translation does not compile when they diverge.
   than an oversight.
 - Why the helper's channel is in the stdin slot specifically, and what stage 2
   does to it before becoming the command.
+- Which three mechanisms a `degraded` record can name, and why the channel
+  carries a label from a closed set rather than a string.
 - Why a too-wide `credentials.toml` makes sandbx refuse rather than `chmod` it
   back, and which single command tolerates it.
 - Why the transcript tolerates a shared *read* bit where the credential does
   not.
 - Where an API key may come from, in what order, and the one environment
   variable name `agent-run` refuses to pass a tool.
+- Why `auth login` refuses a terminal, and why `auth status` spends three exit
+  codes.
 - Why `--allow-read ~/.config` is refused rather than carved out.
 - Why a `SessionId` is an allowlist and what that buys the code that joins it to
   a path.

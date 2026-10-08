@@ -309,6 +309,16 @@ Raw mode is not a convenience: it is what makes ctrl-c arrive at `Keys` as a
 `KeyEvent` rather than raising `SIGINT`, which is why `Keys::listen` is started
 after `enter` and never before.
 
+`enter` is reached only on a run that can be drawn at all, and the driver
+settles that first: `Tui::drawable` refuses `--approve call`
+(`AgentError::ApproveUnderTui`, #225) and then a stdout that is not a terminal
+(`AgentError::NotATerminal`), the flag first "being the more specific" where one
+invocation has both wrong. Both land before the policy is derived and before the
+credential is read — "a run that cannot be drawn must not read a credential on
+the way to finding that out" — and `drawable` takes the terminal answer as a
+`bool` argument rather than reading file descriptor 1, which under `cargo test`
+is the developer's own. [24](24-crate-cli.md) owns the subcommand.
+
 Giving it back is the mechanism:
 
 ```rust
@@ -339,9 +349,33 @@ discards the back buffer first by resizing to the size already in force, since
 ratatui flushes only the diff between its two buffers and a cell a third party
 wrote would never be rewritten. The comment records the trap: not
 `Terminal::clear`, whose cursor query would deadlock against crossterm's single
-reader while `Keys` parks it in `event::read`. Both return `()`, the first
-`io::Error` latching into `failed` so every later draw is a no-op, and the
-caller takes it once:
+reader while `Keys` parks it in `event::read`.
+
+Both return `()` because the seam they are called through cannot carry an error:
+`run_turn`'s observer is `O: FnMut(&AgentEvent)`, so the closure that folds an
+event and repaints has nowhere to put an `io::Error` — which is what the field's
+own doc means by "`observe` having nowhere to return one". So the first one
+latches instead:
+
+```rust
+    pub fn draw(&mut self, transcript: &Transcript, hint: Hint) {
+        if self.failed.is_some() {
+            return;
+        }
+
+        if let Err(error) = self
+            .terminal
+            .draw(|frame| view::draw(frame, transcript, hint))
+        {
+            self.failed = Some(error);
+        }
+    }
+```
+
+`redraw` tests the same flag and latches the same way, so one failure stops
+both. The field keeps the *first* error and not the last — "a closed stdout
+fails once per event, and the last says only that it was gone" — and the caller
+takes it once:
 
 > The draw failure that stopped the screen updating, if one did. Taken, so a
 > caller reports it once — and it must: everything after it happened off-screen,
@@ -350,8 +384,25 @@ caller takes it once:
 The error is available, then, but only by asking: a turn whose screen died in
 round one runs on under the policy it was given, every later call drawn into
 nothing. No consent is bypassed — `tui` refuses `--approve call` (#225), so its
-gate's decision is argv's — and what is lost is the watching. Whether anything
-acts on `failure()` before the turn ends is [24](24-crate-cli.md)'s.
+gate's decision is argv's — and what is lost is the watching. Nothing acts on
+`failure()` before the turn ends: [24](24-crate-cli.md)'s `Tui::drive` takes it
+after the final redraw and after the key that holds the finished screen, and
+returns it as `AgentError::Screen` in place of the code the turn had earned.
+
+- **Worth questioning:** a latched draw failure replacing the code the turn
+  earned. `Tui::drive` ends on `let code = code?;` and then returns
+  `AgentError::Screen` where one latched, which `failure_code` maps to 1 — so a
+  turn cut short at `--max-rounds` exits 1 rather than 2 if the screen died
+  anywhere in it, while the account naming the bound still prints to stderr,
+  its branch testing the `Ok` code before the screen error replaces it.
+  `agent-run` does the same with a closed stdout, deliberately and in the same
+  order — `render.rs`'s `finish` returns `AgentError::Output` ahead of every
+  ending — so this is a consistent choice rather than an oversight in one
+  subcommand. What is unweighed is the asymmetry against
+  [decision-approval-gate.md](../decision-approval-gate.md)'s reason for buying
+  a third code at all, "reusing it would leave the defect distinguishable only
+  by grepping stderr" (#218): on this path the code a script reads is the
+  device's, and the stop it configured is what is left on stderr to be grepped.
 
 ## input.rs is a thread, because `event::read` cannot be cancelled
 
@@ -412,6 +463,14 @@ The thread exits on a send error — the receiver dropped — and on a read erro
 without retrying, "the descriptor is gone, and looping would spin the thread at
 full speed". Resize, mouse, paste and focus events are ignored.
 
+Both exits are reached *through* `event::read`, so neither is prompt: a dropped
+`Keys` is noticed at the next keypress, which the thread consumes and discards
+on its way out. Usually there is no next keypress, and nothing joins the
+thread — `listen` drops the `JoinHandle` — so the thread is abandoned still
+parked and the process exits over it. That is the whole of what buys the exit
+the alternative does not: `Runtime::drop` waits for an in-flight blocking task,
+and nothing waits for this one.
+
 ## You should now be able to explain
 
 - Why `sandbx-tui` has no row in 04's table of boundaries, which four names it
@@ -427,8 +486,12 @@ full speed". Resize, mouse, paste and focus events are ignored.
   is gone or merely off-screen.
 - What `Screen`'s `Drop` impl protects against, and the ways a process can end
   without running it.
+- Why `draw` returns `()` rather than a `Result`, what the first `io::Error`
+  latches, and what the latched error costs the code the turn exits with.
 - Why the key reader is a `std::thread`, and why `Keys::stop` never resolves on
   a closed channel while `press` resolves at once.
+- What ends the reader thread, why neither ending is prompt, and what becomes of
+  it when the process exits.
 
 ## Next
 

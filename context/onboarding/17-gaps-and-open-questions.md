@@ -545,6 +545,16 @@ sandbx's own costs as description rather than as a complaint.
   against the transcript rule — a merely readable transcript resumes *and* sets
   a field, precisely so the operator hears about a disclosure that cannot be
   undone.
+- **One refusal serves two call sites and is worded for one of them.**
+  `IncompleteTurn` is raised by `append` and by `resume`, and its message ends
+  "so there is nothing to append" — on the resume path nothing was being
+  appended and a hand-edited transcript is what is wrong. It names no path,
+  where every other refusal about a file does, and `sandbx-cli` compounds it
+  from the other side by treating the variant as benign on the append path.
+  **Open.** [decision-on-disk-state.md](../decision-on-disk-state.md) settles
+  what `resume` must check and says nothing about what it reports when the check
+  fails, so the record has not been asked whether the two cases want two
+  variants.
 
 ### From 23 — the tui crate
 
@@ -566,6 +576,17 @@ sandbx's own costs as description rather than as a complaint.
   for the other mark: a gutter in an area of its own. Weaker than forging a
   verdict — misattributed authorship rather than consent — and not nothing
   either, the pane being the only record a `bash` call's text gets (#234).
+- **A latched draw failure replaces the code the turn earned.** `drive` returns
+  `AgentError::Screen` where one latched, which maps to 1 — so a turn cut short
+  at its round bound exits 1 rather than 2 if the screen died anywhere in it,
+  while the account naming the bound still reaches stderr. `agent-run` does the
+  same with a closed stdout, in the same order, so it is a consistent choice
+  rather than one subcommand's oversight. **Open.**
+  [decision-approval-gate.md](../decision-approval-gate.md) weighs a third code
+  against reusing the second, on the grounds that reuse would leave the defect
+  "distinguishable only by grepping stderr" (#218) — and on this path the code a
+  script reads is the output device's and the stop it configured is what is left
+  on stderr to be grepped. The asymmetry is the thing nothing has weighed.
 
 ### From 24 — the cli crate
 

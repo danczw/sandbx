@@ -60,7 +60,15 @@ a `pub struct <Variant>Input` and a `pub fn execute` taking it by value, and the
 privacy of their parent means neither is nameable from outside; the `pub` there
 amounts to `pub(crate)`, and the workspace does not enable `unreachable_pub` to
 say so. The only door in is `BuiltinTool::execute` with a `serde_json::Value`,
-which is how all ten integration targets call a tool.
+and that door is what the privacy buys. `execute` is `(self.spec().run)`, and
+every module's `run` is `execute(crate::parse(input)?, ctx)`, so no route to the
+filesystem skips the parse into that tool's own input struct, and none reaches a
+tool without passing through the `BuiltinTool` whose `risk()` the gate reads. A
+public `write::execute(WriteInput { .. })` would be a second door into a crate
+`sandbx-cli` already depends on, and no gate would see it. Of the ten
+integration targets, the eight that run a tool all come through the one door;
+`registry.rs` only inspects the registry and `spawn.rs` goes at
+`sandboxed_command` directly.
 
 `BuiltinTool` itself is fieldless and `Copy`:
 
@@ -116,7 +124,28 @@ pub(crate) struct ToolSpec {
 `schema` is a function rather than a value because `schema_for!` allocates and
 so cannot be a `const`. `name`, `description`, `risk`, `input_schema` and
 `execute` each call `spec()`, the single match over the enum, so the five
-accessors have one place to be transposed in rather than five.
+accessors have one place to be transposed in rather than five:
+
+```rust
+    fn spec(&self) -> ToolSpec {
+        match self {
+            Self::Read => tools::read::SPEC,
+            Self::Write => tools::write::SPEC,
+            Self::Bash => tools::bash::SPEC,
+            Self::Edit => tools::edit::SPEC,
+            Self::Ls => tools::ls::SPEC,
+            Self::Grep => tools::grep::SPEC,
+            Self::Find => tools::find::SPEC,
+        }
+    }
+```
+
+That is the whole of dispatch. Each arm names a `pub(crate) const SPEC` in that
+tool's own module, so `spec()` copies two `&'static str`s, a `RiskLevel` and two
+fn pointers and allocates nothing — which is what lets five accessors each call
+it rather than cache its result. `execute` is one line more,
+`(self.spec().run)(input, ctx)`. An eighth variant with no arm here is a compile
+error before it is anything else.
 
 The rest of the file is the helpers the seven modules share, and reading them
 first makes every tool module shorter than it looks:
@@ -126,7 +155,7 @@ first makes every tool module shorter than it looks:
 | `parse::<T>` | `serde_json::from_value`, mapping a mismatch to `BadInput` rather than panicking |
 | `read_file` | `guard().open_read(path)`, then `read_to_string` on the **handle** — so no in-process tool can read a file by forgetting the check |
 | `listing` | applies `take_entries`, *then* appends the partial-scan marker — inside the list it would be a line the cap could trim away; returns `"no matches"` only for a result both empty and complete |
-| `guard_error` | one `SandboxError` → `ToolError` mapping for all six guard-using tools |
+| `guard_error` | one `SandboxError` → `ToolError` mapping for all six guard-using tools, with two arms of its own: `NotFound` becomes `Failed`, absence being the one verdict that is not a refusal (#180), and `RootReplaced` becomes `Denied` under a *rewritten* reason, its own `Display` naming the two `(dev, ino)` pairs the trail wants and the model cannot act on |
 | `failed` | a host failure → `Failed`, with `verb` naming the attempt (`read /etc/hosts`) rather than the syscall |
 
 `ToolOutput` is declared here too, wrapping the text the model will see behind a
@@ -157,6 +186,32 @@ constraint — every field in all seven schemas is `"type": "string"` and
 `required`, with no `format` and no pattern. "Absolute path" is advice, and a
 relative one is not refused: `FsGuard::check_read` calls `Path::canonicalize`,
 which resolves it against the harness's own working directory.
+
+All seven input structs are one shape — `Deserialize` and `JsonSchema` side by
+side, every field `pub`, none an `Option`, and no `#[serde(...)]` attribute
+anywhere in the crate:
+
+```rust
+/// Arguments for the `grep` tool.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GrepInput {
+    /// Absolute path of the directory to search.
+    pub path: PathBuf,
+    /// Literal text to look for. Not a regular expression.
+    pub pattern: String,
+}
+```
+
+No `Option` means a *missing* field is `BadInput`, carrying serde's own wording
+("missing field `pattern`") through `crate::parse`. An *extra* field is silently
+dropped: no input struct sets `deny_unknown_fields`, and schemars emits
+`"additionalProperties": false` only when it is set — so neither the schema the
+model is shown nor the parse that reads its reply refuses an unknown key. The
+model is the untrusted source of that JSON, so the permissiveness is paid for a
+layer up rather than here. [13](13-turn-loop-and-gate.md)'s decoy-argument
+section is where it is met: a `bash` call can carry a `path` beside its
+`command`, so the gate names a call after its **tool** and never after whichever
+key is present.
 
 ### `read`
 
@@ -233,8 +288,10 @@ tool has to report apart:
 ```
 
 The outer is the policy's verdict and becomes `Denied`; the inner is the host's
-and becomes `Failed`. `tests/ls.rs` has one test per layer, and they must not
-collapse: one tells the model to ask for a different path, the other that the
+and becomes `Failed`. `tests/ls.rs` covers both sides — one test on the
+policy's, three on the host's (a missing directory inside a grant, a file where
+a directory was asked for, a directory the host will not read) — and must not
+collapse: one tells the model to ask for a different path, the others that the
 path was fine and the filesystem was not. 11 explains why this is the guard call
 that closes no TOCTOU window — a directory read has no `O_NOFOLLOW` handle form.
 
@@ -272,10 +329,13 @@ meet:
 
 `max_files_scanned` goes into `walk_readable` and comes back as
 `walk.truncated`; `max_bytes_scanned` is checked here, before each read, so one
-file can overshoot the total, and `MAX_FILE_BYTES` — hardcoded in this module,
-not a `ToolLimits` field — bounds that overshoot; `max_entries` trims the
-rendered hits. Either input bound sets `stopped_early`, which `listing` turns
-into the partial-scan marker. Nothing is sorted afterwards, because
+file can overshoot the total, and `MAX_FILE_BYTES` — 2 MiB, a `const` in this
+module and not a `ToolLimits` field, so no builder can move it — bounds that
+overshoot. The skip reads `file.metadata()`, never the file, which is the whole
+point of its doc comment: a pack file or a binary fails UTF-8 validation anyway,
+and `read_to_string` discovers that only after allocating the whole thing.
+`max_entries` trims the rendered hits. Either input bound sets `stopped_early`,
+which `listing` turns into the partial-scan marker. Nothing is sorted, because
 `walk_readable` returns files sorted and lines are visited ascending — sorting
 the rendered `path:line: text` strings would put `:10` before `:2`.
 
@@ -441,21 +501,25 @@ pub struct ToolLimits {
 All four private, with a `Default` whose every figure carries a comment naming
 what it is calibrated against — and for `max_files_scanned` a second reason,
 that the walk holds a `PathBuf` per file, so the cap bounds memory as well as
-time. [guide-tools.md](../guide-tools.md) has the numbers.
+time. [guide-tools.md](../guide-tools.md) tabulates the same five figures beside
+the rule each serves.
 
 The accessor surface is asymmetric, and that is the fastest way to see which
 bound is applied where:
 
-| field | reader | how |
-|---|---|---|
-| `max_entries` | `ls`, `grep`, `find` | indirectly, via `take_entries` inside `crate::listing` |
-| `max_bytes` | `read`, `bash` | indirectly, via `take_bytes` |
-| `max_files_scanned` | `grep`, `find` | directly — `pub fn max_files_scanned()`, passed to `walk_readable` |
-| `max_bytes_scanned` | `grep` | directly — `pub fn max_bytes_scanned()`, compared in the loop |
+| field | default | reader | how |
+|---|---|---|---|
+| `max_entries` | 200 lines | `ls`, `grep`, `find` | indirectly, via `take_entries` inside `crate::listing` |
+| `max_bytes` | 256 KiB | `read`, `bash` | indirectly, via `take_bytes` |
+| `max_files_scanned` | 10,000 files | `grep`, `find` | directly — `pub fn max_files_scanned()`, passed to `walk_readable` |
+| `max_bytes_scanned` | 64 MiB | `grep` | directly — `pub fn max_bytes_scanned()`, compared in the loop |
 
 The two output caps have **no** public getters: `take_entries` and `take_bytes`
 are `pub(crate)`, so a tool cannot read a cap and apply it itself. The two input
 caps do, because the tool is the only thing that can spend a budget as it goes.
+All four have a `#[must_use] with_*` builder, so the asymmetry is about
+*reading* a cap, not about tightening one — and the fifth figure, `grep`'s
+2 MiB `MAX_FILE_BYTES`, has neither, being a `const` in `grep.rs`.
 `take_bytes` backs up to a UTF-8 character boundary before cutting, a byte
 offset being able to land mid-character.
 
@@ -564,15 +628,17 @@ meaning of each `<=`.
 - Why the public surface is seven items, and why a tool's `pub fn execute` is
   not one of them.
 - What `ALL: [Self; 7]` and the exhaustive `spec` match buy that a list of
-  `Box<dyn Tool>` would not.
+  `Box<dyn Tool>` would not, and what `spec()` costs to call five times.
 - Which `FsGuard` call each of the six in-process tools makes, and which one
   makes two kinds.
+- What happens to an extra field in the model's JSON, and which layer pays for
+  that rather than this one.
 - Why `edit` reads before it counts, and counts before it opens the write
   handle.
 - Why `ls`'s guard call returns two nested `Result`s, and what each layer
   becomes.
-- Which `ToolLimits` field each tool reads, and why the output caps have no
-  public getters while the input caps do.
+- Which `ToolLimits` field each tool reads, what it defaults to, and why the
+  output caps have no public getters while the input caps do.
 - What `bash` does not do that the other six do, and what confines it instead.
 - Why `Denied` must stay distinct from `Failed` when the model sees one string
   either way.

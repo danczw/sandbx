@@ -75,6 +75,41 @@ whole subject of this chapter.
 | `check_read` | a resolved `PathBuf` | nothing |
 | `check_write` | a resolved `PathBuf` | nothing |
 
+As a type the surface is small, and closed:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct FsGuard {
+    readable: Vec<VettedPath>,
+    writable: Vec<VettedPath>,
+}
+
+// The impl, signatures only — every body elided.
+pub fn new(policy: &SandboxPolicy) -> Self
+pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError>
+pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError>
+pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<std::fs::ReadDir>, SandboxError>
+pub fn open_write(&self, path: &Path) -> Result<std::fs::File, SandboxError>
+pub fn walk_readable(&self, root: &Path, max_files: usize) -> Result<ReadableWalk, SandboxError>
+pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError>
+```
+
+Four things to read off that. Every method takes `&self` and a borrowed `&Path`,
+so a caller hands over nothing and the guard keeps nothing about the call. The
+outer error is `SandboxError` in every row — the policy's verdict — and only
+`read_dir` nests a second one, which the `ls` section below takes apart.
+`walk_readable` is the only entry point taking a bound from its caller,
+`max_files`, which is where `ToolLimits` enters this seam at all. And the two
+lists are **private, with no accessor**: nothing outside the module can read a
+guard's roots, so a tool cannot ask "what may I read?" — only "may I read this
+path I have named". That closure is matched one level up, for the reason
+`sandboxed_command`'s doc comment gives: `ExecutionContext` keeps the policy in
+a private field (#56), because an accessor lending out a `&SandboxPolicy` would
+let an in-process tool read the path lists and open the files itself, round the
+handles. What that costs the model is [15](15-tools-and-the-screen.md)'s
+subject — it learns its roots from the system prompt instead, above the tool
+boundary.
+
 ### Tools hold handles, not paths
 
 The first four rows hand back something already open. That is deliberate and it
@@ -90,6 +125,31 @@ symlink after the check fails the open with `ELOOP` rather than following it out
 of the root. The flag's limit is stated in `open_read`'s own doc comment and
 matters later: `O_NOFOLLOW` guards the **final component only**, so a swapped
 *parent* needs resolution that walks descriptor by descriptor.
+
+The whole of `open_read` is those two steps in order, with nothing between them:
+
+```rust
+pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
+    let resolved = self.check_read(path)?;
+    open(
+        std::fs::OpenOptions::new().read(true),
+        &resolved,
+        path,
+        Access::Read,
+    )
+}
+```
+
+Two paths travel on from the check, and which one is used where is the point.
+`open` opens `resolved` — the canonical form `check_read` proved inside a root —
+so the caller's own spelling, `..` and symlinks and all, is never walked a
+second time, and `O_NOFOLLOW` covers that canonical form's leaf. Its parents are
+resolved by name again, which is the window this chapter's last section is
+about. `path`, the spelling the model asked for, travels only to be named in the
+audit record: the trail says what was requested while the syscall uses what was
+proven, and neither stands in for the other. What reaches the tool is the handle
+alone — `read_file` calls `read_to_string` on the `File` and never names the
+path again.
 
 The discipline is centralised rather than repeated. `read_file` in
 [`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs) holds the only
@@ -191,6 +251,23 @@ explicitly *not* a `canonicalize` — a `..` above a symlink collapses to the
 link's parent here and to its target's parent in the kernel, which is why both
 forms are tested and neither replaces the spelling.
 
+`collapsed` makes its form absolute before it pops anything, joining a relative
+spelling to the working directory — and that join answers the question a reader
+half-understanding the guard asks next. A **relative** path is not a bypass.
+Nothing refuses one; "absolute path" is advice in the tool schemas and no more
+([19](19-crate-tools.md)). What happens instead is that `check_read` hands the
+spelling straight to `Path::canonicalize`, which resolves it against this
+process's working directory — the same one `absolute` joined a relative
+`--allow-read` to ([12](12-a-flag-to-a-kernel-rule.md)). What comes back is
+absolute and canonical, and `contains` compares *that* against the roots, so a
+relative spelling has to land inside a granted root like any other. The
+substitution test sees it too, and only through the join: on a relative form
+`starts_with` matches no root, every root being absolute, so the collapsed form
+is the one carrying `moved_root`'s question at all. The inline test
+`a_relative_spelling_collapses_against_the_working_directory` pins that arm, and
+is inline because it has to be — `set_current_dir` is process-wide, so the
+public tests cannot reach it.
+
 ### A refusal says nothing, except inside a grant
 
 `canonicalize` fails differently for a path that is missing (ENOENT), one whose
@@ -233,6 +310,17 @@ of a flat refusal, and the audit trail records `absent` rather than `denied`.
 Which errnos count as a name denoting nothing is `names_nothing`: ENOENT,
 ENOTDIR and ENAMETOOLONG, by errno rather than by `ErrorKind` because the last
 has no stable spelling (#180).
+
+That the trail moves with the result is a rule and not a coincidence: the trail
+is an output too, so naming an absence outside a grant would hand back over it
+exactly what the refusal conceals — [14](14-audit-sessions-credentials.md) is
+the record-level account. Two sites emit `absent` and no others: the
+`names_nothing` arm of `conceal_unless_granted`, reached only once the root, the
+area and `reaches_plainly` have each said yes, and `record`, for an access the
+policy had already approved. Those two do not share an absence test. `record`
+takes one as an argument, so `read_dir` passes `listed_nothing`, which drops
+ENOTDIR — on the leaf of a directory read that errno says the leaf is a file,
+`check_read` having just resolved it, and not that the name denotes nothing.
 
 Deciding *which* area a path that does not resolve belongs to is `nearest_area`
 — the deepest ancestor that does resolve. But that rule alone cannot see the one
@@ -315,6 +403,41 @@ flag, and an unpinned grant is a case the helper has no answer for anyway.
 `axis_for` is a reverse lookup over `path_flag` rather than a second list of
 spellings, so a flag `encode` can emit is one `decode` accepts by construction —
 the wire spelling exists in exactly one place.
+
+The other half of the round trip takes the three tokens back in the order
+`encode` pushed them, and it is `decode`'s *last* arm — the fall-through:
+
+```rust
+flag => {
+    let axis = axis_for(flag).ok_or(SandboxError::BadHelperArgs {
+        detail: "unrecognised helper flag",
+    })?;
+    let path = rest.next().ok_or(SandboxError::BadHelperArgs {
+        detail: "path flag with no path after it",
+    })?;
+    // … the pin token, fetched the same way …
+    let object = ObjectId::parse(pin).ok_or(SandboxError::BadHelperArgs {
+        detail: "object pin that is not a device and an inode parted by `:`",
+    })?;
+    policy = policy.grant(axis, VettedPath::from_wire(path.as_str(), object));
+}
+```
+
+Being the fall-through is what makes "an unrecognised flag is never skipped"
+structural rather than remembered: any token that is not one of the known flags
+arrives *here*, and `axis_for` either names it a path flag or the arm returns.
+There is no arm left over to ignore it in.
+
+What a malformed argv gets is one variant, whose shape is worth seeing:
+`SandboxError::BadHelperArgs { detail: &'static str }`. A static string, so a
+refusal names *what* was wrong and never the token that was wrong — nothing off
+the argv reaches the message. And `decode` is stricter than the builders it
+calls: port 0, and an `=` inside an env variable name, are refusals here where
+`SandboxPolicy`'s own builders would quietly skip them, because `encode` cannot
+emit either and an argv carrying one did not come from `encode`.
+[18](18-crate-core.md) has the builder side of that pairing. A second
+`--pin-sha256` is refused for the neighbouring reason: last-wins would resolve
+two images named for one program.
 
 **Why argv at all, rather than a shared structure?** Because there is no shared
 anything: stage 1 and stage 2 are separate `execve`s of the same binary, which
@@ -406,6 +529,12 @@ two documents above are careful about.
 - Why `open_read` returning a `File` rather than a `PathBuf` is a security
   property and not an ergonomic one, and what `O_NOFOLLOW` does and does not
   cover.
+- Which path `open` actually opens, which one the audit record names, and why
+  those are not the same path.
+- Why `FsGuard`'s two root lists have no accessor, and what a tool can therefore
+  ask the guard.
+- Why a relative path reaching a tool is not a way around the roots, and which
+  working directory it resolves against.
 - Why `ls` gets a handle that buys it nothing, and what `read_dir` does buy.
 - Why `FsGuard::new` performs no I/O, and what went wrong when the guard
   re-resolved a root's spelling per access.
@@ -417,6 +546,8 @@ two documents above are careful about.
   cannot see on its own.
 - Why the policy crosses into the helper as argv, why that means names and never
   values, and what "neither side is trusted" buys in each direction.
+- What a malformed helper argv gets back, why the path-flag arm is the
+  fall-through, and why `decode` refuses values the policy builders only skip.
 - Which substitution window seam 1 still leaves open, how wide it is for a walk
   versus a single read, and what shape of substitution is *not* in it.
 

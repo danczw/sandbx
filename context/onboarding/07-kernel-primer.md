@@ -6,10 +6,11 @@ supervisor, and the helper inner stage that `apply()` confines. Those two boxes
 name eight or nine kernel mechanisms in about twenty words of ASCII, and the
 chapters after this one assume you know what each of them is.
 
-So this is the one chapter in the set with no repository code in it. Each
-section teaches one mechanism from first principles and ends by naming where in
-sandbx it is about to show up. If you have called `unshare(2)` before, skim the
-last line of each section and move on to
+So this is the one chapter in the set that is almost all kernel and almost no
+repository code: one snippet, where the order of three writes *is* the
+mechanism. Each section teaches one mechanism from first principles and ends by
+naming where in sandbx it is about to show up. If you have called `unshare(2)`
+before, skim the last line of each section and move on to
 [08 — the two-stage helper](08-the-two-stage-helper.md).
 
 Two conventions for the whole chapter. "The command" means the program sandbx
@@ -79,7 +80,9 @@ for a host where that has been done.
 one `unshare` call, so there is no window holding some of the isolation and not
 the rest. The user and PID namespaces are unconditional; the network namespace
 is dropped when the policy grants network at all, and the mount namespace is
-added only when the policy has mounts to put in it. A refused `unshare` is a
+added only when the policy has mounts to put in it — an empty one confines
+nothing, and unsharing it regardless would make every run, mounts or not, depend
+on a kernel that lets an unprivileged process have one. A refused `unshare` is a
 refused run — see the rows in
 [guide-sandboxing.md](../guide-sandboxing.md#namespaces-and-process-state).
 
@@ -97,6 +100,14 @@ and how many consecutive ids the line covers — and an unprivileged writer may
 establish exactly one line, mapping its own id. Writing `1000 1000 1` maps the
 real uid to itself: it grants nothing, since the process was already acting as
 that uid, and it makes `getuid()` truthful again.
+
+One line, and your own id, is not an arbitrary quota. A wider map needs
+`CAP_SETUID` — `CAP_SETGID` for the gid map — held over the **parent**
+namespace, and the full capability set the creator holds *inside* the new one
+is no help, because that is not where the kernel checks. Which is why the tool
+that hands out a range of subordinate ids, `newuidmap(1)`, is a set-user-ID
+binary: the privilege has to come from outside the namespace being mapped.
+sandbx has no such helper, so one id mapped to itself is all it can write.
 
 But `/proc/self/gid_map` is refused for an unprivileged writer until
 `/proc/self/setgroups` has been written the string `deny`, and that ordering
@@ -118,13 +129,22 @@ process write `gid_map`; once `gid_map` is written, `deny` can no longer be
 written at all. One order works and the other cannot be recovered from.
 
 **In sandbx:** `map_identity_into_userns_with` in `hardening.rs` writes the
-three paths in that order, and the unit test beside it,
-`the_identity_map_is_written_in_kernel_order`, asserts the sequence rather than
-the outcome — the kernel's refusal is the thing being avoided, so the order is
-what has to be pinned. The whole step is best-effort: a host that creates the
-namespace and then denies the map leaves the process reading back as `nobody`,
-which is if anything more restrictive, so the run continues with a `degraded`
-record rather than refusing.
+three paths in that order, and the order is a literal:
+
+```rust
+let maps = [
+    ("/proc/self/setgroups", "deny".to_string()),
+    ("/proc/self/gid_map", format!("{gid} {gid} 1")),
+    ("/proc/self/uid_map", format!("{uid} {uid} 1")),
+];
+```
+
+The unit test beside it, `the_identity_map_is_written_in_kernel_order`, asserts
+the sequence rather than the outcome — the kernel's refusal is the thing being
+avoided, so the order is what has to be pinned. The whole step is best-effort: a
+host that creates the namespace and then denies the map leaves the process
+reading back as `nobody`, which is if anything more restrictive, so the run
+continues with a `degraded` record rather than refusing.
 
 ## seccomp-BPF is a program over the syscall's registers
 
@@ -142,7 +162,19 @@ struct seccomp_data {
 ```
 
 Its output is a verdict: allow, return an errno, kill the process, trap, notify
-a supervisor. Four properties make it usable as a boundary:
+a supervisor.
+
+Classic BPF is a small register machine, and its shape is worth knowing because
+[10 — seccomp](10-seccomp.md) reads one of these programs instruction by
+instruction. A program is a short list of operations over a single accumulator:
+load a word at a byte offset into the struct above, mask it, compare it against
+a constant, jump — and the verdict is whatever a closing `ret` leaves behind.
+Jump offsets are unsigned and counted from the *following* instruction, so a
+program only ever goes forward. There are no loops, which is what lets the
+kernel decide before accepting a filter that the thing terminates, and so what
+makes running it on every syscall affordable.
+
+Four properties make it usable as a boundary:
 
 - **Installing one needs either `CAP_SYS_ADMIN` or the `no_new_privs` bit**, so
   an unprivileged process can have a filter by setting that bit first. This is
@@ -151,7 +183,10 @@ a supervisor. Four properties make it usable as a boundary:
   several; the kernel runs all of them and takes the worst answer, so a later
   filter cannot loosen an earlier one and install order carries no meaning.
 - **A filter cannot be removed**, and it is inherited across `fork` and across
-  `exec`.
+  `exec`. It attaches to the *calling thread*, though: siblings already running
+  are covered only if the installer asks, with `SECCOMP_FILTER_FLAG_TSYNC`. A
+  process that has just `exec`ed has one thread, so the distinction disappears
+  there — which is the shape a filter gets installed in.
 - **It is per-architecture.** Syscall numbers mean different things on different
   ABIs, so a filter that does not gate on `arch` is a filter that can be walked
   past by issuing the same number through another one.
@@ -186,11 +221,15 @@ refused outright.
 denylist, plus conditional rules for `socket`, `setsockopt` and the send
 syscalls, as a stack of filters — three on x86\_64, two elsewhere — because a
 seccompiler filter carries a single match action and some rules need a different
-one. `clone3` answers `ENOSYS` rather than `EPERM`, and `clone3_filter` says why
-in a comment: glibc calls it from `pthread_create` and falls back to `clone`
-only on `ENOSYS`, so the polite errno is what routes threaded programs onto the
-filtered `clone` instead of breaking them. The list, the filters and their
-actions are in [guide-sandboxing.md](../guide-sandboxing.md#syscall-denylist).
+one. Each goes in through seccompiler's `apply_filter` — the calling-thread
+call, not the all-threads one — which is sound only because the stage that
+installs them is a fresh `exec` and so has a single thread; the command inherits
+the filters from there. `clone3` answers `ENOSYS` rather than `EPERM`, and
+`clone3_filter` says why in a comment: glibc calls it from `pthread_create` and
+falls back to `clone` only on `ENOSYS`, so the polite errno is what routes
+threaded programs onto the filtered `clone` instead of breaking them. The list,
+the filters and their actions are in
+[guide-sandboxing.md](../guide-sandboxing.md#syscall-denylist).
 
 ## Landlock is a path-based LSM with a versioned ABI
 
@@ -364,10 +403,19 @@ security-relevant syscall return a lie the program does not check — and then
 `exec` it. Forbidding the privilege gain removes the target, and so the bit is
 the unprivileged route to having a filter at all.
 
+`landlock_restrict_self` carries the same precondition — `CAP_SYS_ADMIN` or the
+bit — for the same reason, a ruleset being inherited across `execve` too. So the
+second thing covers both self-applied mechanisms: one `prctl` is what an
+unprivileged process has to spend before either will install.
+
 **In sandbx:** `set_no_new_privs` is called in the supervisor *and* again as the
 first statement of `apply`. The second call is a no-op, and the comment in
 `prepare_supervisor` says why it is there anyway: the stage that installs the
-filter must not depend on a caller having set the bit for it.
+filter must not depend on a caller having set the bit for it. The Landlock half
+is not relying on those two calls: the `landlock` crate sets the bit inside
+`restrict_self`, and defaults to doing so. What sandbx's own calls buy is the
+seccomp half — which is why they sit *before* `deny_dangerous_syscalls` in
+`apply` and not anywhere later.
 
 ## Five capability sets, and what dropping each one means
 
@@ -435,6 +483,13 @@ never fires. Arming is therefore not sufficient on its own — after arming you
 have to establish that the parent you meant is still there, and the check and
 the arming cannot be in the other order.
 
+And a last piece of vocabulary, because the kernel is more specific than the
+word "parent" suggests: the signal is tied to the parent **thread**, the one
+that created this process, and fires when *that* thread exits even if its
+process goes on running. A multithreaded parent that spawns from a worker
+cannot use the setting to mean "while my process lives". A single-threaded one
+makes the two readings the same thing.
+
 Checking is harder than it looks from inside a new PID namespace. `getppid()` is
 translated into the caller's own namespace, and a process whose parent lives
 *outside* that namespace has no number to be told: the kernel reports 0. The
@@ -461,8 +516,14 @@ unrestricted.
   them unprivileged.
 - The attack that writing `deny` to `setgroups` before `gid_map` closes, in
   terms of a file mode where group has less access than other.
+- Why an unprivileged process may map one id to itself and no more, and where
+  the privilege for a wider map would have to come from.
+- What a classic-BPF program is made of, and why one that cannot loop is cheap
+  enough to run on entry to every syscall.
 - Why a seccomp filter can police `clone`'s flags but not `clone3`'s, and the
   general rule about pointers that both follow from.
+- Why installing a filter on the calling thread is the whole process in a
+  process that has one thread, and what the other case needs.
 - Why an access type missing from a Landlock ruleset's handled set is worse than
   a denied one, and what "hard requirement" buys over best-effort.
 - What `O_PATH` gives you that an ordinary open does not, and the two different
@@ -471,11 +532,12 @@ unrestricted.
   fresh mount namespace still sees the host's later mounts until something says
   otherwise.
 - Why an unprivileged process must set `no_new_privs` before it can install a
-  seccomp filter.
+  seccomp filter, and why Landlock asks for the same bit.
 - Which of the five capability sets answer a question about `execve`, and why
   the bounding set has to be dropped before the effective one.
 - The two cases that clear a parent death signal, the third case where arming it
-  does nothing, and what covers a command's descendants instead.
+  does nothing, which thread the kernel means by "parent", and what covers a
+  command's descendants instead.
 
 ## Next
 
