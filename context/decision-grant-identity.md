@@ -192,11 +192,15 @@ a walk confirms its root once and then traverses, so the window there is the tra
 
 **A reused inode reads as the vetted object.** The pin's floor, and the one cost here
 that is a limit on what the comparison can mean rather than on how it is taken. An
-inode number is free once what held it is unlinked, and on ext4 the next directory
-created at the same name gets the number just released — deterministic in measurement,
-across repeated `rm -rf` plus `mkdir` at one path; tmpfs issues from a counter and does
-not repeat. So a granted root deleted and re-created compares equal, on both layers,
-and is reached although nothing the harness judged survives.
+inode number is free once what held it is unlinked, and whether it comes back is the
+filesystem's business rather than anything the pin can see. Measured on one host, not
+read out of the allocators: on an ext4 volume the next directory created at the same
+name got the number just released, on all three repeats of `rm -rf` plus `mkdir`; on
+a tmpfs (`/dev/shm`) the numbers came from a counter and none repeated. Neither is
+specified behaviour — ext4 may return a different number and tmpfs's counter is 32-bit
+and wraps — so the ext4 result is what to expect on a project tree and not a rule. So
+a granted root deleted and re-created compares equal, on both layers, and is reached
+although nothing the harness judged survives.
 
 Worth separating from the attack the pin does close. A `rename(2)` substitution puts a
 directory that *already exists* at the granted name, and an existing directory cannot
