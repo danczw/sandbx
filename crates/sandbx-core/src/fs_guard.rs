@@ -231,11 +231,18 @@ impl FsGuard {
                     let Ok(resolved) = link.canonicalize() else {
                         continue;
                     };
-                    if !within(&resolved, &self.readable) {
+                    // The reason comes off the same measurement that refused, as everywhere
+                    // else: a link into a moved root is not out of bounds, and a trail
+                    // calling it that hides the substitution behind the commonest refusal.
+                    if let Containment::Outside(moved) = contains(&resolved, &self.readable) {
+                        let reason = match moved {
+                            Some(_) => ROOT_REPLACED,
+                            None => Access::Read.outside(),
+                        };
                         crate::AuditEvent::denied(
                             Access::Read.operation(),
                             &link.display().to_string(),
-                            Access::Read.outside(),
+                            reason,
                         )
                         .emit();
                         continue;
@@ -379,14 +386,6 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
             .ancestors()
             .take_while(|step| *step != ancestor)
             .all(|step| !step.symlink_metadata().is_ok_and(|at| at.is_symlink()))
-}
-
-/// Whether `resolved` sits inside a root that is still the object it was granted on.
-///
-/// Audit-free, so the walk can reuse the rule without recording a decision per entry — at the
-/// cost of discarding which root moved, so only a caller that reports nothing may use it.
-fn within(resolved: &Path, roots: &[VettedPath]) -> bool {
-    matches!(contains(resolved, roots), Containment::Inside)
 }
 
 /// Where `resolved` sits relative to a set of granted roots.
