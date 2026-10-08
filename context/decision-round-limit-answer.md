@@ -96,6 +96,11 @@ exactly the reply that would — so both bounds are named when both were hit.
 Describing a summary cut off mid-sentence as the answer to a round limit is
 worse than naming one bound too many.
 
+Which cut is named comes off `TurnOutcome::round_stop` and not off the event stream,
+so the bound reported belongs to the turn that stands. On the `Discarded` path that
+is the first turn's: a wrap-up round cut at `--max-tokens` is not named, the run
+having just said what that round wrote was not saved either.
+
 ## When the wrap-up round itself fails
 
 A provider error, or a reply with no content, or a `stop` that is not `Answered`:
