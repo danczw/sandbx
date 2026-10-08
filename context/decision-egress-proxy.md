@@ -57,20 +57,12 @@ command's own I/O. A proxy that bounds egress by granting a network the command
 did not previously have refutes itself.
 
 **Interception is cooperation, and sandbx ships the binary that defeats it.**
-`decision-tool-credentials.md` has this in full: `HTTP_PROXY` binds only
-programs that read it and only for HTTP; a transparent redirect needs `nftables`
-rules inside a netns, which needs privileges sandbx does not hold; an
-`LD_PRELOAD` shim on `connect` is stepped around by a static binary and by a
-direct syscall, and the release artifacts are static musl. Whatever is built,
-the claim is scoped to cooperating clients or it overstates.
+`decision-tool-credentials.md` has this in full. Whatever is built, the claim is
+scoped to cooperating clients or it overstates.
 
 **Termination widens the boundary it is meant to narrow**, the same way and for
 the same reasons as for a credential, which is where
-`decision-tool-credentials.md` settles it: the command trusts a CA sandbx
-controls, so it can be man-in-the-middled for every destination and not only the
-allowlisted ones, and the harness reads plaintext it previously could not.
-Against a model choosing a tool call's arguments from untrusted text, that is
-the wrong direction.
+`decision-tool-credentials.md` settles it.
 
 Credential substitution needs termination to read the request it substitutes
 into, so it leaves with termination. #41 ends in a refusal rather than a
@@ -298,10 +290,3 @@ What the decision buys is that the next reader of `--allow-network <port>` finds
 the proxy already priced: four of its five pieces decided against, the fifth
 built, and the `SECURITY.md` non-claim saying which is which rather than
 recording an absence.
-
-The fifth cost what the listener would have cost, in a different currency: a
-mount namespace, three bind mounts and a tmpfs, only for a run that asks for
-them.
-
-The honest summary is that per-host egress is not a mechanism sandbx can have,
-and that the resolver, which was only ever a component of it, is.

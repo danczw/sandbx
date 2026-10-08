@@ -432,46 +432,7 @@ path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 
 ## What this does NOT protect against
 
-`SECURITY.md`'s *What sandbx does not claim* is the full account. These are the
-limits that bear on the mechanisms above:
-
-- **No resource bounds on spawned processes.** A fork bomb runs unbounded for the
-  length of the call; cgroups are not in place. Tool *work* is bounded — see
-  `decision-bounding-tool-work.md` — but that is a different axis.
-- **The bounding set may be left as inherited.** It cannot be spent (the other
-  four sets are empty and `no_new_privs` is set), so a leftover bit never becomes
-  privilege. Do not rely on `CapBnd` being empty.
-- **A dependency is not contained.** Anything linked into the binary runs with
-  the harness's privileges.
-- **Approval is per tool per run unless asked for per call.** The gate narrows
-  which tools a hijacked turn can use; by default, once one is approved, the
-  sandbox is the only thing between a prompt-injected call to it and your files.
-  `--approve call` puts each write and each command to the operator first, which
-  needs a terminal and so is no use to a run that has none.
-- **`unsafe` is forbidden workspace-wide** and spawning outside `sandbx-core` is
-  a clippy error, but convention plus tooling is not a capability system.
-- **A variable passed through is passed whole.** The environment allowlist is by
-  name; there is no redaction and no per-tool scoping, and every descendant
-  inherits it. One name is refused rather than passed — `agent-run` will not take
-  `--allow-env ANTHROPIC_API_KEY` — and that is the whole of it; handing a tool a
-  credential without exposing the value has no mechanism, and
-  `decision-tool-credentials.md` says why none is claimable.
-- **The policy is readable from inside.** Granted paths and allowlisted variable
-  names cross as argv, and the command can read `/proc/self/cmdline`. Names only,
-  never values — which is why there is no `--allow-env NAME=VALUE`, and why
-  `--dns-over-tcp` crosses as a flag rather than as the pair it stands for.
-- **A port allowlist is not a destination allowlist.** Landlock matches the port
-  and nothing else, so `--allow-network 443` reaches port 443 on every routable
-  host. Per-host needs a userspace proxy, whose interception is cooperation rather
-  than enforcement — `decision-egress-proxy.md` prices every piece of it, and
-  carves out the one that is claimable: `--allow-dns NAME`, which bounds which
-  names resolve (#145) and leaves an IP literal reaching anything the port
-  allowlist allows.
-- **A port allowlist is not uniformly narrower than withholding network.** It
-  refuses `bind` on every unlisted port, `bind(0)` included, and it shares the
-  host's netns where `Denied` had an empty one — so host loopback is reachable.
-  That, and the denials that make the port claim true at all, in
-  `decision-port-allowlist.md`.
+`SECURITY.md`'s *What sandbx does not claim* is the full account.
 
 ## Known gaps
 

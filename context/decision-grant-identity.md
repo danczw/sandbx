@@ -106,16 +106,6 @@ fixed.
 
 ## The readback stays
 
-The spelling comparison is not superseded. Three things it does that a stat does
-not:
-
-- It names both paths in the refusal. `(dev, ino)` cannot tell an operator what
-  was substituted for what.
-- It catches the mount cases — a `pivot_root`, an `MS_MOVE` over a granted root,
-  a bind whose source is unlinked, which `read_link` reports by appending
-  `" (deleted)"`. Those make every grant read back as something else.
-- It is the cheap check, and it runs first.
-
 The two answer different questions: the readback asks whether the name still
 leads where it led, the stat asks whether the thing at the end of it is the same
 thing.
