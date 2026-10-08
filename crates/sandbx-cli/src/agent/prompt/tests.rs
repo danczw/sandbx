@@ -5,7 +5,7 @@ use std::io::{Cursor, Read};
 /// Drive one exchange over `consent`, and report the verdict with what the operator saw.
 ///
 /// A fresh `Cursor` per call, so a `consent` that asks again when it should not reaches
-/// an immediate end of input and denies — which is visible as the wrong verdict.
+/// an immediate end of input and aborts — which is visible as the wrong verdict.
 fn ask(
     consent: &mut Consent,
     tool: BuiltinTool,
@@ -89,15 +89,15 @@ fn all_is_remembered_for_that_tool_and_for_no_other() {
     let (first, _) = ask(&mut consent, BuiltinTool::Write, "/work/a", "a\n");
     assert_eq!(first, ApprovalDecision::Allow);
 
-    // Nothing typed: a second question would hit the end of input and deny, so `Allow`
-    // here is the evidence that none was asked.
+    // Nothing typed: a second question would hit the end of input and end the turn, so
+    // `Allow` here is the evidence that none was asked.
     let (second, seen) = ask(&mut consent, BuiltinTool::Write, "/work/b", "");
     assert_eq!(second, ApprovalDecision::Allow);
     assert_eq!(seen, "", "a blanket-approved tool was asked about again");
 
     let (other, _) = ask(&mut consent, BuiltinTool::Bash, "/work/c", "");
     assert!(
-        matches!(other, ApprovalDecision::Deny { .. }),
+        matches!(other, ApprovalDecision::Abort { .. }),
         "an `a` for write carried over to bash: {other:?}"
     );
 }
@@ -117,21 +117,21 @@ fn an_unrecognised_answer_is_asked_again() {
 }
 
 /// A terminal that went away cannot answer, and an unanswered question must not run the
-/// call.
+/// call — nor any call behind it, there being nothing left to ask.
 #[test]
-fn an_end_of_input_refuses() {
+fn an_end_of_input_ends_the_turn() {
     let (decision, _) = once(BuiltinTool::Bash, "/work/out.rs", "");
 
-    let ApprovalDecision::Deny { reason } = decision else {
-        panic!("a call was approved by an operator who typed nothing");
+    let ApprovalDecision::Abort { reason } = decision else {
+        panic!("a call was approved or merely refused by an operator who typed nothing");
     };
     assert_eq!(reason, CLOSED);
 }
 
 /// A question an operator cannot read is one they cannot answer, so a sink that refuses
-/// the write denies rather than reading an answer to nothing.
+/// the write ends the turn rather than reading an answer to nothing.
 #[test]
-fn a_question_that_could_not_be_written_refuses() {
+fn a_question_that_could_not_be_written_aborts() {
     /// A sink that fails every write, standing in for a terminal that went away between
     /// the open and the question.
     struct Closed;
@@ -159,9 +159,11 @@ fn a_question_that_could_not_be_written_refuses() {
         &mut Closed,
     );
 
-    assert!(
-        matches!(decision, ApprovalDecision::Deny { .. }),
-        "an unwritten question was answered: {decision:?}"
+    assert_eq!(
+        decision,
+        ApprovalDecision::Abort {
+            reason: CLOSED.to_owned()
+        }
     );
     assert_eq!(
         typed.position(),
@@ -255,8 +257,12 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
 }
 
 /// A hangup is not an EOF the operator sent: the master is gone, so the read cannot block.
+///
+/// The discriminant alone, no reason: whether a slave whose master is gone fails at
+/// `tcflush` or at the question's write is platform detail. `Deny` is precisely the
+/// pre-#218 answer, so the discriminant is itself the evidence.
 #[test]
-fn a_terminal_that_hung_up_denies_without_blocking() {
+fn a_terminal_that_hung_up_aborts_without_blocking() {
     let (master, slave) = pty();
     drop(master);
 
@@ -270,8 +276,53 @@ fn a_terminal_that_hung_up_denies_without_blocking() {
     });
 
     assert!(
-        matches!(decision, ApprovalDecision::Deny { .. }),
-        "a dead terminal approved a call: {decision:?}"
+        matches!(decision, ApprovalDecision::Abort { .. }),
+        "a dead terminal approved a call, or left the turn to go on: {decision:?}"
+    );
+}
+
+/// The drain is what keeps a counterfeit question from being answered, so a terminal it
+/// cannot run on is one no call may be approved over.
+#[test]
+fn a_terminal_that_cannot_be_cleared_aborts() {
+    // Not a tty, so `tcflush` fails with `ENOTTY` before any question is written.
+    let null = File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/null")
+        .expect("/dev/null");
+    let mut terminal = Terminal::on(null).expect("the terminal");
+    let input = serde_json::json!({ "path": "/work/out.rs" });
+
+    let decision = terminal.ask(ToolCall {
+        tool: BuiltinTool::Write,
+        id: "call_1",
+        input: &input,
+    });
+
+    // `UNCLEARED` and not `CLOSED`: the drain is the arm that fired, not the read.
+    assert_eq!(
+        decision,
+        ApprovalDecision::Abort {
+            reason: UNCLEARED.to_owned()
+        }
+    );
+}
+
+/// The whole of the distinction: an operator who says no refuses one call, a channel that
+/// cannot be asked refuses every call there will be.
+#[test]
+fn a_refusal_is_not_a_lost_channel() {
+    let (refused, _) = once(BuiltinTool::Write, "/work/out.rs", "n\n");
+    let (closed, _) = once(BuiltinTool::Write, "/work/out.rs", "");
+
+    assert!(
+        matches!(refused, ApprovalDecision::Deny { .. }),
+        "an operator's refusal ended the run: {refused:?}"
+    );
+    assert!(
+        matches!(closed, ApprovalDecision::Abort { .. }),
+        "a lost channel was taken for a refusal: {closed:?}"
     );
 }
 
