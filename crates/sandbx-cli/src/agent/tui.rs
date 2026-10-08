@@ -219,7 +219,8 @@ impl Tui {
 
         // Held until a key: the alternate screen takes the transcript with it, and a turn
         // whose last rounds nobody read was not watched. Every cell and not the changed
-        // ones, because `save` writes to a stderr the screen does not redirect.
+        // ones, because `save` writes to a stderr the screen does not redirect. What the
+        // wait costs the held trail is #235.
         pane.redraw(Hint::Done);
         keys.press().await;
         let failed = pane.screen.failure();

@@ -57,7 +57,8 @@ line can display as a different line — in the same pane, and the same `sandbx:
 grammar, as the gate's account of what a tool did. The same denylist `gate.rs`
 carries therefore applies at the cell too. It is a denylist because `char` has no
 predicate for the category, so a new Unicode version can outgrow it silently;
-it is duplicated rather than shared because the two sites must not diverge.
+it is duplicated rather than shared, and nothing fails if the two copies drift
+apart (#233).
 
 One more character cannot reach a cell, and it is sandbx's own: the gutter the
 view draws at the start of every row it wrote. See below.
@@ -178,7 +179,7 @@ a limit an operator meets, not an omission to infer:
   redraw.
 - **No wrap-up round.** A turn that reaches `--max-rounds` is not asked once more
   under `tui`; `agent-run`'s `wrapup` is what does that, and the screen says the
-  answer ended on tool work.
+  answer ended on tool work. Reaching it from here is #232.
 - **No per-call consent.** `--approve call` wants a question on `/dev/tty`, which
   cannot share a raw-mode screen with the pane; a modal to ask it with is #225.
   Refused rather than downgraded to the argv answer, which would serve a wider
@@ -195,6 +196,12 @@ alternate screen does not redirect stderr. Left alone it would paint over the
 pane and then vanish with it, so the operator would lose the account entirely.
 The accounts written before the screen is entered stay on stderr, where they are
 legible once the screen is given back; #224 covers the seam.
+
+Drawn rather than printed means the verdict is in the pane and nowhere else, and
+the pane has no scrollback. For a `bash` call that is the only place the command's
+text appears at all — the audit trail records `program="/bin/sh"`, not the `-c`
+string — so an interrupted run, or one without `--session`, can leave no record of
+what ran (#234).
 
 Both methods still run on the async task, so **neither may wait on the runtime**
 — `decision-approval-gate.md` has why. `tui`'s gate waits on nothing at all: the
@@ -227,6 +234,10 @@ a panic unwinding past the screen still leaves behind the record of what the tur
 was allowed to touch. The ordering an operator sees is the trail, then the run's
 own account — both after the turn rather than during it, which is the one thing
 `tui` changes about the trail.
+
+What the hold costs: the release waits on the keypress that holds the finished
+screen, so the trail sits in memory for as long as the operator is away, and a
+signal arriving there runs no `Drop` and loses all of it (#235).
 
 The hold covers `tracing` and nothing else, so a bare `eprintln!` reached from
 inside the screen still lands on it — `AgentRun::save`'s "nothing to store" line
