@@ -221,12 +221,10 @@ fn a_granted_path_crosses_beside_the_object_it_was_vetted_as() {
     );
 }
 
-/// Carrying on would mean installing a rule over whatever the name reaches now, which is the
-/// substitution the pin exists to refuse.
-///
-/// Matched on the reason: this argv also lacks the `--` separator, which it has to — the
-/// object is read as the token after the path, so `--` in that position is a malformed object
-/// and not a missing one.
+/// Carrying on would mean installing a rule over whatever the name reaches now, which is
+/// the substitution the pin exists to refuse. Matched on the reason: this argv also lacks
+/// the `--` separator, which it has to — the object is read as the token after the path,
+/// so `--` in that position is a malformed object and not a missing one.
 #[test]
 fn a_granted_path_without_its_object_is_refused() {
     let args = vec!["--ro".to_string(), "/usr".to_string()];

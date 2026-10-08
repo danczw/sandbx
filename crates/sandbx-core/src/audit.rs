@@ -4,10 +4,9 @@ use crate::{Axis, NetworkPolicy, SandboxPolicy};
 /// subscriber can route it on its own; see `context/guide-logging.md`.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
 
-/// Something the sandbox did, recorded so it can be reviewed afterwards.
-///
-/// Emitted at `INFO`, so it survives the default filter. Metadata only, never a command's
-/// output: that a tool read a file is a different proposition from what the file contained.
+/// Something the sandbox did, recorded so it can be reviewed afterwards. Emitted at
+/// `INFO`, so it survives the default filter. Metadata only, never a command's output:
+/// that a tool read a file is a different proposition from what the file contained.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
@@ -18,10 +17,9 @@ pub enum AuditEvent<'a> {
         subject: &'a str,
     },
 
-    /// An operation the policy permitted, against a name that denotes nothing.
-    ///
-    /// No `reason`: nothing refused it. Emitted only inside a granted root — outside one, a
-    /// path's absence is what the refusal conceals.
+    /// An operation the policy permitted, against a name that denotes nothing. No `reason`:
+    /// nothing refused it. Emitted only inside a granted root — outside one, a path's
+    /// absence is what the refusal conceals.
     Absent {
         /// Who asked, as in [`Allowed`](Self::Allowed).
         tool: &'a str,
@@ -39,11 +37,10 @@ pub enum AuditEvent<'a> {
         reason: &'a str,
     },
 
-    /// A best-effort hardening step did not take effect, and the sandbox carried on.
-    ///
-    /// Not a [`Denied`](Self::Denied): nothing the agent asked for was refused. At `INFO`
-    /// because these steps fail on whole classes of host (AppArmor's
-    /// `restrict_unprivileged_userns`) rather than intermittently.
+    /// A best-effort hardening step did not take effect, and the sandbox carried on. Not a
+    /// [`Denied`](Self::Denied): nothing the agent asked for was refused. At `INFO` because
+    /// these steps fail on whole classes of host (AppArmor's `restrict_unprivileged_userns`)
+    /// rather than intermittently.
     Degraded {
         /// Which step did not take effect, as a stable label a trail can be filtered by.
         mechanism: &'a str,
@@ -51,10 +48,8 @@ pub enum AuditEvent<'a> {
         detail: &'a str,
     },
 
-    /// A sandboxed process was started, and under what shape of policy.
-    ///
-    /// Written before the exec, so [`Exited`](Self::Exited) or [`Failed`](Self::Failed) is
-    /// what says it ran.
+    /// A sandboxed process was started, and under what shape of policy. Written before the
+    /// exec, so [`Exited`](Self::Exited) or [`Failed`](Self::Failed) is what says it ran.
     Spawned {
         /// The program the sandbox is about to become.
         program: &'a str,
@@ -92,10 +87,9 @@ pub enum AuditEvent<'a> {
         code: i32,
     },
 
-    /// A sandboxed process ended without a status of its own.
-    ///
-    /// Separate from [`Exited`](Self::Exited) rather than an absent `code`: `tracing` omits
-    /// a `None` field, so one event would vary its own field set.
+    /// A sandboxed process ended without a status of its own. Separate from
+    /// [`Exited`](Self::Exited) rather than an absent `code`: `tracing` omits a `None`
+    /// field, so one event would vary its own field set.
     Failed {
         /// The program the spawn record named.
         program: &'a str,
@@ -129,11 +123,10 @@ impl<'a> AuditEvent<'a> {
         Self::Degraded { mechanism, detail }
     }
 
-    /// Record a spawn, summarising the policy rather than reproducing it.
-    ///
-    /// `tracing` needs static field names, so these cannot be derived from [`Axis::ALL`] the
-    /// way the enforcement layers are; the exhaustive match is what makes an added axis a
-    /// compile error instead. `pinned` is a parameter because a digest is not policy.
+    /// Record a spawn, summarising the policy rather than reproducing it. `tracing` needs
+    /// static field names, so these cannot be derived from [`Axis::ALL`] the way the
+    /// enforcement layers are; the exhaustive match is what makes an added axis a compile
+    /// error instead. `pinned` is a parameter because a digest is not policy.
     pub fn spawned(program: &'a str, policy: &SandboxPolicy, pinned: bool) -> Self {
         let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
@@ -167,10 +160,9 @@ impl<'a> AuditEvent<'a> {
         }
     }
 
-    /// Record how a spawned command ended.
-    ///
-    /// The code is derived from the status through [`exit_code`](crate::exit_code) rather
-    /// than passed in, so the number on the trail is the one `sandbx` exits with.
+    /// Record how a spawned command ended. The code is derived from the status through
+    /// [`exit_code`](crate::exit_code) rather than passed in, so the number on the trail is
+    /// the one `sandbx` exits with.
     pub fn exited(program: &'a str, status: &std::process::ExitStatus) -> Self {
         Self::Exited {
             program,
@@ -178,19 +170,17 @@ impl<'a> AuditEvent<'a> {
         }
     }
 
-    /// Record a run that ended without a status, naming what stopped it.
-    ///
-    /// Takes the label and not the error, so this module stays ignorant of `SandboxError`;
-    /// the call site passes [`SandboxError::label`](crate::SandboxError::label).
+    /// Record a run that ended without a status, naming what stopped it. Takes the label
+    /// and not the error, so this module stays ignorant of `SandboxError`; the call site
+    /// passes [`SandboxError::label`](crate::SandboxError::label).
     pub fn failed(program: &'a str, reason: &'static str) -> Self {
         Self::Failed { program, reason }
     }
 
-    /// Emit this event on the audit target.
-    ///
-    /// Records nothing unless a subscriber is listening on [`AUDIT_TARGET`]: `tracing` drops
-    /// an event with no subscriber, silently and at every level. Hence the re-exec'd helper,
-    /// which installs none, reports over `degradation.rs`'s channel instead.
+    /// Emit this event on the audit target. Records nothing unless a subscriber is
+    /// listening on [`AUDIT_TARGET`]: `tracing` drops an event with no subscriber, silently
+    /// and at every level. Hence the re-exec'd helper, which installs none, reports over
+    /// `degradation.rs`'s channel instead.
     pub fn emit(&self) {
         match self {
             Self::Allowed { tool, subject } => tracing::info!(

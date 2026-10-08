@@ -301,13 +301,11 @@ fn without_a_timeout_a_command_runs_to_completion() {
 }
 
 /// The helper supervises the command rather than becoming it, so the status the caller
-/// sees is reassembled here.
-///
-/// A real fault rather than `kill -9 $$`: the command is PID 1 of its namespace, and the
-/// kernel discards an ordinary signal sent to a namespace's init from inside it. Either
-/// encoding is accepted — the relay re-raises the signal, but Rust's runtime installs its
-/// own `SIGSEGV` handler to detect stack overflow, so raising that signal at ourselves
-/// does not kill us and the `128 + n` form comes out instead.
+/// sees is reassembled here. A real fault rather than `kill -9 $$`: the command is PID 1
+/// of its namespace, and the kernel discards an ordinary signal sent to a namespace's init
+/// from inside it. Either encoding is accepted — the relay re-raises the signal, but Rust's
+/// runtime installs its own `SIGSEGV` handler to detect stack overflow, so raising that
+/// signal at ourselves does not kill us and the `128 + n` form comes out instead.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_killed_by_a_signal_reports_signalled() {

@@ -168,11 +168,10 @@ fn the_inner_stage_refuses_a_foreign_supervisor() {
     );
 }
 
-/// The only test that reaches this check: every other path arrives at `exec_inner` with the
-/// environment already narrowed. Reaching it needs the liveness check to pass, so the
-/// harness spawns the helper directly and names itself the supervisor. The policy grants
-/// everything `/bin/touch` needs, or the exec would be denied and this would stay green for
-/// the wrong reason.
+/// The only test reaching this check: every other path arrives at `exec_inner` already
+/// narrowed. Reaching it needs the liveness check, so the harness spawns the helper
+/// directly and names itself the supervisor; the policy grants everything `/bin/touch`
+/// needs, or the exec would be denied and this would stay green for the wrong reason.
 #[test]
 fn the_inner_stage_refuses_an_unnarrowed_environment() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of the
@@ -263,9 +262,8 @@ fn the_command_is_pid_one_of_its_own_namespace() {
 }
 
 /// Pid resolution is namespace-relative, so a host pid does not exist as far as the
-/// command is concerned. Without the namespace this succeeds: the command runs as the
-/// caller's uid, so it can signal the caller's processes. `kill -0` sends nothing; it asks
-/// whether the signal could be delivered.
+/// command is concerned (without the namespace this succeeds, since the command runs as
+/// the caller's uid). `kill -0` sends nothing — it only asks whether delivery is possible.
 #[test]
 fn the_command_cannot_signal_outside_its_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -357,23 +355,22 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no {name} line in /proc/self/status"))
 }
 
-/// The four sets the helper can always clear, since shrinking them needs no capability.
-/// Hex bitmasks; a fully dropped process reports each as `0000000000000000`. `CapBnd` is
-/// absent — see [`the_bounding_set_is_cleared_or_left_inherited`].
+/// The four sets the helper can always clear, since shrinking them needs no capability —
+/// hex bitmasks, each `0000000000000000` once dropped. `CapBnd` is absent; see
+/// [`the_bounding_set_is_cleared_or_left_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
-/// Can this machine drop the capability bounding set at all? It needs `CAP_SETPCAP`, held
-/// only inside a self-created user namespace — and not even there when an LSM strips
-/// capabilities from one. AppArmor's `restrict_unprivileged_userns` (default on Ubuntu
-/// 24.04+ and GitHub's runners) lets the `unshare` succeed but makes `PR_CAPBSET_DROP`
-/// return `EPERM`, so the helper treats the drop as best-effort and this assertion is
-/// conditional in step. Repeated in `audit_channel.rs`; keep the two copies identical.
+/// Can this machine drop the capability bounding set at all? Needs `CAP_SETPCAP`, held
+/// only in a self-created user namespace, and not even there once an LSM strips
+/// capabilities from one: AppArmor's `restrict_unprivileged_userns` (default on Ubuntu
+/// 24.04+, GitHub's runners) lets `unshare` succeed but makes `PR_CAPBSET_DROP` return
+/// `EPERM`, so this assertion is conditional — kept identical with its copy in
+/// `audit_channel.rs`.
 fn bounding_set_is_droppable() -> bool {
     use std::os::unix::fs::MetadataExt;
 
-    // The restriction covers *unprivileged* userns only, so a run as root holds
-    // `CAP_SETPCAP` in the new namespace whatever the sysctl says. Off `/proc/self`'s
-    // owner because `libc::geteuid` is `unsafe` and this crate forbids that.
+    // The restriction covers *unprivileged* userns only, so root holds `CAP_SETPCAP` in the
+    // new namespace regardless. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
     let root = std::fs::metadata("/proc/self")
         .map(|proc_self| proc_self.uid() == 0)
         .unwrap_or(false);
@@ -436,8 +433,7 @@ fn capabilities_are_dropped_when_network_is_allowed() {
 
 /// Both branches assert: returning early on one would report `ok` without checking
 /// anything. `caps::clear(Bounding)` issues one `PR_CAPBSET_DROP` per capability, so a
-/// mid-loop `EPERM` leaves a partial drop — a different failure from the documented
-/// fallback.
+/// mid-loop `EPERM` leaves a partial drop, a different failure from the documented fallback.
 #[test]
 fn the_bounding_set_is_cleared_or_left_inherited() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
@@ -564,11 +560,9 @@ fn truncate_on_write_grant_is_permitted() {
 }
 
 /// The resolved spelling is the one both layers agree about; the link is refused, not
-/// followed (#205).
-///
-/// Vetting resolves, so a `SandboxPolicy` cannot carry the link at all — the grant is forged
-/// onto argv instead, which is the only route left to it and the one the helper polices. Its
-/// object is the target's, so the pin agrees and the readback is what refuses.
+/// followed (#205). Vetting resolves, so a `SandboxPolicy` cannot carry the link at all —
+/// the grant is forged onto argv instead, the only route left to it and the one the helper
+/// polices. Its object is the target's, so the pin agrees and the readback is what refuses.
 #[test]
 fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     let real = scratch();
@@ -625,8 +619,8 @@ fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
 }
 
 /// The substitution #212 is about, end to end: one real directory renamed over another
-/// between the vet and the open. No symlink and no change of spelling, so the readback agrees
-/// and only the object the grant carries can refuse it.
+/// between the vet and the open — no symlink or spelling change, so only the object the
+/// grant carries can refuse it.
 #[test]
 fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
     let staging = scratch();
@@ -669,8 +663,8 @@ fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
 }
 
 /// The kernel gets read alongside execute, since `AccessFs::from_read` bundles
-/// `ReadFile`/`ReadDir` in with `Execute`. If `FsGuard` reads only the read and write axes,
-/// `bash` can `cat` a file the native `read` tool refuses under one policy.
+/// `ReadFile`/`ReadDir` with `Execute`; if `FsGuard` read only read and write, `bash` could
+/// `cat` a file the native `read` tool refuses under one policy.
 #[test]
 fn an_execute_grant_reads_the_same_in_both_layers() {
     let dir = scratch();
@@ -695,8 +689,8 @@ fn an_execute_grant_reads_the_same_in_both_layers() {
 }
 
 /// `SandboxPolicy::writable_paths` promises a write-only drop directory stays unreadable,
-/// and `AccessFs::from_all` bundles `ReadFile`/`ReadDir` — so the kernel side needs more
-/// than `Execute` subtracted.
+/// and `AccessFs::from_all` bundles `ReadFile`/`ReadDir` — the kernel side needs more than
+/// `Execute` subtracted.
 #[test]
 fn a_write_grant_does_not_make_files_readable() {
     let dir = scratch();
@@ -793,12 +787,10 @@ fn a_write_grant_does_not_make_files_executable() {
 
 /// A fresh user namespace reports the overflow `nobody` until a uid_map is written, while
 /// the command still *acts* as the real uid on the host — a mismatch that `getuid()`-based
-/// logic trips over.
-///
-/// Both paths create a user namespace, since the PID namespace needs one regardless of
-/// policy, so each is checked against the same two answers: the identity map is
-/// best-effort, and where the platform refuses it the command runs as the overflow uid. A
-/// third value must never appear.
+/// logic trips over. Both paths create a user namespace, since the PID namespace needs one
+/// regardless of policy, so each is checked against the same two answers: the identity map
+/// is best-effort, and where the platform refuses it the command runs as the overflow uid.
+/// A third value must never appear.
 #[test]
 fn the_command_sees_a_consistent_real_uid() {
     // std exposes no getuid and nix's `user` feature is not worth pulling in for one test.

@@ -27,10 +27,8 @@ fn first_directory(paths: &[VettedPath]) -> Option<&Path> {
         .find(|path| path.is_dir())
 }
 
-/// A kind of access a policy can grant on a path.
-///
-/// [`Axis::grants`] is the workspace's one statement of what each kind means; every
-/// consumer derives from it. See `context/decision-axis-table.md`.
+/// A kind of access a policy can grant on a path; [`Axis::grants`] is the one
+/// statement of what each kind means. See `context/decision-axis-table.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     /// See the path, and nothing more.
@@ -41,10 +39,8 @@ pub enum Axis {
     ReadExecute,
 }
 
-/// What an [`Axis`] confers, in terms no enforcement layer owns.
-///
-/// Booleans and not Landlock bits, so this module depends on no enforcement layer.
-/// Consumers destructure it, so a right added here fails to compile at every mapping site.
+/// What an [`Axis`] confers, in terms no enforcement layer owns: booleans, not
+/// Landlock bits, so a right added here fails to compile at every mapping site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grants {
     /// May see the path's contents.
@@ -59,12 +55,9 @@ impl Axis {
     /// Every axis, in the order a policy and the helper argv carry them.
     pub const ALL: [Axis; 3] = [Axis::Read, Axis::Write, Axis::ReadExecute];
 
-    /// What this axis grants; adding an axis is adding a row here.
-    ///
-    /// Nothing but this table enforces the asymmetry `SECURITY.md` claims: `ReadExecute`
-    /// confers read, a program needing execute on the binary and read on the libraries its
-    /// loader pulls in; no other grant confers execute, and write confers neither, so a
-    /// write-only drop directory stays unreadable.
+    /// What this axis grants; adding an axis is adding a row here. The asymmetry
+    /// `SECURITY.md` claims: `ReadExecute` alone confers execute (and read, for a loader's
+    /// libraries); write confers neither, so a write-only drop directory stays unreadable.
     pub const fn grants(self) -> Grants {
         let (read, write, execute) = match self {
             Self::Read => (true, false, false),
@@ -80,10 +73,8 @@ impl Axis {
     }
 }
 
-/// What IP egress a policy grants.
-///
-/// Not `#[non_exhaustive]`, and no consumer matches it with a `_` arm, so a fourth state is
-/// a compile error at every site that would otherwise leave it unenforced.
+/// What IP egress a policy grants. Not `#[non_exhaustive]`, so a fourth state is a
+/// compile error at every site that would otherwise leave it unenforced.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum NetworkPolicy {
     /// No IP egress at all; the command runs in an empty network namespace.
@@ -91,17 +82,14 @@ pub enum NetworkPolicy {
     Denied,
     /// Any TCP port, and UDP and raw sockets with it.
     AnyPort,
-    /// TCP connect and bind on these ports only; UDP and raw sockets denied.
-    ///
-    /// Landlock matches the port and not the destination, so this reaches the named ports on
-    /// every routable host.
+    /// TCP connect and bind on these ports only; UDP and raw sockets denied. Landlock
+    /// matches the port, not the destination, so this reaches the named ports on every
+    /// routable host.
     Ports(Vec<u16>),
 }
 
-/// What a sandboxed process is allowed to do.
-///
-/// Default-deny: construct with [`SandboxPolicy::default`] and widen, so forgetting to
-/// configure it yields a useless sandbox rather than an open one.
+/// What a sandboxed process is allowed to do. Default-deny: construct with
+/// [`SandboxPolicy::default`] and widen, so an unconfigured policy is useless, not open.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SandboxPolicy {
     readable: Vec<VettedPath>,
@@ -142,29 +130,24 @@ impl SandboxPolicy {
         }
     }
 
-    /// Every grant this policy holds, as `(axis, path)` pairs, in [`Axis::ALL`] order.
-    ///
-    /// One pair per grant, not per path: a path granted on two axes appears twice.
+    /// Every grant this policy holds, as `(axis, path)` pairs, in [`Axis::ALL`] order:
+    /// one pair per grant, not per path, so a path granted on two axes appears twice.
     pub fn granted_paths(&self) -> impl Iterator<Item = (Axis, &VettedPath)> {
         Axis::ALL
             .into_iter()
             .flat_map(move |axis| self.paths(axis).iter().map(move |path| (axis, path)))
     }
 
-    /// A grant naming a file this policy's own resolver will bind over, or `None` if none does.
-    ///
-    /// The one pair a pin cannot hold: the harness vets the host's file, `helper::resolver`
-    /// binds sandbx's over it, and `open_grant` measures the grant against an object sandbx
-    /// itself replaced. Waiving the pin would have to decide the waiver in the process that
-    /// made the substitution, so the pair is refused — `context/decision-grant-identity.md`.
-    ///
-    /// An exact name and not a prefix: the pin is on the granted path's own inode, and a bind
-    /// over a file inside `/etc` leaves `/etc`'s inode alone, so `--allow-read /etc` collides
-    /// with nothing. Which names count is [`bound_by_resolver`]'s.
-    ///
-    /// The one refusal `HelperArgs::decode` does not re-run, because this reads the filesystem
-    /// and decoding stays I/O-free. On the policy rather than `Grants` so an embedder spawning
-    /// the argv meets it too, as with [`unbounded_resolution`](Self::unbounded_resolution).
+    /// A grant naming a file this policy's own resolver will bind over, or `None` if none
+    /// does. The pin cannot hold here: the harness vets the host's file, `helper::resolver` binds
+    /// sandbx's own over it, and `open_grant` would measure the grant against an object sandbx
+    /// itself replaced — refused rather than waived in the substituting process itself (see
+    /// `context/decision-grant-identity.md`). An exact name, not a prefix — which names
+    /// count is [`bound_by_resolver`]'s — since the pin is on the granted path's own inode,
+    /// so a bind over a file inside `/etc` leaves `/etc` alone and `--allow-read /etc`
+    /// collides with nothing. `HelperArgs::decode` does not re-run this check — it stays
+    /// I/O-free, and this reads the filesystem — so it lives on the policy, reaching an
+    /// embedder's argv spawn too.
     ///
     /// [`bound_by_resolver`]: crate::bound_by_resolver
     pub fn grant_bound_by_resolver(&self) -> Option<&Path> {
@@ -177,28 +160,22 @@ impl SandboxPolicy {
             .find(|path| crate::bound_by_resolver(path))
     }
 
-    /// Where a command run under this policy starts, or `None` if it grants nowhere to be.
-    ///
-    /// The first writable directory, else the first readable one — so a command begins
-    /// somewhere it may act rather than wherever its caller stood. Not over
-    /// [`granted_paths`](Self::granted_paths), whose [`Axis::ALL`] order puts `Read` ahead of
-    /// `Write` and `ReadExecute` last: that would start a writable run read-only, and one
-    /// granted only execute inside the system binaries.
-    ///
-    /// A directory and not merely the first path: `--allow-write /dev/null` is an ordinary
-    /// grant, and `chdir` to a file fails the spawn.
+    /// Where a command run under this policy starts, or `None` if it grants nowhere to be. The
+    /// first writable directory, else the first readable one, not the first entry of
+    /// [`granted_paths`](Self::granted_paths): that order puts `Read` ahead of `Write` and
+    /// `ReadExecute` last, which would start a writable run read-only, or one granted only
+    /// execute inside the system binaries. A directory and not merely a path, because
+    /// `chdir` to a file (e.g. `--allow-write /dev/null`) fails the spawn.
     pub fn working_root(&self) -> Option<&Path> {
         first_directory(&self.writable).or_else(|| first_directory(&self.readable))
     }
 
-    /// Grant `axis` access to `path`; the one place a path enters a policy.
-    ///
-    /// Takes a [`VettedPath`] and not a bare path, so a grant carries the object the harness
-    /// measured and the helper has no unpinned grant to decide about. No I/O happens here —
-    /// the helper decodes a policy through this too, and resolving or stat'ing there is doing
-    /// it in the process a grant is meant to be safe from. The helper refuses a grant whose
-    /// name opened as something else ([`GrantRedirected`]) or whose object is no longer the
-    /// vetted one ([`GrantReplaced`]).
+    /// Grant `axis` access to `path`; the one place a path enters a policy. Takes a
+    /// [`VettedPath`], not a bare path, so the grant carries the object the harness measured
+    /// and the helper decodes with no unpinned grant to judge. No I/O happens here, because
+    /// the helper decodes a policy through this too: it refuses a grant whose name now opens
+    /// as something else ([`GrantRedirected`]) or whose object is no longer the vetted one
+    /// ([`GrantReplaced`]).
     ///
     /// [`GrantRedirected`]: crate::SandboxError::GrantRedirected
     /// [`GrantReplaced`]: crate::SandboxError::GrantReplaced
@@ -213,11 +190,9 @@ impl SandboxPolicy {
         self
     }
 
-    /// Whether the process may reach the network at all.
-    ///
-    /// A port allowlist answers yes: `hardening::isolate` reads this to decide whether to
-    /// unshare the network namespace, and an allowlist inside an empty netns would permit
-    /// nothing. [`network`](Self::network) tells narrowed from unrestricted.
+    /// Whether the process may reach the network at all; a port allowlist answers yes.
+    /// `hardening::isolate` unshares the network namespace unless this is true, since an
+    /// allowlist inside an empty netns would permit nothing.
     pub fn allows_network(&self) -> bool {
         self.network != NetworkPolicy::Denied
     }
@@ -227,10 +202,9 @@ impl SandboxPolicy {
         &self.network
     }
 
-    /// Whether the process may open unix-domain sockets.
-    ///
-    /// Separate from [`allows_network`](Self::allows_network): a socket in the filesystem is
-    /// not IP egress, and a network namespace isolates only abstract unix sockets.
+    /// Whether the process may open unix-domain sockets, separate from
+    /// [`allows_network`](Self::allows_network): a network namespace isolates only
+    /// abstract unix sockets, not pathname ones in the filesystem.
     pub fn allows_unix_sockets(&self) -> bool {
         self.unix_sockets
     }
@@ -240,9 +214,7 @@ impl SandboxPolicy {
         &self.env
     }
 
-    /// Variables the policy sets in the child itself, as `(name, value)`.
-    ///
-    /// Values, where [`allowed_env`](Self::allowed_env) carries names: only compile-time
+    /// Variables the policy sets in the child itself, as `(name, value)`; only compile-time
     /// constants belong here. Applied after the allowlist, so a name carried both ways
     /// arrives with this value.
     pub fn imposed_env(&self) -> &'static [(&'static str, &'static str)] {
@@ -252,10 +224,8 @@ impl SandboxPolicy {
         }
     }
 
-    /// Whether the child may hold a variable called `name`, allowlisted or imposed.
-    ///
-    /// The one answer `spawn::command` and the helper's inherited-environment check share,
-    /// so what one puts there cannot be what the other refuses.
+    /// Whether the child may hold a variable called `name`, allowlisted or imposed: the one
+    /// answer `spawn::command` and the helper's inherited-environment check share.
     pub fn permits_env(&self, name: &OsStr) -> bool {
         self.env.iter().any(|allowed| name == OsStr::new(allowed))
             || self
@@ -274,24 +244,20 @@ impl SandboxPolicy {
         &self.dns_names
     }
 
-    /// Whether resolution is bounded at all, which is what costs the command a mount namespace.
-    ///
-    /// The one answer `hardening::isolate` and `ruleset::rights` share, so the namespace the
+    /// Whether resolution is bounded at all, which is what costs the command a mount namespace:
+    /// the one answer `hardening::isolate` and `ruleset::rights` share, so the namespace the
     /// first unshares cannot differ from the files the second grants read on.
     pub fn bounds_resolution(&self) -> bool {
         !self.dns_names.is_empty()
     }
 
     /// Why this policy's name allowlist would bound nothing, or `None` if it bounds what it
-    /// says.
-    ///
-    /// The one combination that reports as applied and holds nothing: the files are bound,
-    /// `Spawned` records `dns_names`, and the command asks a resolver answering for every
-    /// name. Off the policy and not the CLI alone, `SECURITY.md` making the claim at this
-    /// level — [`SandboxedCommand`] and `HelperArgs::decode` both reach it here.
-    ///
-    /// Four shapes, where `Grants::policy` refuses five: a name allowlist with no egress
-    /// bounds resolution to addresses nothing can reach, pointless rather than unenforceable.
+    /// says. The one combination that reports as applied and holds nothing: the files are
+    /// bound, `Spawned` records `dns_names`, and the command asks a resolver that answers for
+    /// every name. Lives on the policy, not the CLI alone, so [`SandboxedCommand`] and
+    /// `HelperArgs::decode` both reach it. `Grants::policy` refuses four shapes of this; a
+    /// name allowlist with no egress is the fifth, pointless rather than unenforceable, so
+    /// it is reported here instead.
     ///
     /// [`SandboxedCommand`]: crate::SandboxedCommand
     pub fn unbounded_resolution(&self) -> Option<&'static str> {
@@ -323,11 +289,9 @@ impl SandboxPolicy {
         }
     }
 
-    /// Let the process inherit the variable called `name`.
-    ///
-    /// An empty name, or one containing `=` or a NUL, is skipped and not refused, so nothing
-    /// `HelperArgs::encode` emits is something `decode` rejects; `sandbx`'s `--allow-env`
-    /// refuses them instead. A name the harness does not hold contributes nothing at all.
+    /// Let the process inherit the variable called `name`. An empty name, or one containing
+    /// `=` or a NUL, is skipped rather than refused, so nothing `HelperArgs::encode` emits
+    /// is something `decode` rejects — `sandbx`'s `--allow-env` refuses them instead.
     #[must_use]
     pub fn allow_env(mut self, name: impl Into<String>) -> Self {
         let name = name.into();
@@ -337,14 +301,11 @@ impl SandboxPolicy {
         self
     }
 
-    /// Let the process inherit the variables a command needs in order to start.
-    ///
-    /// With no `PATH`, a bare program name falls back to `confstr(_CS_PATH)` under glibc's
-    /// `execvp`, so `cat` starts and `~/.cargo/bin/x` does not, naming neither cause nor fix.
-    /// A shell falls back to its own wider default instead
-    /// (`context/decision-environment-allowlist.md`).
-    /// Nothing here conventionally carries a credential; anything else needs
-    /// [`allow_env`](Self::allow_env).
+    /// Let the process inherit the variables a command needs in order to start. With no
+    /// `PATH`, glibc's `execvp` falls back to `confstr(_CS_PATH)`, so `cat` starts
+    /// and `~/.cargo/bin/x` does not — a shell falls back to its own wider default instead
+    /// (see `context/decision-environment-allowlist.md`). Nothing here carries a
+    /// credential; anything else needs [`allow_env`](Self::allow_env).
     #[must_use]
     pub fn allow_standard_env(self) -> Self {
         STANDARD_ENV_NAMES
@@ -366,28 +327,23 @@ impl SandboxPolicy {
         self.grant(Axis::Write, path)
     }
 
-    /// Grant read and execute access to `path`.
-    ///
-    /// The only grant that confers execute, and it confers read too (see [`Axis::grants`]).
-    /// A directory granted here can run anything that appears in it later.
+    /// Grant read and execute access to `path`; the only grant that confers execute (and
+    /// read too, see [`Axis::grants`]). A directory granted here can run anything that
+    /// appears in it later.
     #[must_use]
     pub fn allow_read_execute(self, path: VettedPath) -> Self {
         self.grant(Axis::ReadExecute, path)
     }
 
-    /// Grant read and execute access to the paths a command needs to start.
-    ///
-    /// Nothing runs without its loader and shared libraries; with a bare policy even
-    /// `/bin/true` dies before `main`.
-    ///
-    /// Granted as each vets, which an absent path cannot do and is skipped by: Landlock
-    /// rejects a rule for a path that does not exist, so a host without `/lib64` would fail to
-    /// sandbox at all. [`vet`](VettedPath::vet) resolves, which a merged-`/usr` host needs —
-    /// it spells `/bin` as a symlink to `/usr/bin`, and a grant has to name what it opens.
-    ///
-    /// Pinned here and not left to the caller, this being the one grant set reached without
-    /// vetting a path: an unpinned arm would put the case back that [`grant`](Self::grant) has
-    /// none of.
+    /// Grant read and execute access to the paths a command needs to start: without its
+    /// loader and shared libraries, even `/bin/true` dies before `main`. Each path is skipped
+    /// if absent rather than granted, since Landlock rejects a rule for a path that does not
+    /// exist — a host without `/lib64` would otherwise fail to sandbox at all.
+    /// [`vet`](VettedPath::vet) resolves first, which a merged-`/usr` host needs — it spells
+    /// `/bin` as a symlink to `/usr/bin`, and a grant has to name what it opens. Pinned here
+    /// rather than left to the caller: this is the
+    /// one grant set reached without vetting a path, and an unpinned arm would reopen the
+    /// case [`grant`](Self::grant) was built to not have.
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS
@@ -396,23 +352,20 @@ impl SandboxPolicy {
             .fold(self, Self::allow_read_execute)
     }
 
-    /// Grant IP egress on every port, and only that.
-    ///
-    /// Widens an existing port allowlist. Unix-domain sockets stay a separate grant: a
-    /// command that can dial `/run/user/$UID/bus` can ask systemd to start a process outside
-    /// the sandbox.
+    /// Grant IP egress on every port, and only that; widens an existing port allowlist.
+    /// Unix-domain sockets stay a separate grant — a command that can dial
+    /// `/run/user/$UID/bus` can ask systemd to start a process outside the sandbox.
     #[must_use]
     pub fn allow_network(mut self) -> Self {
         self.network = NetworkPolicy::AnyPort;
         self
     }
 
-    /// Grant TCP connect and bind on `port`, and nothing else on the network.
-    ///
-    /// Repeat to allowlist several; duplicates collapse, and this cannot narrow
-    /// [`allow_network`](Self::allow_network). An allowlist also denies UDP and raw sockets,
-    /// and `bind` on every port it does not name — `context/decision-port-allowlist.md`.
-    /// Port 0 is skipped: `bind(0)` asks the kernel to choose, which cannot be allowlisted.
+    /// Grant TCP connect and bind on `port`, and nothing else on the network. Repeat to
+    /// allowlist several; duplicates collapse, and this cannot narrow
+    /// [`allow_network`](Self::allow_network). Also denies UDP, raw sockets, and `bind` on
+    /// every other port (`context/decision-port-allowlist.md`). Port 0 is skipped: `bind(0)`
+    /// asks the kernel to choose, which cannot be allowlisted.
     #[must_use]
     pub fn allow_network_port(mut self, port: u16) -> Self {
         if port == 0 {
@@ -432,22 +385,19 @@ impl SandboxPolicy {
         self
     }
 
-    /// Grant every unix-domain socket the filesystem policy can reach.
-    ///
-    /// All or nothing: the denial is a seccomp rule on `socket(AF_UNIX, …)`, and seccomp
-    /// cannot follow the pointer to `connect`'s path. Per-socket grants need Landlock
-    /// ABI V9 (Linux 7.1). The filesystem policy is what bounds which sockets exist to
-    /// be dialled.
+    /// Grant every unix-domain socket the filesystem policy can reach. All or nothing: the
+    /// denial is a seccomp rule on `socket(AF_UNIX, …)`, and seccomp cannot follow the
+    /// pointer to `connect`'s path. Per-socket grants need Landlock ABI V9 (Linux 7.1). The
+    /// filesystem policy is what bounds which sockets exist to be dialled.
     #[must_use]
     pub fn allow_unix_sockets(mut self) -> Self {
         self.unix_sockets = true;
         self
     }
 
-    /// Ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc` in the child.
-    ///
-    /// A hint and not a restriction: musl has no equivalent, and a command ignoring
-    /// `RES_OPTIONS` is unaffected. Allowlists no port — TCP 53 still needs
+    /// Ask glibc's stub resolver to use TCP, by setting `RES_OPTIONS=use-vc` in the child. A
+    /// hint, not a restriction: musl has no equivalent, and a command ignoring `RES_OPTIONS`
+    /// is unaffected. Allowlists no port — TCP 53 still needs
     /// [`allow_network_port`](Self::allow_network_port).
     #[must_use]
     pub fn hint_dns_over_tcp(mut self) -> Self {
@@ -455,15 +405,12 @@ impl SandboxPolicy {
         self
     }
 
-    /// Let `name` resolve, and bound resolution to the names granted this way; repeat for
-    /// several, duplicates collapsing.
-    ///
-    /// The first call imposes the bound: the helper renders a hosts file holding what these
-    /// resolve to and no nameserver, so a name nothing granted stops resolving. Resolution and
-    /// not connection — `context/decision-egress-proxy.md`.
-    ///
-    /// A name that is empty, over [`DNS_NAME_LIMIT`] bytes, or carries a NUL, whitespace or
-    /// `#` is skipped and not refused, as in [`allow_env`](Self::allow_env); the last three
+    /// Let `name` resolve, bounding resolution to the names granted this way; repeat for
+    /// several, duplicates collapsing. The first call imposes the bound: the helper renders a
+    /// hosts file holding only these names, with no nameserver, so an ungranted name stops
+    /// resolving (resolution, not connection — `context/decision-egress-proxy.md`). A name
+    /// that is empty, over [`DNS_NAME_LIMIT`] bytes, or carries a NUL, whitespace or `#` is
+    /// skipped rather than refused, as in [`allow_env`](Self::allow_env); the last three
     /// would forge a field or a comment in the rendered hosts file.
     #[must_use]
     pub fn allow_dns(mut self, name: impl Into<String>) -> Self {
@@ -483,10 +430,9 @@ pub const DNS_NAME_LIMIT: usize = 253;
 /// The port a nameserver answers on, which a bounded policy may not allowlist.
 pub const NAMESERVER_PORT: u16 = 53;
 
-/// Whether `name` is one the helper can both carry and render.
-///
-/// Shared with `HelperArgs::decode`, which refuses what this rejects: the encode side skips
-/// such a name, so one arriving on the wire did not come from `encode`.
+/// Whether `name` is one the helper can both carry and render; shared with
+/// `HelperArgs::decode`, which refuses what this rejects, so a name arriving on the
+/// wire skipped by `encode` did not come from it.
 pub(crate) fn is_resolvable_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= DNS_NAME_LIMIT

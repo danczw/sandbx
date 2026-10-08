@@ -1,24 +1,20 @@
-//! The closed set of refusals a helper stage reports on the audit channel.
-//!
-//! A subset of what [`SandboxError::label`](crate::SandboxError::label) returns: a record
-//! outranks the exit status, so admitting one the parent or [`FsGuard`](crate::FsGuard)
-//! decides itself would let a forged line claim an outcome that never happened — the
-//! criterion is one decider, not what failed. `context/decision-helper-audit-channel.md`.
+//! The closed set of refusals a helper stage reports on the audit channel. A subset of
+//! what [`SandboxError::label`](crate::SandboxError::label) returns: a record outranks the
+//! exit status, so admitting one the parent or [`FsGuard`](crate::FsGuard) decides itself
+//! would let a forged line claim an outcome that never happened
+//! (`context/decision-helper-audit-channel.md`).
 
 use crate::SandboxError;
 
-/// How much of the helper's stderr a relayed refusal carries.
-///
-/// Nothing downstream bounds it: `ToolLimits::max_bytes` caps a command's output, not an
-/// error's detail, and this reaches a model inside a `tool_result`. Four `Display` lines'
-/// worth, more than any refusal the helper writes.
+/// How much of the helper's stderr a relayed refusal carries: four `Display` lines' worth,
+/// more than any refusal the helper writes. Nothing downstream bounds it — `ToolLimits`
+/// caps a command's output, not an error's detail, and this reaches a model in a `tool_result`.
 const STDERR_LIMIT: usize = 4096;
 
-/// A refusal a helper stage reported for itself, rather than running the command.
-///
-/// A type and not a string: the parent turns one of these back into an audit record and an
-/// error for its caller, so a label it accepted on trust would let whatever wrote the channel
-/// name the reason a run did not happen.
+/// A refusal a helper stage reported for itself, rather than running the command. A type
+/// and not a string: the parent turns one of these back into an audit record and an error
+/// for its caller, so a label accepted on trust would let whatever wrote the channel name
+/// the reason a run did not happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelperRefusal {
     /// The stage could not parse its argv — [`SandboxError::BadHelperArgs`].
@@ -81,10 +77,9 @@ impl HelperRefusal {
         Self::Unsupported,
     ];
 
-    /// The name this refusal carries on the wire and in the audit trail.
-    ///
-    /// The same word the variant it relays answers [`label`](crate::SandboxError::label)
-    /// with, and a trail is filtered by these strings, so they are a compatibility surface.
+    /// The name this refusal carries on the wire and in the audit trail: the same word the
+    /// variant it relays answers [`label`](crate::SandboxError::label) with, and a trail is
+    /// filtered by these strings, so they are a compatibility surface.
     pub const fn label(self) -> &'static str {
         match self {
             Self::BadHelperArgs => "bad_helper_args",
@@ -103,22 +98,19 @@ impl HelperRefusal {
         }
     }
 
-    /// The refusal `label` names, if it names one at all.
-    ///
-    /// A lookup over [`ALL`](Self::ALL) rather than a second `match`, so a label
-    /// [`label`](Self::label) can emit is one this accepts by construction.
+    /// The refusal `label` names, if it names one at all. A lookup over [`ALL`](Self::ALL)
+    /// rather than a second `match`, so a label [`label`](Self::label) can emit is one this
+    /// accepts by construction.
     pub(crate) fn from_label(label: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|known| known.label() == label)
     }
 
     /// This refusal as the error the caller gets, carrying what the helper said about it.
-    ///
-    /// From the stderr and not the channel, a refusal record carrying no detail, so the
-    /// helper's own `Display` is the only prose that exists. Lossily decoded because these
-    /// bytes are a pipe rather than a bounded record.
-    ///
-    /// `HELPER_FAILURE_PREFIX` comes back off: this is a `Display` a caller prefixes again,
-    /// and the CLI printing `sandbx: {error}` over it reads as `sandbx: sandbx: `.
+    /// From the stderr, not the channel — a refusal record carries no detail, so the helper's
+    /// own `Display` is the only prose that exists, lossily decoded since these bytes are a
+    /// pipe rather than a bounded record. `HELPER_FAILURE_PREFIX` comes back off: this is a
+    /// `Display` a caller prefixes again, and the CLI printing `sandbx: {error}` over it
+    /// would read as `sandbx: sandbx: `.
     pub(crate) fn relayed(self, stderr: &[u8]) -> SandboxError {
         let relayed = String::from_utf8_lossy(stderr);
         let relayed = relayed.trim();
@@ -136,10 +128,9 @@ impl HelperRefusal {
 }
 
 impl SandboxError {
-    /// This error as the refusal a helper stage may report, if it is one.
-    ///
-    /// The one place the two sets are mapped, and exhaustive — so a new variant has to decide
-    /// whether a stage of the helper is the only thing that can decide it.
+    /// This error as the refusal a helper stage may report, if it is one. The one place the
+    /// two sets are mapped, and exhaustive, so a new variant has to decide whether a helper
+    /// stage is the only thing that can decide it.
     pub(crate) fn refusal(&self) -> Option<HelperRefusal> {
         match self {
             Self::BadHelperArgs { .. } => Some(HelperRefusal::BadHelperArgs),
@@ -159,14 +150,12 @@ impl SandboxError {
             Self::PinUnreadable { .. } => Some(HelperRefusal::PinUnreadable),
             Self::PinnedScript { .. } => Some(HelperRefusal::PinnedScript),
             Self::Unsupported { .. } => Some(HelperRefusal::Unsupported),
-            // Decided here or by `FsGuard`, so a record claiming one would outrank an
-            // outcome the parent watched happen. `HelperRefused` is this relay's own output
-            // and exists only parent-side, so reporting it would be a second crossing.
-            // `ProcessConcealment` is decided past dispatch, which no helper runs (#192).
-            // `GrantUnpinnable` is the harness's: it is what vetting a path answers, and the
-            // helper never vets one. `RootReplaced` is `FsGuard`'s own per-access
-            // measurement, which no helper runs. `UnboundedResolution` and
-            // `GrantBoundByResolver` are decided off the policy, before the spawn.
+            // Each is decided by the parent or `FsGuard`, never the helper: `HelperRefused`
+            // is this relay's own output (reporting it would be a second crossing);
+            // `ProcessConcealment` is decided past dispatch, which no helper runs (#192);
+            // `GrantUnpinnable` is the harness's own vetting; `RootReplaced` is `FsGuard`'s
+            // per-access measurement; `UnboundedResolution` and `GrantBoundByResolver` are
+            // decided off the policy, before the spawn.
             Self::PathNotAllowed { .. }
             | Self::Unresolvable { .. }
             | Self::NotFound { .. }
@@ -208,8 +197,7 @@ mod tests {
     }
 
     /// The relayed detail is printed by a caller that prefixes it again, so carrying the
-    /// helper's own announcement through would read as `sandbx: sandbx: sandbox helper
-    /// failed:`.
+    /// helper's own announcement through would read as `sandbx: sandbx: sandbox helper failed:`.
     #[test]
     fn a_relayed_refusal_does_not_announce_itself_twice() {
         let said = "/bin/true is not the binary it was pinned to";

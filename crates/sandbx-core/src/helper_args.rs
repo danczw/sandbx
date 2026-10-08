@@ -1,11 +1,10 @@
 use crate::{Axis, NetworkPolicy, ObjectId, SandboxError, SandboxPolicy, Sha256Digest, VettedPath};
 
 const FLAG_NET: &str = "--allow-network";
-/// Introduces one allowlisted TCP port, and takes exactly one value.
-///
-/// Its own flag rather than an optional value on [`FLAG_NET`] the way the CLI spells it,
-/// which would make `decode`'s refusal of an unrecognised token a guess at whether the token
-/// looks like a port. `context/decision-enforcement-seam.md`.
+/// Introduces one allowlisted TCP port, and takes exactly one value. Its own flag rather
+/// than an optional value on [`FLAG_NET`] the way the CLI spells it, which would make
+/// `decode`'s refusal of an unrecognised token a guess at whether the token looks like a
+/// port (`context/decision-enforcement-seam.md`).
 const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Introduces the name of a variable the command may inherit. Never a value.
@@ -21,16 +20,13 @@ const FLAG_PIN: &str = "--pin-sha256";
 /// Everything after this is the command to run, never a helper flag.
 const SEPARATOR: &str = "--";
 
-/// The flag that introduces a path granted on `axis`.
-///
-/// Takes two values, the path and then the `<dev>:<ino>` the harness vetted it as. Mandatory
-/// and not optional: "is this token a pin or the next flag?" is the lookahead
-/// `context/decision-enforcement-seam.md` rejects, and an unpinned grant is a case the helper
-/// has no answer for. It discloses nothing — a confined command can `stat` any path it can
-/// name, Landlock having no right that covers metadata.
-///
-/// Here rather than on [`Axis`], the policy type having no business knowing how the helper
-/// is invoked; one exhaustive match serves both `encode` and `decode`.
+/// The flag that introduces a path granted on `axis`. Takes two values, the path and then
+/// the `<dev>:<ino>` the harness vetted it as. Mandatory and not optional: "is this token a
+/// pin or the next flag?" is the lookahead `context/decision-enforcement-seam.md` rejects,
+/// and an unpinned grant is a case the helper has no answer for. It discloses nothing — a
+/// confined command can `stat` any path it can name, Landlock having no right that covers
+/// metadata. Here rather than on [`Axis`], the policy type having no business knowing how
+/// the helper is invoked; one exhaustive match serves both `encode` and `decode`.
 const fn path_flag(axis: Axis) -> &'static str {
     match axis {
         Axis::Read => "--ro",
@@ -39,19 +35,17 @@ const fn path_flag(axis: Axis) -> &'static str {
     }
 }
 
-/// The axis `flag` introduces, if it is a path flag at all.
-///
-/// A lookup over [`path_flag`] and not a second list of spellings, so a flag `encode` can
-/// emit is one `decode` accepts by construction.
+/// The axis `flag` introduces, if it is a path flag at all. A lookup over [`path_flag`]
+/// and not a second list of spellings, so a flag `encode` can emit is one `decode` accepts
+/// by construction.
 fn axis_for(flag: &str) -> Option<Axis> {
     Axis::ALL.into_iter().find(|axis| path_flag(*axis) == flag)
 }
 
-/// A policy plus a command, as carried between sandbx and the helper process.
-///
-/// Argv is not private: the command reads its own `/proc/self/cmdline`, so everything here
-/// is visible to the process being confined — hence variable names and never values. The
-/// environment cannot carry them instead, being the thing the policy governs.
+/// A policy plus a command, as carried between sandbx and the helper process. Argv is not
+/// private: the command reads its own `/proc/self/cmdline`, so everything here is visible
+/// to the process being confined — hence variable names and never values. The environment
+/// cannot carry them instead, being the thing the policy governs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperArgs {
     /// Restrictions the helper must apply to itself.
@@ -61,17 +55,14 @@ pub struct HelperArgs {
     /// Arguments for `program`, already split into words; the helper execs directly, so no
     /// shell ever sees these.
     pub args: Vec<String>,
-    /// What `program` must hash to, when the caller pinned it.
-    ///
-    /// Beside `program` and not inside `policy`: the policy says what the command may do,
-    /// this says which image may be it.
+    /// What `program` must hash to, when the caller pinned it. Beside `program` and not
+    /// inside `policy`: the policy says what the command may do, this says which image may be it.
     pub pin: Option<Sha256Digest>,
 }
 
 impl HelperArgs {
-    /// Render a policy and command as helper argv.
-    ///
-    /// `pin` is `None` for a command whose bytes the caller did not name.
+    /// Render a policy and command as helper argv. `pin` is `None` for a command whose
+    /// bytes the caller did not name.
     pub fn encode(
         policy: &SandboxPolicy,
         program: &str,
@@ -122,10 +113,8 @@ impl HelperArgs {
         out
     }
 
-    /// Parse helper argv back into a policy and command.
-    ///
-    /// Every failure is a refusal: skipping an unrecognised flag would mean running with a
-    /// policy sandbx did not intend.
+    /// Parse helper argv back into a policy and command. Every failure is a refusal:
+    /// skipping an unrecognised flag would mean running with a policy sandbx did not intend.
     pub fn decode(argv: &[String]) -> Result<Self, SandboxError> {
         let mut policy = SandboxPolicy::default();
         let mut pin = None;
@@ -150,9 +139,8 @@ impl HelperArgs {
                     let port = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "network port flag with no port after it",
                     })?;
-                    // `parse::<u16>` is the range check, so out-of-range and not-a-number
-                    // are one refusal with no `as` cast between them to truncate one into
-                    // the other.
+                    // `parse::<u16>` is the range check, so out-of-range and not-a-number are
+                    // one refusal with no `as` cast between them to truncate one into the other.
                     let port: u16 = port.parse().map_err(|_| SandboxError::BadHelperArgs {
                         detail: "network port that is not a number in 1..=65535",
                     })?;
@@ -198,9 +186,9 @@ impl HelperArgs {
                     let hex = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "pin flag with no digest after it",
                     })?;
-                    // The CLI parsed this once already, so anything unparseable here means
-                    // the argv speaks a different protocol — as does a second one, which
-                    // last-wins would resolve to whichever came later.
+                    // The CLI parsed this once already, so anything unparseable here means the
+                    // argv speaks a different protocol — as does a second one, which last-wins
+                    // would resolve to whichever came later.
                     let digest =
                         Sha256Digest::parse(hex).map_err(|_| SandboxError::BadHelperArgs {
                             detail: "pin digest that is not 64 lowercase hex characters",
@@ -220,8 +208,8 @@ impl HelperArgs {
                         detail: "path flag with no path after it",
                     })?;
                     // Refused and not inferred: a grant the helper cannot confirm against the
-                    // object the harness vetted is the one case this decoder has no answer
-                    // for, so it has none — `context/decision-grant-identity.md`.
+                    // object the harness vetted is one this decoder has no answer for
+                    // (`context/decision-grant-identity.md`).
                     let pin = rest.next().ok_or(SandboxError::BadHelperArgs {
                         detail: "granted path with no object pin after it",
                     })?;
@@ -233,18 +221,17 @@ impl HelperArgs {
             }
         };
 
-        // A pin means the helper opens the file itself, so it resolves the name instead of
-        // libc — and a bare name resolved against the policy's own `PATH` would have it
-        // hash one file and `execve` another. Refused rather than searched.
+        // A pin means the helper opens the file itself, resolving the name instead of libc —
+        // a bare name resolved against the policy's own `PATH` could hash one file and
+        // `execve` another.
         if pin.is_some() && !std::path::Path::new(&program).is_absolute() {
             return Err(SandboxError::BadHelperArgs {
                 detail: "a pinned program that is not an absolute path",
             });
         }
 
-        // After the loop, each shape being a pair of flags. `BadHelperArgs` and not
-        // `UnboundedResolution`: the harness refuses this policy before it spawns, so an argv
-        // carrying one did not come from `encode`.
+        // `BadHelperArgs`, not `UnboundedResolution`: the harness refuses this policy before
+        // it spawns, so an argv carrying one did not come from `encode`.
         if let Some(detail) = policy.unbounded_resolution() {
             return Err(SandboxError::BadHelperArgs { detail });
         }

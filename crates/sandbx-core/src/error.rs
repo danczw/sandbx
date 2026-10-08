@@ -11,10 +11,9 @@ mod refusal;
 
 pub use refusal::HelperRefusal;
 
-/// Which grant a path was checked against.
-///
-/// Carried by a refusal so it names the grant that was missing: the guard keeps its root
-/// sets apart, so a path can be inside one and outside the other.
+/// Which grant a path was checked against; carried by a refusal so it names the grant
+/// that was missing. The guard keeps its root sets apart, so a path can be inside one
+/// and outside the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     /// Checked against the readable roots.
@@ -32,10 +31,8 @@ impl Access {
         }
     }
 
-    /// What a path this access refused is outside of.
-    ///
-    /// The one wording, shared by the audit record's reason and [`SandboxError`]'s
-    /// `Display`, so a record and the message a caller saw cannot disagree.
+    /// What a path this access refused is outside of; the one wording, shared by the audit
+    /// record's reason and [`SandboxError`]'s `Display`, so the two cannot disagree.
     pub fn outside(self) -> &'static str {
         match self {
             Self::Read => "outside every readable root",
@@ -44,10 +41,9 @@ impl Access {
     }
 }
 
-/// Why a sandbox operation was refused.
-///
-/// Every variant is a refusal; there is no "allowed with warning" case, a caller that
-/// believes it is sandboxed and is not being worse off than one that gets an error.
+/// Why a sandbox operation was refused. Every variant is a refusal — no "allowed with
+/// warning" case — so a caller that believes it is sandboxed is never worse off than one
+/// that gets an error.
 #[derive(Debug)]
 pub enum SandboxError {
     /// The path is not inside any root the policy allows for this access.
@@ -67,11 +63,10 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// A path inside a granted root names no file, so no policy objected to it.
-    ///
-    /// Returned only where the roots already cover the area: elsewhere absence is concealed
-    /// as [`PathNotAllowed`](Self::PathNotAllowed), ENOENT against EACCES over arbitrary
-    /// paths reading back as a map of the host.
+    /// A path inside a granted root names no file, so no policy objected to it. Returned
+    /// only where the roots already cover the area; elsewhere absence is concealed
+    /// as [`PathNotAllowed`](Self::PathNotAllowed), since ENOENT against EACCES over
+    /// arbitrary paths would read back as a map of the host.
     NotFound {
         /// The component that names nothing — the parent, for a write to a missing directory.
         requested: PathBuf,
@@ -93,11 +88,9 @@ pub enum SandboxError {
     },
 
     /// A granted path opened as a different one, so the sandbox would not have been the one
-    /// the harness judged.
-    ///
-    /// The policy is built in one process and the rules are opened in another, and the open
-    /// follows every symlink; a link redirected in between would otherwise be checked against
-    /// one directory and granted on another (#205).
+    /// the harness judged. The policy is built in one process and opened in another, and the
+    /// open follows every symlink: a link redirected in between would otherwise be checked
+    /// against one directory and granted on another (#205).
     GrantRedirected {
         /// The path the policy grants, as the harness resolved it.
         granted: PathBuf,
@@ -106,11 +99,10 @@ pub enum SandboxError {
     },
 
     /// A granted path opened as the same name and a different object, so the sandbox would
-    /// have been granted on a directory the harness never judged.
-    ///
-    /// What [`GrantRedirected`](Self::GrantRedirected) cannot see: a `rename(2)` putting one
-    /// real directory where another was vetted leaves the spelling identical, so only the
-    /// object tells them apart (#212).
+    /// have been granted on a directory the harness never judged. What
+    /// [`GrantRedirected`](Self::GrantRedirected) cannot see: a `rename(2)` putting one real
+    /// directory where another was vetted leaves the spelling identical, so only the object
+    /// tells them apart (#212).
     GrantReplaced {
         /// The path the policy grants, as the harness resolved it.
         granted: PathBuf,
@@ -121,11 +113,9 @@ pub enum SandboxError {
     },
 
     /// A granted root no longer holds the object the policy vetted, so an in-process tool
-    /// would have reached a directory the harness never judged.
-    ///
-    /// The in-process twin of [`GrantReplaced`](Self::GrantReplaced), decided by
-    /// [`FsGuard`](crate::FsGuard) per access: there is no descriptor to carry, and no helper
-    /// stage to relay it (#212).
+    /// would have reached a directory the harness never judged. The in-process twin of
+    /// [`GrantReplaced`](Self::GrantReplaced), decided by [`FsGuard`](crate::FsGuard) per
+    /// access: there is no descriptor to carry, and no helper stage to relay it (#212).
     RootReplaced {
         /// The root the policy grants, as the harness resolved it.
         granted: PathBuf,
@@ -136,11 +126,9 @@ pub enum SandboxError {
     },
 
     /// A granted path could not be pinned to an object, so the harness has nothing for the
-    /// helper to confirm its descriptor against.
-    ///
-    /// Harness-side and never reported by a helper stage: a path that names nothing is also
-    /// one Landlock refuses a rule for, so this is that refusal, moved to where it can say
-    /// which grant it was.
+    /// helper to confirm its descriptor against. Harness-side and never reported by a
+    /// helper stage: a path that names nothing is also one Landlock refuses a rule for, so
+    /// this is that refusal, moved to where it can say which grant it was.
     GrantUnpinnable {
         /// The path as the caller supplied it, which is what they can go and change.
         granted: PathBuf,
@@ -155,31 +143,27 @@ pub enum SandboxError {
         detail: String,
     },
 
-    /// The kernel namespaces the sandbox runs the command in could not be created.
-    ///
-    /// One variant for user, PID and — when the policy denies network — the network
-    /// namespace: one `unshare` creates them all and the kernel answers it with one errno.
+    /// The kernel namespaces the sandbox runs the command in could not be created. One
+    /// variant for user, PID and — when the policy denies network — the network namespace:
+    /// one `unshare` creates them all and the kernel answers it with one errno.
     NamespaceSetupFailed {
         /// What failed, for the operator to act on.
         detail: &'static str,
     },
 
-    /// This process is not in the state a sandboxed command may be born into:
-    /// capabilities not dropped, core dumps not disabled, or an environment an earlier
-    /// stage should have narrowed and did not.
-    ///
-    /// All three are inherited across `exec`, so this is one fact about this process rather
-    /// than three failures.
+    /// This process is not in the state a sandboxed command may be born into: capabilities
+    /// not dropped, core dumps not disabled, or an environment an earlier stage should have
+    /// narrowed. All three are inherited across `exec`, so this is one fact about this
+    /// process rather than three failures.
     ProcessHardening {
         /// What failed, for the operator to act on.
         detail: String,
     },
 
     /// The harness could not hide its own process state, so a granted `/proc` would still
-    /// reach the provider key in its environment.
-    ///
-    /// Separate from [`ProcessHardening`](Self::ProcessHardening), which is about the state a
-    /// sandboxed command is born into.
+    /// reach the provider key in its environment. Separate from
+    /// [`ProcessHardening`](Self::ProcessHardening), which is about the state a sandboxed
+    /// command is born into.
     ProcessConcealment {
         /// What failed, for the operator to act on.
         detail: String,
@@ -193,10 +177,9 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// The supervisor stage could not start the stage below it.
-    ///
-    /// Separate from [`SpawnFailed`](Self::SpawnFailed) because one site returns it, and a
-    /// single decider is what [`HelperRefusal`] admits a label on.
+    /// The supervisor stage could not start the stage below it. Separate from
+    /// [`SpawnFailed`](Self::SpawnFailed) because one site returns it, and a single decider
+    /// is what [`HelperRefusal`] admits a label on.
     InnerStageFailed {
         /// What failed, for the operator to act on.
         detail: &'static str,
@@ -220,10 +203,9 @@ pub enum SandboxError {
         actual: crate::Sha256Digest,
     },
 
-    /// A pinned program could not be read, so its bytes were never established.
-    ///
-    /// Distinct from [`ExecFailed`](Self::ExecFailed) because the two diverge: a mode-111
-    /// binary is executable and unreadable, so it runs unpinned and cannot be pinned.
+    /// A pinned program could not be read, so its bytes were never established. Distinct
+    /// from [`ExecFailed`](Self::ExecFailed): a mode-111 binary is executable and
+    /// unreadable, so it runs unpinned and cannot be pinned.
     PinUnreadable {
         /// The program as the caller named it.
         program: String,
@@ -231,21 +213,18 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// A pinned program is a `#!` script, which the pin cannot cover.
-    ///
-    /// The kernel hands the interpreter the path sandbx exec'd — the hashed descriptor —
-    /// and the interpreter opens it again, by then closed.
-    /// See `context/decision-pinned-entry-point.md`.
+    /// A pinned program is a `#!` script, which the pin cannot cover. The kernel hands the
+    /// interpreter the path sandbx exec'd — the hashed descriptor — and the interpreter
+    /// opens it again, by then closed. See `context/decision-pinned-entry-point.md`.
     PinnedScript {
         /// The program as the caller named it.
         program: String,
     },
 
     /// A helper stage refused the run and named itself on the audit channel, so the command
-    /// never ran — see [`HelperRefusal`].
-    ///
-    /// The status it exited with says only that it was non-zero, which is indistinguishable
-    /// from the command doing so. This is that status replaced by what the channel said.
+    /// never ran — see [`HelperRefusal`]. The exit status alone is indistinguishable from
+    /// the command exiting non-zero itself; this is that status replaced by what the
+    /// channel said.
     HelperRefused {
         /// Which stage refused, and why.
         refusal: HelperRefusal,
@@ -259,11 +238,10 @@ pub enum SandboxError {
         after: std::time::Duration,
     },
 
-    /// This kernel cannot enforce a sandbox.
-    ///
-    /// Returned instead of running unsandboxed. A kernel and not a platform, the crate
-    /// refusing to build for a non-Linux target at all, so: too old for the Landlock
-    /// baseline, Landlock disabled at boot, or a ruleset accepted and not enforced.
+    /// This kernel cannot enforce a sandbox, returned instead of running unsandboxed. A
+    /// kernel and not a platform — the crate refuses to build for non-Linux at all — so: too
+    /// old for the Landlock baseline, Landlock disabled at boot, or a ruleset accepted and
+    /// not enforced.
     Unsupported {
         /// What is missing, for the operator to act on.
         detail: &'static str,
@@ -271,7 +249,6 @@ pub enum SandboxError {
 
     /// The policy bounds which names resolve and leaves a nameserver reachable, so it would
     /// bound nothing while reporting as applied.
-    ///
     /// [`SandboxPolicy::unbounded_resolution`] names the shape and decides this.
     ///
     /// [`SandboxPolicy::unbounded_resolution`]: crate::SandboxPolicy::unbounded_resolution
@@ -282,7 +259,6 @@ pub enum SandboxError {
 
     /// The policy grants a file its own bounded resolver will bind sandbx's copy over, so the
     /// object the harness vetted is not the one the command would read.
-    ///
     /// [`SandboxPolicy::grant_bound_by_resolver`] names the grant and decides this.
     ///
     /// [`SandboxPolicy::grant_bound_by_resolver`]: crate::SandboxPolicy::grant_bound_by_resolver
@@ -366,9 +342,9 @@ impl std::fmt::Display for SandboxError {
             Self::Landlock { detail } => {
                 write!(f, "kernel refused the Landlock ruleset: {detail}")
             }
-            // Both paths: whoever redirected the link knows where it points, the grant is in
-            // an argv the command can read anyway, and without the target the operator cannot
-            // tell a moved directory from a planted link.
+            // Both paths: whoever redirected the link already knows where it points, the
+            // grant is in an argv the command can read anyway, and without the target the
+            // operator cannot tell a moved directory from a planted link.
             Self::GrantRedirected { granted, opened } => {
                 write!(
                     f,
@@ -471,9 +447,8 @@ impl std::error::Error for SandboxError {
 }
 
 impl SandboxError {
-    /// A stable name for this refusal, which the audit trail is filtered by.
-    ///
-    /// Exhaustive, so a new variant has to decide what a trail calls it.
+    /// A stable name for this refusal, which the audit trail is filtered by. Exhaustive, so
+    /// a new variant has to decide what a trail calls it.
     pub fn label(&self) -> &'static str {
         match self {
             Self::PathNotAllowed { .. } => "path_not_allowed",
@@ -529,10 +504,9 @@ mod tests {
         ObjectId::parse(token).expect("a device and an inode parted by `:`")
     }
 
-    /// One of every variant. The `match` below is exhaustive, so a new variant fails to
-    /// compile until someone decides whether it is a [`HelperRefusal`] too — but the arm is
-    /// all it forces: a variant left out of the array below compiles, and every test deriving
-    /// from this skips it in silence.
+    /// One of every variant. The exhaustive `match` below forces a new variant to decide
+    /// whether it is a [`HelperRefusal`] — but not to appear in the array itself, which a
+    /// variant left out of still compiles, and every test deriving from this skips in silence.
     fn every_variant() -> Vec<SandboxError> {
         let io = || std::io::Error::other("sample");
 
@@ -611,9 +585,8 @@ mod tests {
             SandboxError::GrantBoundByResolver {
                 granted: PathBuf::from("/etc/hosts"),
             },
-            // `Landlock` because it is the refusal whose label collides, so an edit giving
-            // the relay a label of its own fails `no_two_variants_share_a_label` instead of
-            // passing it.
+            // `Landlock`: the refusal whose label collides, so giving the relay its own
+            // label fails `no_two_variants_share_a_label` instead of passing it.
             SandboxError::HelperRefused {
                 refusal: HelperRefusal::Landlock,
                 detail: "sample".to_string(),
@@ -672,8 +645,8 @@ mod tests {
         assert_eq!(labels.len(), total, "two variants share a label");
     }
 
-    /// The trail must call a refusal the same thing whichever side of the channel decided it,
-    /// a `reason=` filter being written once.
+    /// The trail must call a refusal the same thing whichever side of the channel decided
+    /// it, so a `reason=` filter is written once.
     #[test]
     fn a_refusal_is_called_what_the_variant_it_relays_is_called() {
         for error in every_variant() {
