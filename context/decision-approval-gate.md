@@ -175,6 +175,13 @@ instead, the line and the transcript still saying why it stopped, which is why
 the line is written ahead of that check rather than after it. That is what lets
 "No audit record either" above stand as a claim rather than as a gap.
 
+All three survive the hangup *because* consent is a third device. With the
+question on `/dev/tty`, stdout and stderr can both be redirected to files
+without breaking the exchange — so the status and the account outlive the
+terminal, and a revoked one can be observed end to end. Asked on stdin the same
+run would lose every record with the device it was asked on, and the failure
+this section is about would not be checkable at all.
+
 ## Deny by default, and the honest claim
 
 `agent-run` is non-interactive, which forces the question a TUI would have hidden:

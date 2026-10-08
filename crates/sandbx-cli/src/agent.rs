@@ -60,9 +60,8 @@ struct Channels<W> {
     /// The answer, streamed as it arrives.
     out: W,
 
-    /// The controlling terminal, `Some` under `--approve call` alone. Every test but the
-    /// two driving a lost one passes `None`: opening the real device ([`Terminal::open`])
-    /// is what no suite here covers.
+    /// The controlling terminal, `Some` under `--approve call` alone. Opening the real
+    /// device ([`Terminal::open`]) is what no suite here covers.
     terminal: Option<Terminal>,
 }
 
@@ -1162,10 +1161,8 @@ mod tests {
         let body = std::fs::read_to_string(&path).expect("the transcript exists");
         assert!(body.contains("go"), "the prompt was not stored: {body}");
         assert!(body.contains("looking"), "the work was not stored: {body}");
-        // The reason reaches the transcript through the refused `tool_result`, which is
-        // the one durable record of it that does not depend on a live terminal. The
-        // clause both channel reasons share, not either one: which of the drain and the
-        // read fails first on a slave whose master is gone is platform detail.
+        // The clause both channel reasons share, not either one: which of the drain and
+        // the read fails first on a slave whose master is gone is platform detail.
         assert!(body.contains("no call can be approved"), "got {body}");
         assert!(
             store

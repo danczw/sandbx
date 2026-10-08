@@ -34,9 +34,8 @@ pub enum ApprovalDecision {
     /// Do not run it, tell the model why, and end the turn there.
     ///
     /// For a gate that can no longer be *asked* — a consent channel that went away — not
-    /// one that decided no: the rest of the round is refused unasked and
-    /// [`TurnStop::GateAborted`] ends the turn, so no later round pays for a request
-    /// nobody is there to answer.
+    /// one that decided no: the rest of the round is refused unasked, and
+    /// [`TurnStop::GateAborted`] ends the turn.
     ///
     /// [`TurnStop::GateAborted`]: crate::TurnStop::GateAborted
     Abort {

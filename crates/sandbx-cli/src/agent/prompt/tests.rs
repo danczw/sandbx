@@ -128,10 +128,10 @@ fn an_end_of_input_ends_the_turn() {
     assert_eq!(reason, CLOSED);
 }
 
-/// `read_line` refuses a line that is not UTF-8, so a Latin-1 keymap or a byte of a
-/// binary paste arrives as `Err` on a terminal that is still answering. Taking every
-/// `Err` as a lost channel would end the run on one stray byte and tell the model the
-/// terminal is closed, which would be a false statement about a live one.
+/// Two questions and not three, which is what pins the retry: `read_line` consumes the
+/// rejected line through its newline before the UTF-8 check fails it, so a reader that
+/// left the `\n` behind would give the second read an empty line, the typo arm, and a
+/// third question.
 #[test]
 fn a_byte_that_is_not_text_is_asked_about_again() {
     let input = serde_json::json!({ "path": "/work/out.rs" });
@@ -153,7 +153,7 @@ fn a_byte_that_is_not_text_is_asked_about_again() {
     assert_eq!(
         seen.matches("allow it?").count(),
         2,
-        "the question was not put again: {seen:?}"
+        "asked once, or asked a third time over a leftover newline: {seen:?}"
     );
 }
 
@@ -288,8 +288,8 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
 /// A hangup is not an EOF the operator sent: the master is gone, so the read cannot block.
 ///
 /// The discriminant alone, no reason: whether a slave whose master is gone fails at
-/// `tcflush` or at the question's write is platform detail. `Deny` is precisely the
-/// pre-#218 answer, so the discriminant is itself the evidence.
+/// `tcflush` or at the question's write is platform detail, and a `Deny` — the answer
+/// before #218 — is what the discriminant rules out.
 #[test]
 fn a_terminal_that_hung_up_aborts_without_blocking() {
     let (master, slave) = pty();

@@ -99,15 +99,15 @@ impl Consent {
 
             let mut answer = String::new();
             match input.read_line(&mut answer) {
-                // `read_line` rejects a line that is not UTF-8, which a terminal that is
-                // still there can deliver — a Latin-1 keymap, a byte of a binary paste.
-                // Asked again rather than aborted, as a typo is: the channel answered.
+                // Retried because `read_line`'s UTF-8 check is the only thing that raises
+                // `InvalidData` on a `BufReader<File>` — substitute another reader and
+                // that has to be re-checked. The line is consumed through its newline, so
+                // a rejected answer cannot reach the next read.
                 Err(e) if e.kind() == ErrorKind::InvalidData => continue,
-                // A read error is otherwise as final as an end of input, and a hangup is
-                // the error case: a controlling terminal revoked mid-run fails the read
-                // with `EIO` where a merely closed one returns 0. Both arms abort, which
-                // takes one typed `VEOF` with them: the two are indistinguishable from a
-                // read, and both mean nobody is answering.
+                // Every other error is as final as an end of input: a controlling terminal
+                // revoked mid-run fails the read with a raw `EIO`, which cannot land in
+                // the arm above, where a merely closed one returns 0. One typed `VEOF`
+                // goes with them, being indistinguishable from the close.
                 Ok(0) | Err(_) => return abort(CLOSED),
                 Ok(_) => {}
             }
