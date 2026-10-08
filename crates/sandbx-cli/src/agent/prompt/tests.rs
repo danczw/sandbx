@@ -1,6 +1,34 @@
 use super::*;
 
 use std::io::{Cursor, Read};
+use std::sync::{Arc, Mutex};
+
+/// The account every assertion below is written against.
+const ACCOUNT: &str = "sandbx: write /work/out.rs — ran";
+
+/// An in-memory stand-in for stderr.
+///
+/// Cloneable over a shared buffer because the terminal takes its fallback by value, and the
+/// test still has to read back what reached it.
+#[derive(Clone, Default)]
+struct Sink(Arc<Mutex<Vec<u8>>>);
+
+impl Sink {
+    fn text(&self) -> String {
+        String::from_utf8(self.0.lock().unwrap().clone()).expect("utf-8")
+    }
+}
+
+impl Write for Sink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 
 /// Drive one exchange over `consent`, and report the verdict with what the operator saw.
 ///
@@ -236,6 +264,9 @@ fn wait_readable(fd: &impl std::os::fd::AsFd) {
 }
 
 /// A pty pair with the echo off, so the master carries only what sandbx wrote.
+///
+/// `ONLCR` off with it: the line discipline translates a written `\n` into `\r\n` on the
+/// way out, and a byte the writer never sent is one an exact assertion cannot allow for.
 pub(crate) fn pty() -> (File, File) {
     use nix::sys::termios;
 
@@ -243,6 +274,7 @@ pub(crate) fn pty() -> (File, File) {
 
     let mut attrs = termios::tcgetattr(&pair.slave).expect("the pty's termios");
     attrs.local_flags.remove(termios::LocalFlags::ECHO);
+    attrs.output_flags.remove(termios::OutputFlags::ONLCR);
     termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
 
     (File::from(pair.master), File::from(pair.slave))
@@ -362,10 +394,13 @@ fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
     let (mut master, slave) = pty();
     let mut terminal = Terminal::on(slave).expect("the terminal");
 
-    terminal.report("sandbx: write /work/out.rs — ran");
+    terminal.report(ACCOUNT);
 
+    // Sized off what is expected rather than a round number: a fixed buffer passes on a
+    // prefix of a longer account, and the assertions below would not see the cut.
+    let expected = format!("{RESET}{ACCOUNT}\n");
     wait_readable(&master);
-    let mut buffer = [0u8; 128];
+    let mut buffer = vec![0u8; expected.len()];
     let read = master
         .read(&mut buffer)
         .expect("what the terminal was sent");
@@ -375,5 +410,80 @@ fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
         seen.starts_with(RESET),
         "the account was written from whatever state the model left behind: {seen:?}"
     );
-    assert!(seen.contains("write /work/out.rs — ran"), "got {seen:?}");
+    assert_eq!(seen, expected, "the account did not arrive whole");
+}
+
+/// A slave whose master is gone fails the write with `EIO`, and the account is the operator's
+/// one record of what ran — so it reaches the fallback rather than nobody (#223).
+#[test]
+fn an_account_a_terminal_refused_still_lands() {
+    let (master, slave) = pty();
+    drop(master);
+
+    let sink = Sink::default();
+    let mut terminal = Terminal::on(slave)
+        .expect("the terminal")
+        .falls_back_to(sink.clone(), false);
+
+    terminal.report(ACCOUNT);
+
+    // The content, not merely that nothing panicked: a `report` that swallowed the error,
+    // or wrote only to the dead pty, leaves this empty.
+    assert_eq!(
+        sink.text(),
+        "sandbx: write /work/out.rs — ran\n",
+        "the account went nowhere, or the hung-up pty took the write"
+    );
+}
+
+/// The control the one above needs: a terminal that takes the account is not also written
+/// to stderr, where an operator reading a redirect would see every line twice.
+#[test]
+fn an_account_a_terminal_took_reaches_no_fallback() {
+    let (mut master, slave) = pty();
+
+    let sink = Sink::default();
+    let mut terminal = Terminal::on(slave)
+        .expect("the terminal")
+        .falls_back_to(sink.clone(), false);
+
+    terminal.report(ACCOUNT);
+
+    // The pty read first, so an empty sink is evidence the write landed rather than
+    // evidence `report` did nothing at all.
+    wait_readable(&master);
+    let mut buffer = vec![0u8; RESET.len() + ACCOUNT.len() + 1];
+    let read = master
+        .read(&mut buffer)
+        .expect("what the terminal was sent");
+    assert_eq!(
+        String::from_utf8_lossy(&buffer[..read]),
+        format!("{RESET}{ACCOUNT}\n")
+    );
+    assert_eq!(
+        sink.text(),
+        "",
+        "a terminal that took the account fell back as well"
+    );
+}
+
+/// `2> run.log` would carry the escape into the log, so the reset belongs to the sink and
+/// not to the line.
+#[test]
+fn an_account_resets_only_where_that_renders() {
+    assert!(
+        !ACCOUNT.chars().any(char::is_control),
+        "the fixture carries a control character, so the second case asserts nothing"
+    );
+
+    // The escape spelled out rather than read off `RESET`: read off it, the assertion only
+    // proves the account agrees with whatever the constant became.
+    assert_eq!(
+        account(true, ACCOUNT),
+        "\x1b[0msandbx: write /work/out.rs — ran\n"
+    );
+    assert_eq!(
+        account(false, ACCOUNT),
+        "sandbx: write /work/out.rs — ran\n"
+    );
 }

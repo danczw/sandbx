@@ -154,16 +154,28 @@ fn abort(reason: &str) -> ApprovalDecision {
     }
 }
 
-/// Write one account of a call to stderr, from a known graphic rendition.
+/// One account of a call, as the bytes that reach a sink.
 ///
-/// `RESET` only when stderr is a terminal: `2> run.log` would carry the escape into the
-/// log.
-pub(super) fn to_stderr(line: &str) {
-    if std::io::stderr().is_terminal() {
-        eprintln!("{RESET}{line}");
+/// `RESET` only where it renders: `2> run.log` would carry the escape into the log. Whole
+/// rather than written piece by piece — `write_fmt` issues a syscall per piece, which
+/// leaves the model's own stream a window to land between the reset and the line it covers.
+fn account(renders: bool, line: &str) -> String {
+    if renders {
+        format!("{RESET}{line}\n")
     } else {
-        eprintln!("{line}");
+        format!("{line}\n")
     }
+}
+
+/// Write one account of a call to stderr.
+///
+/// The failed write is dropped rather than raised: stderr is the last sink a line has, and
+/// `eprintln!` panics there, which would replace the turn's exit 3 with an abort.
+pub(super) fn to_stderr(line: &str) {
+    let mut err = std::io::stderr();
+    let text = account(err.is_terminal(), line);
+
+    let _ = err.write_all(text.as_bytes());
 }
 
 /// The operator, as the gate reaches them: asked about a call, then told what became of
@@ -183,14 +195,22 @@ pub(super) trait Operator {
 }
 
 /// The controlling terminal, opened to ask and to be answered.
-pub(super) struct Terminal {
+///
+/// `F` is where an account goes when the terminal will not take it: stderr in a run, and a
+/// field rather than a call so a test can read back what reached it (#223).
+pub(super) struct Terminal<F = std::io::Stderr> {
     input: BufReader<File>,
     /// The same device duplicated: the question is written where it is answered.
     out: File,
     consent: Consent,
+    fallback: F,
+    /// Whether `fallback` renders an SGR escape.
+    renders: bool,
 }
 
-impl Terminal {
+/// Spelled out rather than left to the default, which type position applies and an
+/// expression position does not.
+impl Terminal<std::io::Stderr> {
     /// Open the controlling terminal.
     ///
     /// # Errors
@@ -205,9 +225,28 @@ impl Terminal {
             input: BufReader::new(tty.try_clone()?),
             out: tty,
             consent: Consent::new(),
+            fallback: std::io::stderr(),
+            renders: std::io::stderr().is_terminal(),
         })
     }
 
+    /// The same terminal over a device already open, for the pty fixture.
+    ///
+    /// Needed because what the drain clears is the kernel's own input queue, which no
+    /// in-memory reader has. [`Terminal::open`] is the only route a run takes.
+    #[cfg(test)]
+    pub(super) fn on(device: File) -> std::io::Result<Self> {
+        Ok(Self {
+            input: BufReader::new(device.try_clone()?),
+            out: device,
+            consent: Consent::new(),
+            fallback: std::io::stderr(),
+            renders: std::io::stderr().is_terminal(),
+        })
+    }
+}
+
+impl<F> Terminal<F> {
     /// Drop whatever was typed before the question is asked.
     ///
     /// Canonical mode queues a finished line until something reads it, so an answer typed
@@ -231,21 +270,20 @@ impl Terminal {
         Ok(())
     }
 
-    /// The same terminal over a device already open, for the pty fixture.
-    ///
-    /// Needed because what the drain clears is the kernel's own input queue, which no
-    /// in-memory reader has. [`Terminal::open`] is the only route a run takes.
+    /// The same terminal with its fallback somewhere a test can read back.
     #[cfg(test)]
-    pub(super) fn on(device: File) -> std::io::Result<Self> {
-        Ok(Self {
-            input: BufReader::new(device.try_clone()?),
-            out: device,
-            consent: Consent::new(),
-        })
+    pub(super) fn falls_back_to<G>(self, fallback: G, renders: bool) -> Terminal<G> {
+        Terminal {
+            input: self.input,
+            out: self.out,
+            consent: self.consent,
+            fallback,
+            renders,
+        }
     }
 }
 
-impl Operator for Terminal {
+impl<F: Write> Operator for Terminal<F> {
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
         // Refused rather than retried: EINTR needs a handler installed and this process
         // installs none, so a flush that failed will fail again — and asking anyway is
@@ -263,14 +301,13 @@ impl Operator for Terminal {
 
     fn report(&mut self, line: &str) {
         // Per `RESET`, the account as much as the question: concealing the record of what
-        // ran is the same attack one line later. Formatted first and written once:
-        // `write_fmt` issues a syscall per piece, which leaves the model's own stream —
-        // the same device — a window to land between the reset and the line it covers.
-        let account = format!("{RESET}{line}\n");
-        if self.out.write_all(account.as_bytes()).is_err() {
+        // ran is the same attack one line later. This device is a terminal by construction,
+        // so the reset is unconditional here where the fallback's is not.
+        if self.out.write_all(account(true, line).as_bytes()).is_err() {
             // Unlike a question, a dropped account reaches nobody — and the last call of a
             // run has no later question whose own failure would stand in for it (#218).
-            to_stderr(line);
+            let text = account(self.renders, line);
+            let _ = self.fallback.write_all(text.as_bytes());
         }
     }
 }
