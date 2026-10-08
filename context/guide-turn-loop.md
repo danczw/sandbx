@@ -55,6 +55,7 @@ feeds is not that class: `agent-run` prints its report, and under
 │  answer_calls (sequential)                                  │
 │    resolve ─► offered? ─► approve ─► spawn_blocking         │
 │    and each one, however it ended ─► settled                │
+│    abort ─► rest of the round refused unasked, turn ends    │
 └─ loop ──────────────────────────────────────────────────────┘
 ```
 
@@ -233,6 +234,14 @@ gate's `ApprovalDecision::Deny`, carrying its `reason` as the text. A refusal is
 therefore recoverable within `max_rounds`, which is also what bounds a model that
 keeps retrying one.
 
+An `ApprovalDecision::Abort` is not, and is the one verdict that ends the turn
+without being a `TurnError`. The gate is saying it can no longer be *asked* — a
+consent channel that went away — so there is no later call to put to it either:
+the aborting call is answered as a refusal, every call behind it in the round is
+answered the same way without being asked about, and the turn comes back `Ok`
+with `TurnStop::GateAborted` and everything it produced. `agent-run` has its own
+exit code for it; see `decision-approval-gate.md`.
+
 Nor is running out of rounds. The turn comes back `Ok` with
 `TurnStop::RoundLimit { rounds }` and every message it produced, because the model did
 real work before the bound arrived and discarding it would lose the work with the answer.
@@ -254,7 +263,8 @@ model ran out of rounds on, and `sandbx-cli` sends the next prompt merged into t
 nothing inside the loop may put a second user message in a request, which is the trap
 below.
 
-`TurnError` is only for what *ends* the turn:
+`TurnError` is only for what *ends* the turn in failure — the two that end it
+otherwise, the round limit and a gate abort, are not in this table:
 
 | Variant | Transcript |
 |---|---|

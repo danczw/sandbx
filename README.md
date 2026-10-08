@@ -397,14 +397,16 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 |---|---|
 | `0` | the model finished its answer |
 | `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. A turn out of rounds is asked once more, a round that may call no tool, so stdout usually holds a summary — one blank line below whatever arrived before the cap, if anything did. stderr says when that round failed instead, and `--no-wrap-up` skips it, leaving stdout with whatever the cap cut off — nothing at all if the model opened with a tool call |
+| `3` | the terminal `--approve call` asks on could no longer be asked, so the turn ended where it was asked: that call and every call behind it in the round were refused, nothing after them ran, and no further request was sent. Whatever the turn did before that is on stdout and in `--session` |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
 > **By default nothing asks you before an approved tool call runs.**
 > `--allow-tool` is a decision per tool per run, not per call: approve `bash` and
 > the model runs every command it chooses. `--approve call` moves the decision to
-> each call, but it needs a terminal, so an unattended run cannot have it. Either
-> way the sandbox is the control, not the asking — approve the fewest tools the
-> task needs, grant the narrowest tree that lets it finish, and read
+> each call, but it needs a terminal, so an unattended run cannot have it — and a
+> terminal that goes away mid-run ends the run rather than carrying on without
+> you. Either way the sandbox is the control, not the asking — approve the fewest
+> tools the task needs, grant the narrowest tree that lets it finish, and read
 > [SECURITY.md](SECURITY.md) before pointing it at anything you care about.
 >
 > `--allow-env ANTHROPIC_API_KEY` is refused here: sandbx makes the provider call
