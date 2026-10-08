@@ -7,6 +7,7 @@ Where to look, and where to put something new:
 
 | Question | Home |
 |---|---|
+| onboarding onto the repo | `context/onboarding/` |
 | how a subsystem works | `context/guide-*.md` |
 | why a design went the way it did | `context/decision-*.md` |
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
