@@ -18,12 +18,11 @@ pub(super) struct Round {
 
 /// Drain one stream into the content blocks it describes, keeping its token counts.
 ///
-/// The counts are last-one-wins rather than summed: Anthropic restates them cumulatively
-/// on every `message_delta`, so adding them up would multiply the figure.
-///
-/// Depends on `Usage` arriving before `Stop`, since the `Stop` arm returns and anything
-/// behind it is never seen. `sandbx-providers`' `wire/tests/usage.rs` pins that order; the
-/// failure would be silent, the counts always `None` and compaction never firing.
+/// The counts are last-one-wins rather than summed: Anthropic restates them cumulatively on
+/// every `message_delta`, so adding them up would multiply the figure. Depends on `Usage`
+/// arriving before `Stop`, since the `Stop` arm returns and anything behind it is never
+/// seen. `sandbx-providers`' `wire/tests/usage.rs` pins that order; the failure would be
+/// silent, the counts always `None` and compaction never firing.
 pub(super) async fn accumulate<O>(
     stream: &mut EventStream,
     observe: &mut O,
@@ -42,13 +41,12 @@ where
         match event {
             AgentEvent::Text { delta } => text.push_str(&delta),
             AgentEvent::ToolCallRequested { id, name, input } => {
-                // Before the tool block, not after: the API reads a content array in
-                // order, and the text that introduced a call precedes it.
+                // Before the tool block: the API reads a content array in order, and the
+                // text introducing a call precedes it.
                 flush(&mut text, &mut blocks);
                 blocks.push(ContentBlock::ToolUse { id, name, input });
             }
-            // Each flushed before its own block, for `ToolCallRequested`'s reason:
-            // reasoning precedes the text and the call it introduced.
+            // Each flushed before its own block, for `ToolCallRequested`'s reason.
             AgentEvent::ThinkingBlock {
                 text: reasoning,
                 signature,
@@ -84,7 +82,7 @@ where
                     reason,
                 });
             }
-            // A renderer's increment. The block it belongs to arrives whole as
+            // A renderer's increment; the block it belongs to arrives whole as
             // `ThinkingBlock`, which is what can be replayed.
             AgentEvent::Thinking { .. } => {}
         }
