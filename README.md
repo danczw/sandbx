@@ -131,7 +131,9 @@ $ sandbx sandbox-run --allow-read /srv -- /bin/true
 ```
 
 Two records per run, tied by `program`: one `spawned`, then exactly one of
-`exited` or `failed`.
+`exited` or `failed`. Under `sandbx tui` the same records arrive in the same
+place, held until the screen is given back rather than written into it — so they
+follow the turn instead of interleaving with it.
 
 | field | reads |
 |---|---|

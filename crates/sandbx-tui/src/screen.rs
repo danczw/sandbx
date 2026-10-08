@@ -51,6 +51,24 @@ impl Screen {
         }
     }
 
+    /// Repaint every cell, not only the ones the transcript changed.
+    ///
+    /// ratatui flushes the difference between its own two buffers, so a cell something
+    /// else wrote into the screen is never rewritten — and the newline that came with it
+    /// scrolled the alternate screen, leaving the whole pane a row out of place. Stderr is
+    /// the writer that does this, the alternate screen not redirecting it. Discarding the
+    /// last buffer is the only way to put those cells back.
+    pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
+        if self.failed.is_some() {
+            return;
+        }
+
+        match self.terminal.clear() {
+            Ok(()) => self.draw(transcript, hint),
+            Err(error) => self.failed = Some(error),
+        }
+    }
+
     /// The draw failure that stopped the screen updating, if one did.
     ///
     /// Taken, so a caller reports it once. Worth reporting: everything after it happened

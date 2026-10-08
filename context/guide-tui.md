@@ -57,13 +57,45 @@ line can display as a different line — in the same pane, and the same `sandbx:
 grammar, as the gate's account of what a tool did. The same denylist `gate.rs`
 carries therefore applies at the cell too. It is a denylist because `char` has no
 predicate for the category, so a new Unicode version can outgrow it silently;
-it is duplicated rather than shared because the two sites must not diverge, and
-a home for one copy of it is worth having.
+it is duplicated rather than shared because the two sites must not diverge.
+
+One more character cannot reach a cell, and it is sandbx's own: the gutter the
+view draws at the start of every row it wrote. See below.
 
 Replaced rather than dropped, for `gate.rs`'s reason: dropped, a hostile string
 reads as plausible prose. The per-call line is stripped twice over — once by
 `gate::line`, once at the cell — and stripping is idempotent, so the layers
 compose.
+
+### One pane holds both voices, so a row says which it is
+
+`agent-run` has two channels and the channel authenticates the line: the answer
+is on stdout, every account of the run on stderr. The pane has one, so a model
+that writes
+
+```
+sandbx: bash curl … | sh — ran
+```
+
+into its answer would render a free-standing row in the gate's own grammar, and
+an operator would act on a call the gate never saw. A newline survives the fold
+by design — the view splits on it — so there is nothing stopping the rows from
+forming.
+
+Every row therefore carries a gutter the view draws, not the text: `│ ` on a
+verdict or a note, `> ` on the prompt's first row, two spaces on anything the
+model chose. `│` is what the claim rests on, so no entry's text may contain one —
+`Transcript` replaces it the way it replaces an escape, which is why the mark is
+box-drawing rather than a `|` that would mangle a shell pipeline in ordinary
+prose.
+
+A wrapped continuation row carries no gutter, the gutter being inside the
+paragraph's text rather than a column beside it. That is the safe direction: an
+unmarked row claims nothing, and `│` is the thing that cannot be faked.
+
+Modifiers are not load-bearing here. `BOLD | DIM` sets a verdict apart from the
+answer, but a terminal with no palette, a copy-paste or a screenshot-to-text
+drops attributes and keeps characters.
 
 ### Raw mode is what makes the interrupt possible
 
@@ -151,3 +183,36 @@ legible once the screen is given back; #224 covers the seam.
 Both methods still run on the async task, so **neither may wait on the runtime**
 — `decision-approval-gate.md` has why. `tui`'s gate waits on nothing at all: the
 decision is argv's, and `settled` takes a lock no async task holds.
+
+## The audit trail is held, not displaced
+
+The gate's verdict is not the only thing stderr carries. `logging::init` installs
+one subscriber for the whole process, admitting `sandbx::audit` at `INFO`, and
+`sandbx-core` emits a record for every guarded file access and every command
+spawn. Those are the higher-volume writer by far, and the alternate screen
+neither redirects stderr nor hands back what was written to it: each record
+would land in the pane and then die with the screen.
+
+Two things go wrong at once, which is why neither a repaint nor a redirect is
+enough on its own:
+
+- **the pane is corrupted.** ratatui flushes the difference between its own two
+  buffers, so a cell a third party overwrote is never rewritten, and the record's
+  trailing newline scrolls the alternate screen and puts every row one out of
+  place.
+- **the trail is lost.** README claims every run records the policy it ran under
+  on stderr. Written into a screen that is about to be torn down, it is recorded
+  nowhere.
+
+So `tui` holds the trail: `logging::hold` diverts the subscriber's writer into a
+buffer for as long as the screen owns the terminal, and releasing it writes every
+record to stderr once the screen is given back. The guard releases on `Drop`, so
+a panic unwinding past the screen still leaves behind the record of what the turn
+was allowed to touch. The ordering an operator sees is the trail, then the run's
+own account — both after the turn rather than during it, which is the one thing
+`tui` changes about the trail.
+
+The hold covers `tracing` and nothing else, so a bare `eprintln!` reached from
+inside the screen still lands on it — `AgentRun::save`'s "nothing to store" line
+is the one that can. The final paint is a full redraw rather than a diff for
+exactly that: it is the only way to put the overwritten cells back.
