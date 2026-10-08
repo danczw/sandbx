@@ -6,26 +6,28 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{Access, SandboxError, SandboxPolicy};
+use crate::{Access, SandboxError, SandboxPolicy, VettedPath};
 
 /// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them.
 ///
 /// The in-process complement to the kernel enforcement on child processes: Rust tools
-/// (`read`, `write`, `edit`) never spawn anything, so Landlock never sees them. Roots and
-/// every checked path are canonicalized before comparison, so neither `..` nor a symlink can
-/// present a path that merely looks inside an allowed root.
+/// (`read`, `write`, `edit`) never spawn anything, so Landlock never sees them. Every checked
+/// path is canonicalized before comparison, so neither `..` nor a symlink can present a path
+/// that merely looks inside an allowed root. The roots are the policy's grants whole, pin
+/// included, so a root is in bounds only while it still holds the object that was vetted.
 #[derive(Debug, Clone)]
 pub struct FsGuard {
-    readable: Vec<PathBuf>,
-    writable: Vec<PathBuf>,
+    readable: Vec<VettedPath>,
+    writable: Vec<VettedPath>,
 }
 
 impl FsGuard {
-    /// Resolve `policy`'s roots into a guard.
+    /// Sort `policy`'s grants into the two lists a check compares against.
     ///
-    /// A nonexistent root is dropped, not rejected: unresolvable, it can never match a
-    /// canonical path. Which axis feeds which list is [`Axis::grants`](crate::Axis::grants)'s
-    /// to say — no `executable` list, nothing in-process execs, but execute feeds `readable`.
+    /// No I/O: a grant is already resolved and already pinned, so resolving it again here
+    /// would answer with whatever its spelling names now. Which axis feeds which list is
+    /// [`Axis::grants`](crate::Axis::grants)'s to say — no `executable` list, nothing
+    /// in-process execs, but execute feeds `readable`.
     pub fn new(policy: &SandboxPolicy) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
@@ -38,17 +40,14 @@ impl FsGuard {
             } = axis.grants();
 
             if read {
-                readable.push(granted.path());
+                readable.push(granted.clone());
             }
             if write {
-                writable.push(granted.path());
+                writable.push(granted.clone());
             }
         }
 
-        Self {
-            readable: canonical_roots(readable),
-            writable: canonical_roots(writable),
-        }
+        Self { readable, writable }
     }
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
@@ -80,7 +79,7 @@ impl FsGuard {
         requested: &Path,
         failed: &Path,
         source: std::io::Error,
-        roots: &[PathBuf],
+        roots: &[VettedPath],
         access: Access,
     ) -> SandboxError {
         let grants_area = requested
@@ -340,14 +339,6 @@ fn listed_nothing(source: &std::io::Error) -> bool {
     names_nothing(source) && source.raw_os_error() != Some(libc::ENOTDIR)
 }
 
-/// Resolve every root that currently exists, discarding the rest.
-fn canonical_roots<'a>(roots: impl IntoIterator<Item = &'a Path>) -> Vec<PathBuf> {
-    roots
-        .into_iter()
-        .filter_map(|root| root.canonicalize().ok())
-        .collect()
-}
-
 /// Whether `requested` reaches past `ancestor` by components that are what they look like.
 ///
 /// Only `ancestor` resolved, so it speaks for `requested` only this far. A symlink below it
@@ -369,8 +360,8 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
 /// `Path::starts_with` compares whole components and not string prefixes, so `/work-secrets`
 /// does not match the root `/work`. Audit-free, so the walk can reuse the rule without
 /// recording a decision per entry.
-fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
-    roots.iter().any(|root| resolved.starts_with(root))
+fn within(resolved: &Path, roots: &[VettedPath]) -> bool {
+    roots.iter().any(|root| resolved.starts_with(root.path()))
 }
 
 /// Allow `resolved` only if it sits inside one of `roots`, recording a refusal.
@@ -382,7 +373,7 @@ fn within(resolved: &Path, roots: &[PathBuf]) -> bool {
 /// other axis's roots would record a true verdict with a false reason.
 fn permit(
     resolved: PathBuf,
-    roots: &[PathBuf],
+    roots: &[VettedPath],
     requested: &Path,
     access: Access,
 ) -> Result<PathBuf, SandboxError> {

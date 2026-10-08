@@ -724,14 +724,14 @@ fn every_axis_grants_exactly_what_the_table_says() {
     }
 }
 
-/// `FsGuard::new` returns `Self` rather than a `Result` only because a root it cannot
-/// resolve is dropped: `canonicalize` fails identically on a path that has gone and on one
-/// the process may not traverse, so dropping denies.
+/// `FsGuard::new` returns `Self` rather than a `Result` because a root that has gone is
+/// already denied by the check: nothing resolves inside a path that does not resolve, so
+/// there is nothing for construction to refuse.
 ///
 /// The root is granted while it exists and removed afterwards, because a grant is pinned to
 /// the object it named and so cannot be built over a path that never existed (#212).
 #[test]
-fn an_unresolvable_root_is_dropped_not_refused() {
+fn an_unresolvable_root_grants_nothing() {
     let root = tempfile::tempdir().unwrap();
     let absent = root.path().join("granted-then-gone");
     std::fs::create_dir(&absent).unwrap();
@@ -749,6 +749,44 @@ fn an_unresolvable_root_is_dropped_not_refused() {
     assert!(guard.check_write(&absent.join("inside.txt")).is_err());
     // And it did not widen into a sibling that does exist.
     assert!(guard.check_read(&real).is_err());
+}
+
+/// A guard that resolved its own roots followed this link and granted its target, so the
+/// grant moved to wherever the link had been pointed since the policy was vetted. Both
+/// guards come off one policy: the pin is taken once, and the second is built after the swap
+/// to stand for any consumer constructing a guard later in the run.
+#[cfg(unix)]
+#[test]
+fn a_root_replaced_by_a_symlink_is_refused() {
+    let parent = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.txt");
+    std::fs::write(&secret, b"secret").unwrap();
+
+    let granted = parent.path().join("granted");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
+    let policy = SandboxPolicy::default().allow_read(vetted(&granted));
+    assert!(
+        FsGuard::new(&policy)
+            .check_read(&granted.join("notes.txt"))
+            .is_ok()
+    );
+
+    std::fs::remove_dir_all(&granted).unwrap();
+    std::os::unix::fs::symlink(elsewhere.path(), &granted).unwrap();
+    let guard = FsGuard::new(&policy);
+
+    let direct = guard.check_read(&secret).unwrap_err();
+    assert!(
+        matches!(direct, SandboxError::PathNotAllowed { .. }),
+        "the link's target became a root of its own: {direct}"
+    );
+    let through = guard.check_read(&granted.join("secret.txt")).unwrap_err();
+    assert!(
+        matches!(through, SandboxError::PathNotAllowed { .. }),
+        "the grant followed the link: {through}"
+    );
 }
 
 /// The walk collects every readable path into memory first, so an unbounded tree is
