@@ -94,13 +94,13 @@ impl Next {
     ///
     /// `history` is borrowed: the caller keeps it to translate the figure this round
     /// reports back out of the request's index space.
-    pub(super) async fn run<W: Write>(
+    pub(super) async fn run<W: Write, E: Write>(
         &self,
         open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         history: &[RequestMessage],
         first: TurnOutcome,
-        render: &mut Render<W>,
+        render: &mut Render<W, E>,
     ) -> (TurnOutcome, bool) {
         let mut continued = history.to_vec();
         continued.extend(first.messages.iter().cloned());

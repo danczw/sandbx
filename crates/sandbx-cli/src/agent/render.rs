@@ -32,8 +32,13 @@ pub(super) enum Unfinished {
 
 /// Writes a turn out, split so stdout can be piped to something that wants the answer
 /// alone.
-pub(super) struct Render<W> {
+///
+/// `E` is the other half — reasoning, and the lines that say how the turn ended. A field
+/// rather than `eprintln!` so a test can read back what was written and in what order
+/// (#223).
+pub(super) struct Render<W, E> {
     out: W,
+    err: E,
 
     /// Whether stdout is part-way through a line, so it is terminated once and only if
     /// the model did not terminate it already.
@@ -63,10 +68,11 @@ pub(super) struct Render<W> {
     failed: Option<std::io::Error>,
 }
 
-impl<W: Write> Render<W> {
-    pub(super) fn new(out: W) -> Self {
+impl<W: Write, E: Write> Render<W, E> {
+    pub(super) fn with(out: W, err: E) -> Self {
         Self {
             out,
+            err,
             mid_line: false,
             wrote: false,
             separating: false,
@@ -100,8 +106,24 @@ impl<W: Write> Render<W> {
     /// Terminate a part-written line of reasoning, so nothing continues it.
     fn end_thinking_line(&mut self) {
         if std::mem::take(&mut self.thinking_mid_line) {
-            eprintln!();
+            self.put(b"\n");
         }
+    }
+
+    /// Write to the half that is not the answer.
+    ///
+    /// A failure is dropped rather than raised: this is where a *stdout* failure is
+    /// reported, so a second error here would have no sink left to name it.
+    fn put(&mut self, bytes: &[u8]) {
+        let _ = self.err.write_all(bytes);
+    }
+
+    /// Write one whole line about the answer.
+    ///
+    /// Formatted first and written once, so a line cannot interleave with the reasoning
+    /// deltas that reach the same device.
+    fn note(&mut self, line: &str) {
+        self.put(format!("{line}\n").as_bytes());
     }
 
     /// Put one event where it belongs.
@@ -128,7 +150,7 @@ impl<W: Write> Render<W> {
             // API sends the increment whether or not a summary was asked for.
             AgentEvent::Thinking { delta } => {
                 if self.show_thinking && !delta.is_empty() {
-                    eprint!("{delta}");
+                    self.put(delta.as_bytes());
                     self.thinking_mid_line = !delta.ends_with('\n');
                 }
             }
@@ -176,12 +198,12 @@ impl<W: Write> Render<W> {
         // gate's own account of the call went to the device that went away, so an early
         // return for a broken pipe would take the last record of it too.
         if ending == Some(Unfinished::Aborted) {
-            eprintln!(
+            self.note(&format!(
                 "sandbx: `{APPROVE_CALL}` could no longer ask on this terminal, \
                  so the turn stopped where it was asked; that call and every call \
                  behind it were refused, nothing after them ran, and no further \
                  request was sent"
-            );
+            ));
         }
 
         if let Some(error) = self.failed.take() {
@@ -190,26 +212,26 @@ impl<W: Write> Render<W> {
 
         if truncated {
             // Otherwise a truncated answer reads as a complete one.
-            eprintln!("sandbx: answer truncated at --max-tokens");
+            self.note("sandbx: answer truncated at --max-tokens");
         }
 
         match ending {
-            Some(Unfinished::CutShort(rounds)) => eprintln!(
+            Some(Unfinished::CutShort(rounds)) => self.note(&format!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
                  raise --max-rounds to let the turn go further"
-            ),
-            Some(Unfinished::Summarised(rounds)) => eprintln!(
+            )),
+            Some(Unfinished::Summarised(rounds)) => self.note(&format!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
                  the answer above summarises what was found, \
                  and raising --max-rounds would let the turn go further"
-            ),
+            )),
             // The text is left where it is rather than disowned quietly: it was paid
             // for, and the operator is the only one who can judge it.
-            Some(Unfinished::Discarded(rounds)) => eprintln!(
+            Some(Unfinished::Discarded(rounds)) => self.note(&format!(
                 "sandbx: stopped after {rounds} rounds of tool calls; \
                  nothing on stdout is an answer, and what followed the cap was \
                  not saved either — raising --max-rounds would let the turn go further"
-            ),
+            )),
             // Written above, ahead of the stdout failure check.
             Some(Unfinished::Aborted) | None => {}
         }
@@ -271,9 +293,15 @@ pub(super) mod tests {
         }
     }
 
+    /// A renderer over two in-memory halves, which is every test here but the broken-pipe
+    /// ones: `Render::new` would send the other half to the suite's own stderr.
+    fn captured() -> Render<Vec<u8>, Vec<u8>> {
+        Render::with(Vec::new(), Vec::new())
+    }
+
     /// Everything stdout received, and what the turn would have exited with.
     fn rendered(events: &[AgentEvent]) -> (String, Result<i32, AgentError>) {
-        let mut render = Render::new(Vec::new());
+        let mut render = captured();
         for event in events {
             render.event(event);
         }
@@ -282,11 +310,9 @@ pub(super) mod tests {
         (String::from_utf8(render.out).expect("utf-8"), code)
     }
 
-    /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Asserted
-    /// with reasoning asked for as well as not, because that is the configuration where
-    /// stderr is written at all. Stderr itself cannot be captured here — `eprint!` writes
-    /// to the process's own — so what this pins is the half that would corrupt a caller's
-    /// output.
+    /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Both halves
+    /// asserted, and with reasoning asked for as well as not: without the stderr side, a
+    /// renderer that dropped the reasoning entirely would pass for one that routed it.
     #[test]
     fn no_part_of_the_reasoning_reaches_stdout() {
         let events = [
@@ -305,7 +331,7 @@ pub(super) mod tests {
         ];
 
         for show in [false, true] {
-            let mut render = Render::new(Vec::new()).showing_thinking(show);
+            let mut render = captured().showing_thinking(show);
             for event in &events {
                 render.event(event);
             }
@@ -316,15 +342,23 @@ pub(super) mod tests {
                 "the answer\n",
                 "--show-thinking={show}"
             );
+            // The replayable block and the redacted one carry a signature nothing may
+            // write, so the delta is the whole of what stderr may ever hold.
+            let reasoned = String::from_utf8(render.err).expect("utf-8");
+            assert_eq!(
+                reasoned,
+                if show { "weighing it up\n" } else { "" },
+                "--show-thinking={show}"
+            );
             assert_eq!(code.expect("clean turn"), 0);
         }
     }
 
-    /// Stderr cannot be captured here, so the line state is the observable: on a terminal
-    /// the answer shares the line, and reasoning left part-written would run into it.
+    /// On a terminal both halves share the line, so reasoning left part-written would have
+    /// the answer appended to it and its own newline arrive after.
     #[test]
     fn the_answer_does_not_continue_a_reasoning_line() {
-        let mut render = Render::new(Vec::new()).showing_thinking(true);
+        let mut render = captured().showing_thinking(true);
         render.event(&AgentEvent::Thinking {
             delta: "weighing it up".to_string(),
         });
@@ -335,6 +369,11 @@ pub(super) mod tests {
 
         render.event(&text("the answer"));
         assert!(!render.thinking_mid_line);
+
+        // The newline and nothing more: a terminator written twice is a blank line between
+        // the reasoning and the answer on a terminal that shows both.
+        let reasoned = String::from_utf8(render.err).expect("utf-8");
+        assert_eq!(reasoned, "weighing it up\n");
     }
 
     /// A turn that only reasoned wrote nothing, so the "no answer" report is still owed —
@@ -373,7 +412,7 @@ pub(super) mod tests {
         let (_, unreported) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
         assert_eq!(unreported.expect("clean turn"), 0);
 
-        let mut render = Render::new(Vec::new());
+        let mut render = captured();
         render.event(&stop(StopReason::EndTurn));
         let told = render.finish(None, true).expect("truncated turn");
         assert_eq!(told, INCOMPLETE);
@@ -388,7 +427,7 @@ pub(super) mod tests {
             Unfinished::Summarised(3),
             Unfinished::Discarded(3),
         ] {
-            let mut render = Render::new(Vec::new());
+            let mut render = captured();
             render.event(&text("looking"));
             render.event(&stop(StopReason::ToolUse));
 
@@ -399,9 +438,7 @@ pub(super) mod tests {
         }
 
         assert_eq!(
-            Render::new(Vec::new())
-                .finish(None, false)
-                .expect("clean turn"),
+            captured().finish(None, false).expect("clean turn"),
             0,
             "a turn with rounds to spare should still exit 0"
         );
@@ -412,7 +449,7 @@ pub(super) mod tests {
     #[test]
     fn a_turn_that_lost_its_operator_exits_three() {
         let abandoned = |events: &[AgentEvent], truncated: bool| {
-            let mut render = Render::new(Vec::new());
+            let mut render = captured();
             for event in events {
                 render.event(event);
             }
@@ -429,21 +466,50 @@ pub(super) mod tests {
         // bound is recoverable by raising a flag, and the lost operator is not.
         assert_eq!(abandoned(&[], true), 3);
 
+        assert_eq!(captured().finish(None, false).expect("clean"), 0);
         assert_eq!(
-            Render::new(Vec::new()).finish(None, false).expect("clean"),
-            0
-        );
-        assert_eq!(
-            Render::new(Vec::new())
+            captured()
                 .finish(Some(Unfinished::CutShort(3)), false)
                 .expect("capped"),
             2
         );
     }
 
+    /// Three lines in one order, exactly: the reasoning terminated first — no `Stop` here,
+    /// so `finish` is what owes the newline — then the lost operator ahead of the bound it
+    /// outranks. A report whose lines ran into each other reads as one nobody wrote.
+    #[test]
+    fn what_a_turn_is_told_is_whole_lines_in_order() {
+        let mut render = captured().showing_thinking(true);
+        render.event(&AgentEvent::Thinking {
+            delta: "weighing it up".to_string(),
+        });
+
+        let code = render
+            .finish(Some(Unfinished::Aborted), true)
+            .expect("a reported turn");
+        assert_eq!(code, 3);
+
+        let told = String::from_utf8(render.err).expect("utf-8");
+        let mut lines = told.lines();
+        assert_eq!(lines.next(), Some("weighing it up"));
+        assert!(
+            lines
+                .next()
+                .expect("the lost operator")
+                .contains("could no longer ask"),
+            "got {told:?}"
+        );
+        assert_eq!(
+            lines.next(),
+            Some("sandbx: answer truncated at --max-tokens")
+        );
+        assert_eq!(lines.next(), None, "got {told:?}");
+    }
+
     /// Everything stdout received across a cap, and the gap that marks it.
     fn across_the_cap(before: &[AgentEvent], after: &[AgentEvent]) -> String {
-        let mut render = Render::new(Vec::new());
+        let mut render = captured();
         for event in before {
             render.event(event);
         }
@@ -470,7 +536,7 @@ pub(super) mod tests {
 
     #[test]
     fn text_arriving_after_the_gap_is_noticed() {
-        let mut render = Render::new(Vec::new());
+        let mut render = captured();
         render.event(&text("looking"));
         render.separate();
         assert!(!render.wrote_after_gap());
@@ -517,7 +583,7 @@ pub(super) mod tests {
 
     #[test]
     fn a_turn_nothing_can_read_is_reported_not_swallowed() {
-        let mut render = Render::new(ClosedPipe);
+        let mut render = Render::with(ClosedPipe, Vec::new());
         render.event(&text("hi"));
         render.event(&stop(StopReason::EndTurn));
 
@@ -528,16 +594,23 @@ pub(super) mod tests {
     }
 
     /// Both can arrive together, and the write failure keeps the exit: `3` would claim an
-    /// answer was delivered. That the operator's line is still written first is unpinnable
-    /// here — `eprintln!` goes to the process's own stderr, and an injectable sink is #223.
+    /// answer was delivered. The account is still written, and before the return: the
+    /// gate's own went to the device that went away, so this is its last record.
     #[test]
     fn a_broken_stdout_outranks_the_lost_operator() {
-        let mut render = Render::new(ClosedPipe);
+        let mut render = Render::with(ClosedPipe, Vec::new());
         render.event(&text("looking"));
 
         assert!(matches!(
             render.finish(Some(Unfinished::Aborted), false),
             Err(AgentError::Output(_))
         ));
+
+        let told = String::from_utf8(render.err).expect("utf-8");
+        assert!(
+            told.contains("could no longer ask on this terminal"),
+            "the stdout failure took the account of the lost operator with it: {told:?}"
+        );
+        assert!(told.ends_with('\n'), "got {told:?}");
     }
 }
