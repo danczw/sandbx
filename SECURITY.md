@@ -209,7 +209,9 @@ architecture the filter gates on.
   what to expect on a project tree. So a granted directory *deleted and re-created*
   can compare equal on both layers although nothing the harness judged is left.
   That is the pin's floor rather than a gap in how it is checked: a freed number is
-  no evidence the object survived. It is a different shape from the claim above,
+  no evidence the object survived. It needs the same write access to the granted
+  root's parent a `rename(2)` substitution needs, and it is a different shape from
+  the claim above,
   which is a swap for a directory that *already existed* and so cannot hold the
   vetted number while the vetted object does; telling the two apart needs a
   creation time or a generation number beside the pair, or the held-root descriptor

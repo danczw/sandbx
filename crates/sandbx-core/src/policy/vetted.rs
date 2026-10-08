@@ -21,6 +21,11 @@ const SEPARATOR: char = ':';
 /// Compared and never interpreted. Neither half is stable across a remount, which is the
 /// property that makes the pair worth carrying: an object that moved is not the one that was
 /// vetted, whatever it is now called.
+///
+/// An inode number is reused after the object holding it is unlinked, so a directory deleted
+/// and re-created at a granted name can be handed the same pair and compare equal. Bounds
+/// what either layer's pin can claim, and is why `SECURITY.md` scopes the claim to a
+/// substitution and not to any path that was once something else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectId {
     dev: u64,

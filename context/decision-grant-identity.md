@@ -190,6 +190,24 @@ directory the kernel has in its dentry cache, against a `canonicalize` of the re
 path that the same check already pays. `find` and `grep` are the exception worth naming:
 a walk confirms its root once and then traverses, so the window there is the traversal.
 
+**A reused inode reads as the vetted object.** The pin's floor, and the one cost here
+that is a limit on what the comparison can mean rather than on how it is taken. An
+inode number is free once what held it is unlinked, and on ext4 the next directory
+created at the same name gets the number just released — deterministic in measurement,
+across repeated `rm -rf` plus `mkdir` at one path; tmpfs issues from a counter and does
+not repeat. So a granted root deleted and re-created compares equal, on both layers,
+and is reached although nothing the harness judged survives.
+
+Worth separating from the attack the pin does close. A `rename(2)` substitution puts a
+directory that *already exists* at the granted name, and an existing directory cannot
+be holding the vetted number while the vetted object still is — so the pin sees it.
+Delete-then-create is the other order, and the freed number carries no evidence either
+way. Closing it needs a third component beside the pair, a creation time (`statx`'s
+`STATX_BTIME`, where the filesystem reports one) or a generation number
+(`FS_IOC_GETVERSION`, an ioctl), or else the held-root descriptor that pins the object
+instead of a number naming it — which is the same remedy as the window above, and is
+the argument for doing that one rather than widening the pair.
+
 **A remount reads as a substitution.** Neither half of `(dev, ino)` survives a remount,
 so a grant on a network or autofs mount that remounts mid-session begins refusing with
 `root_replaced`, naming a swap that did not happen. Fail-closed and wrong about the
