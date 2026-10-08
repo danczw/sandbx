@@ -1,9 +1,8 @@
 //! Does the `caps` crate still know about every capability this kernel has?
-//!
 //! `caps::clear(Bounding)` issues one `PR_CAPBSET_DROP` per capability, enumerated from a
 //! hardcoded list in the crate rather than from the running kernel, so a capability the
 //! crate has never heard of stays in `CapBnd` while `SECURITY.md` promises an empty set.
-//! Not behind `sandbox-integration`: it spawns nothing, so it runs where the `CapBnd`
+//! Not behind `sandbox-integration`, since it spawns nothing and runs where the `CapBnd`
 //! assertion in `enforcement.rs` cannot.
 #![cfg(target_os = "linux")]
 

@@ -18,7 +18,6 @@ pub struct Sha256Digest([u8; 32]);
 
 impl Sha256Digest {
     /// Parse the 64 hex characters an operator writes, or say why they are not a digest.
-    ///
     /// Rejects uppercase rather than folding it: [`fmt::Display`] emits lowercase, so
     /// accepting both would mean two spellings of one digest in the audit trail.
     pub fn parse(hex: &str) -> Result<Self, DigestParseError> {
@@ -39,11 +38,9 @@ impl Sha256Digest {
         Ok(Self(bytes))
     }
 
-    /// Hash an already-open file.
-    ///
-    /// Takes the handle and never a path: the caller hashes and then runs this descriptor,
-    /// and re-opening by path between the two is the swap the pin exists to catch. Reads
-    /// from wherever the handle is positioned, so it is `&mut`.
+    /// Hash an already-open file. Takes the handle and never a path: the caller hashes and
+    /// then runs this descriptor, and re-opening by path between the two is the swap the pin
+    /// exists to catch. Reads from wherever the handle is positioned, so it is `&mut`.
     pub fn of_file(file: &mut std::fs::File) -> std::io::Result<Self> {
         use sha2::Digest as _;
         use std::io::Read as _;
@@ -66,12 +63,11 @@ impl Sha256Digest {
     }
 }
 
-/// Open `program`, and hand back the descriptor only if its bytes are `expected`.
-///
-/// The handle and not the path is what gets exec'd, so nothing resolves a second time for a
+/// Open `program`, and hand back the descriptor only if its bytes are `expected`. The
+/// handle and not the path is what gets exec'd, so nothing resolves a second time for a
 /// swap to land in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
-/// Follows symlinks, unlike `fs_guard`'s `open`, `execve` following them too.
-/// `context/decision-pinned-entry-point.md`.
+/// Follows symlinks, unlike `fs_guard`'s `open`, since `execve` follows them too
+/// (`context/decision-pinned-entry-point.md`).
 pub(crate) fn open_verified(
     program: &str,
     expected: Sha256Digest,
@@ -104,10 +100,9 @@ pub(crate) fn open_verified(
     Ok(file)
 }
 
-/// Would the kernel hand this image to an interpreter rather than run it?
-///
-/// `binfmt_script` substitutes the path sandbx exec'd for the script's own, and that path
-/// names a descriptor closed by then — so the interpreter cannot open it.
+/// Would the kernel hand this image to an interpreter rather than run it? `binfmt_script`
+/// substitutes the path sandbx exec'd for the script's own, and that path names a
+/// descriptor closed by then — so the interpreter cannot open it.
 fn starts_with_shebang(file: &mut std::fs::File) -> std::io::Result<bool> {
     use std::io::{Read as _, Seek as _, SeekFrom};
 
@@ -128,7 +123,6 @@ fn starts_with_shebang(file: &mut std::fs::File) -> std::io::Result<bool> {
 }
 
 /// The path that execs `file` itself rather than whatever its name now points at.
-///
 /// Landlock dereferences this magic link, so the exec is still checked against the real
 /// path and a pinned run needs no grant on `/proc`.
 pub(crate) fn fd_path(file: &std::fs::File) -> std::path::PathBuf {
@@ -146,10 +140,9 @@ impl fmt::Display for Sha256Digest {
     }
 }
 
-/// Why a string is not a digest.
-///
-/// Two cases and not one, because the advice differs: a wrong length usually means a
-/// truncated copy-paste, a bad character means the wrong tool's output.
+/// Why a string is not a digest. Two cases and not one, because the advice differs: a
+/// wrong length usually means a truncated copy-paste, a bad character means the wrong
+/// tool's output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DigestParseError {
     /// Not 64 characters long.

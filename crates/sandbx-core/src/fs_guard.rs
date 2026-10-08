@@ -1,23 +1,20 @@
-//! The in-process filesystem gate: the policy check, and the accesses it guards.
+//! The in-process filesystem gate: the policy check, and the accesses it guards. A root
+//! is confirmed against its grant's pin per access: the window is confirmation to open.
 //!
 //! Over the 400-line budget on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
-//! `decision=` names the access, not the verdict; see `context/guide-logging.md`.
-//!
-//! A root is confirmed against its grant's pin per access: the window is confirmation to open.
 
 use std::path::{Path, PathBuf};
 
 use crate::policy::Confirmation;
 use crate::{Access, ObjectId, SandboxError, SandboxPolicy, VettedPath};
 
-/// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them.
-///
-/// The in-process complement to the kernel enforcement on child processes: Rust tools
-/// (`read`, `write`, `edit`) never spawn anything, so Landlock never sees them. Every checked
-/// path is canonicalized before comparison, so neither `..` nor a symlink can present a path
-/// that merely looks inside an allowed root. The roots are the policy's grants whole, pin
-/// included, so a root is in bounds only while it still holds the object that was vetted.
+/// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them: the
+/// in-process complement to kernel enforcement, since Rust tools (`read`, `write`, `edit`)
+/// never spawn anything, so Landlock never sees them. Every checked path is canonicalized
+/// before comparison, so neither `..` nor a symlink can present a path that merely looks
+/// inside an allowed root. The roots are the policy's grants whole, pin included, so a
+/// root is in bounds only while it still holds the object that was vetted.
 #[derive(Debug, Clone)]
 pub struct FsGuard {
     readable: Vec<VettedPath>,
@@ -25,11 +22,10 @@ pub struct FsGuard {
 }
 
 impl FsGuard {
-    /// Sort `policy`'s grants into the two lists a check compares against.
-    ///
-    /// No I/O: a grant is already resolved and already pinned, so resolving it again here
-    /// would answer with whatever its spelling names now. Which axis feeds which list is
-    /// [`Axis::grants`](crate::Axis::grants)'s to say — no `executable` list, nothing
+    /// Sort `policy`'s grants into the two lists a check compares against. No I/O: a grant is
+    /// already resolved and pinned, so resolving it again here would answer with whatever its
+    /// spelling names now. Which axis feeds which list is
+    /// [`Axis::grants`](crate::Axis::grants)'s to say — no `executable` list, since nothing
     /// in-process execs, but execute feeds `readable`.
     pub fn new(policy: &SandboxPolicy) -> Self {
         let mut readable = Vec::new();
@@ -54,7 +50,6 @@ impl FsGuard {
     }
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
-    ///
     /// Records a refusal and nothing else — the `allowed` belongs to the access that follows,
     /// so prefer [`open_read`](FsGuard::open_read) or [`read_dir`](FsGuard::read_dir).
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
@@ -68,16 +63,14 @@ impl FsGuard {
         }
     }
 
-    /// Report why a path could not be resolved, but only inside a granted area.
-    ///
-    /// The nearest ancestor that does resolve decides, and must speak for the path below it
-    /// (`reaches_plainly`): inside a confirmed root the caller could already enumerate the
-    /// area, so "no such file" is honest. Anywhere else `deny` answers, present and absent
-    /// alike. The root is measured first, before any reason the leaf would name — see
-    /// `context/decision-enforcement-seam.md`.
-    ///
-    /// `failed` is the component resolution tripped on, the parent for a write, and is named
-    /// only on the granted path, where it is inside the roots already.
+    /// Report why a path could not be resolved, but only inside a granted area. The nearest
+    /// ancestor that does resolve decides, and must speak for the path below it
+    /// (`reaches_plainly`): inside a confirmed root the caller could already enumerate the area,
+    /// so "no such file" is honest; anywhere else `deny` answers, present and absent alike. The
+    /// root is measured first, before any reason the leaf would name
+    /// (`context/decision-enforcement-seam.md`). `failed` is the component resolution tripped
+    /// on — the parent for a write — and is named only on the granted path, already inside the
+    /// roots.
     fn conceal_unless_granted(
         &self,
         requested: &Path,
@@ -121,12 +114,11 @@ impl FsGuard {
         }
     }
 
-    /// Open `path` for reading, refusing anything the policy does not allow.
-    ///
-    /// Prefer this to [`check_read`](FsGuard::check_read) wherever the caller will open the
-    /// file anyway: returning a path means re-resolving it, and in between the leaf can be
-    /// swapped for a symlink out of the roots. `O_NOFOLLOW` fails such an open with `ELOOP`,
-    /// but guards the final component only; a swapped parent needs `openat`-chain resolution.
+    /// Open `path` for reading, refusing anything the policy does not allow. Prefer this to
+    /// [`check_read`](FsGuard::check_read) wherever the caller will open the file anyway:
+    /// returning a path means re-resolving it, and in between the leaf can be swapped for a
+    /// symlink out of the roots. `O_NOFOLLOW` fails such an open with `ELOOP`, but guards the
+    /// final component only; a swapped parent needs `openat`-chain resolution.
     pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
         let resolved = self.check_read(path)?;
         open(
@@ -137,12 +129,11 @@ impl FsGuard {
         )
     }
 
-    /// Read the entries of `path`, refusing anything the policy does not allow.
-    ///
-    /// Here and not in the caller because the audit target is this crate's alone. It closes
-    /// no check-to-use window that [`check_read`](FsGuard::check_read) leaves open — a
-    /// directory read has no `O_NOFOLLOW` handle form — only the gap to the trail. The outer
-    /// result is the policy's, the inner the host's; the caller reports them apart.
+    /// Read the entries of `path`, refusing anything the policy does not allow. Here and not
+    /// in the caller because the audit target is this crate's alone. It closes no
+    /// check-to-use window that [`check_read`](FsGuard::check_read) leaves open — a directory
+    /// read has no `O_NOFOLLOW` handle form — only the gap to the trail. The outer result is
+    /// the policy's, the inner the host's; the caller reports them apart.
     pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<std::fs::ReadDir>, SandboxError> {
         let resolved = self.check_read(path)?;
 
@@ -169,18 +160,15 @@ impl FsGuard {
         )
     }
 
-    /// Every regular file beneath `root` that this guard permits reading.
-    ///
-    /// A symlink inside a readable directory can point anywhere, so a symlinked directory is
-    /// never descended — which also makes the walk cycle-safe — and a symlinked file is
-    /// included only if it resolves inside an allowed root. Regular files only; a FIFO with
-    /// no writer would block forever. Sorted, `read_dir` order being filesystem-dependent.
-    ///
-    /// `max_files` bounds the walk and not the result: it stops at the `max_files + 1`th
-    /// file, where trimming afterwards would bound neither time nor memory.
-    ///
-    /// The widest confirmation window of the six tools: `root` is confirmed once for the whole
-    /// walk, one record covering it, and re-confirming per directory would refuse mid-result.
+    /// Every regular file beneath `root` that this guard permits reading. A symlink inside a
+    /// readable directory can point anywhere, so a symlinked directory is never descended —
+    /// which also makes the walk cycle-safe — and a symlinked file is included only if it
+    /// resolves inside an allowed root. Regular files only, since a FIFO with no writer would
+    /// block forever; sorted, `read_dir` order being filesystem-dependent. `max_files` bounds
+    /// the walk, not the result: it stops at the `max_files + 1`th file,
+    /// where trimming afterwards would bound neither time nor memory. The widest confirmation
+    /// window of the six tools: `root` is confirmed once for the whole walk, one record
+    /// covering it, and re-confirming per directory would refuse mid-result.
     pub fn walk_readable(
         &self,
         root: &Path,
@@ -208,9 +196,9 @@ impl FsGuard {
                     continue;
                 };
 
-                // `dir` is canonical and `read_dir` never yields `.` or `..`, so a
-                // non-symlink child is canonical too — hence no `canonicalize` per entry,
-                // and only a symlink can leave the root.
+                // `dir` is canonical and `read_dir` never yields `.` or `..`, so a non-symlink
+                // child is canonical too — hence no `canonicalize` per entry, and only a
+                // symlink can leave the root.
                 if file_type.is_symlink() {
                     let link = entry.path();
                     // Not through `check_read`, which would emit an `allowed` record per
@@ -268,11 +256,10 @@ impl FsGuard {
         Ok(ReadableWalk { files, truncated })
     }
 
-    /// Permit writing `path`, returning its resolved location.
-    ///
-    /// The target need not exist, writes creating files; only the parent is resolved, with
-    /// the filename appended, so `..` is collapsed first either way. Records a refusal and
-    /// nothing else; prefer [`open_write`](FsGuard::open_write).
+    /// Permit writing `path`, returning its resolved location. The target need not exist,
+    /// writes creating files; only the parent is resolved, with the filename appended, so
+    /// `..` is collapsed first either way. Records a refusal and nothing else; prefer
+    /// [`open_write`](FsGuard::open_write).
     pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError> {
         let resolved = match path.canonicalize() {
             Ok(existing) => existing,
@@ -288,9 +275,9 @@ impl FsGuard {
                     return Err(deny(Some(moved), path, Access::Write));
                 }
 
-                // `canonicalize` fails the same way on a nonexistent path and on a dangling
-                // symlink, and resolving only the parent would approve the link, whose
-                // write then follows it out of the root.
+                // `canonicalize` fails the same way on a nonexistent path and a dangling
+                // symlink; resolving only the parent would approve the link, whose write
+                // then follows it out of the root.
                 if path.symlink_metadata().is_ok_and(|m| m.is_symlink()) {
                     crate::AuditEvent::denied(
                         Access::Write.operation(),
@@ -346,12 +333,11 @@ const ROOT_REPLACED: &str = "granted root is not the object it was vetted on";
 /// an operator counting refusals reads as a traversal attempt.
 const INCOMPLETE: &str = "access did not complete";
 
-/// Whether resolution failed because the name denotes no file, rather than because something
-/// refused the lookup.
-///
-/// A wrong name is the caller's to fix; EACCES and the `ELOOP` of a swapped leaf are not, and
-/// stay refusals. ENOTDIR and ENAMETOOLONG are as much a wrong name as ENOENT (#180). By
-/// errno because `ErrorKind` has no stable spelling for ENAMETOOLONG.
+/// Whether resolution failed because the name denotes no file, rather than because
+/// something refused the lookup. A wrong name is the caller's to fix; EACCES and the
+/// `ELOOP` of a swapped leaf are not, and stay refusals. ENOTDIR and ENAMETOOLONG are as
+/// much a wrong name as ENOENT (#180). By errno because `ErrorKind` has no stable spelling
+/// for ENAMETOOLONG.
 fn names_nothing(source: &std::io::Error) -> bool {
     matches!(
         source.raw_os_error(),
@@ -359,17 +345,15 @@ fn names_nothing(source: &std::io::Error) -> bool {
     )
 }
 
-/// The same question for a directory read, which ENOTDIR answers the other way.
-///
-/// In a lookup that errno is a component that turned out to be a regular file, so the name
-/// denotes nothing; on an approved `read_dir`'s leaf it is the leaf, which `check_read` had
-/// just resolved — there, and not a directory.
+/// The same question for a directory read, which ENOTDIR answers the other way. In a
+/// lookup that errno is a component that turned out to be a regular file, so the name
+/// denotes nothing; on an approved `read_dir`'s leaf it is the leaf, which `check_read`
+/// had just resolved — there, and not a directory.
 fn listed_nothing(source: &std::io::Error) -> bool {
     names_nothing(source) && source.raw_os_error() != Some(libc::ENOTDIR)
 }
 
 /// Whether `requested` reaches past `ancestor` by components that are what they look like.
-///
 /// Only `ancestor` resolved, so it speaks for `requested` only this far. A symlink below it
 /// points anywhere: ENOENT is then its *target's* absence, and a dangling link planted in a
 /// granted root would answer "does this host path exist" for any target. A `..` leaks
@@ -384,10 +368,9 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
             .all(|step| !step.symlink_metadata().is_ok_and(|at| at.is_symlink()))
 }
 
-/// Where the deepest part of `requested` that resolves sits, and which part that was.
-///
-/// A path that does not resolve is judged by its nearest resolving ancestor, so the root under
-/// it is measured here and before any reason the leaf would name.
+/// Where the deepest part of `requested` that resolves sits, and which part that was. A
+/// path that does not resolve is judged by its nearest resolving ancestor, so the root
+/// under it is measured here and before any reason the leaf would name.
 fn nearest_area<'a>(requested: &'a Path, roots: &[VettedPath]) -> (Option<&'a Path>, Containment) {
     let Some((ancestor, existing)) = requested
         .ancestors()
@@ -416,12 +399,11 @@ struct Replacement {
     opened: ObjectId,
 }
 
-/// The root the requested spelling names, when it no longer holds the object it was vetted on.
-///
-/// Lexical, and not by nearest resolving ancestor: a measurement taken after resolution is one
-/// the substitute chose. Two forms, because neither covers the other — `starts_with` compares
-/// whole components, so `root/link/../..` names the root while collapsing out of it, and
-/// `other/../root` matches only once collapsed. See `context/decision-enforcement-seam.md`.
+/// The root the requested spelling names, when it no longer holds the object it was vetted
+/// on. Lexical, not by nearest resolving ancestor, since a measurement after resolution is
+/// one the substitute chose. Two forms cover what one cannot: `starts_with` compares whole
+/// components, so `root/link/../..` names the root while collapsing out of it, while
+/// `other/../root` matches only once collapsed (`context/decision-enforcement-seam.md`).
 fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
     let collapsed = collapsed(requested).filter(|form| form != requested);
 
@@ -434,11 +416,10 @@ fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
         })
 }
 
-/// `requested` made absolute with `.` and `..` resolved away, without touching the filesystem.
-///
-/// Not a `canonicalize` and not equivalent to one: a `..` above a symlink collapses to the
-/// link's parent here and to its target's parent in the kernel — hence one of two forms tested,
-/// not a replacement for the spelling. `None` where there is no cwd to make `requested` absolute.
+/// `requested` made absolute with `.` and `..` resolved away, without touching the
+/// filesystem. Not a `canonicalize`: a `..` above a symlink collapses to the link's parent
+/// here, and to its target's parent in the kernel, hence one of two forms tested, not a
+/// replacement for the spelling. `None` where there is no cwd to make `requested` absolute.
 fn collapsed(requested: &Path) -> Option<PathBuf> {
     let absolute = match requested.is_absolute() {
         true => requested.to_path_buf(),
@@ -460,11 +441,10 @@ fn collapsed(requested: &Path) -> Option<PathBuf> {
 }
 
 /// Find the root that covers `resolved`, confirming each candidate's object as it goes.
-///
-/// `Path::starts_with` compares whole components and not string prefixes, so `/work-secrets`
-/// does not match the root `/work`. The first root both lexical and confirmed wins: nested and
-/// sibling grants overlap, so a moved root must not deny a path another root still covers. One
-/// that cannot be measured accuses nothing and grants nothing.
+/// `Path::starts_with` compares whole components, not string prefixes, so `/work-secrets`
+/// does not match the root `/work`. The first root both lexical and confirmed wins: nested
+/// and sibling grants overlap, so a moved root must not deny a path another root still
+/// covers. One that cannot be measured accuses nothing and grants nothing.
 fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
     let mut moved = None;
 
@@ -488,10 +468,9 @@ fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
     Containment::Outside(moved)
 }
 
-/// Refuse `requested`, recording which of the two reasons the gate decided on.
-///
-/// One function for both, so a path under a substituted root answers alike whether or not it
-/// exists — the absent and the present reading apart is a one-bit oracle.
+/// Refuse `requested`, recording which of the two reasons the gate decided on. One
+/// function for both, so a path under a substituted root answers alike whether or not it
+/// exists — present and absent reading apart would be a one-bit oracle.
 fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> SandboxError {
     let subject = requested.display().to_string();
 
@@ -516,13 +495,11 @@ fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> Sandbox
     }
 }
 
-/// Allow `resolved` only if it sits inside one of `roots`, recording a refusal.
-///
-/// Only a refusal: passing the gate is not yet an access, so the `allowed` belongs to the
-/// entry point that performs one, and a bare check that succeeds records nothing (#182).
-///
-/// `roots` has to be the set `access` names: a denial reports the access, so handing it the
-/// other axis's roots would record a true verdict with a false reason.
+/// Allow `resolved` only if it sits inside one of `roots`, recording a refusal. Only a
+/// refusal: passing the gate is not yet an access, so the `allowed` belongs to the entry
+/// point that performs one, and a bare check that succeeds records nothing (#182). `roots`
+/// has to be the set `access` names: a denial reports the access, so handing it the other
+/// axis's roots would record a true verdict with a false reason.
 fn permit(
     resolved: PathBuf,
     roots: &[VettedPath],
@@ -544,7 +521,6 @@ fn permit(
 }
 
 /// Record what an approved path's access actually did, and nothing about the verdict.
-///
 /// Which errnos count as absence is the caller's — `names_nothing` for a path lookup,
 /// `listed_nothing` for a directory read — so the record and the error the caller returns
 /// cannot disagree about whether the path was there.
@@ -566,10 +542,9 @@ fn record<T>(
     outcome
 }
 
-/// The `reason=` an access on an approved path carries when it did not happen.
-///
-/// `ELOOP` is the leaf swapped since the check, the one post-gate failure that really is a
-/// resolution failure; the rest found the path and stopped there.
+/// The `reason=` an access on an approved path carries when it did not happen: `ELOOP` is
+/// the leaf swapped since the check, the one post-gate failure that really is a resolution
+/// failure, the rest having found the path and stopped there.
 fn reason(source: &std::io::Error) -> &'static str {
     if source.raw_os_error() == Some(libc::ELOOP) {
         UNRESOLVABLE
@@ -578,11 +553,10 @@ fn reason(source: &std::io::Error) -> &'static str {
     }
 }
 
-/// Open an already-approved path without following a symlink at the leaf, which — the path
-/// having been canonical when checked — was swapped in after the check.
-///
-/// The path is proven inside a root by now, so there is nothing left to conceal: a file
-/// deleted since the check is an absence, while `ELOOP` from `O_NOFOLLOW` is the swap.
+/// Open an already-approved path without following a symlink at the leaf, which — the
+/// path having been canonical when checked — was swapped in after the check. The path is
+/// proven inside a root by now, so there is nothing left to conceal: a file deleted since
+/// the check is an absence, while `ELOOP` from `O_NOFOLLOW` is the swap.
 fn open(
     options: &mut std::fs::OpenOptions,
     resolved: &Path,
@@ -606,9 +580,8 @@ fn classify(source: std::io::Error, requested: &Path) -> SandboxError {
     }
 }
 
-/// The files a walk returned, and whether it stopped before the tree ended.
-///
-/// A bool and not a count: the walk stops at the cap, so it never learns how much was left.
+/// The files a walk returned, and whether it stopped before the tree ended. A bool and
+/// not a count: the walk stops at the cap, so it never learns how much was left.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadableWalk {
     /// Readable regular files beneath the root, sorted.

@@ -1,7 +1,6 @@
-//! Public contract of [`FsGuard`]: nothing outside an allowed root is reachable.
-//!
-//! Through the public API only — the same surface a consumer has — so a pass is evidence
-//! the boundary holds, not that the test reached internals no caller can.
+//! Public contract of [`FsGuard`]: nothing outside an allowed root is reachable. Through
+//! the public API only — the same surface a consumer has — so a pass is evidence the
+//! boundary holds, not that the test reached internals no caller can.
 // `mkfifo` is spawned to build a test fixture: a named pipe cannot be created through std.
 // The workspace ban on `Command::new` exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
@@ -734,10 +733,9 @@ fn every_axis_grants_exactly_what_the_table_says() {
 
 /// `FsGuard::new` returns `Self` rather than a `Result` because a root that has gone is
 /// already denied by the check: nothing resolves inside a path that does not resolve, so
-/// there is nothing for construction to refuse.
-///
-/// The root is granted while it exists and removed afterwards, because a grant is pinned to
-/// the object it named and so cannot be built over a path that never existed (#212).
+/// there is nothing for construction to refuse. The root is granted while it exists and
+/// removed afterwards, because a grant is pinned to the object it named and so cannot be
+/// built over a path that never existed (#212).
 #[test]
 fn an_unresolvable_root_grants_nothing() {
     let root = tempfile::tempdir().unwrap();

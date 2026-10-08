@@ -20,19 +20,17 @@ const LOOPBACK_NAMES: [&str; 3] = ["localhost", "ip6-localhost", "ip6-loopback"]
 const USERNS_RESTRICTION: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
 
 /// Whether this host forbids the mounts, in which case the six tests below assert nothing.
-///
-/// Reads the sysctl rather than catching the `EACCES` it produces: an errno guard would skip on
-/// a genuine regression too, and the regression nobody sees is the one that unbounds every
-/// name. Set, the kernel lets `unshare` succeed and then denies `CAP_SYS_ADMIN` inside the new
-/// namespace, so `helper::resolver` refuses the run. The same host property
-/// `enforcement.rs`'s `bounding_set_is_droppable` reads, and with the same root exemption.
+/// Reads the sysctl rather than catching the `EACCES` it produces, since an errno guard
+/// would skip on a genuine regression too — the one that unbounds every name silently. Set,
+/// the kernel lets `unshare` succeed and then denies `CAP_SYS_ADMIN` inside the new
+/// namespace, so `helper::resolver` refuses the run. Same host property as
+/// `enforcement.rs`'s `bounding_set_is_droppable`, same root exemption.
 fn host_forbids_the_mounts() -> bool {
     use std::os::unix::fs::MetadataExt as _;
 
-    // The restriction covers *unprivileged* userns only, so a run as root holds
-    // `CAP_SYS_ADMIN` in the new namespace whatever the sysctl says — and skipping under
-    // `sudo cargo test` would lose the coverage on the one host that has it. Off
-    // `/proc/self`'s owner because `libc::geteuid` is `unsafe` and this crate forbids that.
+    // The restriction covers *unprivileged* userns only, so root holds `CAP_SYS_ADMIN` in the
+    // new namespace regardless — skipping under `sudo cargo test` would lose coverage on the
+    // one host that has it. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
     let root = std::fs::metadata("/proc/self")
         .map(|proc_self| proc_self.uid() == 0)
         .unwrap_or(false);
@@ -52,11 +50,9 @@ fn host_forbids_the_mounts() -> bool {
     restricted
 }
 
-/// A name this host resolves with no nameserver, and a listener on the address it resolves to.
-///
-/// Derived and not written down, the one such name on a developer machine being the machine's
-/// own hostname: hard-coding either the name or its address passes on one host and fails on
-/// the next.
+/// A name this host resolves with no nameserver, and a listener on the address it resolves
+/// to. Derived, not written down — the one such name on a developer machine is the
+/// machine's own hostname, and hard-coding either would pass on one host and fail on the next.
 fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::JoinHandle<()>) {
     let hosts = std::fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
 
@@ -240,13 +236,12 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
     }
 }
 
-/// What `ruleset::opened::open_grant` compares a granted path against. A bind whose source had
-/// been unlinked reads back from `/proc/self/fd` with `" (deleted)"` appended, so every grant
-/// reaching one of these three files would be refused.
-///
-/// `/etc` and not `/etc/hosts`: a grant naming a bound file exactly is refused for its pin,
-/// which is `SandboxPolicy::grant_bound_by_resolver`, and `/etc`'s own inode is what a grant
-/// above the bind is pinned to.
+/// What `ruleset::opened::open_grant` compares a granted path against. A bind whose source
+/// had been unlinked reads back from `/proc/self/fd` with `" (deleted)"` appended, so
+/// every grant reaching one of these three files would be refused. `/etc` and not
+/// `/etc/hosts`: a grant naming a bound file exactly is refused for its pin
+/// (`SandboxPolicy::grant_bound_by_resolver`), and `/etc`'s own inode is what a grant above
+/// the bind is pinned to.
 #[test]
 fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
     if host_forbids_the_mounts() {
@@ -370,13 +365,12 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
     );
 }
 
-/// The namespace is the command's own. A run that mutated the host's `/etc` would bound this
-/// command's names by changing every other process's.
-///
-/// The one test here that runs its body where the mounts are forbidden, so both branches have
-/// to assert: an early return would report `ok` having checked only that a refused run changes
-/// nothing, which a deleted feature also does. The restricted branch pins the refusal instead,
-/// and is the only assertion anywhere on `helper::resolver`'s `EACCES` path.
+/// The namespace is the command's own: a run that mutated the host's `/etc` would bound
+/// this command's names by changing every other process's. The one test here that runs its
+/// body where the mounts are forbidden, so both branches have to assert — an early return
+/// would report `ok` having checked only that a refused run changes nothing, which a
+/// deleted feature also does. The restricted branch pins the refusal instead, the only
+/// assertion anywhere on `helper::resolver`'s `EACCES` path.
 #[test]
 fn the_host_etc_survives_a_bounded_run() {
     let (name, address, accepting) = local_listener("UNUSED");

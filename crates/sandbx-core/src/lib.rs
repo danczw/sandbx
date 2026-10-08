@@ -1,7 +1,6 @@
 //! Sandboxed execution for sandbx, and the only place any crate's `src/` may spawn a
-//! subprocess — `spawn::command`, per the `Command::new` ban in `clippy.toml`.
-//!
-//! Two default-deny layers (see [`SandboxPolicy`]): [`FsGuard`] checks paths in-process, for
+//! subprocess (`spawn::command`, per the `Command::new` ban in `clippy.toml`). Two
+//! default-deny layers (see [`SandboxPolicy`]): [`FsGuard`] checks paths in-process, for
 //! Rust tools that never spawn and so are never seen by the kernel; Landlock, seccomp and
 //! namespaces restrict children, applied by a re-exec'd helper to itself so sandbx is not.
 

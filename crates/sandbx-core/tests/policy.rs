@@ -5,10 +5,9 @@ use std::path::{Path, PathBuf};
 
 use sandbx_core::{NetworkPolicy, SandboxPolicy, VettedPath};
 
-/// `path`, pinned to the object it names.
-///
-/// A grant carries the object the harness measured (#212), so a policy test grants somewhere
-/// that exists rather than a spelling no process has to be able to open.
+/// `path`, pinned to the object it names. A grant carries the object the harness measured
+/// (#212), so a policy test grants somewhere that exists rather than a spelling no process
+/// has to be able to open.
 fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
@@ -68,10 +67,9 @@ fn default_policy_denies_everything() {
     );
 }
 
-/// A command cannot start without its interpreter, loader and shared libraries.
-///
-/// Each as it resolves, a merged-`/usr` host spelling `/bin` as a symlink: the grant has to
-/// name the directory the helper opens, which is what it would refuse otherwise.
+/// A command cannot start without its interpreter, loader and shared libraries. Each as it
+/// resolves, a merged-`/usr` host spelling `/bin` as a symlink: the grant has to name the
+/// directory the helper opens, which is what it would refuse otherwise.
 #[test]
 fn system_executables_grants_what_a_command_needs() {
     let policy = SandboxPolicy::default().allow_system_executables();

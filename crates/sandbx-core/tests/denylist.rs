@@ -1,11 +1,10 @@
 //! Does the seccomp denylist still contain what the security docs claim?
-//!
 //! `enforcement_syscalls.rs` probes only four of the entries end to end, so another could
 //! leave the list with every test still passing while `SECURITY.md` went on promising it.
 //! Weaker evidence than a probe — the number is in the list the filter is built from, not
-//! refused by the kernel — and all that is available for syscalls with no safe wrapper,
-//! since `sandbx-core` forbids `unsafe`. Not behind `sandbox-integration`: it spawns
-//! nothing, so it runs where the enforcement suite cannot.
+//! refused by the kernel — but it is all that is available for syscalls with no safe
+//! wrapper. Not behind `sandbox-integration`, since it spawns nothing and runs where the
+//! enforcement suite cannot.
 #![cfg(target_os = "linux")]
 
 use sandbx_core::BLOCKED_SYSCALLS;

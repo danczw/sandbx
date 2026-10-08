@@ -1,12 +1,10 @@
-//! The channel helper-side degradations cross, from the parent's side.
-//!
-//! The re-exec'd helper installs no `tracing` subscriber, so a `Degraded` record
-//! crosses as bytes on a pipe in the helper's stdin slot and the parent emits it —
-//! hence two properties a wire round-trip cannot check: the command must not reach
-//! that pipe, and its own output must stay byte-exact. Whether a run degrades is the
-//! host's answer, so only the test holding that answer in a predicate asserts a
-//! record is present or absent. Gated whole-file, not per test: with the feature off
-//! `-D warnings` rejects the capture harness as dead code.
+//! The channel helper-side degradations cross, from the parent's side. The re-exec'd
+//! helper installs no `tracing` subscriber, so a `Degraded` record crosses as bytes on a
+//! pipe in the helper's stdin slot and the parent emits it — hence two properties a wire
+//! round-trip cannot check: the command must not reach that pipe, and its own output must
+//! stay byte-exact. Whether a run degrades is the host's answer, so only a test holding
+//! that answer in a predicate asserts a record present or absent. Gated whole-file, not
+//! per test, since `-D warnings` would reject the capture harness as dead code otherwise.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 // Every `Command::new` below spawns the sandbox helper itself; the workspace ban exists
 // to stop code executing *around* the sandbox.
@@ -97,9 +95,8 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<
 fn bounding_set_is_droppable() -> bool {
     use std::os::unix::fs::MetadataExt;
 
-    // The restriction covers *unprivileged* userns only, so a run as root holds
-    // `CAP_SETPCAP` in the new namespace whatever the sysctl says. Off `/proc/self`'s
-    // owner because `libc::geteuid` is `unsafe` and this crate forbids that.
+    // The restriction covers *unprivileged* userns only, so root holds `CAP_SETPCAP` in the
+    // new namespace regardless. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
     let root = std::fs::metadata("/proc/self")
         .map(|proc_self| proc_self.uid() == 0)
         .unwrap_or(false);
@@ -110,9 +107,8 @@ fn bounding_set_is_droppable() -> bool {
 }
 
 /// A host whose LSM strips `CAP_SETPCAP` from a fresh user namespace refuses
-/// `PR_CAPBSET_DROP` for real, which is the case `SECURITY.md` promises a `degraded`
-/// record for. Both branches assert: returning early on one would report `ok` without
-/// checking anything.
+/// `PR_CAPBSET_DROP` for real — the case `SECURITY.md` promises a `degraded` record for.
+/// Both branches assert, since returning early on one reports `ok` without checking anything.
 #[test]
 fn the_bounding_set_degrades_only_on_a_refused_drop() {
     let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
@@ -144,14 +140,13 @@ fn the_bounding_set_degrades_only_on_a_refused_drop() {
     }
 }
 
-/// Without the inner stage taking the channel off fd 0 and putting `/dev/null` there,
-/// the command inherits a writable descriptor onto sandbx's own audit trail.
-///
-/// The forged *detail* is the discriminator, not the mechanism name: a host refusing
-/// `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation on this run.
-/// The tab must stay a `printf` escape — a literal tab is an `IFS` character, so the
-/// shell would split the word and the rejoined line would be rejected for having no
-/// separator while the sandbox had in fact let it through.
+/// Without the inner stage taking the channel off fd 0 and putting `/dev/null` there, the
+/// command inherits a writable descriptor onto sandbx's own audit trail. The forged
+/// *detail* is the discriminator, not the mechanism name: a host refusing
+/// `PR_CAPBSET_DROP` records a real `capability_bounding_set` degradation on this run. The
+/// tab must stay a `printf` escape — a literal tab is an `IFS` character, so the shell
+/// would split the word and the line would be rejected for having no separator even
+/// though the sandbox let it through.
 #[test]
 fn the_command_cannot_write_the_audit_channel() {
     let (output, lines) = sandboxed(
@@ -175,9 +170,8 @@ fn the_command_cannot_write_the_audit_channel() {
 
 /// The inner stage keeps the channel across `apply` as a `F_DUPFD_CLOEXEC` duplicate; a
 /// plain `dup` would leave the command holding it. Its own test because fd 0 is
-/// `/dev/null` by the time the command runs, so the test above probes the slot and this
-/// one what survived the `exec` beside it. A range, fd 3 being the lowest the duplicate
-/// can take and not the only one.
+/// `/dev/null` by the time the command runs, so the test above probes the slot and this one
+/// what survived the `exec` beside it. A range, fd 3 being the lowest the duplicate can take.
 #[test]
 fn the_command_inherits_no_other_end_of_the_channel() {
     // Over fd 1 too: a probe that reaches stdout would have reached the channel, so the
@@ -327,8 +321,8 @@ fn the_commands_own_output_carries_no_audit_records() {
 
 /// Shape, not count: how many records a clean run produces is the host's answer. A blank
 /// mechanism is what an empty channel decoding to a record looks like, a repeated one a
-/// re-sent short write, and a second spawn record `record_reports` re-emitting on both
-/// the timeout and the ordinary path.
+/// re-sent short write, and a second spawn record `record_reports` re-emitting on both the
+/// timeout and the ordinary path.
 #[test]
 fn every_record_names_a_real_mechanism_once() {
     let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
@@ -416,12 +410,11 @@ fn a_pin_refusal_names_itself_on_the_channel() {
     );
 }
 
-/// Only the stage holding the descriptor can say what it opened, so the mismatch has to cross
-/// the channel as a refusal rather than reach the caller as a sandbox never installed (#205).
-///
-/// The fixture redirects the grant *after* vetting it, because vetting resolves: the name the
-/// policy carries is a real directory, and it is a symlink to somewhere else by the time the
-/// helper opens it.
+/// Only the stage holding the descriptor can say what it opened, so the mismatch has to
+/// cross the channel as a refusal rather than reach the caller as a sandbox never installed
+/// (#205). The fixture redirects the grant *after* vetting it, because vetting resolves: the
+/// name the policy carries is a real directory, and it is a symlink to somewhere else by
+/// the time the helper opens it.
 #[test]
 fn a_redirected_grant_names_itself_on_the_channel() {
     let dir = scratch();

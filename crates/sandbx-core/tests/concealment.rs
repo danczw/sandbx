@@ -27,10 +27,8 @@ fn probe() -> Child {
         .expect("the probe should start")
 }
 
-/// Wait for the word the probe answers its current stage with.
-///
-/// One reader for the whole run: a `BufReader` built per line would take the next word into a
-/// buffer it then drops.
+/// Wait for the word the probe answers its current stage with. One reader for the whole
+/// run: a `BufReader` built per line would take the next word into a buffer it then drops.
 fn expect_word(stdout: &mut BufReader<impl Read>, expected: &str) {
     let mut line = String::new();
     stdout

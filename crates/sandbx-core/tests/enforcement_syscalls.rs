@@ -148,7 +148,6 @@ fn memfd_create_is_denied() {
 
 /// The raw errno the kernel answered with, or `"0"` when the call succeeded — the only way
 /// this suite can probe a syscall with no safe Rust wrapper, the crate forbidding `unsafe`.
-///
 /// Pass `nr` from `libc` and never a literal: syscall numbers are per-architecture, and
 /// x86_64's `userfaultfd` number is aarch64's `signalfd`. `$!` is cleared first so a stale
 /// errno from perl's startup cannot be read back as this call's result.
