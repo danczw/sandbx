@@ -563,10 +563,8 @@ fn truncate_on_write_grant_is_permitted() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
 }
 
-/// `FsGuard` canonicalizes its roots and the helper opens what the policy carries, so a
-/// grant naming a symlink would mean one thing in-process and another in the kernel. The
-/// resolved spelling is the one both layers agree about; the link is refused, not followed
-/// (#205).
+/// The resolved spelling is the one both layers agree about; the link is refused, not
+/// followed (#205).
 ///
 /// Vetting resolves, so a `SandboxPolicy` cannot carry the link at all — the grant is forged
 /// onto argv instead, which is the only route left to it and the one the helper polices. Its
