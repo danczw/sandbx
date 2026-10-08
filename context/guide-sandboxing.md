@@ -98,12 +98,14 @@ One ABI, hard-required, or nothing:
 ```
 negotiated_abi_from(probe)  NEGOTIABLE_ABI = [V9, V8, V7, V6, V5], newest first
    │                        probe = kernel_probe in production, a closure in tests
-   ├─ handle_access(handled_access(abi)) under HardRequirement
+   ├─ handle_access(handled_access(abi)), handle_access(handled_net_access(abi))
+   │     both under HardRequirement  ◄── or the probe picks a rung apply refuses for
    │     ├─ Ok                        ──► settle on this abi
    │     ├─ Err(HandleAccesses(_))    ──► step down one rung   ◄── the only steppable error
    │     └─ Err(other)                ──► refuse
    │
-   └─ ladder exhausted  ──► refuse: "ABI 5, Linux 6.10; refusing to run unconfined"
+   └─ ladder exhausted  ──► refuse: "… requires (ABI 5, Linux 6.10); refusing to
+                                     run unconfined"
 
 restrict_self() ──► enforcement_verdict(status)
                       FullyEnforced      ──► Ok
@@ -430,7 +432,8 @@ path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 
 ## What this does NOT protect against
 
-Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
+`SECURITY.md`'s *What sandbx does not claim* is the full account. These are the
+limits that bear on the mechanisms above:
 
 - **No resource bounds on spawned processes.** A fork bomb runs unbounded for the
   length of the call; cgroups are not in place. Tool *work* is bounded — see
