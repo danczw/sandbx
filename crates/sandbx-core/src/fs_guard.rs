@@ -224,7 +224,14 @@ impl FsGuard {
                     // The reason comes off the same measurement that refused, as everywhere
                     // else: a link into a moved root is not out of bounds, and a trail
                     // calling it that hides the substitution behind the commonest refusal.
-                    if let Containment::Outside(moved) = contains(&resolved, &self.readable) {
+                    // The link's own spelling answers first, as at the other refusal sites —
+                    // inside the confirm-to-walk window the entries are the substitute's, so
+                    // a reason taken off where one resolved is a reason it chose.
+                    let placement = match moved_root(&link, &self.readable) {
+                        Some(moved) => Containment::Outside(Some(moved)),
+                        None => contains(&resolved, &self.readable),
+                    };
+                    if let Containment::Outside(moved) = placement {
                         let reason = match moved {
                             Some(_) => ROOT_REPLACED,
                             None => Access::Read.outside(),
