@@ -42,12 +42,10 @@ pub struct Transcript {
 
     /// The last figure reported for the prompt and for the output, each `None` until one is.
     ///
-    /// Separately optional because the API omits either one: collapsing an absent count
-    /// into a zero would put `0 out` on the screen for a turn that generated text, and
-    /// overwriting with the absence would take a figure already shown back off the screen.
-    /// Held per field for the same reason `wire::accumulate` holds them that way.
-    ///
-    /// Not a sum: each is one request's figure, as `TurnOutcome::usage` is.
+    /// Separately optional because the API omits either one: a zero would read as a figure,
+    /// and overwriting with the absence would take one already shown back off the screen.
+    /// Held per field as `wire::accumulate` holds them. Not a sum — each is one request's,
+    /// as `TurnOutcome::usage` is.
     tokens: (Option<u32>, Option<u32>),
 }
 
@@ -131,11 +129,9 @@ impl Transcript {
 
     /// Add one line the harness wrote, its breaks spelled rather than kept.
     ///
-    /// The view marks every row of these two kinds and not their first, so that a forged
-    /// line sitting mid-entry is marked too — which means a break here would mint a second
-    /// marked row out of whatever followed it. `gate::line` escapes for the same reason;
-    /// the note carrying a provider error does not, that message being the vendor's
-    /// string verbatim.
+    /// The view marks every row of these two kinds, so a break here would mint a second
+    /// marked row out of whatever followed it. `gate::line` escapes already; the note
+    /// wording a provider error does not, that message being the vendor's string verbatim.
     fn push(&mut self, kind: Kind, text: &str) {
         self.entries.push(Entry {
             kind,
@@ -170,15 +166,13 @@ fn printable(text: &str) -> String {
 
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
 ///
-/// The mark itself is not the whole hazard: U+FFE8 is Unicode's own confusable mapping for
-/// it, and a heavier or dashed box-drawing vertical differs by a weight an operator has
-/// nothing on screen to compare against. Each is one cell wide, so each sits where the real
-/// mark would. A denylist again, for [`invisible`]'s reason.
+/// The mark alone is not the hazard: U+FFE8 is Unicode's own confusable mapping for it, and
+/// the heavier and dashed box-drawing verticals each draw the same single cell. A denylist
+/// again, for [`invisible`]'s reason.
 ///
-/// ASCII `|` is deliberately absent: it has to survive a shell pipeline in ordinary prose,
-/// which is why the gutter is box-drawing at all. What stands against it is only that a
-/// box-drawing vertical joins across rows where a `|` leaves a gap — font-dependent, and
-/// weaker than this strip.
+/// ASCII `|` is absent: it has to survive a shell pipeline in prose, which is why the
+/// gutter is box-drawing at all. What is left against it — that a box-drawing vertical joins
+/// across rows and a `|` does not — is font-dependent and weaker than this strip.
 fn forgeable(c: char) -> bool {
     matches!(
         c,
@@ -196,11 +190,10 @@ fn forgeable(c: char) -> bool {
 ///
 /// `char::is_control` is `Cc` exactly, so U+202E and the directional isolates pass it and
 /// make a line *display* as a different line — in the same pane, and the same grammar, as
-/// the gate's account of what a tool did. Ranges because `char` has no predicate for the
-/// category, so a denylist, which a new Unicode version can outgrow silently.
+/// the gate's account of what a tool did. A denylist, `char` having no predicate for the
+/// category, so a new Unicode version can outgrow it silently.
 ///
-/// The same set as `sandbx-cli`'s `gate::invisible`, duplicated rather than shared: the
-/// two must not diverge.
+/// The same set as `sandbx-cli`'s `gate::invisible`: duplicated, and must not diverge.
 fn invisible(c: char) -> bool {
     matches!(c,
         '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
@@ -332,8 +325,7 @@ mod tests {
     }
 
     /// The counterpart to `render.rs`'s `no_part_of_the_reasoning_reaches_stdout`: both
-    /// blocks carry replay material, and a signature is opaque — rendering one is how it
-    /// ends up read, copied or scrolled back to.
+    /// blocks carry replay material, and rendering one is how it ends up copied.
     #[test]
     fn no_replayable_reasoning_block_is_ever_an_entry() {
         let blocks = [
@@ -413,9 +405,8 @@ mod tests {
         assert_eq!(printable("one\ntwo\tthree"), "one\ntwo    three");
     }
 
-    /// The gutter is what says sandbx wrote a row, so a character that draws the same cell
-    /// defeats the claim as surely as the mark itself — U+FFE8 being Unicode's own
-    /// confusable mapping for it.
+    /// A character that draws the same cell defeats the claim as surely as the mark does,
+    /// U+FFE8 being Unicode's own confusable mapping for it.
     #[test]
     fn a_character_that_draws_as_the_gutter_mark_does_not_survive_either() {
         let entries = folded(&[text("\u{ffe8} and \u{2503} and |")], false);
@@ -433,8 +424,7 @@ mod tests {
     }
 
     /// Every row of a verdict or a note is marked, so a break in one would mint a second
-    /// marked row from whatever followed it. The note holding a provider error is the one
-    /// that can carry a break: the message is the vendor's string verbatim.
+    /// marked row from whatever followed it.
     #[test]
     fn a_break_in_a_line_the_harness_wrote_is_spelled_rather_than_kept() {
         let mut transcript = Transcript::new(PROMPT, false);

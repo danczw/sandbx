@@ -25,8 +25,8 @@ impl Keys {
     /// Start reading keys on a thread of their own.
     ///
     /// The thread outlives the turn: `event::read` cannot be cancelled, so it sits in one
-    /// until the next key arrives or the process ends. It holds no state and draws nothing,
-    /// so what it outlives it cannot disturb.
+    /// until the next key or the end of the process. It holds no state and draws nothing, so
+    /// what it outlives it cannot disturb.
     pub fn listen() -> Self {
         let (sender, seen) = watch::channel(Seen::default());
         std::thread::spawn(move || read(&sender));
@@ -52,9 +52,9 @@ impl Keys {
 
     /// Resolves on the next key of any kind, for holding a finished screen.
     ///
-    /// Resolves at once on a reader that has gone — the opposite of [`stop`](Self::stop)
-    /// and for the same reason: with no key able to arrive, waiting for one would hold the
-    /// alternate screen until the process was killed.
+    /// Resolves at once on a reader that has gone — the opposite of [`stop`](Self::stop) and
+    /// for its reason: with no key able to arrive, waiting would hold the alternate screen
+    /// until the process was killed.
     pub async fn press(&mut self) {
         self.seen.mark_unchanged();
         let _ = self.seen.changed().await;
@@ -114,8 +114,8 @@ mod tests {
         assert!(interrupts(key(KeyCode::Esc, KeyModifiers::NONE)));
     }
 
-    /// A bare `c` is a keystroke, not a verdict: ending a turn on it would make the screen
-    /// unusable the moment it takes typed input.
+    /// Ending a turn on a bare `c` would make the screen unusable the moment it takes
+    /// typed input.
     #[test]
     fn an_unmodified_c_does_not() {
         assert!(!interrupts(key(KeyCode::Char('c'), KeyModifiers::NONE)));
