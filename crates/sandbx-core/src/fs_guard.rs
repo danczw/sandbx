@@ -90,18 +90,7 @@ impl FsGuard {
         roots: &[VettedPath],
         access: Access,
     ) -> SandboxError {
-        let nearest = requested
-            .ancestors()
-            .skip(1)
-            .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)));
-
-        // Measured before `reaches_plainly` is consulted, not under it: a moved root has to
-        // answer alike for every spelling beneath it, or a symlinked component refuses as
-        // out-of-bounds and an operator tallying `root_replaced` undercounts substitutions.
-        let granted_area = match &nearest {
-            Some((_, existing)) => contains(existing, roots),
-            None => Containment::Outside(None),
-        };
+        let (ancestor, granted_area) = nearest_area(requested, roots);
 
         if let Containment::Outside(moved) = granted_area {
             return deny(moved, requested, access);
@@ -109,10 +98,7 @@ impl FsGuard {
 
         // Inside a confirmed root, where the ancestor still has to speak for the path below
         // it; a symlink or a `..` in between means it does not.
-        if !nearest
-            .as_ref()
-            .is_some_and(|(ancestor, _)| reaches_plainly(requested, ancestor))
-        {
+        if !ancestor.is_some_and(|ancestor| reaches_plainly(requested, ancestor)) {
             return deny(None, requested, access);
         }
 
@@ -292,6 +278,13 @@ impl FsGuard {
                     access: Access::Write,
                 };
 
+                // The root answers first. Both reasons below are chosen by what sits at the
+                // path, so under a substituted root they report what the substitute holds
+                // instead of refusing it, and the two read apart where they must read alike.
+                if let (_, Containment::Outside(Some(moved))) = nearest_area(path, &self.writable) {
+                    return Err(deny(Some(moved), path, Access::Write));
+                }
+
                 // `canonicalize` fails the same way on a nonexistent path and on a dangling
                 // symlink, and resolving only the parent would approve the link, whose
                 // write then follows it out of the root.
@@ -386,6 +379,23 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
             .ancestors()
             .take_while(|step| *step != ancestor)
             .all(|step| !step.symlink_metadata().is_ok_and(|at| at.is_symlink()))
+}
+
+/// Where the deepest part of `requested` that resolves sits, and which part that was.
+///
+/// A path that does not resolve is judged by its nearest resolving ancestor, so the root under
+/// it is measured here rather than in each caller — and measured before any reason drawn from
+/// the leaf, which under a substituted root would be a reason the substitute chose.
+fn nearest_area<'a>(requested: &'a Path, roots: &[VettedPath]) -> (Option<&'a Path>, Containment) {
+    let Some((ancestor, existing)) = requested
+        .ancestors()
+        .skip(1)
+        .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)))
+    else {
+        return (None, Containment::Outside(None));
+    };
+
+    (Some(ancestor), contains(&existing, roots))
 }
 
 /// Where `resolved` sits relative to a set of granted roots.

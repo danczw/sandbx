@@ -873,6 +873,48 @@ fn a_substituted_root_conceals_an_absence() {
     );
 }
 
+/// A write refuses a symlinked leaf on sight, before resolving anything, so that reason has
+/// to come after the root's: chosen by what the substitute holds, it answers whether a name in
+/// a swapped-in directory is a symlink.
+#[test]
+fn a_write_to_a_moved_root_outranks_its_leaf() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::os::unix::fs::symlink("nowhere", other.join("leaf")).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(&granted)));
+    let leaf = granted.join("leaf");
+
+    // The same spelling inside the root it was granted on, where the leaf's own reason is the
+    // right one: nothing has been substituted for the guard to report instead.
+    std::os::unix::fs::symlink("nowhere", &leaf).unwrap();
+    let dangling = guard.check_write(&leaf).unwrap_err();
+    assert!(
+        matches!(dangling, SandboxError::PathNotAllowed { .. }),
+        "{dangling} is not the refusal a symlinked leaf gets inside its own root"
+    );
+
+    substitute(&granted, &other);
+
+    let moved = guard.check_write(&leaf).unwrap_err();
+    assert!(
+        matches!(moved, SandboxError::RootReplaced { .. }),
+        "{moved} reports the substitute's own leaf instead of the substitution"
+    );
+    // The pair the label must not tell apart: one name is a symlink under the substitute and
+    // the other is not there at all.
+    let absent = guard.check_write(&granted.join("absent")).unwrap_err();
+    assert_eq!(
+        moved.label(),
+        absent.label(),
+        "a name under a substituted root reads back differently for being a symlink: \
+         {moved} against {absent}"
+    );
+}
+
 /// A symlinked component is refused inside a confirmed root — the concealment rule — so the
 /// root has to be measured before the spelling is judged, or the one shape that cannot be
 /// concealed is also the one the substitution is never measured for.
