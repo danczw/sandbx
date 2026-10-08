@@ -873,6 +873,38 @@ fn a_substituted_root_conceals_an_absence() {
     );
 }
 
+/// A symlinked component is refused inside a confirmed root — the concealment rule — so the
+/// root has to be measured before the spelling is judged, or the one shape that cannot be
+/// concealed is also the one the substitution is never measured for.
+#[test]
+fn a_moved_root_refuses_alike_through_a_symlink() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    // Dangling, so resolution trips on the link itself and not on what it names.
+    std::os::unix::fs::symlink("nowhere", granted.join("link")).unwrap();
+    std::os::unix::fs::symlink("nowhere", other.join("link")).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    let through = granted.join("link").join("leaf.txt");
+
+    let concealed = guard.check_read(&through).unwrap_err();
+    assert!(
+        matches!(concealed, SandboxError::PathNotAllowed { .. }),
+        "{concealed} is not the refusal a symlinked component gets inside its own root"
+    );
+
+    substitute(&granted, &other);
+
+    let moved = guard.check_read(&through).unwrap_err();
+    assert!(
+        matches!(moved, SandboxError::RootReplaced { .. }),
+        "{moved} names the spelling and not the root that was substituted under it"
+    );
+}
+
 /// `ls`'s only route, and the one wrapper with no `O_NOFOLLOW` form to fall back on.
 #[test]
 fn a_listing_of_a_substituted_root_is_refused() {
