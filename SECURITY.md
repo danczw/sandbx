@@ -212,13 +212,12 @@ Five properties matter as much as the list:
   instead — `y` for the one call, `n` to refuse it, `a` for every later call to
   that tool — and refuses to start where there is no terminal to ask on. A
   terminal that goes away *during* a run is fail-closed and noticed: the read
-  fails rather than returning an answer, so the call being asked about and every
-  call behind it in that round are refused, nothing after them runs, no further
-  request is sent, the account of it falls back to stderr, and the process exits
-  3 rather than 0. One typed end-of-input ends the run the same way, a bare close
-  and a hangup being indistinguishable from a read. Whatever the turn did before
-  that is on stdout and in `--session`
-  ([#218](https://github.com/danczw/sandbx/issues/218)). What it
+  fails rather than returning an answer, so that call and the ones behind it in
+  the round are refused, nothing after them runs, no further request is sent, the
+  account falls back to stderr, and the process exits 3 rather than 0. A typed
+  end-of-input ends it the same way — to a read, a bare close and a hangup are
+  the same thing. What the turn did before is on stdout and in `--session`
+  ([#218](https://github.com/danczw/sandbx/issues/218)). What `--approve call`
   shows you is the arguments the model chose, cut at 512 characters: the tail of a
   longer command is not shown, and no answer to the prompt reveals it
   ([#169](https://github.com/danczw/sandbx/issues/169)). The gate narrows *which*

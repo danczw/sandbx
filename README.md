@@ -396,8 +396,8 @@ Nothing expires or redacts it — see [SECURITY.md](SECURITY.md).
 | `agent-run` exit | means |
 |---|---|
 | `0` | the model finished its answer |
-| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. A turn out of rounds is asked once more, a round that may call no tool, so stdout usually holds a summary — one blank line below whatever arrived before the cap, if anything did. stderr says when that round failed instead, and `--no-wrap-up` skips it, leaving stdout with whatever the cap cut off — nothing at all if the model opened with a tool call |
-| `3` | the terminal `--approve call` asks on could no longer be asked, so the turn ended where it was asked: that call and every call behind it in the round were refused, nothing after them ran, and no further request was sent. Whatever the turn did before that is on stdout and in `--session` |
+| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Out of rounds, the turn is asked once more in a round that may call no tool, so stdout usually holds a summary one blank line below whatever arrived before the cap; stderr says if that round failed instead. `--no-wrap-up` skips it, leaving stdout with only what arrived before the cap — nothing at all if the model opened with a tool call |
+| `3` | `--approve call` lost the terminal it asks on, so the turn ended where it was asked: that call and the ones behind it in the round were refused, nothing after them ran, and no further request was sent. What the turn did before is on stdout and in `--session` |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
 > **By default nothing asks you before an approved tool call runs.**
