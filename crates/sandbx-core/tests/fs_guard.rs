@@ -13,6 +13,13 @@ fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
+/// Put `with` at `granted`'s name: one spelling, a different real directory. `rename` over a
+/// directory needs the target gone, hence the removal first.
+fn substitute(granted: &std::path::Path, with: &std::path::Path) {
+    std::fs::remove_dir_all(granted).expect("the granted directory to go");
+    std::fs::rename(with, granted).expect("a substitution at the same name");
+}
+
 #[test]
 fn read_inside_allowed_root_is_permitted() {
     let root = tempfile::tempdir().unwrap();
@@ -749,6 +756,164 @@ fn an_unresolvable_root_grants_nothing() {
     assert!(guard.check_write(&absent.join("inside.txt")).is_err());
     // And it did not widen into a sibling that does exist.
     assert!(guard.check_read(&real).is_err());
+}
+
+/// The substitution the second half of #212 exists to refuse: a real directory moved onto a
+/// granted name, which every spelling comparison agrees with. The refusal has to carry both
+/// objects, the operator having one name and two directories to tell apart.
+#[test]
+fn a_real_directory_put_at_a_granted_name_is_refused() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
+    std::fs::write(other.join("notes.txt"), b"planted").unwrap();
+
+    let pin = vetted(&granted);
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(pin.clone()));
+    assert!(
+        guard.check_read(&granted.join("notes.txt")).is_ok(),
+        "the grant did not work before the substitution, so a refusal after it proves nothing"
+    );
+
+    let planted = vetted(&other).object();
+    substitute(&granted, &other);
+
+    let error = guard.check_read(&granted.join("notes.txt")).unwrap_err();
+    let SandboxError::RootReplaced {
+        granted: named,
+        vetted: was,
+        opened: is,
+    } = &error
+    else {
+        panic!("{error} is not the moved-root refusal");
+    };
+    assert_eq!(named, pin.path(), "the refusal named another root");
+    assert_eq!(*was, pin.object(), "the refusal lost the object it vetted");
+    assert_eq!(*is, planted, "the refusal lost the object it found");
+}
+
+/// The positive that tells an object comparison from a spelling one: `rename` moves a name
+/// and not an inode, so a root that went away and came back is the directory that was vetted.
+#[test]
+fn a_root_renamed_away_and_back_still_grants() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let aside = work.path().join("aside");
+    std::fs::create_dir(&granted).unwrap();
+    let file = granted.join("notes.txt");
+    std::fs::write(&file, b"hello").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    std::fs::rename(&granted, &aside).unwrap();
+    std::fs::rename(&aside, &granted).unwrap();
+
+    assert!(
+        guard.check_read(&file).is_ok(),
+        "the guard compared spellings, not objects: the directory never changed"
+    );
+}
+
+/// The other root set, through the arm that resolves only the parent — a write names a file
+/// that need not exist, so the root is confirmed on the parent and not on the target.
+#[test]
+fn a_write_to_a_substituted_root_is_refused() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(&granted)));
+    assert!(guard.check_write(&granted.join("new.txt")).is_ok());
+
+    substitute(&granted, &other);
+
+    let error = guard.check_write(&granted.join("new.txt")).unwrap_err();
+    assert!(
+        matches!(error, SandboxError::RootReplaced { .. }),
+        "{error} is not the moved-root refusal"
+    );
+}
+
+/// Both answers come from one function, so the pair cannot become a one-bit oracle for what
+/// the substituted directory holds: before the swap the absence is named, after it neither
+/// the present name nor the missing one is.
+#[test]
+fn a_substituted_root_conceals_an_absence() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(other.join("present.txt"), b"planted").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    let absent = guard.check_read(&granted.join("present.txt")).unwrap_err();
+    assert!(
+        matches!(absent, SandboxError::NotFound { .. }),
+        "{absent} is not the absence a granted root reports plainly"
+    );
+
+    substitute(&granted, &other);
+
+    let present = guard.check_read(&granted.join("present.txt")).unwrap_err();
+    let missing = guard.check_read(&granted.join("missing.txt")).unwrap_err();
+    assert_eq!(
+        present.label(),
+        missing.label(),
+        "a name under a substituted root reads back differently for being there: \
+         {present} against {missing}"
+    );
+    assert!(
+        matches!(present, SandboxError::RootReplaced { .. }),
+        "{present} is not the moved-root refusal"
+    );
+}
+
+/// `ls`'s only route, and the one wrapper with no `O_NOFOLLOW` form to fall back on.
+#[test]
+fn a_listing_of_a_substituted_root_is_refused() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    assert!(guard.read_dir(&granted).is_ok());
+
+    substitute(&granted, &other);
+
+    let error = guard.read_dir(&granted).expect_err("a refused listing");
+    assert!(
+        matches!(error, SandboxError::RootReplaced { .. }),
+        "{error} is not the moved-root refusal"
+    );
+}
+
+/// `grep` and `find`, whose root the walk confirms once for the whole traversal.
+#[test]
+fn a_walk_of_a_substituted_root_is_refused() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(other.join("planted.txt"), b"planted").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    assert!(guard.walk_readable(&granted, 10).is_ok());
+
+    substitute(&granted, &other);
+
+    let error = guard.walk_readable(&granted, 10).unwrap_err();
+    assert!(
+        matches!(error, SandboxError::RootReplaced { .. }),
+        "{error} is not the moved-root refusal"
+    );
 }
 
 /// A guard that resolved its own roots followed this link and granted its target, so the

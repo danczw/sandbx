@@ -3,9 +3,12 @@
 //! Rules are opened in the helper and the policy is judged in the harness, so a `rename(2)` in
 //! between can put one real directory where another was vetted — identical spelling, so the
 //! readback in `helper/ruleset/opened.rs` agrees and only the object tells the two apart (#212).
+//!
+//! `FsGuard` asks the same question of its own roots, per access, so the measurement both
+//! layers compare lives here once.
 
 use std::os::fd::AsFd;
-use std::os::unix::fs::MetadataExt as _;
+use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
 
 use crate::SandboxError;
@@ -129,6 +132,42 @@ impl VettedPath {
     pub fn object(&self) -> ObjectId {
         self.object
     }
+
+    /// Whether the path still names the object it was vetted on, measured now.
+    ///
+    /// `O_PATH`, so the open is a lookup and not an access: it needs no permission on the
+    /// object and reads nothing. `fstat` on the descriptor rather than a second walk of the
+    /// path, so the two steps cannot resolve to different objects. No `O_NOFOLLOW` — a
+    /// spelling that has become a symlink names a different object *through* it, which is
+    /// this function's answer and not an error.
+    pub(crate) fn confirm(&self) -> Confirmation {
+        let Ok(opened) = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_PATH | libc::O_CLOEXEC)
+            .open(&self.path)
+        else {
+            return Confirmation::Unmeasurable;
+        };
+
+        match ObjectId::of_fd(&opened) {
+            Ok(object) if object == self.object => Confirmation::Vetted,
+            Ok(object) => Confirmation::Replaced(object),
+            Err(_) => Confirmation::Unmeasurable,
+        }
+    }
+}
+
+/// What [`VettedPath::confirm`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Confirmation {
+    /// The object the path was vetted on.
+    Vetted,
+    /// Some other object, under the same spelling.
+    Replaced(ObjectId),
+    /// Nothing to compare: the path names no object now, or this kernel would not say which.
+    /// Distinct from [`Replaced`](Self::Replaced), which accuses a substitution that a
+    /// vanished path has not made.
+    Unmeasurable,
 }
 
 impl AsRef<Path> for VettedPath {
@@ -245,6 +284,60 @@ mod tests {
             ObjectId::of_fd(&opened).expect("a descriptor on an open directory"),
             vetted.object(),
             "the path and the descriptor on it named different objects"
+        );
+    }
+
+    /// The positive the other two are read against: a grant nobody touched confirms, so a
+    /// guard built on this cannot be refusing every access for its own reasons.
+    #[test]
+    fn confirming_a_path_that_did_not_move() {
+        let work = tempfile::tempdir().expect("a temporary directory");
+        let vetted = VettedPath::vet(work.path()).expect("a temporary directory to vet");
+
+        assert_eq!(
+            vetted.confirm(),
+            Confirmation::Vetted,
+            "an untouched grant did not confirm as the object it was vetted on"
+        );
+    }
+
+    /// A refusal has to name what it found, not only that it found something else: the
+    /// operator reading it has one name and two objects to tell apart.
+    #[test]
+    fn confirming_a_renamed_over_path_names_it() {
+        let work = tempfile::tempdir().expect("a temporary directory");
+        let root = work.path().canonicalize().expect("a resolved directory");
+        let granted = root.join("granted");
+        let other = root.join("other");
+        std::fs::create_dir(&granted).expect("the directory to vet");
+        std::fs::create_dir(&other).expect("the directory to substitute");
+
+        let vetted = VettedPath::vet(&granted).expect("a directory that exists");
+        let substitute = VettedPath::vet(&other).expect("the directory to substitute");
+        std::fs::rename(&other, &granted).expect("a substitution at the same name");
+
+        assert_eq!(
+            vetted.confirm(),
+            Confirmation::Replaced(substitute.object()),
+            "the substitution was not reported as the object that is there now"
+        );
+    }
+
+    /// Not [`Confirmation::Replaced`]: a path that names nothing has substituted nothing, and
+    /// a caller that treated the two alike would accuse a removed grant of a swap.
+    #[test]
+    fn confirming_a_path_that_is_gone() {
+        let work = tempfile::tempdir().expect("a temporary directory");
+        let granted = work.path().join("granted");
+        std::fs::create_dir(&granted).expect("the directory to vet");
+
+        let vetted = VettedPath::vet(&granted).expect("a directory that exists");
+        std::fs::remove_dir(&granted).expect("the grant to be removed under it");
+
+        assert_eq!(
+            vetted.confirm(),
+            Confirmation::Unmeasurable,
+            "a grant that is gone was reported as one that moved"
         );
     }
 }

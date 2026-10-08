@@ -3,10 +3,14 @@
 //! Over the 400-line budget on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
 //! `decision=` names the access, not the verdict; see `context/guide-logging.md`.
+//!
+//! A root is confirmed against its grant's pin per access, not once at construction, so the
+//! window is the two syscalls between the confirmation and the open.
 
 use std::path::{Path, PathBuf};
 
-use crate::{Access, SandboxError, SandboxPolicy, VettedPath};
+use crate::policy::Confirmation;
+use crate::{Access, ObjectId, SandboxError, SandboxPolicy, VettedPath};
 
 /// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them.
 ///
@@ -68,9 +72,10 @@ impl FsGuard {
     /// Report why a path could not be resolved, but only inside a granted area.
     ///
     /// The nearest ancestor that does resolve decides, and must speak for the path below it
-    /// (`reaches_plainly`): inside an allowed root the caller could already enumerate the
-    /// area, so "no such file" is honest. Anywhere else the refusal is indistinguishable from
-    /// any other — and so is its record, which stays `denied`.
+    /// (`reaches_plainly`): inside a confirmed root the caller could already enumerate the
+    /// area, so "no such file" is honest. Anywhere else `deny` answers, so a name under a
+    /// root that has moved tells the caller only that it moved, whether the name is there or
+    /// not — and the record stays `denied` either way.
     ///
     /// `failed` is the component resolution tripped on, the parent for a write, and is named
     /// only on the granted path, where it is inside the roots already.
@@ -82,23 +87,23 @@ impl FsGuard {
         roots: &[VettedPath],
         access: Access,
     ) -> SandboxError {
-        let grants_area = requested
+        let nearest = requested
             .ancestors()
             .skip(1)
-            .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)))
-            .is_some_and(|(ancestor, existing)| {
-                within(&existing, roots) && reaches_plainly(requested, ancestor)
-            });
+            .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)));
 
-        let subject = requested.display().to_string();
-        if !grants_area {
-            crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
-            return SandboxError::PathNotAllowed {
-                requested: requested.to_path_buf(),
-                access,
-            };
+        let granted_area = match nearest {
+            Some((ancestor, existing)) if reaches_plainly(requested, ancestor) => {
+                contains(&existing, roots)
+            }
+            _ => Containment::Outside(None),
+        };
+
+        if let Containment::Outside(moved) = granted_area {
+            return deny(moved, requested, access);
         }
 
+        let subject = requested.display().to_string();
         let failed = failed.to_path_buf();
         if names_nothing(&source) {
             crate::AuditEvent::absent(access.operation(), &subject).emit();
@@ -172,6 +177,10 @@ impl FsGuard {
     ///
     /// `max_files` bounds the walk and not the result: it stops at the `max_files + 1`th
     /// file, where trimming afterwards would bound neither time nor memory.
+    ///
+    /// The widest confirmation window of the six tools: `root` is confirmed once, for the
+    /// whole walk, since one record covers the walk and re-confirming per directory would
+    /// have to refuse mid-result.
     pub fn walk_readable(
         &self,
         root: &Path,
@@ -312,6 +321,10 @@ impl FsGuard {
 /// for a symlink. One string, so the gate and the access record it alike.
 const UNRESOLVABLE: &str = "path does not resolve";
 
+/// A granted root that no longer holds the object it was vetted on. One string, so the gate
+/// and the access record it alike.
+const ROOT_REPLACED: &str = "granted root is not the object it was vetted on";
+
 /// An access the policy permitted on a path that resolved, which the host refused anyway:
 /// a full disk, a read-only mount, a directory opened as a file. Not `UNRESOLVABLE`, which
 /// an operator counting refusals reads as a traversal attempt.
@@ -355,13 +368,89 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
             .all(|step| !step.symlink_metadata().is_ok_and(|at| at.is_symlink()))
 }
 
-/// Whether `resolved` sits inside one of `roots`.
+/// Whether `resolved` sits inside a root that is still the object it was granted on.
+///
+/// Audit-free, so the walk can reuse the rule without recording a decision per entry — at the
+/// cost of discarding which root moved, so only a caller that reports nothing may use it.
+fn within(resolved: &Path, roots: &[VettedPath]) -> bool {
+    matches!(contains(resolved, roots), Containment::Inside)
+}
+
+/// Where `resolved` sits relative to a set of granted roots.
+enum Containment {
+    /// Inside a root that still holds the object the policy granted it on.
+    Inside,
+    /// Inside no such root. A root that matched the spelling but has moved is carried out, so
+    /// the refusal can name it off this measurement: taking a second one to find out which
+    /// root moved can disagree with the first, and would report a moved root as merely out of
+    /// bounds.
+    Outside(Option<Replacement>),
+}
+
+/// A granted root whose spelling matched and whose object did not.
+struct Replacement {
+    granted: PathBuf,
+    vetted: ObjectId,
+    opened: ObjectId,
+}
+
+/// Find the root that covers `resolved`, confirming each candidate's object as it goes.
 ///
 /// `Path::starts_with` compares whole components and not string prefixes, so `/work-secrets`
-/// does not match the root `/work`. Audit-free, so the walk can reuse the rule without
-/// recording a decision per entry.
-fn within(resolved: &Path, roots: &[VettedPath]) -> bool {
-    roots.iter().any(|root| resolved.starts_with(root.path()))
+/// does not match the root `/work`. The first root that is both lexical and confirmed wins: nested and sibling grants overlap,
+/// and a moved root must not deny a path another root still covers. A root that cannot be
+/// measured at all accuses nothing and is passed over — it also grants nothing, having no
+/// confirmed object for a path to be inside of.
+fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
+    let mut moved = None;
+
+    for root in roots
+        .iter()
+        .filter(|root| resolved.starts_with(root.path()))
+    {
+        match root.confirm() {
+            Confirmation::Vetted => return Containment::Inside,
+            Confirmation::Replaced(opened) => {
+                moved.get_or_insert_with(|| Replacement {
+                    granted: root.path().to_path_buf(),
+                    vetted: root.object(),
+                    opened,
+                });
+            }
+            Confirmation::Unmeasurable => {}
+        }
+    }
+
+    Containment::Outside(moved)
+}
+
+/// Refuse `requested`, recording which of the two reasons the gate decided on.
+///
+/// One function for both, so a path under a substituted root answers alike whether or not it
+/// exists: a `NotFound` for the absent against a refusal for the present would be a one-bit
+/// oracle for what the substitute holds.
+fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> SandboxError {
+    let subject = requested.display().to_string();
+
+    let Some(Replacement {
+        granted,
+        vetted,
+        opened,
+    }) = moved
+    else {
+        crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
+        return SandboxError::PathNotAllowed {
+            requested: requested.to_path_buf(),
+            access,
+        };
+    };
+
+    crate::AuditEvent::denied(access.operation(), &subject, ROOT_REPLACED).emit();
+    SandboxError::RootReplaced {
+        granted,
+        vetted,
+        opened,
+    }
 }
 
 /// Allow `resolved` only if it sits inside one of `roots`, recording a refusal.
@@ -377,20 +466,10 @@ fn permit(
     requested: &Path,
     access: Access,
 ) -> Result<PathBuf, SandboxError> {
-    if within(&resolved, roots) {
-        return Ok(resolved);
+    match contains(&resolved, roots) {
+        Containment::Inside => Ok(resolved),
+        Containment::Outside(moved) => Err(deny(moved, requested, access)),
     }
-
-    crate::AuditEvent::denied(
-        access.operation(),
-        &requested.display().to_string(),
-        access.outside(),
-    )
-    .emit();
-    Err(SandboxError::PathNotAllowed {
-        requested: requested.to_path_buf(),
-        access,
-    })
 }
 
 /// Record what an approved path's access actually did, and nothing about the verdict.
