@@ -381,13 +381,15 @@ where
         });
 
         if results.is_empty() {
-            return Ok(outcome(
-                produced,
-                usage,
-                withheld,
-                TurnStop::Answered,
-                last_stop,
-            ));
+            // Reads the latch rather than answering outright: no abort leaves the round
+            // without a result today, and this is the one place one could be laundered
+            // into an answer — which is an exit 0 for a run nobody was left to consent to.
+            let stop = if aborted {
+                TurnStop::GateAborted
+            } else {
+                TurnStop::Answered
+            };
+            return Ok(outcome(produced, usage, withheld, stop, last_stop));
         }
 
         produced.push(RequestMessage {
