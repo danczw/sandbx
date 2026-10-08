@@ -172,10 +172,9 @@ impl<W: Write> Render<W> {
             self.write(b"\n");
         }
 
-        // The operator's whole record of why: the gate's own account of the call went to
-        // the device that went away. Written before the stdout failure below rather than
-        // in the match with the others, since an early return for a broken pipe would
-        // take that record with it.
+        // Before the stdout failure below rather than in the match with the others: the
+        // gate's own account of the call went to the device that went away, so an early
+        // return for a broken pipe would take the last record of it too.
         if ending == Some(Unfinished::Aborted) {
             eprintln!(
                 "sandbx: `{APPROVE_CALL}` could no longer ask on this terminal, \
@@ -528,11 +527,9 @@ pub(super) mod tests {
         ));
     }
 
-    /// A lost operator and a stdout nobody is reading can arrive together, and the write
-    /// failure is the one a caller cannot otherwise act on — so it keeps the exit, and
-    /// `3` is not reported for a run that never delivered its answer. That the operator's
-    /// line is still written first is unpinnable here, `eprintln!` going to the process's
-    /// own stderr; an injectable sink is #223.
+    /// Both can arrive together, and the write failure keeps the exit: `3` would claim an
+    /// answer was delivered. That the operator's line is still written first is unpinnable
+    /// here — `eprintln!` goes to the process's own stderr, and an injectable sink is #223.
     #[test]
     fn a_broken_stdout_outranks_the_lost_operator() {
         let mut render = Render::new(ClosedPipe);

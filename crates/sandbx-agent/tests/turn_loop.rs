@@ -821,12 +821,10 @@ async fn a_round_of_two_calls_gets_a_verdict_each() {
     );
 }
 
-/// Both verdicts over one script, because either alone passes for the wrong reason: a
-/// loop that ended on every refusal would satisfy the first, and one that ended on none
-/// the second.
-///
-/// Both scripts hold a second round, so `sent.len() == 1` is evidence the request was not
-/// made rather than evidence the script ran dry.
+/// Both verdicts over one script, because either alone passes for the wrong reason: a loop
+/// that ended on every refusal would satisfy the first, and one that ended on none the
+/// second. Both scripts hold a second round, so `sent.len() == 1` is evidence no request
+/// was opened rather than evidence the script ran dry.
 #[tokio::test]
 async fn an_abort_ends_the_turn_where_a_deny_goes_on() {
     let root = tempfile::tempdir().unwrap();
