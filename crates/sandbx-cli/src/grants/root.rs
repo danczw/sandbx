@@ -1,14 +1,8 @@
-//! Where a no-flag run may root its default policy, and what a path flag is vetted against.
+//! Where a no-flag run may root its default policy, and what a path flag is vetted against;
+//! nothing here reads a flag.
 //!
-//! Split from the flag surface because deriving a root is the second job `grants.rs` was
-//! doing: the home rules, the paths sandbx owns, and the resolve-then-pin sequence a grant
-//! crosses the seam in. Nothing here reads a flag.
-//!
-//! Two orders are load-bearing and neither is in one function. [`vetted_root`]'s refusals run
-//! in the order they are written. A flag goes through [`absolute`], [`resolved`],
-//! [`reaches_owned`], then [`pinned`], from the loop in `Grants::policy`; the derived default
-//! reaches the same end through [`current_root`] and [`pinned`]. Comparing one spelling and
-//! granting another is the window that closes.
+//! Two orders are load-bearing and neither is one function's: [`vetted_root`] refuses in the
+//! order written, and [`reaches_owned`] and [`pinned`] each name the spelling that must reach them.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
