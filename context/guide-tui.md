@@ -51,13 +51,19 @@ including the account of what a tool just did. So control bytes are replaced wit
 U+FFFD on the way into an entry: `\n` survives as the break the view splits on,
 a tab becomes spaces, and everything else `char::is_control` matches is marked.
 
-Replaced rather than dropped, for `gate.rs`'s reason: dropped, a hostile string
-reads as plausible prose.
+`is_control` is category `Cc` exactly, which is not the whole hazard. U+202E and
+the directional isolates render *nothing* and reorder what follows them, so a
+line can display as a different line — in the same pane, and the same `sandbx: `
+grammar, as the gate's account of what a tool did. The same denylist `gate.rs`
+carries therefore applies at the cell too. It is a denylist because `char` has no
+predicate for the category, so a new Unicode version can outgrow it silently;
+it is duplicated rather than shared because the two sites must not diverge, and
+a home for one copy of it is worth having.
 
-The per-call line is stripped twice over — `gate::line` strips what the model
-chose, including the invisible and the direction-reordering characters the gate's
-own denylist covers, and the transcript strips again at the cell. Idempotent, so
-the layers compose.
+Replaced rather than dropped, for `gate.rs`'s reason: dropped, a hostile string
+reads as plausible prose. The per-call line is stripped twice over — once by
+`gate::line`, once at the cell — and stripping is idempotent, so the layers
+compose.
 
 ### Raw mode is what makes the interrupt possible
 
@@ -84,18 +90,29 @@ discovered:
   without the answer would make the next resume send two user turns in a row.
 - **A tool already running finishes.** `spawn_blocking` cannot be cancelled
   (#26), so dropping the future abandons the result, not the work. A `bash` that
-  was writing files goes on writing them, unseen.
+  was writing files goes on writing them, unseen — and the process does not exit
+  until it is done, `Runtime::drop` waiting for an in-flight blocking task with
+  no timeout. So an interrupt during a long call returns the terminal and then
+  hangs there, which is a wait on work the operator can no longer see.
 
 The exit code is 2 — the same code a turn cut short by `--max-rounds` gets,
 because that is what it is.
 
+Two other codes, neither of which the stop alone decides:
+
+- a round cut at `--max-tokens` exits 2, whatever the turn's own stop was. The
+  bound ends a round inside the turn, so a turn that stops `Answered` can still
+  have ended mid-sentence; reading the stop by itself would exit 0 on it.
+- `TurnStop::GateAborted` exits 3, ahead of either bound, because a turn can hit
+  `--max-rounds` and lose its operator in the same round and only one of those is
+  unrecoverable. Unreachable while `tui` builds its gate with no operator to ask,
+  and written now because the outcome holds its messages and usage like an
+  answered one — so a 0 there would look like an answer to every test and to
+  every caller branching on the status.
+
 A stop `tui` has no account of exits 0, an answer being the thing a turn is for.
-The exception is a stop that documents a code of its own: `TurnStop::GateAborted`
-exits 3, ahead of the bound, because a turn can hit `--max-rounds` and lose its
-operator in the same round and only one of those is unrecoverable. Unreachable
-while `tui` builds its gate with no operator to ask, and written now because the
-outcome holds its messages and usage like an answered one — so a 0 there would
-look like an answer to every test and to every caller branching on the status.
+Both bounds can cut one turn, so the screen's account is a list and a turn that
+met both says both.
 
 ## Light by intent
 

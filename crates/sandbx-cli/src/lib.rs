@@ -103,7 +103,13 @@ pub enum Command {
     ///
     /// Interrupting costs two things, which the screen says again at the time:
     /// nothing of that turn is stored, even under `--session`, and a tool
-    /// already running finishes — sandbx cannot cancel one mid-call.
+    /// already running finishes — sandbx cannot cancel one mid-call, and the
+    /// process waits for it before it exits.
+    ///
+    /// Two flags read differently here. `--show-thinking` draws the reasoning in
+    /// the pane rather than on stderr, and `--no-wrap-up` changes nothing: no
+    /// wrap-up round is sent under `tui` at all, so a turn out of rounds ends on
+    /// tool work either way.
     ///
     /// Needs a terminal on stdout, and refuses `--approve call`: that prompt
     /// wants the terminal this screen has taken. Use `agent-run` for either.

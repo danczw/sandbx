@@ -330,9 +330,9 @@ answer. Those per-call lines move to the terminal with the question, so
 One question, one answer, then the process ends. `sandbx tui` takes the same
 flags and draws that turn on a screen instead of streaming it, where ctrl-c or
 escape ends it mid-flight — which stores nothing of that turn and leaves a tool
-call already running to finish unseen. It needs a terminal on stdout, so it
-refuses a piped run, and it refuses `--approve call`, whose question wants the
-terminal the screen has taken:
+call already running to finish unseen, the process waiting for it before it
+exits. It needs a terminal on stdout, so it refuses a piped run, and it refuses
+`--approve call`, whose question wants the terminal the screen has taken:
 
 ```sh
 sandbx tui --allow-tool bash -- "what is in this directory?"
