@@ -102,6 +102,18 @@ why it is one of two forms tested rather than the form tested — and why the
 verdict itself still comes from the resolved path, which `contains` admits only
 under a root that confirms.
 
+Asking on the spelling is also not enough, because the resolution still reaches a
+substituted root the spelling cannot see: a link planted in a root that
+*confirms*, which the model can write in the default policy. So the three sites
+that answer a caller draw no reason from the resolution at all. Once the spelling
+has declined to accuse a root, the refusal is plainly outside, present and absent
+alike — `a_link_planted_in_a_confirmed_root_conceals_an_absence`. The walk is the
+fourth site and keeps its measurement: it records the reason and skips the entry,
+with no reason returned for a caller to read a bit off. The cost is a trail that
+says `path_not_allowed` where the substitution was reached only by resolving, and
+that is the right way round — the operator still gets `root_replaced` for every
+root a path names, and the one who cannot tell the two apart is the one probing.
+
 A granted name that has become a symlink falls out of the same rule rather than
 needing its own. `confirm` omits `O_NOFOLLOW`, so the object it measures is the
 link's target: a name leading elsewhere holds something else, and the access is

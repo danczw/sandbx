@@ -153,7 +153,6 @@ mod tests {
     use super::*;
 
     use clap::Parser;
-    use sandbx_core::VettedPath;
 
     /// `path`, pinned to the object it names — the shape every grant takes (#212).
     fn vetted(path: impl AsRef<Path>) -> VettedPath {
