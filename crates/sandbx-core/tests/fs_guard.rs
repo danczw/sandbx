@@ -874,6 +874,63 @@ fn a_substituted_root_conceals_an_absence() {
     );
 }
 
+/// The one shape that reads back by its resolved path and not its requested one: a link in the
+/// substitute leaves every root, so nothing matches it lexically and the commonest refusal
+/// answers. Beside an absent name reporting the substitution, that is a bit about what the
+/// substitute holds — the oracle the pair above closes, through the one door it does not use.
+#[test]
+fn a_link_out_of_a_substituted_root_conceals_itself() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    let outside = work.path().join("outside");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    std::fs::write(outside.join("secret.txt"), b"not the model's").unwrap();
+    // Planted in the substitute, so only whoever swapped the root could have put it there.
+    std::os::unix::fs::symlink(outside.join("secret.txt"), other.join("link")).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    substitute(&granted, &other);
+
+    let link = guard.check_read(&granted.join("link")).unwrap_err();
+    let missing = guard.check_read(&granted.join("missing")).unwrap_err();
+
+    assert_eq!(
+        link.label(),
+        missing.label(),
+        "a link out of a substituted root reads back differently for being there: \
+         {link} against {missing}"
+    );
+    assert!(
+        matches!(link, SandboxError::RootReplaced { .. }),
+        "{link} is not the moved-root refusal"
+    );
+}
+
+/// The reason above must come off the requested path's own root, not from any root being
+/// substituted: a link out of a *confirmed* root is plainly out of bounds, and calling that a
+/// substitution would accuse a root that never moved.
+#[test]
+fn a_link_out_of_a_confirmed_root_is_plainly_outside() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let outside = work.path().join("outside");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    std::fs::write(outside.join("secret.txt"), b"not the model's").unwrap();
+    std::os::unix::fs::symlink(outside.join("secret.txt"), granted.join("link")).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    let error = guard.check_read(&granted.join("link")).unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::PathNotAllowed { .. }),
+        "{error} accuses a root that is still the one it was vetted on"
+    );
+}
+
 /// A write refuses a symlinked leaf on sight, before resolving anything, so that reason has
 /// to come after the root's: chosen by what the substitute holds, it answers whether a name in
 /// a swapped-in directory is a symlink.
