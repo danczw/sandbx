@@ -272,8 +272,7 @@ where
     // What comes back, not seeded from `observed`: a caller has to tell "reported nothing"
     // from "reported what you already knew".
     let mut usage: Option<PromptUsage> = None;
-    // `None` until a round reaches `message_stop`, which a turn capped at zero rounds never
-    // does.
+    // Stays `None` under `max_rounds: 0`, the one cap that opens no stream.
     let mut last_stop: Option<StopReason> = None;
     let mut cut = 0usize;
     // The carried floor until this turn plans its own cut, then that cut, so a floor no

@@ -148,12 +148,11 @@ impl<W: Write> Render<W> {
 
     /// Close the answer off, and report what the way it ended means for the exit code.
     ///
-    /// `capped` is `Some` when the turn ran out of rounds; `truncated` is read off the
-    /// outcome's `round_stop` rather than inferred here, so a caller with no renderer sees
-    /// the same figure. Both bounds are named when both were hit: a summary cut off at
-    /// `max_tokens` reads as a whole one otherwise, and which bound ended the turn does
-    /// not change the code. Every one of them exits [`INCOMPLETE`] — the tool work was cut
-    /// off whatever prose followed it.
+    /// `capped` is `Some` when the turn ran out of rounds; `truncated` is passed in rather
+    /// than inferred here, so a caller with no renderer sees the same figure. Both bounds
+    /// are named when both were hit: a summary cut off at `max_tokens` reads as a whole one
+    /// otherwise, and which bound ended the turn does not change the code. Every one of
+    /// them exits [`INCOMPLETE`] — the tool work was cut off whatever prose followed it.
     pub(super) fn finish(
         &mut self,
         capped: Option<Capped>,
