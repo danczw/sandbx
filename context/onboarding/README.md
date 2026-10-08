@@ -28,6 +28,8 @@ does, `SECURITY.md` is right.
 |---|---|
 | [01 — what sandbx is](01-what-sandbx-is.md) | the product and its thesis, the five subcommands, what the kernel has to provide, and the five commands to run first |
 | [04 — the architecture](04-the-architecture.md) | three views of one system — the processes, the request path, the boundaries. The spine every later chapter locates itself in |
+| [05 — seven crates](05-seven-crates.md) | the static view under 04: the dependency graph, who owns what, and the three mechanisms that keep one crate the only one able to spawn a process |
+| [16 — how the repo is maintained](16-how-the-repo-is-maintained.md) | guide versus decision, the Rust tests that hold the prose to the code, and a walkthrough of your first PR |
 
 Chapters are numbered by position in that order, so a gap is a chapter that is
 not in this directory yet; the whole list is on the tracking issue. An index
