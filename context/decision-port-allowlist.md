@@ -32,8 +32,13 @@ flags & MSG_FASTOPEN                                                   ◄──
 
 ## What it costs
 
-Named here rather than discovered later, and repeated in `SECURITY.md` because
-the cost belongs next to the claim it buys:
+Named here rather than discovered later. `SECURITY.md` carries the effects next
+to the claim they buy — resolution failing, `bind` refused on an unlisted port,
+QUIC, HTTP/3, `ping`, kTLS, `TCP_ULP`, TCP Fast Open — and the denials only as
+classes: UDP, raw sockets, another protocol, a family that tunnels IP. What it
+does not carry is why any effect follows, and `AF_NETLINK` it does not name at
+all. That one is the reason resolution fails, so it lives here or nowhere.
+MPTCP, SCTP, AF_VSOCK, AF_BLUETOOTH and `espintcp` are named here alone too:
 
 - **Name resolution fails.** `getaddrinfo` can reach neither a UDP resolver nor
   `AF_NETLINK`, which glibc opens as a `SOCK_RAW` socket, so it cannot enumerate
