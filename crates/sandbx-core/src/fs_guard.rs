@@ -490,6 +490,18 @@ fn permit(
 ) -> Result<PathBuf, SandboxError> {
     match contains(&resolved, roots) {
         Containment::Inside => Ok(resolved),
+        // Nothing matched the resolved path, which is a path that was never in a root and a
+        // path that left one through a symlink alike. Only the requested spelling tells them
+        // apart, and the difference is a bit about a substituted root's contents: a link out
+        // of one reporting the commonest refusal, beside an absent name reporting the
+        // substitution, is the oracle `deny` exists to close.
+        Containment::Outside(None) => {
+            let moved = match nearest_area(requested, roots) {
+                (_, Containment::Outside(moved)) => moved,
+                (_, Containment::Inside) => None,
+            };
+            Err(deny(moved, requested, access))
+        }
         Containment::Outside(moved) => Err(deny(moved, requested, access)),
     }
 }
