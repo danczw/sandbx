@@ -61,7 +61,8 @@ struct Channels<W> {
     out: W,
 
     /// The controlling terminal, `Some` under `--approve call` alone. Opening the real
-    /// device ([`Terminal::open`]) is what no suite here covers.
+    /// device ([`Terminal::open`]) is what no suite here covers, nor the process's own
+    /// stderr that an account falls back to.
     terminal: Option<Terminal>,
 }
 
