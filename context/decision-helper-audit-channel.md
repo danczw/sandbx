@@ -171,12 +171,15 @@ relayed error is a `Display` that a caller prefixes again, and
 `HELPER_FAILURE_PREFIX` is a const so the writer and the stripper cannot drift.
 
 `HelperRefusal` is a *subset* of what `SandboxError::label` can return, not all of
-it, and the six it leaves out are the point: `timeout`, `spawn_failed`,
-`path_not_allowed`, `unresolvable`, `not_found` and `root_replaced` are decisions
-sandbx and `FsGuard` make for themselves. The last is the sharpest case for the
-criterion being the decider and not what failed: `root_replaced` and the admitted
-`grant_replaced` name the same substitution, measured the same way, and differ only
-in which process measured it — so the one with no helper to speak for it stays out.
+it, and the ones it leaves out are the point: `timeout`, `spawn_failed`,
+`path_not_allowed`, `unresolvable` and `root_replaced` among them are decisions
+sandbx and `FsGuard` make for themselves. No count is given here, because the set
+is not maintained here: `the_reasons_the_helper_does_not_decide_cannot_cross_the_channel`
+derives it from every variant, so a new reason lands on one side or the other with
+no list to fall behind. `root_replaced` is the sharpest case for the criterion
+being the decider and not what failed — it and the admitted `grant_replaced` name
+the same substitution, measured the same way, and differ only in which process
+measured it, so the one with no helper to speak for it stays out.
 A channel record outranks the exit status, so
 admitting `timeout` would let a forged line claim a kill that never happened *and*
 suppress the real outcome, on a trail whose whole purpose is that `reason="timeout"`
