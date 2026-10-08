@@ -1144,6 +1144,41 @@ async fn a_capped_turn_names_both_bounds_it_hit() {
     assert_eq!(outcome.round_stop, Some(StopReason::MaxTokens));
 }
 
+/// The inverse of the two above, and the damaging direction: a cut that outlived its round
+/// would make `agent-run` call a finished answer truncated and exit non-zero. `usage` in
+/// the same block keeps what an unreporting round did not say, which is the shape this one
+/// must not be written in.
+#[tokio::test]
+async fn a_later_round_overwrites_an_earlier_cut() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
+    let mut script = Script::new([
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            // Cut part-way through asking, so the round that answers follows a cut one.
+            stop(StopReason::MaxTokens),
+        ],
+        vec![text("one file"), stop(StopReason::EndTurn)],
+    ]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        capped_at_three(),
+        &ctx,
+        |_| {},
+        AllowAll,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(script.sent.len(), 2, "the second round has to have run");
+    assert_eq!(outcome.stop, TurnStop::Answered);
+    assert_eq!(outcome.round_stop, Some(StopReason::EndTurn));
+}
+
 /// The negative of `a_tool_call_runs_without_a_stop_reason`: the reason is reported, and
 /// still not acted on, so a provider mislabelling its own output buys no extra round.
 #[tokio::test]
