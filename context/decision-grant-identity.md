@@ -242,7 +242,9 @@ One thing nobody types changes all the same, and it is a narrowing worth stating
 cost rather than only as a fix. A granted root replaced by a *symlink* used to have its
 grant follow the link: the guard resolved each root again at every access, so the link's
 target became the root and was reachable by its own path. The guard now holds the grant's
-own spelling, and that access refuses without needing the object at all. Reaching either
+own spelling and measures what sits at it, and `confirm` omits `O_NOFOLLOW` — so the
+object it gets is the link's target, which is not the one the policy was judged on, and
+the access refuses as `root_replaced` like any other substitution. Reaching either
 shape needs write access to the granted root's parent — which a run granted write on that
 parent has, so this is not only a racing-attacker case.
 
@@ -252,7 +254,7 @@ parent has, so this is not only a racing-attacker case.
 |---|---|---|
 | the granted spelling opens as another path | helper | `grant_redirected` |
 | the object under the granted name is not the vetted one | helper | `grant_replaced` |
-| the matched root holds another object at the moment of an in-process access | guard | `root_replaced` |
+| the root the requested spelling names holds another object at the moment of an in-process access | guard | `root_replaced` |
 | the path cannot be vetted at all — it names nothing | harness | `grant_unpinnable`, `PolicyError::UnpinnableGrant` at the flag |
 | the path names a file this run's own resolver binds over | harness | `grant_bound_by_resolver`, `PolicyError::DnsGrantsBoundFile` at the flag |
 | a grant arrives on the wire with no object beside it | helper, at decode | `bad_helper_args` |

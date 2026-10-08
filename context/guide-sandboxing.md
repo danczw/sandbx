@@ -235,7 +235,10 @@ The in-process layer asks the pin's question too, and answers it for itself.
 `FsGuard` holds the policy's grants whole and, on every access, opens the matched
 root `O_PATH` and `fstat`s it: an object that differs refuses that access as
 `root_replaced`, one that cannot be measured grants nothing, and `rename`-ing a
-root away and back still grants, the inode being what moved nowhere. There is no
+root away and back still grants, the inode being what moved nowhere. The root it
+measures is the one the *requested spelling* names, matched lexically before any
+resolution: a link inside a substituted root resolves wherever the substitute
+points, so a root picked after resolution is a root the substitute picked. There is no
 readback half here — a spelling comparison would be this process agreeing with
 itself, since the guard both resolves the path and performs the access. So
 `root_replaced` is sandbx's own and stays out of `HelperRefusal`: no helper runs
