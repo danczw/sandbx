@@ -821,6 +821,150 @@ async fn a_round_of_two_calls_gets_a_verdict_each() {
     );
 }
 
+/// Both verdicts over one script, because either alone passes for the wrong reason: a
+/// loop that ended on every refusal would satisfy the first, and one that ended on none
+/// the second.
+///
+/// Both scripts hold a second round, so `sent.len() == 1` is evidence the request was not
+/// made rather than evidence the script ran dry.
+#[tokio::test]
+async fn an_abort_ends_the_turn_where_a_deny_goes_on() {
+    let root = tempfile::tempdir().unwrap();
+    let reason = "the operator's terminal is closed";
+
+    let rounds = || {
+        [
+            vec![
+                text("looking"),
+                call(
+                    "ls",
+                    serde_json::json!({ "path": root.path().to_str().unwrap() }),
+                ),
+                stop(StopReason::ToolUse),
+            ],
+            vec![text("found it"), stop(StopReason::EndTurn)],
+        ]
+    };
+    let offered = [BuiltinTool::Ls];
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
+
+    let mut script = Script::new(rounds());
+    let aborted = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &offered),
+        &ctx,
+        |_| {},
+        Gate::new(|_: ToolCall<'_>| ApprovalDecision::Abort {
+            reason: reason.to_string(),
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(aborted.stop, TurnStop::GateAborted);
+    assert_eq!(
+        script.sent.len(),
+        1,
+        "an aborted turn opened a second request"
+    );
+    // The replayable shape a session stores: the assistant turn, then the results.
+    assert_eq!(aborted.messages.len(), 2);
+    assert_eq!(aborted.messages[1].role, Role::User);
+    assert_eq!(tool_error(&aborted.messages), (reason, Some(true)));
+
+    let mut script = Script::new(rounds());
+    let denied = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &offered),
+        &ctx,
+        |_| {},
+        Gate::new(|_: ToolCall<'_>| ApprovalDecision::Deny {
+            reason: reason.to_string(),
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(denied.stop, TurnStop::Answered);
+    assert_eq!(
+        script.sent.len(),
+        2,
+        "a refused call ended the turn it was recoverable within"
+    );
+}
+
+/// Fail-closed: the abort landed on the `write`, so the `bash` behind it must not run on
+/// the strength of a verdict the gate was no longer there to give.
+#[tokio::test]
+async fn the_calls_after_an_abort_are_answered_not_run() {
+    let root = tempfile::tempdir().unwrap();
+    let behind = root.path().join("behind.txt");
+    let ctx = ctx(SandboxPolicy::default()
+        .allow_read(vetted(root.path()))
+        .allow_write(vetted(root.path())));
+
+    let mut script = Script::new([
+        vec![
+            call_id(
+                "first",
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            call_id(
+                "aborting",
+                "write",
+                serde_json::json!({ "path": root.path().join("at.txt").to_str().unwrap(),
+                                    "content": "at the abort" }),
+            ),
+            call_id(
+                "behind",
+                "write",
+                serde_json::json!({ "path": behind.to_str().unwrap(), "content": "behind it" }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("unreachable"), stop(StopReason::EndTurn)],
+    ]);
+
+    let mut gate = Gate::new(|requested: ToolCall<'_>| match requested.tool {
+        BuiltinTool::Write => ApprovalDecision::Abort {
+            reason: "the operator's terminal is closed".to_string(),
+        },
+        _ => ApprovalDecision::Allow,
+    });
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Ls, BuiltinTool::Write]),
+        &ctx,
+        |_| {},
+        &mut gate,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.stop, TurnStop::GateAborted);
+    assert!(!behind.exists(), "a call behind an abort ran");
+    assert_eq!(
+        gate.asked.len(),
+        2,
+        "the call behind the abort was put to a gate that had said it could not answer"
+    );
+    assert_eq!(
+        gate.settled,
+        ["ls:ran", "write:denied", "write:denied"],
+        "a three-call round did not report each call once, in order"
+    );
+
+    let results = &outcome.messages[1].content;
+    assert_eq!(results.len(), 3, "got {results:?}");
+    // The `ls` consented to before the abort stands: an abort narrows what follows it, it
+    // does not retract what already ran.
+    assert_eq!(result_of(&results[0]).1, None);
+    for behind in &results[1..] {
+        assert_eq!(result_of(behind).1, Some(true));
+    }
+}
+
 /// A scripted call with an explicit id, for a round that makes more than one.
 fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
     AgentEvent::ToolCallRequested {

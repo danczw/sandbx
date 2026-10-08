@@ -23,11 +23,14 @@ pub(super) async fn answer_calls<G>(
     ctx: &ExecutionContext,
     offered: &[BuiltinTool],
     gate: &mut G,
-) -> Result<Vec<ContentBlock>, TurnError>
+) -> Result<Answers, TurnError>
 where
     G: CallGate,
 {
     let mut results = Vec::new();
+    // Set by the first `Abort`: the gate said it can no longer decide, so a later call in
+    // the round is not a later decision to ask for.
+    let mut aborted: Option<String> = None;
 
     for block in blocks {
         let ContentBlock::ToolUse { id, name, input } = block else {
@@ -63,9 +66,17 @@ where
         }
 
         // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled,
-        // so a late decision would not stop the call it refused (#26). Exhaustive rather
-        // than `if let`, so a third verdict is a compile error and not approval.
-        match gate.approve(ToolCall { tool, id, input }) {
+        // so a late decision would not stop the call it refused (#26).
+        let verdict = match &aborted {
+            Some(reason) => ApprovalDecision::Deny {
+                reason: reason.clone(),
+            },
+            None => gate.approve(ToolCall { tool, id, input }),
+        };
+
+        // Exhaustive rather than `if let`, so a fourth verdict is a compile error and not
+        // approval.
+        match verdict {
             ApprovalDecision::Allow => {}
             ApprovalDecision::Deny { reason } => {
                 gate.settled(Settled {
@@ -76,6 +87,20 @@ where
                     outcome: Outcome::Denied { reason: &reason },
                 });
                 results.push(refused(id, reason));
+                continue;
+            }
+            // Answered, not skipped: a `tool_use` with no `tool_result` is a transcript no
+            // provider takes back, and this one is stored and resumed.
+            ApprovalDecision::Abort { reason } => {
+                gate.settled(Settled {
+                    name,
+                    id,
+                    tool: Some(tool),
+                    input,
+                    outcome: Outcome::Denied { reason: &reason },
+                });
+                results.push(refused(id, reason.clone()));
+                aborted = Some(reason);
                 continue;
             }
         }
@@ -119,7 +144,19 @@ where
         });
     }
 
-    Ok(results)
+    Ok(Answers {
+        results,
+        aborted: aborted.is_some(),
+    })
+}
+
+/// One round's answers, and whether the gate ended the turn giving them.
+pub(super) struct Answers {
+    /// One `tool_result` per `tool_use` block, in the order the model asked.
+    pub(super) results: Vec<ContentBlock>,
+
+    /// Whether an [`ApprovalDecision::Abort`] stopped the round, so no later round runs.
+    pub(super) aborted: bool,
 }
 
 fn refused(id: &str, content: String) -> ContentBlock {
