@@ -35,6 +35,9 @@ does, `SECURITY.md` is right.
 | [10 — seccomp](10-seccomp.md) | the syscall filter: what each blocked group would buy an attacker, why `clone3` is answered rather than denied, and the hand-assembled x32 gate |
 | [11 — the two seams](11-the-two-seams.md) | the correction most newcomers need: six of the seven tools never reach the kernel boundary, and what enforces them instead |
 | [12 — a flag to a kernel rule](12-a-flag-to-a-kernel-rule.md) | one trace, end to end — `--allow-read /tmp/x` from argv through vetting and the argv seam to a rule the kernel holds |
+| [13 — the turn loop and the gate](13-turn-loop-and-gate.md) | where prompt injection stops being an abstraction: the two refusals above the gate, why a typo is not consent, and the typeahead a counterfeit prompt relies on |
+| [14 — audit, sessions, credentials](14-audit-sessions-credentials.md) | what is written down and who may read it — two trails separated by target, the helper's own channel, the mode asymmetry that refuses rather than repairs |
+| [15 — tools and the screen](15-tools-and-the-screen.md) | the seven built-ins bounded by work rather than time, a policy spent rather than lent, and a renderer that holds a security property |
 | [16 — how the repo is maintained](16-how-the-repo-is-maintained.md) | guide versus decision, the Rust tests that hold the prose to the code, and a walkthrough of your first PR |
 
 Chapters are numbered by position in that order, so a gap is a chapter that is
