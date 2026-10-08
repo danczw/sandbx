@@ -137,9 +137,8 @@ fn an_empty_file_is_reported_as_empty() {
     );
 }
 
-/// `Denied` and not `Failed`: a moved root is the policy refusing, so the agent's move is to
-/// ask about the grant rather than to try another filename. The only thing that would catch
-/// a later `RootReplaced => Failed` arm in `guard_error` (#212).
+/// `Denied` and not `Failed`: a moved root is the policy refusing, so the agent's move is to ask
+/// about the grant, not to retry. The only thing catching a `RootReplaced => Failed` arm (#212).
 #[test]
 fn a_substituted_root_reads_back_as_denied() {
     let work = tempfile::tempdir().unwrap();
