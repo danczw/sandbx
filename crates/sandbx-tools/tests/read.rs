@@ -162,5 +162,18 @@ fn a_substituted_root_reads_back_as_denied() {
     std::fs::rename(&other, &granted).unwrap();
 
     let err = BuiltinTool::Read.execute(request, &ctx).unwrap_err();
-    assert!(matches!(err, ToolError::Denied { .. }), "got {err:?}");
+    let ToolError::Denied { reason, .. } = &err else {
+        panic!("got {err:?}");
+    };
+    // The `(dev, ino)` pairs the `SandboxError` carries are the operator's, and the vetted one
+    // names an object the model can no longer reach, so neither reaches the turn.
+    let now_at = VettedPath::vet(&granted).expect("the substitute is a directory too");
+    assert!(
+        !reason.contains(&now_at.object().to_string()),
+        "the model was handed the host's inode numbers: {reason}"
+    );
+    assert!(
+        reason.contains(granted.to_str().unwrap()),
+        "the refusal does not say which grant is gone: {reason}"
+    );
 }

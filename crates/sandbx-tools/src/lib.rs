@@ -176,6 +176,16 @@ pub(crate) fn guard_error(path: &std::path::Path, error: sandbx_core::SandboxErr
             subject,
             detail: error.to_string(),
         },
+        // `RootReplaced`'s `Display` names both `(dev, ino)` pairs, which an operator reading
+        // the trail needs and the model cannot act on — the vetted one names an object it can
+        // no longer reach. It is told the grant is gone, which is its only move.
+        sandbx_core::SandboxError::RootReplaced { granted, .. } => ToolError::Denied {
+            subject,
+            reason: format!(
+                "granted root {} is no longer the directory the policy judged",
+                granted.display()
+            ),
+        },
         error => ToolError::Denied {
             subject,
             reason: error.to_string(),
