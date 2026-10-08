@@ -33,7 +33,8 @@ catches an uncooperative program, the TLS termination that makes the allowlist
 about names, and the resolver that answers for those names — is priced in
 `decision-egress-proxy.md`, which reaches the same verdict from the destination
 side. Substitution leaves with the termination it needs to read a request, and
-the resolver is the one piece left standing (#145).
+the resolver is the one piece that stands without the rest — `--allow-dns NAME`
+(#145).
 
 Nor is the dependency free. No crate depends on a server-side HTTP stack; hyper
 arrives only through `wiremock`, a dev-dependency, and `tokio`'s `net` feature is
