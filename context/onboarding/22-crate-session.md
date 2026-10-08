@@ -7,7 +7,8 @@ round loop has finished and the gate has gone quiet; in **View 1** it is not a
 box, because nothing here spawns, forks or `exec`s — it opens files in the
 harness process, and that is the whole of it.
 
-Nine source files, around thirteen hundred lines, and one of the three leaves of
+Nine source files, a little under a thousand lines with nearly as many again in
+`tests/`, and one of the three leaves of
 [05 — seven crates](05-seven-crates.md)'s graph: no internal dependency, and
 three external ones — `nix` with only `fs` and `user`, `serde`, `serde_json` —
 plus `tempfile` for the tests. The reason to read it anyway is proportion. A
@@ -59,7 +60,12 @@ rule — "an allowlist, not a search for `..`". The code under it:
 
 `ALPHABET` is `b"0123456789abcdefghijklmnopqrstuvwxyz"`. Everything that is not
 one of those thirty-six bytes is refused, and the `tests/identifier.rs` list is
-the enumeration. What each refusal buys, because the module doc only implies it:
+the enumeration: fifteen values, each coming back as `InvalidIdentifier`
+carrying the string that was offered, "quoted back so a typo is visible" — and
+coming back with nothing on disk touched, `FromStr` being pure. That is the
+whole of `a_traversing_id_is_refused_before_any_io`'s name: `../../etc/passwd`
+is refused before the store's root is opened, so no path is ever built from it.
+What each refusal buys, because the module doc only implies it:
 
 | refused | what it would have reached |
 |---|---|
@@ -112,7 +118,9 @@ see [decision-harness-owned-paths.md](../decision-harness-owned-paths.md), and
 **The lookup is injected** rather than read off the process: `set_var` is an
 `unsafe fn` under edition 2024 and the workspace forbids `unsafe_code` in test
 binaries too, so a test cannot drive a real environment. `sandbx-cli`'s
-`session::store` is the one place that passes `std::env::var_os`.
+`session::store` is the one place that hands `std::env::var_os` to this crate —
+its doc says why: "this is the one place that wants the real environment, and a
+test drives the store directly."
 
 ## `message.rs` — five types that are not the provider's
 
@@ -125,6 +133,28 @@ than imported. This is what the argument looks like at the type level.
 `ToolResult` — which is [02](02-what-a-harness-is.md)'s
 `tool_use`/`tool_result` vocabulary spelled a second time. `Usage` carries three
 `Option<u32>` counts.
+
+The pair worth holding side by side is the two enums' declarations. Here:
+
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Content {
+```
+
+And in [`prompt.rs`](../../crates/sandbx-providers/src/prompt.rs):
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContentBlock {
+```
+
+No `Serialize`, no `Deserialize`, no `tag`: the provider's block is not a wire
+type at all. Its JSON is built by hand, in the `Blocks` and `BlockBody`
+`Serialize` impls in
+[`anthropic/body.rs`](../../crates/sandbx-providers/src/anthropic/body.rs). So
+the file format lives on the type in *this* crate and nowhere else, and a vendor
+respelling a block changes `body.rs` while a transcript keeps its shape.
 
 The point is that `sandbx_providers::ContentBlock` has **five** variants: those
 three plus `Thinking` and `RedactedThinking`. Nothing in the compiler's view
@@ -242,14 +272,47 @@ The fold is `observed = accounting.observed.or(observed)` and
 `withheld = accounting.withheld`, which is what the turn loop does in memory, so
 a resumed conversation and a continued one carry the same numbers;
 [decision-on-disk-state.md](../decision-on-disk-state.md) explains why figures
-nothing reads today are written at all. Line 0 is the only position that means
-anything: a `Header` there is checked against `VERSION`, anything else is
-`MissingHeader`, and a `Header` further down is a no-op.
+nothing reads today are written at all.
+
+Line 0 is the only position that means anything, which is why `fold` matches on
+the pair `(index, record)` rather than on the record alone:
+
+```rust
+            (0, Record::Header(header)) => {
+                if header.version != VERSION {
+                    return Err(SessionError::UnsupportedVersion {
+                        path: path.to_owned(),
+                        version: header.version,
+                    });
+                }
+                headed = true;
+            }
+            // ... the `(0, _)`, message and turn arms, elided ...
+            // A second header carries nothing that would change what is replayed.
+            (_, Record::Header(_)) => {}
+```
+
+Two refusals and one deliberate silence. The version test is `!=`, not `>`, so
+any header this build does not write is refused rather than read on a best
+effort — `a_future_version_is_refused_not_guessed` pins a `2` — and the
+variant's own doc gives the reason: "refused, since best-effort would drop a
+field and so change the history the model is shown". Anything but a header on
+line 0 is `MissingHeader`, and so is a file whose only line was a torn one,
+which is what `headed` is for. A second header reaches the last arm and is
+skipped, for the reason the comment states and the aside below questions.
+
+An undeclared *field* is the third case and the lenient one: an extra key on a
+stored line reads back without it, which
+`an_unknown_field_is_ignored_rather_than_refused` in `message.rs` pins with a
+`thinking_signature` beside the message and a `citations` inside a text block.
+An unknown record `type` fails the parse instead —
+[decision-on-disk-state.md](../decision-on-disk-state.md) grades the three, and
+[14](14-audit-sessions-credentials.md) has the `type` half.
 
 ### What a damaged tail actually does
 
-`tests/recovery.rs` is the evidence, and the rule is narrower than "a truncated
-file is tolerated":
+The rule is narrower than "a truncated file is tolerated". It is three
+conditions, decided above the loop in `fold` and pinned by `tests/recovery.rs`:
 
 ```rust
     let torn = !body.ends_with('\n');
@@ -328,11 +391,16 @@ its own would send one naming a call no earlier message made —
 
 Where they are applied matters, because the call sites use different sets:
 
-| site | predicates | the one it cannot use |
-|---|---|---|
-| `SessionStore::resume` | `resumable`, `alternating`, `opens` | `follows` — there is no batch |
-| `Session::append` | `resumable`, `alternating`, `follows` | `opens`, subsumed by `follows`'s empty-store arm |
-| `Session::pending_call` | `answers_only` on the last message | — |
+| site | predicates | refuses as | the one it cannot use |
+|---|---|---|---|
+| `SessionStore::resume` | `resumable`, `alternating`, `opens` | `IncompleteTurn`, then `Disordered` | `follows` — there is no batch |
+| `Session::append` | `resumable`, `alternating`, `follows` | `IncompleteTurn`, then `DisorderedTurn` | `opens`, subsumed by `follows`'s empty-store arm |
+| `Session::pending_call` | `answers_only` on the last message | nothing — it returns a `bool` | — |
+
+Neither guard asks any of them about an empty history: both sit behind
+`if !messages.is_empty()`, which is what lets
+`a_new_session_resumes_before_it_has_said_anything` resume a transcript that is
+a header and nothing else, where `resumable(&[])` is false.
 
 Both guards take the relaxation, which `shape.rs` says is not a choice: `append`
 writing a shape `resume` refuses is a session nothing can undo. And all of it is
@@ -429,15 +497,22 @@ sandbx decided not to — and a **host failure**, where the machine could not:
 |---|---|
 | refusal, about what was asked | `InvalidIdentifier`, `NotFound` |
 | refusal, about what is on disk | `MissingHeader`, `UnsupportedVersion`, `Malformed`, `Writable`, `DirWritable`, `Symlink`, `ForeignOwner`, `Disordered` |
-| refusal, about what a caller tried to write | `IncompleteTurn`, `DisorderedTurn` |
+| refusal, about a shape no later resume would accept | `IncompleteTurn`, `DisorderedTurn` |
 | host failure | `NoStateHome`, `Clock`, `Collision`, `Io` |
 
 Two things follow from the table rather than from the file. **`IncompleteTurn`
 and `DisorderedTurn` carry nothing at all**, where their post-write twin
 `Disordered` carries a path — and `append` has `self.path` to hand, so the
-omission is a choice. It matches where the defect is: those two reject the
-*argument*, and the transcript on disk is still correct, so there is no file to
-blame. And **`source` returns `Some` for two variants only**, `Malformed` and
+omission is a choice. For `DisorderedTurn` it matches where the defect is: it
+rejects the *argument*, and the transcript on disk is still correct, so there is
+no file to blame. `IncompleteTurn` is not that clean, because **`resume` raises
+it too** — a stored history failing `resumable` is `IncompleteTurn` before the
+`Disordered` arm is reached, which
+`a_transcript_ending_on_a_user_turn_is_refused` drives by appending a blockless
+user line to a good file. It is the only *refusal* both paths raise — `Io` they
+share too, and that is a host failure — and so the one refusal about a file that
+does not name the file. And
+**`source` returns `Some` for two variants only**, `Malformed` and
 `Io`, the two that wrap a foreign error, with the remaining fourteen listed by
 name in one arm so a new variant does not compile until somebody has decided
 whether it has a cause. `Malformed` exposing `serde_json`'s message is a
@@ -447,6 +522,21 @@ deliberate difference from the credential path;
 Two messages end in the command to type — `chmod 600`, `chmod 700` — while
 `NotFound`, `Collision` and `Clock` name the condition, there being no fix to
 name: the habit [01](01-what-sandbx-is.md) notes about the policy refusals.
+
+- **Worth questioning:** `IncompleteTurn` is raised from both `append` and
+  `resume`, and its message is written for only one of them — it ends "so there
+  is nothing to append", on a path where nothing was being appended and a
+  hand-edited transcript is what is wrong. It names no path, where every other
+  refusal about a file does, so an operator with several sessions is not told
+  which one to open. `sandbx-cli` compounds it from the other side: `agent.rs`
+  special-cases the variant on the append path as not an error at all, printing
+  "the turn produced nothing to store" and returning `Ok`, which is right there
+  and would be wrong for a refused resume — the two cases are told apart only by
+  which call site the match sits on.
+  [decision-on-disk-state.md](../decision-on-disk-state.md) settles what
+  `resume` must check and says nothing about what it reports when the check
+  fails. A second variant, or the path `resume` already holds, costs nothing the
+  record argues against.
 
 ## Where the tests are
 
@@ -475,14 +565,20 @@ is masked by the umask, which can only clear bits.
   reached if it were not.
 - What `sessions_directory` never considers, and which other crate closes the
   same hazard from the other direction.
-- Why `Content` has three variants where `ContentBlock` has five, and which file
-  stops compiling when a sixth arrives.
+- Why `Content` has three variants where `ContentBlock` has five, which of the
+  two carries the serde attributes, and which file stops compiling when a sixth
+  arrives.
 - What "which bit refuses and which reports" means at the signature level: an
   `Err` for one, a private field inside the `Ok` for the other, why the crate
   has no third option, and what holding a `Session` at all is evidence of.
 - What one line of a transcript looks like, how many lines one exchange of prose
   writes, and the three conditions that must hold together for `fold` to drop
   one.
+- Which two refusals `fold` makes on line 0, why a second header further down is
+  skipped instead, and how an unknown field, an unknown record `type` and an
+  unknown version are each answered differently.
+- Which single refusal both `append` and `resume` raise, and what that costs
+  whoever reads its message.
 - Why a file format needs a check about the Messages API in it at all, and which
   single pair of user turns is legal.
 - Why `ownership` takes a `&File` and not a `&Path`, and what is different here

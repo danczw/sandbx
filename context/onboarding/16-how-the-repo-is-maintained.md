@@ -48,7 +48,11 @@ Two rules govern the whole directory.
   are about to write 'planned' into a doc, file an issue instead."
   [guide-release-notes.md](../guide-release-notes.md) repeats the ban for a
   release body. The reason is falsifiability — a doc saying "planned" has no way
-  to stop being true, and an issue does.
+  to stop being true, and an issue does. Say what it costs, because it is a real
+  cost and it is paid by the reader: **there is no file to open for what is
+  coming.** The nearest thing is the next release's milestone, and that is the
+  work someone has in flight rather than a plan. Finding out what is intended
+  means querying the tracker, by design.
 
 A corollary that catches people: **never write a status word about an issue.**
 Cite it as a bare `#NNN`, usually parenthesised, and say nothing about whether
@@ -168,7 +172,8 @@ This is the part a newcomer does not expect, and the most characteristic thing
 about the repo. Documentation rot is normally caught by a human noticing. Here,
 where it can be, it is caught by `cargo test`.
 
-Three mechanisms, four instances.
+Five tests across four mechanisms, and a fifth mechanism that is not a test at
+all.
 
 ### A citation must name a file that exists
 
@@ -249,10 +254,35 @@ set.
 
 The test `include_str!`s seven named files and asserts each contains the current
 floor, with the expected strings built from the constants rather than
-hard-coded. The rot it catches is the worst kind in this repo: the test's own
-doc comment says a floor bump that misses a prose copy leaves `SECURITY.md`
-claiming enforcement the code does not provide. Four things about how it is
-built:
+hard-coded. The seven are [`SECURITY.md`](../../SECURITY.md) and
+[`README.md`](../../README.md); [`ci.yml`](../../.github/workflows/ci.yml);
+`sandbx-core`'s [`Cargo.toml`](../../crates/sandbx-core/Cargo.toml) and its
+[`enforcement.rs`](../../crates/sandbx-core/tests/enforcement.rs); and two
+`context/` files, [guide-sandboxing.md](../guide-sandboxing.md) and
+[decision-port-allowlist.md](../decision-port-allowlist.md).
+
+The mechanism is worth seeing rather than taking on trust, and it fits in the
+test's opening lines — a unit test building its expected strings out of the
+constants, so the prose has to follow the code and not the other way round.
+
+```rust
+    let abi = format!("ABI {}", BASELINE_ABI as i32);
+    // `decision-port-allowlist.md` writes the ABI as landlock's variant name instead. Built
+    // off the discriminant, like the line above: landlock documents its `Debug` as unstable.
+    let variant = format!("V{}", BASELINE_ABI as i32);
+    let both: &[&str] = &[abi.as_str(), BASELINE_KERNEL];
+    let variant_form: &[&str] = &[variant.as_str(), BASELINE_KERNEL];
+    let kernel_only: &[&str] = &[BASELINE_KERNEL];
+```
+
+What follows is a loop over `(name, include_str!(…), wanted)` triples whose body
+is one `assert!(text.contains(want), …)` per wanted string — so the figure never
+appears in the test either, and a bump to `BASELINE_ABI` or `BASELINE_KERNEL`
+re-points all seven assertions at once.
+
+The rot it catches is the worst kind in this repo: the test's own doc comment
+says a floor bump that misses a prose copy leaves `SECURITY.md` claiming
+enforcement the code does not provide. Four things about how it is built:
 
 - **`include_str!`, not a runtime read.** The files are compiled into the test
   binary, so a path that moved is a compile error rather than a test that
@@ -260,10 +290,13 @@ built:
 - **Containment, not equality**, and the comment is honest about the limit: it
   catches a file that never names the current floor, and not one that also
   still names an older one.
-- **Two spellings.** `decision-port-allowlist.md` writes the ABI in landlock's
-  own variant form rather than as a bare number, so the test carries a second
-  expected form for that file — and both forms are built off the constant's
-  discriminant, because landlock documents its `Debug` as unstable.
+- **A file is pinned for the halves of the floor it actually states,** which is
+  what the three shapes are for. Five files get `both`.
+  `decision-port-allowlist.md` gets `variant_form`, writing the ABI in
+  landlock's own variant spelling rather than as a bare number. `README.md` gets
+  `kernel_only`, naming the kernel version and not the ABI at all — asserting a
+  string it has no reason to carry would fail the build over a sentence nobody
+  wrote.
 - **The seven include a workflow file.** One of the pinned copies is
   `.github/workflows/ci.yml`, whose "Report kernel sandbox support" step names
   the floor in a comment; a Rust unit test therefore asserts on the contents of
@@ -277,9 +310,30 @@ copy added is **another way for a trim to break this build**. That is why the
 right move, when you need the number, is to name the constants and link
 `SECURITY.md` rather than write it down again.
 
+### A claim mirrored in an array, asserted both ways
+
+The fourth mechanism inverts the first three: instead of reading the prose, it
+keeps a copy of the claim in Rust, where the compiler and the test runner can
+reach it. [`denylist.rs`](../../crates/sandbx-core/tests/denylist.rs) holds
+`CLAIMED` — every syscall the security docs say is denied, each paired with the
+name to print when it is missing — and asserts it against `BLOCKED_SYSCALLS`,
+the list the filter is actually built from, in **both directions**.
+`every_claimed_syscall_is_actually_denied` catches a claim the filter no longer
+backs. `every_denied_syscall_is_one_the_docs_claim` catches the drift the first
+one cannot see: an entry added to the filter that no claim names, which leaves
+the boundary wider than the docs describe. Both failure messages name the fix at
+both ends, down to "drop the claim from `SECURITY.md` in the same change" if the
+removal was deliberate.
+
+Read the second test's doc comment for the limit, because it is the honest part:
+it stops at the arrays. `CLAIMED` is a hand mirror, so a *count* written into
+prose is still unchecked — and [guide-sandboxing.md](../guide-sandboxing.md)
+states one. What is on the denylist, and what each group of it would buy an
+attacker, is [10](10-seccomp.md)'s subject.
+
 ### The mutation check: a table of tests that were actually run
 
-The fourth instance is not a test. It is prose that records tests having been
+The fifth mechanism is not a test. It is prose that records tests having been
 run, and it is the answer to a problem `guide-module-layout.md` spends a whole
 section on: **most of this repo's mechanisms fail by refusing.** A ruleset the
 kernel would not take, a filter that did not install, a fixture whose directory
@@ -386,6 +440,26 @@ against `guide-code-comments.md`, and trim what is over budget — subject to th
 rule above that a trim deleting a kernel quirk, an ordering requirement or the
 origin of an ABI number has failed.
 
+Which means the pass is not really about length. The guide's two lists sort
+comments **by kind**, and that is the part to have in your head before you open
+it. A comment is kept when it carries why a sequence cannot be reordered; why a
+syscall, a flag or an apparent redundancy is required; where a magic constant or
+an ABI number came from; an asymmetry the type system does not enforce; or a
+workaround and the condition that would retire it. A comment is over budget *at
+one line* — the guide's "zero is the budget" — when it restates the name, names
+a type the signature already names, narrates the line beneath it, banners a
+section, echoes the module doc three lines above, or documents a getter. History
+and rejected alternatives go too: `git log` and the tracker hold those and stay
+accurate, where a comment does not.
+
+One trap in that pass, because it reaches outside the code. The doc comments
+clap renders into `--help`, and the ones schemars turns into a tool's
+JSON-schema `description`, are not commentary — they are output, and the guide
+puts them out of scope. The exemption follows the *item*, not the file, so in
+`sandbx-cli` they sit interleaved with ordinary comments that no exemption
+reaches. Trimming one of those rewrites `--help`, so capture the rendering
+before and after rather than trusting the source diff.
+
 Docs-only, comment-only and test-rename branches need neither review. The
 comment pass still applies to a comment-only branch, which is the only reason it
 exists as a separate step rather than part of code review.
@@ -448,6 +522,15 @@ Assume a small change to `sandbx-cli`.
   subject under the 72-character ceiling. The house habit, which no hook
   enforces, is a subject stating what is true after the change rather than
   instructing: "the cli map names the new module", not "update the cli map".
+- **Run the suite yourself, because no hook does.** The default run is
+  `cargo test --workspace --features sandbx-providers/mock`, which is CI's
+  `test` job: the mock feature is named explicitly there because
+  `sandbx-providers`' test target carries `required-features = ["mock"]`, so a
+  plain workspace run skips it and reports zero tests for that crate
+  ([20](20-crate-providers.md)). On a host whose kernel reaches the floor, add
+  `cargo test --workspace --features sandbox-integration` — that is the
+  enforcement suite, gated whole-file, and the one CI runs on two
+  architectures. [18](18-crate-core.md) has which target each feature gates.
 - **If the version in the workspace manifest moved, write the release notes in
   the same commit.** `docs/release-notes/v<version>.md`, copied from
   `TEMPLATE.md`, is a required check on `main` — CI's `notes` job looks for the
@@ -497,7 +580,8 @@ Reading a `guide-` against the code it describes is still a person's job.
 
 - The difference between a `guide-` and a `decision-` file, and which of the two
   is expected to go stale.
-- Why there is no roadmap file, and what a doc may say about an issue's status.
+- Why there is no roadmap file, what that costs a reader, and what a doc may say
+  about an issue's status.
 - Which three guides constrain how code is written, what each one bounds, and
   why this chapter cites none of their numbers.
 - Why the comment ratio's denominator includes test code, and why reading the
@@ -508,8 +592,12 @@ Reading a `guide-` against the code it describes is still a person's job.
   `the_reading_order_names_every_doc` and
   `every_prose_copy_of_the_floor_is_current` catches, and the trick each uses to
   avoid passing vacuously.
+- How `denylist.rs` pins a `SECURITY.md` claim without reading a word of it,
+  why it asserts in both directions, and what its mirror still cannot check.
 - Why a mutation check lists the tests that *passed*, and what the
   derived-expectation trap is.
+- Which kinds of comment the comment pass keeps and which are over budget at one
+  line, and why a clap doc comment is not commentary at all.
 - Why code review runs before security review, and the comment pass after both.
 - What `git diff origin/main..HEAD` shows that `origin/main...HEAD` does not,
   and the two other ways a review reports a clean branch without having read it.

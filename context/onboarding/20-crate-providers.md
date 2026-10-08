@@ -137,6 +137,13 @@ regularly"), `max_output_tokens`, an optional `system`, the `messages`, the
 reason: an `Auto` variant would describe a request indistinguishable from
 omitting the field.
 
+One `Prompt` is one request, so it is one **round** and not one turn.
+`max_output_tokens` goes out as `max_tokens` in every body `body.rs` builds, so
+`--max-tokens` bounds each round's reply and a turn of eight rounds may produce
+eight of them; [13 — the turn loop and the gate](13-turn-loop-and-gate.md) owns
+that accounting. The field's own doc calls it "a ceiling on the turn's output",
+which is *turn* in the API's sense — one model turn, which is one round here.
+
 `ContentBlock` is the one to read properly, because it is the type
 `sandbx-agent` and `sandbx-cli` both build by hand. The derive line is part of
 the design:
@@ -153,8 +160,10 @@ pub enum ContentBlock {
 ```
 
 `PartialEq` and not `Serialize` is the whole point — equality is what a test
-wants to compare, and serialization is what no caller may have. The five
-variants:
+wants to compare, and serialization is what no caller may have. That same derive
+line heads `Prompt`, `RequestMessage` and `ToolDefinition` too, and `Role`,
+`ToolChoice` and `Thinking` add only `Copy, Eq` to it, so the absence is the
+whole tree's and not one type's. The five variants:
 
 | variant | fields | who builds one |
 |---|---|---|
@@ -220,6 +229,13 @@ whole, because a renderer and the replay need different things from one pass;
 `Usage` is once because the counts are cumulative; `ThinkingBlock` is withheld
 entirely when the signature never arrived.
 
+A fourth asymmetry is a consequence rather than a decision, and `Text`'s own doc
+is where it is named: block boundaries are not recoverable. No event marks the
+close of a *text* block, so two text blocks and one produce the same sequence of
+`Text` deltas — a consumer rebuilding content coalesces consecutive text blocks
+into one, and neither a renderer nor a stored assistant message can put a break
+back where the model had one.
+
 `StopReason` has six variants — `EndTurn`, `ToolUse`, `MaxTokens`,
 `StopSequence`, `Unspecified` and `Other(String)`. `Unspecified` exists because
 `message_delta.stop_reason` is nullable on the wire; `Other` exists because new
@@ -248,8 +264,33 @@ string.
 
 `tokenize` is a `futures_util::stream::unfold` over a `TokenizerState` holding
 the source stream, a raw `Vec<u8>` buffer, a `scanned` cursor and a `done` flag.
-The four corners worth knowing before you touch it:
+The five corners worth knowing before you touch it:
 
+- **The frame boundary is a blank line, and `\n\n` is never searched for as a
+  pair.** The inner loop yields one line per `\n`; an empty line with lines
+  already collected is what ends a frame, and an empty line with none collected
+  is a keep-alive. The cap is checked on the same pass:
+
+```rust
+            if line.is_empty() {
+                if lines.is_empty() {
+                    continue; // blank keep-alive between events
+                }
+                return Some((Ok(parse_event(&lines)), state));
+            }
+            event_bytes += line.len();
+            if event_bytes > MAX_EVENT_BYTES {
+                return Some((oversized(), ended(state)));
+            }
+```
+
+  `event_bytes` counts only the lines of the frame being built, so the bound is
+  per event and resets at each blank line. A *second* check sits just past the
+  scan, against `event_bytes + state.buf.len()`, and it is the one that catches
+  the failure the constant was added for: a gateway answering with a large
+  non-SSE body sends no `\n` at all, so no line is ever yielded and the check
+  above never fires. Both call `ended`, so an oversize frame terminates the
+  stream rather than being skipped.
 - **A chunk can split a multi-byte character.** So bytes are buffered raw and
   decoded only once a range ends at a `\n` — safe mid-sequence because no UTF-8
   continuation or lead byte takes the value `0x0A`. A line that is not valid
@@ -296,9 +337,8 @@ a keep-alive and is skipped, so a heartbeat does not produce a phantom event.
 `id:`, `retry:` and `:`-comment lines are ignored outright — this crate never
 resumes a stream via `Last-Event-ID` — which means a comment-only frame yields
 an *empty* `data`, something the layer above must tolerate rather than reject.
-And one SSE event is capped at `MAX_EVENT_BYTES`; [02](02-what-a-harness-is.md)
-quotes that constant and the OOM-with-no-diagnostic failure it exists to
-prevent.
+And `MAX_EVENT_BYTES`' value, with the OOM-with-no-diagnostic failure it exists
+to prevent, is quoted in [02](02-what-a-harness-is.md).
 
 Tests live in the file's own `mod tests`, thirteen of them, each one chunk
 sequence in and a `Vec<Result<RawSseEvent, _>>` out. They are the cheapest thing
@@ -335,6 +375,35 @@ enum OpenBlock {
 Text needs no entry, because each of its deltas is useful on its own and goes
 straight out. `redacted_thinking` needs none either: it arrives whole at
 `content_block_start` and is emitted there.
+
+The whole state machine is one `match` on the parsed frame, and this is its
+shape — which frames open a block, which extend one, and which close one:
+
+| frame | what it does to the fold |
+|---|---|
+| `message_start` | `absorb`s its usage; queues nothing |
+| `content_block_start`, `tool_use` or `thinking` | inserts an `OpenBlock` at `index` |
+| `content_block_start`, `redacted_thinking` | clears `index`, queues `RedactedThinking` there and then |
+| `content_block_start`, `text` or unknown | clears `index`, nothing else |
+| `text_delta` | queues `Text { delta }`; touches no entry |
+| `thinking_delta` | `push_str` onto the open block *and* queues `Thinking { delta }` |
+| `signature_delta` | `push_str` onto the open block's `signature`; queues nothing |
+| `input_json_delta` | `push_str` onto the open `tool_use`'s buffer; queues nothing |
+| `content_block_stop` | removes `index` and runs `closed_block_event` on it |
+| `message_delta` | `absorb`s usage and *holds* a stop reason; queues nothing |
+| `message_stop` | flushes the open blocks, then `Usage`, then `Stop`; ends |
+| `ping`, unknown `type`, empty `data` | nothing |
+| `error` | queues `Usage`, then an `Err(ApiError)`; ends |
+
+Every arm *queues* rather than returns, which is what the `VecDeque` is for: one
+frame can be worth more than one event while `unfold` hands back one at a time.
+A `thinking_delta` mutates a block and produces an event; `message_stop`
+produces a flushed block per open index, then `Usage`, then `Stop`. The loop
+drains `pending` before it polls the source and tests `ended` only once the
+queue is empty, so that order is observable rather than incidental —
+`start_and_delta_combine_into_one_usage_event` asserts the whole output vector,
+`Usage` then `Stop`, so a consumer reading counts off the stream has them in
+hand before the turn ends.
 
 **Why a map and not a vec.** Blocks arrive keyed by an integer index, and
 nothing in the protocol promises those indices are contiguous, ordered, or that
@@ -456,8 +525,23 @@ names: a field added upstream becomes a build failure rather than a key silently
 missing from a request. Below `Body` sit six more wrappers — `Messages`,
 `MessageBody`, `Blocks`, `BlockBody`, `Tools`, `ToolBody` — plus
 `ToolChoiceBody` and `ThinkingBody`, each a private struct with one `Serialize`
-impl. The renames and the omissions are [02](02-what-a-harness-is.md)'s subject;
-what matters at the module level is that every one of these types is private,
+impl. Every rename and every omission is a rule of this module, and the
+`mod tests` below pins each one by name:
+
+| neutral | on the wire | the test |
+|---|---|---|
+| `max_output_tokens` | `max_tokens` | `max_output_tokens_is_sent_as_max_tokens` |
+| `ToolDefinition::schema` | `input_schema` | `a_tool_schema_is_sent_as_input_schema` |
+| `ContentBlock::Thinking`'s `text` | `thinking` | `a_thinking_block_replays_its_text_under_the_thinking_key` |
+| `Thinking::Visible` | `{"type":"adaptive","display":"summarized"}` | `visible_thinking_asks_for_an_adaptive_summary`, `budget_tokens_is_never_sent` |
+| `Role::Assistant` | `"assistant"` | `an_assistant_role_is_sent_lowercase` |
+| `system: None` | the key is absent, not `null` | `an_absent_system_prompt_is_omitted_not_null` |
+| `tools: []` | the key is absent | `an_empty_tool_list_is_omitted_not_an_empty_array` |
+| a `tool_choice` with no tools | dropped | `a_tool_choice_without_tools_is_dropped` |
+| `is_error: None` | the key is absent | `a_successful_tool_result_omits_is_error` |
+| no field at all | `stream: true` | `streaming_is_always_on` |
+
+What matters at the module level is that every one of these types is private,
 `Body` is `pub(super)`, and `mod body` is itself private inside `anthropic.rs`.
 
 [`payload.rs`](../../crates/sandbx-providers/src/anthropic/wire/payload.rs) is
@@ -480,6 +564,44 @@ field an `Option` so that a frame omitting a counter cannot end the turn and
 types here reaching past `pub(super)` to `pub(crate)`, because an HTTP error
 response and an in-band SSE `error` event carry the same shape and it is
 `anthropic.rs` that parses the former. Neither leaves the crate.
+
+**Why two sets and not one round-trippable one.** `Serialize` appears in exactly
+one file under `src/` — `body.rs` — and `Deserialize` in exactly one other,
+`payload.rs`; no type in the crate carries both, which is a grep a reader can
+run. That is not tidiness, because the two halves describe different things. A
+`tool_use` goes *out* as a finished `input` object and comes *back* as an `id`
+and a `name` at `content_block_start` followed by a run of `partial_json`
+fragments. A thinking block goes out with its text and signature together and
+comes back as three frame kinds. `max_tokens`, `tools` and `stream` have no
+inbound counterpart; `usage`, `stop_reason` and every `*_delta` have no outbound
+one. A single round-trippable set would have to carry every field of both
+directions, most of them `Option`, with nothing stating which direction each
+belonged to — and `Body` borrowing a `&Prompt` while every `Raw*` owns its
+strings is the other half of why one type cannot serve.
+
+**One block, both halves.** A thinking block's round trip is the clearest walk
+across the boundary, and it touches five files of this crate:
+
+| hop | file | shape |
+|---|---|---|
+| opens | `payload.rs` | `RawContentBlockStart::Thinking { thinking }` — `""` in practice |
+| text arrives | `payload.rs` | `RawDelta::ThinkingDelta` |
+| signature arrives | `payload.rs` | `RawDelta::SignatureDelta`, one frame before the stop |
+| held open | `accumulate.rs` | `OpenBlock::Thinking { text, signature: Option<String> }` |
+| closes | `accumulate.rs` | `closed_block_event` — `None` if the signature is absent or empty |
+| crosses the seam | `event.rs` | `AgentEvent::ThinkingBlock { text, signature }` |
+| rebuilt by the caller | `prompt.rs` | `ContentBlock::Thinking { text, signature }` |
+| back on the wire | `body.rs` | `{"type":"thinking","thinking":text,"signature":sig}` |
+
+Only the first three hops and the last name a vendor string, which is the
+boundary doing its job on the one type that has to survive both directions
+byte-for-byte. The two middle hops are where the rules live:
+[decision-thinking-replay.md](../decision-thinking-replay.md) is the record and
+[02](02-what-a-harness-is.md) the on-ramp, and the short version is that
+`sandbx-agent` builds that `ContentBlock` inside a turn and strips it on the way
+out, so this trip happens between rounds and nowhere else. The request side's
+own `thinking` object does not gate it: `display` governs only whether the
+summary text comes back, so the signature arrives either way.
 
 ## `anthropic.rs` — one client, and four settings that are not defaults
 
@@ -716,8 +838,14 @@ case where *being a separate crate* is itself the thing asserted.
   thinking block with no signature never leaves the crate.
 - What the tokenizer does with a frame that has no trailing blank line, and why
   nothing may be emitted after a terminal item.
+- Where a frame boundary is actually found, and which of the two
+  `MAX_EVENT_BYTES` checks catches a response body with no newline in it.
+- Which frames open a block, which extend one and which close one, and why
+  every arm of the fold queues an event rather than returning it.
 - Why open blocks live in a `BTreeMap` keyed by index rather than in a `Vec`,
   and what reusing an index without closing it would otherwise cause.
+- Why the outbound and inbound wire types are two sets with no type in common,
+  and the five files a thinking block crosses on its way back out.
 - Why a flush happens at `message_stop` and not on the paths that end without
   one.
 - What a caller pays for `secrecy` not being re-exported, and what that buys.

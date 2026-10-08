@@ -106,8 +106,8 @@ binary's rather than a library consumer's — `with_helper_dispatch`,
 [`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs) or beside it, the
 process-shaped work 04's *The CLI architecture* section says `main.rs` keeps.
 
-**Seven are named by no other crate in the workspace at all**, and the reasons
-divide cleanly:
+**Ten are reached from no other crate's `src/`**, and the reasons divide
+cleanly:
 
 - **Forced by a signature.** `Access` is a field of a `SandboxError` variant,
   `ObjectId` is `VettedPath::object`'s return, `ReadableWalk` is
@@ -118,9 +118,14 @@ divide cleanly:
   `dispatch_helper_mode` are what
   [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs)
   calls, and a `[[bin]]` links the library as an external crate — so "public"
-  there means "reachable from the crate's own binary". That file has no ordinary
-  mode: `NotHelperMode` is a usage error. `HELPER_INNER_FLAG` is public for the
-  doc link in its module comment.
+  there means "reachable from a binary". That file has no ordinary mode:
+  `NotHelperMode` is a usage error. There is a second such binary outside this
+  crate, `sandbx-tools`' `tests/support/helper.rs`, and its module doc says what
+  forces the trio public rather than `pub(crate)`: `SandboxedCommand` re-execs
+  *the current binary* with `HELPER_FLAG`, which assumes that binary dispatches
+  at startup — the shipped `sandbx` does and a test harness does not, so the
+  harness ships a binary that does nothing else. `HELPER_INNER_FLAG` is public
+  for the doc link in its module comment.
 - **Needed by an integration test.** `HelperArgs` and `BLOCKED_SYSCALLS` are
   read by targets under `crates/sandbx-core/tests/`, a separate crate that sees
   only the public surface — the last section of this chapter is that trade.
@@ -313,7 +318,9 @@ statically linked binary with its own resolver among them — one at a time.
 ## `concealment.rs` — nineteen lines, aimed at sandbx itself
 
 The smallest module in the crate, and the only one whose subject is sandbx's own
-process rather than a child's. It is one function:
+process rather than a child's — a boundary in its own right rather than a
+precondition for one, which is how [04](04-the-architecture.md) places it. It is
+one function:
 
 ```rust
 pub fn conceal_process_state() -> Result<(), SandboxError> {
@@ -330,8 +337,18 @@ which lives in the harness's own environment, which a shared procfs publishes to
 every same-uid process — so a tool granted `/proc` would otherwise read it out
 of `/proc/<harness-pid>/environ` (#192).
 
-Four facts the one-line body does not show.
+Five facts the one-line body does not show.
 
+- **It does not close sandbx's own `/proc/self` to sandbx.** Procfs exempts a
+  same-thread-group reader from `__ptrace_may_access` for `fd/` and `exe`, and
+  does not for `environ` — so the harness's environment closes even to itself,
+  while the two reads sandbx depends on survive: `fd_path` in
+  [`digest.rs`](../../crates/sandbx-core/src/digest.rs), which is the
+  `/proc/self/fd/N` a pinned `execve` is handed instead of a path that could
+  resolve twice, and `self_exe` in
+  [`command.rs`](../../crates/sandbx-core/src/command.rs), which `read_link`s
+  `/proc/self/exe` before the helper re-exec. [07](07-kernel-primer.md) has the
+  kernel rule and the comment that names the function.
 - **Refusing `/proc` as a path was available and declined twice over.**
   `SECURITY.md` declines refusal-by-name for `/etc`, `/var`, `/proc` and `/sys`
   on the grounds that depth is not sensitivity and a list of dangerous
@@ -412,8 +429,14 @@ refusal carries the `Access` it was checked against so it can name the grant it
 The enum's doc states the property that makes it safe to reason about: "Every
 variant is a refusal — no 'allowed with warning' case — so a caller that
 believes it is sandboxed is never worse off than one that gets an error." No
-`Ok`-ish arm, no severity field. Reading the list end to end is the fastest tour
-of the threat model in the repo:
+`Ok`-ish arm, no severity field. And no `#[non_exhaustive]`, which is what
+"closed" buys: four matches over the enum carry no wildcard arm — `Display`,
+`Error::source`, `label` and `refusal` — so a twenty-fifth variant is four
+compile errors, one per question it has to answer. How it reads to an operator,
+whether it wraps an OS error worth a `source`, what a trail calls it, and
+whether a helper stage is the only thing that can decide it.
+
+Reading the list end to end is the fastest tour of the threat model in the repo:
 
 | group | variants | the one worth knowing |
 |---|---|---|
@@ -461,6 +484,10 @@ second closed enum: thirteen variants, each documenting the `SandboxError` it
 stands for, plus `ALL`, a `label()` returning the same strings, and a
 `from_label` that is a lookup over `ALL` rather than a second match — "so a
 label `label` can emit is one this accepts by construction".
+`a_label_we_did_not_define_is_refused` holds the other direction with `""`,
+`"not_a_refusal"`, `"seccomp "` and `"SECCOMP"`: an exact match, no trim and no
+case fold, so a near miss off the wire is dropped rather than rounded to the
+nearest reason it resembles.
 
 Why a subset at all: a record on the audit channel *outranks* the exit status
 the parent watched, so admitting a label the parent or `FsGuard` decides for
@@ -493,7 +520,7 @@ measurement; `UnboundedResolution` and `GrantBoundByResolver` are decided off
 the policy before the spawn. That comment is the closest thing the repo has to a
 written-out criterion, and it sits beside the code it governs.
 
-Four tests hold the two sets together, and the division of labour between
+Five tests hold the two sets together, and the division of labour between
 compiler and test is the thing to carry away: the exhaustive match makes a new
 variant *decide*, but it cannot make the test fixture *know*.
 
@@ -502,10 +529,13 @@ variant *decide*, but it cannot make the test fixture *know*.
 | `no_two_variants_share_a_label` | two refusals becoming one `reason=` value |
 | `a_refusal_is_called_what_the_variant_it_relays_is_called` | a relayed refusal being renamed on the way to the caller |
 | `every_refusal_a_variant_reports_is_one_the_channel_admits` | a refusal given arms in `label` and `refusal` but left out of `ALL`, where `from_label` would reject the label its own writer emits (#185) |
+| `the_reasons_the_helper_does_not_decide_are_not_refusals` | a variant changing sides unnoticed — `refusal` must answer `None` for exactly the eleven listed here |
 | `the_reasons_the_helper_does_not_decide_cannot_cross_the_channel` | a label sandbx decides for itself being accepted off the wire |
 
 The last is derived rather than listed, and its comment says why: "a list goes
-one label behind each time a reason is added." All four run off
+one label behind each time a reason is added." Its neighbour above keeps a list
+and that list *is* the assertion, so a variant moved across the channel fails
+until the list moves with it. All five run off
 `every_variant()`, a hand-written sample of each variant — whose own comment is
 candid that a variant left out of the array still compiles and "every test
 deriving from this skips in silence".
@@ -608,8 +638,10 @@ understand.
 - Why resolution happens in stage 1 before the `unshare` and the mounting after
   it, and what each position is forced by.
 - Why a bounded resolver rewrites `nsswitch.conf` line by line, not wholesale.
-- What clearing the dumpable flag buys, what it costs, and why the helper does
-  not set it too.
+- What clearing the dumpable flag buys, what it costs, why the helper does not
+  set it too, and which reads of its own `/proc/self` it leaves sandbx.
+- What a twenty-fifth `SandboxError` variant has to answer before the crate
+  compiles, and the one thing about it the compiler cannot force.
 - Why `HelperRefusal` is a subset of `SandboxError`'s labels, and what
   membership turns on.
 - Why `helper/ruleset/tests/` is a unit test directory, and what moving one of
