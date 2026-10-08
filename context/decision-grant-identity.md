@@ -194,9 +194,11 @@ a walk confirms its root once and then traverses, so the window there is the tra
 that is a limit on what the comparison can mean rather than on how it is taken. An
 inode number is free once what held it is unlinked, and whether it comes back is the
 filesystem's business rather than anything the pin can see. Measured on one host, not
-read out of the allocators: on an ext4 volume the next directory created at the same
-name got the number just released, on all three repeats of `rm -rf` plus `mkdir`; on
-a tmpfs (`/dev/shm`) the numbers came from a counter and none repeated. Neither is
+read out of the allocators — Linux 6.18.40.1 under WSL2, ext4 on `/dev/sdd` mounted
+`rw,relatime,discard,data=ordered`, and the tmpfs at `/dev/shm` with no `inode64`, by
+`stat -c '%d:%i'` across three `rm -rf` plus `mkdir` repeats at one path. On ext4 the
+next directory created at the same name got the number just released, all three
+times; on the tmpfs the numbers came from a counter and none repeated. Neither is
 specified behaviour — ext4 may return a different number and tmpfs's counter is 32-bit
 and wraps — so the ext4 result is what to expect on a project tree and not a rule. So
 a granted root deleted and re-created compares equal, on both layers, and is reached

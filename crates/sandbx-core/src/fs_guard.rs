@@ -419,10 +419,10 @@ struct Replacement {
 /// Find the root that covers `resolved`, confirming each candidate's object as it goes.
 ///
 /// `Path::starts_with` compares whole components and not string prefixes, so `/work-secrets`
-/// does not match the root `/work`. The first root that is both lexical and confirmed wins: nested and sibling grants overlap,
-/// and a moved root must not deny a path another root still covers. A root that cannot be
-/// measured at all accuses nothing and is passed over — it also grants nothing, having no
-/// confirmed object for a path to be inside of.
+/// does not match the root `/work`. The first root that is both lexical and confirmed wins:
+/// nested and sibling grants overlap, and a moved root must not deny a path another root
+/// still covers. A root that cannot be measured at all accuses nothing and is passed over —
+/// it also grants nothing, having no confirmed object for a path to be inside of.
 fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
     let mut moved = None;
 
