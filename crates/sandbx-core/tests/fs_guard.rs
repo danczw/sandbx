@@ -909,6 +909,62 @@ fn a_link_out_of_a_substituted_root_conceals_itself() {
     );
 }
 
+/// The other direction of the same bit, which the spelling cannot see: the link sits in a root
+/// that confirms, so only the resolution reaches the substitute — and whoever planted it is
+/// whoever can write the confirmed root, which the default policy gives the model.
+#[test]
+fn a_link_planted_in_a_confirmed_root_conceals_an_absence() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    let other = work.path().join("other");
+    for dir in [&granted, &data, &other] {
+        std::fs::create_dir(dir).unwrap();
+    }
+    std::fs::write(other.join("there.txt"), b"not the model's").unwrap();
+    // A directory link, so the absent probe's nearest resolving ancestor is the link itself:
+    // the two names then reach the two measurements a resolution can offer, not just one.
+    std::os::unix::fs::symlink(&granted, data.join("into")).unwrap();
+
+    let policy = SandboxPolicy::default()
+        .allow_read(vetted(&granted))
+        .allow_write(vetted(&granted))
+        .allow_read(vetted(&data))
+        .allow_write(vetted(&data));
+    let guard = FsGuard::new(&policy);
+    substitute(&granted, &other);
+
+    let there = data.join("into").join("there.txt");
+    let absent = data.join("into").join("absent.txt");
+
+    for (axis, present, missing) in [
+        ("read", guard.check_read(&there), guard.check_read(&absent)),
+        (
+            "write",
+            guard.check_write(&there),
+            guard.check_write(&absent),
+        ),
+    ] {
+        let present = present.unwrap_err();
+        let missing = missing.unwrap_err();
+
+        assert_eq!(
+            present.label(),
+            missing.label(),
+            "a {axis} through a confirmed root reads back differently for being there: \
+             {present} against {missing}"
+        );
+    }
+
+    // The spelling still names the root that moved, so reading alike is not everything
+    // reading as plainly outside.
+    let direct = guard.check_read(&granted.join("there.txt")).unwrap_err();
+    assert!(
+        matches!(direct, SandboxError::RootReplaced { .. }),
+        "{direct} is not the moved-root refusal"
+    );
+}
+
 /// The reason above must come off the requested path's own root, not from any root being
 /// substituted: a link out of a *confirmed* root is plainly out of bounds, and calling that a
 /// substitution would accuse a root that never moved.
