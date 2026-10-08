@@ -195,7 +195,7 @@ Three properties that are easier to state than to infer:
   costs twice — it withholds context the turn cannot get back, and it replaces the
   request's leading prefix, so whatever prompt cache sits behind the provider seam has to
   be written again rather than read. Withholding history mid-tool-chain is also one of the
-  things that confuses a model into the empty round below. The trade is taken because
+  things that confuses a model into the empty round above. The trade is taken because
   bounding the request is the point: a turn that cannot shed dies on the provider's
   context-length error, and a cache write costs less than a turn.
 
@@ -203,10 +203,6 @@ Three properties that are easier to state than to infer:
   round — and it holds whatever was threaded in: a turn compacts on its own figure from
   round two whether it was handed a floor or not. "No measurement means no compaction"
   therefore bounds a turn's **first round**, not the whole turn.
-
-`EndedMidToolUse` is unaffected: it reads `produced`, which compaction cannot reach. The
-coupling runs the other way — withholding history is one of the things that can confuse a
-model into an empty round, and that is where it lands.
 
 ### Reasoning blocks are the one thing a deepened cut edits
 

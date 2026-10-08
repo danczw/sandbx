@@ -173,9 +173,10 @@ before `max_bytes` trims what is returned).
 
 Two things a contributor can break silently:
 
-1. **An empty result is unrepresentable.** The field is private, `new` is the only
-   way in, and whitespace-only content becomes `"(no output)"` — the Messages API
-   rejects an empty `tool_result` and would end the turn with a provider error.
+1. **An empty result is unrepresentable.** The field is private,
+   `ToolOutput::new` is the only way in, and whitespace-only content becomes
+   `"(no output)"` — the Messages API rejects an empty `tool_result` and would
+   end the turn with a provider error.
 2. **The truncation marker is appended *after* the entry cap**, so the cap cannot
    trim away the notice that the results are incomplete.
 
@@ -184,9 +185,8 @@ proposition from "stopped early".
 
 ## Sync, and staying that way
 
-Tools are synchronous. `run_turn` is the sole `spawn_blocking` site, which keeps
-the async boundary in one place instead of spreading `async` through seven tool
-bodies that do blocking I/O anyway.
+Tools are synchronous. The boundary itself, and what a cancelled turn still
+does, is in [guide-turn-loop.md](guide-turn-loop.md#the-blocking-boundary).
 
 | Property | State |
 |---|---|
@@ -195,9 +195,3 @@ bodies that do blocking I/O anyway.
 | cancellable from outside | **partly** — the turn can be abandoned; the running tool still completes (#26) |
 | approval gate | **per tool per run** by default — `CallGate::approve`, asked before the spawn; `--approve call` adds one answer per call for the tools that write or run a program |
 | reported to the operator | every call, by `CallGate::settled`, once it has an outcome — including the two refusals above the gate, which `approve` never sees. On stderr, or on the terminal under `--approve call`: the account goes where the question went |
-
-## The split that matters
-
-A `FsGuard` change is a change to six tools at once, because they all go through
-it. That is the point — and the private `policy` field (#56) is what enforces it
-rather than leaving it to convention.
