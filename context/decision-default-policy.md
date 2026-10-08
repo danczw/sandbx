@@ -278,10 +278,11 @@ and enumerating the candidates would be a denylist whose first omission is silen
 
 `getcwd` already returns a resolved path, so `canonicalize` is there for the other
 thing it proves: that the directory is still openable. `PathFd::new` in the helper
-requires that, and `fs_guard::canonical_roots` *drops* a root it cannot resolve
-rather than refusing. The two layers disagree, and the safe reading of the
-disagreement is that an unopenable working directory must fail here, loudly,
-rather than become a grant one layer silently omits.
+requires that, and `FsGuard` does not: it holds the grant whole and confirms the
+root's object per access, so a root it cannot open accuses nothing and grants
+nothing. The two layers disagree, and the safe reading of the disagreement is that
+an unopenable working directory must fail here, loudly, rather than become a grant
+one layer silently covers nothing under.
 
 ## `policy()` became fallible
 

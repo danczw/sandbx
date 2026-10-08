@@ -121,7 +121,8 @@ architecture the filter gates on.
   its loader pulls in. The asymmetry runs one way — execute implies read on the
   same path, no grant implies execute. Encoded once, with the mapping onto each
   mechanism pinned by test on x86_64, aarch64 and the static-musl target the
-  published binary *is*.
+  published binary *is*. Neither mapping re-derives the path: each layer carries
+  the grant whole, pin included.
 - **What sandbx keeps for itself is out of a grant's reach.** Two paths are the
   harness's: the session transcripts a resumed run replays to the model, and the
   credential file `auth login` writes. The CLI refuses a path grant reaching
@@ -136,18 +137,32 @@ architecture the filter gates on.
   The non-claims below say what each of the two leaves open.
 - **The path a grant was vetted as is the path the kernel is told about.** Policy
   is judged in the harness, rules are opened in the helper, and that open follows
-  every symlink. Both path and object are compared at that seam:
+  every symlink. Both path and object are compared at that seam, and the object on
+  the in-process layer too:
 
   - **The spelling.** The helper reads each descriptor back through
     `/proc/self/fd` and refuses the whole run when it names something other than
     what it was told to open.
   - **The object.** A grant carries the `(dev, ino)` the harness vetted; the
-    helper `fstat`s and refuses the run when the object differs. So a directory
+    helper `fstat`s and refuses the run as `grant_replaced` when the object
+    differs, and `FsGuard` measures the root through an `O_PATH` descriptor at
+    every access and refuses that access as `root_replaced`. So a directory
     swapped for another real directory under the same name — a `rename(2)`, not a
-    symlink — is refused although it reads back as granted.
+    symlink — is refused although it reads back as granted, whether the tool that
+    reached it spawns a process or not.
+  - **Which root a refusal names.** The guard matches on the requested spelling
+    and on its lexical collapse, before anything is resolved, so a link the
+    substitute holds cannot pick it. A substitution reached only by *resolving*,
+    through a link planted in a root that does confirm, refuses as plainly outside
+    instead: a reason drawn from a resolution would say whether the name is there.
 
-  The in-process layer compares the path alone, a non-claim below; a symlink
-  *inside* a grant is under *Not vulnerabilities*.
+  A granted name that has become a *symlink* is a root to neither layer, though
+  both follow it. The guard gets the link's target, and refuses as `root_replaced`
+  where that is another object and as plainly outside where it is the vetted
+  object itself; the helper's readback sees a spelling other than the one it was
+  told to open and refuses as `grant_redirected`. An inode number is reused, which
+  a non-claim below scopes; a symlink *inside* a grant is under
+  *Not vulnerabilities*.
 
 ## What sandbx does *not* claim
 
@@ -169,12 +184,36 @@ architecture the filter gates on.
   `sandbx`. Nothing refuses a derived default in the directory holding the binary,
   so a no-flag run from a user-level install prefix (`~/.cargo/bin`,
   `~/.local/bin`) grants write there; a `/usr`-rooted prefix is refused.
-- **The object pin is the seam's, not the in-process layer's.** The six in-process
-  tools — `read`, `write`, `edit`, `ls`, `grep`, `find` — canonicalize each
-  requested path at every access and compare it against roots canonicalized once,
-  never against the object, so a real directory put at a granted name is in bounds
-  while it sits there. `bash` crosses into the helper and is refused; #212 carries
-  that half.
+- **The in-process confirmation is a measurement, not a resolution.** `FsGuard`
+  measures a granted root and then opens the path beneath it, two adjacent
+  syscalls apart, so a substitution landing between the two is granted on the
+  object the confirmation saw. Bounded by two syscalls rather than by the life of
+  the policy, but not closed — the same gap the `FsGuard` TOCTOU row in
+  [context/guide-sandboxing.md](context/guide-sandboxing.md) names. `find` and
+  `grep` are wider: a walk confirms its root once and then descends, so the window
+  is the traversal. Closing either needs the walk to run off a directory
+  descriptor, with `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it
+  ([#230](https://github.com/danczw/sandbx/issues/230)). One honest false positive
+  comes with the pin: neither half of `(dev, ino)` survives a remount, so a
+  granted tree on a network or autofs mount that remounts mid-session starts
+  refusing until the policy is rebuilt.
+- **The pin cannot see a reused inode.** An inode number is free once what held it
+  is unlinked, and whether it *is* reused is the filesystem's business and is not
+  specified. Measured on one host, whose kernel and mount options are recorded
+  beside the figures in
+  [context/decision-grant-identity.md](context/decision-grant-identity.md): an
+  ext4 volume handed a directory re-created at the same name the number just
+  released, on all three repeats of `rm -rf` plus `mkdir`; a tmpfs never repeated
+  one, its numbers coming from a counter. Neither is a rule — ext4's allocator may
+  return another number and tmpfs's counter wraps — so take the ext4 figure as
+  what to expect on a project tree. So a granted directory *deleted and re-created*
+  can compare equal on both layers although nothing the harness judged is left.
+  That is the pin's floor rather than a gap in how it is checked: a freed number is
+  no evidence the object survived. It is a different shape from the claim above,
+  which is a swap for a directory that *already existed* and so cannot hold the
+  vetted number while the vetted object does; telling the two apart needs a
+  creation time or a generation number beside the pair, or the held-root descriptor
+  that closes the window above.
 - **Write access to a project tree is write access to what you run in it next.** A
   granted tree — typed, or derived from the working directory — almost always
   holds files that execute outside the sandbox later, under your own account:

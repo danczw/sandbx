@@ -82,8 +82,11 @@ The guard hands back an **open handle**. A tool that took a resolved path and
 opened it itself would reintroduce the TOCTOU window the handle closes — so
 `check_read` is reserved for `ls`, where `read_dir` has no handle form.
 
-Residual gap: a parent-directory swap mid-open. Closing it needs full
-`openat`-chain resolution.
+Residual gap: a parent-directory swap mid-open, and a granted root swapped in the
+two syscalls between the guard's confirmation of it and the open. Closing either
+needs `openat2(dirfd, …, RESOLVE_BENEATH)` off a held root descriptor rather than a
+path. A `find` or `grep` walk is the widest form, confirming its root once and then
+traversing.
 
 ## The policy is private
 

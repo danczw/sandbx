@@ -57,7 +57,7 @@ It also owns the tokio runtime, because the flavour is the binary's choice and
 src/lib.rs           re-exports; Linux-only, refused at compile time
    policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
       policy/vetted.rs  VettedPath, ObjectId — a grant and the object it names
-   fs_guard.rs       in-process path enforcement (6 of 7 tools)
+   fs_guard.rs       in-process path and object enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, the audit pipe, the kill chain
       dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch — the entry
                      into helper mode

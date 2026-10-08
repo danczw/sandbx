@@ -22,6 +22,32 @@ leaf became a symlink between check and use, the open fails. `ls` is the one
 exception: `FsGuard::read_dir` hands it a `ReadDir`, but there is no `O_NOFOLLOW`
 for a directory read, so that handle closes the window no more than a path would.
 
+### The root is confirmed, not re-resolved
+
+A root the guard holds is the grant's own vetted path, pin included, and never a
+second resolution of its spelling. `FsGuard::new` does no I/O: a granted path
+resolves to itself by the invariant on `SandboxPolicy::grant`, so there is nothing
+left to resolve, and a `canonicalize` whose result is discarded but whose success
+gates the check below it is the substitution one size down — a granted root replaced
+by a symlink had the guard adopt the link's target as its root (#212).
+
+So containment is two questions, both of which must answer yes: the requested path
+is lexically inside a root, and that root still holds the object the grant carries,
+measured now through an `O_PATH` descriptor. A mismatch is `root_replaced` — the
+in-process twin of the helper's `grant_replaced`, decided here because there is no
+descriptor to carry and no second process to relay it (`decision-grant-identity.md`).
+
+The confirmation is measured **once** per access and carried into the refusal. Asking
+for a `bool` and then re-measuring to learn which root moved is two measurements that
+can disagree, and the disagreeing case emits the wrong refusal for a root that now
+confirms. A root that cannot be opened at all names no object to accuse: it grants
+nothing and refuses nothing, so the scan continues and an unmeasurable root reads as
+out of bounds rather than as a swap.
+
+The scan short-circuits on the first root that is both lexical and confirmed, because
+nested and sibling grants overlap — a replaced root must not deny a path a second
+grant legitimately covers.
+
 ### A refusal says nothing, except inside a grant
 
 `canonicalize` fails differently for a missing path (ENOENT), an unreadable
@@ -42,6 +68,13 @@ symlink in a grant is refused the way an out-of-bounds path is, whatever stopped
 it: `within` tests a *resolved* path, and one that will not resolve is inside no
 root. That costs the loop case a precise reason, which is the price of the three
 failures reading alike.
+
+A replaced root would open the same oracle one bit wide. If concealment treated an
+unconfirmed root as plainly out of bounds, a *present* file under the substitute
+would come back `root_replaced` and an absent one `path_not_allowed` — "does this
+name exist under the directory you swapped in", answerable by reading the label.
+Both routes therefore pass through one refusal site, so the two cases read alike;
+`a_substituted_root_conceals_an_absence` compares the labels and nothing else.
 
 Where the ancestor does speak for the path, the caller could enumerate the
 directory anyway, so absence there is honest, and it is `SandboxError::NotFound`,

@@ -44,6 +44,14 @@ so an accurate record for `ls` could not live in `sandbx-tools` — hence
 open; `read_dir` has no handle form for `O_NOFOLLOW` to guard. What it closes is
 the gap between the verdict and the trail.
 
+The root confirmation #212 added is part of the verdict, and the reading survives it
+unchanged: a root measured as replaced refuses before any open, so its `denied` is a
+refusal record and not a verdict one, and a root that confirms still writes nothing
+by confirming — `allowed` waits for the open as it did. The one thing to keep is that
+the reason recorded and the error returned come off the same measurement. A second
+stat for the record could disagree with the first and write a line contradicting what
+the caller was told; `a_moved_root_records_the_reason_it_returns` pins the pair.
+
 ## Why the two issues were one
 
 Moving `allowed` below the open only works if a refused open then gets a record
