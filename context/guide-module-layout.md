@@ -92,7 +92,7 @@ exec itself would be denied and the test would stay green for the wrong reason.
 ```sh
 for f in $(find crates -name '*.rs' -path '*/src/*' \
              -not -path '*/tests/*' -not -name 'tests.rs'); do
-  cut=$(grep -nE '^(pub(\([a-z]+\))? )?mod tests \{$' "$f" | head -1 | cut -d: -f1)
+  cut=$(grep -nE '^(pub(\([^)]+\))? )?mod tests \{$' "$f" | head -1 | cut -d: -f1)
   printf '%5d  %s\n' "$([ -n "$cut" ] && echo $((cut - 2)) || wc -l < "$f")" "$f"
 done | sort -rn | head -12
 ```
@@ -106,7 +106,9 @@ under-reported, which is the direction that lets a module over budget go unseen.
 The visibility is optional because `pub(super) mod tests {` is house style where a
 sibling module imports the helpers. A pattern that misses it falls back to `wc -l`
 and reports a compliant module as its whole file length — an invented overrun,
-which is the other direction and costs a reader the whole file.
+which is the other direction and costs a reader the whole file. `[^)]+` rather than
+`[a-z]+` so `pub(in crate::path)` matches too — nothing spells it that way today,
+and a visibility the pattern does not know is the failure this command has had.
 
 Read the file before you believe the figure. A count that contradicts the module in
 front of you is the command being wrong about that module's shape, not the module
