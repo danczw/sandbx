@@ -921,8 +921,9 @@ mod tests {
         );
     }
 
-    /// The turn that `a_turn_with_no_reply` cannot cover: one that answered, so the only
-    /// thing saying the answer is a fragment is the figure threaded out of the outcome.
+    /// The answered turn `a_turn_with_no_reply` cannot cover. Which mechanism supplies the
+    /// figure is `render.rs`'s `the_exit_code_comes_from_the_outcome_not_a_stop`, not here:
+    /// a latch over the event stream computes the same answer.
     #[test]
     fn a_truncated_answer_exits_incomplete() {
         let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
