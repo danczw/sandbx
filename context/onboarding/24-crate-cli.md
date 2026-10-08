@@ -12,7 +12,7 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 ## The module tree, and who covers what
 
 Twenty-one source files under [`src/`](../../crates/sandbx-cli/src/), ten
-integration files under `tests/`, and five thematic chapters already owning
+integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each file holds and, where another chapter
 explains the mechanism, which one. The paths carry the nesting:
@@ -43,7 +43,7 @@ and `error.rs` have one each.
 
 ## lib.rs is the clap surface and nothing else
 
-The library root declares eight modules, re-exports eleven types, and holds two
+The library root declares eight modules, re-exports twelve types, and holds two
 clap derives. That is the file. No work happens in it, which is the point:
 `Cli::parse` is reachable from a unit test, so "what does this argv grant" is a
 question answered without a sandbox-capable kernel.
@@ -94,6 +94,12 @@ kernel rule. Two flags stay off `Grants` deliberately — `--timeout` and
 `--pin-sha256` are `SandboxRun`'s own, the second because `agent-run` flattens
 `Grants` with no fixed program for a digest to pin.
 
+Which settles where a new flag goes. On `Grants` if it confines anything, so
+every subcommand that confines gets it in the same breath; on `AgentRun` if it
+shapes a turn, which `Tui` — whose whole body is one field, `run: AgentRun` —
+then has without declaring a line of its own; and on a variant's own `Args`
+struct only where no other subcommand could mean it.
+
 ## main.rs does four things, in an order that is three of them
 
 ```rust
@@ -110,13 +116,14 @@ and become the target command rather than fall through into `Cli::parse`.
 [08](08-the-two-stage-helper.md) has the two flags, the dispatch enum with no
 success variant, and why the re-exec is this binary at all.
 
-Three things then happen *inside* that closure, each for its own reason. Logging
-is initialised there because in helper mode this process becomes the sandboxed
-command, whose stderr is forwarded verbatim, so a subscriber installed above
-would write into it. `conceal_process_state` is called there so the flag is
-sandbx's own rather than a sandboxed command's — and after parsing, so a refusal
-exits with the subcommand's code. Then the dispatch: five arms, two wrapped in
-`block_on`.
+Inside that closure the order is `logging::init`, then `Cli::parse`, then
+`conceal_process_state`, then the dispatch — and three of those four are where
+they are for a reason of their own. Logging is initialised there because in
+helper mode this process becomes the sandboxed command, whose stderr is
+forwarded verbatim, so a subscriber installed above would write into it.
+`conceal_process_state` is called there so the flag is sandbx's own rather than
+a sandboxed command's — and after parsing, so a refusal exits with the
+subcommand's code. Then the dispatch: five arms, two wrapped in `block_on`.
 
 The runtime is built once, in `block_on`, whose doc comment explains both
 choices: `new_current_thread` "because `spawn_blocking` is all the loop asks of
@@ -124,6 +131,22 @@ the scheduler", so the flavour stays the binary's and the agent crate can ask
 for `rt` without `rt-multi-thread`; and `enable_all` rather than `enable_time`
 for both drivers — the timer behind the per-round timeout, and the IO the
 provider's connector opens on.
+
+```rust
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        // Named at the one call site that can produce it rather than by a blanket
+        // `From`, which would label any later io error as this one.
+        .map_err(sandbx_cli::AgentError::Runtime)?
+        .block_on(future)
+```
+
+Those seven lines are the whole of the crate's async boundary. `main` is a
+synchronous `fn`, this is the only `block_on` in the workspace outside a test
+module, and the two subcommands that await anything reach a runtime through this
+builder or not at all — so there is no second flavour for a later subcommand to
+pick, and `AgentError::Runtime` has exactly one site that can produce it.
 
 ### The exit-code mapping
 
@@ -146,11 +169,20 @@ Read the whole thing as one mapping:
 | the command under `sandbox-run` exited | its own code | `sandbx_core::exit_code`, passed through |
 | a turn ended on an answer | 0 | `Render::finish` |
 | a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent.rs` |
+| a keypress ended a turn on the screen | 2 | the same `INCOMPLETE`, from `tui`'s `select!` |
 | the operator could no longer be asked | 3 | `NO_CONSENT` in `agent.rs` |
 | `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `auth.rs` |
 | any `Err` under `sandbox-run`, `agent-run`, `tui`, `hash` | 1 | `failure_code` |
 | any `Err` under `auth` | 2 | `failure_code` |
 | an `Ok(code)` that does not fit a `u8` | the subcommand's failure code | `report` |
+
+Both constants live in `agent.rs`, but under `tui` the code comes from `ending`
+rather than from `Render::finish` — and `ending` is the one mapping in the crate
+that reads `TurnStop` *non*-exhaustively, closing on `_ => 0` with a comment
+saying it is deliberate: a stop it has no account of must not be given a code
+`agent-run` already claims. [13](13-turn-loop-and-gate.md) has that argument,
+and [15](15-tools-and-the-screen.md) has what the interrupt's `2` costs a caller
+that a round limit's `2` does not.
 
 The two oddities are both about a script being able to branch. `3` exists
 because a run that stopped with nobody left to approve a tool call is neither a
@@ -172,6 +204,40 @@ when an overrun is declared rather than split.
 `sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and
 `wrapup::Next::run`. What follows is one `agent-run` walking its own modules in
 order.
+
+`main.rs` reaches none of those three. It calls `AgentRun::execute`, which is a
+fixed order of refusals and openings and then one hop into `drive`, where
+`run_turn` actually is — and the order is the content. An empty prompt is
+refused first, the API answering a blank text block with a 400, so letting it
+through buys a round trip to be told what was knowable before it. The policy
+comes before the client, so a refused policy never reads the credential; and
+`orientation::system_prompt` is handed that same `SandboxPolicy` value rather
+than a second `self.policy()?`, because re-reading `getcwd` from a cwd that
+moved meanwhile "would name the model a root the sandbox did not grant". The
+terminal comes before both the credential and the session, so a `--approve call`
+run with nothing to ask on opens neither. The client comes before
+`session::open`, because the credential chain can fail for want of a key and a
+session opened first would leave a header-only transcript nothing deletes.
+`Tui::execute` is the same sequence with `drawable` — which refuses `--approve
+call`, then a stdout that is not a terminal — ahead of the policy, for the same
+reason: a run that cannot be drawn must not read a credential on the way to
+finding that out.
+
+`drive` is where the pipeline below is assembled, and its signature is why all
+of it is testable without a key:
+
+```rust
+    async fn drive<W: Write, E: Write>(
+        &self,
+        mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
+```
+
+The stream opener, the `Channels<W, E>` carrying stdout, stderr and the optional
+terminal, and the session are all arguments, so a unit test hands `drive` a
+closure returning a canned `EventStream` and two `Vec<u8>`s for the channels,
+then reads back the request that would have gone out and the bytes that reached
+stdout. `Tui::drive` takes its opener for the same reason, its doc comment
+saying so by pointing here.
 
 ### orientation.rs — the harness volunteers its own constraints
 
@@ -467,10 +533,12 @@ and it closes on the one deliberate exclusion:
 }
 ```
 
-Had that last arm been `_ => return None`, an eighth content block would have
-compiled and silently vanished from every transcript — the failure the module
-doc is describing. Reasoning is excluded because a signature has no replay
-value; see [decision-thinking-replay.md](../decision-thinking-replay.md).
+Had that last arm been `_ => return None`, a sixth content block — the
+`ContentBlock` sent has five variants, `sandbx-session`'s `Content` three —
+would have compiled and silently vanished from every transcript, the failure the
+module doc is describing. Reasoning is excluded because a signature has no
+replay value; see
+[decision-thinking-replay.md](../decision-thinking-replay.md).
 
 Two more translations earn their complexity. `merge_user_runs` collapses
 consecutive user runs, keeping tool results ahead of prose — both the order they
@@ -574,8 +642,12 @@ those a new test belongs in.
   merged into the one turn a session stores.
 - How a credential file's mode is checked, why it is read from a descriptor,
   and why a too-wide file is refused rather than fixed.
-- Why `session.rs` has no `_` arm, and what an eighth content block would do to
+- Why `session.rs` has no `_` arm, and what a sixth content block would do to
   a transcript if it did.
+- What `AgentRun::execute` settles before `drive` is reached, and why the
+  credential is read after the policy and the terminal but before the session.
+- Why `drive` takes its stream opener and its channels as arguments, and what
+  that lets a unit test assert without a key.
 
 ## Next
 
