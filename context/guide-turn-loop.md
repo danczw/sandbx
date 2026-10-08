@@ -139,7 +139,7 @@ consequence worth internalising:
 > In a tool-heavy transcript the legal cut points are exactly the human prose turns —
 > one per exchange, not one per message.
 
-With one subtraction since #188: the prompt that resumes a turn which ran out of rounds is
+With one subtraction (#188): the prompt that resumes a turn which ran out of rounds is
 sent merged into the results it answers beside, so that message carries a `ToolResult` and
 is not a boundary. A session that caps on *every* turn therefore has no cut point but its
 first, which `cut == 0` excludes — compaction finds none and takes the third rung below.

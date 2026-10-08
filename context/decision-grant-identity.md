@@ -1,10 +1,10 @@
 # A grant names an object, not a name
 
-A policy is judged in the harness and its rules are opened in the helper. #205
-closed the symlink half of that seam: every grant crosses already resolved, and
-`open_grant` reads each descriptor back through `/proc/self/fd` and refuses the
-whole run when the link names something other than what it was told to open. A
-link redirected in between reads back as its target, and the run refuses.
+A policy is judged in the harness and its rules are opened in the helper. The
+symlink half of that seam is shut (#205): every grant crosses already resolved,
+and `open_grant` reads each descriptor back through `/proc/self/fd` and refuses
+the whole run when the link names something other than what it was told to open.
+A link redirected in between reads back as its target, and the run refuses.
 
 What that leaves open is substitution of one *real* directory for another at the
 same name. A `rename(2)` over the vetted path — no symlink anywhere — leaves the
@@ -13,8 +13,8 @@ directory the harness never vetted. The window is between the resolve in the
 harness and `PathFd::new` in the helper, and reaching it needs write access to
 the granted path's parent.
 
-#212 closes it by making the comparison about the object: the harness carries the
-`(dev, ino)` it vetted across the seam, the helper stats the descriptor and
+The comparison is about the object, not the name (#212): the harness carries
+the `(dev, ino)` it vetted across the seam, the helper stats the descriptor and
 refuses a mismatch, and `FsGuard` measures the matched root per access and refuses
 that access as `root_replaced`. The decision this note records is not that — it is the
 question #212 mainly exists to settle, which is **what the helper does with a
