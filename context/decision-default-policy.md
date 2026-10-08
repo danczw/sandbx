@@ -112,12 +112,6 @@ fixed that and was still wrong, because `homes.is_empty()` asks whether `HOME` w
 `/home` can match, which disabled the exact arm and skipped the fallback at once.
 All four were reproduced deriving `readable=1 writable=1` over `/home`.
 
-What that showed is that `$HOME` was carrying a decision it cannot carry. Nothing
-about the variable makes a root at `/home` narrower — it is write over every
-user's home however `HOME` is spelled — so the location rule stands on its own and
-`$HOME` only adds the one directory a location cannot name: `~/code` is fine,
-`~` is not.
-
 The same conflation then survived one layer in, on the *child* reading, which is
 the one arm `$HOME` legitimately gates — and it survived because `homes` was still
 answering two questions with one list. `homes.is_empty()` was reading as "no usable
@@ -263,17 +257,6 @@ byte-identical to `allow_system_executables`'s. The overlap arm above is what ma
 that assertion mean something: the one way a derived root could have been executable
 anyway was by sitting under a granted system path, and such a root is now refused.
 
-### What it does not reach
-
-Write on a project tree is write on whatever runs in that tree next:
-`.git/hooks/*`, `.git/config`, `.cargo/config.toml`, `Makefile`, `package.json`
-scripts, `rust-toolchain`. Those execute *outside* the sandbox the next time the
-operator builds or commits, and no guard can fix it — it is what accepting the
-default means. It is a non-claim in `SECURITY.md` rather than a refusal here.
-
-Nothing in that list is refused, and nothing can be: it waits for a human action,
-and enumerating the candidates would be a denylist whose first omission is silent.
-
 ## Canonicalizing the working directory
 
 `getcwd` already returns a resolved path, so `canonicalize` is there for the other
@@ -404,13 +387,6 @@ overlap arm deleted, or tested one way round
        refuses_to_run_from_the_system_binaries                 fails
        a_directory_named_like_a_system_one_is_a_valid_root     passes
 ```
-
-The home arms are five tests rather than one loop because the gating is what went
-wrong three times: a single looping test could not tell "the location rule is gone"
-from "it is back behind the path list" from "it no longer sees `/home/other`" from
-"`/home/other` is seen but an unusable `$HOME` satisfies the gate", and the last is
-#154 in both its spellings — a `$HOME` that resolves to nothing, and one that
-resolves to something that is not a home.
 
 Deleting the overlap arm and testing it one way round fail the same two tests,
 which is the signal being asked for: the loop covers each granted path *and* a
