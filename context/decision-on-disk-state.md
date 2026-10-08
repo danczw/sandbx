@@ -199,7 +199,8 @@ line reads as a round limit, and resume does not merely log that — it tells th
 The trade still goes this way: the alternative is what the torn-line paragraph
 above already rejects, refusing the file on an append-only format, and a wrong
 sentence the next turn can contradict beats the conversation lost. The shape is
-inferred because nothing records why the turn stopped; see #190.
+inferred because the record holds no reason: `run_turn` reports one as
+`TurnOutcome::round_stop` (#190), and carrying it onto the `turn` line is #226.
 
 Both guards take the relaxation, which is not a choice. `append` writing a shape
 `resume` refuses is precisely the bricked session the paragraph below is about.
