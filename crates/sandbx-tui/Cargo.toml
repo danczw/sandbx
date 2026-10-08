@@ -8,6 +8,23 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# No default features: `all-widgets`, `macros` and `underline-color` buy nothing
+# here. `crossterm` is the backend and brings the re-export this crate drives the
+# terminal through, so there is no second crossterm version to diverge from.
+# `unstable-rendered-line-info` is `Paragraph::line_count`, which measures text
+# after wrapping — the alternative is a second word-wrapper that has to agree with
+# ratatui's to the row. Pinned exactly, the API being unstable by that name.
+ratatui = { version = "=0.30.2", default-features = false, features = [
+  "crossterm",
+  "unstable-rendered-line-info",
+] }
+sandbx-providers = { path = "../sandbx-providers" }
+# `sync` alone: the key thread reaches the turn through a watch channel, and
+# nothing here spawns a task or arms a timer.
+tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
+
+[dev-dependencies]
+serde_json = "1.0.145"
 
 [lints]
 workspace = true
