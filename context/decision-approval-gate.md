@@ -142,7 +142,9 @@ as filed.
 - **Fail-closed, both ways.** The abort refuses the call it landed on; it never
   lets one through, which is the one way a fix here could be worse than the bug.
   And the calls behind it are refused *unasked* rather than allowed on the
-  strength of a verdict nobody gave.
+  strength of a verdict nobody gave. A tool already blanket-approved with `a`
+  goes with them, the latch being read before `approve`: the `a` was a judgement
+  about the tool, not a standing permission to run it with nobody watching.
 - **The round is answered in full.** A `tool_use` with no matching `tool_result`
   is a transcript no provider takes back, and this one is stored and resumed.
 - **A `TurnStop`, not a `TurnError`.** An error variant would discard the turn's
