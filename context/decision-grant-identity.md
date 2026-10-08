@@ -243,8 +243,10 @@ cost rather than only as a fix. A granted root replaced by a *symlink* used to h
 grant follow the link: the guard resolved each root again at every access, so the link's
 target became the root and was reachable by its own path. The guard now holds the grant's
 own spelling and measures what sits at it, and `confirm` omits `O_NOFOLLOW` — so the
-object it gets is the link's target, which is not the one the policy was judged on, and
-the access refuses as `root_replaced` like any other substitution. Reaching either
+object it gets is the link's target. Where that is another object the access refuses as
+`root_replaced` like any other substitution; where the link names the vetted object
+itself the root confirms, and the refusal comes off the resolved path leaving the granted
+spelling instead. Reaching either
 shape needs write access to the granted root's parent — which a run granted write on that
 parent has, so this is not only a racing-attacker case.
 
