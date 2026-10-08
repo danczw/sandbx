@@ -77,6 +77,9 @@ impl FsGuard {
     /// root that has moved tells the caller only that it moved, whether the name is there or
     /// not — and the record stays `denied` either way.
     ///
+    /// The root is measured before the spelling is judged. Under `reaches_plainly` the
+    /// measurement would be skipped for exactly the paths it has most to say about.
+    ///
     /// `failed` is the component resolution tripped on, the parent for a write, and is named
     /// only on the granted path, where it is inside the roots already.
     fn conceal_unless_granted(
@@ -92,15 +95,25 @@ impl FsGuard {
             .skip(1)
             .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)));
 
-        let granted_area = match nearest {
-            Some((ancestor, existing)) if reaches_plainly(requested, ancestor) => {
-                contains(&existing, roots)
-            }
-            _ => Containment::Outside(None),
+        // Measured before `reaches_plainly` is consulted, not under it: a moved root has to
+        // answer alike for every spelling beneath it, or a symlinked component refuses as
+        // out-of-bounds and an operator tallying `root_replaced` undercounts substitutions.
+        let granted_area = match &nearest {
+            Some((_, existing)) => contains(existing, roots),
+            None => Containment::Outside(None),
         };
 
         if let Containment::Outside(moved) = granted_area {
             return deny(moved, requested, access);
+        }
+
+        // Inside a confirmed root, where the ancestor still has to speak for the path below
+        // it; a symlink or a `..` in between means it does not.
+        if !nearest
+            .as_ref()
+            .is_some_and(|(ancestor, _)| reaches_plainly(requested, ancestor))
+        {
+            return deny(None, requested, access);
         }
 
         let subject = requested.display().to_string();
