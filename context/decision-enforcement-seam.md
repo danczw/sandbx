@@ -76,6 +76,23 @@ name exist under the directory you swapped in", answerable by reading the label.
 Both routes therefore pass through one refusal site, so the two cases read alike;
 `a_substituted_root_conceals_an_absence` compares the labels and nothing else.
 
+One refusal site is not enough on its own, because the oracle comes back through
+what reaches it. The root question is asked on the **requested spelling**,
+lexically, before anything is resolved — `moved_root`, at each of the three sites
+that can refuse. Asked after resolution instead, in either of the two forms that
+look equivalent, the substitute picks the verdict: a link it holds may resolve
+*into a second grant that confirms*, which reads as plainly inside and returns
+`Ok` beside an absent name's `root_replaced`; and a nearest-resolving-ancestor
+measurement follows that same link past the root being asked about. The first cost
+a write a new file under a root the policy no longer holds. The rule to keep is
+that no reason may be drawn from a path the substitute resolved.
+
+A granted name that has become a symlink falls out of the same rule rather than
+needing its own. `confirm` omits `O_NOFOLLOW`, so the object it measures is the
+link's target: a name leading elsewhere holds something else, and the access is
+`root_replaced` — not the `path_not_allowed` a lexical-only guard reported, which
+also differed from what an absent name under that root reported.
+
 Where the ancestor does speak for the path, the caller could enumerate the
 directory anyway, so absence there is honest, and it is `SandboxError::NotFound`,
 which `sandbx-tools` maps to `ToolError::Failed` rather than `Denied` (#180) and
