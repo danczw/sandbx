@@ -70,10 +70,18 @@ Compress these to the load-bearing clause; do not delete them to hit a number.
 Expect `sandbx-core/src/helper/` to shrink by rewording rather than by deleting,
 and prefer one terse sentence to none on any enforcement path.
 
-Out of scope, because they are not commentary: the doc comments clap renders
-into `--help` (`sandbx-cli/src/lib.rs`) and the ones schemars turns into a tool's
-JSON-schema `description` (`sandbx-tools/src/tools/*.rs`). Leave them, and
-exclude them when reading a crate's density.
+Out of scope, because they are not commentary: the doc comments clap renders into
+`--help` and the ones schemars turns into a tool's JSON-schema `description`.
+Leave them, and exclude them when reading a crate's density.
+
+The exemption follows the item, not the file. Schemars' derives are confined to
+`sandbx-tools/src/tools/*.rs`, so a path excludes them exactly; clap's are on
+eight modules — `sandbx-cli/src/` `lib.rs`, `grants.rs`, `agent.rs`, `auth.rs`,
+`sandbox.rs`, `hash.rs`, `agent/prompt.rs`, `agent/tui.rs` — interleaved with code
+no exemption reaches, so a path cannot. Only `lib.rs` is excluded below, which
+leaves 195 rendered lines of `sandbx-cli` counted as commentary (measured at
+`2fc597f`; recount when the flag surface moves). Subtract them from both terms
+before reading that crate against the threshold.
 
 ## Before and after
 
@@ -119,7 +127,9 @@ find crates/<crate> -name '*.rs' \
 ```
 
 The `-not` clauses are the rendered docs and the by-nature exemption below, out of
-scope rather than under budget. Both leave the numerator *and* the denominator:
+scope rather than under budget — and for clap they reach only `lib.rs`, so
+`sandbx-cli`'s figure needs the correction above. Every exemption leaves the
+numerator *and* the denominator:
 `sandbx-core/src/helper/` is a third of that crate's lines at twice the target, so
 counting its lines while exempting its comments puts 15% out of reach for the crate
 however hard the rest of it is cut.
