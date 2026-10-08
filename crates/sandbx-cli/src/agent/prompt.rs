@@ -156,9 +156,9 @@ fn abort(reason: &str) -> ApprovalDecision {
 
 /// One account of a call, as the bytes that reach a sink.
 ///
-/// `RESET` only where it renders: `2> run.log` would carry the escape into the log. Whole
-/// rather than written piece by piece — `write_fmt` issues a syscall per piece, which
-/// leaves the model's own stream a window to land between the reset and the line it covers.
+/// `RESET` only where it renders: `2> run.log` would carry the escape into the log.
+/// Formatted whole: `write_fmt`'s syscall per piece leaves the model's own stream a window
+/// between the reset and the line it covers.
 fn account(renders: bool, line: &str) -> String {
     if renders {
         format!("{RESET}{line}\n")
@@ -169,8 +169,8 @@ fn account(renders: bool, line: &str) -> String {
 
 /// Write one account of a call to stderr.
 ///
-/// The failed write is dropped rather than raised: stderr is the last sink a line has, and
-/// `eprintln!` panics there, which would replace the turn's exit 3 with an abort.
+/// A failed write is dropped: this is already the last sink the line has, and raising would
+/// cost the turn the exit 3 it still owes its caller (#218).
 pub(super) fn to_stderr(line: &str) {
     let mut err = std::io::stderr();
     let text = account(err.is_terminal(), line);
@@ -196,8 +196,8 @@ pub(super) trait Operator {
 
 /// The controlling terminal, opened to ask and to be answered.
 ///
-/// `F` is where an account goes when the terminal will not take it: stderr in a run, and a
-/// field rather than a call so a test can read back what reached it (#223).
+/// `F` is where an account goes when the terminal refuses it: stderr in a run, and a field
+/// rather than a call so a test can read back what reached it (#223).
 pub(super) struct Terminal<F = std::io::Stderr> {
     input: BufReader<File>,
     /// The same device duplicated: the question is written where it is answered.
@@ -208,8 +208,6 @@ pub(super) struct Terminal<F = std::io::Stderr> {
     renders: bool,
 }
 
-/// Spelled out rather than left to the default, which type position applies and an
-/// expression position does not.
 impl Terminal<std::io::Stderr> {
     /// Open the controlling terminal.
     ///
@@ -300,9 +298,8 @@ impl<F: Write> Operator for Terminal<F> {
     }
 
     fn report(&mut self, line: &str) {
-        // Per `RESET`, the account as much as the question: concealing the record of what
-        // ran is the same attack one line later. This device is a terminal by construction,
-        // so the reset is unconditional here where the fallback's is not.
+        // Per `RESET`, the account as much as the question. Unconditional here, where the
+        // fallback's is not: this device is a terminal by construction.
         if self.out.write_all(account(true, line).as_bytes()).is_err() {
             // Unlike a question, a dropped account reaches nobody — and the last call of a
             // run has no later question whose own failure would stand in for it (#218).

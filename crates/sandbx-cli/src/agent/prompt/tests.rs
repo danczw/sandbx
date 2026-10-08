@@ -8,8 +8,8 @@ const ACCOUNT: &str = "sandbx: write /work/out.rs — ran";
 
 /// An in-memory stand-in for stderr.
 ///
-/// Cloneable over a shared buffer because the terminal takes its fallback by value, and the
-/// test still has to read back what reached it.
+/// Shared buffer because the terminal takes its fallback by value, and the test still has
+/// to read back what reached it.
 #[derive(Clone, Default)]
 struct Sink(Arc<Mutex<Vec<u8>>>);
 
@@ -266,7 +266,7 @@ fn wait_readable(fd: &impl std::os::fd::AsFd) {
 /// A pty pair with the echo off, so the master carries only what sandbx wrote.
 ///
 /// `ONLCR` off with it: the line discipline translates a written `\n` into `\r\n` on the
-/// way out, and a byte the writer never sent is one an exact assertion cannot allow for.
+/// way out, which an exact assertion cannot allow for.
 pub(crate) fn pty() -> (File, File) {
     use nix::sys::termios;
 
@@ -396,8 +396,8 @@ fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
 
     terminal.report(ACCOUNT);
 
-    // Sized off what is expected rather than a round number: a fixed buffer passes on a
-    // prefix of a longer account, and the assertions below would not see the cut.
+    // Sized off what is expected, not a round number: on a prefix of a longer account a
+    // fixed buffer passes, and the assertions below do not see the cut.
     let expected = format!("{RESET}{ACCOUNT}\n");
     wait_readable(&master);
     let mut buffer = vec![0u8; expected.len()];
@@ -413,8 +413,8 @@ fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
     assert_eq!(seen, expected, "the account did not arrive whole");
 }
 
-/// A slave whose master is gone fails the write with `EIO`, and the account is the operator's
-/// one record of what ran — so it reaches the fallback rather than nobody (#223).
+/// A slave whose master is gone fails the write with `EIO`, and the account is the one
+/// record of what ran — so it reaches the fallback rather than nobody (#223).
 #[test]
 fn an_account_a_terminal_refused_still_lands() {
     let (master, slave) = pty();
@@ -436,8 +436,8 @@ fn an_account_a_terminal_refused_still_lands() {
     );
 }
 
-/// The control the one above needs: a terminal that takes the account is not also written
-/// to stderr, where an operator reading a redirect would see every line twice.
+/// The control the one above needs: a terminal that takes the account is not written to
+/// stderr as well, where an operator reading a redirect would see every line twice.
 #[test]
 fn an_account_a_terminal_took_reaches_no_fallback() {
     let (mut master, slave) = pty();
