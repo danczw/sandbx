@@ -34,17 +34,13 @@ pub struct Tui {
 }
 
 impl Tui {
-    /// Draw one turn, and report the code to exit with.
-    ///
-    /// `0` for an answer the model finished, `2` for one that `--max-rounds` ended or that
-    /// the operator interrupted — in both cases the screen says which.
+    /// Draw one turn, and report the code to exit with. `ending` decides which.
     ///
     /// # Errors
     ///
-    /// [`AgentError::NotATerminal`] and [`AgentError::ApproveUnderTui`] land before
-    /// anything else, including before the credential is read. The rest are
-    /// [`AgentRun::execute`]'s, plus [`AgentError::Screen`] for a terminal that stopped
-    /// taking what was drawn on it.
+    /// [`AgentError::NotATerminal`] and [`AgentError::ApproveUnderTui`] land before anything
+    /// else, including before the credential is read. The rest are
+    /// [`AgentRun::execute`]'s, plus [`AgentError::Screen`].
     pub async fn execute(&self) -> Result<i32, AgentError> {
         let prompt = self.run.prompt();
         if prompt.trim().is_empty() {
@@ -87,9 +83,9 @@ impl Tui {
     ///
     /// # Errors
     ///
-    /// [`AgentError::ApproveUnderTui`] first, decidable from argv alone and the more
-    /// specific of the two: a piped run that also asked to be asked per call has two
-    /// things wrong with it, and only one of them is about this subcommand.
+    /// [`AgentError::ApproveUnderTui`] first, being the more specific: a piped run that also
+    /// asked to be asked per call has two things wrong with it, and only one of them is
+    /// about this subcommand.
     fn drawable(&self, terminal: bool) -> Result<(), AgentError> {
         if matches!(self.run.approve, Approve::Call) {
             return Err(AgentError::ApproveUnderTui);
@@ -150,9 +146,9 @@ impl Tui {
             withheld: merged.withheld,
         };
 
-        // Before the screen, dropped after it: `sandbx-core` emits the audit trail on
-        // stderr for every guarded access, and the alternate screen neither redirects it
-        // nor gives it back, so each record would land in the pane and die with it.
+        // Before the screen, dropped after it: the alternate screen neither redirects
+        // stderr nor gives back what was written to it, so each audit record would land in
+        // the pane and die with it.
         let audit = logging::hold();
 
         // The screen before the keys: without raw mode ctrl-c is a signal, and the reader
@@ -202,9 +198,8 @@ impl Tui {
                 (Ok(code), Some(outcome), account)
             }
             Some(Err(error)) => {
-                // Drawn before it is returned: the screen is about to be torn down, and
-                // the operator reads the reason there rather than in what scrolls past
-                // after.
+                // Drawn before it is returned: the operator reads the reason on the screen
+                // rather than in what scrolls past after it is torn down.
                 let line = format!("sandbx: {error}");
                 (Err(AgentError::from(error)), None, vec![line])
             }
@@ -222,20 +217,18 @@ impl Tui {
             self.run.save(session, &asked, outcome, &merged)?;
         }
 
-        // Held until a key, then put back: the alternate screen takes the transcript with
-        // it, and a turn whose last rounds nobody read was not watched. Every cell and not
-        // the changed ones, because `save` writes to a stderr the screen does not redirect
-        // and ratatui would otherwise leave that line where it landed.
+        // Held until a key: the alternate screen takes the transcript with it, and a turn
+        // whose last rounds nobody read was not watched. Every cell and not the changed
+        // ones, because `save` writes to a stderr the screen does not redirect.
         pane.redraw(Hint::Done);
         keys.press().await;
         let failed = pane.screen.failure();
         drop(pane);
 
-        // Only now is there a stderr with no screen over it: the trail first, as it was
-        // emitted during the turn, then the account. The account is written again here
-        // because the pane went with the screen, and the line saying why a run exited 3
-        // rather than 2 is the one a redirected log needs most (#224). Not on the error
-        // path, where `main` reports the same error itself.
+        // Only now is there a stderr with no screen over it: the trail in emission order,
+        // then the account again, the pane having gone with the screen and a redirected log
+        // needing the line that says why a run exited 3 rather than 2 (#224). Not on the
+        // error path, where `main` reports the same error itself.
         drop(audit);
         if code.is_ok() {
             for line in &account {
@@ -257,15 +250,14 @@ impl Tui {
 /// `GateAborted` outcome holds its messages and its usage like an answered one, so nothing
 /// but the code tells a caller the operator went away.
 ///
-/// Two bounds can cut one turn, so the account is a list: `--max-rounds` ends the turn and
-/// `--max-tokens` ends a round inside it, and a turn that met both has to say both.
+/// A list and not a line, because two bounds can cut one turn: `--max-rounds` ends the turn
+/// and `--max-tokens` ends a round inside it.
 fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
     let mut account = Vec::new();
 
     let code = match &outcome.stop {
-        // Ahead of the bounds, as `render.rs:219` has it: a turn can hit `--max-rounds` and
-        // lose its operator in the same round, and the operator is the one a caller cannot
-        // find out about any other way.
+        // Ahead of the bounds, as `render.rs:219` has it: one round can hit `--max-rounds`
+        // and lose its operator, and only the second is unrecoverable.
         TurnStop::GateAborted => {
             account.push(
                 "sandbx: the gate could no longer be asked, so the turn stopped where it \
@@ -283,14 +275,13 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
             INCOMPLETE
         }
         // Not matched exhaustively: a stop this does not know about is an answer it has no
-        // account of. One that documents an exit code of its own needs an arm above
-        // instead, or `tui` contradicts a code `agent-run` already claims.
+        // account of. One documenting an exit code of its own needs an arm above, or `tui`
+        // contradicts a code `agent-run` already claims.
         _ => 0,
     };
 
-    // The outcome's own figure, not the stream's, and read whatever the stop was: the
-    // round that carried the reply can be cut at `--max-tokens` by itself, which is an
-    // answer that stops mid-sentence and must not exit 0.
+    // Read whatever the stop was: the round carrying the reply can be cut at `--max-tokens`
+    // on its own, which is an answer stopping mid-sentence and must not exit 0.
     if outcome.round_stop == Some(StopReason::MaxTokens) {
         account.push(
             "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
@@ -351,10 +342,8 @@ impl CallGate for Gate<'_> {
         self.argv.approve(call)
     }
 
-    /// The same line `agent-run` writes, drawn instead of printed.
-    ///
-    /// `ArgvGate::settled` puts it on stderr, which the alternate screen does not redirect:
-    /// the line would paint over the pane and be lost with it.
+    /// The same line `agent-run` writes, drawn instead of printed: `ArgvGate::settled` puts
+    /// it on stderr, which the alternate screen neither redirects nor gives back.
     fn settled(&mut self, call: Settled<'_>) {
         let line = gate::line(call);
         paint(self.pane, |transcript| transcript.call(&line));
@@ -377,8 +366,8 @@ mod tests {
         }
     }
 
-    /// Drawn over a pipe, the pane would land in whatever read it as escape sequences —
-    /// and the operator would have no screen to interrupt from.
+    /// Over a pipe the pane lands in whatever read it as escape sequences, and the operator
+    /// has no screen to interrupt from.
     #[test]
     fn a_stdout_that_is_not_a_terminal_is_refused() {
         let tui = tui(&["sandbx", "tui", "--", "what is here?"]);
@@ -425,10 +414,8 @@ mod tests {
 
     /// A lost operator outranks a cut round, and both outrank an answer.
     ///
-    /// Asserting the code and not the note: `GateAborted` keeps the turn's messages and
-    /// usage, so an outcome that lost its operator is as well formed as one that answered
-    /// — the code is the only thing that tells them apart, and `agent-run` already exits 3
-    /// for it in a shipped claim (#218).
+    /// The code and not the note: `GateAborted` keeps the turn's messages and usage, so it
+    /// is as well formed as an answer and only the code tells them apart (#218).
     #[test]
     fn a_gate_that_could_not_be_asked_exits_three_and_a_cut_round_two() {
         let code = |stop| ending(&outcome(stop, None)).0;
@@ -441,9 +428,8 @@ mod tests {
         assert_eq!(ending(&outcome(TurnStop::Answered, None)), (0, Vec::new()));
     }
 
-    /// The bound `TurnStop` does not carry: a round cut at `--max-tokens` ends the answer
-    /// mid-sentence and still stops as `Answered`, so reading the stop alone would exit 0
-    /// on a truncated reply — and the exit table this branch widened to `tui` says 2.
+    /// The bound `TurnStop` does not carry: a round cut at `--max-tokens` still stops as
+    /// `Answered`, so reading the stop alone would exit 0 on a truncated reply.
     #[test]
     fn an_answer_cut_at_max_tokens_exits_two_whatever_the_stop_was() {
         let cut = || Some(StopReason::MaxTokens);

@@ -49,9 +49,8 @@ pub fn init() -> Result<(), tracing_subscriber::util::TryInitError> {
 
 /// The records written while a screen owned the terminal, or `None` while stderr is clear.
 ///
-/// Process-global because the subscriber is: `tracing` takes one for the whole process,
-/// installed before the subcommand is known, so where its writer goes cannot be an
-/// argument to it.
+/// Process-global because the subscriber is: `tracing` takes one for the whole process, and
+/// it is installed before the subcommand is known, so its writer cannot take an argument.
 static HELD: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
 /// Where a record goes: stderr, unless [`hold`] is in force.
@@ -91,13 +90,11 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 /// Buffer the audit trail until the returned guard drops.
 ///
 /// For a subcommand that draws on the alternate screen: that screen does not redirect
-/// stderr, so a record written during the turn lands in the pane — corrupting it, since
-/// ratatui flushes only the cells that differ from its own last buffer — and is then lost
-/// with the screen. README's claim that every run records its trail on stderr is what this
-/// keeps true.
+/// stderr, so a record written during the turn lands in the pane, corrupts it and is lost
+/// with it. README's claim that every run records its trail on stderr is what this keeps
+/// true.
 ///
-/// Reentrant only in the sense that a second `hold` would discard the first's records, so
-/// there is one caller.
+/// Not reentrant: a second `hold` discards the first's records, so there is one caller.
 pub fn hold() -> Held {
     *HELD.lock().unwrap_or_else(PoisonError::into_inner) = Some(Vec::new());
     Held
@@ -135,8 +132,7 @@ mod tests {
         HELD.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
-    /// Held, the records accumulate; released, they are gone from the buffer, which is what
-    /// puts them on stderr exactly once.
+    /// Gone from the buffer on release, which is what puts them on stderr exactly once.
     #[test]
     fn a_hold_buffers_the_trail_and_releases_it_once() {
         let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
@@ -158,8 +154,8 @@ mod tests {
         assert_eq!(buffered(), None);
     }
 
-    /// The trail is the one output that is not opt-in, so a lock a panic poisoned must not
-    /// turn a record into a dropped one.
+    /// The trail is the one output that is not opt-in, so a poisoned lock must not drop a
+    /// record.
     #[test]
     fn a_poisoned_lock_still_takes_a_record() {
         let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);

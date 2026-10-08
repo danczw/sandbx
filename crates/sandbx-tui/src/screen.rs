@@ -14,9 +14,8 @@ pub struct Screen {
     /// The first draw failure, kept rather than returned.
     ///
     /// Drawing happens inside the turn's `observe`, which returns nothing, so a failure has
-    /// nowhere to go until the turn ends. The first is kept and the rest are not attempted:
-    /// a closed stdout fails once per event, and the last error says only that the screen
-    /// was already gone.
+    /// nowhere to go until the turn ends. The first and not the last: a closed stdout fails
+    /// once per event, and the last error says only that the screen was already gone.
     failed: Option<io::Error>,
 }
 
@@ -53,11 +52,10 @@ impl Screen {
 
     /// Repaint every cell, not only the ones the transcript changed.
     ///
-    /// ratatui flushes the difference between its own two buffers, so a cell something
-    /// else wrote into the screen is never rewritten — and the newline that came with it
-    /// scrolled the alternate screen, leaving the whole pane a row out of place. Stderr is
-    /// the writer that does this, the alternate screen not redirecting it. Discarding the
-    /// last buffer is the only way to put those cells back.
+    /// ratatui flushes the difference between its own two buffers, so a cell something else
+    /// wrote is never rewritten, and the newline with it scrolled the pane a row out of
+    /// place. Stderr is that writer, the alternate screen not redirecting it, and discarding
+    /// the last buffer is the only way back.
     pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
         if self.failed.is_some() {
             return;
@@ -72,8 +70,7 @@ impl Screen {
     /// The draw failure that stopped the screen updating, if one did.
     ///
     /// Taken, so a caller reports it once. Worth reporting: everything after it happened
-    /// off-screen, and a turn whose tool calls an operator never saw is not one they
-    /// watched.
+    /// off-screen, and a turn whose tool calls nobody saw was not watched.
     pub fn failure(&mut self) -> Option<io::Error> {
         self.failed.take()
     }
