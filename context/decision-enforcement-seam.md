@@ -78,7 +78,7 @@ Both routes therefore pass through one refusal site, so the two cases read alike
 
 One refusal site is not enough on its own, because the oracle comes back through
 what reaches it. The root question is asked on the **requested spelling**,
-lexically, before anything is resolved — `moved_root`, at each of the three sites
+lexically, before anything is resolved — `moved_root`, at each of the four sites
 that can refuse. Asked after resolution instead, in either of the two forms that
 look equivalent, the substitute picks the verdict: a link it holds may resolve
 *into a second grant that confirms*, which reads as plainly inside and returns
@@ -86,6 +86,21 @@ look equivalent, the substitute picks the verdict: a link it holds may resolve
 measurement follows that same link past the root being asked about. The first cost
 a write a new file under a root the policy no longer holds. The rule to keep is
 that no reason may be drawn from a path the substitute resolved.
+
+Lexically means two spellings, not one, because neither covers the other.
+`Path::starts_with` is a whole-component prefix test, so a `..` *after* the root
+name does not undo the match — `granted/link/../..` names the root while its
+collapse leaves it — and a `..` *before* the root name reaches it without naming
+it in front, so `other/../granted` matches only once collapsed. Either form
+matching refuses, and the collapse is skipped when it equals the spelling, each
+candidate root costing an open and an `fstat`.
+`a_detour_through_dot_dot_does_not_evade_the_root` and
+`a_dot_dot_after_the_root_still_names_it` pin one form each. The collapse is not a
+`canonicalize` and must not be mistaken for one: a `..` above a symlink collapses
+to the link's parent lexically and to its target's parent in the kernel. That is
+why it is one of two forms tested rather than the form tested — and why the
+verdict itself still comes from the resolved path, which `contains` admits only
+under a root that confirms.
 
 A granted name that has become a symlink falls out of the same rule rather than
 needing its own. `confirm` omits `O_NOFOLLOW`, so the object it measures is the
