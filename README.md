@@ -327,8 +327,18 @@ answer. Those per-call lines move to the terminal with the question, so
 | `--system TEXT`   | a system prompt, sent after whatever lines name the run's approved tools and roots |
 | `--show-thinking` | print a summary of the model's reasoning on stderr as it arrives. Stored nowhere, and a 400 on models before Claude 4.6 |
 
-One question, one answer, then the process ends; no way to interrupt a turn
-mid-flight. `--session` carries a conversation across runs:
+One question, one answer, then the process ends. `sandbx tui` takes the same
+flags and draws that turn on a screen instead of streaming it, where ctrl-c or
+escape ends it mid-flight — which stores nothing of that turn and leaves a tool
+call already running to finish unseen. It needs a terminal on stdout, so it
+refuses a piped run, and it refuses `--approve call`, whose question wants the
+terminal the screen has taken:
+
+```sh
+sandbx tui --allow-tool bash -- "what is in this directory?"
+```
+
+`--session` carries a conversation across runs:
 
 ```bash
 sandbx agent-run --session -- 'remember the number 41'
@@ -343,10 +353,10 @@ whatever a tool read into the conversation. Nothing expires or redacts it — se
 they can only read resumes and says so on stderr. A path grant reaching that
 directory is refused too.
 
-| `agent-run` exit | means |
+| `agent-run` and `tui` exit | means |
 |---|---|
 | `0` | the model finished its answer |
-| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Out of rounds, the turn is asked once more in a round that may call no tool, so stdout usually holds a summary a blank line below what arrived before the cap; stderr says if that round failed instead. `--no-wrap-up` skips it, leaving only what arrived before the cap — nothing at all if the model opened with a tool call |
+| `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Out of rounds, the turn is asked once more in a round that may call no tool, so stdout usually holds a summary a blank line below what arrived before the cap; stderr says if that round failed instead. `--no-wrap-up` skips it, leaving only what arrived before the cap — nothing at all if the model opened with a tool call. Under `tui` it also means you interrupted the turn, and there no wrap-up round is sent |
 | `3` | `--approve call` lost the terminal it asks on, so the turn ended there: that call and the ones behind it in the round were refused, nothing after them ran, no further request was sent. What the turn did before is on stdout and in `--session` |
 | anything else | it failed before or during the turn, with the reason on stderr |
 

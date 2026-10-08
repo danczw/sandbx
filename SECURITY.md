@@ -205,9 +205,10 @@ architecture the filter gates on.
   can add raw syscalls.
 - **Approval is not enforcement, and by default it is per tool per run**
   ([#165](https://github.com/danczw/sandbx/issues/165)). A gate sits between the
-  model asking for a tool and `sandbx-tools` running it, and `agent-run` answers
-  it from the flags you typed: the four read-only tools run; `write`, `edit` and
-  `bash` come back refused until `--allow-tool` names them.
+  model asking for a tool and `sandbx-tools` running it, and `agent-run` and
+  `tui` both answer it from the same flags you typed: the four read-only tools
+  run; `write`, `edit` and `bash` come back refused until `--allow-tool` names
+  them.
 
   - **`--approve run`**, the default, asks nothing in between: once a tool is
     approved, every call to it in that turn runs, including one a prompt injection
@@ -217,7 +218,9 @@ architecture the filter gates on.
     that tool — and refuses to start where there is no terminal to ask on. It
     shows the arguments the model chose, cut at 512 characters: the tail of a
     longer command is not shown, and no answer to the prompt reveals it
-    ([#169](https://github.com/danczw/sandbx/issues/169)).
+    ([#169](https://github.com/danczw/sandbx/issues/169)). Under `tui` the flag is
+    refused outright, the screen having taken the terminal that question wants
+    ([#225](https://github.com/danczw/sandbx/issues/225)).
   - **A terminal that goes away *during* a run is fail-closed and noticed.** The
     read fails rather than returning an answer, so that call and the ones behind
     it in the round are refused, nothing after them runs, no further request is
@@ -228,16 +231,20 @@ architecture the filter gates on.
 
   The gate narrows *which* tools a hijacked turn can use; only the sandbox bounds
   *where* an approved one reaches — with no path flag, read *and write* over the
-  directory you ran `agent-run` from. The request names those roots to the model
-  as absolute host paths; a refusal outside them is still indistinguishable from
-  one for an absent path.
-- **A saved session is a plaintext transcript on your disk.** `agent-run
-  --session` writes the whole conversation — your prompts, the model's replies,
-  every tool call's arguments and every tool's output — as JSON lines under
+  directory you ran sandbx from. The request names those roots to the model as
+  absolute host paths; a refusal outside them is still indistinguishable from one
+  for an absent path.
+- **A saved session is a plaintext transcript on your disk.** `--session` writes
+  the whole conversation — your prompts, the model's replies, every tool call's
+  arguments and every tool's output — as JSON lines under
   `$XDG_STATE_HOME/sandbx/sessions`, else `~/.local/state/sandbx/sessions`.
   Whatever a tool read is in it: a token in a config, a `.env` under
   `--allow-read`, a key a `bash` printed. No encryption, no redaction, no expiry,
-  no deletion.
+  no deletion. A turn interrupted on `tui`'s screen writes nothing at all — not
+  the prompt and not the part of the answer you read — the outcome being dropped
+  where it stood; a tool call already running still finished, and what it did is
+  only on the screen you stopped
+  ([#133](https://github.com/danczw/sandbx/issues/133)).
 
   Ownership and integrity are enforced, not secrecy: directory `0700`, transcript
   `0600`, a wider directory narrowed, and a resume refused when another user can
@@ -324,12 +331,12 @@ architecture the filter gates on.
   it again. Sharing a secret without exposing its value has no mechanism — see
   [context/decision-tool-credentials.md](context/decision-tool-credentials.md).
   Exactly one name is refused rather than passed, the next bullet.
-- **`agent-run` refuses to pass the harness's own provider credential to a tool.**
-  `--allow-env ANTHROPIC_API_KEY` is refused before the first request goes out:
-  sandbx makes the provider call in-process, so no tool call needs that value. By
-  the one name sandbx itself reads as a credential, not by a pattern — every other
-  variable you name is still passed in full, and `sandbox-run` still passes this
-  one, because there the program and its arguments are yours.
+- **An agent subcommand refuses to pass the harness's own provider credential to a
+  tool.** `--allow-env ANTHROPIC_API_KEY` is refused before the first request goes
+  out: sandbx makes the provider call in-process, so no tool call needs that
+  value. By the one name sandbx itself reads as a credential, not by a pattern —
+  every other variable you name is still passed in full, and `sandbox-run` still
+  passes this one, because there the program and its arguments are yours.
 
   It closes the `--allow-env` route only, narrower than "the environment". The
   other two routes to the same key are closed elsewhere:
@@ -424,10 +431,10 @@ Documented behaviour; reports of these will be closed as such:
   `TZ`) the CLI grants so that a program named without a leading `/` is looked up
   in your `PATH`. The value arrives whole — see *A variable you pass through is
   passed in full* above.
-- `agent-run` refusing `--allow-env ANTHROPIC_API_KEY`, including when the
+- An agent subcommand refusing `--allow-env ANTHROPIC_API_KEY`, including when the
   variable is unset, since the flag is a statement of intent either way. And
-  `sandbox-run` continuing to pass it — see *`agent-run` refuses to pass the
-  harness's own provider credential to a tool* above.
+  `sandbox-run` continuing to pass it — see *An agent subcommand refuses to pass
+  the harness's own provider credential to a tool* above.
 - A path grant refused because it reaches the session store or the credential
   file — `--allow-read ~` and `--allow-read /` included, on a host with no
   transcript saved and no key stored, and whichever path axis it was given to. The
