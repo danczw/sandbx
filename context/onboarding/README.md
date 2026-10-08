@@ -24,6 +24,22 @@ does, `SECURITY.md` is right.
 
 ## The order
 
+Seventeen chapters in six movements, working inward. **The world** (01–03):
+what this is, what any harness has to do, and how other projects answer the same
+questions. **The shape and the promise** (04–06): the architecture every later
+chapter locates itself in, the crates under it, and what `SECURITY.md` does and
+does not claim. **The mechanism** (07–10): the kernel's own vocabulary, then the
+helper that uses it, then Landlock and seccomp one at a time. **The mechanism
+applied** (11–12): which tools actually reach it, and one flag traced the whole
+way. **The surfaces** (13–15): the loop and the gate, what gets written down,
+and the seven tools. **The practice** (16–17): how the repo is held to its own
+claims, and everything still missing.
+
+Read them in order the first time. Only [03](03-the-landscape.md) is
+position-independent — it looks outward rather than downward, and it is worth
+most before sandbx's design has started to feel inevitable, which is why it
+sits early rather than at the end.
+
 | chapter | covers |
 |---|---|
 | [01 — what sandbx is](01-what-sandbx-is.md) | the product and its thesis, the five subcommands, what the kernel has to provide, and the five commands to run first |
@@ -67,7 +83,7 @@ that crate.
 | [20 — sandbx-providers](20-crate-providers.md) | a tree with the vendor boundary in the middle: the neutral half above `anthropic.rs`, the four parts of that boundary the compiler holds, SSE framing, the delta fold, and the two halves of the wire |
 | [21 — sandbx-agent](21-crate-agent.md) | the smallest crate and the one holding the control flow: thirteen public names, `run_turn`'s signature read before its body, the offered tool set, the gate's one blocking site, and compaction as a cut-point algebra |
 | [22 — sandbx-session](22-crate-session.md) | the one thing that outlives the run: a three-line identifier allowlist, two roots tried and one never considered, five types that are deliberately not the provider's, and which bit of a file's mode refuses rather than reports |
-| [23 — sandbx-tui](23-crate-tui.md) | a crate that decides nothing and sanitises everything it draws: an eight-line `lib.rs` whose manifest is the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
+| [23 — sandbx-tui](23-crate-tui.md) | a crate that decides nothing and sanitises everything it draws: a `lib.rs` of four names whose manifest is the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
 | [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent.rs` and its six submodules as one pipeline, and the exit codes |
 
 These run longer than the read-through chapters, and that is the one place in

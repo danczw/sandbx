@@ -26,7 +26,7 @@ Grants { allow_read: vec!["/tmp/x"] }     one Vec<PathBuf> per path axis
    │ resolved          ──► PathBuf, deepest resolvable ancestor replaced
    │ bound_by_resolver ──► bool, noted now and refused with the DNS flags
    │ reaches_owned     ──► Option<&OwnedPath>; Some is a refusal
-   │ pinned            ──► VettedPath, the only step that stats
+   │ pinned            ──► VettedPath, the only answer that is kept
    ▼
 SandboxPolicy { readable: [VettedPath], … }    no I/O here at all
    │ HelperArgs::encode
@@ -409,6 +409,149 @@ the left-hand branch, with its measure-then-open guard, does not.
 `HardRequirement` compatibility level set at the top of `apply`, a ruleset the
 kernel took only partly is an error rather than a quietly weaker sandbox.
 
+## The no-flag default, and why a flag replaces it
+
+Now the other half of the question, because `--allow-read /tmp/x` does not only
+*add* a grant — it takes one away.
+
+```rust
+if !self.paths_given() {
+    // Inside the branch: a run that typed its own flags never depends on `HOME`.
+    let root = current_root(policy.executable_paths(), &owned)?;
+    let root = pinned(&root, &root)?;
+    policy = policy.allow_read(root.clone()).allow_write(root);
+}
+```
+
+With no path flag at all, a run derives read **and write** on the working
+directory. Give any path flag and that branch does not execute, so the flags you
+typed become the whole of the filesystem policy. `paths_given` runs over
+`Axis::ALL`, so a fourth path axis joins the rule rather than being forgotten
+into a default that widens it.
+
+[decision-default-policy.md](../decision-default-policy.md) is clear that what
+decided this was the failure mode and not the ergonomics. The alternative was an
+unconditional default plus a `--no-default-policy` opt-out, and under that shape
+`sandbx agent-run --allow-read /srv` — a deliberately tight, hand-written policy
+— *silently gains write over the whole working tree*. Suppression's failure mode
+is the mirror image and is the safe one: the operator gets less than they
+expected and hears about it at once, as a refusal naming the path the grant
+lacked. The record's own summary is the line worth carrying: **narrow and loud
+beats wide and silent.** It also notes that nothing here forecloses going the
+other way, since unconditional-plus-opt-out is a strict widening of this.
+
+Note too that `pinned(&root, &root)?` on the derived path is the same function
+the flag route calls, with the same spelling in both arguments. A derived grant
+is pinned exactly as a typed one is; there is no second, laxer road into the
+policy.
+
+Some working directories are refused rather than derived from — `vetted_root`
+answers that, and it refuses **in the order written**: the filesystem root, then
+`$HOME` or a directory holding it, then one of `/home`, `/Users`, `/var/home`
+and `/root` or a directory holding one of those, then a home-looking directory
+where `$HOME` settled nothing, then an overlap with the system binaries, then a
+cwd reaching something sandbx owns. That third refusal is the one gated on no
+variable at all, and deliberately: a service account whose `HOME=/var/lib/svc`
+would otherwise let `/home` through, where a derived root is write over every
+user's home whatever the variable happens to name. `current_root` is
+`vetted_root` over this process's own state. The guard governs only what sandbx
+*derives* and never what you ask for, which is why every refusal in the family
+names the two flags to type instead.
+
+## What a grant may not reach
+
+Two paths are the harness's own: the session transcripts a resumed run replays
+to the model, and the credential file `auth login` writes. `owned_paths` derives
+them from the config and state homes in play, each with a `holds: &'static str`
+saying what it is for — `&'static` so that no shape of the refusal can carry a
+key into a message.
+
+`reaches_owned` tests containment **both ways round**, because a Landlock right
+covers a subtree: a grant *above* the session directory hands over every
+transcript, and a grant naming one transcript inside it hands over that history
+— the file whose contents become what the model is told it said. `starts_with`
+compares whole components, not bytes, so `~/.config/sandbx-notes` still derives.
+
+```rust
+owned.iter().find(|owned| {
+    let path = resolved(&owned.path);
+    path.starts_with(granted) || granted.starts_with(&path)
+})
+```
+
+Four properties of this refusal are each deliberate, and
+[decision-harness-owned-paths.md](../decision-harness-owned-paths.md) argues all
+four.
+
+- **It fires in both subcommands or neither,** on every path axis, since
+  `Grants` is shared.
+- **It does not ask whether anything is stored there.** An existence-sensitive
+  refusal is a race: `agent-run --session` creates the transcript during the
+  very run the policy was derived for, so a filesystem check would answer
+  "nothing there" and then put something there, and the same argv would be
+  refused on its second invocation and not its first. It is also a verdict no
+  test can pin without building the state it is testing for.
+- **There is no exact-path hatch.**
+  `--allow-read ~/.config/sandbx/credentials.toml` is refused rather than
+  honoured as the narrowest possible form of the request. Naming the file *is*
+  the request the refusal exists for, and a hatch at the exact path would be a
+  hatch for an injected flag in any wrapper script that builds an argv — in the
+  one spelling that reads most like deliberate care.
+- **The derived default is the same hazard by another route,** so `vetted_root`
+  calls `reaches_owned` on the cwd too. A no-flag run from inside the session
+  directory would otherwise derive read and write over the history.
+
+So `--allow-read ~` and `--allow-read /` are refused, with no override flag. The
+honest form of an override is moving the state: point `XDG_STATE_HOME` elsewhere
+and what sandbx owns moves, and the refusal moves with it.
+
+Subtraction was never on the table as an alternative, and the reason is the
+mechanism rather than taste: Landlock unions rules and has no way to express an
+exclusion, so "grant `/` except this file" is not a policy the kernel can hold.
+
+**The same key reached through `/proc` is closed by a different mechanism
+entirely,** which is worth seeing because it shows where a path refusal stops.
+`/proc/<harness-pid>/environ` is not a grant and no path check governs it. So
+sandbx clears its own dumpable flag at startup — `conceal_process_state` in
+[`concealment.rs`](../../crates/sandbx-core/src/concealment.rs), via
+`prctl(PR_SET_DUMPABLE, 0)`. The kernel reparents the process's `/proc` entry to
+root, so `environ`, `mem`, `maps` and `fd/` fail `__ptrace_may_access` even for
+a reader running as you. It is called from
+[`main.rs`](../../crates/sandbx-cli/src/main.rs) immediately after parsing and
+before any subcommand, so no code path reaches a policy with the flag still set.
+[`SECURITY.md`](../../SECURITY.md) carries the pair as one claim and the record
+puts it plainly: this is a different mechanism, not more of the path refusal.
+
+- **Worth questioning:** `reaches_owned` requires its `granted` argument to have
+  arrived through `resolved`, and the way that requirement is held is a doc
+  comment plus `debug_assert!(granted == resolved(granted), …)`. The published
+  binary is a release build, so in the artefact that ships, the precondition on
+  the refusal that protects the credential file and the transcripts is enforced
+  by convention.
+  [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) reasons
+  carefully about *which* spelling must reach the comparison — "vetting one
+  spelling and granting another is the window this closes" — and the owned side
+  normalises itself inside the function. What the record does not weigh is
+  making the caller's side unforgeable, which this codebase already knows how to
+  do: `VettedPath` is precisely a path that cannot be unpinned, because `grant`
+  accepts nothing else. A `Resolved` newtype returned by `resolved` and demanded
+  by `reaches_owned` would turn today's debug-only assertion into the same kind
+  of build failure, in the one place where the two production callers are the
+  only thing standing between a lexical mismatch and a grant over the session
+  history.
+
+- **Worth questioning:** the departure at `axis.grants().write` is keyed so that
+  "a future write-conferring axis inherits the affordance instead of silently
+  missing it", and [decision-axis-table.md](../decision-axis-table.md) presents
+  that as the safe default. It is the safe default for *forgetting*; it is also
+  an automatic widening. Whoever adds a fifth axis that confers write gets a
+  read grant from the CLI without ever opening `grants.rs`, which is the
+  opposite of every other new-axis story in that record — where the point is
+  that a new axis must visit each site that decides something about it, and the
+  test suite fails until it does. The two goals conflict here and only one is
+  priced. A `match` on `Axis` with a comment on each arm would fail to compile
+  for the new axis and get the same outcome with the decision made deliberately.
+
 ## The pin is the flag that becomes no rule at all
 
 One flag on `sandbox-run` goes through none of the five stages above.
@@ -605,149 +748,6 @@ auditor cannot recover is that it was checked.
   attached. Testing for the ELF magic rather than the shebang magic would refuse
   the whole class by the rule the message already gives, and would cost a pinned
   ELF nothing.
-
-## The no-flag default, and why a flag replaces it
-
-Now the other half of the question, because `--allow-read /tmp/x` does not only
-*add* a grant — it takes one away.
-
-```rust
-if !self.paths_given() {
-    // Inside the branch: a run that typed its own flags never depends on `HOME`.
-    let root = current_root(policy.executable_paths(), &owned)?;
-    let root = pinned(&root, &root)?;
-    policy = policy.allow_read(root.clone()).allow_write(root);
-}
-```
-
-With no path flag at all, a run derives read **and write** on the working
-directory. Give any path flag and that branch does not execute, so the flags you
-typed become the whole of the filesystem policy. `paths_given` runs over
-`Axis::ALL`, so a fourth path axis joins the rule rather than being forgotten
-into a default that widens it.
-
-[decision-default-policy.md](../decision-default-policy.md) is clear that what
-decided this was the failure mode and not the ergonomics. The alternative was an
-unconditional default plus a `--no-default-policy` opt-out, and under that shape
-`sandbx agent-run --allow-read /srv` — a deliberately tight, hand-written policy
-— *silently gains write over the whole working tree*. Suppression's failure mode
-is the mirror image and is the safe one: the operator gets less than they
-expected and hears about it at once, as a refusal naming the path the grant
-lacked. The record's own summary is the line worth carrying: **narrow and loud
-beats wide and silent.** It also notes that nothing here forecloses going the
-other way, since unconditional-plus-opt-out is a strict widening of this.
-
-Note too that `pinned(&root, &root)?` on the derived path is the same function
-the flag route calls, with the same spelling in both arguments. A derived grant
-is pinned exactly as a typed one is; there is no second, laxer road into the
-policy.
-
-Some working directories are refused rather than derived from — `vetted_root`
-answers that, and it refuses **in the order written**: the filesystem root, then
-`$HOME` or a directory holding it, then one of `/home`, `/Users`, `/var/home`
-and `/root` or a directory holding one of those, then a home-looking directory
-where `$HOME` settled nothing, then an overlap with the system binaries, then a
-cwd reaching something sandbx owns. That third refusal is the one gated on no
-variable at all, and deliberately: a service account whose `HOME=/var/lib/svc`
-would otherwise let `/home` through, where a derived root is write over every
-user's home whatever the variable happens to name. `current_root` is
-`vetted_root` over this process's own state. The guard governs only what sandbx
-*derives* and never what you ask for, which is why every refusal in the family
-names the two flags to type instead.
-
-## What a grant may not reach
-
-Two paths are the harness's own: the session transcripts a resumed run replays
-to the model, and the credential file `auth login` writes. `owned_paths` derives
-them from the config and state homes in play, each with a `holds: &'static str`
-saying what it is for — `&'static` so that no shape of the refusal can carry a
-key into a message.
-
-`reaches_owned` tests containment **both ways round**, because a Landlock right
-covers a subtree: a grant *above* the session directory hands over every
-transcript, and a grant naming one transcript inside it hands over that history
-— the file whose contents become what the model is told it said. `starts_with`
-compares whole components, not bytes, so `~/.config/sandbx-notes` still derives.
-
-```rust
-owned.iter().find(|owned| {
-    let path = resolved(&owned.path);
-    path.starts_with(granted) || granted.starts_with(&path)
-})
-```
-
-Four properties of this refusal are each deliberate, and
-[decision-harness-owned-paths.md](../decision-harness-owned-paths.md) argues all
-four.
-
-- **It fires in both subcommands or neither,** on every path axis, since
-  `Grants` is shared.
-- **It does not ask whether anything is stored there.** An existence-sensitive
-  refusal is a race: `agent-run --session` creates the transcript during the
-  very run the policy was derived for, so a filesystem check would answer
-  "nothing there" and then put something there, and the same argv would be
-  refused on its second invocation and not its first. It is also a verdict no
-  test can pin without building the state it is testing for.
-- **There is no exact-path hatch.**
-  `--allow-read ~/.config/sandbx/credentials.toml` is refused rather than
-  honoured as the narrowest possible form of the request. Naming the file *is*
-  the request the refusal exists for, and a hatch at the exact path would be a
-  hatch for an injected flag in any wrapper script that builds an argv — in the
-  one spelling that reads most like deliberate care.
-- **The derived default is the same hazard by another route,** so `vetted_root`
-  calls `reaches_owned` on the cwd too. A no-flag run from inside the session
-  directory would otherwise derive read and write over the history.
-
-So `--allow-read ~` and `--allow-read /` are refused, with no override flag. The
-honest form of an override is moving the state: point `XDG_STATE_HOME` elsewhere
-and what sandbx owns moves, and the refusal moves with it.
-
-Subtraction was never on the table as an alternative, and the reason is the
-mechanism rather than taste: Landlock unions rules and has no way to express an
-exclusion, so "grant `/` except this file" is not a policy the kernel can hold.
-
-**The same key reached through `/proc` is closed by a different mechanism
-entirely,** which is worth seeing because it shows where a path refusal stops.
-`/proc/<harness-pid>/environ` is not a grant and no path check governs it. So
-sandbx clears its own dumpable flag at startup — `conceal_process_state` in
-[`concealment.rs`](../../crates/sandbx-core/src/concealment.rs), via
-`prctl(PR_SET_DUMPABLE, 0)`. The kernel reparents the process's `/proc` entry to
-root, so `environ`, `mem`, `maps` and `fd/` fail `__ptrace_may_access` even for
-a reader running as you. It is called from
-[`main.rs`](../../crates/sandbx-cli/src/main.rs) immediately after parsing and
-before any subcommand, so no code path reaches a policy with the flag still set.
-[`SECURITY.md`](../../SECURITY.md) carries the pair as one claim and the record
-puts it plainly: this is a different mechanism, not more of the path refusal.
-
-- **Worth questioning:** `reaches_owned` requires its `granted` argument to have
-  arrived through `resolved`, and the way that requirement is held is a doc
-  comment plus `debug_assert!(granted == resolved(granted), …)`. The published
-  binary is a release build, so in the artefact that ships, the precondition on
-  the refusal that protects the credential file and the transcripts is enforced
-  by convention.
-  [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) reasons
-  carefully about *which* spelling must reach the comparison — "vetting one
-  spelling and granting another is the window this closes" — and the owned side
-  normalises itself inside the function. What the record does not weigh is
-  making the caller's side unforgeable, which this codebase already knows how to
-  do: `VettedPath` is precisely a path that cannot be unpinned, because `grant`
-  accepts nothing else. A `Resolved` newtype returned by `resolved` and demanded
-  by `reaches_owned` would turn today's debug-only assertion into the same kind
-  of build failure, in the one place where the two production callers are the
-  only thing standing between a lexical mismatch and a grant over the session
-  history.
-
-- **Worth questioning:** the departure at `axis.grants().write` is keyed so that
-  "a future write-conferring axis inherits the affordance instead of silently
-  missing it", and [decision-axis-table.md](../decision-axis-table.md) presents
-  that as the safe default. It is the safe default for *forgetting*; it is also
-  an automatic widening. Whoever adds a fifth axis that confers write gets a
-  read grant from the CLI without ever opening `grants.rs`, which is the
-  opposite of every other new-axis story in that record — where the point is
-  that a new axis must visit each site that decides something about it, and the
-  test suite fails until it does. The two goals conflict here and only one is
-  priced. A `match` on `Axis` with a comment on each arm would fail to compile
-  for the new axis and get the same outcome with the decision made deliberately.
 
 ## You should now be able to explain
 
