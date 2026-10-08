@@ -31,6 +31,7 @@ does, `SECURITY.md` is right.
 | [03 — the landscape](03-the-landscape.md) | the same picture in other projects, on four mechanism axes — where the boundary is, who decides a tool call, what the default is, and whether the harness confines itself |
 | [04 — the architecture](04-the-architecture.md) | three views of one system — the processes, the request path, the boundaries. The spine every later chapter locates itself in |
 | [05 — seven crates](05-seven-crates.md) | the static view under 04: the dependency graph, who owns what, and the three mechanisms that keep one crate the only one able to spawn a process |
+| [06 — claims and non-claims](06-claims-and-non-claims.md) | [`SECURITY.md`](../../SECURITY.md) read end to end: the scope sentence every row inherits, the claim table, and the non-claims that take longer to work through than the claims |
 | [07 — kernel primer](07-kernel-primer.md) | first principles, almost no repo code: namespaces, `uid_map` ordering, seccomp-BPF, Landlock, `O_PATH`, bind mounts, the capability sets, `pdeathsig` |
 | [08 — the two-stage helper](08-the-two-stage-helper.md) | the re-exec in detail: why the helper is this binary, the two flags, a dispatch enum with no success variant, and why `apply`'s order cannot be permuted |
 | [09 — Landlock](09-landlock.md) | how a grant becomes a kernel rule: the ABI ladder, why a partly applied ruleset is a hole, and the bit arithmetic that keeps read from conferring execute |
@@ -41,14 +42,15 @@ does, `SECURITY.md` is right.
 | [14 — audit, sessions, credentials](14-audit-sessions-credentials.md) | what is written down and who may read it — two trails separated by target, the helper's own channel, the mode asymmetry that refuses rather than repairs |
 | [15 — tools and the screen](15-tools-and-the-screen.md) | the seven built-ins bounded by work rather than time, a policy spent rather than lent, and a renderer that holds a security property |
 | [16 — how the repo is maintained](16-how-the-repo-is-maintained.md) | guide versus decision, the Rust tests that hold the prose to the code, and a walkthrough of your first PR |
+| [17 — gaps and open questions](17-gaps-and-open-questions.md) | the far side of every boundary: the project's own map of what is missing, each gap against the issue that scopes it, then every objection the earlier chapters raised |
 
 Chapters are numbered by position in that order, so a gap is a chapter that is
 not in this directory yet; the whole list is on the tracking issue. An index
 that linked a file nobody had written would be the one navigation surface
 pointing at a hole, which is the thing this numbering is arranged to avoid.
 
-**If you need to be useful tomorrow:** 01, then 04, then
-[`SECURITY.md`](../../SECURITY.md) itself.
+**If you need to be useful tomorrow:** 01, then 04, then 06 — and then
+[`SECURITY.md`](../../SECURITY.md) itself, which 06 is the on-ramp to.
 
 ## Links into the code
 
