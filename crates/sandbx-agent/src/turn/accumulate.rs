@@ -4,7 +4,7 @@
 //! received.
 
 use futures_util::StreamExt;
-use sandbx_providers::{AgentEvent, ContentBlock, EventStream};
+use sandbx_providers::{AgentEvent, ContentBlock, EventStream, StopReason};
 
 use super::PromptUsage;
 use crate::TurnError;
@@ -13,6 +13,7 @@ use crate::TurnError;
 pub(super) struct Round {
     pub(super) blocks: Vec<ContentBlock>,
     pub(super) usage: Option<PromptUsage>,
+    pub(super) reason: StopReason,
 }
 
 /// Drain one stream into the content blocks it describes, keeping its token counts.
@@ -75,9 +76,13 @@ where
                     cache_write_tokens,
                 });
             }
-            AgentEvent::Stop { .. } => {
+            AgentEvent::Stop { reason } => {
                 flush(&mut text, &mut blocks);
-                return Ok(Round { blocks, usage });
+                return Ok(Round {
+                    blocks,
+                    usage,
+                    reason,
+                });
             }
             // A renderer's increment. The block it belongs to arrives whole as
             // `ThinkingBlock`, which is what can be replayed.

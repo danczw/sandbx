@@ -1036,3 +1036,131 @@ async fn a_reasoning_only_round_mid_tool_use_is_the_same_error() {
 
     assert!(matches!(error, TurnError::EndedMidToolUse), "got {error:?}");
 }
+
+/// The issue's own case (#190): the transcripts are identical, so the outcome's own field
+/// is the only thing that can tell a cut-off answer from a whole one.
+#[tokio::test]
+async fn a_truncated_turn_is_told_from_a_finished_one() {
+    let half = |reason| async move {
+        let mut script = Script::new([vec![text("half a sen"), stop(reason)]]);
+        run_turn(
+            async |r| script.open(r).await,
+            turn(&[], &[]),
+            &ctx(SandboxPolicy::default()),
+            |_| {},
+            AllowAll,
+        )
+        .await
+        .unwrap()
+    };
+
+    let cut = half(StopReason::MaxTokens).await;
+    let whole = half(StopReason::EndTurn).await;
+
+    assert_eq!(cut.messages, whole.messages, "the same transcript");
+    assert_eq!(cut.stop, TurnStop::Answered);
+    assert_eq!(whole.stop, TurnStop::Answered);
+    assert_eq!(cut.round_stop, Some(StopReason::MaxTokens));
+    assert_eq!(whole.round_stop, Some(StopReason::EndTurn));
+}
+
+/// A reported nothing, which `Unspecified` is, against a round that never reported — the
+/// distinction the `Option` carries.
+#[tokio::test]
+async fn a_round_with_no_stop_reason_reports_unspecified() {
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::Unspecified)]]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        AllowAll,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.round_stop, Some(StopReason::Unspecified));
+}
+
+/// The other half of that distinction, and why `round_stop` is an `Option` rather than an
+/// `Unspecified`: a cap of zero opens no stream at all, so there is no round to report on.
+#[tokio::test]
+async fn a_turn_that_ran_no_round_reports_no_stop() {
+    let mut capped_at_none = turn(&[], &[]);
+    capped_at_none.limits = TurnLimits {
+        max_rounds: 0,
+        ..TurnLimits::default()
+    };
+    let mut script = Script::new([]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        capped_at_none,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        AllowAll,
+    )
+    .await
+    .unwrap();
+
+    assert!(script.sent.is_empty(), "it should not have asked at all");
+    assert_eq!(outcome.stop, TurnStop::RoundLimit { rounds: 0 });
+    assert_eq!(outcome.round_stop, None);
+}
+
+/// Both bounds at once, which is why the reason sits beside `stop` rather than inside
+/// `TurnStop::Answered`; see `context/decision-round-limit-answer.md`.
+#[tokio::test]
+async fn a_capped_turn_names_both_bounds_it_hit() {
+    let root = tempfile::tempdir().unwrap();
+    let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
+    let asking = |reason| {
+        vec![
+            call(
+                "ls",
+                serde_json::json!({ "path": root.path().to_str().unwrap() }),
+            ),
+            stop(reason),
+        ]
+    };
+    let mut script = Script::new([
+        asking(StopReason::ToolUse),
+        asking(StopReason::ToolUse),
+        asking(StopReason::MaxTokens),
+    ]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        capped_at_three(),
+        &ctx,
+        |_| {},
+        AllowAll,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.stop, TurnStop::RoundLimit { rounds: 3 });
+    assert_eq!(outcome.round_stop, Some(StopReason::MaxTokens));
+}
+
+/// The negative of `a_tool_call_runs_without_a_stop_reason`: the reason is reported, and
+/// still not acted on, so a provider mislabelling its own output buys no extra round.
+#[tokio::test]
+async fn a_tool_use_reason_with_no_call_still_answers() {
+    let mut script = Script::new([vec![text("done"), stop(StopReason::ToolUse)]]);
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        AllowAll,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(script.sent.len(), 1, "it should not have re-entered");
+    assert_eq!(outcome.stop, TurnStop::Answered);
+    assert_eq!(outcome.round_stop, Some(StopReason::ToolUse));
+}
