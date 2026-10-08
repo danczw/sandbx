@@ -168,9 +168,12 @@ still accepts one is still there — but it is extra mechanism for a case where
 both readings point the same way.
 
 So three things record the refusal durably, none of which needs a live terminal:
-the exit code, the stderr line `Render` writes, and the `tool_result` in the
-session. That is what lets "No audit record either" above stand as a claim rather
-than as a gap.
+the exit code, the stderr line `Render` writes before it checks stdout at all,
+and the `tool_result` in the session. The code is the one of the three another
+failure can take — a run whose stdout could not be written exits 1 for that
+instead, the line and the transcript still saying why it stopped, which is why
+the line is written ahead of that check rather than after it. That is what lets
+"No audit record either" above stand as a claim rather than as a gap.
 
 ## Deny by default, and the honest claim
 
