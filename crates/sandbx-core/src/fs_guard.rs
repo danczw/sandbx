@@ -426,11 +426,48 @@ struct Replacement {
 /// root resolves past the root being asked about — into another grant that confirms, or out of
 /// every one — so a measurement taken after resolution is one the substitute chose. Every path
 /// that can refuse consults this first, so the reason cannot depend on what the substitute holds.
+///
+/// Both the spelling as given and its collapse, because neither covers the other: `starts_with`
+/// is a component prefix, so `root/link/../..` names the root while collapsing out of it, and
+/// `other/../root` collapses into the root while naming it nowhere in front. Either one matching
+/// refuses — this only ever adds a refusal, and what it cannot see the resolved path is judged
+/// for separately.
 fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
-    match contains(requested, roots) {
-        Containment::Outside(moved) => moved,
-        Containment::Inside => None,
+    let collapsed = collapsed(requested).filter(|form| form != requested);
+
+    [Some(requested), collapsed.as_deref()]
+        .into_iter()
+        .flatten()
+        .find_map(|form| match contains(form, roots) {
+            Containment::Outside(moved) => moved,
+            Containment::Inside => None,
+        })
+}
+
+/// `requested` made absolute with `.` and `..` resolved away, without touching the filesystem.
+///
+/// Not a `canonicalize`, and not equivalent to one: a `..` above a symlink collapses to the
+/// link's parent here and to its target's parent in the kernel. That is why this is one of two
+/// forms tested rather than a replacement for the spelling as given. `None` where the process
+/// has no working directory to make a relative path absolute against.
+fn collapsed(requested: &Path) -> Option<PathBuf> {
+    let absolute = match requested.is_absolute() {
+        true => requested.to_path_buf(),
+        false => std::env::current_dir().ok()?.join(requested),
+    };
+
+    let mut form = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                form.pop();
+            }
+            std::path::Component::CurDir => {}
+            named => form.push(named),
+        }
     }
+
+    Some(form)
 }
 
 /// Find the root that covers `resolved`, confirming each candidate's object as it goes.
@@ -597,6 +634,41 @@ pub struct ReadableWalk {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The relative arm, which the public-surface tests cannot reach: `set_current_dir` is
+    /// process-wide and would race every other test in the binary.
+    #[test]
+    fn a_relative_spelling_collapses_against_the_working_directory() {
+        let here = std::env::current_dir().expect("a working directory");
+
+        assert_eq!(
+            collapsed(Path::new("granted/notes.txt")).expect("a working directory"),
+            here.join("granted").join("notes.txt")
+        );
+        assert_eq!(
+            collapsed(Path::new("data/../granted/notes.txt")).expect("a working directory"),
+            here.join("granted").join("notes.txt")
+        );
+    }
+
+    /// A `..` collapses lexically here and through the link's *target* in the kernel, so the
+    /// two forms disagree by design — hence both are tested against the roots, not just this one.
+    #[test]
+    fn a_collapse_is_not_a_canonicalization() {
+        assert_eq!(
+            collapsed(Path::new("/a/link/../b")).expect("absolute needs no cwd"),
+            Path::new("/a/b")
+        );
+        assert_eq!(
+            collapsed(Path::new("/a/./b/")).expect("absolute needs no cwd"),
+            Path::new("/a/b")
+        );
+        // Past the root, where there is nothing left to pop.
+        assert_eq!(
+            collapsed(Path::new("/../..")).expect("absolute needs no cwd"),
+            Path::new("/")
+        );
+    }
 
     #[test]
     fn an_absent_approved_path_opens_as_not_found() {
