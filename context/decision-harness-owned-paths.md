@@ -203,10 +203,6 @@ policy difference.
 
 ## What was rejected
 
-**A carve-out, or decomposition into siblings.** Covered above: Landlock has no
-exclusion form, and a decomposed grant is a policy nobody wrote that drifts as
-the tree gains files.
-
 **A warning instead of a refusal.** Printing "this hands over your key" and
 continuing is the fail-open shape `decision-credentials.md` and
 `decision-tool-credentials.md` both reject. The operator who granted the tree by
@@ -225,9 +221,6 @@ rule forbids it.
 refusal exists for would be typed by exactly the operator the refusal is for, and
 read as a permission rather than a hazard. Moving `$HOME` or `XDG_STATE_HOME`
 already moves what sandbx owns, which is the same power stated honestly.
-
-**Refusing `/proc` by name on either subcommand.** Covered above, and it is the
-reason #192 is not more of the on-disk refusal.
 
 ## The mutation check
 
