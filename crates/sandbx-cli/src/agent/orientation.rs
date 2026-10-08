@@ -86,10 +86,8 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
     let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
     for (axis, path) in policy.granted_paths() {
-        // The grant's own spelling, which vetting resolved, so the sentence cannot name a
-        // path the guard would not compare against. Resolved only to test that it still
-        // resolves to itself, never to be named: a root that now resolves elsewhere is one
-        // the guard refuses lexically, and a name every access refuses is worse than silence.
+        // Resolved only as a test, never to be named: the guard compares the grant's own
+        // spelling, so a root that now resolves elsewhere refuses every path under it.
         let path = path.path();
         if path.canonicalize().ok().as_deref() != Some(path) {
             continue;
