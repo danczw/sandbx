@@ -90,6 +90,10 @@ impl FsGuard {
         roots: &[VettedPath],
         access: Access,
     ) -> SandboxError {
+        if let Some(moved) = moved_root(requested, roots) {
+            return deny(Some(moved), requested, access);
+        }
+
         let (ancestor, granted_area) = nearest_area(requested, roots);
 
         if let Containment::Outside(moved) = granted_area {
@@ -281,7 +285,7 @@ impl FsGuard {
                 // The root answers first. Both reasons below are chosen by what sits at the
                 // path, so under a substituted root they report what the substitute holds
                 // instead of refusing it, and the two read apart where they must read alike.
-                if let (_, Containment::Outside(Some(moved))) = nearest_area(path, &self.writable) {
+                if let Some(moved) = moved_root(path, &self.writable) {
                     return Err(deny(Some(moved), path, Access::Write));
                 }
 
@@ -416,6 +420,19 @@ struct Replacement {
     opened: ObjectId,
 }
 
+/// The root the requested spelling names, when it no longer holds the object it was vetted on.
+///
+/// Lexical, and deliberately not by nearest resolving ancestor: a link planted in a substituted
+/// root resolves past the root being asked about — into another grant that confirms, or out of
+/// every one — so a measurement taken after resolution is one the substitute chose. Every path
+/// that can refuse consults this first, so the reason cannot depend on what the substitute holds.
+fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
+    match contains(requested, roots) {
+        Containment::Outside(moved) => moved,
+        Containment::Inside => None,
+    }
+}
+
 /// Find the root that covers `resolved`, confirming each candidate's object as it goes.
 ///
 /// `Path::starts_with` compares whole components and not string prefixes, so `/work-secrets`
@@ -488,20 +505,15 @@ fn permit(
     requested: &Path,
     access: Access,
 ) -> Result<PathBuf, SandboxError> {
+    // Before the resolution is judged: a link out of a substituted root lands wherever the
+    // substitute points, and an `Ok` for one that reached another grant, beside an absent
+    // name's refusal, is a bit about what the substitute holds.
+    if let Some(moved) = moved_root(requested, roots) {
+        return Err(deny(Some(moved), requested, access));
+    }
+
     match contains(&resolved, roots) {
         Containment::Inside => Ok(resolved),
-        // Nothing matched the resolved path, which is a path that was never in a root and a
-        // path that left one through a symlink alike. Only the requested spelling tells them
-        // apart, and the difference is a bit about a substituted root's contents: a link out
-        // of one reporting the commonest refusal, beside an absent name reporting the
-        // substitution, is the oracle `deny` exists to close.
-        Containment::Outside(None) => {
-            let moved = match nearest_area(requested, roots) {
-                (_, Containment::Outside(moved)) => moved,
-                (_, Containment::Inside) => None,
-            };
-            Err(deny(moved, requested, access))
-        }
         Containment::Outside(moved) => Err(deny(moved, requested, access)),
     }
 }
