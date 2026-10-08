@@ -25,10 +25,13 @@ sandbx-core = { path = "../sandbx-core" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-session = { path = "../sandbx-session" }
 sandbx-tools = { path = "../sandbx-tools" }
+sandbx-tui = { path = "../sandbx-tui" }
+# `macros` is `select!`, which races the turn against the key that interrupts it.
 # Not `rt-multi-thread`: `spawn_blocking` needs only `rt`. `time` is not optional
 # — `run_turn` panics on the first round without a timer. Nothing here enables
 # `process`, which is why clippy.toml's `tokio::process` entry stays inert.
 tokio = { version = "1.53.1", default-features = false, features = [
+  "macros",
   "net",
   "rt",
   "time",

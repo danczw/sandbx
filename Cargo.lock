@@ -1661,6 +1661,7 @@ dependencies = [
  "sandbx-providers",
  "sandbx-session",
  "sandbx-tools",
+ "sandbx-tui",
  "secrecy",
  "serde_json",
  "tempfile",

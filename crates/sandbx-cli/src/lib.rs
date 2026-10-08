@@ -12,7 +12,7 @@ pub mod logging;
 mod sandbox;
 mod session;
 
-pub use agent::AgentRun;
+pub use agent::{AgentRun, Tui};
 pub use auth::Auth;
 pub use error::{AgentError, AuthError, HashError, PolicyError, SandboxRunError};
 pub use grants::Grants;
@@ -93,6 +93,27 @@ pub enum Command {
     /// sandbx agent-run --allow-read /srv -- "what is in /srv?"
     /// ```
     AgentRun(AgentRun),
+
+    /// Ask the same question on a screen you can watch, and stop.
+    ///
+    /// Takes every flag `agent-run` takes and bounds a tool call the same way.
+    /// What differs is the reporting: the answer, the model's reasoning and the
+    /// verdict on each tool call are drawn in one pane as they arrive, and
+    /// ctrl-c or escape ends the turn where it stands.
+    ///
+    /// Interrupting costs two things, which the screen says again at the time:
+    /// nothing of that turn is stored, even under `--session`, and a tool
+    /// already running finishes — sandbx cannot cancel one mid-call.
+    ///
+    /// Needs a terminal on stdout, and refuses `--approve call`: that prompt
+    /// wants the terminal this screen has taken. Use `agent-run` for either.
+    ///
+    /// Put the prompt after `--`:
+    ///
+    /// ```text
+    /// sandbx tui --allow-tool bash -- "what is in this directory?"
+    /// ```
+    Tui(Tui),
 
     /// Print a file's SHA-256, in the form `--pin-sha256` takes.
     ///
