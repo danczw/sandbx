@@ -42,7 +42,7 @@ Two things fall out of that pattern that are easy to trip over:
 | `test` | fmt, clippy, the default-feature suite, and rustdoc |
 | `sandbox (x86_64)`, `sandbox (aarch64)` | the enforcement suite on a real kernel, gnu then the published musl triple |
 | `msrv` | the suite still builds at the floor the manifest states |
-| `notes` | every release-notes file is within budget, and the manifest's version has one |
+| `notes` | the manifest's version has a notes file, and every `v*.md` is within budget |
 | `audit` | cargo-deny, both release-channel tables, and zizmor over the workflows |
 
 `permissions: contents: read` replaces the repo default and
