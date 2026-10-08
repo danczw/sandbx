@@ -82,16 +82,19 @@ fn roots_line(roots: &[String], start: Option<&Path>) -> String {
 /// The system binaries every run gets are left out, being a host map in a transcript. One
 /// entry per path and not per grant, the derived default granting read and write on one root.
 fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
-    let system = canonical(&SandboxPolicy::default().allow_system_executables());
+    let system = spellings(&SandboxPolicy::default().allow_system_executables());
     let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
     for (axis, path) in policy.granted_paths() {
-        // Named as `FsGuard::new` holds it: it canonicalizes every root and discards the
-        // ones that do not resolve, so a grant resolving to nothing reaches nothing, and a
-        // relative one is reachable only by the absolute form the tools demand.
-        let Ok(path) = path.path().canonicalize() else {
+        // The grant's own spelling, which vetting resolved, so the sentence cannot name a
+        // path the guard would not compare against. `symlink_metadata` and not
+        // `canonicalize`: a name that holds nothing is not worth telling the model about, and
+        // resolving the ones that do would name a substituted root's target instead.
+        let path = path.path();
+        if path.symlink_metadata().is_err() {
             continue;
-        };
+        }
+        let path = path.to_path_buf();
 
         if system.contains(&path) {
             continue;
@@ -125,12 +128,12 @@ fn named(roots: &[(PathBuf, Vec<&str>)]) -> Vec<String> {
 
 /// Where a command starts, when that is one of the roots [`work_roots`] named.
 ///
-/// Canonicalized because that list is, so the two cannot spell one directory two ways. Dropped
-/// when the list does not hold it: under `--allow-read /usr --allow-read /work` a command
-/// starts in the system binaries, which the sentence leaves out and its next clause calls
-/// refused.
+/// Both spellings come off the same grants, so the two cannot name one directory two ways.
+/// Dropped when the list does not hold it: under `--allow-read /usr --allow-read /work` a
+/// command starts in the system binaries, which the sentence leaves out and its next clause
+/// calls refused.
 fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<PathBuf> {
-    let start = policy.working_root()?.canonicalize().ok()?;
+    let start = policy.working_root()?.to_path_buf();
 
     roots
         .iter()
@@ -139,10 +142,10 @@ fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<
 }
 
 /// Every path `policy` grants, in the form the guard compares against.
-fn canonical(policy: &SandboxPolicy) -> Vec<PathBuf> {
+fn spellings(policy: &SandboxPolicy) -> Vec<PathBuf> {
     policy
         .granted_paths()
-        .filter_map(|(_, path)| path.path().canonicalize().ok())
+        .map(|(_, path)| path.path().to_path_buf())
         .collect()
 }
 
@@ -346,7 +349,7 @@ mod tests {
         assert_eq!(
             prompt,
             tools_line(&gate::approved_tools(None)),
-            "the guard discards a root it cannot resolve, so the prompt must not claim it"
+            "a name that holds nothing grants nothing, so the prompt must not claim it"
         );
     }
 
