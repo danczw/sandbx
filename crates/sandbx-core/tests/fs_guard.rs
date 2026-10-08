@@ -1000,6 +1000,80 @@ fn a_write_through_a_substituted_root_into_another_root_is_refused() {
     );
 }
 
+/// A `..` in front of the root's own name leaves the spelling naming no root as a component
+/// prefix, so the lexical test has to see the collapsed form too.
+#[test]
+fn a_detour_through_dot_dot_does_not_evade_the_root() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&data).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(data.join("secret.txt"), b"another grant's").unwrap();
+    std::os::unix::fs::symlink(data.join("secret.txt"), other.join("peek")).unwrap();
+    std::os::unix::fs::symlink(&data, other.join("dir")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&granted))
+            .allow_read(vetted(&data))
+            .allow_write(vetted(&granted))
+            .allow_write(vetted(&data)),
+    );
+    substitute(&granted, &other);
+
+    // Spelled through the sibling grant, so `starts_with` finds the substituted root nowhere
+    // in front of it.
+    let detour = data.join("..").join("granted");
+
+    let read = guard.check_read(&detour.join("peek")).unwrap_err();
+    assert!(
+        matches!(read, SandboxError::RootReplaced { .. }),
+        "{read} let the spelling reach past the root it detoured around"
+    );
+    let write = guard
+        .check_write(&detour.join("dir").join("new.txt"))
+        .unwrap_err();
+    assert!(
+        matches!(write, SandboxError::RootReplaced { .. }),
+        "{write} approved a write through the root it detoured around"
+    );
+}
+
+/// The complement, which collapsing alone would lose: a `..` *after* the root's name leaves the
+/// spelling still naming it, and `starts_with` is a component prefix that the `..` does not undo.
+#[test]
+fn a_dot_dot_after_the_root_still_names_it() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir_all(data.join("a").join("b")).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(data.join("x"), b"another grant's").unwrap();
+    // Deep enough that the two `..` below collapse out of the granted root entirely.
+    std::os::unix::fs::symlink(data.join("a").join("b"), other.join("link")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&granted))
+            .allow_read(vetted(&data)),
+    );
+    substitute(&granted, &other);
+
+    let error = guard
+        .check_read(&granted.join("link").join("..").join("..").join("x"))
+        .unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::RootReplaced { .. }),
+        "{error} judged the collapsed form alone and lost the root the spelling names"
+    );
+}
+
 /// The positive the rule above must not take with it: grants overlap by design, and a link from
 /// one confirmed root into another resolves inside the granted set.
 #[test]
