@@ -12,7 +12,7 @@ use crate::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall, TurnError};
 /// asked for them.
 ///
 /// Sequential: concurrency would need the ordering semantics of two tools sharing one
-/// `ExecutionContext` settled first (#26). `BuiltinTool::execute` may sit in a `write`, a
+/// `ExecutionContext` settled first (#242). `BuiltinTool::execute` may sit in a `write`, a
 /// directory walk or a 90-second command, which on a current-thread runtime would freeze
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
 ///
