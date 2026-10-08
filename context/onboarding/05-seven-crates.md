@@ -380,6 +380,8 @@ statement.
 
 ## Next
 
-[16 — how the repo is maintained](16-how-the-repo-is-maintained.md) picks up the
-other half of this chapter: the same instinct, applied to prose instead of code,
-and the Rust tests that hold documentation to it.
+[06 — claims and non-claims](06-claims-and-non-claims.md), which turns from how
+the code is arranged to what the arrangement promises. The chapter that picks up
+*this* one's other half is much later:
+[16](16-how-the-repo-is-maintained.md) is the same instinct applied to prose
+instead of code, and the Rust tests that hold documentation to it.

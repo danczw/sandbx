@@ -423,8 +423,9 @@ gap chapter 14 reaches from the trail's side.
 
 ## Next
 
-The [index](README.md) has the order. The authorities this chapter is an on-ramp
-to are [guide-tools.md](../guide-tools.md),
+[16 — how the repo is maintained](16-how-the-repo-is-maintained.md), the first
+chapter about the project rather than the product. The authorities *this*
+chapter is an on-ramp to are [guide-tools.md](../guide-tools.md),
 [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) and
 [guide-tui.md](../guide-tui.md); the normative account of what any of it
 enforces is [`SECURITY.md`](../../SECURITY.md).

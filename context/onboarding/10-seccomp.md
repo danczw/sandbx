@@ -422,7 +422,10 @@ because a number was added to `BLOCKED_SYSCALLS`, and
 
 ## Next
 
-[guide-sandboxing.md](../guide-sandboxing.md) for the subsystem as a whole, and
-[decision-port-allowlist.md](../decision-port-allowlist.md) beside
-[decision-egress-proxy.md](../decision-egress-proxy.md) for the two records that
-price what this filter can and cannot be asked to do.
+[11 — the two seams](11-the-two-seams.md), which is the correction to the
+easiest wrong conclusion to draw from this chapter and the last: the filter and
+the ruleset apply to one of the seven tools. The authorities this pair is an
+on-ramp to are [guide-sandboxing.md](../guide-sandboxing.md) for the subsystem
+as a whole, and [decision-port-allowlist.md](../decision-port-allowlist.md)
+beside [decision-egress-proxy.md](../decision-egress-proxy.md) for the two
+records that price what this filter can and cannot be asked to do.

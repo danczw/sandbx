@@ -563,6 +563,9 @@ Three habits, in the order they pay off.
 
 ## Next
 
-[17 — gaps and open questions](17-gaps-and-open-questions.md), which takes the
-non-claims above, adds the gaps nobody has written into this document, and pairs
-each with the issue or the decision record that holds it.
+[07 — the kernel primer](07-kernel-primer.md), which supplies the vocabulary the
+claim table spends and names almost none of this repo's own code. The chapter
+that picks up where this one leaves off is the last one,
+[17](17-gaps-and-open-questions.md): the non-claims above, plus the gaps nobody
+has written into that document, each paired with the issue or the decision
+record that holds it.
