@@ -193,7 +193,7 @@ fn forgeable(c: char) -> bool {
 /// the gate's account of what a tool did. A denylist, `char` having no predicate for the
 /// category, so a new Unicode version can outgrow it silently.
 ///
-/// The same set as `sandbx-cli`'s `gate::invisible`: duplicated, and must not diverge.
+/// The same set as `sandbx-cli`'s `gate::invisible`: duplicated, and must not diverge (#233).
 fn invisible(c: char) -> bool {
     matches!(c,
         '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
