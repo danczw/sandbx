@@ -329,3 +329,8 @@ users reasonably read as the same flags.
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
+
+One home per fact. `guide-code-comments.md` sends prose out of the code and into
+this directory, and nothing measures a doc's length — so the bound here is
+placement, not size: a fact lives in one doc, and a second mention is a pointer
+to it. The rule above is how a duplicate is resolved once one exists.
