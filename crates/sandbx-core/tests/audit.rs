@@ -64,6 +64,15 @@ fn capture(f: impl FnOnce()) -> Vec<String> {
     sink.lines()
 }
 
+/// The `reason=` field of one refusal, to the end of the line — `AuditEvent::Denied` emits it
+/// last, so a comparison of two lines whose subjects differ can still be a comparison of one
+/// field.
+fn reason(line: &str) -> &str {
+    line.split_once("reason=")
+        .map(|(_, reason)| reason.trim())
+        .unwrap_or_else(|| panic!("no reason was recorded: {line}"))
+}
+
 #[test]
 fn records_an_allowed_execution() {
     let lines = capture(|| {
@@ -398,9 +407,26 @@ fn a_link_into_a_moved_root_records_the_swap() {
         .iter()
         .find(|line| line.contains("decision=denied"))
         .unwrap_or_else(|| panic!("no refusal was recorded: {lines:?}"));
-    assert!(
-        !refused.contains(Access::Read.outside()),
-        "the link's root was substituted and the trail calls it out of bounds: {refused}"
+
+    // Against the record a direct read of the same moved root writes, not against the string:
+    // the reason is a private const, and asserting only that it is not `outside` would pass
+    // on any other reason the walk might come to emit.
+    let mut direct = None;
+    let expected = capture(|| direct = guard.check_read(&linked.join("target.txt")).err());
+    assert_eq!(
+        direct
+            .expect("a refused read of the substituted root")
+            .label(),
+        "root_replaced",
+        "the sibling read this is measured against refused for another reason"
+    );
+    assert_eq!(expected.len(), 1, "got: {expected:?}");
+    assert_eq!(
+        reason(refused),
+        reason(&expected[0]),
+        "the walk and a direct read refuse the same substitution differently: \
+         {refused} against {}",
+        expected[0]
     );
 }
 
