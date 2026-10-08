@@ -164,11 +164,13 @@ impl SandboxError {
             // and exists only parent-side, so reporting it would be a second crossing.
             // `ProcessConcealment` is decided past dispatch, which no helper runs (#192).
             // `GrantUnpinnable` is the harness's: it is what vetting a path answers, and the
-            // helper never vets one. `UnboundedResolution` and `GrantBoundByResolver` are
-            // decided off the policy, before the spawn.
+            // helper never vets one. `RootReplaced` is `FsGuard`'s own per-access
+            // measurement, which no helper runs. `UnboundedResolution` and
+            // `GrantBoundByResolver` are decided off the policy, before the spawn.
             Self::PathNotAllowed { .. }
             | Self::Unresolvable { .. }
             | Self::NotFound { .. }
+            | Self::RootReplaced { .. }
             | Self::GrantUnpinnable { .. }
             | Self::SpawnFailed { .. }
             | Self::HelperRefused { .. }
@@ -215,6 +217,7 @@ mod tests {
             "unresolvable",
             "not_found",
             "grant_unpinnable",
+            "root_replaced",
             "grant_bound_by_resolver",
             "process_concealment",
         ] {

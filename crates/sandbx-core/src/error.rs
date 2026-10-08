@@ -115,6 +115,22 @@ pub enum SandboxError {
         opened: ObjectId,
     },
 
+    /// A granted root no longer holds the object the policy vetted, so an in-process tool
+    /// would have reached a directory the harness never judged.
+    ///
+    /// The in-process twin of [`GrantReplaced`](Self::GrantReplaced), decided by
+    /// [`FsGuard`](crate::FsGuard) rather than by a helper stage: the guard measures the
+    /// matched root per access, so there is no descriptor to carry and nothing to relay
+    /// (#212).
+    RootReplaced {
+        /// The root the policy grants, as the harness resolved it.
+        granted: PathBuf,
+        /// The object the harness measured when it vetted that root.
+        vetted: ObjectId,
+        /// The object the root holds now.
+        opened: ObjectId,
+    },
+
     /// A granted path could not be pinned to an object, so the harness has nothing for the
     /// helper to confirm its descriptor against.
     ///
@@ -370,6 +386,18 @@ impl std::fmt::Display for SandboxError {
                     granted.display()
                 )
             }
+            Self::RootReplaced {
+                granted,
+                vetted,
+                opened,
+            } => {
+                write!(
+                    f,
+                    "granted root {} holds object {opened} and not the {vetted} it was \
+                     checked against, so it is no longer the directory the policy judged",
+                    granted.display()
+                )
+            }
             Self::GrantUnpinnable { granted, source } => {
                 write!(
                     f,
@@ -418,6 +446,7 @@ impl std::error::Error for SandboxError {
             | Self::Landlock { .. }
             | Self::GrantRedirected { .. }
             | Self::GrantReplaced { .. }
+            | Self::RootReplaced { .. }
             | Self::NamespaceSetupFailed { .. }
             | Self::ProcessHardening { .. }
             | Self::ProcessConcealment { .. }
@@ -450,6 +479,7 @@ impl SandboxError {
             Self::Landlock { .. } => "landlock",
             Self::GrantRedirected { .. } => "grant_redirected",
             Self::GrantReplaced { .. } => "grant_replaced",
+            Self::RootReplaced { .. } => "root_replaced",
             Self::GrantUnpinnable { .. } => "grant_unpinnable",
             Self::Seccomp { .. } => "seccomp",
             Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
@@ -529,6 +559,11 @@ mod tests {
                 vetted: object("259:17"),
                 opened: object("259:18"),
             },
+            SandboxError::RootReplaced {
+                granted: PathBuf::from("/sample"),
+                vetted: object("259:17"),
+                opened: object("259:18"),
+            },
             SandboxError::GrantUnpinnable {
                 granted: PathBuf::from("/sample"),
                 source: io(),
@@ -590,6 +625,7 @@ mod tests {
                 | SandboxError::Landlock { .. }
                 | SandboxError::GrantRedirected { .. }
                 | SandboxError::GrantReplaced { .. }
+                | SandboxError::RootReplaced { .. }
                 | SandboxError::GrantUnpinnable { .. }
                 | SandboxError::Seccomp { .. }
                 | SandboxError::NamespaceSetupFailed { .. }
@@ -693,6 +729,7 @@ mod tests {
                 SandboxError::PathNotAllowed { .. }
                     | SandboxError::Unresolvable { .. }
                     | SandboxError::NotFound { .. }
+                    | SandboxError::RootReplaced { .. }
                     | SandboxError::GrantUnpinnable { .. }
                     | SandboxError::SpawnFailed { .. }
                     | SandboxError::HelperRefused { .. }
