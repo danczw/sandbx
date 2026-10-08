@@ -80,8 +80,10 @@ eight modules — `sandbx-cli/src/` `lib.rs`, `grants.rs`, `agent.rs`, `auth.rs`
 `sandbox.rs`, `hash.rs`, `agent/prompt.rs`, `agent/tui.rs` — interleaved with code
 no exemption reaches, so a path cannot. Only `lib.rs` is excluded below, which
 leaves 195 rendered lines of `sandbx-cli` counted as commentary (measured at
-`2fc597f`; recount when the flag surface moves). Subtract them from both terms
-before reading that crate against the threshold.
+`843e24e`; recount when the flag surface moves, and when a trim rewraps one of
+those docs — merging two rendered lines into one moves the figure while leaving
+`--help` byte-identical). Subtract them from both terms before reading that crate
+against the threshold.
 
 ## Before and after
 
@@ -134,6 +136,17 @@ numerator *and* the denominator:
 counting its lines while exempting its comments puts 15% out of reach for the crate
 however hard the rest of it is cut.
 
+Check the widths in the same pass, or the ratio is not a measurement. There is no
+`rustfmt.toml`, so `max_width` is 100 — and rustfmt does not wrap comments, so
+merging four comment lines into one 216-column line reads as three lines cut,
+lowers the figure, and passes `cargo fmt --check` silently:
+
+```sh
+for f in $(git diff --name-only -- '*.rs'); do
+  awk -v F="$f" 'length > 100 { print F":"FNR" ("length")" }' "$f"
+done
+```
+
 The denominator sits in the same sentence as the threshold because the two drift
 apart otherwise, and a ratio whose denominator is undefined cannot be read against
 a threshold at all. "Non-test" would mean three incompatible things: whole files;
@@ -164,7 +177,11 @@ git diff -U0 -- '*.rs' | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
   | sed 's/^[+-][[:space:]]*//' | grep -vE '^(///|//!|//|$)'
 ```
 
-That must print nothing. Then `cargo fmt --check`,
+That must print nothing, with one exception it cannot see: appending a `//` to a
+code line changes that line, so the pair reads as a code change. Strip trailing
+comments as well before believing a hit —
+`sed 's|[[:space:]]*//[^"]*$||'`, which leaves a `//` inside a string literal
+alone. Then `cargo fmt --check`,
 `cargo clippy --workspace --all-targets -- -D warnings`, and
 `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 --document-private-items` — trimming a referenced item breaks an intra-doc link,
