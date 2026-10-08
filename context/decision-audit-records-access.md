@@ -11,10 +11,11 @@ the code had by accident. It was rejected (#182, #187).
 
 ## What the verdict reading cost
 
-`FsGuard::permit` emitted `allowed` the moment a path resolved inside a granted
-root. Between that and the `open` the leaf can be deleted, or swapped for a
-symlink that `O_NOFOLLOW` then refuses. So the trail carried
-`decision="allowed" tool="read" subject="…"` for a file nothing read a byte of.
+The free function `permit` in `fs_guard.rs` emitted `allowed` the moment a path
+resolved inside a granted root. Between that and the `open` the leaf can be
+deleted, or swapped for a symlink that `O_NOFOLLOW` then refuses. So the trail
+carried `decision="allowed" tool="read" subject="…"` for a file nothing read a
+byte of.
 
 Defensible as a record of the verdict — but then the trail cannot answer "what
 did the agent see" at all, which is the question an operator brings to it. The
@@ -44,7 +45,7 @@ so an accurate record for `ls` could not live in `sandbx-tools` — hence
 open; `read_dir` has no handle form for `O_NOFOLLOW` to guard. What it closes is
 the gap between the verdict and the trail.
 
-The root confirmation #212 added is part of the verdict, and the reading survives it
+The root confirmation (#212) is part of the verdict, and the reading survives it
 unchanged: a root measured as replaced refuses before any open, so its `denied` is a
 refusal record and not a verdict one, and a root that confirms still writes nothing
 by confirming — `allowed` waits for the open as it did. The one thing to keep is that

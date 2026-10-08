@@ -41,7 +41,7 @@ on `type == "thinking"` alone drops it and opens exactly that gap.
 2. **`history` therefore never holds one**, so no cut can strand one.
 3. **A deepened cut strips `produced` once**, and blocks produced afterwards replay
    against the new prefix. See `guide-turn-loop.md`.
-4. **`cli/src/session.rs` drops them again** on the way to storage.
+4. **`sandbx-cli/src/session.rs` drops them again** on the way to storage.
 
 The cost, stated rather than designed around: continuity is kept **within** a turn
 — the case the API requires — and not across turns or across a mid-turn cut, both

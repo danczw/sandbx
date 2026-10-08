@@ -9,7 +9,7 @@ The seven built-ins, and the shape of the layer around them.
 | `read` | `{ path }` | `FsGuard::open_read` | `ReadOnly` |
 | `write` | `{ path, content }` | `FsGuard::open_write` | `Writes` |
 | `edit` | `{ path, old, new }` | `open_read` + `open_write` | `Writes` |
-| `ls` | `{ path }` | `FsGuard::check_read` | `ReadOnly` |
+| `ls` | `{ path }` | `FsGuard::read_dir` | `ReadOnly` |
 | `grep` | `{ path, pattern }` | `open_read` + `walk_readable` | `ReadOnly` |
 | `find` | `{ path, name }` | `walk_readable` | `ReadOnly` |
 | `bash` | `{ command }` | the helper — Landlock + seccomp + netns | `Executes` |
@@ -199,5 +199,5 @@ bodies that do blocking I/O anyway.
 ## The split that matters
 
 A `FsGuard` change is a change to six tools at once, because they all go through
-it. That is the point — and since #56, the private `policy` field is what
-enforces it rather than leaving it to convention.
+it. That is the point — and the private `policy` field (#56) is what enforces it
+rather than leaving it to convention.
