@@ -18,9 +18,8 @@ pub(super) const DIR_OWNER_ONLY: u32 = 0o700;
 
 /// The bits that let somebody else write, which refuse a resume.
 ///
-/// Split from [`READABLE_BITS`] rather than sharing `auth/store.rs`'s single
-/// `SHARED_BITS`, because a leaked credential rotates and a conversation does not; see
-/// `context/decision-on-disk-state.md`.
+/// Split from [`READABLE_BITS`], not shared with `auth/store.rs`'s `SHARED_BITS`: a leaked
+/// credential rotates and a conversation does not; see `context/decision-on-disk-state.md`.
 pub(super) const WRITABLE_BITS: u32 = 0o022;
 
 /// The bits that let somebody else read, which resume and report.

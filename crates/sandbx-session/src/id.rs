@@ -49,8 +49,7 @@ impl std::str::FromStr for SessionId {
 
     /// Accepts one to 32 characters of `0-9` and `a-z`, and nothing else.
     ///
-    /// An allowlist, not a search for `..`: an id becomes a path component, and a
-    /// denylist's first omission is a traversal.
+    /// An allowlist, not a search for `..`: a denylist's first omission is a traversal.
     fn from_str(value: &str) -> Result<Self, SessionError> {
         let invalid = |reason| SessionError::InvalidIdentifier {
             value: value.to_owned(),
@@ -60,8 +59,7 @@ impl std::str::FromStr for SessionId {
         if value.is_empty() {
             return Err(invalid("it is empty"));
         }
-        // Bytes, not characters: the alphabet is ASCII, so a multi-byte string is out
-        // on either count.
+        // Bytes, not characters: the alphabet is ASCII, so a multi-byte string fails either way.
         if value.len() > MAX_LENGTH {
             return Err(invalid("it is longer than 32 characters"));
         }

@@ -28,10 +28,8 @@ pub(super) fn opens(messages: &[Message]) -> bool {
 pub(super) fn follows(stored: &[Message], batch: &[Message]) -> bool {
     match (stored.last(), batch.first()) {
         (Some(last), Some(first)) => joins(last, first),
-        // Nothing to join, so `batch` is the transcript's opening and [`opens`] is the
-        // rule over it instead.
+        // Empty `stored`: `batch` is the opening, so [`opens`] applies instead.
         (None, _) => opens(batch),
-        // An empty batch joins nothing.
         _ => true,
     }
 }
@@ -67,9 +65,8 @@ fn settled(messages: &[Message]) -> bool {
 
 /// True when `later` may directly follow `earlier`.
 ///
-/// Two user turns in a row are the pair the API rejects, with one exception: a turn of
-/// nothing but tool results is one the request carries *merged* into the turn after it,
-/// so the pair never reaches the wire (#188).
+/// Two user turns in a row are the pair the API rejects, except a turn of nothing but
+/// tool results, merged into the turn after it before the request is sent (#188).
 fn joins(earlier: &Message, later: &Message) -> bool {
     earlier.role != later.role
         || (earlier.role == Role::User && answers_only(earlier) && asks_only(later))
