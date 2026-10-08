@@ -109,9 +109,10 @@ the path from one to a filed issue.
 
 ## Ticking it off
 
-Progress lives on the tracking issue, not in this directory. A checkbox in a
-repo file would mean a commit per chapter read, and the issue's checklist is
-tickable from the GitHub mobile app, which is where this is likely to be read.
+Progress lives on the tracking issue (#253), not in this directory. A checkbox
+in a repo file would mean a commit per chapter read, and the issue's checklist
+is tickable from the GitHub mobile app, which is where this is likely to be
+read.
 
 ## What a chapter looks like
 

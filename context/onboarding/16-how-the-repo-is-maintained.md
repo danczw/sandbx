@@ -484,6 +484,15 @@ names as the evidence for a claim — `decision-default-policy.md`'s mutation
 table is a claim-to-test-name map outright. Nothing automated catches that one.
 Grep `context/` for the old name before you consider a rename done.
 
+The same gap applies to prose about a mechanism rather than about a test name,
+and it is not hypothetical: #254 collects three sentences in `context/` that
+describe a mechanism the code has since outgrown — a syscall filter said to be
+built from one list and nothing else, a namespace said not to be unshared at
+all, and a signature missing the type it now returns — plus one issue cited
+nowhere despite two guides depending on what it records. Three tests pin prose
+to code here, and all four of those sat outside what any of them compares.
+Reading a `guide-` against the code it describes is still a person's job.
+
 ## You should now be able to explain
 
 - The difference between a `guide-` and a `decision-` file, and which of the two
