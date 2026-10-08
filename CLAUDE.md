@@ -54,6 +54,11 @@ work, not only a diffstat mismatch — so pass the worktree path and the expecte
 diffstat to every invocation. And a **stale** diff, a tree some commits behind
 the branch head, where the diffstat is the only tell; `git diff | wc -l` is not
 the diffstat, and matching the wrong number makes a stale pass read as current.
+Three dots and not two: `origin/main..HEAD` is a different, larger diffstat for
+the same branch, and it moves every time `origin/main` does — so it drifts with
+no commit of the branch's own, and a pass that matches it reads as current. The
+three-dot diff is from the merge-base, which moves only on a rebase, so `main`
+advancing under a branch does not stale it and is not a reason to re-measure.
 A review over the wrong lines is not a pass.
 
 The comment pass: read every comment the branch added or touched against
