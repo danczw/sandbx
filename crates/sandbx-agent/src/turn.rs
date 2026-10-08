@@ -15,7 +15,7 @@ mod accumulate;
 mod tools;
 
 use accumulate::accumulate;
-use tools::{answer_calls, definition};
+use tools::{Answers, answer_calls, definition};
 
 /// What to ask the model for. Borrows the history, which [`run_turn`] never appends to.
 pub struct Turn<'a> {
@@ -168,6 +168,13 @@ pub enum TurnStop {
         /// The cap that was reached.
         rounds: usize,
     },
+
+    /// The gate ended the turn, having lost whatever it decides with.
+    ///
+    /// The round it stopped is answered in full and the work before it is here, so the
+    /// transcript is as legal to send again as [`RoundLimit`](Self::RoundLimit)'s — it is
+    /// just not an answer. No payload: the gate's reason is in the last `tool_result`.
+    GateAborted,
 }
 
 /// The bounds one turn runs within.
@@ -238,9 +245,12 @@ impl Default for TurnLimits {
 /// an [`ApprovalDecision::Deny`] is recoverable within [`TurnLimits::max_rounds`] rather
 /// than a [`TurnError`]. Neither an unknown name nor one outside [`Turn::tools`] reaches
 /// it, both being refused above the gate — but both reach [`CallGate::settled`], which sees
-/// every call in the round once. `context/decision-approval-gate.md` has the rest.
+/// every call in the round once. An [`ApprovalDecision::Abort`] instead ends the turn as a
+/// [`TurnStop::GateAborted`] carrying everything the turn did, the round it stopped
+/// answered in full. `context/decision-approval-gate.md` has the rest.
 ///
 /// [`ApprovalDecision::Deny`]: crate::ApprovalDecision::Deny
+/// [`ApprovalDecision::Abort`]: crate::ApprovalDecision::Abort
 ///
 /// Tools run on `spawn_blocking`, which cannot be cancelled: dropping this future still
 /// lets the blocking task run to completion, so a turn abandoned mid-tool applies the
@@ -362,7 +372,8 @@ where
 
         // Before the assistant turn is pushed: answering borrows the blocks, pushing
         // moves them.
-        let results = answer_calls(&blocks, ctx, turn.tools, &mut gate).await?;
+        let Answers { results, aborted } =
+            answer_calls(&blocks, ctx, turn.tools, &mut gate).await?;
 
         produced.push(RequestMessage {
             role: Role::Assistant,
@@ -383,6 +394,18 @@ where
             role: Role::User,
             content: results,
         });
+
+        // After the push, so the transcript ends on the results the round did produce —
+        // the shape `RoundLimit` already hands back, and the one a session appends.
+        if aborted {
+            return Ok(outcome(
+                produced,
+                usage,
+                withheld,
+                TurnStop::GateAborted,
+                last_stop,
+            ));
+        }
     }
 
     // Returned rather than dropped: every prefix of this transcript ends on an unanswered

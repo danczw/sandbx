@@ -20,7 +20,7 @@ pub struct ToolCall<'a> {
     pub input: &'a serde_json::Value,
 }
 
-/// Whether a tool call may run.
+/// Whether a tool call may run, and whether the turn can go on asking.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalDecision {
     /// Run it.
@@ -29,6 +29,18 @@ pub enum ApprovalDecision {
     Deny {
         /// The text of a `tool_result` marked `is_error`: the model's only account, so
         /// name what would lift the refusal.
+        reason: String,
+    },
+    /// Do not run it, tell the model why, and end the turn there.
+    ///
+    /// For a gate that can no longer be *asked* — a consent channel that went away — not
+    /// one that decided no: the rest of the round is refused unasked and
+    /// [`TurnStop::GateAborted`] ends the turn, so no later round pays for a request
+    /// nobody is there to answer.
+    ///
+    /// [`TurnStop::GateAborted`]: crate::TurnStop::GateAborted
+    Abort {
+        /// The text of a `tool_result` marked `is_error`, as in [`Deny`](Self::Deny).
         reason: String,
     },
 }
@@ -81,12 +93,16 @@ pub enum Outcome<'a> {
 /// A descriptor no task feeds is outside that, and is how `sandbx-cli` asks per call.
 pub trait CallGate {
     /// Whether this call may run, asked before the tool is spawned and never racing it.
+    ///
+    /// Not asked for the calls after an [`ApprovalDecision::Abort`]: they are refused for
+    /// its reason, and still reported to [`settled`](Self::settled).
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
 
     /// What became of one call, reported exactly once per `tool_use` block in the round.
     ///
-    /// Not called for the one failure that ends the turn: a panicking tool is a
-    /// `TurnError::ToolPanicked`, and the round has no result to report.
+    /// Not called for the *failure* that ends the turn: a panicking tool is a
+    /// `TurnError::ToolPanicked`, and the round has no result to report. An abort is
+    /// reported — the round it stopped still has results.
     fn settled(&mut self, call: Settled<'_>);
 }
 
