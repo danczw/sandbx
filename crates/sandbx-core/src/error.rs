@@ -747,4 +747,25 @@ mod tests {
             );
         }
     }
+
+    /// The same line read from the wire: a forged record carrying one of those labels would
+    /// outrank the outcome the parent watched itself. Derived from every variant rather than
+    /// listed, a list being one label behind each time a reason is added.
+    #[test]
+    fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
+        for error in every_variant() {
+            // `HelperRefused` is the relay and carries the label of the refusal it relays, so
+            // it parses back by construction; nothing sandbx decided is behind it.
+            if error.refusal().is_some() || matches!(error, SandboxError::HelperRefused { .. }) {
+                continue;
+            }
+
+            assert_eq!(
+                HelperRefusal::from_label(error.label()),
+                None,
+                "{} is not a helper stage's to report, but the channel accepted it",
+                error.label()
+            );
+        }
+    }
 }
