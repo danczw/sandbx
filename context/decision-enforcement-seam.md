@@ -14,7 +14,8 @@ SandboxPolicy ──► FsGuard::new ──► readable[] / writable[]     (exec
                        │
                        └──► open_read / open_write  ──► O_NOFOLLOW handle
                             walk_readable           ──► ReadableWalk { files, truncated }
-                            check_read              ──► resolved path  ◄── ls only
+                            read_dir                ──► ReadDir        ◄── ls only
+                            check_read / check_write ─► resolved path  ◄── no tool
 ```
 
 Tools hold **handles, not paths**. That is what closes the TOCTOU window: if the
