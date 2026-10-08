@@ -34,6 +34,9 @@ const REFUSED: &str = "no tool may be called while answering a turn that ran out
 ///
 /// Not `ArgvGate`, which would let a model that ignored both the nudge and `tool_choice`
 /// reach `sandbx-tools` on the strength of a flag meant for the turn before this one.
+///
+/// A `Deny` and never an `ApprovalDecision::Abort`: this gate has no channel to lose, so
+/// the stop test below can read anything but [`TurnStop::Answered`] as a tool asked for.
 struct RefuseAll;
 
 impl CallGate for RefuseAll {
@@ -120,7 +123,10 @@ impl Next {
                 (first, false)
             }
             // Either leaves the batch ending on an unanswered `tool_result`, so `first`
-            // stands and prose this round already streamed is `Capped::Discarded`.
+            // stands and prose this round already streamed is `Unfinished::Discarded`.
+            // The not-equal covers every stop but the answer, which is sound only while
+            // `RefuseAll` cannot abort — a gate that could would be misreported here as
+            // having asked for a tool.
             Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
                 eprintln!(
                     "sandbx: the wrap-up round {}",

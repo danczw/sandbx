@@ -207,7 +207,7 @@ fn wait_readable(fd: &impl std::os::fd::AsFd) {
 }
 
 /// A pty pair with the echo off, so the master carries only what sandbx wrote.
-fn pty() -> (File, File) {
+pub(crate) fn pty() -> (File, File) {
     use nix::sys::termios;
 
     let pair = nix::pty::openpty(None, None).expect("a pty pair");

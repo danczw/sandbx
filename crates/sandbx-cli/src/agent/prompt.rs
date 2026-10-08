@@ -231,7 +231,7 @@ impl Terminal {
     /// Needed because what the drain clears is the kernel's own input queue, which no
     /// in-memory reader has. [`Terminal::open`] is the only route a run takes.
     #[cfg(test)]
-    fn on(device: File) -> std::io::Result<Self> {
+    pub(super) fn on(device: File) -> std::io::Result<Self> {
         Ok(Self {
             input: BufReader::new(device.try_clone()?),
             out: device,
@@ -271,4 +271,4 @@ impl Operator for Terminal {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

@@ -17,7 +17,7 @@ use gate::tool_name;
 use prompt::{Approve, Terminal};
 
 pub(crate) use prompt::APPROVE_CALL;
-use render::{Capped, Render};
+use render::{Render, Unfinished};
 use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
@@ -45,6 +45,13 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// nothing at all when the model opened with a tool call. Stderr names the bound.
 const INCOMPLETE: i32 = 2;
 
+/// The exit code for a run whose operator could no longer be asked.
+///
+/// Not [`INCOMPLETE`], which means a bound the operator chose cut the turn short, and not
+/// a failure: the turn ended on purpose and its work is stored. A caller branching on the
+/// status has to be able to tell the three apart (#218).
+const NO_CONSENT: i32 = 3;
+
 /// Where one run writes, and where it asks.
 ///
 /// One argument rather than two because they are the same operator seen twice: stdout
@@ -53,8 +60,9 @@ struct Channels<W> {
     /// The answer, streamed as it arrives.
     out: W,
 
-    /// The controlling terminal, `Some` under `--approve call` alone. Every test passes
-    /// `None`: opening a real one is what `prompt`'s own suite leaves uncovered.
+    /// The controlling terminal, `Some` under `--approve call` alone. Every test but the
+    /// two driving a lost one passes `None`: opening the real device ([`Terminal::open`])
+    /// is what no suite here covers.
     terminal: Option<Terminal>,
 }
 
@@ -144,7 +152,9 @@ pub struct AgentRun {
     /// every later call to that tool.
     ///
     /// `call` needs a terminal to ask on, and refuses the run without one rather
-    /// than falling back to the argv answer.
+    /// than falling back to the argv answer. A terminal that goes away mid-run
+    /// ends the turn there: the call being asked about and every call behind it
+    /// are refused, nothing after them runs, and the run exits 3.
     #[arg(long, value_name = "WHEN", default_value = "run")]
     approve: Approve,
 
@@ -385,29 +395,34 @@ impl AgentRun {
 
         // Read after the loop, where `observe`'s borrow on `render` has ended: no event
         // carries the turn's own stop, only a round's.
-        let out_of_rounds = match &outcome {
-            Ok(TurnOutcome {
-                stop: TurnStop::RoundLimit { rounds },
-                ..
-            }) => Some(*rounds),
-            _ => None,
+        let stop = match &outcome {
+            Ok(outcome) => Some(outcome.stop),
+            Err(_) => None,
         };
 
-        let (outcome, capped) = match (out_of_rounds, outcome) {
-            (Some(rounds), Ok(first)) if !self.no_wrap_up => {
+        // Exhaustive on `TurnStop`, so a fourth way for a turn to end cannot reach
+        // `finish` as a clean one and exit 0.
+        let (outcome, ending) = match (stop, outcome) {
+            (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
                 let (outcome, summarised) = next
                     .run(&mut open, ctx, &merged.history, first, &mut render)
                     .await;
                 // A round that failed after streaming prose has already put text on
                 // stdout that no transcript will account for, which `CutShort` denies.
-                let capped = match (summarised, render.wrote_after_gap()) {
-                    (true, _) => Capped::Summarised(rounds),
-                    (false, true) => Capped::Discarded(rounds),
-                    (false, false) => Capped::CutShort(rounds),
+                let ending = match (summarised, render.wrote_after_gap()) {
+                    (true, _) => Unfinished::Summarised(rounds),
+                    (false, true) => Unfinished::Discarded(rounds),
+                    (false, false) => Unfinished::CutShort(rounds),
                 };
-                (Ok(outcome), Some(capped))
+                (Ok(outcome), Some(ending))
             }
-            (rounds, outcome) => (outcome, rounds.map(Capped::CutShort)),
+            (Some(TurnStop::RoundLimit { rounds }), outcome) => {
+                (outcome, Some(Unfinished::CutShort(rounds)))
+            }
+            // Skipped rather than refused by a flag: the wrap-up round is exactly the
+            // request there is no longer anyone to have asked for (#218).
+            (Some(TurnStop::GateAborted), outcome) => (outcome, Some(Unfinished::Aborted)),
+            (Some(TurnStop::Answered) | None, outcome) => (outcome, None),
         };
 
         // The outcome's figure, not the stream's: on the `Discarded` path that is the first
@@ -418,7 +433,7 @@ impl AgentRun {
 
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
-        let code = render.finish(capped, truncated);
+        let code = render.finish(ending, truncated);
         // Before the append: a `TurnError` discards the turn's own messages, and a prompt
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
@@ -676,6 +691,72 @@ mod tests {
             },
             session,
         ))
+    }
+
+    /// Drive a scripted run whose gate asks on `terminal`.
+    ///
+    /// Its own builder rather than a sixth argument to `under`, which five callers pass
+    /// `None` through: this is the only shape where a verdict comes from a device.
+    fn asked_on(
+        args: &AgentRun,
+        policy: SandboxPolicy,
+        terminal: Terminal,
+        rounds: Vec<Vec<AgentEvent>>,
+        session: Option<Session>,
+    ) -> Driven {
+        let system = orientation::system_prompt(&policy, args.allow_tool.as_deref(), args.system());
+        let ctx = ExecutionContext::new(policy);
+        let mut sent = Vec::new();
+        let mut rounds = rounds.into_iter();
+        let mut out = Vec::new();
+
+        let code = runtime().block_on(args.drive(
+            |request| {
+                sent.push(request);
+                let round = rounds.next().expect("one more round was asked for");
+                std::future::ready(Ok(canned(round)))
+            },
+            &ctx,
+            "go".to_owned(),
+            system,
+            Channels {
+                out: &mut out,
+                terminal: Some(terminal),
+            },
+            session,
+        ));
+
+        (sent, String::from_utf8(out).expect("utf-8"), code)
+    }
+
+    /// A terminal whose master is already gone — the configuration `strace` measured on a
+    /// `tmux kill-server`, driven through the real `/dev/tty` code path.
+    fn hung_up() -> Terminal {
+        let (master, slave) = prompt::tests::pty();
+        drop(master);
+        Terminal::on(slave).expect("the terminal")
+    }
+
+    /// One round asking to write `path`, then a round that must never be reached.
+    ///
+    /// Two rounds, so a request count of one is evidence none was opened rather than
+    /// evidence the script ran dry.
+    fn asking_to_write(path: &std::path::Path) -> Vec<Vec<AgentEvent>> {
+        vec![
+            vec![
+                text("looking"),
+                AgentEvent::ToolCallRequested {
+                    id: "call_1".to_owned(),
+                    name: "write".to_owned(),
+                    input: serde_json::json!({
+                        "path": path.to_str().unwrap(),
+                        "content": "written",
+                    }),
+                },
+                stop(StopReason::ToolUse),
+            ],
+            vec![text("unreachable"), stop(StopReason::EndTurn)],
+        ]
     }
 
     /// A store under a temporary directory, and one new session in it.
@@ -1007,6 +1088,91 @@ mod tests {
                 .resume(&only_session(&store))
                 .expect("a resumable turn")
                 .pending_call()
+        );
+    }
+
+    /// The two halves of #218 in one run: no further request is paid for, and the status
+    /// says the operator went away rather than reading as success.
+    #[test]
+    fn a_lost_terminal_exits_three_without_asking_again() {
+        let args = agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--approve",
+            "call",
+            "--allow-tool",
+            "write",
+            "--",
+            "go",
+        ]);
+        let root = tempfile::tempdir().expect("a temp dir");
+        let file = root.path().join("out.txt");
+        let policy = SandboxPolicy::default()
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path()));
+
+        let (sent, written, code) =
+            asked_on(&args, policy, hung_up(), asking_to_write(&file), None);
+
+        assert_eq!(code.expect("a reported turn"), 3);
+        assert_eq!(
+            sent.len(),
+            1,
+            "a turn with no operator opened a second request"
+        );
+        assert!(
+            !file.exists(),
+            "the call the operator was never asked about ran"
+        );
+        // What arrived before the hangup, and no wrap-up prose.
+        assert_eq!(written, "looking\n");
+    }
+
+    /// A `TurnError` would discard exactly this, which is why the abort is a `TurnStop`:
+    /// the operator's own record of what the run got through is the transcript.
+    #[test]
+    fn a_lost_terminal_still_stores_the_turn() {
+        let args = agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--approve",
+            "call",
+            "--allow-tool",
+            "write",
+            "--",
+            "go",
+        ]);
+        let root = tempfile::tempdir().expect("a temp dir");
+        let file = root.path().join("out.txt");
+        let policy = SandboxPolicy::default()
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path()));
+        let (_store_root, store, session) = new_session();
+        let path = session.path().to_owned();
+
+        let (_, _, code) = asked_on(
+            &args,
+            policy,
+            hung_up(),
+            asking_to_write(&file),
+            Some(session),
+        );
+        assert_eq!(code.expect("a reported turn"), 3);
+
+        let body = std::fs::read_to_string(&path).expect("the transcript exists");
+        assert!(body.contains("go"), "the prompt was not stored: {body}");
+        assert!(body.contains("looking"), "the work was not stored: {body}");
+        // The reason reaches the transcript through the refused `tool_result`, which is
+        // the one durable record of it that does not depend on a live terminal. The
+        // clause both channel reasons share, not either one: which of the drain and the
+        // read fails first on a slave whose master is gone is platform detail.
+        assert!(body.contains("no call can be approved"), "got {body}");
+        assert!(
+            store
+                .resume(&only_session(&store))
+                .expect("a resumable turn")
+                .pending_call(),
+            "an aborted turn stored an answer it never got"
         );
     }
 
