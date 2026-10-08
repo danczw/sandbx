@@ -84,14 +84,30 @@ forming.
 
 Every row therefore carries a gutter the view draws, not the text: `│ ` on a
 verdict or a note, `> ` on the prompt's first row, two spaces on anything the
-model chose. `│` is what the claim rests on, so no entry's text may contain one —
-`Transcript` replaces it the way it replaces an escape, which is why the mark is
-box-drawing rather than a `|` that would mangle a shell pipeline in ordinary
-prose.
+model chose. `│` is what the claim rests on, so no entry's text may *draw* one.
+`Transcript` replaces the mark and the characters that render the same single
+cell — U+FFE8 is Unicode's own confusable mapping for `│`, and a heavier or
+dashed box-drawing vertical differs by a weight an operator has nothing on screen
+to compare against. The horizontals are left alone, a table being ordinary
+output.
+
+ASCII `|` is the one it lets through, and is why the mark is box-drawing at all: a
+shell pipeline in ordinary prose has to survive the fold. What stands against a
+`|` is only that a box-drawing vertical joins across rows where a `|` leaves a
+gap — font-dependent, and weaker than the strip.
 
 A wrapped continuation row carries no gutter, the gutter being inside the
-paragraph's text rather than a column beside it. That is the safe direction: an
-unmarked row claims nothing, and `│` is the thing that cannot be faked.
+paragraph's text rather than a column beside it, so such a row begins in the real
+gutter's own column. That is survivable because an unmarked row claims nothing
+and no entry text can draw the mark — not because the column is defended. A
+gutter given its own area beside the text would retire the question.
+
+A break inside a verdict or a note is spelled `\n` rather than kept. Those two
+kinds are marked on every row and not the first, so that a forged line sitting
+mid-entry is marked too — which means a break in one would mint a second marked
+row from whatever followed it, needing no confusable at all. `gate::line` already
+escapes; the note wording a provider error does not, its message being the
+vendor's string verbatim.
 
 Modifiers are not load-bearing here. `BOLD | DIM` sets a verdict apart from the
 answer, but a terminal with no palette, a copy-paste or a screenshot-to-text

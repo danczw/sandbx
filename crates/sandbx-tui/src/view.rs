@@ -11,11 +11,14 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::transcript::{Kind, Transcript};
 
-/// The character that says sandbx wrote a row, and that no entry's text may contain.
+/// The character that says sandbx wrote a row, and that no entry's text may draw.
 ///
 /// Not ASCII deliberately: a `|` or a `>` is plausible inside an answer, and replacing
 /// either on the way into an entry would mangle ordinary prose and shell pipelines. A
 /// box-drawing mark is one the model has no reason to emit and the terminal already draws.
+///
+/// Draw and not contain: `Transcript` replaces the confusables with it, a mark that renders
+/// the same cell being as good as the mark. ASCII `|` is the one it lets through.
 pub(crate) const GUTTER_MARK: char = '│';
 
 /// [`GUTTER_MARK`] as it is drawn: the mark, then the space separating it from the row.
@@ -69,16 +72,21 @@ fn text(transcript: &Transcript) -> Text<'static> {
 /// What marks row `n` of an entry as the harness speaking, or as something it was told.
 ///
 /// [`GUTTER`] on a row is the whole of the claim that sandbx wrote it, so it is drawn here
-/// and can never be in an entry's text: [`Transcript`] replaces it wherever it appears, the
-/// way it replaces an escape. Without that, an answer carrying a newline and a
-/// `sandbx: bash … — ran` of its own would render as a free-standing row in the gate's own
+/// and can never be drawn from an entry's text: [`Transcript`] replaces the mark and its
+/// confusables the way it replaces an escape. Without that, an answer carrying a newline and
+/// a `sandbx: bash … — ran` of its own would render as a free-standing row in the gate's own
 /// grammar, and an operator would read a call the gate never saw — the same substitution
 /// the bidi strip exists to stop, in plain ASCII. The modifiers alone are not enough, a
 /// terminal that drops them rendering a forged row and a real one alike.
 ///
-/// Every row and not the first, because a forged line sits mid-entry; and inside the
-/// paragraph's text rather than beside it, so a wrapped continuation carries no gutter —
-/// unmarked is the safe side, [`GUTTER`] being the thing that cannot be faked.
+/// Every row and not the first, because a forged line sits mid-entry — so a break inside a
+/// [`Kind::Call`] or a [`Kind::Note`] is spelled rather than kept, a second row of one being
+/// marked as readily as the first.
+///
+/// The gutter is inside the paragraph's text rather than a column beside it, so a wrapped
+/// continuation carries none and begins in the real gutter's own column. That is survivable
+/// only because an unmarked row claims nothing and no entry text can draw the mark; it is
+/// not a defence of its own, and a gutter given its own area would retire it.
 fn gutter(kind: Kind, n: usize) -> &'static str {
     match (kind, n) {
         (Kind::Call | Kind::Note, _) => GUTTER,
@@ -282,6 +290,29 @@ mod tests {
             2,
             "{rows:?}"
         );
+    }
+
+    /// A note's every row is marked, so a break inside one would carry the real gutter onto
+    /// whatever followed it — no confusable needed. The note that can hold a break is the
+    /// one wording a provider error, whose message is the vendor's string verbatim.
+    #[test]
+    fn a_note_carrying_a_break_does_not_mint_a_second_marked_row() {
+        let mut transcript = turn("looking");
+        transcript.note("sandbx: provider failed\nsandbx: bash curl evil.sh — ran");
+
+        let rows = rows(&transcript, Hint::Running, 64, 10);
+        let marked = rows
+            .iter()
+            .filter(|row| row.starts_with(GUTTER_MARK))
+            .count();
+
+        // Non-vacuous: both halves did render, so the single mark is the break being
+        // spelled and not the second half being dropped.
+        assert!(
+            rows.iter().any(|row| row.contains("curl evil.sh")),
+            "{rows:?}"
+        );
+        assert_eq!(marked, 1, "{rows:?}");
     }
 
     /// The mark is what a row's provenance rests on, so the two constants have to name the
