@@ -34,8 +34,7 @@ pub(super) enum Unfinished {
 /// alone.
 ///
 /// `E` is the other half — reasoning, and the lines that say how the turn ended. A field
-/// rather than `eprintln!` so a test can read back what was written and in what order
-/// (#223).
+/// rather than a macro so a test can read back what was written and in what order (#223).
 pub(super) struct Render<W, E> {
     out: W,
     err: E,
@@ -112,16 +111,16 @@ impl<W: Write, E: Write> Render<W, E> {
 
     /// Write to the half that is not the answer.
     ///
-    /// A failure is dropped rather than raised: this is where a *stdout* failure is
-    /// reported, so a second error here would have no sink left to name it.
+    /// A failure is dropped: this is the half a stdout failure is reported on, so a second
+    /// error here would have no sink left to name it.
     fn put(&mut self, bytes: &[u8]) {
         let _ = self.err.write_all(bytes);
     }
 
     /// Write one whole line about the answer.
     ///
-    /// Formatted first and written once, so a line cannot interleave with the reasoning
-    /// deltas that reach the same device.
+    /// Written once, so a line cannot interleave with the reasoning deltas reaching the
+    /// same device.
     fn note(&mut self, line: &str) {
         self.put(format!("{line}\n").as_bytes());
     }
@@ -294,7 +293,8 @@ pub(super) mod tests {
     }
 
     /// A renderer over two in-memory halves, which is every test here but the broken-pipe
-    /// ones: `Render::new` would send the other half to the suite's own stderr.
+    /// ones: the real stderr is the suite's own, and libtest captures only the `print!`
+    /// macros.
     fn captured() -> Render<Vec<u8>, Vec<u8>> {
         Render::with(Vec::new(), Vec::new())
     }
@@ -343,7 +343,7 @@ pub(super) mod tests {
                 "--show-thinking={show}"
             );
             // The replayable block and the redacted one carry a signature nothing may
-            // write, so the delta is the whole of what stderr may ever hold.
+            // write, so the delta is the whole of what stderr may hold.
             let reasoned = String::from_utf8(render.err).expect("utf-8");
             assert_eq!(
                 reasoned,
@@ -370,8 +370,8 @@ pub(super) mod tests {
         render.event(&text("the answer"));
         assert!(!render.thinking_mid_line);
 
-        // The newline and nothing more: a terminator written twice is a blank line between
-        // the reasoning and the answer on a terminal that shows both.
+        // The newline and nothing more: written twice it is a blank line between the
+        // reasoning and the answer, on a terminal showing both.
         let reasoned = String::from_utf8(render.err).expect("utf-8");
         assert_eq!(reasoned, "weighing it up\n");
     }
@@ -475,9 +475,8 @@ pub(super) mod tests {
         );
     }
 
-    /// Three lines in one order, exactly: the reasoning terminated first — no `Stop` here,
-    /// so `finish` is what owes the newline — then the lost operator ahead of the bound it
-    /// outranks. A report whose lines ran into each other reads as one nobody wrote.
+    /// Three whole lines in one order: the reasoning terminated first — no `Stop` here, so
+    /// `finish` owes the newline — then the lost operator ahead of the bound it outranks.
     #[test]
     fn what_a_turn_is_told_is_whole_lines_in_order() {
         let mut render = captured().showing_thinking(true);
@@ -594,8 +593,8 @@ pub(super) mod tests {
     }
 
     /// Both can arrive together, and the write failure keeps the exit: `3` would claim an
-    /// answer was delivered. The account is still written, and before the return: the
-    /// gate's own went to the device that went away, so this is its last record.
+    /// answer was delivered. The account still lands, ahead of the return — the gate's own
+    /// went to the device that went away, so this is its last record.
     #[test]
     fn a_broken_stdout_outranks_the_lost_operator() {
         let mut render = Render::with(ClosedPipe, Vec::new());
