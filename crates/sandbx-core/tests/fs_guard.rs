@@ -1310,6 +1310,39 @@ fn a_root_replaced_by_a_symlink_is_refused() {
     );
 }
 
+/// The one symlinked root that still *confirms*: the link names the vetted object, so the
+/// refusal comes off the resolved path leaving the granted spelling, not off the measurement.
+#[test]
+fn a_root_linked_back_to_its_vetted_object_is_refused_as_outside() {
+    let parent = tempfile::tempdir().unwrap();
+    let granted = parent.path().join("granted");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
+
+    let policy = SandboxPolicy::default().allow_read(vetted(&granted));
+    let guard = FsGuard::new(&policy);
+
+    // The vetted object keeps the inode and moves to a name of its own, which the granted
+    // spelling then links to: `confirm` follows the link and measures what it was vetted on.
+    let moved = parent.path().join("elsewhere");
+    std::fs::rename(&granted, &moved).unwrap();
+    std::os::unix::fs::symlink(&moved, &granted).unwrap();
+
+    let present = guard.check_read(&granted.join("notes.txt")).unwrap_err();
+    assert!(
+        matches!(present, SandboxError::PathNotAllowed { .. }),
+        "a root that still holds its object was accused of a substitution: {present}"
+    );
+
+    let absent = guard.check_read(&granted.join("missing.txt")).unwrap_err();
+    assert_eq!(
+        present.label(),
+        absent.label(),
+        "a name under a relinked root reads back differently for being there: \
+         {present} against {absent}"
+    );
+}
+
 /// The walk collects every readable path into memory first, so an unbounded tree is
 /// unbounded memory. The cap stops the walk rather than trimming the result.
 #[test]
