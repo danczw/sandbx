@@ -2,6 +2,9 @@
 //!
 //! Nothing here restricts anything itself — what restricts is the helper this spawns, in a
 //! process of its own. `dispatch` is the host-side entry into that side.
+//!
+//! Over the 400-line budget on purpose: the deadline drives the drain and the drain is
+//! what reads the audit channel, so the three are one supervision sequence.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

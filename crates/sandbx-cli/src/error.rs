@@ -1,4 +1,7 @@
 //! What can stop a subcommand before it has an answer.
+//!
+//! Over the 400-line budget on purpose: it is one `Display` arm per variant, and the
+//! list of everything that can refuse a run is only readable in one place.
 
 mod auth;
 
