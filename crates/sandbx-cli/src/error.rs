@@ -556,8 +556,7 @@ impl std::fmt::Display for AgentError {
                 "`tui` draws a full screen and stdout is not a terminal; \
                  use `agent-run` for a run whose output is read by something else"
             ),
-            // The follow-up is named because the limit is deliberate: a flag refused with
-            // no issue beside it reads as one nobody thought about.
+            // The follow-up is named: a flag refused with no issue beside it reads as unconsidered.
             Self::ApproveUnderTui => write!(
                 f,
                 "`{}` is not available under `tui`: its question wants the terminal the \

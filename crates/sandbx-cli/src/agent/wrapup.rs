@@ -33,10 +33,9 @@ const REFUSED: &str = "no tool may be called while answering a turn that ran out
 /// The wrap-up round's gate: nothing runs, whatever this run's `--allow-tool` said.
 ///
 /// Not `ArgvGate`, which would let a model that ignored both the nudge and `tool_choice`
-/// reach `sandbx-tools` on the strength of a flag meant for the turn before this one.
-///
-/// A `Deny` and never an `ApprovalDecision::Abort`: this gate has no channel to lose, so
-/// the stop test below can read anything but [`TurnStop::Answered`] as a tool asked for.
+/// reach `sandbx-tools` on the strength of a flag meant for the turn before this one. A
+/// `Deny` and never an `ApprovalDecision::Abort`: this gate has no channel to lose, so the
+/// stop test below can read anything but [`TurnStop::Answered`] as a tool asked for.
 struct RefuseAll;
 
 impl CallGate for RefuseAll {
@@ -90,10 +89,9 @@ impl Next {
     /// Ask once more, and report whether an answer came back.
     ///
     /// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
-    /// already on stdout, and stored (#188) — rather than costing it any of them.
-    ///
-    /// `history` is borrowed: the caller keeps it to translate the figure this round
-    /// reports back out of the request's index space.
+    /// already on stdout, and stored (#188) — rather than costing it any of them. `history`
+    /// is borrowed: the caller keeps it to translate the figure this round reports back out
+    /// of the request's index space.
     pub(super) async fn run<W: Write, E: Write>(
         &self,
         open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,

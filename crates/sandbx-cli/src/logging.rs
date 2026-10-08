@@ -13,11 +13,9 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 /// The subscriber the binary installs, writing to `writer`.
 ///
-/// Generic over its writer so a test can drive the real subscriber over an in-memory
-/// sink. Admits `AUDIT_TARGET` at `INFO` and nothing else, both halves load-bearing: the
-/// target keeps `sandbx-core`'s own `debug!` out, the level keeps out anything below
-/// `INFO` that borrowed the target. `impl SubscriberInitExt` keeps `tracing` a
-/// dev-dependency.
+/// Filters to `AUDIT_TARGET` at `INFO`: the target excludes `sandbx-core`'s own `debug!`,
+/// the level excludes anything below `INFO` that borrowed the target. Returns `impl
+/// SubscriberInitExt` to keep `tracing` a dev-dependency.
 pub fn subscriber<W>(writer: W) -> impl SubscriberInitExt
 where
     W: for<'writer> tracing_subscriber::fmt::MakeWriter<'writer> + Send + Sync + 'static,
@@ -40,17 +38,16 @@ where
 /// Install the audit subscriber on stderr for the rest of the process.
 ///
 /// Stderr, not the stdout `tracing_subscriber::fmt` defaults to: `SandboxRun::execute`
-/// forwards the sandboxed command's output over stdout, so a record interleaved there
-/// would corrupt whatever is piping it. `try_init` because losing the audit trail is
-/// worth reporting but still leaves a process that can sandbox a command.
+/// forwards the command's own stdout, so a record there would corrupt whatever is piping
+/// it. `try_init`: losing the trail is worth reporting but still leaves a usable sandbox.
 pub fn init() -> Result<(), tracing_subscriber::util::TryInitError> {
     subscriber(Audit).try_init()
 }
 
 /// The records written while a screen owned the terminal, or `None` while stderr is clear.
 ///
-/// Process-global because the subscriber is: `tracing` takes one for the whole process, and
-/// it is installed before the subcommand is known, so its writer cannot take an argument.
+/// Process-global: `tracing` takes one subscriber for the whole process, installed before
+/// the subcommand is known, so its writer cannot take an argument.
 static HELD: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
 /// Where a record goes: stderr, unless [`hold`] is in force.
@@ -58,8 +55,6 @@ static HELD: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 pub struct Audit;
 
 impl Write for Audit {
-    /// A held record is buffered whole; otherwise stderr takes it.
-    ///
     /// A poisoned lock writes to stderr rather than dropping the record: the trail is the
     /// one output that is not opt-in, so a corrupted screen is the lesser loss.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -89,12 +84,9 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 
 /// Buffer the audit trail until the returned guard drops.
 ///
-/// For a subcommand that draws on the alternate screen: that screen does not redirect
-/// stderr, so a record written during the turn lands in the pane, corrupts it and is lost
-/// with it. README's claim that every run records its trail on stderr is what this keeps
-/// true.
-///
-/// Not reentrant: a second `hold` discards the first's records, so there is one caller.
+/// The alternate screen does not redirect stderr, so a record written during the turn
+/// would land in the pane and be lost with it. Not reentrant: a second `hold` discards
+/// the first's records, so there is one caller.
 pub fn hold() -> Held {
     *HELD.lock().unwrap_or_else(PoisonError::into_inner) = Some(Vec::new());
     Held
@@ -104,8 +96,7 @@ pub fn hold() -> Held {
 pub struct Held;
 
 impl Drop for Held {
-    /// `Drop` and not a method: a panic unwinding past the screen must still leave the
-    /// trail behind it, that being the record of what the turn was allowed to touch.
+    /// `Drop`, not a method: a panic unwinding past the screen must still leave the trail.
     fn drop(&mut self) {
         let records = HELD
             .lock()
@@ -123,8 +114,8 @@ impl Drop for Held {
 mod tests {
     use super::*;
 
-    /// Serialises the tests below: `HELD` is process-global, so two at once would each
-    /// read the other's records.
+    /// Serialises these tests: `HELD` is process-global, so two at once would read each
+    /// other's records.
     static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
     /// Whatever `HELD` holds now, without panicking on a lock a test poisoned on purpose.
@@ -132,7 +123,6 @@ mod tests {
         HELD.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
-    /// Gone from the buffer on release, which is what puts them on stderr exactly once.
     #[test]
     fn a_hold_buffers_the_trail_and_releases_it_once() {
         let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
@@ -154,8 +144,7 @@ mod tests {
         assert_eq!(buffered(), None);
     }
 
-    /// The trail is the one output that is not opt-in, so a poisoned lock must not drop a
-    /// record.
+    /// The trail is not opt-in, so a poisoned lock must not drop a record.
     #[test]
     fn a_poisoned_lock_still_takes_a_record() {
         let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);

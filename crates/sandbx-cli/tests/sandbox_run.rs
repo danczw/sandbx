@@ -157,8 +157,8 @@ fn a_path_flag_moves_where_the_command_starts() {
     );
 }
 
-/// Not additive: a deliberately tight `--allow-read /srv` would otherwise gain write
-/// over the working directory too.
+/// Not additive: a tight `--allow-read /srv` would otherwise also gain write over the
+/// working directory.
 #[test]
 fn a_path_flag_replaces_the_working_directory() {
     let (_scratch, granted) = scratch(&["srv"]);

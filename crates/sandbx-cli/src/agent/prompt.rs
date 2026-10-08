@@ -249,11 +249,9 @@ impl<F> Terminal<F> {
     ///
     /// Canonical mode queues a finished line until something reads it, so an answer typed
     /// earlier — at a counterfeit question in the model's own prose, which reaches this
-    /// device too — is returned by the next read as the answer to *this* call.
-    ///
-    /// Both layers go: `tcflush` clears the kernel queue, and one read can deliver several
-    /// lines, so [`BufReader`] may already hold a later one. Either alone leaves the path
-    /// open.
+    /// device too — is returned by the next read as the answer to *this* call. Both layers
+    /// go: `tcflush` clears the kernel queue, and one read can deliver several lines, so
+    /// [`BufReader`] may already hold a later one. Either alone leaves the path open.
     ///
     /// # Errors
     ///

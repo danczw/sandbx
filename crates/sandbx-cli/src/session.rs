@@ -51,9 +51,8 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
                 session.id(),
                 session.messages().len()
             );
-            // Said because the prompt is answered *beside* those calls rather than after
-            // them: the model sees its own unanswered work, which is what a turn that ran
-            // out of rounds left (#188).
+            // Beside, not after: the model sees its own unanswered work from a turn that
+            // ran out of rounds (#188).
             if session.pending_call() {
                 eprintln!(
                     "sandbx: its last turn ran out of rounds; this prompt goes to the \
@@ -120,10 +119,8 @@ pub struct Merged {
 
 impl Merged {
     /// A turn's reported `withheld` in the transcript's index space, which is what a
-    /// caller stores.
-    ///
-    /// A figure at or past [`Merged::history`]'s length names one of the turn's own
-    /// messages, which the merge never saw and append does not move.
+    /// caller stores. A figure at or past [`Merged::history`]'s length names one of the
+    /// turn's own messages, which the merge never saw and append does not move.
     #[must_use]
     pub fn unmerged(&self, withheld: usize) -> usize {
         match self.starts.get(withheld) {
@@ -137,10 +134,9 @@ impl Merged {
 ///
 /// Consecutive user *messages* are what the API rejects, not the unanswered call a turn
 /// out of rounds ends on (#188). Results stay ahead of the prose, which is both the order
-/// they are stored in and the order the API wants them.
-///
-/// `withheld` arrives in the transcript's index space and comes back in the request's; one
-/// inside a run names the message the run became.
+/// they are stored in and the order the API wants them. `withheld` arrives in the
+/// transcript's index space and comes back in the request's; one inside a run names the
+/// message the run became.
 #[must_use]
 pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged {
     let length = history.len();
@@ -207,19 +203,17 @@ pub fn stored_messages(sent: &[RequestMessage]) -> Vec<Message> {
             },
             content: message.content.iter().filter_map(stored_block).collect(),
         })
-        // A message emptied by that filter would come back out of the store as an empty
-        // content array, which no provider accepts, so the next resumed turn would fail
-        // rather than this one.
+        // An emptied message would store as an empty content array, which no provider
+        // accepts, failing the next resumed turn rather than this one.
         .filter(|message| !message.content.is_empty())
         .collect()
 }
 
 /// One sent block, in the shape the transcript stores it, or `None` for one not stored.
 ///
-/// Reasoning is the `None` case, and the second place it is dropped: `run_turn` already
-/// strips it from what it returns, so nothing here is reachable today. Kept because a
-/// signature is a provider replay token with no value to a resumed conversation, and this
-/// is the last edge before the file. See `context/decision-thinking-replay.md`.
+/// Reasoning hits the `None` case but is unreachable today: `run_turn` already strips it.
+/// Kept because a signature has no replay value to a resumed conversation. See
+/// `context/decision-thinking-replay.md`.
 fn stored_block(sent: &ContentBlock) -> Option<Content> {
     Some(match sent {
         ContentBlock::Text { text } => Content::Text { text: text.clone() },

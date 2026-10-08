@@ -2,8 +2,7 @@
 
 use std::path::PathBuf;
 
-/// What to do instead, appended to every [`AuthError`] about a credential that is not
-/// there, so two refusals cannot advise differently.
+/// Appended to every [`AuthError`] about a missing credential, so refusals do not diverge.
 const AUTH_ADVICE: &str = "run `sandbx auth login` or export ANTHROPIC_API_KEY";
 
 /// Why no credential was resolved, stored or removed.

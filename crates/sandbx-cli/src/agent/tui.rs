@@ -249,10 +249,9 @@ impl Tui {
 ///
 /// Apart from the drawing so the code is an assertion rather than a screenshot: a
 /// `GateAborted` outcome holds its messages and its usage like an answered one, so nothing
-/// but the code tells a caller the operator went away.
-///
-/// A list and not a line, because two bounds can cut one turn: `--max-rounds` ends the turn
-/// and `--max-tokens` ends a round inside it.
+/// but the code tells a caller the operator went away. A list and not a line, because two
+/// bounds can cut one turn: `--max-rounds` ends the turn and `--max-tokens` ends a round
+/// inside it.
 fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
     let mut account = Vec::new();
 

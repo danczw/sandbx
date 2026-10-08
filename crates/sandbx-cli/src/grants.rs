@@ -128,9 +128,8 @@ pub struct Grants {
 
 /// Accept a name `--allow-dns` can actually bound, and refuse anything else.
 ///
-/// `SandboxPolicy::allow_dns` skips a name it cannot render into a hosts file, so the CLI
-/// refuses where the library skips — otherwise `--allow-dns` could exit 0 having bounded
-/// resolution to nothing, which is the one outcome an operator cannot tell from success.
+/// `SandboxPolicy::allow_dns` skips an unrenderable name; the CLI refuses where the library
+/// skips, since binding resolution to nothing is the one outcome success can't be told from.
 fn host_name(value: &str) -> Result<String, String> {
     if value.is_empty() {
         return Err("expected a host name, but this one is empty".to_string());
@@ -233,7 +232,6 @@ struct Homes {
 /// An unusable `$HOME` leaves the exact home rule nothing to compare — so
 /// [`looks_like_a_home`] stands in for it rather than being skipped, and such a cwd still
 /// derives rather than being refused: `HOME` unset with cwd `/app` is the container case.
-///
 /// `cwd` comes resolved from [`current_root`], which every comparison here assumes.
 fn vetted_root<'a>(
     cwd: &'a Path,
@@ -263,15 +261,14 @@ fn vetted_root<'a>(
     if !homes.usable && looks_like_a_home(cwd) {
         return Err(PolicyError::UnnamedHome {
             cwd: cwd.to_path_buf(),
-            // The written spelling, which `named_homes` pushes first and keeps only when
-            // absolute — so an empty or relative `HOME` names nothing here either.
+            // The written spelling; `named_homes` keeps it only when absolute.
             home: homes.paths.first().cloned(),
         });
     }
 
-    // Either direction, since Landlock rights cover a subtree. Both sides are resolved: the
-    // cwd by `current_root`, the grants by `allow_system_executables`, so a merged-`/usr`
-    // host compares `/usr/bin` with `/usr/bin` rather than with `/bin`.
+    // Either direction, since Landlock rights cover a subtree. Both sides are resolved —
+    // cwd by `current_root`, grants by `allow_system_executables` — so a merged-`/usr` host
+    // compares `/usr/bin` with `/usr/bin` rather than with `/bin`.
     if let Some(path) = granted
         .iter()
         .map(VettedPath::path)
@@ -387,9 +384,9 @@ fn absolute(
 
 /// `path` with its deepest resolvable ancestor replaced by what that resolves to.
 ///
-/// `canonicalize` needs the whole path to exist and a credential nobody has stored yet does
-/// not, so comparing canonical forms alone would miss the host where `/home` links to
-/// `/var/home` — Fedora Silverblue — and let the unresolved spelling through.
+/// `canonicalize` needs the whole path to exist, and a credential nobody has stored yet
+/// does not — so comparing canonical forms alone would miss `/home -> /var/home` (Fedora
+/// Silverblue) and let the unresolved spelling through.
 fn resolved(path: &Path) -> PathBuf {
     for (depth, ancestor) in path.ancestors().enumerate() {
         if let Ok(base) = ancestor.canonicalize() {
@@ -409,9 +406,8 @@ fn resolved(path: &Path) -> PathBuf {
 
 /// `granted` as a grant: the object it names now, carried beside the path so the helper can
 /// confirm it opened that one and not whatever was renamed over the name since (#212). `typed`
-/// is the spelling a refusal names.
-///
-/// `granted` has to arrive [`resolved`], and vetting resolves again, so the two are compared:
+/// is the spelling a refusal names. `granted` has to arrive [`resolved`], and vetting
+/// resolves again, so the two are compared:
 /// every path refusal above ran against the first, and a component swapped for a symlink in
 /// between would have the policy hold the second — a path no guard here saw, pinned to the
 /// object at it, so nothing downstream disagrees.
@@ -445,12 +441,10 @@ fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
-/// one naming something inside it both reach it.
-///
-/// `granted` has to arrive [`resolved`], and so absolute — otherwise one symlinked spelling
-/// reaches what the other is refused for, and a relative one resolves against nothing and
-/// reaches no owned path at all. Both callers pass what they grant: vetting one spelling and
-/// granting another is the window this closes.
+/// one naming something inside it both reach it. `granted` has to arrive [`resolved`], and so
+/// absolute — otherwise one symlinked spelling reaches what the other is refused for, and a
+/// relative one resolves against nothing and reaches no owned path at all. Both callers pass
+/// what they grant: vetting one spelling and granting another is the window this closes.
 fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
     debug_assert!(
         granted == resolved(granted),
@@ -469,9 +463,9 @@ fn current_root(granted: &[VettedPath], owned: &[OwnedPath]) -> Result<PathBuf, 
         detail: "could not read the working directory to derive a policy from",
         source,
     })?;
-    // `getcwd` already resolves; this is for the one thing `canonicalize` else proves — the
-    // directory is still openable, which `PathFd::new` requires and `FsGuard` does not,
-    // covering nothing under a root it cannot open rather than refusing.
+    // `getcwd` already resolves; this proves the one thing it doesn't — the directory is
+    // still openable, which `PathFd::new` requires and `FsGuard` does not, covering nothing
+    // under an unopenable root rather than refusing it.
     let cwd = cwd
         .canonicalize()
         .map_err(|source| PolicyError::Unavailable {
@@ -514,12 +508,11 @@ impl Grants {
 
     /// The policy these flags describe, or why none could be derived.
     ///
-    /// From [`SandboxPolicy::default`], which grants nothing, plus the two grants without
-    /// which nothing starts: read on the system binaries and libraries, and the startup
-    /// environment — `PATH` above all, since without it a program named without a leading
-    /// `/` reaches only glibc's `/bin:/usr/bin` fallback. Then read and write on the
-    /// working directory, but only when no path flag was given: a path flag *replaces*
-    /// that default rather than adding to it.
+    /// From [`SandboxPolicy::default`], plus the two grants nothing starts without: read on
+    /// the system binaries, and the startup environment — `PATH` above all, or a bare
+    /// program name only reaches glibc's `/bin:/usr/bin` fallback. The cwd gets read and
+    /// write only when no path flag was given; a path flag *replaces* that default rather
+    /// than adding to it.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()
@@ -528,8 +521,7 @@ impl Grants {
         let owned = owned_paths(&|name| std::env::var_os(name));
 
         if !self.paths_given() {
-            // Inside the branch, not above it: an invocation that typed its own flags never
-            // depends on `HOME`, and on `getcwd` only to resolve a relative one.
+            // Inside the branch: a run that typed its own flags never depends on `HOME`.
             let root = current_root(policy.executable_paths(), &owned)?;
             let root = pinned(&root, &root)?;
             policy = policy.allow_read(root.clone()).allow_write(root);
@@ -543,9 +535,8 @@ impl Grants {
             for path in self.paths(axis) {
                 // Outside the branch above: every other path refusal guards only the derived
                 // default, which is why a flag bypassed all of them.
-                // Granted in the form it was vetted in, not as the flag spelled it: a grant
-                // left relative or unresolved is one the helper resolves itself, against its
-                // own directory and whatever the links point at by then (#205).
+                // Granted as vetted, not as spelled: left relative, the helper would resolve
+                // it itself, against its own directory and whatever links point at by then (#205).
                 let typed = absolute(path, &std::env::current_dir)?;
                 let granted = resolved(&typed);
                 if bound_file.is_none() && bound_by_resolver(&typed, &granted) {
@@ -553,8 +544,7 @@ impl Grants {
                 }
                 if let Some(found) = reaches_owned(&granted, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
-                        // As typed, which is what the operator can go and change.
-                        granted: path.clone(),
+                        granted: path.clone(), // As typed, so the operator can go change it.
                         owned: found.path.clone(),
                         holds: found.holds,
                     });
@@ -563,9 +553,8 @@ impl Grants {
                 let granted = pinned(&granted, path)?;
                 policy = policy.grant(axis, granted.clone());
 
-                // The one place this CLI grants more than the flag's own axis: a tree a
-                // tool can rewrite and not `cat` back is a trap. Keyed to what the axis
-                // confers, not to `Write`, so a second write-conferring axis inherits it.
+                // Beyond the flag's own axis: an unreadable rewrite target is a trap. Keyed to
+                // what the axis confers, not `Write`, so a later write-conferring axis inherits it.
                 if axis.grants().write {
                     policy = policy.grant(Axis::Read, granted);
                 }
@@ -576,9 +565,8 @@ impl Grants {
             policy = policy.allow_env(name);
         }
 
-        // An empty `Vec` is the bare flag: no occurrence contributed a port. So
-        // `--allow-network --allow-network 443` allowlists 443 alone — fail-closed, the
-        // broader spelling yielding the narrower policy.
+        // An empty `Vec` is the bare flag: `--allow-network --allow-network 443` allowlists
+        // 443 alone — fail-closed, the broader spelling yielding the narrower policy.
         match self.allow_network.as_deref() {
             None => {}
             Some([]) => policy = policy.allow_network(),
@@ -625,8 +613,8 @@ impl Grants {
             policy = policy.allow_dns(name);
         }
 
-        // Honouring both would drop the operator's value in silence. Over `--allow-env`'s
-        // own names, not `allowed_env()`: a name nobody typed is not one they can drop.
+        // Honouring both drops the operator's value silently. Over `--allow-env`'s own names,
+        // not `allowed_env()`: a name nobody typed is not one they can drop.
         if let Some(name) = self.allow_env.iter().find(|name| {
             policy
                 .imposed_env()
@@ -697,9 +685,9 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-directory")
     }
 
-    /// A cwd as `current_root` hands one over: resolved, which [`reaches_owned`] requires. A
-    /// fixture spelling is not canonical by being written out — `/home` is a symlink to
-    /// `/var/home` on an ostree host.
+    /// A cwd as `current_root` hands it over: resolved, which [`reaches_owned`] requires — a
+    /// fixture spelling is not canonical just by being written out (`/home` is a symlink to
+    /// `/var/home` on an ostree host).
     fn at(cwd: impl AsRef<Path>) -> PathBuf {
         resolved(cwd.as_ref())
     }
@@ -729,9 +717,8 @@ mod tests {
     }
 
     /// Whether `granted` reaches one of `owned`, the cwd a test runs from being readable.
-    ///
-    /// Through both steps [`Grants::policy`] puts a flag through, so what is asserted here is
-    /// what a flag actually gets compared in.
+    /// Through both steps [`Grants::policy`] puts a flag through, so what is asserted here
+    /// is what a flag actually gets compared in.
     fn reaches(granted: impl AsRef<Path>, owned: &[OwnedPath]) -> bool {
         let granted = resolved(
             &absolute(granted.as_ref(), &std::env::current_dir)
@@ -1018,11 +1005,10 @@ mod tests {
         );
     }
 
-    /// Write here plus the execute every run already has is the pair `Axis::grants` keeps
-    /// apart. Both the path itself and a directory under it, since a merged-`/usr` host
-    /// resolves `/bin` to `/usr/bin`, which holds no granted path. Driven off `granted()`
-    /// rather than a list of names: `allow_system_executables` skips a path this host
-    /// lacks, and arm64 has no `/lib64`.
+    /// Write plus the execute every run already has is the pair `Axis::grants` keeps apart —
+    /// tested on both the path itself and a directory under it, since a merged-`/usr` host
+    /// resolves `/bin` to `/usr/bin`. Driven off `granted()` rather than a name list: arm64
+    /// has no `/lib64`, and `allow_system_executables` skips a path this host lacks.
     #[test]
     fn a_directory_overlapping_the_system_binaries_is_refused() {
         assert!(
