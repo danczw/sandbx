@@ -34,6 +34,7 @@ fn main() -> std::process::ExitCode {
         match command {
             Command::SandboxRun(args) => report(args.execute(), failure),
             Command::AgentRun(args) => report(block_on(args.execute()), failure),
+            Command::Tui(args) => report(block_on(args.execute()), failure),
             Command::Hash(args) => report(args.execute(), failure),
             Command::Auth(args) => report(args.execute(), failure),
         }
@@ -47,7 +48,7 @@ fn main() -> std::process::ExitCode {
 fn failure_code(command: &Command) -> u8 {
     match command {
         Command::Auth(_) => 2,
-        Command::SandboxRun(_) | Command::AgentRun(_) | Command::Hash(_) => 1,
+        Command::SandboxRun(_) | Command::AgentRun(_) | Command::Tui(_) | Command::Hash(_) => 1,
     }
 }
 

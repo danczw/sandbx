@@ -9,6 +9,7 @@ mod gate;
 mod orientation;
 mod prompt;
 mod render;
+mod tui;
 mod wrapup;
 
 use std::io::Write;
@@ -26,6 +27,7 @@ use sandbx_providers::{
 };
 use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
+pub use tui::Tui;
 
 use crate::session::{self, Merged, SessionChoice};
 use crate::{AgentError, Grants, PolicyError};
