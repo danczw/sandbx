@@ -342,6 +342,17 @@ sandbx's own costs as description rather than as a complaint.
   record turns on a new axis having to visit each site that decides something
   about it, with the suite failing until it does. The two goals conflict here
   and only one is priced.
+- **The script refusal is two bytes wide and the hazard is not.**
+  `starts_with_shebang` tests for `#!`, so a pinned image in any other format
+  the kernel routes to an interpreter reaches the exec and gets the bare
+  `cannot open /proc/self/fd/N` that the refusal exists to replace. **Partly
+  answered.**
+  [decision-pinned-entry-point.md](../decision-pinned-entry-point.md)
+  reasons about the `#!` case, and the refusal's own message already states the
+  correct general rule — pin an ELF binary — so the rule is right and only its
+  test is narrow. Testing for the ELF magic instead would refuse the whole
+  `binfmt_misc` class by the rule the message already gives, and would cost a
+  pinned ELF nothing.
 
 ### From 13 — the turn loop and the gate
 
@@ -363,6 +374,15 @@ sandbx's own costs as description rather than as a complaint.
   flag approved is a decision — is a claim about the verdict's identity, not
   about repeating it. #218's defect was filed against a turn that re-opened a
   stream with nobody to answer.
+- **A summarised cap leaves no durable trace that it was a cap.** `merge` takes
+  the wrap-up round's `stop` and a stored turn carries no stop reason at all, so
+  a transcript where the model chose to answer and one where the harness made it
+  answer are the same shape. **Partly answered.**
+  [decision-round-limit-answer.md](../decision-round-limit-answer.md) prices the
+  live channels and accepts that a script cannot tell the two apart, because
+  "stderr is what distinguishes them" — and stderr is exactly what a session
+  does not keep. Its storage section treats that half as settled by #188, which
+  made a capped turn storable rather than recognisable.
 
 ### From 14 — audit, sessions, credentials
 
@@ -422,9 +442,156 @@ sandbx's own costs as description rather than as a complaint.
   would differ per checkout — and that is answerable by naming the subdirectory
   exactly as the root docs are named.
 
-Later chapters will add to this list. A new `###` for the chapter, and a bullet
-per aside carrying the same verdict vocabulary, is the whole of what appending
-costs.
+### From 18 — the core crate
+
+- **Concealment is detached from the thing it protects.** Everything else in
+  this crate turns a rule a human would have to remember into something the
+  compiler or the kernel holds; concealment is a `pub fn` that `main.rs` happens
+  to call, and omitting it compiles, passes every test in the workspace and
+  silently republishes the key. **Partly answered.**
+  [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) argues
+  for the mechanism and for where the call sits, and does not weigh making the
+  step unskippable. Nor is the wiring pinned — the test drives a purpose-built
+  probe, which is evidence the `prctl` works rather than that `sandbx` calls it.
+- **The refusal labels are a documented compatibility surface pinned almost
+  nowhere.** `HelperRefusal::label`'s own doc says a trail is filtered by these
+  strings, and two `context/` docs spell several of them out in prose; three are
+  hard-coded in test assertions and the rest would survive a rename. **Partly
+  answered.**
+  [decision-helper-audit-channel.md](../decision-helper-audit-channel.md)
+  thought carefully about the adjacent problem — it declines to state a *count*
+  of the excluded reasons, deriving membership from the variants instead. The
+  spelling is the half that argument does not reach, and
+  [16](16-how-the-repo-is-maintained.md) describes the mechanism the repo
+  already owns for exactly this.
+
+### From 19 — the tools crate
+
+- **A guarded read that fails is skipped with no marker.** `grep`'s per-file arm
+  discards the error, which is right for the binary-file case it was written for
+  and also swallows every refusal, so a grant substituted mid-walk comes back as
+  "no matches". **Partly answered.**
+  [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) built its
+  two-marker scheme against precisely this confusion — "a search that silently
+  gave up looks identical to one that found 4,000 matches and showed 200" — but
+  reasons only about the budgets, never about a candidate the guard refuses. The
+  fix needs no new vocabulary.
+- **A non-zero exit is an error for the whole call.** Right for `cargo build`,
+  wrong for the family where a status *is* the answer, and the loss is upstream
+  rather than in the model's view: `Outcome::Ran` is never recorded, so the
+  operator's line and the trail both read "failed" about a command that did what
+  it was asked. **Partly answered.** `error.rs` states the split as being by the
+  agent's next move, and the record has drawn that distinction once already in
+  the other direction (#180); no equivalent reasoning exists for an exit code,
+  and the test that pins the behaviour does not argue for it.
+
+### From 20 — the providers crate
+
+- **The neutral half of the crate is held by convention, not by a check.**
+  **Partly answered.** [decision-provider-seam.md](../decision-provider-seam.md)
+  lists four mechanisms and each is genuinely enforced by the compiler; what it
+  does not price is that the vendor's *name* has no enforcement at all, while
+  the claim about it is stated absolutely in the places a maintainer reaches for
+  first. The repo owns the shape of the answer in two existing prose-pinning
+  tests, and the record's argument against inventing abstractions for a backend
+  that does not exist does not reach this, because a grep is not an abstraction.
+- **The frame cap stops at a layer boundary.** The SSE layer bounds a single
+  frame precisely because an unbounded buffer is OOM-killed with no diagnostic,
+  and the fold that concatenates those frames has no cap, so a gateway streaming
+  valid in-cap fragments forever allocates until the process dies. **Partly
+  answered.** What bounds it today is a wall-clock timeout owned by a *different
+  crate*, which a library caller using this one directly does not get.
+  [`SECURITY.md`](../../SECURITY.md) claims no memory bound, so the claim is
+  honest and only the mechanism is in question; the record states the one
+  weakness it accepts and this is not among them.
+
+### From 21 — the agent crate
+
+- **`Outcome` cannot tell a verdict the gate gave from one the loop gave on its
+  behalf.** A call refused unasked behind an abort latch arrives in the same
+  shape as a call the gate decided, and the CLI renders both as "refused".
+  **Partly answered.** [decision-approval-gate.md](../decision-approval-gate.md)
+  makes that exact distinction load-bearing one section earlier — those calls
+  "are refused *unasked* rather than allowed on the strength of a verdict nobody
+  gave" — and the enum then spends a variant on telling a policy refusal from a
+  gate refusal, the same class of distinction, and nothing on this one.
+- **Compaction's correctness condition is one no test in the repo can check.**
+  The condition is that the API would still accept the request; what the suite
+  compares it against is the repo's own model of what the API rejects, asserted
+  through a script that accepts every request handed to it. **Open.** No record
+  weighs the untestable condition, which is a different objection from the
+  missing flag that [02](02-what-a-harness-is.md) raises — a flag would also be
+  the first thing that could falsify the model. The cheap version is one
+  recorded live run through a library caller, with the request bodies kept.
+
+### From 22 — the session crate
+
+- **A second header is skipped without its version being read.** The version
+  gate runs only on line 0, so a transcript concatenated or hand-edited to carry
+  a later header resumes with lines a v1 reader does not understand. **Partly
+  answered.** [decision-on-disk-state.md](../decision-on-disk-state.md) refuses
+  exactly that outcome when the version sits on line 0, because "a reader that
+  silently dropped a field it did not understand would change the history the
+  model is shown"; it weighs an unknown version and an unknown record type, and
+  not a repeated header. The read path already assumes a transcript may have
+  been edited — that assumption is why the shape checks run over the whole
+  history rather than its end.
+- **The create path repairs a wide root, where the rule one bit away refuses.**
+  **Partly answered.** The record answers for the narrowing with "at create time
+  the directory holds nothing a refusal would protect", which is sound about the
+  session being created and silent about the directory's existing contents: a
+  `sessions/` found world-writable may have held every earlier transcript while
+  it was wide, and nothing records that it was. The asymmetry is sharpest
+  against the transcript rule — a merely readable transcript resumes *and* sets
+  a field, precisely so the operator hears about a disclosure that cannot be
+  undone.
+
+### From 23 — the tui crate
+
+- **The dependency graph carries less of the isolation than the guide implies.**
+  Four crates' vocabulary is ruled out by a missing edge; the provider crate's
+  client and credential resolver are not, so for those the guarantee is
+  discipline where for the policy and the gate it is the compiler. **Partly
+  answered.** [decision-provider-seam.md](../decision-provider-seam.md) argues
+  by its own method — it sealed the vendor boundary by leaving `Prompt` with no
+  `Serialize`, so nothing above can post a neutral type — and the same move is
+  open here, priced against an eighth crate in a workspace whose seven are a
+  feature.
+- **The gutter authenticates sandbx's voice and nothing authenticates the
+  operator's.** The prompt's mark is ASCII and let through deliberately, where
+  the verdict mark has a backstop, and a wrapped continuation row starts in
+  column 0 — so a row beginning with the prompt mark renders in the operator's
+  own grammar. **Partly answered.** `GUTTER_MARK`'s comment gives the reason for
+  letting it through, and [guide-tui.md](../guide-tui.md) already names the fix
+  for the other mark: a gutter in an area of its own. Weaker than forging a
+  verdict — misattributed authorship rather than consent — and not nothing
+  either, the pane being the only record a `bash` call's text gets (#234).
+
+### From 24 — the cli crate
+
+- **One grant failing its own identity check is dropped in silence.** It is the
+  only place in the crate where that condition produces neither a refusal nor a
+  line on stderr, and two policy errors exist for the same condition a moment
+  earlier. **Partly answered.**
+  [decision-grant-identity.md](../decision-grant-identity.md) is explicit that
+  the window fails closed and that refusing is the right outcome, and weighs the
+  window's security rather than its diagnosis. Nothing is unsafe — the guard
+  measures the matched root per access — but the operator's answer is a model
+  that quietly stops being told about a directory they granted.
+- **`--no-wrap-up` is accepted and inert under `tui`.** The crate elsewhere
+  treats one flag meaning two things across two subcommands as the thing to
+  avoid, and refuses `--approve call` under `tui` rather than downgrading it
+  (#225). **Open.**
+  [decision-round-limit-answer.md](../decision-round-limit-answer.md) does not
+  weigh `tui` at all: its case for the round rests on the alternative leaving
+  "the common case with nothing on stdout", and `tui` does not use stdout for
+  the answer. The record has not been asked whether the pane should get the
+  summary, or whether the flag should be refused there the way `--approve call`
+  is.
+
+Appending to this list costs a new `###` for the chapter and a bullet per aside
+carrying the same verdict vocabulary — which is what the seven crate chapters
+did.
 
 ## From an objection to a filed issue
 
@@ -484,9 +651,12 @@ less worth believing.
 
 ## Next
 
-Nothing in this directory — this is the last chapter. What follows the set is
-the numbered reading order at the end of
+This is the last chapter of the read-through, and the end of the argument. What
+is left in this directory is the crate reference — [18](18-crate-core.md)
+onwards, one chapter per crate, read when you land in one rather than in order.
+
+What follows the set is the numbered reading order at the end of
 [guide-repo-map.md](../guide-repo-map.md), which names every `guide-*.md` and
-`decision-*.md` in [`context/`](../) and is the second pass these eighteen files
-were the on-ramp to. Read in that direction, a guide that opened cold on day one
+`decision-*.md` in [`context/`](../) and is the second pass the read-through was
+the on-ramp to. Read in that direction, a guide that opened cold on day one
 should now read as a reference rather than as a wall.

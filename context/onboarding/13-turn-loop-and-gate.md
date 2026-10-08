@@ -361,6 +361,176 @@ handles it, and the two interesting arms are about *not* dropping things:
   that frame it off the end, and a cut is marked with `…` rather than being
   silent — an operator who cannot see the whole argument can still refuse.
 
+## A turn out of rounds is asked once more, with no tool
+
+A round is one request plus the tool calls its answer asked for. The loop keys
+off the *presence* of `ToolUse` blocks and never off `StopReason` —
+[02](02-what-a-harness-is.md) says why at the protocol level — so a round is a
+unit of what the model produced, not of what the provider called it.
+
+When the loop decides it has run out of them matters more than it looks. The
+bound is the `for` loop's own range, and the last round's calls are answered and
+pushed *before* it falls out of it:
+
+```rust
+    // Returned rather than dropped: every prefix ends unanswered too, so no truncation reads
+    // as finished; `stop` says so.
+    Ok(outcome(
+        produced,
+        usage,
+        // `cut`: `withheld` is out of scope, but the two agree since a cut only deepens.
+        cut,
+        TurnStop::RoundLimit {
+            rounds: turn.limits.max_rounds,
+        },
+        last_stop,
+    ))
+```
+
+So `--max-rounds 1` is one request and one complete batch of tool calls: every
+`write` that batch asked for has landed, with no round left to say anything
+about it. The cap bounds how many times the model gets to choose again, not the
+choices it already made. `round_cap` refuses `--max-rounds 0`, so the one cap
+that opens no stream at all is reachable only by a library caller.
+
+Three things it therefore does not bound:
+
+- **Tokens.** `max_output_tokens` rides on every request, so `--max-tokens`
+  bounds each round's reply; a turn of eight rounds may produce eight of them,
+  and the wrap-up round below a ninth.
+- **Wall-clock time.** `TurnLimits::stream_timeout` bounds one round's
+  *consumption*, not the turn, and a tool call is bounded only by whatever
+  timeout the tool itself carries — `spawn_blocking` cannot be cancelled (#26).
+- **The work inside one round.** `answer_calls` answers every block the model
+  asked for, so a round is any number of tool calls. An operator wanting a bound
+  on how much a turn *does*, rather than on how many times it reconsiders, does
+  not have one here; the flags that bound the damage are the policy flags.
+
+**At the cap, the turn has a transcript and no answer.** It ends on a
+`user(tool_result)` the model never answered, and so does every prefix of it.
+The naive behaviour is to stop there, which hands the operator nothing — or,
+with `--show-thinking` and a chatty model, a wall of output with no conclusion
+in it. So `agent-run` spends one more request, purely to turn what was gathered
+into prose. [decision-round-limit-answer.md](../decision-round-limit-answer.md)
+is the record, and
+[`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) — see
+`Next::after` — is the mechanism: the first turn's model, system prompt, tools
+and limits carried over, `max_rounds: 1`, and a suffix on the system prompt
+telling the model it has no tool calls left. A suffix because the history ends
+on a `tool_result` and a second user message is the consecutive-user-turn
+rejection this whole area is about.
+
+**That the round may call no tool is the load-bearing part.** A wrap-up round
+that could call one would be a ninth round by another name, and the bound would
+not be a bound: a model looping on the same call would get one more go at it
+every time the cap arrived. Two mechanisms hold it, because the first is only a
+request field. `Turn::tool_choice` is `Some(ToolChoice::None)` — the tool
+*definitions* stay in the body, since the replayed history names them and the
+API refuses a request carrying `tool_use` blocks without them. And the round
+runs under a gate of its own, not under `ArgvGate`:
+
+```rust
+impl CallGate for RefuseAll {
+    fn approve(&mut self, _: ToolCall<'_>) -> ApprovalDecision {
+        ApprovalDecision::Deny {
+            reason: REFUSED.to_owned(),
+        }
+    }
+```
+
+Which is this chapter's thesis applied to the harness's own request:
+`tool_choice` bounds what the model is *asked* for, and the gate is still the
+only thing between a call and `sandbx-tools` running it. A model that ignored
+the nudge and the choice must not reach a tool on the strength of an
+`--allow-tool` the operator typed for the turn before.
+
+**What it costs is one request's tokens and latency on every capped turn**, and
+a capped turn is already the expensive case — the wrap-up request carries the
+whole turn's history, so it is the largest request the turn sends. The record
+prices that and defaults to spending it anyway, because the alternative default
+leaves the common case with tokens burnt, edits applied and nothing on stdout.
+`--no-wrap-up` is the opt-out, and it refuses the request alone: the tool work
+is stored and resumable either way (#188), and the exit code is 2 either way.
+
+| the run | what stdout holds |
+|---|---|
+| a capped turn | what arrived before the cap, a blank line, then the summary |
+| `--no-wrap-up` | what arrived before the cap — nothing at all if the model opened with a tool call |
+| `tui` | the pane, and no wrap-up round is sent at all |
+
+The blank line is *owed* rather than written: `Render::separate` sets a flag the
+next text delta spends, so a wrap-up round that answers with nothing strands no
+stray gap. The whole shape, with the line that names the bound:
+
+```console
+$ sandbx agent-run --allow-tool bash -- 'group every TODO by file'; echo "exit $?"
+… whatever prose arrived before the cap …
+
+I read 41 files and grouped what I found; three directories are unvisited.
+sandbx: stopped after 8 rounds of tool calls; the answer above summarises what was found, and raising --max-rounds would let the turn go further
+exit 2
+```
+
+Under `tui` the same cap ends on tool work and the screen says so;
+[15](15-tools-and-the-screen.md) is the chapter for that surface, and for the
+other way `tui` reaches 2.
+
+**Two outcomes become one stored turn.** `merge` concatenates the messages, and
+each of the four fields behind them is a decision:
+
+```rust
+pub(super) fn merge(first: TurnOutcome, second: TurnOutcome) -> TurnOutcome {
+    let mut messages = first.messages;
+    messages.extend(second.messages);
+
+    TurnOutcome {
+        messages,
+        usage: second.usage.or(first.usage),
+        withheld: second.withheld,
+        stop: second.stop,
+        round_stop: second.round_stop,
+    }
+}
+```
+
+`usage` is `.or`, because `PromptUsage` is a *measurement* of how large a
+request was and the freshest one is the one the next turn should plan against —
+not a bill to be summed. `stop` and `round_stop` are taken outright, because a
+stop reason belongs to one round: the wrap-up round's prose is the answer, so a
+summary cut at `--max-tokens` is named against the summary, and the first turn's
+own cut is not inherited by it. `the_merged_turn_takes_the_wrap_ups_reason` pins
+all three by failing three plausible wrong merges, `.or(first.round_stop)` — the
+shape `usage` uses — among them. One turn and not two because the session's unit
+is a prompt and what it produced, and there was one prompt; a second stored turn
+would need a second one invented for it, which the API has no legal place for
+either. [22](22-crate-session.md) is where the stored shapes live.
+
+The exit code does not come out of the merge. `ending` is derived from the
+*first* turn's `TurnStop::RoundLimit` before the second request is sent, so the
+merged `stop: Answered` never reaches it, and `finish` returns `INCOMPLETE` for
+any `ending` at all. The three cap variants — `CutShort`, `Summarised` and
+`Discarded` — exit the same 2 and differ only in the stderr line they write,
+which is the split the record chose deliberately: `2` means a bound cut the turn
+short, not that anything failed, and the answer on stdout may be complete and
+worth having. Nothing records the cap in the audit trail, which holds accesses
+the kernel or `FsGuard` actually decided — the final round's tools ran, so their
+accesses are in it like any others ([14](14-audit-sessions-credentials.md)).
+
+- **Worth questioning:** a summarised cap leaves no durable trace that it was a
+  cap. The merge takes the wrap-up round's `stop`, the batch ends on an
+  assistant message, and a stored turn carries no stop reason at all — so a
+  transcript where the model chose to answer and one where the harness made it
+  answer are the same shape.
+  [decision-round-limit-answer.md](../decision-round-limit-answer.md) prices the
+  live channels only: its "The exit code stays 2" section accepts that a script
+  cannot tell a cap that summarised from one that did not, because "stderr is
+  what distinguishes them". Stderr is exactly what a session does not keep, and
+  the record's storage section treats that half as settled by #188 — which made
+  a capped turn storable, not recognisable. Under `--no-wrap-up` the unanswered
+  `tool_result` is itself the record, and `pending_call` reads it; the default
+  spends it for the answer, leaving a later resume only the summary's own prose
+  for the fact that three directories were never visited.
+
 ## Losing the operator is its own ending
 
 `Abort` latches in `answer_calls`, which hands `run_turn` an
@@ -434,6 +604,10 @@ ran performed none. Chapter 14 is that distinction.
 - Why `subject` is keyed off the tool rather than off whichever argument is
   present.
 - Why `char::is_control` is insufficient for a consent prompt.
+- What a round is, when the loop decides it has run out of them, and what
+  `--max-rounds` therefore does not bound.
+- Why the round a cap buys may call no tool, what the extra request costs, and
+  why its outcome is merged into the capped turn rather than stored beside it.
 - Why exit 3 is checked before exit 2, and what a caller could not otherwise
   learn.
 

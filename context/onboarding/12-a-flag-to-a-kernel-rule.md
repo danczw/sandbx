@@ -331,6 +331,203 @@ the left-hand branch, with its measure-then-open guard, does not.
 `HardRequirement` compatibility level set at the top of `apply`, a ruleset the
 kernel took only partly is an error rather than a quietly weaker sandbox.
 
+## The pin is the flag that becomes no rule at all
+
+One flag on `sandbox-run` goes through none of the five stages above.
+`--pin-sha256` is parsed by the same clap layer and crosses the same argv seam,
+and then it stops: no `Axis`, no `VettedPath`, no `PathBeneath`, nothing the
+kernel is ever told. The ruleset a pinned run installs is byte-for-byte the one
+an unpinned run installs.
+[decision-pinned-entry-point.md](../decision-pinned-entry-point.md) is the
+authority, and its opening move is the one to carry away: `SandboxPolicy` says
+what a confined process may *do*, and both enforcement layers derive from
+`Axis::grants`, so a digest made into an axis row would have to answer what it
+confers — and the answer is nothing.
+
+The gap it closes is one `--allow-exec` leaves open deliberately. A path grant
+is standing permission to run whatever is at that path when the command starts,
+so `--allow-exec ./target/debug/mytool --allow-write ./target` — the natural
+pair for "run the thing you just built" — is also the pair that lets the command
+choose its own binary, because in an agent session the second tool call can
+rewrite what the first one built (#146).
+
+**The operator-facing shape is two commands.** `sandbx hash PATH` prints a
+digest in the form the flag takes, and `--pin-sha256 HEX` refuses the run unless
+the program named after `--` hashes to it:
+
+```console
+$ sandbx sandbox-run --allow-exec /tmp/demo \
+    --pin-sha256 "$(sandbx hash /tmp/demo/tool)" -- /tmp/demo/tool
+```
+
+`Hash::execute` in [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) writes the
+hex and a newline and nothing else, so the substitution above composes with no
+`cut`, and it writes through `write_all` rather than `println!` — which panics
+on a closed stdout once `SIGPIPE` is ignored.
+
+**`hash` is the one subcommand that confines nothing,** which looks like a hole
+in a harness whose whole claim is that it confines things, and is not one. A pin
+has to be taken *before* there is a policy to take it under — the digest is an
+input to the policy, so a subcommand that confined the reading would need the
+very policy the digest is going into. What `hash` does is open one file as
+you, hash it, and print sixty-four characters: exactly `sha256sum`, reaching
+nothing you could not already read, deriving no policy and spawning nothing. The
+digest is no secret either, since anyone who can read the bytes can compute it.
+`conceal_process_state` still runs ahead of it, from
+[`main.rs`](../../crates/sandbx-cli/src/main.rs), because that call sits before
+the subcommand match rather than inside an arm of it.
+
+**A pin grants nothing, and that is the likeliest way to misread the flag.** It
+is not a path grant and it does not stand in for one: a pinned program with no
+`--allow-exec` covering it still cannot run, because the right to execute comes
+only from `Axis::ReadExecute` and the single bit `rights_for` adds for it. The
+flag sits on `SandboxRun` and not on the `Grants` both run subcommands flatten,
+so it is outside `paths_given()` — which means a pin cannot suppress the
+working-directory default either. A flag that grants nothing must not narrow
+anything. It is absent from `agent-run` for a second reason: there the program
+is the model's to choose, so the flag would parse, document a guarantee and pin
+nothing.
+
+**The descriptor and not the path is the whole mechanism.** The naive
+implementation hashes a path and then `execve`s that path — two lookups of one
+name, with a window between them that is exactly the window the flag exists to
+close. `open_verified` in [`digest.rs`](../../crates/sandbx-core/src/digest.rs)
+opens once and keeps the handle:
+
+```rust
+let mut file = std::fs::File::open(program).map_err(unreadable)?;
+
+let actual = Sha256Digest::of_file(&mut file).map_err(unreadable)?;
+
+if actual != expected {
+    return Err(crate::SandboxError::PinMismatch {
+        program: program.to_string(),
+        expected,
+        actual,
+    });
+}
+```
+
+`Sha256Digest::of_file` takes a `&mut std::fs::File` and never a path, which
+makes the honest route the only one the type permits — there is no form of it
+that could re-open a name. The handle is then given back to the caller, which
+names it for the `exec` through `fd_path`:
+
+```rust
+pub(crate) fn fd_path(file: &std::fs::File) -> std::path::PathBuf {
+    use std::os::fd::{AsFd, AsRawFd};
+
+    std::path::PathBuf::from(format!("/proc/self/fd/{}", file.as_fd().as_raw_fd()))
+}
+```
+
+The bytes hashed and the bytes executed are reached through the same open file,
+so there is no second resolution for a swap to land in.
+[07](07-kernel-primer.md) has `O_PATH` and the `/proc/self/fd` magic link; this
+is that trick put to a different use, and the handle here is an ordinary
+readable one because reading it is the point. It is also the discipline
+[11](11-the-two-seams.md) names at the guard — hold a handle, not a name —
+applied to the one operation the guard never sees. Two further facts are what
+make it hold: the handle must outlive the `exec`, which is what keeps
+`/proc/self/fd/N` a valid name, and Landlock dereferences the magic link, so the
+`execve` is still checked against the program's real path and a pinned run needs
+no grant on `/proc`. [`SECURITY.md`](../../SECURITY.md) carries that second
+dependency as a stated one.
+
+**Two shapes are refused rather than run unchecked.** Both refusals carry
+advice, because neither is something an operator could diagnose from the failure
+they would otherwise get.
+
+- **A `#!` script.** The digest would be honest — those are the script's bytes —
+  and the run would still die. `binfmt_script` substitutes `bprm->interp` for
+  argv[0] and calls `remove_arg_zero`, so the interpreter re-opens the path
+  sandbx exec'd, which is `/proc/self/fd/N` and by then a closed descriptor; the
+  run fails as `cannot open /proc/self/fd/4`, naming nothing anybody could act
+  on. Clearing `FD_CLOEXEC` would make it start and was rejected: the script
+  would then see `$0 = /proc/self/fd/N`, breaking `dirname $0` and every
+  multi-call dispatch, and a security flag must not change what the program
+  observes about itself. The deeper reason is that the pin was measuring the
+  wrong thing anyway — a script's bytes say nothing about the interpreter that
+  will run them — so `PinnedScript`'s message gives the shape that works: pin an
+  ELF binary, or run the interpreter as the program and pass the script as an
+  argument, where the interpreter is the entry point and the script is outside
+  the pin.
+- **A program you may execute but not read.** A mode-111 binary runs unpinned
+  and cannot be pinned, hashing needing a read that execute alone does not give.
+  That is `PinUnreadable`, its own variant so that the failure says "a pin
+  needs read access, which execute alone does not give" rather than letting a
+  `Permission denied` from the open read as a failed exec.
+
+Their order is in the snippet above and is deliberate: the digest comparison
+runs *first*, so bytes that were never the pinned ones report the mismatch, and
+only an image that genuinely *is* the pinned one is refused for being a script.
+`a_swapped_script_reports_the_mismatch` in `digest.rs` holds that down.
+
+**The check sits after `apply`, in the process that becomes the command.** Not
+in the harness: `restrict_and_exec` in
+[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) is stage 2 of the
+re-exec, PID 1 of the new PID namespace, and it calls `apply` — Landlock,
+seccomp, hardening — and only then opens the program.
+
+```rust
+let image = request
+    .pin
+    .map(|expected| crate::digest::open_verified(&request.program, expected))
+    .transpose()?;
+```
+
+Opening first would hash a file no grant covers and report a mismatch where the
+honest answer is a denied read. After `apply`, the descriptor is *provably* one
+the policy authorizes: the read that produced the digest was itself subject to
+the ruleset the kernel now holds, so a pin cannot become a way to read a byte
+the policy would have refused. The pin is checked inside the cage rather than
+beside it — which is the other half of why it needs no rule of its own. One
+unconditional line after the open keeps it invisible to the program:
+
+```rust
+command.arg0(&request.program);
+```
+
+Without it `$0` would be the procfs path, which `ps` and a multi-call binary
+both read. A matching pin changes nothing the command can observe about itself.
+
+**The mechanism's edge is the one `execve`.** The digest covers the bytes sandbx
+itself executes and nothing that image then spawns, which
+[`SECURITY.md`](../../SECURITY.md) states as a non-claim and #146 is the issue
+behind. A pinned `/usr/bin/python3` is still arbitrary code — the digest fixes
+the interpreter and says nothing about the script it is handed — and after the
+`execve` the program may spawn anything the filesystem policy permits, the
+`/usr`, `/bin`, `/lib` and `/lib64` floor the CLI grants by default included.
+[17](17-gaps-and-open-questions.md) carries it as a gap row rather than a
+defect, which is the right reading: a pin over a process tree is a different
+mechanism, not more of this one.
+
+**On the trail a pin is one boolean, written before it was checked.**
+`AuditEvent::spawned` in [`audit.rs`](../../crates/sandbx-core/src/audit.rs)
+takes `pinned` as a parameter rather than deriving it, a digest not being
+policy, and `SandboxedCommand::output` passes `self.pin.is_some()` — in the
+harness, before the helper has hashed anything. So `pinned=true` records that a
+digest *had* to match and not that it did; whether it did is the second record
+of the pair, an `exited` against a `failed` carrying `reason="pin_mismatch"`.
+That is the same intent-not-outcome reading `decision="spawned"` has throughout
+[14](14-audit-sessions-credentials.md). A boolean and not the digest, for a
+reason worth keeping: the digest is already in `/proc/self/cmdline`, and what an
+auditor cannot recover is that it was checked.
+
+- **Worth questioning:** the script refusal is two bytes wide and the hazard is
+  not. `starts_with_shebang` tests for `#!` because that is the format
+  [decision-pinned-entry-point.md](../decision-pinned-entry-point.md) reasons
+  about, and the refusal's own message states the correct general rule — pin an
+  ELF binary — but only a `#!` image ever reaches it. Any other format the
+  kernel routes to an interpreter has the same shape of problem: `binfmt_misc`
+  hands its interpreter the path the kernel was given, as an argument, and that
+  path is the procfs name of a descriptor closed by then. So a pinned image that
+  is neither ELF nor `#!` gets precisely the bare `cannot open /proc/self/fd/N`
+  the record added a refusal in order to avoid, with none of the advice
+  attached. Testing for the ELF magic rather than the shebang magic would refuse
+  the whole class by the rule the message already gives, and would cost a pinned
+  ELF nothing.
+
 ## The no-flag default, and why a flag replaces it
 
 Now the other half of the question, because `--allow-read /tmp/x` does not only
@@ -487,6 +684,12 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
   catches, and why `Installed` is exempt from the second.
 - Why `PathBeneath` holding a descriptor closes a window that the in-process
   guard only narrows.
+- Why `--pin-sha256` is not an `Axis` row, what a pin grants, and what still has
+  to be typed beside it for a pinned program to run at all.
+- How `open_verified` and `fd_path` leave no second path lookup for a swap to
+  land in, and why `arg0` is restored unconditionally afterwards.
+- Why the digest is checked after `apply` and in the process that becomes the
+  command, and which two images are refused rather than pinned.
 - Why typing one path flag removes the working-directory default, and the
   failure mode of the alternative.
 - Why a grant reaching a harness-owned path is refused in both directions and

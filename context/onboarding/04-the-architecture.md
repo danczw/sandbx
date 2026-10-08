@@ -87,8 +87,9 @@ and the one ordering rule inside it.
 
 ### Startup, in an order that is load-bearing
 
-[`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs) does two things before
-anything else, and the comments there say why each must be where it is:
+[`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs) does three things
+before the subcommand runs, and the comments there say why each must be where it
+is:
 
 ```rust
 sandbx_core::with_helper_dispatch(std::env::args_os(), || {
@@ -99,6 +100,17 @@ re-exec'd with `--sandbx-core-exec` must restrict itself and become the target
 command, never fall through into argument parsing. Logging is initialised
 *inside* the closure, because in helper mode this process becomes the sandboxed
 command and a subscriber above would write into that command's stderr.
+
+The third is `conceal_process_state`, and it is the one step here that is itself
+a boundary rather than a precondition for one. It clears this process's dumpable
+flag, which reparents `/proc/<pid>/` to root and makes `environ`, `mem`, `maps`
+and `fd/` fail a same-uid reader's access check — so a tool granted `/proc`
+cannot read the provider key out of the harness's own environment. Its position
+is pinned from both sides: inside the closure so the flag is sandbx's own and
+not a sandboxed command's, and *after* parsing so a refusal exits with the
+subcommand's code, with nothing spawned yet either way. A same-thread-group read
+of `fd/` and `exe` stays exempt, which is why `digest` and the helper re-exec
+still work.
 
 Then [`AgentRun::execute`](../../crates/sandbx-cli/src/agent.rs) runs a sequence
 where every step's position is justified in a comment. Read it once as a list:
@@ -180,7 +192,7 @@ enforcement — this is the view that explains why the code looks the way it doe
 
 | boundary | where | the shape | what it buys |
 |---|---|---|---|
-| the vendor boundary | [`providers/src/anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs) and below | the body serializer is private to `anthropic/`; `Prompt` and friends have no `Serialize` | the top-level types cannot be posted to any API by accident, and every vendor name sits at or below one file (#59) |
+| the vendor boundary | [`providers/src/anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs) and below | the body serializer is private to `anthropic/`; `Prompt` and friends have no `Serialize` | the top-level types cannot be posted to any API by accident, and every vendor rule and wire string sits at or below one file (#59) |
 | the provider seam | [`providers/src/lib.rs`](../../crates/sandbx-providers/src/lib.rs) | `EventStream`, a boxed `FusedStream`; `run_turn` is generic over `AsyncFnMut(Prompt) -> Result<EventStream, …>` | no provider trait, no `dyn`, and no test double in anyone's public API |
 | the tool boundary | [`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs) | `BuiltinTool`, a closed enum with `ALL: [Self; 7]`; `ToolSpec` crate-private | a new tool is a compile error everywhere it must be handled, not a registration that can be forgotten |
 | the gate | [`agent/src/approval.rs`](../../crates/sandbx-agent/src/approval.rs) | `CallGate`, two methods, `run_turn`'s mandatory fifth parameter | there is no `run_turn_unchecked` — a caller cannot acquire a gate-less loop by omitting an argument |
