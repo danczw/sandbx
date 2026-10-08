@@ -105,10 +105,17 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
                     subject: ran(),
                     reason: detail,
                 },
+                // The policy refusing a grant, not the environment failing to apply one: the
+                // in-process twin is `RootReplaced`, and one substitution must not read as
+                // "ask for something else" through one tool and "try again" through the other.
+                HelperRefusal::GrantRedirected | HelperRefusal::GrantReplaced => {
+                    ToolError::Denied {
+                        subject: ran(),
+                        reason: detail,
+                    }
+                }
                 HelperRefusal::BadHelperArgs
                 | HelperRefusal::Landlock
-                | HelperRefusal::GrantRedirected
-                | HelperRefusal::GrantReplaced
                 | HelperRefusal::Seccomp
                 | HelperRefusal::NamespaceSetupFailed
                 | HelperRefusal::ProcessHardening
@@ -148,10 +155,12 @@ mod tests {
 
     /// Hard-coded rather than read off `sandbox_error`: read off it, these would assert only
     /// that it agrees with itself, and a pin reclassified as a failure would still pass.
-    const NOT_RETRYABLE: [HelperRefusal; 3] = [
+    const NOT_RETRYABLE: [HelperRefusal; 5] = [
         HelperRefusal::PinMismatch,
         HelperRefusal::PinUnreadable,
         HelperRefusal::PinnedScript,
+        HelperRefusal::GrantRedirected,
+        HelperRefusal::GrantReplaced,
     ];
 
     fn refused(refusal: HelperRefusal) -> ToolError {
@@ -173,10 +182,9 @@ mod tests {
                 HelperRefusal::PinMismatch
                 | HelperRefusal::PinUnreadable
                 | HelperRefusal::PinnedScript => true,
+                HelperRefusal::GrantRedirected | HelperRefusal::GrantReplaced => true,
                 HelperRefusal::BadHelperArgs
                 | HelperRefusal::Landlock
-                | HelperRefusal::GrantRedirected
-                | HelperRefusal::GrantReplaced
                 | HelperRefusal::Seccomp
                 | HelperRefusal::NamespaceSetupFailed
                 | HelperRefusal::ProcessHardening
@@ -199,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pin_refusal_tells_the_model_not_to_retry() {
+    fn a_refusal_the_policy_decided_tells_the_model_not_to_retry() {
         for refusal in NOT_RETRYABLE {
             let error = refused(refusal);
 
