@@ -8,8 +8,8 @@ you know what the thing is trying to be.
 ## One sentence, then the thesis
 
 sandbx is a command-line harness that asks an AI model a question, lets it use
-tools to answer, and runs every one of those tools inside a boundary the kernel
-holds.
+tools to answer, and runs every one of those tools inside a boundary derived
+from one policy — which, wherever a tool spawns a process, the kernel holds.
 
 The second half is the whole project. Most agent harnesses treat confinement as
 somebody else's job: run the agent in a container, or ask a human before each
@@ -29,13 +29,31 @@ to a process that then cannot take them off. The interesting engineering in this
 repo is almost all about that conversion: getting it right, getting it to fail
 closed when it cannot be done, and proving afterwards that it happened.
 
-**Worth questioning:** the thesis buys per-run, per-path precision at the cost
-of being Linux-only and refusing to run at all where the kernel will not
-cooperate. A container-based harness runs anywhere a container runs. Nothing in
-`context/` argues that trade explicitly — the decision records argue the
-*shape* of the boundary, not the choice to own one — so it is worth asking
-whether the portability cost has ever been priced, and what sandbx would look
-like on a host where it is currently a refusal.
+Two layers hold a policy, though, and only one is the kernel's. Six of the seven
+tools never spawn a process, so Landlock never sees them: `FsGuard` checks their
+paths inside the harness, against the same policy, and that *is* their
+enforcement —
+[`core/src/lib.rs`](../../crates/sandbx-core/src/lib.rs) names both layers in
+its opening lines, and [11 — the two seams](11-the-two-seams.md) walks each. The
+conversion the thesis names is one function, `apply` in
+[`core/src/helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs):
+
+```rust
+fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+```
+
+A policy goes in and nothing comes back but a verdict. What `apply` restricts is
+the process that called it — the one about to become the command — so there is
+nothing to hand back, and nothing left afterwards to take the restrictions off
+with.
+
+- **Worth questioning:** the thesis buys per-run, per-path precision at the
+  cost of being Linux-only and refusing to run at all where the kernel will not
+  cooperate. A container-based harness runs anywhere a container runs. Nothing
+  in `context/` argues that trade explicitly — the decision records argue the
+  *shape* of the boundary, not the choice to own one — so it is worth asking
+  whether the portability cost has ever been priced, and what sandbx would look
+  like on a host where it is currently a refusal.
 
 ## Five subcommands
 
@@ -57,12 +75,17 @@ Two things to notice about that table.
 - **`tui` is not a second agent.** It takes `agent-run`'s flags, derives the
   same policy, and differs only in where a turn is reported. They share the
   gate, the orientation message and the session handling, which is why
-  `guide-repo-map.md` describes the pair as one subcommand drawn two ways.
+  [guide-repo-map.md](../guide-repo-map.md) describes the pair as one subcommand
+  drawn two ways. Literally one: `Tui` in
+  [`cli/src/agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) is a
+  single-field struct flattening `AgentRun` whole, so there is no second flag
+  set that could drift from the first.
 - **The two that confine nothing are deliberate, not unfinished.** `hash` has
   to read a file before there is a policy to read it under — the digest is an
   *input* to the policy. `auth` touches only the credential file. Neither can be
-  put behind the sandbox without a circularity, and `SECURITY.md` is explicit
-  that the sandbox does not confine sandbx itself.
+  put behind the sandbox without a circularity, and
+  [`SECURITY.md`](../../SECURITY.md) is explicit that the sandbox does not
+  confine sandbx itself.
 
 ## The default policy, and why it is the interesting part
 
@@ -125,8 +148,10 @@ many words.
 
 ## What the kernel has to provide
 
-sandbx runs on Linux and nowhere else; `core/src/lib.rs` refuses a non-Linux
-target at compile time rather than building something that cannot enforce
+sandbx runs on Linux and nowhere else;
+[`core/src/lib.rs`](../../crates/sandbx-core/src/lib.rs) refuses a non-Linux
+target at compile time — a `compile_error!` whose text says there is no
+unsandboxed fallback — rather than building something that cannot enforce
 anything. At runtime it needs unprivileged user namespaces, and a Landlock ABI
 at or above a floor. That floor has one home — `BASELINE_ABI` — and every prose
 copy of it is named in a test, `every_prose_copy_of_the_floor_is_current`, which
@@ -194,9 +219,11 @@ branch on. From [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs):
 
 Three rather than two is the point: a run that stopped because nobody could
 approve a tool call is neither a failure nor a bound being hit, and a caller has
-to be able to tell the three apart (#218). `auth` uses 2 for a failure instead
-of 1, because `auth status` already spends 1 on "no key anywhere" and a script
-must not read a refused credential file as an absent one.
+to be able to tell the three apart (#218). `auth` uses 2 for a failure
+instead of 1 — `failure_code` in
+[`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs) picks it per
+subcommand — because `auth status` already spends 1 on "no key anywhere" and a
+script must not read a refused credential file as an absent one.
 
 ## Where it is
 
@@ -210,6 +237,8 @@ is on the releases page rather than in a file here.
 
 - What "policy stops being data and becomes something the kernel holds" means
   concretely, and which two things sit on either side of that conversion.
+- Why only one of the two enforcement layers is the kernel's, which tools never
+  reach it, and why `apply` has nothing to hand back.
 - Which of the five subcommands confine something, and why the two that do not
   cannot be made to.
 - What a no-flag run grants, and why typing one path flag takes the working
