@@ -23,9 +23,10 @@ There is no roadmap file. Planned-but-missing work goes on an issue, where it ca
 be closed; a decision that held goes in a `decision-*.md`. If you are about to
 write "planned" into a doc, file an issue instead.
 
-Milestones are releases, one per tag: an issue or PR takes the one it shipped in,
-open work takes none. A `crate:*` label per crate it materially touches — none
-where the change is workspace-wide or outside `crates/`.
+Milestones are releases, one per tag: a closed issue or PR takes the one it
+shipped in, and open work being worked on now takes the next one. None is not a
+defect — it means unscheduled. A `crate:*` label per crate it materially touches
+— none where the change is workspace-wide or outside `crates/`.
 
 ## Before opening a PR
 
