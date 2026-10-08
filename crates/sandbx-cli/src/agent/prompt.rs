@@ -5,7 +5,7 @@
 //! why once per run is still the default.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, IsTerminal, Write};
+use std::io::{BufRead, BufReader, ErrorKind, IsTerminal, Write};
 
 use sandbx_agent::{ApprovalDecision, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel};
@@ -98,13 +98,18 @@ impl Consent {
             }
 
             let mut answer = String::new();
-            // A read error is as final as an end of input, and a hangup is the error
-            // case: a controlling terminal revoked mid-run fails the read with `EIO`
-            // where a merely closed one returns 0. Both arms abort, which takes one
-            // typed `VEOF` with them: the two are indistinguishable from a read, and
-            // both mean nobody is answering.
-            if matches!(input.read_line(&mut answer), Ok(0) | Err(_)) {
-                return abort(CLOSED);
+            match input.read_line(&mut answer) {
+                // `read_line` rejects a line that is not UTF-8, which a terminal that is
+                // still there can deliver — a Latin-1 keymap, a byte of a binary paste.
+                // Asked again rather than aborted, as a typo is: the channel answered.
+                Err(e) if e.kind() == ErrorKind::InvalidData => continue,
+                // A read error is otherwise as final as an end of input, and a hangup is
+                // the error case: a controlling terminal revoked mid-run fails the read
+                // with `EIO` where a merely closed one returns 0. Both arms abort, which
+                // takes one typed `VEOF` with them: the two are indistinguishable from a
+                // read, and both mean nobody is answering.
+                Ok(0) | Err(_) => return abort(CLOSED),
+                Ok(_) => {}
             }
 
             match answer.trim() {

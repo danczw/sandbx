@@ -128,6 +128,35 @@ fn an_end_of_input_ends_the_turn() {
     assert_eq!(reason, CLOSED);
 }
 
+/// `read_line` refuses a line that is not UTF-8, so a Latin-1 keymap or a byte of a
+/// binary paste arrives as `Err` on a terminal that is still answering. Taking every
+/// `Err` as a lost channel would end the run on one stray byte and tell the model the
+/// terminal is closed, which would be a false statement about a live one.
+#[test]
+fn a_byte_that_is_not_text_is_asked_about_again() {
+    let input = serde_json::json!({ "path": "/work/out.rs" });
+    let mut typed = Cursor::new(b"\xff\ny\n".as_slice());
+    let mut seen = Vec::new();
+
+    let decision = Consent::new().ask(
+        ToolCall {
+            tool: BuiltinTool::Write,
+            id: "call_1",
+            input: &input,
+        },
+        &mut typed,
+        &mut seen,
+    );
+
+    assert_eq!(decision, ApprovalDecision::Allow);
+    let seen = String::from_utf8(seen).expect("utf-8");
+    assert_eq!(
+        seen.matches("allow it?").count(),
+        2,
+        "the question was not put again: {seen:?}"
+    );
+}
+
 /// A question an operator cannot read is one they cannot answer, so a sink that refuses
 /// the write ends the turn rather than reading an answer to nothing.
 #[test]
