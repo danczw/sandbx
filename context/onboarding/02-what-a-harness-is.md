@@ -107,6 +107,24 @@ will not accept again. So all three ways a call can fail to run still produce a
   `tool_use` with no `tool_result` is a transcript no provider takes back, and
   this one is stored and resumed."
 
+One function builds all three answers, and its shape is the whole of the
+protocol's error channel — the id being answered, the reason as ordinary
+content, and the flag:
+
+```rust
+fn refused(id: &str, content: String) -> ContentBlock {
+    ContentBlock::ToolResult {
+        tool_use_id: id.to_string(),
+        content,
+        is_error: Some(true),
+    }
+}
+```
+
+A tool that ran and failed is answered by the same function, so "the tool said
+no" and "nothing ran" are the same shape on the wire and differ only in the
+prose the model reads.
+
 This is the first place the protocol and the security model touch. A refusal
 cannot be silence. The model is told that the call did not happen and why, in a
 block the next request can legally carry — which means a denial is a fact the
@@ -128,7 +146,10 @@ Per round:
 - the stream is consumed into a list of blocks;
 - a round that produced nothing but reasoning ends the turn — reasoning is
   stripped on the way out, so keeping it would leave an empty content array the
-  API rejects;
+  API rejects. The one exception is such a round arriving while this turn's own
+  last message is a user turn of `tool_result`s still waiting to be answered,
+  which comes back as `TurnError::EndedMidToolUse` rather than as an outcome;
+  the reasoning for discarding that turn is [21](21-crate-agent.md)'s;
 - otherwise `answer_calls` walks the blocks and answers every `tool_use` among
   them. If it comes back with no results at all, there were no tool calls, and
   the turn is over;
@@ -221,12 +242,25 @@ Two instructions in the streaming docs are implemented literally here.
   rule: "Anthropic restates the counts cumulatively on every `message_delta`, so
   summing them double-counts. `None` is 'not reported', not a reported zero."
 
-The fold from that sequence back into blocks is the job of
+A fold back into blocks is *forced* by that sequence, not merely convenient,
+and the reason is that only one of the three things a round produces is useful
+one fragment at a time. A `tool_use` block's `input` is not valid JSON until its
+last `input_json_delta` has arrived, and nothing can be run from a prefix of it;
+a `thinking` block cannot be replayed until the `signature_delta` behind it
+lands. So those two kinds are held open until `content_block_stop` and emitted
+whole, while text deltas go straight out to whatever is drawing the screen —
+which is why the unit the loop turns on is a round and not a token.
+
+That fold is
 [`accumulate.rs`](../../crates/sandbx-providers/src/anthropic/wire/accumulate.rs)
-and its module doc names the two invariants: "an unmodeled tag is skipped rather
-than ending the stream, and a turn ends exactly once". Open blocks are held in
-a `BTreeMap` keyed by index rather than a `HashMap`, for a reason the comment
-gives: blocks still open when the turn ends flush in index order.
+and its module doc names the two invariants: "an unmodeled tag is skipped
+rather than ending the stream, and a turn ends exactly once". Open blocks are
+held in a `BTreeMap` keyed by index rather than a `HashMap`, for a reason the
+comment gives: blocks still open when the turn ends flush in index order. A
+second fold sits above the seam, and a reader grepping the file name meets both:
+[`turn/accumulate.rs`](../../crates/sandbx-agent/src/turn/accumulate.rs) folds
+`AgentEvent`s into one round's `ContentBlock`s and has never heard of SSE.
+[21](21-crate-agent.md) draws the division.
 
 One thing the fold deliberately loses, and it is honest about it:
 `AgentEvent::Text`'s doc notes that "Block boundaries are not recoverable:
@@ -266,6 +300,21 @@ is a property of newer Claude models that guards against distillation"
 ([preserved thinking][thinking]). The signature is checked on the way back in,
 against a prefix made of the top-level system prompt, the set of tools, and
 every message before the block.
+
+Two facts turn that check into something a harness has to handle rather than
+opt out of. The first is that reasoning is **on by default**: on current models
+there is no `thinking` field in the request at all and `display` defaults to
+omitted ([extended thinking][extended]), so every assistant turn already arrives
+carrying a `thinking` block with an empty text and a real signature, whether or
+not anyone asked to see reasoning. The second is that breaking the rule *inside*
+a turn does not announce itself.
+[decision-thinking-replay.md](../decision-thinking-replay.md) exists because
+sandbx was breaking it on every multi-round turn — parsing the `signature_delta`
+and then replaying the assistant turn without the block — and the record is
+precise about why nobody noticed: "a mid-turn mismatch degrades silently — the
+API strips thinking or disables it for that request — so the cost was reasoning
+continuity and a prompt cache rewrite on every tool round, with nothing in the
+output to say so."
 
 That check, and one sentence about removal, decide everything sandbx does with
 reasoning:
@@ -319,7 +368,18 @@ a moving target. `ThinkingBody` in `body.rs` sends `type: "adaptive"` with a
 `display`, "never the `enabled`/`budget_tokens` form: that one is deprecated on
 Claude 4.6 and a 400 on 4.7 and every Claude 5 model" — which
 [extended thinking][extended] confirms. A test named
-`budget_tokens_is_never_sent` holds the line.
+`budget_tokens_is_never_sent` holds the line. What the field does not change is
+the replay: `display` "governs only whether the summary text comes back",
+blocks being "billed and replayed the same either way", so a run that asked for
+reasoning and one that did not carry the same blocks between rounds.
+
+The record also names the one setting that would make all of this softer, and
+declines it. Behind a beta header the API takes a `prefix_mismatch_behavior`
+that lets a mismatched request through with the reasoning dropped instead of
+answering 400 — which is exactly the failure sandbx already had: "re-adopted as
+a setting: it converts a rule being broken into nothing at all." Erroring is
+what makes a later edit that opens a gap findable, and the rules above are what
+stop sandbx opening one.
 
 ## The context window is the one budget you cannot opt out of
 
@@ -502,6 +562,10 @@ What it buys:
   the system prompt actually goes.
 - What `signature_delta` is for, and why keeping only its last fragment would be
   a 400 on the next request.
+- Why the reasoning replay path is live on a run that never asked to see
+  reasoning, and why breaking the rule inside a turn produces no error at all.
+- Which of a round's blocks can go to the screen as their fragments arrive, and
+  which have to be held until the block closes.
 - Why a deepened compaction cut has to drop every reasoning block already sent,
   and why it drops `redacted_thinking` with them.
 - Why `content_block_stop` being surfaced only for `tool_use` blocks means a
