@@ -62,7 +62,8 @@ impl Screen {
     /// query answered through crossterm's one reader, and [`Keys`](crate::Keys) holds its lock
     /// parked in `event::read`, so the query times out and takes this repaint with it.
     /// Resizing to the size already in force clears the viewport and resets the back buffer,
-    /// asking the terminal nothing.
+    /// asking the terminal nothing — on the fullscreen viewport `try_init` gives. An inline
+    /// one recomputes its origin from the cursor, which is that same query back again.
     pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
         if self.failed.is_some() {
             return;
