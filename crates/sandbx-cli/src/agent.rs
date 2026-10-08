@@ -410,9 +410,8 @@ impl AgentRun {
             (rounds, outcome) => (outcome, rounds.map(Capped::CutShort)),
         };
 
-        // The outcome's own figure, not the event stream's: the round whose text is the
-        // answer is the only one whose bound is worth naming, and on the `Discarded` path
-        // that is the first turn's — the wrap-up round's text is not an answer.
+        // The outcome's figure, not the stream's: on the `Discarded` path that is the first
+        // turn's, the wrap-up round's text not being an answer.
         let truncated = outcome
             .as_ref()
             .is_ok_and(|outcome| matches!(outcome.round_stop, Some(StopReason::MaxTokens)));

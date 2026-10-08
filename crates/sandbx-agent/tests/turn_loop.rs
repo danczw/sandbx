@@ -1144,10 +1144,8 @@ async fn a_capped_turn_names_both_bounds_it_hit() {
     assert_eq!(outcome.round_stop, Some(StopReason::MaxTokens));
 }
 
-/// The inverse of the two above, and the damaging direction: a cut that outlived its round
-/// would make `agent-run` call a finished answer truncated and exit non-zero. `usage` in
-/// the same block keeps what an unreporting round did not say, which is the shape this one
-/// must not be written in.
+/// A cut that outlived its round would make `agent-run` exit non-zero on a finished
+/// answer. `usage`, three lines above it in the loop, keeps what a round did not report.
 #[tokio::test]
 async fn a_later_round_overwrites_an_earlier_cut() {
     let root = tempfile::tempdir().unwrap();

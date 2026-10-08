@@ -164,10 +164,8 @@ impl Next {
 
 /// The two turns as the one turn a caller stores.
 ///
-/// `stop` comes from the wrap-up round, which is what decides whether the transcript ends
-/// on an answer, and `round_stop` from the same round, that being the one whose prose is
-/// the answer. Not `.or`, as `usage` is: a count persists across rounds, a stop reason
-/// belongs to one, and falling back would name the first turn's bound on the second's text.
+/// `stop` and `round_stop` both come from the wrap-up round, whose prose is the answer.
+/// Not `.or`, as `usage` is: a count persists across rounds, a stop reason belongs to one.
 pub(super) fn merge(first: TurnOutcome, second: TurnOutcome) -> TurnOutcome {
     let mut messages = first.messages;
     messages.extend(second.messages);
@@ -197,9 +195,8 @@ mod tests {
         }
     }
 
-    /// Three cases, each against a different wrong `merge`: reading `first.round_stop`
-    /// fails the first, writing a constant fails the second, and `.or(first.round_stop)` —
-    /// which `usage` on the line above does — fails only the third.
+    /// Three cases, three wrong `merge`s: `first.round_stop` fails the first, a constant
+    /// the second, and `.or(first.round_stop)` — `usage`'s own shape — only the third.
     #[test]
     fn the_merged_turn_takes_the_wrap_ups_reason() {
         let capped = TurnStop::RoundLimit { rounds: 3 };
