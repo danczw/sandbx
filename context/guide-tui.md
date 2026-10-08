@@ -32,15 +32,16 @@ to look for what approved a call.
 
 ```
 Transcript   the events folded into entries          no terminal → unit-tested
-View         the entries laid out as rows            TestBackend → unit-tested
+view::draw   the entries laid out as rows            TestBackend → unit-tested
 Screen       raw mode, the alternate screen, Drop    a real terminal only
 Keys         the reader thread and the press         the predicate → unit-tested
 ```
 
 The split is for testability. `Transcript` is a fold with no screen behind it, so
-what each event becomes is an assertion rather than a screenshot; `View` renders
-into a buffer a test reads cell by cell. What is left needing a real terminal is
-`Screen::enter` and the `event::read` loop, and neither holds a decision.
+what each event becomes is an assertion rather than a screenshot; `view::draw`
+renders into a buffer a test reads cell by cell. What is left needing a real
+terminal is `Screen::enter` and the `event::read` loop, and neither holds a
+decision.
 
 ### Model text cannot reach a cell unchanged
 
