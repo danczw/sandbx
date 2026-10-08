@@ -79,8 +79,11 @@ let file = ctx.guard().open_read(path)?;   // O_NOFOLLOW; fails if the leaf beca
 ```
 
 The guard hands back an **open handle**. A tool that took a resolved path and
-opened it itself would reintroduce the TOCTOU window the handle closes — so
-`check_read` is reserved for `ls`, where `read_dir` has no handle form.
+opened it itself would reintroduce the TOCTOU window the handle closes — so no
+tool calls the bare `check_read` or `check_write`. `ls` is the nearest case and
+still takes a handle: `FsGuard::read_dir` hands it a `ReadDir`, though a directory
+read has no `O_NOFOLLOW` form, so that handle closes the window no more than a path
+would.
 
 Residual gap: a parent-directory swap mid-open, and a granted root swapped in the
 two syscalls between the guard's confirmation of it and the open. Closing either

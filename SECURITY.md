@@ -193,16 +193,20 @@ architecture the filter gates on.
   syscalls apart, so a substitution landing between the two is granted on the
   object the confirmation saw. The bare `check_read` and `check_write` hand a
   library caller a path and bound nothing after the measurement; no tool uses
-  them. Bounded by two syscalls rather than by the life of
-  the policy, but not closed — the same gap the `FsGuard` TOCTOU row in
-  [context/guide-sandboxing.md](context/guide-sandboxing.md) names. `find` and
+  them. A swapped *parent* is the other half, and lands outside every granted root
+  rather than on the object the confirmation saw: `open_read` and `open_write` hold
+  `O_NOFOLLOW` handles, but `read_dir` has no handle form and a walk checks its root
+  alone, so every directory below it is reopened by path. Those are the two swaps the
+  `FsGuard` TOCTOU row in
+  [context/guide-sandboxing.md](context/guide-sandboxing.md) names — bounded by a few
+  syscalls rather than by the life of the policy, and not closed. `find` and
   `grep` are wider: a walk confirms its root once and then descends, so the window
-  is the traversal. Closing either needs the walk to run off a directory
+  is the traversal. Closing any of them needs the walk to run off a directory
   descriptor, with `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it
   ([#230](https://github.com/danczw/sandbx/issues/230)). One honest false positive
-  comes with the pin: neither half of `(dev, ino)` survives a remount, so a
-  granted tree on a network or autofs mount that remounts mid-session starts
-  refusing until the policy is rebuilt.
+  comes with the pin: a filesystem with no backing block device takes an anonymous
+  `st_dev`, allocated fresh per mount, so a granted tree on a network or autofs
+  mount that remounts mid-session starts refusing until the policy is rebuilt.
 - **The pin cannot see a reused inode.** An inode number is free once what held it
   is unlinked, and whether it *is* reused is the filesystem's business and is not
   specified. Measured on one host, whose kernel and mount options are recorded
