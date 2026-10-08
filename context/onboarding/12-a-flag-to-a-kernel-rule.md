@@ -108,7 +108,14 @@ later section of this chapter; for now, note that it answers in `Option` and
 that `Grants::policy` turns `Some` into `PolicyError::GrantReachesOwned` naming
 the path **as typed**, so the operator can go and change the thing they wrote.
 
-**`pinned` is the step that touches the filesystem**, and the only one:
+**`pinned` is the step that measures an object**, and the only one. Not the only
+one that reads the filesystem: `resolved` canonicalizes, `reaches_owned` calls
+`resolved` on each owned path, and `bound_by_resolver` canonicalizes the
+resolver files it compares against. What is `pinned`'s alone is that its answer
+*outlives the function*: it returns the grant itself, both halves of it, while
+everything the other three learned is spent on one comparison and dropped — the
+resolved spelling included, since the path the policy ends up holding is the one
+`vet` canonicalized and not the one `resolved` built.
 
 ```rust
 pub(super) fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
@@ -147,7 +154,24 @@ pub struct VettedPath {
 }
 ```
 
-Both fields private, with `path()` and `object()` to read them. `ObjectId` is a
+Both fields private, with `path()` and `object()` to read them, and exactly two
+functions in the workspace construct one. The public producer is the one that
+does the work:
+
+```rust
+    pub fn vet(path: impl AsRef<Path>) -> Result<Self, SandboxError> {
+        // … canonicalize, then `ObjectId::of_path` on the result …
+```
+
+That signature is the mechanism that makes the ordering above unskippable, and
+it is worth reading for what it *omits*. There is no `VettedPath::new`, no
+constructor taking a path and an object side by side, no `pub` field and no
+`Default`, so nothing outside
+[`vetted.rs`](../../crates/sandbx-core/src/policy/vetted.rs) can write a grant
+into existence — `policy.grant(Axis::Read, PathBuf::from("/tmp/x"))` does not
+compile, and neither does assembling one from a path plus a `(dev, ino)` an
+embedder measured themselves. The second producer, `from_wire`, skips the I/O
+and is `pub(crate)`: the helper's route in is not an embedder's. `ObjectId` is a
 `dev` and an `ino`, "compared and never interpreted" as its own doc comment puts
 it.
 
@@ -183,8 +207,15 @@ if axis.grants().write {
 ```
 
 `SandboxPolicy::grant` in [`policy.rs`](../../crates/sandbx-core/src/policy.rs)
-is the one place a path enters a policy, and two properties of it carry the
-whole design.
+is the one place a path enters a policy, and its signature is the one a caller
+writes against:
+
+```rust
+    pub fn grant(mut self, axis: Axis, path: VettedPath) -> Self {
+        // … push onto the `Vec` for `axis` …
+```
+
+Two properties of it carry the whole design.
 
 - **It takes a `VettedPath` and not a `Path`.** There is no construction path
   that reaches a policy holding an unpinned grant, which means the helper has no
@@ -220,9 +251,20 @@ SandboxPolicy { readable: vec![VettedPath { path: "/tmp/x", object }], … }
 ## Stage 4 — across the argv seam
 
 `SandboxedCommand::command_line` in
-[`command.rs`](../../crates/sandbx-core/src/command.rs) builds the helper's
-argv: `HELPER_FLAG` and `AUDIT_STDIN_FLAG` first, then everything
-`HelperArgs::encode` emits. Our one grant becomes three tokens:
+[`command.rs`](../../crates/sandbx-core/src/command.rs) is where the policy
+becomes argv, and only the last of the three things it does is rendering. First
+it asks two questions of the policy as a whole — `unbounded_resolution` and
+`grant_bound_by_resolver` — and refuses before a single token is written.
+[18](18-crate-core.md) owns that pair; what matters to the trace is that they
+are asked *here*, in the core crate rather than in the CLI, so an embedder who
+takes this argv and spawns it themselves meets the refusals too — and that
+`/tmp/x` survives one further check after `Grants::policy` blessed it. Then it
+names the helper — `/proc/self/exe`, left unresolved, which is why the argv
+below begins with that spelling, and [08](08-the-two-stage-helper.md) has why it
+is not resolved. Only then does it write `HELPER_FLAG` and `AUDIT_STDIN_FLAG` —
+ahead of the policy, because `dispatch_helper_mode` splits the first off and
+`exec_sandboxed` the second, both before `decode` sees a token — and then
+everything `HelperArgs::encode` emits. Our one grant becomes three tokens:
 
 ```
 --ro /tmp/x <dev>:<ino>
@@ -234,6 +276,42 @@ by `ObjectId`'s `Display`. It is deliberately host-specific and deliberately
 unstable: neither half survives a remount, and that is the property that makes
 the pair worth carrying rather than a defect in it — an object that moved is not
 the one that was vetted, whatever it is now called.
+
+Those three tokens are not the whole of what crosses, and the argv is worth
+seeing in full once, because it is the only place the policy exists as a flat
+list of bytes. Read off `/proc/<pid>/cmdline` of the stage-1 helper during
+`sandbx sandbox-run --allow-read /tmp/x -- sleep 4` — this chapter's command,
+with a program that stays alive long enough to look at — from a debug build of
+`sandbx-cli` on a merged-`/usr` host. The line breaks are this page's; the real
+thing is one NUL-parted token after another:
+
+```console
+$ tr '\0' ' ' < /proc/<stage-1-pid>/cmdline
+/proc/self/exe --sandbx-core-exec --sandbx-audit-stdin
+--ro /tmp/x 2096:1267999
+--rx /usr 2096:73730 --rx /usr/bin 2096:1427
+--rx /usr/lib 2096:2239 --rx /usr/lib64 2096:14481
+--env PATH --env HOME --env TERM --env LANG
+--env LC_ALL --env LC_CTYPE --env TZ
+-- sleep 4
+```
+
+Three things fall out of reading it. The read grant comes **first**, because
+`encode` walks `granted_paths`, which iterates `Axis::ALL` — and that is the
+order `fs_rules` will build rules in at stage 5. The four `--rx` entries are
+`allow_system_executables`, vetted and pinned by the very same `VettedPath::vet`
+a typed flag reaches, which is why `/bin`, `/lib` and `/lib64` arrive spelled
+`/usr/bin`, `/usr/lib` and `/usr/lib64` on this host: a grant has to name what
+it opens. And every `--env` token is a *name*, with no value anywhere on the
+line — the confined command reads its own `/proc/self/cmdline`, so a value here
+would be a disclosure to the process the policy is about.
+
+One thing the argv deliberately does not carry is where the command starts.
+`output` chdirs to the policy's `working_root` — [18](18-crate-core.md) has the
+rule it picks by — as it builds the helper command, so our `cat` begins in
+`/tmp/x`. An embedder spawning `command_line`'s argv by hand inherits their own
+directory instead, which that method's doc comment states as an obligation
+rather than leaving to be discovered.
 
 On the far side, `HelperArgs::decode` rebuilds a `SandboxPolicy` from those
 tokens, and the producer it uses is `VettedPath::from_wire` — crate-private,
@@ -566,11 +644,16 @@ policy.
 
 Some working directories are refused rather than derived from — `vetted_root`
 answers that, and it refuses **in the order written**: the filesystem root, then
-`$HOME` or a directory holding it, then a home-looking directory where `$HOME`
-settled nothing, then an overlap with the system binaries, then a cwd reaching
-something sandbx owns. `current_root` is `vetted_root` over this process's own
-state. The guard governs only what sandbx *derives* and never what you ask for,
-which is why every refusal in the family names the two flags to type instead.
+`$HOME` or a directory holding it, then one of `/home`, `/Users`, `/var/home`
+and `/root` or a directory holding one of those, then a home-looking directory
+where `$HOME` settled nothing, then an overlap with the system binaries, then a
+cwd reaching something sandbx owns. That third refusal is the one gated on no
+variable at all, and deliberately: a service account whose `HOME=/var/lib/svc`
+would otherwise let `/home` through, where a derived root is write over every
+user's home whatever the variable happens to name. `current_root` is
+`vetted_root` over this process's own state. The guard governs only what sandbx
+*derives* and never what you ask for, which is why every refusal in the family
+names the two flags to type instead.
 
 ## What a grant may not reach
 
@@ -673,13 +756,19 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
 - Why `absolute` cannot be folded into `resolved`, and why `resolved` is not a
   `canonicalize`.
 - What `pinned` compares after vetting, and which substitution that comparison
-  catches.
+  catches — and why it is the only step whose answer outlives it, though three
+  of the five read the filesystem.
+- Why `VettedPath::vet` is the only route an embedder has to a grant, and which
+  two things the type's shape makes impossible to write.
 - Why `SandboxPolicy::grant` takes a `VettedPath` rather than a path, and why it
   performs no I/O even though the harness could afford to.
 - What "a granted path resolves to itself" licenses downstream, and name one
   consumer that relies on it.
 - What the three tokens of `--ro /tmp/x <dev>:<ino>` are, and why an unstable
   `(dev, ino)` pair is the point rather than a weakness.
+- What `command_line` refuses before it renders a token, why those two questions
+  are asked in the core crate, and what else is on the wire beside the grant you
+  typed — including the one thing the argv deliberately does not carry.
 - The two separate questions `open_grant` asks, which substitution each one
   catches, and why `Installed` is exempt from the second.
 - Why `PathBeneath` holding a descriptor closes a window that the in-process
