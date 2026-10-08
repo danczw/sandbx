@@ -127,10 +127,39 @@ workspace = true
 `forbid` is the level above `deny` and the distinction matters here: a `deny`
 can be overridden by an `#[allow]` further in, and a `forbid` cannot — writing
 `#[allow(unsafe_code)]` under a `forbid` is itself a compile error. That is what
-makes the "zero `unsafe` anywhere" property in
-[`SECURITY.md`](../../SECURITY.md) checkable rather than aspirational, and it is
-why 04 can say a `fork` in the helper was not an option: the thing that would
-have made it legal does not exist.
+makes [`SECURITY.md`](../../SECURITY.md)'s "`unsafe` is forbidden
+workspace-wide, `sandbx-core` included" checkable rather than aspirational, and
+it is why 04 can say a `fork` in the helper was not an option: the thing that
+would have made it legal does not exist. Note the wording — *forbidden*, which
+is a fact about this workspace's first-party code, and not "zero `unsafe`
+anywhere", which would be a claim about the dependency graph too.
+
+What the `forbid` reaches is first-party code in the seven crates, test binaries
+included — cargo applies a package's `[lints]` to every target in it. That
+second half shows up as a shape you meet early: `std::env::set_var` is an
+`unsafe fn` under edition 2024, so a test cannot vary a real environment
+variable, and both
+[`session/src/paths.rs`](../../crates/sandbx-session/src/paths.rs) and
+[`providers/src/credentials.rs`](../../crates/sandbx-providers/src/credentials.rs)
+take an injected lookup instead of reading the process environment directly.
+
+What it does not reach is the dependency graph, and that matters because this
+crate set does make syscalls. `prctl`, `unshare`, `mount`, the seccomp install
+and the Landlock ruleset all happen — through safe wrappers in `nix`, `caps`,
+`landlock` and `seccompiler`, which is where the `unsafe` actually lives. The
+choice between two crates is sometimes decided by that alone, and
+`sandbx-core`'s manifest says so beside the one it picked:
+
+```toml
+# The only way to drop this process's capabilities that stays inside
+# `unsafe_code = "forbid"`: nix has no capability module, libc only the raw prctl.
+caps = "0.5.6"
+```
+
+[08](08-the-two-stage-helper.md) prices the design's one real temptation to
+reach for `unsafe` — a `fork` between the namespaces and the `exec` — and
+[09](09-landlock.md) is where a `forbid` with no carve-out procedure is weighed
+against a mechanism it ruled out.
 
 - **Worth questioning:** the opt-in is per crate and cargo offers no way to
   require it. An eighth crate that omits `[lints] workspace = true` gets none of
@@ -230,13 +259,37 @@ clippy warning unless `allow-invalid` silences it. The flag is scoped to that
 one entry rather than set file-wide, because file-wide it would also silence a
 typo in the first entry, which is the one currently doing all the work.
 
+So "what happens if I write `std::process::Command::new` in `sandbx-tools`" has
+a two-part answer, and the first part surprises people: `cargo build` compiles
+it. `disallowed_methods` is a clippy lint, and only the clippy driver evaluates
+one — cargo hands rustc the level with its `clippy::` prefix and rustc accepts
+the flag without acting on it. The two `[workspace.lints.rust]` entries *are*
+rustc's own lints, so a plain build does enforce those; this one it does not.
+What refuses the spawn is the clippy step, and the `reason` string from the list
+above is what the contributor reads:
+
+```console
+$ cargo clippy --workspace --all-targets -- -D warnings
+error: use of a disallowed method `std::process::Command::new`
+  … file, line and the offending expression …
+  = note: spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied
+  = note: requested on the command line with `-D clippy::disallowed-methods`
+```
+
+That command is the whole gate, and it runs in two places: the first line of
+[`.githooks/pre-commit`](../../.githooks/pre-commit) states that all three of
+its commands are byte-identical to CI's Format, Clippy and Doc steps, so the
+hook and CI cannot disagree about this one. It is also why
+[`SECURITY.md`](../../SECURITY.md) words the non-claim as "spawning a process
+outside it is a clippy error" rather than as a compile error.
+
 Three mechanisms hold the invariant, and they are different in kind.
 
-- **The lint, so a new spawn site does not compile.** `deny` plus the list
-  above means the only way to build a `Command` anywhere in the workspace is the
-  way that narrows. `decision-environment-allowlist.md` records that this was
-  checked rather than assumed — a bare `Command::new` was added elsewhere and
-  the lint refused to compile it.
+- **The lint, so a new spawn site does not survive a commit.** `deny` plus the
+  list above means the only way to build a `Command` anywhere in the workspace
+  is the way that narrows. `decision-environment-allowlist.md` records that this
+  was checked rather than assumed — a bare `Command::new` was added elsewhere
+  and the lint refused it.
 
 - **Visibility, so nothing outside the crate can reach the exemption.** The
   module is declared `mod spawn;` — private — and the factory is
@@ -276,6 +329,13 @@ pub(crate) fn command(program: impl AsRef<OsStr>, policy: &SandboxPolicy) -> std
     #[allow(clippy::disallowed_methods)]
     let mut command = std::process::Command::new(program);
 ```
+
+The snippet stops one statement short of the narrowing it guards, which is the
+three that follow: `env_clear()`, then the allowlisted names re-read out of this
+process, then `imposed_env()` *last*, so a name carried both ways arrives with
+the policy's value rather than the harness's.
+[06](06-claims-and-non-claims.md) shows those three beside the claim they
+deliver.
 
 An `#[allow]` attribute in Rust applies to the item it is attached to and
 everything inside it. Attached to a `let` statement, as here, its scope is that
@@ -340,6 +400,21 @@ manifest edge, used by
 [`tests/support/mod.rs`](../../crates/sandbx-agent/tests/support/mod.rs) and the
 three test targets beside it.
 
+Two more dev-dependencies ride along for the same reason, and the manifest says
+why in one line:
+
+```toml
+# To read the trail a scripted turn leaves, never to write one: `tracing` is a
+# dependency of `sandbx-core` alone, and this crate holds no emission site.
+tracing = "0.1.44"
+```
+
+That is what driving real tools buys.
+[`audit_trail.rs`](../../crates/sandbx-agent/tests/audit_trail.rs) installs a
+subscriber over an in-memory sink, runs a scripted turn whose tool calls are
+genuine, and asserts on the `decision=` fields `sandbx-core` emitted while they
+ran. Fake the tool side and there is no trail to read.
+
 The consequence is the more interesting half, and you can check it in one grep:
 **`sandbx_core` appears nowhere in `sandbx-agent/src/`.** Not once. The loop
 takes an `&ExecutionContext` from `sandbx-tools` and hands it to
@@ -354,10 +429,18 @@ and the arrangement is doubly closed:
   not arise in the one crate that decides which tool calls happen.
 
 A plain `[dependencies]` edge would have cost nothing at run time and would have
-dissolved that second property silently. The dev-only placement is what keeps
-the turn loop structurally unable to have an opinion about policy — which is
-the same shape as the `#[allow]` above, applied to a manifest instead of a
-statement.
+dissolved that second property silently. Nothing else would have broken, which
+is what makes the placement easy to undo by accident: `sandbx-core` has no
+internal dependency, so there is no cycle to make, and `sandbx-cli` links it
+anyway, so the shipped binary would be byte-identical. What enforces the
+arrangement is name resolution at the `src/` boundary — not a lint and not a
+test. A Rust test does already `include_str!` a crate manifest,
+[`ruleset/tests/compat.rs`](../../crates/sandbx-core/src/helper/ruleset/tests/compat.rs)
+reading `sandbx-core`'s to keep a prose copy of the ABI floor current, but
+nothing reads one for its dependency or lint shape — the aside above in its
+other form. The dev-only placement is what keeps the turn loop structurally
+unable to have an opinion about policy, which is the same shape as the
+`#[allow]` above, applied to a manifest instead of a statement.
 
 ## You should now be able to explain
 
@@ -367,6 +450,10 @@ statement.
   package at the root.
 - How a crate opts into `[workspace.lints]`, and why `forbid` is not just a
   louder `deny`.
+- Where the `unsafe` this sandbox needs actually lives, given a workspace-wide
+  `forbid` that covers test binaries too.
+- Which command refuses a stray `Command::new`, which one compiles it anyway,
+  and the two places the refusing one runs.
 - What `resolver = "3"` changes about version selection, and why the `msrv` job
   therefore runs `--locked`.
 - Why withholding an environment variable cannot be done with Landlock or
@@ -375,8 +462,9 @@ statement.
   about behaviour, and the non-claim `SECURITY.md` attaches to all of them.
 - Why the `#[allow(clippy::disallowed_methods)]` sits on a `let` rather than on
   the function, the module, or the crate.
-- What a dev-dependency does not give `src/`, and what that buys where
-  `sandbx-agent` is concerned.
+- What a dev-dependency does not give `src/`, what that buys where
+  `sandbx-agent` is concerned, and what would break if the edge were a plain
+  one.
 
 ## Next
 
