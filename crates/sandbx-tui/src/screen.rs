@@ -3,6 +3,7 @@
 use std::io;
 
 use ratatui::DefaultTerminal;
+use ratatui::layout::Rect;
 
 use crate::transcript::Transcript;
 use crate::view::{self, Hint};
@@ -56,12 +57,24 @@ impl Screen {
     /// wrote is never rewritten, and the newline with it scrolled the pane a row out of
     /// place. Stderr is that writer, the alternate screen not redirecting it, and discarding
     /// the last buffer is the only way back.
+    ///
+    /// `resize` and never `Terminal::clear`, which reads the cursor position: that is a DSR
+    /// query answered through crossterm's one reader, and [`Keys`](crate::Keys) holds its lock
+    /// parked in `event::read`, so the query times out and takes this repaint with it.
+    /// Resizing to the size already in force clears the viewport and resets the back buffer,
+    /// asking the terminal nothing.
     pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
         if self.failed.is_some() {
             return;
         }
 
-        match self.terminal.clear() {
+        let cleared = self
+            .terminal
+            .size()
+            .map(Rect::from)
+            .and_then(|area| self.terminal.resize(area));
+
+        match cleared {
             Ok(()) => self.draw(transcript, hint),
             Err(error) => self.failed = Some(error),
         }
