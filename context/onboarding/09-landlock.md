@@ -81,6 +81,30 @@ above that rung unhandled, which is to say unrestricted everywhere. Landlock
 being absent altogether still arrives as `HandleAccesses`, so it walks the whole
 ladder and falls off the end.
 
+The whole decision is three arms, and the one that steps down is a `continue`:
+
+```rust
+    for abi in NEGOTIABLE_ABI {
+        match probe(abi) {
+            Ok(()) => return Ok(abi),
+            // …
+            Err(RulesetError::HandleAccesses(_)) => continue,
+            // …
+            Err(error) => return Err(landlock_failed(error)),
+        }
+    }
+```
+
+Each `// …` is one of the two reasons above, written out at its arm. `break` is
+the third answer and the wrong one: it leaves the loop and lands in the baseline
+refusal the function ends with, which is the other of the two refusals below and
+names the wrong cause. Which is why
+`a_non_verdict_error_refuses_without_stepping_down` asserts the error *variant*
+rather than `is_err()`, and why its probe accepts every rung *below* the failing
+one. A probe that failed everywhere would pass under the very mutation that test
+exists to catch — the correct code refusing with `Landlock`, the mutant walking
+off the ladder to refuse with `Unsupported`, and both of them errors.
+
 The two refusals are deliberately different errors. `Unsupported` names the
 floor; `Landlock` carries whatever the kernel said. Collapsing them would report
 the floor as the cause of a failure that had nothing to do with it. The pair is
@@ -115,6 +139,17 @@ first confined by `CLONE_NEWNET` instead, the second having asked for
 unrestricted egress — and only a port list maps to `Ports`. The enum exists so
 that rights and ports cannot be passed separately, an empty
 `BitFlags<AccessNet>` being exactly the fail-open spelling of `Unhandled`.
+
+`Ports` then carries `handled` and `granted` as two fields rather than one, and
+they are deliberately different sets: `handled` is `handled_net_access(abi)`,
+while `granted` — what each port rule permits — is the literal
+`BindTcp | ConnectTcp`. So a UDP or raw right a future ABI adds is policed on
+every port and conferred on none, where taking `handled` for both would hand it
+to every port the operator allowlisted.
+`a_port_rule_grants_no_more_than_the_kernel_is_told_to_police` asserts the
+containment rather than today's two literals, the claim being which way the sets
+may differ; [guide-sandboxing.md](../guide-sandboxing.md) states the asymmetry
+for both axes at once.
 
 ## Partial enforcement is a hole, not a smaller sandbox
 
@@ -193,6 +228,17 @@ Both subtractions are load-bearing, and for different reasons.
   right added to `from_all` next year is denied by `allow_read` automatically,
   rather than being permitted until somebody notices it is not in the
   enumeration.
+- **The same subtraction is what makes a future ABI arrive already granted on
+  the write axis.** `from_all` minus `from_read` is open at the top end: a new
+  right that is not a read right joins every `--allow-write` grant with no edit
+  anywhere. At `LATEST_ABI` that has already happened twice, and both are rights
+  beyond writing bytes — `IoctlDev`, device ioctls on a node beneath the path,
+  and `ResolveUnix`, `connect(2)` to a pathname socket beneath it, which
+  [`SECURITY.md`](../../SECURITY.md) treats as seccomp's business. Which is why
+  `each_axis_confers_exactly_the_documented_set` spells all three axes' rights
+  out literally, at both ends of the negotiable range, rather than deriving them
+  from `from_all`/`from_read` — a derived expectation would move with the very
+  bump it is meant to catch.
 
 Then the axis table decides which of the three primitives apply:
 
@@ -247,12 +293,25 @@ One last narrowing, after the union:
 
 Directory-only rights (`ReadDir`, `MakeDir`, `Refer`) are invalid on a regular
 file, so a policy naming one gets its rights intersected with what the target
-can carry. Dropping that intersection would not degrade quietly: `PathBeneath`
-stats the descriptor, strips the directory-only bits itself and reports the
-result as partial, which under the `HardRequirement` `apply` sets fails
-`add_rule` — so `--allow-read ./config.toml` would refuse the run. The real
-mapping is therefore `axis × target_is_dir × abi`, with the ABI a negotiated
-parameter rather than something ambient.
+can carry.
+
+Where that boolean comes from is the one hop between the policy and the bits:
+`fs_rules` adds just the one probe `rights_for` needs, `target.path().is_dir()`,
+on its way into it. `is_dir()` reports `false` for every error it meets, and
+that looks like a silent loss of directory-only rights — latent rather than
+live, because a path `is_dir()` could not inspect (a dangling symlink, an
+unsearchable parent) is also one `PathFd::new` cannot open on the next line, so
+it becomes a refusal before the narrowed rule reaches the kernel. A path that
+changes kind *between* the probe and the open narrows in both directions rather
+than widening in either: a directory taken for a file loses directory-only
+rights here, and a file taken for a directory loses them at `add_rule`.
+
+Dropping the intersection would not degrade quietly: `PathBeneath` stats the
+descriptor, strips the directory-only bits itself and reports the result as
+partial, which under the `HardRequirement` `apply` sets fails `add_rule` — so
+`--allow-read ./config.toml` would refuse the run. The real mapping is therefore
+`axis × target_is_dir × abi`, with the ABI a negotiated parameter rather than
+something ambient.
 
 - **Worth questioning:** the write-minus-read subtraction exists to keep a
   write-only drop directory unreadable, and no CLI flag can produce one.
@@ -296,11 +355,45 @@ the next two steps' job, not the open flags'.
 path the kernel says that descriptor names. Mismatch is `GrantRedirected`,
 carrying both the granted spelling and what it opened as. This runs for every
 rule, including the resolver files the helper bind-mounted itself: one of those
-redirected under the bind is still a rule on an inode sandbx did not place. Two
-incidental kernel details make the readback work at all, and the comment keeps
-both: a task may always read its own `fd/` directory, and `execve` resets the
-dumpable flag that permission turns on, so neither sandbx clearing its own flag
-nor the supervisor clearing one reaches this stage.
+redirected under the bind is still a rule on an inode sandbx did not place.
+
+Three facts make the readback work at all, and
+[guide-sandboxing.md](../guide-sandboxing.md) keeps all three. Two are
+incidental: a task may always read its own `fd/` directory, whatever the
+dumpable flag says, and `execve` resets that flag anyway, so sandbx clearing it
+on itself in `conceal_process_state` cannot reach this stage. The third is
+load-bearing and easy to lose — **the comparison happens in one mount
+namespace.** `open_grant` runs in stage 2, inside whatever stage 1 unshared, and
+stage 2 unshares nothing of its own, so the spelling a grant was vetted as and
+the spelling the descriptor reads back as are resolved against the same mounts.
+Were they not, the readback would be comparing two different filesystems and
+agreeing would mean nothing. It is also the reason a mount stage 1 *did* make is
+a mount the comparison sees, which is the next paragraph.
+
+It compares *spellings*, and that bounds what it can mean. A file bind-mounted
+over a granted name still reads back as that name and passes, while a
+`pivot_root`, an `MS_MOVE` over a granted root, or a bind whose source is
+unlinked — `read_link` appends `" (deleted)"` — makes every grant read back as
+something else and refuses the run under a label naming the grant rather than
+the mount that moved it. [guide-sandboxing.md](../guide-sandboxing.md) carries
+that case; it is the hardest refusal in this file to attribute, because the
+message accuses the innocent party.
+
+It is also why one of the resolver rules may not exist at all. `resolver_paths`
+filters each file through `opens_as_itself`, false for an absent path and false
+for a symlink, and installs no rule for either: `mount(2)` follows a symlink, so
+the helper's bind landed on the link's *target*, and a rule spelled with the
+link would read back as that target and refuse the run — on every run, wherever
+systemd-resolved owns `/etc/resolv.conf`. Naming the target instead
+is not the fix, stage 1's `mount` and stage 2's resolution being a re-exec
+apart: the readback becomes a tautology, and a retarget between them grants a
+file the bind never placed. The bind goes over the target anyway —
+[18 — the core crate](18-crate-core.md) owns that half — so the asymmetry is
+intended: no rule on the link, and sandbx's own body under it for a command
+whose *other* grants reach the resolved path. The branch was untested, and that
+is how it shipped refusing every run on a systemd-resolved host;
+`a_symlink_never_opens_as_itself` and
+`a_dangling_symlink_is_skipped_like_an_absent_path` hold it now.
 
 **Then the object.** For a grant — and only for a grant — the descriptor is
 `fstat`ed and the `(dev, ino)` compared against the pin the harness carried
@@ -432,9 +525,16 @@ object still holds it — so the pin sees that one every time.
   newest ABI would have made that refusal impossible to keep.
 - Why read rights are written as `from_read` minus `Execute` and write rights as
   `from_all` minus the whole read set, and what the second subtraction protects.
+- Why the handled set is always `from_all` while a port rule's granted rights
+  are written out, and which direction the write axis's subtraction runs
+  instead.
 - Which axis confers execute, and why no union of grants can reach it.
+- Where `target_is_dir` comes from, and why `is_dir()` answering `false` for a
+  path it could not inspect is latent rather than live.
 - What `GrantRedirected` and `GrantReplaced` each mean, and why one error for
   both would tell an operator less than either.
+- Why a symlinked `/etc/resolv.conf` gets no Landlock rule at all, although the
+  helper's bind goes over its target regardless.
 - Why the helper never resolves or stats a granted path for itself, and why an
   installed resolver file is not pinned.
 - Why `SandboxPolicy::grant` takes a `VettedPath` rather than a path plus an

@@ -69,12 +69,15 @@ seven built-ins never start one, so a timeout bounds nothing about them.
 
 `ExecutionContext::timeout` — 90 seconds by default, documented as "the tighter
 end, since too long silently fails to catch the wedge this exists for" — applies
-to `bash` and to nothing else. The other six are bounded by **work**:
+to `bash` and to nothing else. The figure is calibrated rather than round: the
+same doc comment names what against — "the known pressure point is a cold
+`cargo build` on a large workspace". The other six are bounded by **work**:
 `ToolLimits` in [`tools/src/limits.rs`](../../crates/sandbx-tools/src/limits.rs)
 carries two output caps (entries returned, bytes returned) and two input caps
 (files visited, bytes scanned), and `grep` carries a hardcoded per-file skip of
-its own, `MAX_FILE_BYTES`. [guide-tools.md](../guide-tools.md) has the figures;
-what matters is the distinction between the two kinds:
+its own, `MAX_FILE_BYTES`. [guide-tools.md](../guide-tools.md) has the figures
+and [19](19-crate-tools.md) the per-tool account of which bound each one
+actually reads; what matters here is the distinction between the two kinds:
 
 - **An input bound hit means the answer is incomplete** — the tool stopped
   looking.
@@ -85,6 +88,17 @@ Conflating them is how a search that silently gave up looks identical to one
 that found four thousand matches and showed two hundred, so the two have
 different markers and `ReadableWalk` returns a `truncated` flag beside its `Vec`
 rather than a bare `Vec` the caller has to guess about.
+
+Two holes in that grid are worth naming while the argument is in view. `write`
+and `edit` read **no** field of `ToolLimits` at all: `write`'s input is the
+model's own string and both return a single line, so for those two the only
+bound in the system is the policy — a root has to be writable before either
+runs. And nothing bounds **depth**. There is no depth counter anywhere in the
+walk; what makes it terminate is a rule written for a different reason, that
+`walk_readable` never descends a symlinked directory, since one inside a
+readable root can point anywhere. Cycle-safety is a by-product of that rule, and
+the only depth bound is the tree's own. [11](11-the-two-seams.md) owns the
+walk's confirmation window, the wider of the two things that rule decides.
 
 ### There is no total wall-clock bound on a turn
 
@@ -149,8 +163,26 @@ holds the `SandboxPolicy` in a private field with exactly one way to reach it:
 &SandboxPolicy` would be the obvious API, and it is the API that used to exist:
 the split between the two enforcement halves was documented and nothing enforced
 it, so an in-process tool could read the granted path lists and open files
-itself, bypassing the guard entirely (#56). Now the type enforces it. What a
-tool may ask the context for is small and deliberate:
+itself, bypassing the guard entirely (#56). Now the type enforces it.
+
+What does the enforcing is a Rust privacy rule, and it is the rule's *scope*
+that makes it hold. `new` takes the policy by value and moves it in behind the
+guard it built from it:
+
+```rust
+    pub fn new(policy: SandboxPolicy) -> Self {
+        Self {
+            guard: FsGuard::new(&policy),
+            policy,
+```
+
+The field is spelled bare `policy`, not `pub(crate) policy` — and private in
+Rust means private to the defining module and its descendants, not to the crate.
+`context` is a sibling of `tools`, so `ctx.policy` written in
+[`tools/bash.rs`](../../crates/sandbx-tools/src/tools/bash.rs) is the same
+compile error it would be in `sandbx-cli`: the field is private. `pub(crate)`
+would have left the whole mechanism decorative, every built-in living in this
+crate. What a tool may ask the context for is small and deliberate:
 
 | a tool may ask for | and gets |
 |---|---|
@@ -285,9 +317,12 @@ chapter 13's reason: dropped, a hostile string reads as plausible prose.
             c if c.is_control() || invisible(c) || forgeable(c) => out.push('\u{fffd}'),
 ```
 
-The first two predicates are the gate's, for the gate's reasons — and
-`invisible` is literally the same denylist, duplicated rather than shared, with
-the two copies required not to diverge (#233). The third is the interesting one,
+The first two predicates are the gate's, for the gate's reasons — the
+zero-width and bidi-override characters, which `char::is_control` lets through
+because it is category `Cc` exactly, so a line can *display* as a different line
+([13](13-turn-loop-and-gate.md)). `invisible` is literally the same denylist,
+duplicated rather than shared, with the two copies required not to diverge
+(#233). The third is the interesting one,
 and it exists because of a problem `agent-run` does not have.
 
 `agent-run` has two channels, and the channel authenticates the line: the answer
@@ -408,8 +443,11 @@ gap chapter 14 reaches from the trail's side.
 - Why there is no total wall-clock bound on a turn, in terms of what bounds the
   in-process tools.
 - Which two tools have no input cap, and what makes that worse than it sounds.
+- What bounds the depth of a search, given that nothing counts it.
 - What "spends the policy rather than lending it out" means, and the bug an
   accessor allowed (#56).
+- Why a private field of `ExecutionContext` is unreachable from a tool module in
+  the same crate, and what `pub(crate)` would have cost.
 - The three things a tool may ask its `ExecutionContext` for, and why there is
   no fourth.
 - Every place an eighth tool would be a compile error, and the one place it

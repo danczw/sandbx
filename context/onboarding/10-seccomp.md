@@ -7,6 +7,13 @@ polices access *by path*. This chapter is about everything that reaches the
 kernel without naming one: another process's memory, a new namespace, a mount, a
 kernel module, a datagram.
 
+The two are a pair rather than a redundancy because of a division neither can
+cross. Landlock holds paths; seccomp holds syscall numbers and the scalar values
+sitting in the six argument *registers* ([07](07-kernel-primer.md) is the
+on-ramp). A filter cannot say "nothing under `/etc`", because a filename is
+behind a pointer; a ruleset cannot say "no `init_module`", because loading a
+module names no path. Every awkward decision below follows from that split.
+
 [guide-sandboxing.md](../guide-sandboxing.md) is the authority and
 [`SECURITY.md`](../../SECURITY.md) is the claim. Two files hold the mechanism:
 [`seccomp.rs`](../../crates/sandbx-core/src/helper/seccomp.rs) is how a filter
@@ -100,7 +107,12 @@ inside the sandbox:
   `unshare` denied. `SECURITY.md` is careful about what this does *not* buy:
   denying `memfd_create` closes one route to a pathless executable, not the
   general ability to exec a descriptor, which is Landlock's job.
-- **Reach the whole machine.** `reboot`, `swapon`, `swapoff`.
+- **Reach the whole machine.** `reboot`, `swapon`, `swapoff`. Not escapes —
+  none of the three gets code out of the box — but effects on the host that
+  outlive the run and that killing the process cannot undo: a restart, or a swap
+  device attached or detached under everything else on the machine. Each needs a
+  capability the supervisor tries to take away, and each is denied anyway, for
+  the reason the `SOCK_RAW` rule below is kept.
 
 ## A pointer argument is invisible, which is why `clone3` differs
 
@@ -218,6 +230,28 @@ Hand-assembled, because `seccompiler`'s conditions address syscall *arguments*;
 mask over it. `x32_gate` writes the six instructions directly, using the opcode
 names `seccomp/tests/mod.rs` composes from `libc`'s field constants:
 
+```rust
+    let insn = |code: u16, jt: u8, jf: u8, k: u32| seccompiler::sock_filter { code, jt, jf, k };
+    // `jt`/`jf` count from the *following* instruction. Laid out so the two returns sit last:
+    // both jumps forward, and the fallthrough is the allow.
+    vec![
+        // `nr` is the first word of `struct seccomp_data`.
+        insn((libc::BPF_LD | libc::BPF_W | libc::BPF_ABS) as u16, 0, 0, 0),
+        // Sign bit set? Not x32 — skip to the allow.
+        insn(
+            (libc::BPF_JMP | libc::BPF_JGE | libc::BPF_K) as u16,
+            3,
+            0,
+            0x8000_0000,
+        ),
+        // … elided: the mask, the equality test, and the two returns.
+    ]
+```
+
+The first two of the six, as the file writes them — one blank line elided with
+them. An instruction is four positional fields behind that `insn` closure, which
+is what the table is for:
+
 | pc | instruction | effect |
 |---|---|---|
 | 0 | `LD_W_ABS`, `k = 0` | load word 0 of `seccomp_data` — `nr` — into the accumulator |
@@ -254,6 +288,14 @@ deliberate over-reach: matching the table exactly would mean pinning its size
 into this file, and only an x32 caller reaches for those numbers anyway. And the
 gate needs no architecture check of its own, since the denylist filter already
 kills every non-native architecture.
+
+One coincidence in all this is pinned rather than used. `CLONE_NEWNET` is also
+`0x4000_0000`, so the namespace rules and this gate read as though one constant
+could serve both — and it cannot, because the two sit in different fields: one
+is a flag in `clone`'s first argument, the other a bit in `nr`.
+`the_x32_bit_and_clone_newnet_only_share_a_value` asserts the denylist filter
+stays indifferent to that bit in a syscall number, so that nobody ever couples a
+syscall number to a clone flag by merging the two.
 
 ## The tests evaluate the program rather than installing it
 
@@ -303,6 +345,37 @@ So anything that carries traffic without passing the hook those port rules hang
 off makes the sentence false, and the repo rule is that `SECURITY.md` may not
 overstate the sandbox. Either the claim weakens or the transports go.
 
+The gate itself is one match, and the hop worth walking is what it does *not*
+carry forward:
+
+```rust
+    let confine_to_tcp = match policy.network() {
+        crate::NetworkPolicy::Denied | crate::NetworkPolicy::AnyPort => false,
+        crate::NetworkPolicy::Ports(_) => true,
+    };
+```
+
+`Ports` carries a `Vec<u16>` and the match discards it. Not one rule in this
+filter names a port, and none can: `connect`'s destination is a `sockaddr`
+behind a pointer, so the `443` an operator typed travels past here untouched and
+lands in Landlock's port rules instead — [09](09-landlock.md) is where it
+arrives. What seccomp compares in its place is register-shaped throughout:
+`socket`'s three `int` arguments, `setsockopt`'s level and option number, and
+the flags word of the three send syscalls. A reader expecting the port number to
+appear somewhere in this file will not find it.
+
+The other two variants get *none* of the five classes below, which makes the
+strictest policy carry the fewest socket rules of the three — an inversion worth
+having a reason for. `Denied` is already in an empty network namespace, where a
+datagram has nowhere to go, so the rules would add no confinement while costing
+`getaddrinfo` the `AF_NETLINK` socket it opens.
+`a_denied_policy_permits_udp_in_an_empty_netns` covers a UDP socket and both
+netlink types, `netlink_create` accepting either. `AnyPort` asked for
+unrestricted egress, and narrowing it would make *that* flag the lie —
+`an_unrestricted_grant_permits_udp`.
+[decision-port-allowlist.md](../decision-port-allowlist.md#why-not-for-denied-or-anyport)
+weighs both.
+
 Five classes of call falsify it, and each gets rules:
 
 | what reaches a port unpoliced | where the rule sits | rules |
@@ -325,7 +398,20 @@ out. QUIC, HTTP/3 and `ping` go the same way.
 [decision-port-allowlist.md](../decision-port-allowlist.md) lists every effect
 next to the claim it buys.
 
-Three pieces of shape in that table repay attention:
+Rows two, four and five are one kernel fact in three disguises, and the table
+leaves it implicit. `security_socket_connect` — the LSM hook Landlock's port
+rules hang off — is reached only from `__sys_connect_file`, the `connect`
+syscall's own path. Every other route to a connected socket calls
+`sock->ops->connect` directly, and no hook runs at all. `AF_SMC` is the
+reachable instance: `smc_connect` (`net/smc/af_smc.c`) dials its inner socket
+with `kernel_connect`, and `socket(AF_SMC, SOCK_STREAM, …)` autoloads
+`net-pf-43` with nothing privileged, reaching any TCP port. Hence an allowlist
+of the two families a port rule can speak about rather than a denylist of the
+ones known to tunnel — `AF_TIPC` and `AF_IB` have the same shape. The last two
+bullets below are that same hook missed twice more: a conversion after the
+socket exists, and a connect hidden inside a send.
+
+Four pieces of shape in that table repay attention:
 
 - **The type field is an allowlist over four bits, not a denylist of two
   constants.** `__sys_socket` reads the type as `type & SOCK_TYPE_MASK` and
@@ -337,7 +423,10 @@ Three pieces of shape in that table repay attention:
   about what the field can mean. `SOCK_RAW` stays in the loop even though it
   needs a `CAP_NET_RAW` the supervisor drops, on a principle worth adopting:
   this allowlist's integrity must not rest on another subsystem having
-  succeeded.
+  succeeded. Which is not hypothetical here: the capability *bounding* set is
+  cleared best-effort, and on a host whose LSM refuses the clear the run
+  continues with a `degraded` decision recorded rather than a refusal
+  ([06](06-claims-and-non-claims.md)).
 - **`SOCK_STREAM` is not TCP, which is why the protocol rules exist.** Landlock
   asks for `CONNECT_TCP` only where `sk_is_tcp` holds —
   `sk_type == SOCK_STREAM && sk_protocol == IPPROTO_TCP` — and returns
@@ -356,6 +445,19 @@ Three pieces of shape in that table repay attention:
   wider version of the family rule, and it names the *option* and not the ULP,
   `optval` being behind a pointer. That costs in-process kTLS, and it is
   fail-closed: a ULP added to the kernel tomorrow is denied with no edit.
+- **TCP Fast Open connects inside a send, which is why three send syscalls are
+  in the table at all.** `tcp_sendmsg_locked` routes a send carrying
+  `MSG_FASTOPEN` into `tcp_sendmsg_fastopen`, which calls
+  `__inet_stream_connect` directly, so the port in `msg_name` is one Landlock
+  never sees — and `net.ipv4.tcp_fastopen` has client mode on by default, so
+  nothing has to be enabled first. For once the escape is register-shaped: the
+  flag is an `int`, so the rule names the flag rather than the syscall, and the
+  loop carries the flags argument's index beside each number — 3 for `sendto`
+  and `sendmmsg`, 2 for `sendmsg`, where a single index would silently compare
+  the wrong register. Both halves are pinned, by
+  `a_port_list_denies_tcp_fast_open_sends` and
+  `a_port_list_permits_an_ordinary_send` — the second because an allowlisted
+  port nothing may write to is no grant at all.
 
 Unix sockets are a separate axis, not a sub-case of this one, and the code is
 careful to keep them apart in both directions. `socket(AF_UNIX)` is denied
@@ -364,7 +466,9 @@ because a netns isolates only *abstract* unix sockets while pathname sockets
 live in the filesystem and cross a namespace freely — a command that can dial
 the session bus, a docker socket or an ssh-agent has them act outside the
 sandbox. That is an escape rather than egress, so granting the internet does not
-grant it. In the other direction, every type rule above carries an explicit
+grant it. `socketpair` is deliberately left out: an anonymous pair has no path
+to reach a host daemon with, and shells use it routinely. In the other
+direction, every type rule above carries an explicit
 `domain != AF_UNIX` condition, so a denial aimed at IP egress does not silently
 narrow a grant it never mentions. It is all-or-nothing for the same pointer
 reason as everything else here: `connect`'s path is behind a pointer, and a
@@ -417,6 +521,12 @@ because a number was added to `BLOCKED_SYSCALLS`, and
   instruction layout, and what the interpreter's panic arm is for.
 - What has to be denied for "egress reaches this port and nowhere else" to be
   true, and why name resolution is the first casualty.
+- Why the port numbers in `--allow-network 443` appear nowhere in this filter,
+  and what it compares instead.
+- Why `Denied`, the strictest network policy, carries fewer socket rules than a
+  port allowlist.
+- How a family that tunnels IP, a `TCP_ULP` conversion and a TCP Fast Open send
+  all reach a port without `security_socket_connect` running.
 - Why `socket(AF_UNIX)` is governed by a different grant from the network
   policy.
 

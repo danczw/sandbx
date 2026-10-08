@@ -59,9 +59,14 @@ pub enum TurnStop {
     Answered,
 ```
 
-`RoundLimit { rounds }` and `GateAborted` are the other two. `TurnStop` is
-matched exhaustively where the CLI turns it into an exit code, so a fourth way
-for a turn to end cannot reach the code that reports a clean one.
+`RoundLimit { rounds }` and `GateAborted` are the other two. `agent-run` matches
+`TurnStop` exhaustively where it turns one into an exit code — on the pair
+`(stop, outcome)` in [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs),
+with no `_` arm — so a fourth way for a turn to end cannot reach the code that
+reports a clean one. `tui`'s own mapping is deliberately *not* exhaustive, for a
+reason it states rather than leaves to be inferred: a stop it does not know
+about is an answer it has no account of, so a variant documenting an exit code
+"needs an arm above, or `tui` contradicts a code `agent-run` already claims".
 
 ## Two refusals a gate never sees
 
@@ -81,6 +86,31 @@ and a permissive gate would then run it. A caller offering `[Read, Ls]` would
 have had an injected `bash` execute. Two tests pin it by name:
 `an_unknown_name_never_reaches_the_gate` and
 `an_un_offered_tool_never_reaches_the_gate`.
+
+As code both are a `continue` out of the per-block loop, which is the branch
+worth seeing: the `let verdict = …` of the next section sits further down the
+same loop body, and a refusal here never reaches it.
+
+```rust
+        if !offered.contains(&tool) {
+            // `from_name` resolves against every built-in, so resolving alone would hand the
+            // gate a call the caller never offered — which an allow-all gate then runs.
+            gate.settled(Settled {
+                name,
+                id,
+                tool: Some(tool),
+                input,
+                outcome: Outcome::NotOffered,
+            });
+            results.push(refused(id, format!("tool not offered this turn: {name}")));
+            continue;
+        }
+```
+
+The name miss above it is the same shape with `Outcome::Unknown` and its own
+message. Both *answer* the block rather than dropping it — `refused` builds a
+`tool_result` marked `is_error` — because a `tool_use` with no answer is a
+transcript no provider takes back, and this one is stored and resumed.
 
 This is also why `CallGate` has a second mandatory method. Its own doc says what
 a gate watching only its own verdicts would miss:
@@ -191,7 +221,10 @@ and a `bash` reclassified as read-only would pass.
 asked per call; without it, a tool argv approved runs. `--approve call` on a run
 with no `/dev/tty` is refused *before the first request* rather than quietly
 falling back to the argv answer, because falling back would hand the run a
-weaker regime than the operator asked for.
+weaker regime than the operator asked for. So `ArgvGate`'s `terminal` field is
+`Some` under that flag alone — and never under `tui`, which refuses the flag
+outright, the screen having taken the device the question wants (#225);
+[15](15-tools-and-the-screen.md) has that end of it.
 
 - **Worth questioning:** the refusal text for an unapproved tool names exactly
   one flag — "it runs only when sandbx is started with `--allow-tool bash`" —
@@ -263,6 +296,14 @@ bare close returns 0; one typed `VEOF` is indistinguishable from the close and
 goes with them. All of it means nobody is answering, which is a different fact
 from "somebody said no".
 
+The one error that is retried is the UTF-8 one, and it is safe only because
+`read_line` consumed the line through its newline before its own check rejected
+it: a reader that left the `\n` behind would hand the next read an empty line,
+the typo arm, and a third question for one bad byte.
+`a_byte_that_is_not_text_is_asked_about_again` asserts two questions and not
+three, which is what pins that — and the comment names `BufReader<File>` as the
+only reader this holds for, so substituting another means re-checking it.
+
 ## The adversary at the prompt
 
 Now the attack this subsystem exists to survive, in order. The model has read a
@@ -282,7 +323,13 @@ gate will ask its question on.
    queued `y` — an answer bound to a call the operator never saw.
 
 The defence is to discard the queue immediately before each question, at both
-layers:
+layers. `discard_typeahead`'s own doc states the terminal behaviour the attack
+rides on, which is the part worth having first-hand:
+
+> Canonical mode queues a finished line until something reads it, so an answer
+> typed earlier — at a counterfeit question in the model's own prose, which
+> reaches this device too — is returned by the next read as the answer to *this*
+> call.
 
 ```rust
     fn discard_typeahead(&mut self) -> nix::Result<()> {
@@ -298,8 +345,23 @@ layers:
 Both, because either alone leaves the path open: `tcflush` clears the kernel
 queue, and one read can deliver several lines, so the `BufReader` may already
 hold a later one. The invariant it buys, in one sentence: **an answer cannot
-predate the question it answers.** And a flush that *failed* ends the turn
-rather than asking over a channel it could not clear.
+predate the question it answers.**
+
+A flush that *failed* ends the turn rather than asking over a channel it could
+not clear. `ask` returns `Abort` carrying `UNCLEARED` — its own reason, not the
+`CLOSED` an end of input gives, so the model is told which of the two happened —
+and does not retry, because `EINTR` would need a signal handler this process
+never installs and the flush will fail again.
+
+Both halves are pinned over a real device rather than a `Cursor`. The first,
+`an_answer_typed_before_the_question_is_not_read_as_its_answer`,
+opens a pty pair, writes `y` to the master, waits for the slave to carry it,
+then asks — and expects the `n` typed *after* the question to be the verdict.
+Its own comment says why the fixture must be a terminal: "what the drain clears
+is the kernel's input queue", which no in-memory reader has, and `Terminal::on`
+exists for that fixture alone. `a_terminal_that_cannot_be_cleared_aborts` takes
+the other half over `/dev/null`, where `tcflush` fails with `ENOTTY` before any
+question is written.
 
 What that does not reach is stated in the record rather than hidden: a
 counterfeit that makes the *real* question look already answered. No flush
@@ -360,6 +422,12 @@ handles it, and the two interesting arms are about *not* dropping things:
 - **Arguments are capped per field**, so one long argument cannot push the words
   that frame it off the end, and a cut is marked with `…` rather than being
   silent — an operator who cannot see the whole argument can still refuse.
+
+This is the gate's copy of the denylist. `sandbx-tui` carries a second for the
+cells it draws, required character-for-character identical to this one (#233);
+[15](15-tools-and-the-screen.md) and [23](23-crate-tui.md) own that screen —
+where `\n` and `\t` are handled differently and a third predicate is added,
+because a cell is not a line of prompt.
 
 ## A turn out of rounds is asked once more, with no tool
 
@@ -548,6 +616,14 @@ There is a second read of the same latch, on the path where a round produced no
 tool calls at all, and its comment names the hazard exactly: "this is the one
 place one could be laundered into an answer."
 
+**An abort also cancels the wrap-up round.** The same `(stop, outcome)` match
+that derives `ending` sends that extra request for a `RoundLimit` only, and its
+comment says why an abort is not merely treated as a cap: "Skipped rather than
+refused by a flag: the wrap-up round is exactly the request there is no longer
+anyone to have asked for (#218)." Which is what lets the stderr line claim,
+truly, that no further request was sent — a lost operator stops the turn where
+it stood, not just the call they were being asked about.
+
 The last hop is the one a caller cannot learn any other way.
 [`cli/src/agent/render.rs`](../../crates/sandbx-cli/src/agent/render.rs) — see
 `finish` — converts the ending into a status, and the order of two checks is the
@@ -601,6 +677,8 @@ ran performed none. Chapter 14 is that distinction.
 - Why an unrecognised answer re-asks instead of refusing.
 - The four steps of the queued-answer attack, and which two layers
   `discard_typeahead` clears.
+- Why a flush that failed ends the turn instead of asking anyway, and why the
+  test that pins the drain needs a real pty rather than a `Cursor`.
 - Why `subject` is keyed off the tool rather than off whichever argument is
   present.
 - Why `char::is_control` is insufficient for a consent prompt.
@@ -608,8 +686,8 @@ ran performed none. Chapter 14 is that distinction.
   `--max-rounds` therefore does not bound.
 - Why the round a cap buys may call no tool, what the extra request costs, and
   why its outcome is merged into the capped turn rather than stored beside it.
-- Why exit 3 is checked before exit 2, and what a caller could not otherwise
-  learn.
+- Why exit 3 is checked before exit 2, what a caller could not otherwise learn,
+  and what an abort stops besides the call it landed on.
 
 ## Next
 
