@@ -27,6 +27,8 @@ does, `SECURITY.md` is right.
 | chapter | covers |
 |---|---|
 | [01 — what sandbx is](01-what-sandbx-is.md) | the product and its thesis, the five subcommands, what the kernel has to provide, and the five commands to run first |
+| [02 — what a harness is](02-what-a-harness-is.md) | the part of sandbx that would exist in any harness: a stateless endpoint, the round loop, `tool_use` pairing, the context window, and prompt injection as the defining threat |
+| [03 — the landscape](03-the-landscape.md) | the same picture in other projects, on four mechanism axes — where the boundary is, who decides a tool call, what the default is, and whether the harness confines itself |
 | [04 — the architecture](04-the-architecture.md) | three views of one system — the processes, the request path, the boundaries. The spine every later chapter locates itself in |
 | [05 — seven crates](05-seven-crates.md) | the static view under 04: the dependency graph, who owns what, and the three mechanisms that keep one crate the only one able to spawn a process |
 | [07 — kernel primer](07-kernel-primer.md) | first principles, almost no repo code: namespaces, `uid_map` ordering, seccomp-BPF, Landlock, `O_PATH`, bind mounts, the capability sets, `pdeathsig` |
@@ -60,6 +62,15 @@ to be able to open the file it is talking about. The convention it keeps is the
 reason the house rule exists: **the link addresses the file, and the prose
 addresses the identifier.** A refactor that moves a function two hundred lines
 down breaks neither. No line numbers, and no commit permalinks.
+
+**Two chapters also link outward,** and they are the only two that do.
+[02](02-what-a-harness-is.md) sources every claim about the Messages API to
+Anthropic's own documentation, and [03](03-the-landscape.md) sources every claim
+about another project to that project's docs; both collect their external links
+at the end rather than scattering them. A page on somebody else's site can
+change under a link in a way a file in this tree cannot, which is why 03 carries
+the month it was written in its first paragraph, and says where a source is
+silent instead of filling the gap.
 
 Two kinds of figure are deliberately absent for the same reason. A chapter never
 quotes a comment-length, module-size or name-length budget — it links
