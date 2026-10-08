@@ -12,7 +12,7 @@ max_rounds * (stream_timeout + calls * tool_timeout)
 ```
 
 Every term but the first was wrong. `stream_timeout` bounds the stream, not a
-tool call; `tool_timeout` (`ExecutionContext`, 90 s) bounds `bash` and nothing
+tool call; `timeout` (`ExecutionContext`, 90 s) bounds `bash` and nothing
 else. A `grep` over a huge tree had no clock on it at all and no budget either,
 so one broad search could run until it finished — however long that was.
 
