@@ -65,8 +65,8 @@ oracle in the shape the ancestor rule alone cannot see. `reaches_plainly`
 therefore conceals anything reached through a symlink, and a `..` with it, which
 leaks nothing but would print an out-of-grant path as an absence's subject. So a
 symlink in a grant is refused the way an out-of-bounds path is, whatever stopped
-it: `within` tests a *resolved* path, and one that will not resolve is inside no
-root. That costs the loop case a precise reason, which is the price of the three
+it: `contains` tests a *resolved* path, and one that will not resolve is inside
+no root. That costs the loop case a precise reason, which is the price of the three
 failures reading alike.
 
 A replaced root would open the same oracle one bit wide. If concealment treated an
