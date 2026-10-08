@@ -87,11 +87,11 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
 
     for (axis, path) in policy.granted_paths() {
         // The grant's own spelling, which vetting resolved, so the sentence cannot name a
-        // path the guard would not compare against. `symlink_metadata` and not
-        // `canonicalize`: a name that holds nothing is not worth telling the model about, and
-        // resolving the ones that do would name a substituted root's target instead.
+        // path the guard would not compare against. Resolved only to test that it still
+        // resolves to itself, never to be named: a root that now resolves elsewhere is one
+        // the guard refuses lexically, and a name every access refuses is worse than silence.
         let path = path.path();
-        if path.symlink_metadata().is_err() {
+        if path.canonicalize().ok().as_deref() != Some(path) {
             continue;
         }
         let path = path.to_path_buf();
@@ -350,6 +350,30 @@ mod tests {
             prompt,
             tools_line(&gate::approved_tools(None)),
             "a name that holds nothing grants nothing, so the prompt must not claim it"
+        );
+    }
+
+    /// The grant stays, and reaches nothing: the guard compares against the spelling the
+    /// policy holds, so a root that became a symlink refuses every path under it (#212). A
+    /// sentence naming it sends the model at a directory it will be refused for every time.
+    #[test]
+    fn a_grant_that_became_a_symlink_is_not_named() {
+        let (work, _) = work();
+        let root = work.path().join("root");
+        let elsewhere = work.path().join("elsewhere");
+        std::fs::create_dir(&root).expect("a dir to grant");
+        std::fs::create_dir(&elsewhere).expect("somewhere for it to point");
+
+        let policy = SandboxPolicy::default().allow_read(vetted(&root));
+        std::fs::remove_dir(&root).expect("the granted name to come free");
+        std::os::unix::fs::symlink(&elsewhere, &root).expect("a link at the granted name");
+
+        let prompt = granted(policy);
+
+        assert_eq!(
+            prompt,
+            tools_line(&gate::approved_tools(None)),
+            "a root that resolves elsewhere grants nothing, so the prompt must not claim it"
         );
     }
 
