@@ -14,8 +14,9 @@ harness and `PathFd::new` in the helper, and reaching it needs write access to
 the granted path's parent.
 
 #212 closes it by making the comparison about the object: the harness carries the
-`(dev, ino)` it vetted across the seam, and the helper stats the descriptor and
-refuses a mismatch. The decision this note records is not that — it is the
+`(dev, ino)` it vetted across the seam, the helper stats the descriptor and
+refuses a mismatch, and `FsGuard` measures the matched root per access and refuses
+that access as `root_replaced`. The decision this note records is not that — it is the
 question #212 mainly exists to settle, which is **what the helper does with a
 grant that arrives with no pin**. The answer is that it refuses, and that nothing
 can hand it one.
@@ -119,6 +120,13 @@ The two answer different questions: the readback asks whether the name still
 leads where it led, the stat asks whether the thing at the end of it is the same
 thing.
 
+In-process there is only the second question. A readback compares what was opened
+against what the opener was told to open, and in `FsGuard` those are one process's
+two statements about one path — the comparison would be sandbx agreeing with
+itself. So the guard takes the stat alone, and `RuleTarget::Installed`'s unpinned
+case one layer over is the same asymmetry read from the other end: a rule already
+in a ruleset has no name left to compare.
+
 ## A rule the helper makes for itself is pinned later
 
 `open_grant` runs in stage 2, inside whatever stage 1 unshared, so a mount made
@@ -175,6 +183,19 @@ is paid once at a pre-1.0 version.
 **A stat per grant, in the harness.** Beside a resolve that already walks every
 ancestor, which is the expensive part.
 
+**A stat per access, in the guard, and uncached.** `FsGuard` confirms the matched root
+on every checked path, and a cached confirmation is exactly the window the measurement
+exists to shrink — the cost *is* the property. One `O_PATH` open and one `fstat` on a
+directory the kernel has in its dentry cache, against a `canonicalize` of the requested
+path that the same check already pays. `find` and `grep` are the exception worth naming:
+a walk confirms its root once and then traverses, so the window there is the traversal.
+
+**A remount reads as a substitution.** Neither half of `(dev, ino)` survives a remount,
+so a grant on a network or autofs mount that remounts mid-session begins refusing with
+`root_replaced`, naming a swap that did not happen. Fail-closed and wrong about the
+reason, which is the trade the pin makes: nothing distinguishes a new `st_dev` for the
+same tree from a different tree without a second source of truth about the mount.
+
 **A property `guide-sandboxing.md` states, moving.** That file said the property to
 keep is about spellings and not about mounts: a file bind-mounted over `/etc/hosts`
 reads back `/etc/hosts`, measured, and is fine. Under the pin that holds only for a
@@ -193,12 +214,21 @@ inode — and is what the refusal tells the operator to pass. Nothing else an op
 types changes: no flag is added, no grant narrows, and a run whose granted
 directories are the ones that were vetted behaves as it did.
 
+One thing nobody types changes all the same, and it is a narrowing worth stating as a
+cost rather than only as a fix. A granted root replaced by a *symlink* used to have its
+grant follow the link: the guard resolved each root again at every access, so the link's
+target became the root and was reachable by its own path. The guard now holds the grant's
+own spelling, and that access refuses without needing the object at all. Reaching either
+shape needs write access to the granted root's parent — which a run granted write on that
+parent has, so this is not only a racing-attacker case.
+
 ## What a grant can be refused for
 
 | What is wrong | Decided | Label |
 |---|---|---|
 | the granted spelling opens as another path | helper | `grant_redirected` |
 | the object under the granted name is not the vetted one | helper | `grant_replaced` |
+| the matched root holds another object at the moment of an in-process access | guard | `root_replaced` |
 | the path cannot be vetted at all — it names nothing | harness | `grant_unpinnable`, `PolicyError::UnpinnableGrant` at the flag |
 | the path names a file this run's own resolver binds over | harness | `grant_bound_by_resolver`, `PolicyError::DnsGrantsBoundFile` at the flag |
 | a grant arrives on the wire with no object beside it | helper, at decode | `bad_helper_args` |
@@ -208,6 +238,13 @@ The last is the unlink-after-vet window, and it is the reason `VettedPath::from_
 is testable without racing: it is the one producer that can build a vetted path naming
 nothing. The other two shapes of that window are the first two rows — unlinked and
 replaced is `grant_replaced`, unlinked and symlinked is `grant_redirected`.
+
+`guard` is not `harness` under another name, though both run in sandbx's own process.
+`harness` rows are decided once, while a policy is being built, and refuse the grant —
+there is no run. A `guard` row is decided per access, against a policy already built,
+and refuses *that access* and nothing else: the grant stands, and the next call measures
+again. And only `helper` rows cross the audit channel, which is why `root_replaced` is
+not in `HelperRefusal` — see `decision-helper-audit-channel.md`.
 
 ## What was rejected
 

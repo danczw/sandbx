@@ -33,7 +33,7 @@ usually buy:
   `wire/tests/tool_use.rs`, a `tool_call` is a `call`.
 - **Leading articles**, when the subject is unambiguous without them:
   `the_cut_lands_on_…` → `cut_lands_on_…`.
-- **`rather_than` / `and_not` → `not`.** `an_unresolvable_root_is_dropped_not_refused`.
+- **`rather_than` / `and_not` → `not`.** `a_future_version_is_refused_not_guessed`.
 - **`does_not` → `never`**, for a property that holds always rather than in the
   one case under test: `compaction_never_shortens_the_transcript`.
 - **`is_reported_as X` → `reports_X`.**

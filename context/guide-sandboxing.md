@@ -44,7 +44,9 @@ Six of seven built-ins never spawn anything, so Landlock never sees them.
 `FsGuard` is the *only* filesystem enforcement for those — a second consumer of
 the same table (`fs_guard.rs`), sorting grants into readable/writable roots and
 discarding `execute`. #49/#50 were the two layers answering differently for one
-policy; the shared table is the fix.
+policy; the shared table is the fix. The grants go in whole, pin included, and
+the guard confirms the matched root's object per access, so the two layers answer
+a substituted root alike as well (#212).
 
 > **The CLI grants read alongside write.** `--allow-write ~/project` also grants
 > `Read`, because at a command line the separation is a trap — a tool could
@@ -228,6 +230,16 @@ Both are decided in the helper, so each carries a `HelperRefusal` and crosses th
 audit channel — `grant_redirected` and `grant_replaced`: only the stage holding the
 descriptor can compare what it opened against what it was told to open, or against
 the object it was told to find there.
+
+The in-process layer asks the pin's question too, and answers it for itself.
+`FsGuard` holds the policy's grants whole and, on every access, opens the matched
+root `O_PATH` and `fstat`s it: an object that differs refuses that access as
+`root_replaced`, one that cannot be measured grants nothing, and `rename`-ing a
+root away and back still grants, the inode being what moved nowhere. There is no
+readback half here — a spelling comparison would be this process agreeing with
+itself, since the guard both resolves the path and performs the access. So
+`root_replaced` is sandbx's own and stays out of `HelperRefusal`: no helper runs
+the measurement, and a record claiming it would name the wrong decider.
 
 ## Where the command starts
 
@@ -456,7 +468,7 @@ Matches `SECURITY.md`'s *What sandbx does not claim*. The short form:
 |---|---|
 | Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have, and that proxy is declined rather than pending: its interception is cooperation and TLS termination widens the boundary it would narrow, per `decision-egress-proxy.md`. What that note carves out is `--allow-dns NAME`, which bounds which *names* resolve (#145) and is not a destination control: an IP literal, or an address the command already holds, reaches any allowlisted port exactly as before. The UDP denial breaks name resolution, which `--allow-dns` closes on both libcs and `--dns-over-tcp` routes around under glibc only. |
 | Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. It is one all-or-nothing toggle. |
-| `FsGuard` TOCTOU | **A parent-directory swap mid-open**, which needs full `openat`-chain resolution. `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. |
+| `FsGuard` TOCTOU | **Two swaps, both mid-open, both needing full `openat`-chain resolution.** A *parent-directory* swap: `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. And a *granted-root* swap between the confirmation and the open, two adjacent syscalls for the five per-path tools and the whole traversal for `find` and `grep`, whose walk confirms its root once. Both close the same way: run the access off a directory descriptor, with `openat2(dirfd, …, RESOLVE_BENEATH)` below it, so the confirmed object *is* what the access resolves from. |
 | Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
 | `Degraded` raised by nothing a test enters | **Pinned on any host.** Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted anywhere; `tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |
 
