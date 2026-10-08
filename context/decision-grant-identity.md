@@ -214,9 +214,11 @@ way. Closing it needs a third component beside the pair, a creation time (`statx
 instead of a number naming it — which is the same remedy as the window above, and is
 the argument for doing that one rather than widening the pair.
 
-**A remount reads as a substitution.** Neither half of `(dev, ino)` survives a remount,
-so a grant on a network or autofs mount that remounts mid-session begins refusing with
-`root_replaced`, naming a swap that did not happen. Fail-closed and wrong about the
+**A remount reads as a substitution.** A filesystem with no backing block device takes
+an anonymous `st_dev`, allocated fresh per mount, so a grant on a network or autofs
+mount that remounts mid-session begins refusing with `root_replaced`, naming a swap that
+did not happen. A block-backed mount keeps its major:minor and its on-disk inode
+numbers, so this is the network case and not every remount. Fail-closed and wrong about the
 reason, which is the trade the pin makes: nothing distinguishes a new `st_dev` for the
 same tree from a different tree without a second source of truth about the mount.
 
