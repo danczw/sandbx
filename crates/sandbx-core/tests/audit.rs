@@ -7,7 +7,7 @@
 use std::sync::{Arc, Mutex};
 
 use sandbx_core::{
-    AUDIT_TARGET, AuditEvent, FsGuard, SandboxError, SandboxPolicy, SandboxedCommand,
+    AUDIT_TARGET, Access, AuditEvent, FsGuard, SandboxError, SandboxPolicy, SandboxedCommand,
 };
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
@@ -323,6 +323,41 @@ fn a_path_naming_no_file_records_its_refusal() {
         lines[0].contains("path names no file to write"),
         "got: {}",
         lines[0]
+    );
+}
+
+/// A moved root and a path outside every root are one `decision=denied` apart, so the reason
+/// is all an operator counting substitutions has — and the trail and the caller have to agree
+/// about which of the two happened (#212).
+#[test]
+fn a_moved_root_records_the_reason_it_returns() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
+    std::fs::remove_dir_all(&granted).unwrap();
+    std::fs::rename(&other, &granted).unwrap();
+
+    let mut error = None;
+    let lines = capture(|| error = guard.check_read(&granted.join("notes.txt")).err());
+    let error = error.expect("a refused read of a substituted root");
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    let line = &lines[0];
+    assert!(line.contains("decision=denied"), "got: {line}");
+    assert!(line.contains("tool=read"), "got: {line}");
+    assert_eq!(
+        error.label(),
+        "root_replaced",
+        "the caller was told {error}"
+    );
+    assert!(
+        !line.contains(Access::Read.outside()),
+        "the trail read as out of bounds while the caller was told the root moved: {line}"
     );
 }
 

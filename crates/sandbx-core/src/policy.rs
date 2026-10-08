@@ -3,6 +3,7 @@ use std::path::Path;
 
 mod vetted;
 
+pub(crate) use vetted::Confirmation;
 pub use vetted::{ObjectId, VettedPath};
 
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
