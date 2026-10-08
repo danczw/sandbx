@@ -172,6 +172,19 @@ impl<W: Write> Render<W> {
             self.write(b"\n");
         }
 
+        // The operator's whole record of why: the gate's own account of the call went to
+        // the device that went away. Written before the stdout failure below rather than
+        // in the match with the others, since an early return for a broken pipe would
+        // take that record with it.
+        if ending == Some(Unfinished::Aborted) {
+            eprintln!(
+                "sandbx: `{APPROVE_CALL}` could no longer ask on this terminal, \
+                 so the turn stopped where it was asked; that call and every call \
+                 behind it were refused, nothing after them ran, and no further \
+                 request was sent"
+            );
+        }
+
         if let Some(error) = self.failed.take() {
             return Err(AgentError::Output(error));
         }
@@ -198,15 +211,8 @@ impl<W: Write> Render<W> {
                  nothing on stdout is an answer, and what followed the cap was \
                  not saved either — raising --max-rounds would let the turn go further"
             ),
-            // The operator's whole record of why: the gate's own account of the call went
-            // to the device that went away.
-            Some(Unfinished::Aborted) => eprintln!(
-                "sandbx: `{APPROVE_CALL}` could no longer ask on this terminal, \
-                 so the turn stopped where it was asked; that call and every call \
-                 behind it were refused, nothing after them ran, and no further \
-                 request was sent"
-            ),
-            None => {}
+            // Written above, ahead of the stdout failure check.
+            Some(Unfinished::Aborted) | None => {}
         }
 
         // Ahead of `INCOMPLETE`: a turn can hit a bound and lose its operator, and losing
@@ -518,6 +524,22 @@ pub(super) mod tests {
 
         assert!(matches!(
             render.finish(None, false),
+            Err(AgentError::Output(_))
+        ));
+    }
+
+    /// A lost operator and a stdout nobody is reading can arrive together, and the write
+    /// failure is the one a caller cannot otherwise act on — so it keeps the exit, and
+    /// `3` is not reported for a run that never delivered its answer. That the operator's
+    /// line is still written first is unpinnable here, `eprintln!` going to the process's
+    /// own stderr; an injectable sink is #223.
+    #[test]
+    fn a_broken_stdout_outranks_the_lost_operator() {
+        let mut render = Render::new(ClosedPipe);
+        render.event(&text("looking"));
+
+        assert!(matches!(
+            render.finish(Some(Unfinished::Aborted), false),
             Err(AgentError::Output(_))
         ));
     }
