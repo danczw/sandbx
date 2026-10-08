@@ -22,7 +22,7 @@ use sandbx_tui::{Hint, Keys, Screen, Transcript};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
-use crate::session;
+use crate::{logging, session};
 
 /// `sandbx tui [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]
@@ -150,6 +150,11 @@ impl Tui {
             withheld: merged.withheld,
         };
 
+        // Before the screen, dropped after it: `sandbx-core` emits the audit trail on
+        // stderr for every guarded access, and the alternate screen neither redirects it
+        // nor gives it back, so each record would land in the pane and die with it.
+        let audit = logging::hold();
+
         // The screen before the keys: without raw mode ctrl-c is a signal, and the reader
         // would never see the key that is supposed to stop the turn.
         let screen = Screen::enter().map_err(AgentError::Screen)?;
@@ -218,17 +223,20 @@ impl Tui {
         }
 
         // Held until a key, then put back: the alternate screen takes the transcript with
-        // it, and a turn whose last rounds nobody read was not watched. Repainted first,
-        // over anything the save wrote to a stderr the screen does not redirect.
-        pane.repaint(Hint::Done);
+        // it, and a turn whose last rounds nobody read was not watched. Every cell and not
+        // the changed ones, because `save` writes to a stderr the screen does not redirect
+        // and ratatui would otherwise leave that line where it landed.
+        pane.redraw(Hint::Done);
         keys.press().await;
         let failed = pane.screen.failure();
         drop(pane);
 
-        // Only now is there a stderr with no screen over it. The account is written again
-        // here because the pane went with the screen, and the line saying why a run exited
-        // 3 rather than 2 is the one a redirected log needs most (#224). Not on the error
+        // Only now is there a stderr with no screen over it: the trail first, as it was
+        // emitted during the turn, then the account. The account is written again here
+        // because the pane went with the screen, and the line saying why a run exited 3
+        // rather than 2 is the one a redirected log needs most (#224). Not on the error
         // path, where `main` reports the same error itself.
+        drop(audit);
         if code.is_ok() {
             for line in &account {
                 eprintln!("{line}");
@@ -311,6 +319,10 @@ struct Pane {
 impl Pane {
     fn repaint(&mut self, hint: Hint) {
         self.screen.draw(&self.transcript, hint);
+    }
+
+    fn redraw(&mut self, hint: Hint) {
+        self.screen.redraw(&self.transcript, hint);
     }
 }
 

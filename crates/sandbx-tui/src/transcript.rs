@@ -5,6 +5,8 @@
 
 use sandbx_providers::AgentEvent;
 
+use crate::view::GUTTER_MARK;
+
 /// What one block of the transcript is, which is also how the view colours it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
@@ -38,12 +40,14 @@ pub struct Transcript {
     /// Rounds seen, counted from `Stop`: no event carries the turn's own bound.
     rounds: usize,
 
-    /// The last reported prompt and output counts, each `None` until it is reported.
+    /// The last figure reported for the prompt and for the output, each `None` until one is.
     ///
     /// Separately optional because the API omits either one: collapsing an absent count
-    /// into a zero would put `0 out` on the screen for a turn that generated text. The
-    /// figures are the last round's, which is what `TurnOutcome::usage` carries too, and
-    /// not the turn's sum.
+    /// into a zero would put `0 out` on the screen for a turn that generated text, and
+    /// overwriting with the absence would take a figure already shown back off the screen.
+    /// Held per field for the same reason `wire::accumulate` holds them that way.
+    ///
+    /// Not a sum: each is one request's figure, as `TurnOutcome::usage` is.
     tokens: (Option<u32>, Option<u32>),
 }
 
@@ -76,7 +80,10 @@ impl Transcript {
                 input_tokens,
                 output_tokens,
                 ..
-            } => self.tokens = (*input_tokens, *output_tokens),
+            } => {
+                self.tokens.0 = input_tokens.or(self.tokens.0);
+                self.tokens.1 = output_tokens.or(self.tokens.1);
+            }
             AgentEvent::Thinking { .. }
             | AgentEvent::ToolCallRequested { .. }
             | AgentEvent::ThinkingBlock { .. }
@@ -136,6 +143,9 @@ impl Transcript {
 /// answer would rewrite the screen around it. Replaced with U+FFFD rather than dropped:
 /// dropped, a hostile string reads as plausible prose. `\n` survives as the break the view
 /// splits on, and a tab becomes spaces, nothing rendering a cell that holds one.
+///
+/// [`GUTTER_MARK`] goes the same way, for the same reason one step up: the view draws it to
+/// say sandbx wrote a row, so text that could carry it could claim a row of its own.
 fn printable(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
 
@@ -143,7 +153,7 @@ fn printable(text: &str) -> String {
         match c {
             '\n' => out.push('\n'),
             '\t' => out.push_str("    "),
-            c if c.is_control() || invisible(c) => out.push('\u{fffd}'),
+            c if c.is_control() || invisible(c) || c == GUTTER_MARK => out.push('\u{fffd}'),
             c => out.push(c),
         }
     }
@@ -426,5 +436,16 @@ mod tests {
         // and not every small figure being dropped.
         transcript.event(&usage(Some(900), Some(0)));
         assert_eq!(transcript.tokens(), (Some(900), Some(0)));
+    }
+
+    /// Held per field, so a later round that omits one does not take a figure already on
+    /// the status bar back off it.
+    #[test]
+    fn a_count_a_later_round_omits_keeps_the_figure_it_had() {
+        let mut transcript = Transcript::new(PROMPT, false);
+        transcript.event(&usage(Some(900), Some(32)));
+        transcript.event(&usage(None, Some(64)));
+
+        assert_eq!(transcript.tokens(), (Some(900), Some(64)));
     }
 }

