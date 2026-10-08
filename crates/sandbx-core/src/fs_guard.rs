@@ -96,8 +96,10 @@ impl FsGuard {
 
         let (ancestor, granted_area) = nearest_area(requested, roots);
 
-        if let Containment::Outside(moved) = granted_area {
-            return deny(moved, requested, access);
+        // The ancestor resolves, so what it reached is the substitute's choice too, and the
+        // reason it would name is one the spelling above has already declined to give.
+        if matches!(granted_area, Containment::Outside(_)) {
+            return deny(None, requested, access);
         }
 
         // Inside a confirmed root, where the ancestor still has to speak for the path below
@@ -556,9 +558,12 @@ fn permit(
         return Err(deny(Some(moved), requested, access));
     }
 
+    // And the measurement the resolution reached does not get to name a reason: a link
+    // planted in a root that *confirms* resolves into one that does not, so a
+    // `root_replaced` here beside an absent name's `path_not_allowed` is the same one bit.
     match contains(&resolved, roots) {
         Containment::Inside => Ok(resolved),
-        Containment::Outside(moved) => Err(deny(moved, requested, access)),
+        Containment::Outside(_) => Err(deny(None, requested, access)),
     }
 }
 
