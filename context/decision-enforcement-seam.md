@@ -273,20 +273,21 @@ here loudly instead of turning the inequality into a tautology. `from_all` is
 constant across V5..V8, so that one bit is the entire kernel-free discriminating
 power available in the negotiable range.
 
-## #52's five items
+## A new axis without a row fails the test
 
-| # | Item | Where it landed |
-|---|---|---|
-| 1 | `fs_rules` untestable without root | split out, asserted with no kernel |
-| 2 | nothing asserted the axis→rights mapping | asserted |
-| 3 | nothing pinned the *exact* right set | #74 — `each_axis_confers_exactly_the_documented_set` pins every axis's whole `BitFlags` at `BASELINE_ABI` and `LATEST_ABI`, and asserts a row exists per `Axis::ALL` |
-| 4 | partial enforcement accepted | #76 — `enforcement_verdict` refuses it |
-| 5 | per-endpoint egress | #42 — a TCP port allowlist, which is all the kernel can match on. Per-host is not enforced and needs a userspace proxy, which `decision-egress-proxy.md` declines: the interception it would rest on is cooperation. One piece of it is claimable, a resolver bounding which names resolve (#145) |
+`each_axis_confers_exactly_the_documented_set` asserts its own expectation table
+against `Axis::ALL.len()`, so a fourth axis cannot be added without a row
+spelling out its whole `BitFlags` at both ABI ends. The exhaustive matches above
+make a new axis a build failure; this makes it a test failure until its rights
+are written down.
 
-53 real-kernel enforcement tests, split by what enforces them: 39 in
+## All of them run, or none of the files compiles
+
+62 real-kernel enforcement tests, split by what enforces them: 40 in
 `tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
 for the calls Landlock cannot express, 6 in `tests/enforcement_network.rs` for
-the ports it does. All three files are
+the ports it does, and 8 in `tests/enforcement_resolver.rs` for the names that
+resolve. All four files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 53 run or none of the files compiles, and
+count is unconditional — all 62 run or none of the files compiles, and
 `cargo test` reports `0 ignored`. Nothing checks this number against the files.
