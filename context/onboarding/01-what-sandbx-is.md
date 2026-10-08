@@ -220,6 +220,10 @@ is on the releases page rather than in a file here.
 
 ## Next
 
-[04 — the architecture](04-the-architecture.md), which takes the same system and
-draws it three times: as processes, as one request's path end to end, and as a
-set of named boundaries.
+[02 — what a harness is](02-what-a-harness-is.md), which backs up one step: the
+loop this product is built around, and why a model that can only emit tokens
+needs a program willing to act on them. Then [03](03-the-landscape.md) for the
+other projects that answered the same questions differently, and
+[04 — the architecture](04-the-architecture.md), which takes the system above
+and draws it three times: as processes, as one request's path end to end, and as
+a set of named boundaries.

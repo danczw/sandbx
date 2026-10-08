@@ -419,3 +419,9 @@ two documents above are careful about.
   values, and what "neither side is trusted" buys in each direction.
 - Which substitution window seam 1 still leaves open, how wide it is for a walk
   versus a single read, and what shape of substitution is *not* in it.
+
+## Next
+
+[12 — one flag, traced](12-a-flag-to-a-kernel-rule.md), which walks a single
+`--allow-read` from argv across both seams and out as a rule the kernel holds —
+the same two seams seen along one path, rather than side by side.

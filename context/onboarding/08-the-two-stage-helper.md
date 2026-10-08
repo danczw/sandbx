@@ -397,3 +397,8 @@ counterexamples. That is the same justification the startup order in
 - Why `/proc/self/stat` is parsed from its last `)` and compared as a string.
 - At least three steps of `apply` whose position is load-bearing, and what
   moving each one costs.
+
+## Next
+
+[09 — Landlock](09-landlock.md), and then [10 — seccomp](10-seccomp.md): the two
+steps of `apply` that got a sentence each here and deserve a chapter each.

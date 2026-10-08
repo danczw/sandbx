@@ -509,7 +509,8 @@ Grep `context/` for the old name before you consider a rename done.
 
 ## Next
 
-Back to the [index](README.md) for whichever box you have not read yet. If you
-are about to make a change rather than read another chapter, the two files to
-have open are [`CLAUDE.md`](../../CLAUDE.md) and
+[17 — gaps and open questions](17-gaps-and-open-questions.md), the last chapter:
+what this project says is still missing, and what the earlier chapters said
+looked wrong. If you are about to make a change rather than read another
+chapter, the two files to have open are [`CLAUDE.md`](../../CLAUDE.md) and
 [`SECURITY.md`](../../SECURITY.md).

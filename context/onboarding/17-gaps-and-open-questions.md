@@ -481,3 +481,12 @@ less worth believing.
   and why that absence is the strongest part of the case for filing them.
 - The five steps from an agreed objection to a filed issue, and the one kind of
   finding that skips them.
+
+## Next
+
+Nothing in this directory — this is the last chapter. What follows the set is
+the numbered reading order at the end of
+[guide-repo-map.md](../guide-repo-map.md), which names every `guide-*.md` and
+`decision-*.md` in [`context/`](../) and is the second pass these eighteen files
+were the on-ramp to. Read in that direction, a guide that opened cold on day one
+should now read as a reference rather than as a wall.

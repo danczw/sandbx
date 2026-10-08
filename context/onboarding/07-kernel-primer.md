@@ -1,4 +1,4 @@
-# Nothing in this chapter is sandbx's own code
+# Every mechanism here is the kernel's, not sandbx's
 
 This chapter sits *underneath* the bottom two boxes of **View 1 — three
 processes** in [04 — the architecture](04-the-architecture.md): the helper
@@ -361,9 +361,8 @@ The second thing it buys is the one that matters for the shape of the code:
 across `execve`, so without the bit an unprivileged process could install a
 filter designed to make a set-user-ID program misbehave — have a
 security-relevant syscall return a lie the program does not check — and then
-`exec` it.
-Forbidding the privilege gain removes the target, and so the bit is the
-unprivileged route to having a filter at all.
+`exec` it. Forbidding the privilege gain removes the target, and so the bit is
+the unprivileged route to having a filter at all.
 
 **In sandbx:** `set_no_new_privs` is called in the supervisor *and* again as the
 first statement of `apply`. The second call is a no-op, and the comment in
@@ -477,3 +476,9 @@ unrestricted.
   the bounding set has to be dropped before the effective one.
 - The two cases that clear a parent death signal, the third case where arming it
   does nothing, and what covers a command's descendants instead.
+
+## Next
+
+[08 — the two-stage helper](08-the-two-stage-helper.md), where every primitive
+above appears again as a line of this repo's own code, in an order that cannot
+be permuted.

@@ -231,24 +231,26 @@ it takes `agent-run`'s flags, derives the same policy, shares `gate.rs`,
 
 ## Where each box's detail lives
 
-Every box above has one `context/` doc that owns it. These are the authority;
-the onboarding chapters are the on-ramp to them.
+Every box above has one chapter that zooms into it and one `context/` doc that
+owns it. The doc is the authority; the chapter is the on-ramp written to be read
+before it.
 
-| box | owned by |
-|---|---|
-| the three processes, the kill chain | [guide-process-lifetime.md](../guide-process-lifetime.md) |
-| `apply`, Landlock, seccomp, the mount sequence | [guide-sandboxing.md](../guide-sandboxing.md) |
-| the two enforcement seams | [decision-enforcement-seam.md](../decision-enforcement-seam.md) |
-| what a grant confers on which axis | [decision-axis-table.md](../decision-axis-table.md) |
-| what a no-flag run derives, and what it refuses | [decision-default-policy.md](../decision-default-policy.md) |
-| the round loop, compaction, the three traps | [guide-turn-loop.md](../guide-turn-loop.md) |
-| the gate, and how much it claims | [decision-approval-gate.md](../decision-approval-gate.md) |
-| the provider seam and the vendor boundary | [decision-provider-seam.md](../decision-provider-seam.md) |
-| the seven tools and what bounds them | [guide-tools.md](../guide-tools.md), [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) |
-| what is recorded, and how the helper's half gets out | [guide-logging.md](../guide-logging.md), [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) |
-| the transcript on disk | [decision-on-disk-state.md](../decision-on-disk-state.md) |
-| the screen, and what interrupting loses | [guide-tui.md](../guide-tui.md) |
-| which crate owns what | [guide-repo-map.md](../guide-repo-map.md) |
+| box | chapter | owned by |
+|---|---|---|
+| the three processes, the kill chain | [07](07-kernel-primer.md), [08](08-the-two-stage-helper.md) | [guide-process-lifetime.md](../guide-process-lifetime.md) |
+| `apply`, Landlock, seccomp, the mount sequence | [08](08-the-two-stage-helper.md), [09](09-landlock.md), [10](10-seccomp.md) | [guide-sandboxing.md](../guide-sandboxing.md) |
+| the two enforcement seams | [11](11-the-two-seams.md) | [decision-enforcement-seam.md](../decision-enforcement-seam.md) |
+| what a grant confers on which axis | [12](12-a-flag-to-a-kernel-rule.md) | [decision-axis-table.md](../decision-axis-table.md) |
+| what a no-flag run derives, and what it refuses | [12](12-a-flag-to-a-kernel-rule.md) | [decision-default-policy.md](../decision-default-policy.md) |
+| the round loop, compaction, the three traps | [02](02-what-a-harness-is.md), [13](13-turn-loop-and-gate.md) | [guide-turn-loop.md](../guide-turn-loop.md) |
+| the gate, and how much it claims | [13](13-turn-loop-and-gate.md) | [decision-approval-gate.md](../decision-approval-gate.md) |
+| the provider seam and the vendor boundary | [02](02-what-a-harness-is.md) | [decision-provider-seam.md](../decision-provider-seam.md) |
+| the seven tools and what bounds them | [15](15-tools-and-the-screen.md) | [guide-tools.md](../guide-tools.md), [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) |
+| what is recorded, and how the helper's half gets out | [14](14-audit-sessions-credentials.md) | [guide-logging.md](../guide-logging.md), [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) |
+| the transcript on disk | [14](14-audit-sessions-credentials.md) | [decision-on-disk-state.md](../decision-on-disk-state.md) |
+| the screen, and what interrupting loses | [15](15-tools-and-the-screen.md) | [guide-tui.md](../guide-tui.md) |
+| which crate owns what | [05](05-seven-crates.md) | [guide-repo-map.md](../guide-repo-map.md) |
+| what is claimed, and what is not | [06](06-claims-and-non-claims.md), [17](17-gaps-and-open-questions.md) | [`SECURITY.md`](../../SECURITY.md) |
 
 ## You should now be able to explain
 
@@ -267,6 +269,7 @@ the onboarding chapters are the on-ramp to them.
 
 ## Next
 
-The chapters that zoom in, in the order on the [index](README.md). If you have
-only one more sitting, spend it on the boundary: the claims document and then
-the two enforcement seams.
+[05 — seven crates](05-seven-crates.md), the static view under this runtime one,
+and then the rest in the order on the [index](README.md). If you have only one
+more sitting, spend it on the boundary: [06](06-claims-and-non-claims.md) for
+what is claimed, then [11](11-the-two-seams.md) for where it is enforced.

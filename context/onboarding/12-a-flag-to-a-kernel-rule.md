@@ -492,3 +492,10 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
 - Why a grant reaching a harness-owned path is refused in both directions and
   with no exact-path hatch, and why the same hazard through `/proc` needed a
   different mechanism.
+
+## Next
+
+[13 — the turn loop and the gate](13-turn-loop-and-gate.md), which climbs above
+the policy to the thing that decides whether a tool call is attempted at all.
+Everything up to here bounds what a call may touch; that chapter is about
+whether the call happens.

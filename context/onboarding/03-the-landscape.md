@@ -254,10 +254,12 @@ And the bill, which is not small:
 
 ## Next
 
-The boundary chapters, in the order on the [index](README.md). Having seen the
-field, the thing to read next is what sandbx actually claims:
-[`SECURITY.md`](../../SECURITY.md), whose "What sandbx does *not* claim" section
-is the only part of this comparison the project is bound by.
+[04 — the architecture](04-the-architecture.md), which stops comparing and draws
+this one system three times — as processes, as one request's path, and as a set
+of named boundaries. Having seen the field, the other thing worth reading early
+is what sandbx actually claims: [`SECURITY.md`](../../SECURITY.md), whose "What
+sandbx does *not* claim" section is the only part of this comparison the project
+is bound by, and [06](06-claims-and-non-claims.md) is the on-ramp to it.
 
 [cc-sandbox]: https://code.claude.com/docs/en/sandboxing
 [codex]: https://learn.chatgpt.com/docs/agent-approvals-security
