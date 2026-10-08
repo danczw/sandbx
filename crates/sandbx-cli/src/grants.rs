@@ -470,8 +470,8 @@ fn current_root(granted: &[VettedPath], owned: &[OwnedPath]) -> Result<PathBuf, 
         source,
     })?;
     // `getcwd` already resolves; this is for the one thing `canonicalize` else proves — the
-    // directory is still openable, which `PathFd::new` requires and `canonical_roots` would
-    // answer by dropping the root rather than refusing.
+    // directory is still openable, which `PathFd::new` requires and `FsGuard` does not,
+    // covering nothing under a root it cannot open rather than refusing.
     let cwd = cwd
         .canonicalize()
         .map_err(|source| PolicyError::Unavailable {
