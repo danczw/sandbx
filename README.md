@@ -80,12 +80,17 @@ $ cd ~ && sandbx sandbox-run -- true
 sandbx: refusing to derive a policy from your home directory /home/you — pass --allow-read PATH and --allow-write PATH for the tree the command needs
 ```
 
-Refused as a derived root: the filesystem root; `$HOME`; where home directories
-live (`/home`, `/Users`, `/var/home`, `/root`, or anything holding one); anything
-overlapping the system binaries, which already have execute. With no usable
-`HOME` — unset, empty or pointing nowhere, as under a systemd unit, cron or
-`docker exec` — any *direct child* of those locations is refused too. Every
-refusal names the flags to type instead, and `--allow-read PATH` with
+Refused as a derived root:
+
+- the filesystem root;
+- `$HOME`;
+- where home directories live — `/home`, `/Users`, `/var/home`, `/root`, or
+  anything holding one;
+- anything overlapping the system binaries, which already have execute.
+
+With no usable `HOME` — unset, empty or pointing nowhere, as under a systemd
+unit, cron or `docker exec` — any *direct child* of those locations is refused
+too. Every refusal names the flags to type instead, and `--allow-read PATH` with
 `--allow-write PATH` lifts any of them: that guard governs what `sandbx` derives,
 never what you ask for.
 
@@ -218,35 +223,32 @@ $ sandbx sandbox-run --allow-dns example.com --allow-network 443 \
 file holding that address, an `nsswitch.conf` whose `hosts` line reads `files`
 alone so glibc has no DNS source, and a `resolv.conf` naming no nameserver. A
 name you did not list does not resolve, at once rather than after a timeout.
-The working-directory default survives: this is the one flag that makes a
-policy *smaller*, needing no `--allow-read /etc`. Every `nsswitch.conf` line
-that is not about a name is kept as the host had it, so an account that lives
-in `systemd`, `sss` or LDAP still looks up inside the sandbox.
 
-Where `resolv.conf` is a symlink out of `/etc` — the systemd-resolved default —
-that one file gets no read rule, a bind following the link so a rule spelled
-`/etc/resolv.conf` would name the target instead. The command gets `EACCES`
-there rather than `sandbx`'s body, unless some other grant reaches the target.
-The bound does not rest on that file either way: glibc is left no DNS source by
-`nsswitch.conf`, and musl, which reads it and falls back to `127.0.0.1` when it
-cannot, is left no allowlisted port to reach a nameserver on.
-
-It bounds resolution, not connection: an IP literal reaches any allowlisted
-port exactly as before. So the run is refused where a nameserver would still
-answer for every name — alongside `--dns-over-tcp`, alongside bare
-`--allow-network`, alongside `--allow-unix-sockets` (nscd answers over one, and
-glibc asks it first), with 53 in the port list, or with no `--allow-network` at
-all.
-
-It needs a host where an unprivileged user namespace may mount. A kernel that
-restricts them — `kernel.apparmor_restrict_unprivileged_userns=1`, Ubuntu's
-default since 24.04 — denies `CAP_SYS_ADMIN` inside the namespace it just let
-you create, so the run is refused rather than left resolving every name. The
-way out that stays narrow is an AppArmor profile for the `sandbx` binary
-carrying `userns,`, which restores the unshare for `sandbx` and nothing else.
-`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` also works and
-is the worse of the two: it lifts the restriction for every program on the
-host, not just this one.
+- **The working-directory default survives** — the one flag that makes a policy
+  *smaller*, needing no `--allow-read /etc`. Every `nsswitch.conf` line that is
+  not about a name is kept as the host had it, so an account that lives in
+  `systemd`, `sss` or LDAP still looks up inside the sandbox.
+- **Where `resolv.conf` is a symlink out of `/etc`** — the systemd-resolved
+  default — that one file gets no read rule, a bind following the link so a rule
+  spelled `/etc/resolv.conf` would name the target instead. The command gets
+  `EACCES` there rather than `sandbx`'s body, unless some other grant reaches the
+  target. The bound does not rest on that file either way — see
+  [SECURITY.md](SECURITY.md), which carries the glibc and musl halves.
+- **It bounds resolution, not connection.** An IP literal reaches any
+  allowlisted port exactly as before. So the run is refused where a nameserver
+  would still answer for every name — alongside `--dns-over-tcp`, alongside bare
+  `--allow-network`, alongside `--allow-unix-sockets` (nscd answers over one, and
+  glibc asks it first), with 53 in the port list, or with no `--allow-network` at
+  all.
+- **It needs a host where an unprivileged user namespace may mount.** A kernel
+  that restricts them — `kernel.apparmor_restrict_unprivileged_userns=1`,
+  Ubuntu's default since 24.04 — denies `CAP_SYS_ADMIN` inside the namespace it
+  just let you create, so the run is refused rather than left resolving every
+  name. The narrow way out is an AppArmor profile for the `sandbx` binary
+  carrying `userns,`, which restores the unshare for `sandbx` and nothing else.
+  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` also works and
+  is the worse of the two: it lifts the restriction for every program on the
+  host, not just this one.
 
 Or leave every name resolvable, over TCP, which is what a port allowlist leaves
 room for:
@@ -285,16 +287,18 @@ sandbx auth status   # says which source answered, never prints the key
 sandbx auth logout
 ```
 
-`auth login` reads the key from stdin and will not prompt, so it reaches neither
-your terminal, your shell's history nor argv. It writes
-`$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) with mode `0600` in
-a directory at `0700`, and later refuses to read the file if anyone but you can
-reach either, naming the `chmod` that fixes it rather than fixing it silently.
-`auth status` exits 0 when it found a key, 1 when there is none and 2 when one
-was refused, so a script can tell "log in" apart from "something is wrong".
+- `auth login` reads the key from stdin and will not prompt, so it reaches
+  neither your terminal, your shell's history nor argv.
+- It writes `$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) at
+  mode `0600` in a directory at `0700`, and later refuses to read the file if
+  anyone but you can reach either, naming the `chmod` that fixes it rather than
+  fixing it silently.
+- `auth status` exits 0 when it found a key, 1 when there is none and 2 when one
+  was refused, so a script can tell "log in" apart from "something is wrong".
+- Exporting the variable wins over the stored key, so you can override it for one
+  shell without logging out.
 
-Exporting the variable wins over the stored key, so you can override it for one
-shell without logging out. The stored key is plaintext, and a path grant that
+The stored key is plaintext, and a path grant that
 would reach it — `--allow-read ~/.config`, or the file's own path — is refused
 rather than honoured; an exported one is kept out of a `/proc` grant by sandbx
 concealing its own procfs entry. See [SECURITY.md](SECURITY.md).
@@ -354,10 +358,9 @@ To decide each one yourself instead, `--approve call` asks on your terminal
 before every write and every command — `y` for this call, `n` to refuse it, `a`
 for every call to that tool for the rest of the run. Read-only calls are not
 asked about, `--allow-tool` still has to have approved the tool at all, and a run
-with no terminal to ask on refuses to start rather than quietly falling back to
-the per-run answer. Those per-call lines move to the terminal with the question,
-so `2> run.log` cannot leave you answering one call blind to what the last one
-did.
+with no terminal to ask on refuses to start rather than falling back to the
+per-run answer. Those per-call lines move to the terminal with the question, so
+`2> run.log` cannot leave you answering one call blind to what the last one did.
 
 Every run opens by telling the model which roots its tools can reach, and a run
 that refuses a tool names the ones it approved too, so the turn is not spent

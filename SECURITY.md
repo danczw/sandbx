@@ -24,11 +24,11 @@ under *Known weaknesses* gets the issue number rather than a new one.
 Pre-1.0 every tag publishes as a pre-release, so "latest pre-release" means the
 highest version number on the
 [releases page](https://github.com/danczw/sandbx/releases); GitHub's own "latest"
-link stays empty until 1.0, because a pre-release cannot hold it. From 1.0 the
-link follows the highest published version, never publication order, so a patch
-released for an older line does not claim it. There are no backports: fixes land
-on `main` and ship in the next tag, and a release is cut per security fix rather
-than per phase. If you are running an alpha, run the newest one.
+link stays empty until 1.0, which a pre-release cannot hold. From 1.0 it follows
+the highest published version, never publication order, so a patch for an older
+line does not claim it. No backports: fixes land on `main` and ship in the next
+tag, one release per security fix rather than per phase. If you are running an
+alpha, run the newest one.
 
 ## What sandbx claims to enforce
 
@@ -38,17 +38,73 @@ run through `SandboxedCommand`:
 | control | mechanism | covers |
 |---------|-----------|--------|
 | filesystem | Landlock, ABI 5 minimum (`BASELINE_ABI` in `sandbx-core/src/helper/ruleset/compat.rs`), negotiated up to the newest ABI the kernel will enforce *in full* and hard-required at that level | reads, writes, and execution by path, granted separately (`Axis::grants` in `sandbx-core/src/policy.rs` is what each axis confers) |
-| entry point | SHA-256 over the descriptor the helper execs, when `--pin-sha256` names a digest (`SandboxedCommand::pin_sha256`) | the bytes of the one program sandbx itself executes, and nothing that program then spawns. The file is opened once after the policy is applied, hashed through that handle, and run as `/proc/self/fd/N`, so no path is re-resolved between the check and the `execve`. A mismatch refuses the run before anything executes, as does an image a pin cannot be checked against: a `#!` script, whose interpreter would re-open the exec'd path, and a program granted execute but not read. See the non-claim below |
+| entry point | SHA-256 over the descriptor the helper execs, when `--pin-sha256` names a digest (`SandboxedCommand::pin_sha256`) | the bytes of the one program sandbx executes, not what it spawns. Opened once after the policy is applied, hashed through that handle and run as `/proc/self/fd/N`, so no path is re-resolved between the check and the `execve`. A mismatch refuses the run before anything executes, as does an image a pin cannot cover: a `#!` script, whose interpreter would re-open the exec'd path, and a program granted execute but not read. See the non-claim below |
 | network | an empty network namespace, or — when a port allowlist is given — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when it is granted per port |
-| name resolution | when `--allow-dns NAME` is given: each name resolved in the harness before the command starts, then sandbx's own `hosts`, the host's `nsswitch.conf` with `hosts` and `networks` rewritten to `files` (leaving glibc no `dns` source, and every other database as the host had it) and a nameserver-less `resolv.conf`, bind-mounted read-only over `/etc` in a mount namespace of the command's own | which names resolve. A name the flag did not list does not resolve, immediately rather than by timeout, and the command is left no nameserver to ask instead. It bounds resolution and **not** connection — an IP literal, or an address the command already holds, is reachable on an allowlisted port exactly as before. It grants no path: the read rules are on the bound files themselves, so the flag needs no `--allow-read /etc`, and it is the one flag that makes a policy smaller. The run is refused in each shape where a nameserver the command could still reach would answer for every name — alongside `--dns-over-tcp`, alongside bare `--allow-network`, alongside `--allow-unix-sockets` (which reaches nscd's socket, asked before `nsswitch.conf` is read), or with 53 in the port list. Those four are decided on the policy itself (`SandboxPolicy::unbounded_resolution`), so an embedder calling `SandboxedCommand` meets them as well as an operator typing flags, and `HelperArgs::decode` refuses an argv carrying one; the `sandbx` CLI refuses a fifth of its own — a name allowlist with no IP egress at all, which bounds resolution to addresses nothing can reach, and is pointless rather than unenforceable. A host whose `/etc/hosts` or `/etc/nsswitch.conf` is a symlink refuses the run as well: a bind resolves the link, so it would land on the target and leave the link itself replaceable under a write grant. `resolv.conf` is exempt, a forged one naming a nameserver no bounded policy can reach: a symlinked one is bound over its target and gets no read rule, so the command reads `EACCES` there rather than sandbx's body unless some other grant reaches the target. The bound does not rest on that file — `nsswitch.conf` leaves glibc no `dns` source, and musl, which reads it and falls back to `127.0.0.1` when it cannot, is left no allowlisted port to reach a nameserver on. The flag also needs a host on which an unprivileged user namespace may mount, which a kernel restricting them does not give: under Ubuntu's `kernel.apparmor_restrict_unprivileged_userns=1` the `unshare` succeeds and `CAP_SYS_ADMIN` is then denied inside it, so the `MS_REC\|MS_PRIVATE` that precedes every bind fails with `EACCES`, no bind is attempted, and sandbx refuses the run rather than leave resolution unbounded |
+| name resolution | when `--allow-dns NAME` is given: each name resolved in the harness before the command starts, then sandbx's own `hosts`, the host's `nsswitch.conf` with `hosts` and `networks` rewritten to `files`, and a nameserver-less `resolv.conf`, bind-mounted read-only over `/etc` in a mount namespace of the command's own | which names resolve, and nothing about which hosts are reachable. A name the flag did not list does not resolve, immediately rather than by timeout, and the command is left no nameserver to ask instead — see *[What `--allow-dns` bounds](#what---allow-dns-bounds)* below |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
 | environment | `env_clear` plus a name allowlist carried on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits from the harness; everything not named is dropped, at every spawn stage, so a secret in the harness's own environment does not cross into the command |
-| syscalls | seccomp-bpf | a denylist of dangerous calls: process inspection, namespace manipulation, mounting by name (`mount`) and by descriptor (`open_tree`, `move_mount`, `fsopen`, `fsconfig`, `fsmount`, `fspick`), `mount_setattr`, which would clear `MS_RDONLY` on a mount already there, kernel module loading, the keyring, `io_uring` (which would otherwise run operations without issuing them), handles on other processes (`pidfd_getfd` steals an open descriptor), `userfaultfd`, and `memfd_create`. Namespace creation is denied on every route: `clone` is filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`. A foreign architecture is killed outright rather than refused per call — an i386 binary on x86\_64, or AArch32 on aarch64 — since its syscall numbers mean something else. On x86\_64 the x32 ABI is refused wholesale for the same reason, and needs a rule of its own because it shares the architecture the filter gates on |
+| syscalls | seccomp-bpf | a denylist of dangerous calls — process inspection, namespace manipulation, mounting, module loading, the keyring, `io_uring`, `userfaultfd`, `memfd_create` — and a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* below |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (the bounding set is best-effort — see below) |
 | process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` to leave its process group |
 | process signalling | PID namespace | a command cannot signal, or even name, any process outside its own namespace |
 
-Five properties matter as much as the list:
+### What `--allow-dns` bounds
+
+- **Resolution, not connection.** An IP literal, or an address the command
+  already holds, reaches an allowlisted port exactly as before.
+- **It grants no path**, so it needs no `--allow-read /etc`: the read rules are
+  on the bound files themselves. The one flag that makes a policy smaller.
+- **Every `nsswitch.conf` database but `hosts` and `networks` is left as the
+  host had it**, so an account living in `systemd`, `sss` or LDAP still looks up
+  inside the sandbox. Rewriting those two to `files` leaves glibc no `dns`
+  source.
+- **Four shapes refuse the run**, each one where a nameserver the command could
+  still reach would answer for every name: alongside `--dns-over-tcp`, alongside
+  bare `--allow-network`, alongside `--allow-unix-sockets` (which reaches nscd's
+  socket, asked before `nsswitch.conf` is read), or with 53 in the port list.
+  They are decided on the policy itself (`SandboxPolicy::unbounded_resolution`),
+  so an embedder calling `SandboxedCommand` meets them as well as an operator
+  typing flags, and `HelperArgs::decode` refuses an argv carrying one. The CLI
+  refuses a fifth of its own — a name allowlist with no IP egress at all, which
+  bounds resolution to addresses nothing can reach, and is pointless rather than
+  unenforceable.
+- **A symlinked `/etc/hosts` or `/etc/nsswitch.conf` refuses the run.** A bind
+  resolves the link, so it would land on the target and leave the link itself
+  replaceable under a write grant.
+- **`resolv.conf` is exempt**, a forged one naming a nameserver no bounded
+  policy can reach. A symlinked one is bound over its target and gets no read
+  rule, so the command reads `EACCES` there rather than sandbx's body unless
+  some other grant reaches the target. The bound does not rest on that file:
+  `nsswitch.conf` leaves glibc no `dns` source, and musl, which reads it and
+  falls back to `127.0.0.1` when it cannot, is left no allowlisted port to reach
+  a nameserver on.
+- **It needs a host where an unprivileged user namespace may mount.** Under
+  Ubuntu's `kernel.apparmor_restrict_unprivileged_userns=1` the `unshare`
+  succeeds and `CAP_SYS_ADMIN` is then denied inside it, so the
+  `MS_REC|MS_PRIVATE` preceding every bind fails with `EACCES`, no bind is
+  attempted, and the run is refused rather than left resolving every name.
+
+### The syscall denylist
+
+Beyond the network calls a port allowlist has to shut, seccomp-bpf denies:
+
+- process inspection, and handles on other processes — `pidfd_getfd` steals an
+  open descriptor;
+- namespace manipulation, and namespace *creation* on every route: `clone` is
+  filtered per `CLONE_NEW*` flag and `clone3` answers `ENOSYS`;
+- mounting by name (`mount`) and by descriptor (`open_tree`, `move_mount`,
+  `fsopen`, `fsconfig`, `fsmount`, `fspick`), plus `mount_setattr`, which would
+  clear `MS_RDONLY` on a mount already there;
+- kernel module loading, the keyring, `userfaultfd`, `memfd_create`;
+- `io_uring`, which would otherwise run operations without issuing them.
+
+A foreign architecture is killed outright rather than refused per call — an i386
+binary on `x86_64`, or AArch32 on `aarch64` — since its syscall numbers mean
+something else. On `x86_64` the x32 ABI is refused wholesale for the same
+reason, and needs a rule of its own because it shares the architecture the
+filter gates on.
+
+### Five properties that matter as much as the list
 
 - **It fails closed.** A kernel that cannot enforce the baseline is refused, and
   so is a ruleset it only *partly* applies — Landlock leaves an access type
@@ -62,49 +118,49 @@ Five properties matter as much as the list:
   covers the environment too: `SandboxPolicy::default()` passes zero variables.
   Nothing an embedder constructs inherits a default from the CLI.
 
-  The `sandbx` CLI is the convenience layer on top, and opts into three things.
-  Two a command needs merely to begin: read on the system binaries and libraries,
-  and the handful of environment variables. The third is a real grant — with *no*
-  path flag the working directory becomes readable and writable. Any path flag
-  replaces that default rather than adding to it, so an explicit policy is never
-  widened behind you.
+  The `sandbx` CLI is the convenience layer on top, and opts into three things —
+  two a command needs merely to begin, one a real grant:
+
+  - read on the system binaries and libraries;
+  - the handful of environment variables;
+  - with *no* path flag, read **and write** on the working directory. Any path
+    flag replaces this rather than adding to it, so an explicit policy is never
+    widened behind you.
 
   The derived default refuses to be rooted at the filesystem root, at `$HOME`,
   where home directories live, or anywhere overlapping the system binaries it
-  grants execute on; with no usable `HOME` the refusal widens to any direct child
-  of those locations rather than lapsing. The README lists them with the flags
-  that lift each, and
+  grants execute on; with no usable `HOME` it widens to any direct child of those
+  rather than lapsing. The README lists them with the flags that lift each;
   `context/decision-default-policy.md` records why the default is shaped this way.
   What that write grant means for files executed *later*, outside the sandbox, is
-  a non-claim of its own below.
-- **Grants do not widen each other, with one named exception.** Read access does
-  not confer the right to execute what it can see, and write access confers
-  neither read nor execute — a write-only drop directory stays unreadable, on the
-  kernel layer and the in-process layer alike. That is what each *grant* confers:
-  the CLI deliberately makes two of them for `--allow-write` (see *Not
-  vulnerabilities* below), while the library keeps the axes separate. The
-  exception is `allow_read_execute`, named for both rights because it grants both:
-  a program needs execute on the binary *and* read on the libraries its loader
-  pulls in, so an execute-only grant would start nothing. The asymmetry runs one
-  way — execute implies read on the same path, and no grant implies execute.
+  a non-claim below.
+- **Grants do not widen each other, with one named exception.** Read does not
+  confer execute on what it can see, and write confers neither read nor
+  execute — a write-only drop directory stays unreadable, on the kernel layer and
+  the in-process layer alike. That is what each *grant* confers: the CLI
+  deliberately makes two of them for `--allow-write` (see *Not vulnerabilities*
+  below), while the library keeps the axes separate. The exception is
+  `allow_read_execute`, named for both rights because it grants both: a program
+  needs execute on the binary *and* read on the libraries its loader pulls in, so
+  an execute-only grant would start nothing. The asymmetry runs one way — execute
+  implies read on the same path, and no grant implies execute.
 
-  This is encoded in one place, `Axis::grants` in `sandbx-core/src/policy.rs`, and
-  both enforcement layers derive from it, so neither restates the other's
-  semantics. What each still does by hand is map those grants onto its own
-  mechanism (Landlock bits, guard roots), and that step is pinned by test.
-
-  Those pinning tests run natively on x86_64 and aarch64, and against the
-  static-musl target the published binary *is* — not only the host gnu triple it
-  is built on. A static binary loads no interpreter, so what must be granted
-  before a command can start differs between the two; enforcement is asserted
-  under both at merge time and again before a release is published.
+  It is encoded once, in `Axis::grants` (`sandbx-core/src/policy.rs`), and both
+  enforcement layers derive from it rather than restating each other. What each
+  still does by hand is map those grants onto its own mechanism (Landlock bits,
+  guard roots), and that step is pinned by test — natively on x86_64 and
+  aarch64, and against the static-musl target the published binary *is*, not only
+  the host gnu triple it is built on. A static binary loads no interpreter, so
+  what must be granted before a command can start differs between the two; both
+  are asserted at merge time and again before a release is published.
 - **What sandbx keeps for itself is out of a grant's reach.** Two paths are the
   harness's rather than the project's — the session transcripts a resumed run
-  replays to the model, and the credential file `auth login` writes — and the
-  `sandbx` CLI refuses a path grant reaching either one, in either direction, on
-  every path axis and on both run subcommands. It does not ask whether anything is
-  stored there, so the same flags get the same answer on every host; `--allow-read
-  ~` and `--allow-read /` are refused as a result, and there is no override flag.
+  replays to the model, and the credential file `auth login` writes. The CLI
+  refuses a path grant reaching either, in either direction, on every path axis
+  and on both run subcommands, without asking whether anything is stored there,
+  so the same flags get the same answer on every host. `--allow-read ~` and
+  `--allow-read /` are refused as a result, and there is no override flag.
+
   The same key reached through procfs is closed by a different mechanism: sandbx
   clears its own dumpable flag at startup, so `/proc/<harness-pid>/environ` is
   refused even to a reader running as you, and a `--allow-read /proc` grant no
@@ -114,24 +170,26 @@ Five properties matter as much as the list:
 - **The path a grant was vetted as is the path the kernel is told about.** A policy
   is judged in the harness and its rules are opened in the helper, and that open
   follows every symlink — so a link redirected in between would be checked against
-  one directory and granted on another. Two things close that: every grant crosses
-  the seam already resolved, and the helper reads each descriptor back through
-  `/proc/self/fd` and refuses the whole run when it names something other than what
-  it was told to open (`open_grant` in
-  `sandbx-core/src/helper/ruleset/opened.rs`). So a grant whose *own* spelling is
-  redirected is refused rather than opened, and the refusal names both paths. Both
-  the path and the object are compared at the harness/helper seam, where a
-  descriptor exists to measure: a grant crosses carrying the `(dev, ino)` the
-  harness vetted, and the helper `fstat`s the descriptor it opened and refuses the
-  whole run as `grant_replaced` when the object differs. So a directory swapped for
-  another real directory under the same name — a `rename(2)`, not a symlink — is
-  refused although it reads back as the name it was granted
-  (`a_grant_renamed_over_after_it_was_vetted_is_refused` in
-  `sandbx-core/src/helper/ruleset/tests/opened.rs`). The in-process layer compares
-  the path alone, a non-claim below. An unpinned grant does not arise to be refused:
-  `SandboxPolicy::grant` takes a vetted path and nothing else, so the omission is a
-  compile error rather than a run that would not start. A symlink *inside* a grant
-  is a separate question, under *Not vulnerabilities* below.
+  one directory and granted on another. Both the path and the object are compared
+  at that seam, where a descriptor exists to measure:
+
+  - **The spelling.** The helper reads each descriptor back through
+    `/proc/self/fd` and refuses the whole run when it names something other than
+    what it was told to open (`open_grant` in
+    `sandbx-core/src/helper/ruleset/opened.rs`), naming both paths.
+  - **The object.** A grant crosses carrying the `(dev, ino)` the harness
+    vetted; the helper `fstat`s the descriptor it opened and refuses the run as
+    `grant_replaced` when the object differs. So a directory swapped for another
+    real directory under the same name — a `rename(2)`, not a symlink — is
+    refused although it reads back as the name it was granted
+    (`a_grant_renamed_over_after_it_was_vetted_is_refused` in
+    `sandbx-core/src/helper/ruleset/tests/opened.rs`).
+
+  Every grant crosses the seam already resolved, and an unpinned one does not
+  arise to be refused: `SandboxPolicy::grant` takes a vetted path and nothing
+  else, so the omission is a compile error rather than a run that would not
+  start. The in-process layer compares the path alone, a non-claim below; a
+  symlink *inside* a grant is a separate question, under *Not vulnerabilities*.
 
 ## What sandbx does *not* claim
 
@@ -205,22 +263,26 @@ Five properties matter as much as the list:
   ([#165](https://github.com/danczw/sandbx/issues/165)). A gate sits between the
   model asking for a tool and `sandbx-tools` running it, and `agent-run` answers
   it from the flags you typed: the four read-only tools run, and a `write`, an
-  `edit` or a `bash` comes back refused until `--allow-tool` names it. Under the
-  default `--approve run` nothing asks you in between, so once a tool is approved
-  every call to it in that turn runs, including one a prompt injection induced.
-  `--approve call` asks you on your terminal before each write and each command
-  instead — `y` for the one call, `n` to refuse it, `a` for every later call to
-  that tool — and refuses to start where there is no terminal to ask on. A
-  terminal that goes away *during* a run is fail-closed and noticed: the read
-  fails rather than returning an answer, so that call and the ones behind it in
-  the round are refused, nothing after them runs, no further request is sent, the
-  account falls back to stderr, and the process exits 3 rather than 0. A typed
-  end-of-input ends it the same way — to a read, a bare close and a hangup are
-  the same thing. What the turn did before is on stdout and in `--session`
-  ([#218](https://github.com/danczw/sandbx/issues/218)). What `--approve call`
-  shows you is the arguments the model chose, cut at 512 characters: the tail of a
-  longer command is not shown, and no answer to the prompt reveals it
-  ([#169](https://github.com/danczw/sandbx/issues/169)). The gate narrows *which*
+  `edit` or a `bash` comes back refused until `--allow-tool` names it.
+
+  - **`--approve run`**, the default, asks you nothing in between: once a tool is
+    approved every call to it in that turn runs, including one a prompt
+    injection induced.
+  - **`--approve call`** asks on your terminal before each write and each
+    command — `y` for the one call, `n` to refuse it, `a` for every later call to
+    that tool — and refuses to start where there is no terminal to ask on. What
+    it shows you is the arguments the model chose, cut at 512 characters: the
+    tail of a longer command is not shown, and no answer to the prompt reveals it
+    ([#169](https://github.com/danczw/sandbx/issues/169)).
+  - **A terminal that goes away *during* a run is fail-closed and noticed.** The
+    read fails rather than returning an answer, so that call and the ones behind
+    it in the round are refused, nothing after them runs, no further request is
+    sent, the account falls back to stderr, and the process exits 3 rather
+    than 0. A typed end-of-input ends it the same way — to a read, a bare close
+    and a hangup are the same thing. What the turn did before is on stdout and in
+    `--session` ([#218](https://github.com/danczw/sandbx/issues/218)).
+
+  The gate narrows *which*
   tools a hijacked turn can use; the sandbox is the only thing bounding *where* an
   approved one reaches, so the policy `agent-run` derives is the whole of what an
   approved call can touch — with no path flag, read *and write* over the directory
@@ -247,23 +309,23 @@ Five properties matter as much as the list:
 
   The store sits outside the working directory on purpose, so a no-flag run does
   not grant a tool write over its own history, and a path flag putting it back in
-  reach is refused rather than honoured — `--allow-read ~` would hand the model
+  reach is refused rather than honoured: `--allow-read ~` would hand the model
   every transcript you have, and `--allow-write` over the session root would let
   one turn choose what the next is told it said. The mode check cannot see that
-  route, since a tool in your own run writes with your own uid and leaves the mode
-  at `0600`, so the defence has to be the policy declining the grant
-  ([#173](https://github.com/danczw/sandbx/issues/173)). What is still unprotected
-  is a copy: a transcript you move into a tree you then grant is an ordinary file
+  route — a tool in your own run writes with your own uid and leaves the mode at
+  `0600` — so the defence has to be the policy declining the grant
+  ([#173](https://github.com/danczw/sandbx/issues/173)). Still unprotected is a
+  copy: a transcript you move into a tree you then grant is an ordinary file
   there, and so is one any other program of yours reads.
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
-  an opt-in `--timeout`; those calls always return by then. The other six tools
-  run in-process and are not timed at all. `grep` and `find` are bounded by *work*
+  an opt-in `--timeout`; those calls always return by then. The other six run
+  in-process and are not timed at all: `grep` and `find` are bounded by *work*
   instead — a cap on the files a walk visits and the bytes a search reads, after
   which the result says it stopped early — and `read`, `write`, `edit` and `ls` by
   the single file or directory they touch. None of that is a time bound: tools run
   on a blocking thread that cannot be cancelled, so one read on a stalled
-  filesystem can hang indefinitely. Nothing else is capped — no CPU bound, no
+  filesystem hangs indefinitely. Nothing else is capped — no CPU bound, no
   memory bound, no limit on processes spawned. A fork bomb is unbounded while the
   call lasts; what is bounded is that it does not outlive it.
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
@@ -284,12 +346,12 @@ Five properties matter as much as the list:
   bounds egress to port 443 — on *every* routable host. Landlock's network rules
   match the port and nothing else, and seccomp cannot read the `sockaddr` behind
   `connect`'s pointer, so neither can see where a connection is going. Per-host
-  would mean terminating every connection in a userspace proxy, and that proxy has
-  been priced and declined rather than merely postponed: its interception is
-  cooperation, not enforcement, since `HTTP_PROXY` binds only programs that read it
-  and an `LD_PRELOAD` shim on `connect` is stepped around by a static binary —
-  which sandbx's own release artifacts are. One piece of it was claimable and is
-  built: `--allow-dns NAME` bounds which *names* resolve, which is not a
+  would mean terminating every connection in a userspace proxy, priced and
+  declined rather than postponed: interception is cooperation, not enforcement —
+  `HTTP_PROXY` binds only programs that read it, and an `LD_PRELOAD` shim on
+  `connect` is stepped around by a static binary, which sandbx's own release
+  artifacts are. One piece was claimable and is built: `--allow-dns NAME` bounds
+  which *names* resolve, which is not a
   destination control either — an IP literal walks straight past it
   ([#145](https://github.com/danczw/sandbx/issues/145);
   [context/decision-egress-proxy.md](context/decision-egress-proxy.md) prices each
@@ -306,10 +368,10 @@ Five properties matter as much as the list:
   resolution fails** under `--allow-network <port>` — `getaddrinfo` can reach
   neither a UDP resolver nor `AF_NETLINK` — and so do QUIC, HTTP/3, `ping` and
   in-process kTLS. Two ways to resolve a name anyway: `--allow-dns NAME`, which
-  resolves the names it lists in the harness and asks no nameserver at all, or
-  `--dns-over-tcp` with TCP 53 allowlisted and `/etc` readable, which leaves every
-  name resolvable. The README's *Resolving a name* has both recipes and their
-  limits, and `context/decision-port-allowlist.md` why the denial is not narrower.
+  resolves in the harness and asks no nameserver at all, or `--dns-over-tcp` with
+  TCP 53 allowlisted and `/etc` readable, which leaves every name resolvable. The
+  README's *Resolving a name* has both recipes and their limits;
+  `context/decision-port-allowlist.md`, why the denial is not narrower.
 
   **And it is not uniformly narrower than withholding network.** `bind` is refused
   on every port the list does not name, `bind(0)` included, so a program that
@@ -347,16 +409,20 @@ Five properties matter as much as the list:
   a credential, not by a pattern — every other variable you name is still passed
   in full, and `sandbox-run` still passes this one, because there the program and
   its arguments are yours and the command may *be* the thing calling the provider.
-  It closes the `--allow-env` route only, and that is narrower than "the
-  environment" — the other two routes to the same key are closed elsewhere rather
-  than here. A key stored by `sandbx auth login` lives under your config
-  directory, and a grant covering it is refused: the next bullet. A key you
-  *exported* is in the harness's own environment, which a shared procfs would
-  publish to any process running as you, so sandbx conceals its own `/proc` entry
-  ([#192](https://github.com/danczw/sandbx/issues/192)) — which leaves every
-  *other* same-uid process's `environ` reachable through a `/proc` grant, and the
-  audit channel the bullet below names, so "do not grant `/proc`" stands. And the
-  flags are the operator's, so what this removes is a mistake rather than an
+
+  It closes the `--allow-env` route only, which is narrower than "the
+  environment". The other two routes to the same key are closed elsewhere:
+
+  - a key stored by `sandbx auth login` lives under your config directory, and a
+    grant covering it is refused — the next bullet;
+  - a key you *exported* is in the harness's own environment, which a shared
+    procfs would publish to any process running as you, so sandbx conceals its
+    own `/proc` entry
+    ([#192](https://github.com/danczw/sandbx/issues/192)). That leaves every
+    *other* same-uid process's `environ` reachable through a `/proc` grant, and
+    the audit channel the bullet below names, so "do not grant `/proc`" stands.
+
+  The flags are the operator's, so what this removes is a mistake rather than an
   attacker — a hijacked turn cannot pass `--allow-env`.
 - **A stored credential is protected from other users, not from the agent.**
   `sandbx auth login` writes the key to
@@ -369,18 +435,17 @@ Five properties matter as much as the list:
   exception, removing a key from a too-wide file rather than refusing — the
   alternative leaves an exposed credential on disk to protect it from exposure.
 
-  That bounds who *else* on the host can read it. It is not encryption: the key is
-  plaintext, readable by your own uid and by root, and the process holding it is
-  the harness, which is not sandboxed. Storing it removes one exposure — a key in
-  the file is not in the harness's environment, so no `--allow-env` has it to hand
-  over, on either subcommand. The file lives under your config directory, where a
-  filesystem grant would otherwise reach it, so a path grant covering it is
-  refused — `--allow-read ~/.config` and the file's own path alike, with no
-  narrower spelling that is honoured
-  ([#184](https://github.com/danczw/sandbx/issues/184)). What that leaves is
-  anything on the host reading the file as you outside sandbx: a shell, an editor,
-  a backup. An OS keyring would
-  not change this and is not offered — see
+  That bounds who *else* on the host can read it, and is not encryption: the key
+  is plaintext, readable by your own uid and by root, and held by the harness,
+  which is not sandboxed. Storing it removes one exposure — a key in the file is
+  not in the harness's environment, so no `--allow-env` has it to hand over, on
+  either subcommand. It lives under your config directory, where a filesystem
+  grant would otherwise reach it, so a path grant covering it is refused:
+  `--allow-read ~/.config` and the file's own path alike, with no narrower
+  spelling honoured
+  ([#184](https://github.com/danczw/sandbx/issues/184)). What remains is anything
+  reading the file as you outside sandbx — a shell, an editor, a backup. An OS
+  keyring would not change that and is not offered — see
   [context/decision-credentials.md](context/decision-credentials.md).
 - **The policy itself is visible to the command.** It crosses into the helper as
   argv, and a process can read its own `/proc/self/cmdline`, so the granted paths
@@ -409,18 +474,18 @@ Five properties matter as much as the list:
 - **Denying `memfd_create` does not stop a descriptor being executed.** The
   syscall is blocked because an anonymous in-memory file has no path for Landlock
   to match on, but that denies one route rather than guaranteeing anything about
-  descriptors in general: one obtained another way can still be run via
+  descriptors in general: one obtained another way still runs via
   `/proc/self/fd/N` with an ordinary `execve`. What bounds that is Landlock's path
   rules — execute comes only from `allow_read_execute` — not seccomp. A pinned run
   relies on exactly that: Landlock dereferences the magic link, so execing the
-  hashed descriptor is still checked against the program's real path and needs no
-  grant on `/proc`.
+  hashed descriptor is checked against the program's real path and needs no grant
+  on `/proc`.
 - **The sandboxed command is not marked non-dumpable.** The kernel resets
   `PR_SET_DUMPABLE=0` to dumpable on every `execve` of an ordinary binary, so
-  setting it in the helper would affect only the helper's own process, not the
-  command it re-execs into. Core dumps are still fully suppressed via
-  `RLIMIT_CORE=0`, which does persist across exec; the ptrace-attach protection
-  `PR_SET_DUMPABLE=0` would otherwise add is not achievable here. sandbx's own
+  setting it in the helper would affect the helper's own process only, not the
+  command it re-execs into. Core dumps are still suppressed via `RLIMIT_CORE=0`,
+  which does persist across exec; the ptrace-attach protection it would otherwise
+  add is not achievable here. sandbx's own
   process *is* marked non-dumpable — a claim about a different process, in *What
   sandbx keeps for itself is out of a grant's reach* above — and that same reset
   is why it costs the command nothing: the command's environment holds only what
