@@ -56,9 +56,12 @@ const NO_CONSENT: i32 = 3;
 ///
 /// One argument rather than two because they are the same operator seen twice: stdout
 /// carries the model's answer and is piped, so a question has to go somewhere else.
-struct Channels<W> {
+struct Channels<W, E> {
     /// The answer, streamed as it arrives.
     out: W,
+
+    /// Everything about the answer: reasoning, and how the turn ended.
+    err: E,
 
     /// The controlling terminal, `Some` under `--approve call` alone. Opening the real
     /// device ([`Terminal::open`]) is what no suite here covers, nor the process's own
@@ -284,6 +287,7 @@ impl AgentRun {
             system,
             Channels {
                 out: std::io::stdout(),
+                err: std::io::stderr(),
                 terminal,
             },
             session,
@@ -331,16 +335,16 @@ impl AgentRun {
     /// The stream opener and the channels are arguments so a test can drive a canned turn
     /// and read back what the request carried — the only way to check either without a
     /// key.
-    async fn drive<W: Write>(
+    async fn drive<W: Write, E: Write>(
         &self,
         mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
         prompt: String,
         system: Option<String>,
-        channels: Channels<W>,
+        channels: Channels<W, E>,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
-        let Channels { out, terminal } = channels;
+        let Channels { out, err, terminal } = channels;
         let asked = RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],
@@ -383,7 +387,7 @@ impl AgentRun {
         // Read off before `run_turn` takes the turn by value.
         let next = wrapup::Next::after(&turn);
 
-        let mut render = Render::new(out).showing_thinking(self.show_thinking);
+        let mut render = Render::with(out, err).showing_thinking(self.show_thinking);
         let outcome = run_turn(
             &mut open,
             turn,
@@ -660,6 +664,7 @@ mod tests {
             system,
             Channels {
                 out: &mut out,
+                err: Vec::new(),
                 terminal: None,
             },
             session,
@@ -687,6 +692,7 @@ mod tests {
             None,
             Channels {
                 out: Vec::new(),
+                err: Vec::new(),
                 terminal: None,
             },
             session,
@@ -721,6 +727,7 @@ mod tests {
             system,
             Channels {
                 out: &mut out,
+                err: Vec::new(),
                 terminal: Some(terminal),
             },
             session,
