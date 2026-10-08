@@ -97,11 +97,9 @@ inherit it.
 unresolvable name already use.
 
 So the model is told, and may answer in prose or ask for a tool the gate allows;
-`max_rounds` is what bounds one that keeps retrying. `TurnError` gained no variant
-and `agent-run` gained no exit code, because a refused call is a healthy turn, not
-a failed one. A gate that wants to *end* a turn can still do it — deny every call
-and the round limit arrives, which `agent-run` reports as an answer a bound cut
-short rather than as a failure.
+`max_rounds` is what bounds one that keeps retrying. `TurnError` gained no
+variant, because a refused call is a healthy turn, not a failed one. A gate that
+wants to *end* a turn says so instead, which is the section below.
 
 No audit record either. `AuditEvent::Denied` records what the sandbox refused to
 let a *running* tool touch; a call that never ran touched nothing. The operator's
@@ -118,6 +116,61 @@ block, whichever of the five outcomes it reached.
 Both directions on one channel or neither: `2> run.log` would otherwise leave an
 operator answering call N+1 having not seen what call N did, which is consent
 given with the evidence redirected away.
+
+## A lost channel is a third verdict
+
+A gate that can no longer be *asked* is not a gate that said no.
+`ApprovalDecision::Abort { reason }` answers the call as a `Deny` would, refuses
+every call behind it in the round without asking, and ends the turn as
+`TurnStop::GateAborted`. `agent-run` exits 3 for it.
+
+#218 filed two defects against the old behaviour, and only the pair of them
+justifies a public variant. A hung-up terminal already refused correctly and
+promptly — but the turn went round again and opened another provider stream,
+paid for with nobody at the other end, and the process exited 0, so an
+unattended caller read a vanished operator as success.
+
+**The trigger is the CLI's; the mechanism cannot be.** Distinguishing a channel
+failure from an operator's `n` is `prompt.rs`'s alone — it is the only layer that
+can tell them apart without guessing at intent, and `--allow-tool`'s own refusal
+stays a `Deny` because a tool no flag approved is a decision. But a CLI-confined
+fix has no lever on the cost: `Deny` is recoverable by design, so the round loop
+still iterates `max_rounds` times opening a stream each time. A latch read after
+`run_turn` returned would have closed "exits 0" and left "keeps paying" exactly
+as filed.
+
+- **Fail-closed, both ways.** The abort refuses the call it landed on; it never
+  lets one through, which is the one way a fix here could be worse than the bug.
+  And the calls behind it are refused *unasked* rather than allowed on the
+  strength of a verdict nobody gave.
+- **The round is answered in full.** A `tool_use` with no matching `tool_result`
+  is a transcript no provider takes back, and this one is stored and resumed.
+- **A `TurnStop`, not a `TurnError`.** An error variant would discard the turn's
+  messages, usage and `withheld`, losing work already done to a channel that
+  failed after it — and skipping the `--session` append, so the operator would
+  lose the record at the moment they most need it.
+- **No payload on the variant.** `TurnStop` stays `Copy`, and the reason is
+  already in the last `tool_result` and in the gate's own `settled` line.
+- **No sixth `Outcome`.** The aborting call reports `Outcome::Denied` carrying
+  the channel reason verbatim, which the per-call line already renders.
+- **The wrap-up round is skipped**, `--no-wrap-up` being irrelevant on this path:
+  that request is precisely the one there is no longer anyone to have asked for.
+- **Exit 3, not 2.** `2` means a bound the operator chose cut the turn short; a
+  lost operator is neither bound nor anything they configured, and the two can
+  co-occur. Reusing it would leave the defect distinguishable only by grepping
+  stderr. `3` wins over a `max_tokens` cut, a bound being recoverable by raising
+  a flag where this is not.
+
+One typed `VEOF` ends the turn with it, which is a real behaviour change: `read`
+returns 0 for a bare close and for an end of input alike, and both mean nobody is
+answering. Probing with a write afterwards *would* separate them — a device that
+still accepts one is still there — but it is extra mechanism for a case where
+both readings point the same way.
+
+So three things record the refusal durably, none of which needs a live terminal:
+the exit code, the stderr line `Render` writes, and the `tool_result` in the
+session. That is what lets "No audit record either" above stand as a claim rather
+than as a gap.
 
 ## Deny by default, and the honest claim
 
@@ -183,7 +236,9 @@ before the first request rather than taking the argv answer. Falling back is
 fail-closed against the default and fail-**open** against the request: an operator
 who passed the flag chose a decision per call, and quietly serving them one per
 run hands the run a weaker regime than they asked for. The refusal names the flag
-to drop, since dropping it is the whole remedy.
+to drop, since dropping it is the whole remedy. The same rule holds for a channel
+lost *mid*-run: falling back to the argv answer there would be the identical
+fail-open one request later, so the turn ends instead.
 
 **The model's answer shares that terminal.** stdout is usually the same device,
 and the whole round's text streams before the gate asks anything, so the model

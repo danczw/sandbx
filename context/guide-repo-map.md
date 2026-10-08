@@ -175,12 +175,13 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
    turn.rs    run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
-   approval.rs  what a gate is asked, the two answers it may give, and the
-                five outcomes it is told a call reached
+   approval.rs  what a gate is asked, the three answers it may give — one of
+                which ends the turn — and the five outcomes it is told a call
+                reached
    compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
    error.rs   TurnError (5 variants)
-tests/       turn_loop (22), turn_compaction (23),
+tests/       turn_loop (28), turn_compaction (24),
              support/mod.rs — the Script double and the request builders
 ```
 
@@ -223,8 +224,9 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
       gate.rs   which tools --allow-tool approved, the refusal the rest get,
                 and the one line per call the operator reads
       prompt.rs --approve call: the question put on /dev/tty, the three answers
-                it takes, the refusal an unanswerable one gets, and Operator,
-                which carries the per-call line back to the same device
+                it takes, the verdict that ends the run when it can no longer be
+                asked, and Operator, which carries the per-call line back to the
+                same device
       orientation.rs
                 the approved tools and the roots the model is told about before
                 the first request

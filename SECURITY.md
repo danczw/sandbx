@@ -211,10 +211,13 @@ Five properties matter as much as the list:
   `--approve call` asks you on your terminal before each write and each command
   instead — `y` for the one call, `n` to refuse it, `a` for every later call to
   that tool — and refuses to start where there is no terminal to ask on. A
-  terminal that goes away *during* a run is fail-closed but unnoticed: the read
-  fails rather than returning an answer, so every remaining call is refused and
-  the account of it falls back to stderr, but the turn runs on, pays for at least
-  one more request, and the process still exits 0
+  terminal that goes away *during* a run is fail-closed and noticed: the read
+  fails rather than returning an answer, so the call being asked about and every
+  call behind it in that round are refused, nothing after them runs, no further
+  request is sent, the account of it falls back to stderr, and the process exits
+  3 rather than 0. One typed end-of-input ends the run the same way, a bare close
+  and a hangup being indistinguishable from a read. Whatever the turn did before
+  that is on stdout and in `--session`
   ([#218](https://github.com/danczw/sandbx/issues/218)). What it
   shows you is the arguments the model chose, cut at 512 characters: the tail of a
   longer command is not shown, and no answer to the prompt reveals it
