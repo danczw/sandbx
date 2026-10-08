@@ -385,3 +385,8 @@ the code is arranged to what the arrangement promises. The chapter that picks up
 *this* one's other half is much later:
 [16](16-how-the-repo-is-maintained.md) is the same instinct applied to prose
 instead of code, and the Rust tests that hold documentation to it.
+
+This chapter draws the graph; it does not go inside any of its boxes. Each
+crate's own module tree, type by type, is [18](18-crate-core.md) through
+[24](24-crate-cli.md) — reference chapters, read when you land in a crate rather
+than in sequence from here.

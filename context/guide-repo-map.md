@@ -300,11 +300,12 @@ users reasonably read as the same flags.
 
 ## Reading order
 
-Two passes, if the repo is new to you. `context/onboarding/` is the first:
-eighteen numbered chapters that build the vocabulary this order assumes, from
-what sandbx is to why the order of `apply` is load-bearing, with their own index
-and no entry here per chapter. The order below is the second pass, and reads as
-reference rather than as a wall once the first is done.
+Two passes, if the repo is new to you. `context/onboarding/` is the first: a
+numbered read-through that builds the vocabulary this order assumes, from what
+sandbx is to why the order of `apply` is load-bearing, followed by a per-crate
+reference block read when you land in a crate rather than in order. It carries
+its own index, and no entry here per chapter. The order below is the second
+pass, and reads as reference rather than as a wall once the first is done.
 
 1. `guide-repo-map.md` — this file: which crate owns what, and what depends on
    what

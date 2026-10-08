@@ -140,6 +140,11 @@ command.envs(policy.imposed_env().iter().copied());
 here holds the single exemption, so narrowing is a property of *construction*
 rather than a call each spawn site must remember. Covers which variables cross.
 Says nothing about the value of one that does.
+[decision-environment-allowlist.md](../decision-environment-allowlist.md)
+records why there is one builder and not a clear at each spawn site: with four,
+each of the four was unfalsifiable, because deleting any one left a later one
+covering for it and the command's environment byte-identical.
+[05](05-seven-crates.md) is where that argument is traced through the lint.
 
 ### Syscalls
 

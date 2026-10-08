@@ -52,6 +52,58 @@ pointing at a hole, which is the thing this numbering is arranged to avoid.
 **If you need to be useful tomorrow:** 01, then 04, then 06 — and then
 [`SECURITY.md`](../../SECURITY.md) itself, which 06 is the on-ramp to.
 
+## The crate reference
+
+The seven below are not a second pass over the same ground, and they are not
+meant to be read in order. They answer a different question from 01–17: not why
+the system has this shape or what it promises, but what is in each file of a
+given crate and what each module is responsible for. Read one when you land in
+that crate.
+
+| chapter | covers |
+|---|---|
+| [18 — sandbx-core](18-crate-core.md) | the largest crate, and the one most thoroughly covered elsewhere: the module map as a routing table, the `compile_error!` that makes it Linux-only, twelve private modules behind one public list, and `policy.rs`, `resolver.rs`, `concealment.rs` and the closed error set in full |
+| [19 — sandbx-tools](19-crate-tools.md) | seven modules and one match: the closed enum, the five shared helpers, a tool-by-tool pass over what each one's input is and which guard call it makes, and the policy as a private field that is spent rather than lent |
+| [20 — sandbx-providers](20-crate-providers.md) | a tree with the vendor boundary in the middle: the neutral half above `anthropic.rs`, the four parts of that boundary the compiler holds, SSE framing, the delta fold, and the two halves of the wire |
+| [21 — sandbx-agent](21-crate-agent.md) | the smallest crate and the one holding the control flow: thirteen public names, `run_turn`'s signature read before its body, the offered tool set, the gate's one blocking site, and compaction as a cut-point algebra |
+| [22 — sandbx-session](22-crate-session.md) | the one thing that outlives the run: a three-line identifier allowlist, two roots tried and one never considered, five types that are deliberately not the provider's, and which bit of a file's mode refuses rather than reports |
+| [23 — sandbx-tui](23-crate-tui.md) | a crate that decides nothing and sanitises everything it draws: an eight-line `lib.rs` whose manifest is the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
+| [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent.rs` and its six submodules as one pipeline, and the exit codes |
+
+These run longer than the read-through chapters, and that is the one place in
+the set where length was not trimmed to a sitting. A reference chapter is read
+by the section; cutting the `sandbx-core` one to a sitting would have meant
+dropping modules rather than shortening prose.
+
+## Every decision record, and where its vocabulary comes from
+
+[`context/`](../) holds nineteen `decision-*.md` files, and they are the hardest
+part of the repo to arrive at cold — each is the record of one choice, written
+for someone who already knows the alternatives it was chosen over. Each row
+names the chapter that supplies what the record assumes.
+
+| decision record | read first |
+|---|---|
+| [decision-approval-gate.md](../decision-approval-gate.md) | [13](13-turn-loop-and-gate.md) |
+| [decision-audit-records-access.md](../decision-audit-records-access.md) | [14](14-audit-sessions-credentials.md) |
+| [decision-axis-table.md](../decision-axis-table.md) | [09](09-landlock.md) |
+| [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) | [15](15-tools-and-the-screen.md), [19](19-crate-tools.md) |
+| [decision-credentials.md](../decision-credentials.md) | [14](14-audit-sessions-credentials.md) |
+| [decision-default-policy.md](../decision-default-policy.md) | [12](12-a-flag-to-a-kernel-rule.md) |
+| [decision-egress-proxy.md](../decision-egress-proxy.md) | [10](10-seccomp.md) |
+| [decision-enforcement-seam.md](../decision-enforcement-seam.md) | [11](11-the-two-seams.md) |
+| [decision-environment-allowlist.md](../decision-environment-allowlist.md) | [06](06-claims-and-non-claims.md), [05](05-seven-crates.md) |
+| [decision-grant-identity.md](../decision-grant-identity.md) | [09](09-landlock.md) |
+| [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) | [12](12-a-flag-to-a-kernel-rule.md) |
+| [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) | [14](14-audit-sessions-credentials.md) |
+| [decision-on-disk-state.md](../decision-on-disk-state.md) | [14](14-audit-sessions-credentials.md), [22](22-crate-session.md) |
+| [decision-pinned-entry-point.md](../decision-pinned-entry-point.md) | [12](12-a-flag-to-a-kernel-rule.md) |
+| [decision-port-allowlist.md](../decision-port-allowlist.md) | [10](10-seccomp.md) |
+| [decision-provider-seam.md](../decision-provider-seam.md) | [02](02-what-a-harness-is.md), [20](20-crate-providers.md) |
+| [decision-round-limit-answer.md](../decision-round-limit-answer.md) | [13](13-turn-loop-and-gate.md) |
+| [decision-thinking-replay.md](../decision-thinking-replay.md) | [02](02-what-a-harness-is.md) |
+| [decision-tool-credentials.md](../decision-tool-credentials.md) | [14](14-audit-sessions-credentials.md) |
+
 ## Links into the code
 
 The rest of `context/` deliberately never links to a source file. Commit

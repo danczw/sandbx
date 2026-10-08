@@ -372,8 +372,8 @@ git config core.hooksPath .githooks                    # fmt + clippy on commit
 `unsafe` is forbidden in every crate and spawning a subprocess outside
 `sandbx-core` is a clippy error, so the boundary is enforced by the build.
 
-- `context/onboarding/` — the read-through for a new engineer, eighteen chapters
-  from what sandbx is to why the order of `apply` cannot be permuted.
+- `context/onboarding/` — the read-through for a new engineer, from what sandbx
+  is to why the order of `apply` cannot be permuted, then a chapter per crate.
 - `context/guide-repo-map.md` — which crate owns what, and what depends on what.
 - `context/guide-ci.md` — what the hooks run before a commit, and CI after a push.
 - `context/guide-module-layout.md` — a module's budget, and where its tests live.

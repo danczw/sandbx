@@ -473,10 +473,14 @@ What hand-rolling costs:
 
 What it buys:
 
-- **The vendor boundary.** No vendor name appears above
+- **The vendor boundary.** Every vendor *rule* and wire string sits at or below
   [`anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs), and `Prompt`
   has no `Serialize` at all, so the top-level types cannot be posted to any API
-  by accident (#59).
+  by accident (#59). The *name* does appear higher up, and it is worth being
+  precise about where: `lib.rs` re-exports `AnthropicClient`, `credentials.rs`
+  holds `anthropic_api_key` and the variable it reads, and four more files name
+  the vendor in doc comments. None of them carries a byte of the protocol, which
+  is the half of the boundary the compiler holds.
 - **The protocol is testable without a network.** The body is a
   `serde_json::Value` compared against a literal; the accumulator is fed a
   sequence of raw events. Both of those are unit tests on a machine with no
