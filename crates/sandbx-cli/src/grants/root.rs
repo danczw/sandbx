@@ -4,9 +4,11 @@
 //! doing: the home rules, the paths sandbx owns, and the resolve-then-pin sequence a grant
 //! crosses the seam in. Nothing here reads a flag.
 //!
-//! The order inside [`vetted_root`] is load-bearing, and the sequence
-//! [`absolute`] → [`resolved`] → [`reaches_owned`] → [`pinned`] is the one both callers run a
-//! path through: comparing one spelling and granting another is the window it closes.
+//! Two orders are load-bearing and neither is in one function. [`vetted_root`]'s refusals run
+//! in the order they are written. A flag goes through [`absolute`], [`resolved`],
+//! [`reaches_owned`], then [`pinned`], from the loop in `Grants::policy`; the derived default
+//! reaches the same end through [`current_root`] and [`pinned`]. Comparing one spelling and
+//! granting another is the window that closes.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
