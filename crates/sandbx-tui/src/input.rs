@@ -27,6 +27,10 @@ impl Keys {
     /// The thread outlives the turn: `event::read` cannot be cancelled, so it sits in one
     /// until the next key or the end of the process. It holds no state and draws nothing, so
     /// what it outlives it cannot disturb.
+    ///
+    /// Parked there it holds crossterm's one reader lock, so nothing else may ask the terminal
+    /// a question whose answer arrives on stdin — a cursor-position query times out instead.
+    /// [`Screen::redraw`](crate::Screen::redraw) is the caller that has to avoid one.
     pub fn listen() -> Self {
         let (sender, seen) = watch::channel(Seen::default());
         std::thread::spawn(move || read(&sender));
