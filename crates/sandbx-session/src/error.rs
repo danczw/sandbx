@@ -42,8 +42,8 @@ pub enum SessionError {
         path: PathBuf,
     },
 
-    /// A newer format than this build reads; refused rather than read best-effort,
-    /// since dropping an unknown field would change the history the model is shown.
+    /// A newer format than this build reads; refused, since best-effort would drop a field
+    /// and so change the history the model is shown.
     UnsupportedVersion {
         /// The file that was read.
         path: PathBuf,
@@ -61,8 +61,8 @@ pub enum SessionError {
         source: serde_json::Error,
     },
 
-    /// The transcript is writable by somebody else. Refused, unlike a merely readable
-    /// one: a history another user can edit is one they choose, and it drives tool calls.
+    /// Writable by somebody else, and refused unlike merely readable: an editable history
+    /// is one they choose, and it drives tool calls.
     Writable {
         /// The transcript that was refused.
         path: PathBuf,
@@ -79,8 +79,8 @@ pub enum SessionError {
         mode: u32,
     },
 
-    /// The transcript, or its directory, is a symbolic link: following one vets a
-    /// different file than it reads, and for the root `chmod`s outside the store.
+    /// A symbolic link: following one vets a different file than it reads, and for the
+    /// root, `chmod`s outside the store.
     Symlink {
         /// The link that was refused.
         path: PathBuf,
@@ -106,11 +106,8 @@ pub enum SessionError {
     IncompleteTurn,
 
     /// The turn holds two messages of the same role in a row, joins the stored history on
-    /// the role it ends with, or opens an empty transcript on the model's reply.
-    /// [`Disordered`] is the same defect found on the way back in, by which time the
-    /// write cannot be undone.
-    ///
-    /// [`Disordered`]: Self::Disordered
+    /// the role it ends with, or opens an empty transcript on the model's reply — the same
+    /// defect `Disordered` catches after a write that cannot be undone.
     DisorderedTurn,
 
     /// An operation on the store's files failed.

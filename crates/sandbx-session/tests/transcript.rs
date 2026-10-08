@@ -49,7 +49,6 @@ fn called(id: &str) -> Vec<Message> {
     ]
 }
 
-/// The answer alone, which is where such a turn ends.
 fn answered(id: &str) -> Message {
     Message {
         role: Role::User,

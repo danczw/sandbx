@@ -105,15 +105,14 @@ impl SessionStore {
 
     /// Reopen a session and read back everything it holds.
     ///
-    /// Refuses a transcript, or its directory, somebody else can write or owns. The
-    /// directory goes first, since writing it allows a rename over the transcript
-    /// whatever its mode. Every mode and uid is read through an open descriptor, so the
-    /// file vetted is the file read.
+    /// Refuses a transcript or directory somebody else can write or owns, directory first
+    /// since writing it lets a rename replace the transcript regardless of its mode. Mode
+    /// and uid come from the open descriptor, so the file vetted is the file read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
         let path = self.path_for(id);
         let owner = nix::unistd::getuid().as_raw();
 
-        // No root at all means no session by that id: what was asked about.
+        // A missing root is no session by that id, which is what was asked.
         let directory = match open_root(&self.root) {
             Err(SessionError::Io { source, .. }) if source.kind() == ErrorKind::NotFound => {
                 return Err(SessionError::NotFound { id: id.clone() });
@@ -159,8 +158,7 @@ impl SessionStore {
 
         let (messages, observed, withheld) = fold(&path, &body)?;
         // The whole history, not just its end: a hand-edited file can hold an illegal pair
-        // of user turns anywhere, or open on the model's reply. No messages at all is a
-        // session not yet talked to.
+        // of user turns anywhere, or open on the model's reply.
         if !messages.is_empty() {
             if !resumable(&messages) {
                 return Err(SessionError::IncompleteTurn);
@@ -263,9 +261,6 @@ impl Session {
 
     /// True when the conversation breaks off on tool calls the model never answered,
     /// which is a turn that ran out of rounds (#188).
-    ///
-    /// Exposed so a caller merging the next prompt *beside* those results need not
-    /// reimplement the predicate `append` and `resume` are checked against.
     #[must_use]
     pub fn pending_call(&self) -> bool {
         self.messages.last().is_some_and(answers_only)
@@ -280,14 +275,12 @@ impl Session {
 
     /// Add a finished turn to the end of the transcript.
     ///
-    /// Refuses a turn ending on a user message that is not purely answers to tool calls:
-    /// a prompt nothing replied to. A turn with no messages leaves the last role where it
-    /// was, so it writes its accounting line alone.
+    /// Refuses a turn ending on an unanswered user message; an empty turn still writes
+    /// its accounting line, leaving the last role unchanged.
     ///
-    /// Both of [`SessionStore::resume`]'s conditions are checked here, over the batch and
-    /// over its boundary with what is stored. The file is append-only, so one that lands
-    /// disordered cannot be taken back out: it would be refused by every later resume,
-    /// after a run that exited zero.
+    /// Checks both of [`SessionStore::resume`]'s conditions — within the batch and against
+    /// what is already stored — since the file is append-only: a disordered write can't be
+    /// undone, and every later resume would refuse it.
     pub fn append(&mut self, turn: CompletedTurn<'_>) -> Result<(), SessionError> {
         if !turn.messages.is_empty() {
             if !resumable(turn.messages) {
@@ -324,8 +317,7 @@ impl Session {
     fn write(&mut self, records: &[Record]) -> Result<(), SessionError> {
         let mut lines = String::new();
         for record in records {
-            // An I/O failure, not a variant of its own: nothing a record holds can fail
-            // to serialize, so there is no case for a caller to act on.
+            // Mapped to `Io`, not its own variant: nothing a record holds can fail to serialize.
             let line = serde_json::to_string(record).map_err(|error| SessionError::Io {
                 path: self.path.clone(),
                 source: std::io::Error::other(error),

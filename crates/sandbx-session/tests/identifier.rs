@@ -24,8 +24,7 @@ fn a_traversing_id_is_refused_before_any_io() {
         "UPPER",
         "~",
         "",
-        // One over the length bound.
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // One over the 32-byte bound.
     ] {
         let err = SessionId::from_str(value).unwrap_err();
 

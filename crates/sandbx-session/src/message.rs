@@ -1,9 +1,6 @@
-//! What a transcript line holds: one turn of the conversation, and what the request for
-//! it cost.
-//!
-//! These mirror `sandbx_providers`' `RequestMessage`, `Role` and `ContentBlock` field
-//! for field, and `sandbx_agent`'s `PromptUsage`, but are declared again so this crate
-//! depends on no other: a format that moves whenever a provider type moves is not one.
+//! What a transcript line holds: one turn of the conversation, and what the request for it
+//! cost. Mirrors `sandbx_providers`'s `RequestMessage`, `Role` and `ContentBlock`, and
+//! `sandbx_agent`'s `PromptUsage`, declared again so this crate depends on no other;
 //! `sandbx-cli` translates, and fails to compile on a new block kind.
 
 use serde::{Deserialize, Serialize};
@@ -38,8 +35,7 @@ pub enum Content {
     },
     /// A tool call the model made.
     ToolUse {
-        /// The vendor's call id, echoed by the answering
-        /// [`ToolResult`](Self::ToolResult).
+        /// The vendor's call id, echoed by the answering [`ToolResult`](Self::ToolResult).
         id: String,
         /// The tool's name, as the model called it.
         name: String,
