@@ -224,10 +224,12 @@ src/lib.rs          re-exports; nothing here knows of a policy or a provider
 ```
 src/lib.rs      Cli, Command — the clap surface and nothing else
    grants.rs    Grants — the --allow-… flags, flattened into every subcommand
-                that confines something,
-                the policy they derive, the working-directory default a
-                no-flag run gets, and the refusal of a grant reaching a path
-                sandbx owns (unit-testable without a sandbox-capable kernel)
+                that confines something, and the policy they derive
+   grants/root.rs
+                where a no-flag run may root its default policy, and what a
+                path flag is vetted against, including the refusal of a grant
+                reaching a path sandbx owns (unit-testable without a
+                sandbox-capable kernel)
    sandbox.rs
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller
