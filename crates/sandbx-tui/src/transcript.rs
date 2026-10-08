@@ -38,9 +38,9 @@ pub struct Transcript {
     rounds: usize,
 
     /// The last figure reported for the prompt and for the output, `None` until one arrives.
-    /// Held per field: the API omits either independently, and a zero must not read as an
-    /// absence overwriting a shown figure. Not a sum: each is one request's, as
-    /// `TurnOutcome::usage` is.
+    /// Held per field because the API omits either independently: a reported zero is a
+    /// figure, and an absence must not take a shown one back off the screen. Not a sum:
+    /// each is one request's, as `TurnOutcome::usage` is.
     tokens: (Option<u32>, Option<u32>),
 }
 
