@@ -107,6 +107,26 @@ same status. `Failed.reason` comes from `SandboxError::label` — exhaustive, so
 new error variant has to decide what a trail calls it, and the trail cannot name
 a reason the error type does not define.
 
+**Five of the 23 labels name a mechanism no other section covers.**
+
+- `not_found` — a path inside a granted root names nothing. Outside a grant the
+  same miss is `path_not_allowed`: ENOENT against EACCES over arbitrary paths
+  reads back as a map of the host.
+- `pin_unreadable` — a pinned program's bytes were never established. A pin needs
+  read access, which execute alone does not give, so a mode-111 binary runs
+  unpinned and cannot be pinned — which is why it is not `exec_failed`.
+- `pinned_script` — a `#!` script cannot be pinned. The kernel hands the
+  interpreter the path of the descriptor sandbx hashed and exec'd, and the
+  interpreter opens it again, by then closed
+  (`decision-pinned-entry-point.md`).
+- `process_hardening` — this process is not in the state a sandboxed command may
+  be born into: capabilities not dropped, core dumps not disabled, or an
+  environment an earlier stage should have narrowed. One label and not three,
+  because all three are inherited across `exec`.
+- `process_concealment` — the harness could not hide its own process state, so a
+  granted `/proc` would still reach the provider key in its environment. About
+  the harness, where `process_hardening` is about what the command is born into.
+
 ## The sink
 
 `sandbx-cli/src/logging.rs` — the one subscriber the binary installs (#89).
@@ -185,7 +205,7 @@ so `degraded` and the terminal record are both timestamped after `spawned`. See
 | Missing | Consequence |
 |---|---|
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone. Zero emission sites in tools, agent, providers, tui, session |
-| session ids | nothing ties a spawn to its outcome but `program`. `SessionId` now exists (`sandbx-session`) and reaches no `tracing` field, so a correlation id is buildable rather than built; see #96 |
+| session ids | nothing ties a spawn to its outcome but `program`. `SessionId` now exists (`sandbx-session`) and reaches no `tracing` field, so a correlation id is buildable rather than built |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`. XDG resolution exists but not for a log: `sandbx-session/src/paths.rs` is what a sink would reuse |
 
 Libraries emit and never choose a sink — no emission site touches a file or a
