@@ -136,15 +136,17 @@ architecture the filter gates on.
   ([context/decision-harness-owned-paths.md](context/decision-harness-owned-paths.md)).
   The non-claims below say what each of the two leaves open.
 - **The path a grant was vetted as is the path the kernel is told about.** Policy
-  is judged in the harness, rules are opened in the helper, and that open follows
-  every symlink. Both path and object are compared at that seam, and the object on
-  the in-process layer too:
+  is judged in the harness, rules are opened in the helper from the path the
+  harness already resolved, and that open follows every symlink. Both path and
+  object are compared at that seam, and the object on the in-process layer too:
 
   - **The spelling.** The helper reads each descriptor back through
     `/proc/self/fd` and refuses the whole run when it names something other than
     what it was told to open.
-  - **The object.** A grant carries the `(dev, ino)` the harness vetted; the
-    helper `fstat`s and refuses the run as `grant_replaced` when the object
+  - **The object.** A grant carries the `(dev, ino)` the harness vetted, and
+    `SandboxPolicy::grant` takes nothing else, so an unpinned grant is a compile
+    error rather than a run that would not start. The helper `fstat`s and refuses
+    the run as `grant_replaced` when the object
     differs, and `FsGuard` measures the root through an `O_PATH` descriptor at
     every access and refuses that access as `root_replaced`. So a directory
     swapped for another real directory under the same name — a `rename(2)`, not a
@@ -154,7 +156,9 @@ architecture the filter gates on.
     and on its lexical collapse, before anything is resolved, so a link the
     substitute holds cannot pick it. A substitution reached only by *resolving*,
     through a link planted in a root that does confirm, refuses as plainly outside
-    instead: a reason drawn from a resolution would say whether the name is there.
+    instead at the three sites that answer a caller: the access does not happen
+    either way, and a reason drawn from a resolution would say whether the name is
+    there. A walk answers no caller, so it records the root it resolved into.
 
   A granted name that has become a *symlink* is a root to neither layer, though
   both follow it. The guard gets the link's target, and refuses as `root_replaced`
@@ -185,9 +189,11 @@ architecture the filter gates on.
   so a no-flag run from a user-level install prefix (`~/.cargo/bin`,
   `~/.local/bin`) grants write there; a `/usr`-rooted prefix is refused.
 - **The in-process confirmation is a measurement, not a resolution.** `FsGuard`
-  measures a granted root and then opens the path beneath it, two adjacent
+  measures a granted root and then performs the access beneath it, two adjacent
   syscalls apart, so a substitution landing between the two is granted on the
-  object the confirmation saw. Bounded by two syscalls rather than by the life of
+  object the confirmation saw. The bare `check_read` and `check_write` hand a
+  library caller a path and bound nothing after the measurement; no tool uses
+  them. Bounded by two syscalls rather than by the life of
   the policy, but not closed — the same gap the `FsGuard` TOCTOU row in
   [context/guide-sandboxing.md](context/guide-sandboxing.md) names. `find` and
   `grep` are wider: a walk confirms its root once and then descends, so the window
