@@ -48,9 +48,6 @@ tools over a temp dir rather than mocking below the tool boundary.
 none of it: `agent-run` builds the client and the first user turn itself, and
 renders the events the loop hands back.
 
-It also owns the tokio runtime, because the flavour is the binary's choice and
-`sandbx-agent` deliberately does not make it — see `guide-turn-loop.md`.
-
 ## `sandbx-core`
 
 ```
@@ -88,7 +85,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
                      has no namespace to put it in
       seccomp.rs     compiled_filter, clone3_filter, x32_gate,
                      deny_dangerous_syscalls — how it reaches the kernel
-         rules.rs    BLOCKED_SYSCALLS (35), blocked_syscalls — what is denied
+         rules.rs    BLOCKED_SYSCALLS, blocked_syscalls — what is denied
          tests/      unit tests: denylist, sockets, namespaces, arch; plus the
                      eval interpreter they are all read through
       ruleset/
@@ -99,13 +96,10 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          opened.rs   open_grant, reads_back — the path opened is the one granted
          rights.rs   rights_for, fs_rules, net_rules
          tests/      unit tests: compat, grants, net, opened, rules
-tests/               audit, audit_channel, audit_outcome (6, how a real run
-                     ends), capability_coverage, command, concealment, denylist,
-                     enforcement (40 real-kernel tests, paths and grants),
-                     enforcement_syscalls (8, calls Landlock cannot express),
-                     enforcement_network (6, the TCP ports it can),
-                     enforcement_resolver (8, which names resolve),
-                     fs_guard, helper_args, policy
+tests/               audit, audit_channel, audit_outcome (how a real run ends),
+                     capability_coverage, command, concealment, denylist,
+                     enforcement, enforcement_syscalls, enforcement_network,
+                     enforcement_resolver, fs_guard, helper_args, policy
 tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pinned,
                      shared by the four enforcement targets; plus 8 [[bin]] probes,
                      required-features = ["sandbox-integration"] on every one but
@@ -136,16 +130,13 @@ at the call site beats a grep that fails after it.
 src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput,
                   RiskLevel; ToolSpec, crate-private so a tool's declaration is
                   not a public shape
-   context.rs     ExecutionContext — policy is PRIVATE (#56)
+   context.rs     ExecutionContext, DEFAULT_TIMEOUT — policy is PRIVATE (#56)
    limits.rs      ToolLimits
    error.rs       ToolError: Denied | BadInput | Failed | TimedOut
    tools/         bash, edit, find, grep, ls, read, write — each with its SPEC
 tests/            per-tool (find and grep share search), plus registry, limits,
                   scan_limits, spawn
 ```
-
-Public surface: `ExecutionContext`, `DEFAULT_TIMEOUT`, `ToolError`, `ToolLimits`,
-`ToolOutput`, `BuiltinTool`, `RiskLevel`.
 
 ## `sandbx-providers`
 
@@ -154,7 +145,7 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    prompt.rs      Prompt, RequestMessage, ContentBlock, ToolDefinition,
                   ToolChoice, Thinking — data, with no Serialize
    event.rs       AgentEvent, StopReason
-   error.rs       ProviderError
+   error.rs
    sse.rs         SSE framing
    credentials.rs resolve_api_key, anthropic_api_key — the pair hands back a
                   secrecy::SecretString the crate re-exports nowhere
@@ -166,10 +157,6 @@ tests/            anthropic_client, credentials, crypto_provider, error,
                   mock_provider (needs `mock`),
                   live_anthropic (needs `live-anthropic-tests`)
 ```
-
-No vendor SDK, and no trait or enum over the backends: the seam is the
-`EventStream` return type, which every client's `stream_chat` hands back. #90
-deleted the one-variant `Provider` enum that used to sit in front of it.
 
 The tree is the boundary: everything above `anthropic.rs` is neutral, and every
 vendor name, string and rule sits at or below it (#59). The body serializer is
@@ -191,8 +178,8 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
                 reached
    compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
-   error.rs   TurnError (5 variants)
-tests/       turn_loop (34), turn_compaction (24), audit_trail (1),
+   error.rs   TurnError
+tests/       turn_loop, turn_compaction, audit_trail,
              support/mod.rs — the Script double and the request builders
 ```
 
@@ -232,11 +219,6 @@ src/lib.rs          re-exports; nothing here knows of a policy or a provider
    input.rs         Keys — the reader thread, and the press a turn awaits
 ```
 
-Depends on `sandbx-providers` for `AgentEvent` and on nothing else of sandbx's:
-it draws what a turn reported and runs, confines and stores nothing. It takes
-`&AgentEvent` and gives back a keypress, so the policy, the provider, the gate
-and the session all stay in `sandbx-cli` — see [guide-tui.md](guide-tui.md).
-
 ## `sandbx-cli`
 
 ```
@@ -246,7 +228,7 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
                 the policy they derive, the working-directory default a
                 no-flag run gets, and the refusal of a grant reaching a path
                 sandbx owns (unit-testable without a sandbox-capable kernel)
-   sandbox.rs   SandboxRun
+   sandbox.rs
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     AgentRun — the turn loop's caller
       gate.rs   which tools --allow-tool approved, the refusal the rest get,
@@ -316,8 +298,8 @@ users reasonably read as the same flags.
 13. `decision-audit-records-access.md` — why a record names the access obtained
     and not the policy's decision
 14. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-15. `decision-bounding-tool-work.md` — which knob bounds a tool's input, and
-    which its output
+15. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
+    on its output are different propositions
 16. `decision-provider-seam.md` — why there is no provider trait, and where the
     vendor's vocabulary stops
 17. `decision-approval-gate.md` — what sits between the model and a tool, and how
