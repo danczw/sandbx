@@ -26,8 +26,8 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-core ────────────────────────────────┤                 derivation, the
-sandbx-session ─────────────────────────────┘                 turn loop's caller
-sandbx-tui       placeholder
+sandbx-session ─────────────────────────────┤                 turn loop's caller
+sandbx-tui ─────────────────────────────────┘
 ```
 
 | Crate | Owns | Internal deps |
@@ -36,9 +36,9 @@ sandbx-tui       placeholder
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, session, tools |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, session, tools, tui |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
-| `sandbx-tui` | placeholder (#133) | — |
+| `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -210,11 +210,28 @@ new content block is a compile error rather than a block quietly missing from a
 transcript. See [decision-on-disk-state.md](decision-on-disk-state.md) for the
 roots, the mode rule and the line format.
 
+## `sandbx-tui`
+
+```
+src/lib.rs          re-exports; nothing here knows of a policy or a provider
+   transcript.rs    AgentEvent folded into entries, and the control bytes a cell
+                    may not hold — no terminal behind it, so it is unit-tested
+   view.rs          the layout: the transcript tail-aligned over a status bar
+   screen.rs        Screen — raw mode and the alternate screen, put back on drop
+   input.rs         Keys — the reader thread, and the press a turn awaits
+```
+
+Depends on `sandbx-providers` for `AgentEvent` and on nothing else of sandbx's:
+it draws what a turn reported and runs, confines and stores nothing. It takes
+`&AgentEvent` and gives back a keypress, so the policy, the provider, the gate
+and the session all stay in `sandbx-cli` — see [guide-tui.md](guide-tui.md).
+
 ## `sandbx-cli`
 
 ```
 src/lib.rs      Cli, Command — the clap surface and nothing else
-   grants.rs    Grants — the --allow-… flags, flattened into both subcommands,
+   grants.rs    Grants — the --allow-… flags, flattened into every subcommand
+                that confines something,
                 the policy they derive, the working-directory default a
                 no-flag run gets, and the refusal of a grant reaching a path
                 sandbx owns (unit-testable without a sandbox-capable kernel)
@@ -233,6 +250,9 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
       render.rs the answer on stdout, everything about it on stderr
       wrapup.rs the second turn a round limit earns, which may call no tool,
                 and the two outcomes merged into the one a session stores
+      tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
+                one, and the gate that draws its verdicts instead of printing
+                them                                 ◄── guide-tui.md
    auth.rs      Auth — which source the provider key comes from: the
                 environment, then a file, and the login/logout/status over it
    auth/store.rs
@@ -249,15 +269,18 @@ tests/          agent_run, agent_session, audit_log, audit_log_install, auth,
                 auth_store, cwd_policy, hash, name, sandbox_run
 ```
 
-Lib `sandbx_cli`, bin `sandbx`. Four subcommands: `sandbox-run`, `agent-run`,
-`hash` and `auth`. The last two run no sandbox — `hash` reads one file, so a
+Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,
+`tui`, `hash` and `auth`. `tui` is `agent-run`'s flags, policy and session
+drawn on a screen rather than streamed to stdout, so the two share `gate.rs`,
+`orientation.rs` and `session.rs` and differ only in where a turn is reported.
+`hash` and `auth` run no sandbox — `hash` reads one file, so a
 digest can be taken before there is a policy to take it under, and `auth` touches
 only the credential file.
 
 `Grants` exists so the axis loop, the one widening it applies — a write grant
 confers read — and the working-directory default are written once. Two copies
-would drift, and the drift would be a policy difference between two subcommands
-that users reasonably read as the same flags.
+would drift, and the drift would be a policy difference between subcommands that
+users reasonably read as the same flags.
 
 ## Reading order
 
@@ -292,6 +315,7 @@ that users reasonably read as the same flags.
     harness vetted, and what an unpinned one costs
 19. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
+20. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
