@@ -62,8 +62,12 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch — the entry
                      into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx each with a
-                     <path> <dev>:<ino> pair, --allow-network-port, --env,
+                     <path> <dev>:<ino> pair, --allow-network, --allow-network-port,
+                     --allow-unix-sockets, --allow-dns-name, --env,
                      --dns-over-tcp, --pin-sha256
+   resolver.rs       RESOLVER_FILES, bound_by_resolver — the three files a
+                     bounded resolver replaces, rendered with no nameserver
+                     in the loop
    concealment.rs    conceal_process_state — the one step aimed at sandbx's own
                      process rather than a sandboxed child's
    digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
@@ -79,6 +83,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       mod.rs         the two stages — exec_sandboxed, then exec_inner as PID 1;
                      apply() sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
+      resolver.rs    bound_resolution — the ordered mount sequence that installs
+                     what src/resolver.rs rendered, in stage 1 because stage 2
+                     has no namespace to put it in
       seccomp.rs     compiled_filter, clone3_filter, x32_gate,
                      deny_dangerous_syscalls — how it reaches the kernel
          rules.rs    BLOCKED_SYSCALLS (35), blocked_syscalls — what is denied
@@ -94,12 +101,13 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          tests/      unit tests: compat, grants, net, opened, rules
 tests/               audit, audit_channel, audit_outcome (6, how a real run
                      ends), capability_coverage, command, concealment, denylist,
-                     enforcement (39 real-kernel tests, paths and grants),
+                     enforcement (40 real-kernel tests, paths and grants),
                      enforcement_syscalls (8, calls Landlock cannot express),
                      enforcement_network (6, the TCP ports it can),
+                     enforcement_resolver (8, which names resolve),
                      fs_guard, helper_args, policy
-tests/support/       mod.rs — runtime_paths, allow_probe, run, run_pinned,
-                     shared by the three enforcement targets; plus 7 [[bin]] probes,
+tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pinned,
+                     shared by the four enforcement targets; plus 8 [[bin]] probes,
                      required-features = ["sandbox-integration"] on every one but
                      concealment_probe, which needs no Landlock ABI
 ```
@@ -108,8 +116,9 @@ Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
 `HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
 `with_helper_dispatch`, `SandboxError`, `Access`, `HelperRefusal`, `FsGuard`,
 `ReadableWalk`, `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
-`NetworkPolicy`, `SandboxPolicy`, `VettedPath`, `ObjectId`, `Sha256Digest`, `DigestParseError`,
-`conceal_process_state`.
+`NetworkPolicy`, `SandboxPolicy`, `VettedPath`, `ObjectId`, `DNS_NAME_LIMIT`,
+`NAMESERVER_PORT`, `RESOLVER_FILES`, `bound_by_resolver`, `Sha256Digest`,
+`DigestParseError`, `conceal_process_state`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
 in-process meaning, and a refusal carries an `Access` so it can name the grant it
@@ -124,8 +133,9 @@ at the call site beats a grep that fails after it.
 ## `sandbx-tools`
 
 ```
-src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolSpec, ToolOutput,
-                  RiskLevel
+src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput,
+                  RiskLevel; ToolSpec, crate-private so a tool's declaration is
+                  not a public shape
    context.rs     ExecutionContext — policy is PRIVATE (#56)
    limits.rs      ToolLimits
    error.rs       ToolError: Denied | BadInput | Failed | TimedOut
@@ -146,7 +156,8 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    event.rs       AgentEvent, StopReason
    error.rs       ProviderError
    sse.rs         SSE framing
-   credentials.rs resolve_api_key, anthropic_api_key, SecretString
+   credentials.rs resolve_api_key, anthropic_api_key — the pair hands back a
+                  secrecy::SecretString the crate re-exports nowhere
    anthropic.rs   AnthropicClient
       body.rs     Serialize for the Messages body, built from a &Prompt
       wire/       accumulate.rs, payload.rs + unit tests
@@ -181,7 +192,7 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
    compact.rs   which prefix of a history may be withheld
       tests.rs       the cut-point algebra
    error.rs   TurnError (5 variants)
-tests/       turn_loop (34), turn_compaction (24),
+tests/       turn_loop (34), turn_compaction (24), audit_trail (1),
              support/mod.rs — the Script double and the request builders
 ```
 
@@ -284,38 +295,55 @@ users reasonably read as the same flags.
 
 ## Reading order
 
-1. `SECURITY.md` — what is claimed
-2. `guide-sandboxing.md` — how it is enforced
-3. `decision-enforcement-seam.md` — where policy becomes kernel state
-4. `decision-axis-table.md` — why there is one table
-5. `decision-environment-allowlist.md` — the one bound that is not path-keyed
-6. `decision-port-allowlist.md` — why a TCP port list costs UDP
-7. `decision-default-policy.md` — what a no-flag run grants, and the directories
+1. `guide-repo-map.md` — this file: which crate owns what, and what depends on
+   what
+2. `SECURITY.md` — what is claimed
+3. `guide-sandboxing.md` — how it is enforced
+4. `decision-enforcement-seam.md` — where policy becomes kernel state
+5. `decision-axis-table.md` — why there is one table
+6. `decision-environment-allowlist.md` — the one bound that is not path-keyed
+7. `decision-port-allowlist.md` — why a TCP port list costs UDP
+8. `decision-egress-proxy.md` — what bounding egress to a host rather than a
+   port would cost, and why a name allowlist is a hosts file and not a responder
+9. `decision-default-policy.md` — what a no-flag run grants, and the directories
    it refuses instead
-8. `decision-pinned-entry-point.md` — why a grant names a path and one flag names
-   bytes instead
-9. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
-   recorded, and how one made inside the helper gets out
-10. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-11. `decision-provider-seam.md` — why there is no provider trait, and where the
+10. `decision-pinned-entry-point.md` — why a grant names a path and one flag
+    names bytes instead
+11. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
+    that started it
+12. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+    recorded, and how one made inside the helper gets out
+13. `decision-audit-records-access.md` — why a record names the access obtained
+    and not the policy's decision
+14. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+15. `decision-bounding-tool-work.md` — which knob bounds a tool's input, and
+    which its output
+16. `decision-provider-seam.md` — why there is no provider trait, and where the
     vendor's vocabulary stops
-12. `decision-approval-gate.md` — what sits between the model and a tool, and how
+17. `decision-approval-gate.md` — what sits between the model and a tool, and how
     much it claims
-13. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
+18. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
     is not given
-14. `decision-tool-credentials.md` — why a tool is handed none, and the one name
+19. `decision-tool-credentials.md` — why a tool is handed none, and the one name
     that is refused
-15. `decision-on-disk-state.md` — what sandbx writes outside the working
+20. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-16. `decision-harness-owned-paths.md` — what happens when a grant covers one of
+21. `decision-harness-owned-paths.md` — what happens when a grant covers one of
     those paths, and how the same hazard through `/proc` is closed instead
-17. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
+22. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
     more, and what that costs
-18. `decision-grant-identity.md` — why a grant is pinned to the object the
+23. `decision-grant-identity.md` — why a grant is pinned to the object the
     harness vetted, and what an unpinned one costs
-19. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+24. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-20. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+25. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+26. `guide-naming.md` — how long a name may be, and what to cut first
+27. `guide-code-comments.md` — what a comment may say, and how long
+28. `guide-module-layout.md` — a module's budget, where its tests live, and what
+    one must assert
+29. `guide-ci.md` — what runs before a push, and what runs after
+30. `guide-release-notes.md` — which half of a release body is written by hand,
+    and which GitHub generates
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
