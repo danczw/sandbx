@@ -361,6 +361,49 @@ fn a_moved_root_records_the_reason_it_returns() {
     );
 }
 
+/// The walk is the one refusal with no caller to tell, so the trail is the whole report: a
+/// link into a moved root recorded as out of bounds hides the substitution behind the
+/// commonest reason there is (#212).
+#[test]
+fn a_link_into_a_moved_root_records_the_swap() {
+    let work = tempfile::tempdir().unwrap();
+    let walked = work.path().join("walked");
+    let linked = work.path().join("linked");
+    let other = work.path().join("other");
+    std::fs::create_dir(&walked).unwrap();
+    std::fs::create_dir(&linked).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(linked.join("target.txt"), b"hello").unwrap();
+    // The substitute holds the name too, or the link dangles after the swap and the walk
+    // drops it for being unresolvable — a refusal for the wrong reason to be asserting on.
+    std::fs::write(other.join("target.txt"), b"planted").unwrap();
+    std::os::unix::fs::symlink(linked.join("target.txt"), walked.join("link")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&walked))
+            .allow_read(vetted(&linked)),
+    );
+    // The root the link leads into, not the one being walked: the walk's own root still
+    // confirms, so the entry is refused for where it resolves to.
+    std::fs::remove_dir_all(&linked).unwrap();
+    std::fs::rename(&other, &linked).unwrap();
+
+    let mut walk = None;
+    let lines = capture(|| walk = guard.walk_readable(&walked, 16).ok());
+    let walk = walk.expect("the walked root itself still confirms");
+
+    assert!(walk.files.is_empty(), "got: {:?}", walk.files);
+    let refused = lines
+        .iter()
+        .find(|line| line.contains("decision=denied"))
+        .unwrap_or_else(|| panic!("no refusal was recorded: {lines:?}"));
+    assert!(
+        !refused.contains(Access::Read.outside()),
+        "the link's root was substituted and the trail calls it out of bounds: {refused}"
+    );
+}
+
 /// Audit that only appears under `RUST_LOG=debug` is off for everyone who did
 /// not opt in.
 #[test]
