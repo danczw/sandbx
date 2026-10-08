@@ -4,8 +4,8 @@
 //! Rebuilding a round's message is `accumulate`; running what it asked for is `tools`.
 
 use sandbx_providers::{
-    AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, Thinking, ToolChoice,
-    ToolDefinition,
+    AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, StopReason, Thinking,
+    ToolChoice, ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
@@ -143,6 +143,15 @@ pub struct TurnOutcome {
     ///
     /// [`messages`]: Self::messages
     pub stop: TurnStop,
+
+    /// Why the turn's last round ended, or `None` if no round completed.
+    ///
+    /// The provider's word, reported and not acted on: re-entry keys off the presence of
+    /// tool calls. Orthogonal to [`stop`] — a turn that ran out of rounds has a last round
+    /// too, and may have been cut at `max_tokens` in it.
+    ///
+    /// [`stop`]: Self::stop
+    pub round_stop: Option<StopReason>,
 }
 
 /// How a turn came to an end.
@@ -263,6 +272,9 @@ where
     // What comes back, not seeded from `observed`: a caller has to tell "reported nothing"
     // from "reported what you already knew".
     let mut usage: Option<PromptUsage> = None;
+    // `None` until a round reaches `message_stop`, which a turn capped at zero rounds never
+    // does.
+    let mut last_stop: Option<StopReason> = None;
     let mut cut = 0usize;
     // The carried floor until this turn plans its own cut, then that cut, so a floor no
     // legal boundary could meet is not re-asked for every round.
@@ -330,6 +342,7 @@ where
             measured = true;
         }
         let blocks = round.blocks;
+        last_stop = Some(round.reason);
 
         // Reasoning does not count: it is stripped on the way out, so a round producing
         // only that answers nothing and leaves an empty content array the API rejects.
@@ -339,7 +352,13 @@ where
                 return Err(TurnError::EndedMidToolUse);
             }
 
-            return Ok(outcome(produced, usage, withheld, TurnStop::Answered));
+            return Ok(outcome(
+                produced,
+                usage,
+                withheld,
+                TurnStop::Answered,
+                last_stop,
+            ));
         }
 
         // Before the assistant turn is pushed: answering borrows the blocks, pushing
@@ -352,7 +371,13 @@ where
         });
 
         if results.is_empty() {
-            return Ok(outcome(produced, usage, withheld, TurnStop::Answered));
+            return Ok(outcome(
+                produced,
+                usage,
+                withheld,
+                TurnStop::Answered,
+                last_stop,
+            ));
         }
 
         produced.push(RequestMessage {
@@ -373,6 +398,7 @@ where
         TurnStop::RoundLimit {
             rounds: turn.limits.max_rounds,
         },
+        last_stop,
     ))
 }
 
@@ -382,6 +408,7 @@ fn outcome(
     usage: Option<PromptUsage>,
     withheld: usize,
     stop: TurnStop,
+    round_stop: Option<StopReason>,
 ) -> TurnOutcome {
     drop_thinking(&mut produced);
     TurnOutcome {
@@ -389,6 +416,7 @@ fn outcome(
         usage,
         withheld,
         stop,
+        round_stop,
     }
 }
 

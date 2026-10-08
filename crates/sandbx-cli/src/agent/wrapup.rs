@@ -165,7 +165,9 @@ impl Next {
 /// The two turns as the one turn a caller stores.
 ///
 /// `stop` comes from the wrap-up round, which is what decides whether the transcript ends
-/// on an answer.
+/// on an answer, and `round_stop` from the same round, that being the one whose prose is
+/// the answer. Not `.or`, as `usage` is: a count persists across rounds, a stop reason
+/// belongs to one, and falling back would name the first turn's bound on the second's text.
 pub(super) fn merge(first: TurnOutcome, second: TurnOutcome) -> TurnOutcome {
     let mut messages = first.messages;
     messages.extend(second.messages);
@@ -175,5 +177,50 @@ pub(super) fn merge(first: TurnOutcome, second: TurnOutcome) -> TurnOutcome {
         usage: second.usage.or(first.usage),
         withheld: second.withheld,
         stop: second.stop,
+        round_stop: second.round_stop,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sandbx_providers::StopReason;
+
+    use super::*;
+
+    fn outcome(stop: TurnStop, round_stop: Option<StopReason>) -> TurnOutcome {
+        TurnOutcome {
+            messages: Vec::new(),
+            usage: None,
+            withheld: 0,
+            stop,
+            round_stop,
+        }
+    }
+
+    /// Three cases, each against a different wrong `merge`: reading `first.round_stop`
+    /// fails the first, writing a constant fails the second, and `.or(first.round_stop)` —
+    /// which `usage` on the line above does — fails only the third.
+    #[test]
+    fn the_merged_turn_takes_the_wrap_ups_reason() {
+        let capped = TurnStop::RoundLimit { rounds: 3 };
+        let cut = Some(StopReason::MaxTokens);
+
+        let cut_summary = merge(
+            outcome(capped, Some(StopReason::ToolUse)),
+            outcome(TurnStop::Answered, cut.clone()),
+        );
+        assert_eq!(cut_summary.round_stop, cut);
+        assert_eq!(cut_summary.stop, TurnStop::Answered);
+
+        let whole_summary = merge(
+            outcome(capped, cut.clone()),
+            outcome(TurnStop::Answered, Some(StopReason::EndTurn)),
+        );
+        assert_eq!(whole_summary.round_stop, Some(StopReason::EndTurn));
+
+        // The first turn's bound is not inherited, so a `max_tokens` cut on tool-driving
+        // rounds is never reported against the summary that replaced them.
+        let unreported = merge(outcome(capped, cut), outcome(TurnStop::Answered, None));
+        assert_eq!(unreported.round_stop, None);
     }
 }
