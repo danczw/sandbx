@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sandbx_core::{Axis, SandboxPolicy};
+use sandbx_core::{Axis, SandboxPolicy, VettedPath};
 use sandbx_tools::BuiltinTool;
 
 use super::gate;
@@ -85,14 +85,15 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
     let system = spellings(&SandboxPolicy::default().allow_system_executables());
     let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
-    for (axis, path) in policy.granted_paths() {
-        // Resolved only as a test, never to be named: the guard compares the grant's own
-        // spelling, so a root that now resolves elsewhere refuses every path under it.
-        let path = path.path();
-        if path.canonicalize().ok().as_deref() != Some(path) {
+    for (axis, granted) in policy.granted_paths() {
+        // Re-vetted only as a test, never to be named: the guard compares the grant whole,
+        // so a root whose spelling now resolves elsewhere *or* whose name holds another
+        // directory refuses every path under it.
+        // A name that vets to nothing is left out too, as it was before.
+        if !VettedPath::vet(granted.path()).is_ok_and(|now| &now == granted) {
             continue;
         }
-        let path = path.to_path_buf();
+        let path = granted.path().to_path_buf();
 
         if system.contains(&path) {
             continue;
@@ -372,6 +373,29 @@ mod tests {
             prompt,
             tools_line(&gate::approved_tools(None)),
             "a root that resolves elsewhere grants nothing, so the prompt must not claim it"
+        );
+    }
+
+    /// The spelling cannot tell this one: a root renamed over resolves to itself, so only the
+    /// object says the directory the prompt would name is not the one the policy judged.
+    #[test]
+    fn a_grant_renamed_over_is_not_named() {
+        let (work, _) = work();
+        let root = work.path().join("root");
+        let other = work.path().join("other");
+        std::fs::create_dir(&root).expect("a dir to grant");
+        std::fs::create_dir(&other).expect("another real directory");
+
+        let policy = SandboxPolicy::default().allow_read(vetted(&root));
+        std::fs::remove_dir(&root).expect("the granted name to come free");
+        std::fs::rename(&other, &root).expect("a substitution at the same name");
+
+        let prompt = granted(policy);
+
+        assert_eq!(
+            prompt,
+            tools_line(&gate::approved_tools(None)),
+            "a root holding another object grants nothing, so the prompt must not claim it"
         );
     }
 
