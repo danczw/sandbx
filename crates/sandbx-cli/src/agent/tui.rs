@@ -19,7 +19,7 @@ use sandbx_session::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui::{Hint, Keys, Screen, Transcript};
 
-use super::{AgentRun, Approve, INCOMPLETE, Terminal, gate, orientation};
+use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
 use crate::session;
 
@@ -189,17 +189,10 @@ impl Tui {
                 (Ok(INCOMPLETE), None)
             }
             Some(Ok(outcome)) => {
-                // Not matched exhaustively: a stop this does not know about is an answer
-                // it has no account of, which is `Ok(0)` and not a build failure.
-                let code = if let TurnStop::RoundLimit { rounds } = outcome.stop {
-                    pane.transcript.note(&format!(
-                        "sandbx: out of rounds after {rounds}. No wrap-up round is sent \
-                         under `tui`, so the answer ends on tool work"
-                    ));
-                    INCOMPLETE
-                } else {
-                    0
-                };
+                let (code, note) = ending(&outcome.stop);
+                if let Some(note) = note {
+                    pane.transcript.note(&note);
+                }
                 (Ok(code), Some(outcome))
             }
             // Drawn before it is returned: the screen is about to be torn down, and the
@@ -232,6 +225,39 @@ impl Tui {
             Some(error) => Err(AgentError::Screen(error)),
             None => Ok(code),
         }
+    }
+}
+
+/// The code a finished turn exits with, and the line the screen ends on.
+///
+/// Apart from the drawing so the code is an assertion rather than a screenshot: a
+/// `GateAborted` outcome holds its messages and its usage like an answered one, so nothing
+/// but the code tells a caller the operator went away.
+fn ending(stop: &TurnStop) -> (i32, Option<String>) {
+    match stop {
+        // Ahead of the bound, as `render.rs:219` has it: a turn can hit `--max-rounds` and
+        // lose its operator in the same round, and the operator is the one a caller cannot
+        // find out about any other way.
+        TurnStop::GateAborted => (
+            NO_CONSENT,
+            Some(
+                "sandbx: the gate could no longer be asked, so the turn stopped where it \
+                 was asked. That call and every call behind it were refused, and nothing \
+                 further was sent"
+                    .to_string(),
+            ),
+        ),
+        TurnStop::RoundLimit { rounds } => (
+            INCOMPLETE,
+            Some(format!(
+                "sandbx: out of rounds after {rounds}. No wrap-up round is sent under \
+                 `tui`, so the answer ends on tool work"
+            )),
+        ),
+        // Not matched exhaustively: a stop this does not know about is an answer it has no
+        // account of, which is 0. One that documents an exit code of its own needs an arm
+        // above instead, or `tui` contradicts a code `agent-run` already claims.
+        _ => (0, None),
     }
 }
 
@@ -333,6 +359,36 @@ mod tests {
             assert!(
                 matches!(tui.drawable(terminal), Err(AgentError::ApproveUnderTui)),
                 "terminal={terminal}"
+            );
+        }
+    }
+
+    /// A lost operator outranks a cut round, and both outrank an answer.
+    ///
+    /// Asserting the code and not the note: `GateAborted` keeps the turn's messages and
+    /// usage, so an outcome that lost its operator is as well formed as one that answered
+    /// — the code is the only thing that tells them apart, and `agent-run` already exits 3
+    /// for it in a shipped claim (#218).
+    #[test]
+    fn a_gate_that_could_not_be_asked_exits_three_and_a_cut_round_two() {
+        assert_eq!(ending(&TurnStop::GateAborted).0, NO_CONSENT);
+        assert_eq!(ending(&TurnStop::RoundLimit { rounds: 4 }).0, INCOMPLETE);
+
+        // Non-vacuous in the other direction: a finished answer takes the `_` arm and
+        // exits 0, so the two codes above are the stops and not the function.
+        assert_eq!(ending(&TurnStop::Answered), (0, None));
+    }
+
+    /// Every code the screen reports comes with the line that explains it: a bare 3 in a
+    /// shell is not an account of where the turn stopped.
+    #[test]
+    fn a_stop_that_is_not_an_answer_says_why_on_the_screen() {
+        for stop in [TurnStop::GateAborted, TurnStop::RoundLimit { rounds: 4 }] {
+            let (code, note) = ending(&stop);
+            assert_ne!(code, 0, "{stop:?}");
+            assert!(
+                note.is_some_and(|note| note.starts_with("sandbx: ")),
+                "{stop:?}"
             );
         }
     }

@@ -89,6 +89,14 @@ discovered:
 The exit code is 2 — the same code a turn cut short by `--max-rounds` gets,
 because that is what it is.
 
+A stop `tui` has no account of exits 0, an answer being the thing a turn is for.
+The exception is a stop that documents a code of its own: `TurnStop::GateAborted`
+exits 3, ahead of the bound, because a turn can hit `--max-rounds` and lose its
+operator in the same round and only one of those is unrecoverable. Unreachable
+while `tui` builds its gate with no operator to ask, and written now because the
+outcome holds its messages and usage like an answered one — so a 0 there would
+look like an answer to every test and to every caller branching on the status.
+
 ## Light by intent
 
 The first iteration draws one turn and takes one key. Named here because each is
