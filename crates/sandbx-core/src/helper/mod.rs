@@ -3,8 +3,8 @@
 //! Stage 1 ([`exec_sandboxed`]) makes the namespaces and hardens the state inherited
 //! across `exec`; stage 2 ([`exec_inner`]) is PID 1 of the new PID namespace and becomes
 //! the command. [`apply`] sequences [`ruleset`], [`seccomp`] and [`hardening`] in the
-//! order they have to happen in — one ordered syscall sequence, so one module
-//! (`context/guide-module-layout.md`).
+//! order they have to happen in — one ordered syscall sequence, so one module, and over
+//! the 400-line budget on purpose (`context/guide-module-layout.md`).
 
 mod hardening;
 mod resolver;

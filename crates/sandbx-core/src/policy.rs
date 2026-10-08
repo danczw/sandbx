@@ -1,3 +1,9 @@
+//! What a run is allowed to reach: the axes, the network and env policy, and the
+//! builders that widen them.
+//!
+//! Over the 400-line budget on purpose: each axis is an accessor and a builder that
+//! have to agree, so a new axis is one edit in one file rather than two.
+
 use std::ffi::OsStr;
 use std::path::Path;
 

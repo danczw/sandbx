@@ -2,6 +2,9 @@
 //! threading those types carry.
 //!
 //! Rebuilding a round's message is `accumulate`; running what it asked for is `tools`.
+//!
+//! Over the 400-line budget on purpose: a new way for a turn to stop is one edit to
+//! `TurnStop`, to the loop that chooses it and to the outcome that carries it.
 
 use sandbx_providers::{
     AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, StopReason, Thinking,
