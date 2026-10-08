@@ -188,8 +188,8 @@ impl Tui {
                 None,
                 vec![
                     "sandbx: interrupted. Nothing of this turn is stored, a tool call \
-                     already running finishes unseen, and the process waits for it \
-                     before it exits (#26)"
+                     already running finishes unseen, and any key leaves — after which \
+                     the process waits for that call before it exits (#26)"
                         .to_string(),
                 ],
             ),
