@@ -3,34 +3,25 @@
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use tokio::sync::watch;
 
-/// What the reader has seen so far.
-///
-/// `stop` is sticky because a watch channel keeps only the latest value: an interrupt
-/// followed quickly by any other key would otherwise be overwritten unread.
+/// What the reader has seen so far; `stop` is sticky, the channel's one slot losing it
+/// unread otherwise.
 #[derive(Debug, Clone, Copy, Default)]
 struct Seen {
     presses: u64,
     stop: bool,
 }
 
-/// The keys the operator presses, as the turn awaits them.
-///
-/// Start one only after [`Screen::enter`](crate::Screen::enter): without raw mode ctrl-c is
-/// a signal rather than a key, and nothing here ever sees it.
+/// The keys the operator presses, as the turn awaits them. Start only after
+/// [`Screen::enter`](crate::Screen::enter): without raw mode ctrl-c is a signal, not a key.
 pub struct Keys {
     seen: watch::Receiver<Seen>,
 }
 
 impl Keys {
-    /// Start reading keys on a thread of their own.
-    ///
-    /// The thread outlives the turn: `event::read` cannot be cancelled, so it sits in one
-    /// until the next key or the end of the process. It holds no state and draws nothing, so
-    /// what it outlives it cannot disturb.
-    ///
-    /// Parked there it holds crossterm's one reader lock, so nothing else may ask the terminal
-    /// a question whose answer arrives on stdin — a cursor-position query times out instead.
-    /// [`Screen::redraw`](crate::Screen::redraw) is the caller that has to avoid one.
+    /// Start reading keys on a thread that outlives the turn: `event::read` can't be cancelled,
+    /// so it parks, holding no state, until the next key or process exit — holding crossterm's
+    /// one reader lock, so [`Screen::redraw`](crate::Screen::redraw) must avoid a question
+    /// answered on stdin.
     pub fn listen() -> Self {
         let (sender, seen) = watch::channel(Seen::default());
         std::thread::spawn(move || read(&sender));
@@ -38,10 +29,8 @@ impl Keys {
         Self { seen }
     }
 
-    /// Resolves on the first key that means "stop this turn".
-    ///
-    /// Never on a reader that has gone: a closed channel is a terminal that can no longer
-    /// be read, and resolving on it would end a turn nobody asked to end.
+    /// Resolves on the first key that means "stop this turn"; never on a reader that's gone,
+    /// since a closed channel must not end a turn nobody asked to end.
     pub async fn stop(&mut self) {
         loop {
             if self.seen.borrow_and_update().stop {
@@ -54,11 +43,9 @@ impl Keys {
         }
     }
 
-    /// Resolves on the next key of any kind, for holding a finished screen.
-    ///
-    /// Resolves at once on a reader that has gone — the opposite of [`stop`](Self::stop) and
-    /// for its reason: with no key able to arrive, waiting would hold the alternate screen
-    /// until the process was killed.
+    /// Resolves on the next key of any kind, for holding a finished screen; at once if the
+    /// reader is gone — opposite [`stop`](Self::stop), since with no key able to arrive,
+    /// waiting would hold the alternate screen until the process was killed.
     pub async fn press(&mut self) {
         self.seen.mark_unchanged();
         let _ = self.seen.changed().await;
@@ -71,8 +58,7 @@ fn read(sender: &watch::Sender<Seen>) {
 
     loop {
         match event::read() {
-            // `Press` alone: Windows reports a release for every key, and counting both
-            // would read one keystroke as two.
+            // `Press` only: Windows also reports a release per key, which would double-count.
             Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => {
                 seen.presses += 1;
                 seen.stop |= interrupts(key);
@@ -81,21 +67,16 @@ fn read(sender: &watch::Sender<Seen>) {
                     return;
                 }
             }
-            // Resize, mouse, paste and focus: nothing here acts on them, and a redraw is
-            // driven by the event stream instead.
+            // Resize, mouse, paste, focus: ignored; a redraw is driven by the event stream.
             Ok(_) => {}
-            // Not retried: a read fails because the descriptor is gone, and looping on it
-            // spins a thread at full speed for the rest of the run.
+            // Not retried: the descriptor is gone, and looping would spin the thread at full speed.
             Err(_) => return,
         }
     }
 }
 
-/// Whether `key` means "stop this turn".
-///
-/// Ctrl-C because raw mode took it away from the signal it usually raises, and the operator
-/// must get the same answer from the same key. Escape as well, there being nothing else for
-/// it to mean while a turn has no input box to leave.
+/// Whether `key` means "stop this turn": ctrl-c, since raw mode took it from the signal it
+/// would otherwise raise; and escape, there being no input box for it to leave instead.
 fn interrupts(key: KeyEvent) -> bool {
     match key.code {
         KeyCode::Char('c') => key.modifiers.contains(KeyModifiers::CONTROL),
@@ -118,8 +99,7 @@ mod tests {
         assert!(interrupts(key(KeyCode::Esc, KeyModifiers::NONE)));
     }
 
-    /// Ending a turn on a bare `c` would make the screen unusable the moment it takes
-    /// typed input.
+    /// A bare `c` must not stop the turn, or the screen is unusable once it takes typed input.
     #[test]
     fn an_unmodified_c_does_not() {
         assert!(!interrupts(key(KeyCode::Char('c'), KeyModifiers::NONE)));
@@ -127,8 +107,7 @@ mod tests {
         assert!(!interrupts(key(KeyCode::Enter, KeyModifiers::NONE)));
     }
 
-    /// The watch channel keeps one value, so a key pressed after the interrupt must not be
-    /// what the turn reads.
+    /// The channel keeps one value, so a later keypress must not overwrite the interrupt.
     #[test]
     fn an_interrupt_survives_a_later_keypress() {
         let mut seen = Seen::default();

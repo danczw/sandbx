@@ -10,11 +10,9 @@ use crate::view::GUTTER_MARK;
 /// What one block of the transcript is, which is also how the view colours it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
-    /// What the operator asked.
     Prompt,
-    /// The model's answer.
     Answer,
-    /// The model's reasoning, present only when it was asked for.
+    /// Present only when it was asked for.
     Reasoning,
     /// One settled tool call, worded by the caller's gate.
     Call,
@@ -33,19 +31,16 @@ pub(crate) struct Entry {
 pub struct Transcript {
     entries: Vec<Entry>,
 
-    /// Whether reasoning was asked for. The API sends the delta either way, so an
-    /// unasked-for summary is dropped here rather than put in front of an operator.
+    /// Whether reasoning was asked for; the API sends the delta regardless of this flag.
     show_thinking: bool,
 
     /// Rounds seen, counted from `Stop`: no event carries the turn's own bound.
     rounds: usize,
 
-    /// The last figure reported for the prompt and for the output, each `None` until one is.
-    ///
-    /// Separately optional because the API omits either one: a zero would read as a figure,
-    /// and overwriting with the absence would take one already shown back off the screen.
-    /// Held per field as `wire::accumulate` holds them. Not a sum — each is one request's,
-    /// as `TurnOutcome::usage` is.
+    /// The last figure reported for the prompt and for the output, `None` until one arrives.
+    /// Held per field: the API omits either independently, and a zero must not read as an
+    /// absence overwriting a shown figure. Not a sum: each is one request's, as
+    /// `TurnOutcome::usage` is.
     tokens: (Option<u32>, Option<u32>),
 }
 
@@ -63,10 +58,8 @@ impl Transcript {
         }
     }
 
-    /// Fold one event in.
-    ///
-    /// A reasoning block and a redacted one are both dropped: each carries replay material
-    /// that must not be rendered, and the deltas above have already shown the text.
+    /// Fold one event in. A reasoning block and a redacted one are dropped, both carrying
+    /// replay material that must not render.
     pub fn event(&mut self, event: &AgentEvent) {
         match event {
             AgentEvent::Text { delta } => self.append(delta, Kind::Answer),
@@ -111,10 +104,8 @@ impl Transcript {
         self.tokens
     }
 
-    /// Add a delta to the entry it continues, or open one of that kind.
-    ///
-    /// An empty delta opens nothing: one arrives at a block's close, and an entry per close
-    /// would leave a blank line between every round.
+    /// Add a delta to the entry it continues, or open one of that kind; an empty delta opens
+    /// nothing, since one arrives at a block's close and would otherwise blank-line every round.
     fn append(&mut self, delta: &str, kind: Kind) {
         if delta.is_empty() {
             return;
@@ -127,11 +118,10 @@ impl Transcript {
         }
     }
 
-    /// Add one line the harness wrote, its breaks spelled rather than kept.
-    ///
-    /// The view marks every row of these two kinds, so a break here would mint a second
-    /// marked row out of whatever followed it. `gate::line` escapes already; the note
-    /// wording a provider error does not, that message being the vendor's string verbatim.
+    /// Add one line the harness wrote, its breaks spelled rather than kept: the view marks
+    /// every row of these two kinds, so a real break would mint a second marked row.
+    /// `gate::line` escapes already; a provider-error note does not, being the vendor's
+    /// string verbatim.
     fn push(&mut self, kind: Kind, text: &str) {
         self.entries.push(Entry {
             kind,
@@ -140,15 +130,12 @@ impl Transcript {
     }
 }
 
-/// Model-chosen text as it may be written to a cell.
-///
-/// ratatui puts a cell's content on the terminal as given, so an escape sequence inside an
-/// answer would rewrite the screen around it. Replaced with U+FFFD rather than dropped:
-/// dropped, a hostile string reads as plausible prose. `\n` survives as the break the view
-/// splits on, and a tab becomes spaces, nothing rendering a cell that holds one.
-///
-/// [`GUTTER_MARK`] goes the same way, for the same reason one step up: the view draws it to
-/// say sandbx wrote a row, so text that could carry it could claim a row of its own.
+/// Model-chosen text as it may be written to a cell. ratatui writes a cell's content
+/// verbatim, so an escape sequence in an answer would rewrite the screen; replaced with
+/// U+FFFD rather than dropped, since a dropped string reads as plausible prose. `\n`
+/// survives as the view's split point; a tab becomes spaces, nothing else rendering a cell
+/// that holds one. [`GUTTER_MARK`] gets the same replacement: the view draws it to mark a
+/// row as sandbx's, so text carrying it could forge that claim.
 fn printable(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
 
@@ -165,14 +152,11 @@ fn printable(text: &str) -> String {
 }
 
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-///
-/// The mark alone is not the hazard: U+FFE8 is Unicode's own confusable mapping for it, and
-/// the heavier and dashed box-drawing verticals each draw the same single cell. A denylist
-/// again, for [`invisible`]'s reason.
-///
-/// ASCII `|` is absent: it has to survive a shell pipeline in prose, which is why the
-/// gutter is box-drawing at all. What is left against it — that a box-drawing vertical joins
-/// across rows and a `|` does not — is font-dependent and weaker than this strip.
+/// U+FFE8 is Unicode's own confusable mapping for the mark, and the heavier and dashed
+/// box-drawing verticals draw the same cell; a denylist, for [`invisible`]'s reason.
+/// ASCII `|` is excluded, having to survive a shell pipeline in prose — why the gutter is
+/// box-drawing at all. A vertical joining across rows where `|` doesn't is font-dependent,
+/// too weak to rely on instead.
 fn forgeable(c: char) -> bool {
     matches!(
         c,
@@ -186,14 +170,12 @@ fn forgeable(c: char) -> bool {
     )
 }
 
-/// Whether `c` renders as nothing, or reorders what follows it.
+/// Whether `c` renders as nothing, or reorders what follows it. `char::is_control` is `Cc`
+/// only, so U+202E and the directional isolates pass it, letting a line *display*
+/// differently in the same pane and grammar as the gate's own account. A denylist, `char`
+/// having no predicate for the category, so a new Unicode version can outgrow it silently.
 ///
-/// `char::is_control` is `Cc` exactly, so U+202E and the directional isolates pass it and
-/// make a line *display* as a different line — in the same pane, and the same grammar, as
-/// the gate's account of what a tool did. A denylist, `char` having no predicate for the
-/// category, so a new Unicode version can outgrow it silently.
-///
-/// The same set as `sandbx-cli`'s `gate::invisible`: duplicated, and must not diverge (#233).
+/// Duplicates `sandbx-cli`'s `gate::invisible`; the two sets must not diverge (#233).
 fn invisible(c: char) -> bool {
     matches!(c,
         '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
@@ -253,7 +235,6 @@ mod tests {
         assert_eq!(folded(&[], false), vec![entry(Kind::Prompt, PROMPT)]);
     }
 
-    /// Deltas are increments, so an entry each would put every few words on its own line.
     #[test]
     fn consecutive_deltas_coalesce_into_one_entry() {
         let entries = folded(&[text("three "), text("files"), text(" here")], false);
@@ -267,8 +248,6 @@ mod tests {
         );
     }
 
-    /// A round's `Stop` does not end the answer: the turn's text is one block to a reader,
-    /// whatever the round boundaries were.
     #[test]
     fn text_either_side_of_a_stop_is_one_entry() {
         let entries = folded(
@@ -288,8 +267,7 @@ mod tests {
         );
     }
 
-    /// A call between rounds breaks the answer, which is what puts the account where it
-    /// happened rather than all of them at the end.
+    /// A call between rounds breaks the answer, putting the account where it happened.
     #[test]
     fn a_call_divides_the_text_around_it() {
         let mut transcript = Transcript::new(PROMPT, false);
@@ -308,8 +286,7 @@ mod tests {
         );
     }
 
-    /// The API sends the reasoning delta whether or not a summary was asked for, so the
-    /// flag decides, not the event's presence.
+    /// The API sends the reasoning delta regardless, so the flag decides, not the event.
     #[test]
     fn reasoning_is_shown_only_when_it_was_asked_for() {
         assert_eq!(
@@ -324,8 +301,8 @@ mod tests {
         );
     }
 
-    /// The counterpart to `render.rs`'s `no_part_of_the_reasoning_reaches_stdout`: both
-    /// blocks carry replay material, and rendering one is how it ends up copied.
+    /// Counterpart to `render.rs`'s `no_part_of_the_reasoning_reaches_stdout`: both blocks
+    /// carry replay material.
     #[test]
     fn no_replayable_reasoning_block_is_ever_an_entry() {
         let blocks = [
@@ -339,9 +316,6 @@ mod tests {
         ];
 
         for show in [false, true] {
-            // The same fold over the same events, bar the blocks, does produce an answer,
-            // so the entries below are missing because the blocks were dropped and not
-            // because nothing was folded at all.
             let with_text = folded(&[text("done")], show);
             assert_eq!(
                 with_text.len(),
@@ -354,8 +328,7 @@ mod tests {
         }
     }
 
-    /// Nothing announces a call when it is requested: a line printed then would claim a run
-    /// the policy or the gate may still refuse.
+    /// Nothing announces a call when it is requested: it may still be refused.
     #[test]
     fn a_requested_call_is_not_an_entry() {
         let entries = folded(
@@ -370,8 +343,6 @@ mod tests {
         assert_eq!(entries, vec![entry(Kind::Prompt, PROMPT)]);
     }
 
-    /// An escape sequence in model text would rewrite the screen around the cell holding
-    /// it, so what reaches an entry can no longer carry one.
     #[test]
     fn an_escape_sequence_in_the_answer_does_not_survive_the_fold() {
         let entries = folded(&[text("done\x1b[2Jgone\r\x07")], false);
@@ -382,9 +353,6 @@ mod tests {
         );
     }
 
-    /// `char::is_control` is `Cc` exactly, so an override and a zero-width space pass it
-    /// and the line *displays* as a different line — in the same pane, and the same
-    /// `sandbx: ` grammar, as the gate's account of what a tool ran.
     #[test]
     fn a_character_that_reorders_or_renders_as_nothing_does_not_survive_either() {
         let entries = folded(&[text("ls \u{202e}gpj.exe\u{feff}")], false);
@@ -394,19 +362,14 @@ mod tests {
             Some(&entry(Kind::Answer, "ls \u{fffd}gpj.exe\u{fffd}"))
         );
 
-        // Non-vacuous: neither character is control, so the escape test above would pass
-        // on a `printable` that let both of these through.
         assert!(!'\u{202e}'.is_control() && !'\u{feff}'.is_control());
     }
 
-    /// The break the view splits on, and the tab nothing renders.
     #[test]
     fn a_newline_survives_and_a_tab_becomes_spaces() {
         assert_eq!(printable("one\ntwo\tthree"), "one\ntwo    three");
     }
 
-    /// A character that draws the same cell defeats the claim as surely as the mark does,
-    /// U+FFE8 being Unicode's own confusable mapping for it.
     #[test]
     fn a_character_that_draws_as_the_gutter_mark_does_not_survive_either() {
         let entries = folded(&[text("\u{ffe8} and \u{2503} and |")], false);
@@ -416,15 +379,11 @@ mod tests {
             Some(&entry(Kind::Answer, "\u{fffd} and \u{fffd} and |"))
         );
 
-        // Non-vacuous twice: neither is control or invisible, so the strips above would
-        // pass both; and `|` is kept, so this is the confusable class and not every bar.
         for c in ['\u{ffe8}', '\u{2503}'] {
             assert!(!c.is_control() && !invisible(c), "{c:?}");
         }
     }
 
-    /// Every row of a verdict or a note is marked, so a break in one would mint a second
-    /// marked row from whatever followed it.
     #[test]
     fn a_break_in_a_line_the_harness_wrote_is_spelled_rather_than_kept() {
         let mut transcript = Transcript::new(PROMPT, false);
@@ -438,8 +397,7 @@ mod tests {
             ))
         );
 
-        // Non-vacuous: the model's own channel does keep its breaks, which is what the
-        // view splits on — so the escape above is this channel's and not the fold's.
+        // Non-vacuous: the model's own channel keeps its breaks.
         transcript.event(&text("one\ntwo"));
         assert_eq!(
             transcript.entries().last(),
@@ -464,8 +422,7 @@ mod tests {
         }
     }
 
-    /// Anthropic restates the counts cumulatively within a request, so the last figures
-    /// reported are the ones to show.
+    /// Anthropic restates the counts cumulatively within a request: the last reported wins.
     #[test]
     fn rounds_are_counted_from_stops_and_usage_is_the_last_reported() {
         let mut transcript = Transcript::new(PROMPT, false);
@@ -488,8 +445,6 @@ mod tests {
         assert_eq!(transcript.tokens(), (Some(1200), Some(64)));
     }
 
-    /// An omitted count stays omitted: a zero here would reach the status line as `0 out`
-    /// on a turn that generated text, which reads as a figure rather than as its absence.
     #[test]
     fn an_unreported_count_is_not_a_reported_zero() {
         let mut transcript = Transcript::new(PROMPT, false);
@@ -497,14 +452,10 @@ mod tests {
 
         assert_eq!(transcript.tokens(), (Some(900), None));
 
-        // Non-vacuous: a reported zero is kept as one, so the `None` above is the omission
-        // and not every small figure being dropped.
         transcript.event(&usage(Some(900), Some(0)));
         assert_eq!(transcript.tokens(), (Some(900), Some(0)));
     }
 
-    /// Held per field, so a later round that omits one does not take a figure already on
-    /// the status bar back off it.
     #[test]
     fn a_count_a_later_round_omits_keeps_the_figure_it_had() {
         let mut transcript = Transcript::new(PROMPT, false);

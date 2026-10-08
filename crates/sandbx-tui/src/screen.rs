@@ -12,23 +12,16 @@ use crate::view::{self, Hint};
 pub struct Screen {
     terminal: DefaultTerminal,
 
-    /// The first draw failure, kept rather than returned.
-    ///
-    /// Drawing happens inside the turn's `observe`, which returns nothing, so a failure has
-    /// nowhere to go until the turn ends. The first and not the last: a closed stdout fails
-    /// once per event, and the last error says only that the screen was already gone.
+    /// The first draw failure, `observe` having nowhere to return one. The first and not the
+    /// last: a closed stdout fails once per event, and the last says only that it was gone.
     failed: Option<io::Error>,
 }
 
 impl Screen {
-    /// Take the terminal: raw mode on, alternate screen entered.
-    ///
-    /// Raw mode is what makes an interrupt key reach [`Keys`](crate::Keys) at all — without
-    /// it ctrl-c raises `SIGINT`, and the default handler kills the process with the
-    /// alternate screen still on the operator's terminal.
+    /// Take the terminal: raw mode on, alternate screen entered. Raw mode makes ctrl-c reach
+    /// [`Keys`](crate::Keys) as a key, not a `SIGINT` killing the process with the screen up.
     pub fn enter() -> io::Result<Self> {
-        // Raw mode is enabled before the alternate screen is opened, so a failure at the
-        // second step returns with the first still in force.
+        // Raw mode before the alt screen, so a failed second step leaves the first in force.
         let terminal = ratatui::try_init().inspect_err(|_| ratatui::restore())?;
 
         Ok(Self {
@@ -51,19 +44,13 @@ impl Screen {
         }
     }
 
-    /// Repaint every cell, not only the ones the transcript changed.
-    ///
-    /// ratatui flushes the difference between its own two buffers, so a cell something else
-    /// wrote is never rewritten, and the newline with it scrolled the pane a row out of
-    /// place. Stderr is that writer, the alternate screen not redirecting it, and discarding
-    /// the last buffer is the only way back.
-    ///
-    /// `resize` and never `Terminal::clear`, which reads the cursor position: that is a DSR
-    /// query answered through crossterm's one reader, and [`Keys`](crate::Keys) holds its lock
-    /// parked in `event::read`, so the query times out and takes this repaint with it.
-    /// Resizing to the size already in force clears the viewport and resets the back buffer,
-    /// asking the terminal nothing — on the fullscreen viewport `try_init` gives. An inline
-    /// one recomputes its origin from the cursor, which is that same query back again.
+    /// Repaint every cell, not only the ones the transcript changed. ratatui only flushes the
+    /// diff between its two buffers; a cell stderr wrote (unredirected by the alternate screen)
+    /// is never rewritten, so discarding the back buffer is the only fix. `resize`, never
+    /// `Terminal::clear`: `clear`'s cursor query deadlocks on crossterm's one reader while
+    /// [`Keys`](crate::Keys) parks it in `event::read`. Resizing to the size already in force
+    /// asks the terminal nothing only on the fullscreen viewport `try_init` gives: an inline
+    /// one recomputes its origin from the cursor, which is that query back again.
     pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
         if self.failed.is_some() {
             return;
@@ -81,10 +68,9 @@ impl Screen {
         }
     }
 
-    /// The draw failure that stopped the screen updating, if one did.
-    ///
-    /// Taken, so a caller reports it once. Worth reporting: everything after it happened
-    /// off-screen, and a turn whose tool calls nobody saw was not watched.
+    /// The draw failure that stopped the screen updating, if one did. Taken, so a caller
+    /// reports it once — and it must: everything after it happened off-screen, and a turn
+    /// whose tool calls nobody saw was not watched.
     pub fn failure(&mut self) -> Option<io::Error> {
         self.failed.take()
     }
@@ -93,9 +79,8 @@ impl Screen {
 impl Drop for Screen {
     /// Leave raw mode and the alternate screen, whatever the turn did.
     ///
-    /// `Drop` and not a method: a panic unwinding through the turn must still put the
-    /// terminal back, and `try_init`'s own panic hook covers only an abort before this
-    /// exists. `SIGKILL` is not covered by either.
+    /// `Drop`, not a method: an unwinding panic must still restore the terminal, which
+    /// `try_init`'s hook covers only earlier. Neither covers `SIGKILL`.
     fn drop(&mut self) {
         ratatui::restore();
     }
