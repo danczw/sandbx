@@ -118,7 +118,11 @@ A granted name that has become a symlink falls out of the same rule rather than
 needing its own. `confirm` omits `O_NOFOLLOW`, so the object it measures is the
 link's target: a name leading elsewhere holds something else, and the access is
 `root_replaced` — not the `path_not_allowed` a lexical-only guard reported, which
-also differed from what an absent name under that root reported.
+also differed from what an absent name under that root reported. A link naming the
+vetted object itself is the one that confirms, and the resolved path then leaves
+the granted spelling, so that access refuses as plainly outside —
+`a_root_linked_back_to_its_vetted_object_is_refused_as_outside`. Refused either
+way, and the two labels are what an operator counts substitutions by.
 
 Where the ancestor does speak for the path, the caller could enumerate the
 directory anyway, so absence there is honest, and it is `SandboxError::NotFound`,
