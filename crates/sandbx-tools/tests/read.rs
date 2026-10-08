@@ -136,3 +136,31 @@ fn an_empty_file_is_reported_as_empty() {
         "empty file returned empty content"
     );
 }
+
+/// `Denied` and not `Failed`: a moved root is the policy refusing, so the agent's move is to
+/// ask about the grant rather than to try another filename. The only thing that would catch
+/// a later `RootReplaced => Failed` arm in `guard_error` (#212).
+#[test]
+fn a_substituted_root_reads_back_as_denied() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
+    std::fs::write(other.join("notes.txt"), b"planted").unwrap();
+
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(&granted)));
+    let path = granted.join("notes.txt");
+    let request = json!({ "path": path.to_str().unwrap() });
+    assert!(
+        BuiltinTool::Read.execute(request.clone(), &ctx).is_ok(),
+        "the grant did not read before the substitution"
+    );
+
+    std::fs::remove_dir_all(&granted).unwrap();
+    std::fs::rename(&other, &granted).unwrap();
+
+    let err = BuiltinTool::Read.execute(request, &ctx).unwrap_err();
+    assert!(matches!(err, ToolError::Denied { .. }), "got {err:?}");
+}
