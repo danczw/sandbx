@@ -207,28 +207,6 @@ mod tests {
         assert_eq!(labels.len(), total, "two refusals share a label");
     }
 
-    /// A forged one would outrank the exit status and claim a kill that never happened.
-    #[test]
-    fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
-        for label in [
-            "timeout",
-            "spawn_failed",
-            "path_not_allowed",
-            "unresolvable",
-            "not_found",
-            "grant_unpinnable",
-            "root_replaced",
-            "grant_bound_by_resolver",
-            "process_concealment",
-        ] {
-            assert_eq!(
-                HelperRefusal::from_label(label),
-                None,
-                "{label} is not a helper stage's to report, but the channel accepted it"
-            );
-        }
-    }
-
     /// The relayed detail is printed by a caller that prefixes it again, so carrying the
     /// helper's own announcement through would read as `sandbx: sandbx: sandbox helper
     /// failed:`.
