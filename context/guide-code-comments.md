@@ -105,12 +105,31 @@ Four facts in, four facts out, a third of the lines.
 
 ## Verifying a pass
 
-Under 15% comment lines (`///`, `//!`, `//`) as a share of all lines, read per
-crate. A smell test, not a quota:
+Under 15% comment lines (`///`, `//!`, `//`) as a share of **every line of every
+`.rs` file in the crate, test code included**, read per crate. A smell test, not a
+quota:
 
 ```sh
-find crates/<crate> -name '*.rs' | xargs grep -hcE '^\s*(///|//!|//([^/!]|$))'
+find crates/<crate> -name '*.rs' \
+  -not -path '*/sandbx-cli/src/lib.rs' -not -path '*/sandbx-tools/src/tools/*' \
+  -exec cat {} + | awk '
+  { t++ } /^[[:space:]]*(\/\/\/|\/\/!|\/\/([^\/!]|$))/ { c++ }
+  END { printf "%d/%d  %.1f%%\n", c, t, 100 * c / t }'
 ```
+
+The two `-not` clauses are the rendered docs excluded above, out of scope by nature
+rather than by reading.
+
+The denominator sits in the same sentence as the threshold because the two drift
+apart otherwise, and a ratio whose denominator is undefined cannot be read against
+a threshold at all. "Non-test" would mean three incompatible things: whole files;
+whole files minus inline `mod tests` blocks; or that minus `foo/tests.rs`,
+`foo/tests/` and `crates/*/tests/` too. The middle one is not available —
+`guide-module-layout.md` moves tests out of a file as they grow, so stripping
+inline blocks while keeping sibling files measures two crates by two rules
+depending on where their tests sit today. Excluding test code makes a crate's ratio
+*worse* in every case, a test block being mostly code carrying one `///` per test,
+so the denominator was never what held a crate inside the budget.
 
 ### The floor
 
