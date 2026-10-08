@@ -6,7 +6,7 @@
 
 use std::io::Write;
 
-use sandbx_providers::{AgentEvent, StopReason};
+use sandbx_providers::AgentEvent;
 
 use super::INCOMPLETE;
 use crate::AgentError;
@@ -30,10 +30,6 @@ pub(super) enum Capped {
 /// alone.
 pub(super) struct Render<W> {
     out: W,
-
-    /// Whether the last round stopped at `max_tokens`. Last-one-wins: every round ends
-    /// with a `Stop`, and only the final one says how the turn ended.
-    truncated: bool,
 
     /// Whether stdout is part-way through a line, so it is terminated once and only if
     /// the model did not terminate it already.
@@ -67,7 +63,6 @@ impl<W: Write> Render<W> {
     pub(super) fn new(out: W) -> Self {
         Self {
             out,
-            truncated: false,
             mid_line: false,
             wrote: false,
             separating: false,
@@ -133,8 +128,7 @@ impl<W: Write> Render<W> {
                     self.thinking_mid_line = !delta.ends_with('\n');
                 }
             }
-            AgentEvent::Stop { reason } => {
-                self.truncated = matches!(reason, StopReason::MaxTokens);
+            AgentEvent::Stop { .. } => {
                 // Here and not at the block's close, which an unsigned block never
                 // reaches: a round's own stderr lines follow, and none may continue a
                 // reasoning line.
@@ -154,11 +148,17 @@ impl<W: Write> Render<W> {
 
     /// Close the answer off, and report what the way it ended means for the exit code.
     ///
-    /// `capped` is `Some` when the turn ran out of rounds. Both bounds are named when
-    /// both were hit: a summary cut off at `max_tokens` reads as a whole one otherwise,
-    /// and which bound ended the turn does not change the code. Every one of them exits
-    /// [`INCOMPLETE`] — the tool work was cut off whatever prose followed it.
-    pub(super) fn finish(&mut self, capped: Option<Capped>) -> Result<i32, AgentError> {
+    /// `capped` is `Some` when the turn ran out of rounds; `truncated` is read off the
+    /// outcome's `round_stop` rather than inferred here, so a caller with no renderer sees
+    /// the same figure. Both bounds are named when both were hit: a summary cut off at
+    /// `max_tokens` reads as a whole one otherwise, and which bound ended the turn does
+    /// not change the code. Every one of them exits [`INCOMPLETE`] — the tool work was cut
+    /// off whatever prose followed it.
+    pub(super) fn finish(
+        &mut self,
+        capped: Option<Capped>,
+        truncated: bool,
+    ) -> Result<i32, AgentError> {
         // Again here, for the round that never reached a `Stop` — a stream error or the
         // per-round timeout — whose report is the next thing on stderr.
         self.end_thinking_line();
@@ -171,7 +171,7 @@ impl<W: Write> Render<W> {
             return Err(AgentError::Output(error));
         }
 
-        if self.truncated {
+        if truncated {
             // Otherwise a truncated answer reads as a complete one.
             eprintln!("sandbx: answer truncated at --max-tokens");
         }
@@ -196,7 +196,7 @@ impl<W: Write> Render<W> {
             None => {}
         }
 
-        if capped.is_some() || self.truncated {
+        if capped.is_some() || truncated {
             return Ok(INCOMPLETE);
         }
 
@@ -220,6 +220,8 @@ impl<W: Write> Render<W> {
 
 #[cfg(test)]
 pub(super) mod tests {
+    use sandbx_providers::StopReason;
+
     use super::*;
 
     pub(crate) fn text(delta: &str) -> AgentEvent {
@@ -252,7 +254,7 @@ pub(super) mod tests {
             render.event(event);
         }
 
-        let code = render.finish(None);
+        let code = render.finish(None, false);
         (String::from_utf8(render.out).expect("utf-8"), code)
     }
 
@@ -283,7 +285,7 @@ pub(super) mod tests {
             for event in &events {
                 render.event(event);
             }
-            let code = render.finish(None);
+            let code = render.finish(None, false);
 
             assert_eq!(
                 String::from_utf8(render.out).expect("utf-8"),
@@ -340,20 +342,20 @@ pub(super) mod tests {
         assert_eq!(code.expect("clean turn"), 0);
     }
 
+    /// No `Stop` decides it any more: the figure comes off the outcome's `round_stop`, so
+    /// a renderer fed a `max_tokens` round and told nothing still exits clean.
     #[test]
-    fn only_the_last_stop_decides_whether_it_was_cut() {
-        let (_, intermediate) = rendered(&[
-            stop(StopReason::MaxTokens),
-            text("and then it went on"),
-            stop(StopReason::EndTurn),
-        ]);
-        assert_eq!(intermediate.expect("clean turn"), 0);
+    fn the_exit_code_comes_from_the_outcome_not_a_stop() {
+        let (_, unreported) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
+        assert_eq!(unreported.expect("clean turn"), 0);
 
-        let (_, last) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
-        assert_eq!(last.expect("truncated turn"), INCOMPLETE);
+        let mut render = Render::new(Vec::new());
+        render.event(&stop(StopReason::EndTurn));
+        let told = render.finish(None, true).expect("truncated turn");
+        assert_eq!(told, INCOMPLETE);
     }
 
-    /// The turn's own bound, which no event reports: a round-limited turn ends on a
+    /// The turn's own bound, which no `round_stop` reports: a round-limited turn ends on a
     /// `ToolUse` stop, the same one a healthy round ends on.
     #[test]
     fn a_turn_out_of_rounds_is_always_incomplete() {
@@ -368,12 +370,14 @@ pub(super) mod tests {
 
             // A summary is prose on stdout, not a complete turn: the cap still cut the
             // tool work off, so a script reading the status sees the same thing.
-            let code = render.finish(Some(capped)).expect("a reported turn");
+            let code = render.finish(Some(capped), false).expect("a reported turn");
             assert_eq!(code, INCOMPLETE, "got {code} for {capped:?}");
         }
 
         assert_eq!(
-            Render::new(Vec::new()).finish(None).expect("clean turn"),
+            Render::new(Vec::new())
+                .finish(None, false)
+                .expect("clean turn"),
             0,
             "a turn with rounds to spare should still exit 0"
         );
@@ -392,7 +396,7 @@ pub(super) mod tests {
         }
 
         render
-            .finish(Some(Capped::Summarised(1)))
+            .finish(Some(Capped::Summarised(1)), false)
             .expect("rendered");
         String::from_utf8(render.out).expect("utf-8")
     }
@@ -459,6 +463,9 @@ pub(super) mod tests {
         render.event(&text("hi"));
         render.event(&stop(StopReason::EndTurn));
 
-        assert!(matches!(render.finish(None), Err(AgentError::Output(_))));
+        assert!(matches!(
+            render.finish(None, false),
+            Err(AgentError::Output(_))
+        ));
     }
 }

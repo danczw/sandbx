@@ -22,7 +22,7 @@ use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
-    Thinking,
+    StopReason, Thinking,
 };
 use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -410,9 +410,16 @@ impl AgentRun {
             (rounds, outcome) => (outcome, rounds.map(Capped::CutShort)),
         };
 
+        // The outcome's own figure, not the event stream's: the round whose text is the
+        // answer is the only one whose bound is worth naming, and on the `Discarded` path
+        // that is the first turn's — the wrap-up round's text is not an answer.
+        let truncated = outcome
+            .as_ref()
+            .is_ok_and(|outcome| matches!(outcome.round_stop, Some(StopReason::MaxTokens)));
+
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
-        let code = render.finish(capped);
+        let code = render.finish(capped, truncated);
         // Before the append: a `TurnError` discards the turn's own messages, and a prompt
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
@@ -913,6 +920,23 @@ mod tests {
                 .messages()
                 .is_empty()
         );
+    }
+
+    /// The turn that `a_turn_with_no_reply` cannot cover: one that answered, so the only
+    /// thing saying the answer is a fragment is the figure threaded out of the outcome.
+    #[test]
+    fn a_truncated_answer_exits_incomplete() {
+        let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
+
+        let (_, out, code) = one_round(
+            &args,
+            &args.prompt(),
+            vec![text("half a sen"), stop(StopReason::MaxTokens)],
+            None,
+        );
+
+        assert_eq!(out, "half a sen\n");
+        assert_eq!(code.expect("a reported turn"), INCOMPLETE);
     }
 
     /// The policy grants nothing, so the call comes back `is_error` — still a
