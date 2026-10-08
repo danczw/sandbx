@@ -59,6 +59,7 @@ grep -rhoE '^\s*(pub(\([^)]*\))?\s+)?(async\s+)?fn\s+\w+' --include='*.rs' crate
 Swap `fn` for `struct`, `enum` or `const` and the threshold for 32 to read the
 item budget. A hit is a rewrite, not an abbreviation.
 
-Renaming a test can break a prose reference: `context/*.md` and `SECURITY.md`
-cite test names as the evidence for a claim. Grep the markdown for the old name
-before considering the rename done.
+Renaming a test can break a prose reference: `context/*.md` cites test names as
+the evidence for a claim, `decision-default-policy.md`'s mutation index being a
+claim-to-test-name map outright. Grep `context/` for the old name before
+considering the rename done.
