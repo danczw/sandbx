@@ -241,7 +241,8 @@ resolution, on that spelling and on its lexical collapse: a link inside a
 substituted root resolves wherever the substitute points, so a root picked after
 resolution is a root the substitute picked. The verdict still comes off the
 resolved path, which is admitted only under a root that confirms; it is the
-*reason* the spelling decides. There is no
+*reason* the spelling decides, a substitution reached only by resolving being
+refused as plainly outside. There is no
 readback half here — a spelling comparison would be this process agreeing with
 itself, since the guard both resolves the path and performs the access. So
 `root_replaced` is sandbx's own and stays out of `HelperRefusal`: no helper runs
@@ -255,7 +256,8 @@ own directory is inherited. One derivation in the crate that owns the policy, so
 the spawn and the orientation line the model reads answer from the same place
 rather than each deriving one (#191). The sentence may still say less than the
 spawn knows: `orientation::start_root` drops a start directory the roots sentence
-did not name, which is the system binaries and nothing else.
+did not name — the system binaries, and a root that no longer vets to the grant
+the policy carries, which the guard would refuse every path under anyway.
 
 A directory and not merely the first path: `--allow-write /dev/null` is an ordinary
 grant and a `chdir` to a file fails the spawn with `ENOTDIR`. `is_dir` on a path
