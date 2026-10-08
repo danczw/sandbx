@@ -31,7 +31,6 @@ const UNAUTHENTICATED: i32 = 1;
 /// `sandbx auth <login|logout|status>`
 #[derive(Debug, clap::Args)]
 pub struct Auth {
-    /// What to do with the stored credential.
     #[command(subcommand)]
     action: Action,
 }

@@ -7,15 +7,12 @@ use clap::Parser;
 use sandbx_cli::{Cli, Command};
 
 fn main() -> std::process::ExitCode {
-    // Must come before argument parsing: `SandboxedCommand` re-execs this same binary
-    // as its helper, and in that mode the process restricts itself and becomes the
-    // target command rather than falling through to here.
+    // Must precede argument parsing: `SandboxedCommand` re-execs this binary as its
+    // helper, which restricts itself and becomes the target command instead of falling through.
     sandbx_core::with_helper_dispatch(std::env::args_os(), || {
-        // Inside the closure, never above it: in helper mode this process becomes the
-        // sandboxed command, whose stderr the parent forwards verbatim, so a subscriber
-        // installed above would write sandbx's records into that output. Helper mode has
-        // no subscriber; its hardening steps report what degraded back over a pipe for
-        // `SandboxedCommand` to emit against this one.
+        // Inside the closure, not above: in helper mode this process becomes the sandboxed
+        // command, whose stderr is forwarded verbatim, so a subscriber above would leak into
+        // it. Helper mode has none; its hardening reports degradations over a pipe instead.
         if let Err(error) = sandbx_cli::logging::init() {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }
@@ -23,9 +20,8 @@ fn main() -> std::process::ExitCode {
         let command = Cli::parse().command;
         let failure = failure_code(&command);
 
-        // Inside the closure, so the flag is sandbx's own and not something a sandboxed
-        // command inherits; after parsing, so a refusal exits with the subcommand's own code.
-        // Later than it looks is safe: nothing has been spawned at either point.
+        // Inside the closure so the flag is sandbx's own, not a sandboxed command's; after
+        // parsing so a refusal exits with the subcommand's code, and nothing has spawned yet.
         if let Err(error) = sandbx_core::conceal_process_state() {
             eprintln!("sandbx: {error}");
             return std::process::ExitCode::from(failure);

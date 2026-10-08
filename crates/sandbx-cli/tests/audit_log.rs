@@ -15,10 +15,9 @@ fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
 
 /// An in-memory stand-in for stderr.
 ///
-/// Cloneable over a shared buffer because the applicable `MakeWriter` impl is the one for
+/// Cloneable over a shared buffer: the applicable `MakeWriter` impl is the one for
 /// `Fn() -> impl io::Write`, and the test still has to read back what its writers wrote. A
-/// bare `Arc<Mutex<Vec<u8>>>` cannot stand in: that impl needs `&Mutex<Vec<u8>>:
-/// io::Write`, which it is not.
+/// bare `Arc<Mutex<Vec<u8>>>` can't stand in — that impl needs `&Mutex<Vec<u8>>: io::Write`.
 #[derive(Clone, Default)]
 struct Sink(Arc<Mutex<Vec<u8>>>);
 
@@ -137,9 +136,8 @@ fn a_spawn_records_the_resolver_hint() {
     );
 }
 
-/// `Degraded` is emitted at `INFO` so this filter admits it. Its emitters run in the
-/// re-exec'd helper, where no subscriber is installed, so passing the filter is
-/// necessary but not sufficient.
+/// `Degraded` is emitted at `INFO` so this filter admits it, but its emitters run in the
+/// re-exec'd helper where no subscriber is installed — passing the filter isn't sufficient.
 #[test]
 fn a_degraded_hardening_step_reaches_the_output() {
     let output = captured(|| {

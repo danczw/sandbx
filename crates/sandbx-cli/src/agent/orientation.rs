@@ -55,12 +55,10 @@ fn tools_line(approved: &[&str]) -> String {
 /// The roots sentence, as the model reads it.
 ///
 /// It admits the system binaries without listing them: a model told every other path is
-/// refused may decline a command that would in fact have started.
-///
-/// `start` is `None` where there is nothing true to say: either the policy grants nowhere to
-/// be and the cwd is inherited, or [`start_root`] dropped a directory this sentence leaves out.
+/// refused may decline a command that would in fact have started. `start` is `None` where
+/// there is nothing true to say: either the policy grants nowhere to be and the cwd is
+/// inherited, or [`start_root`] dropped a directory this sentence leaves out.
 fn roots_line(roots: &[String], start: Option<&Path>) -> String {
-    // Its own sentence: the roots are the bound, and this is a fact about the run inside it.
     let starts_in = match start {
         Some(root) => format!(
             " A `bash` command starts in {}, and a relative path in one resolves from there.",
@@ -126,9 +124,8 @@ fn named(roots: &[(PathBuf, Vec<&str>)]) -> Vec<String> {
 /// Where a command starts, when that is one of the roots [`work_roots`] named.
 ///
 /// Both spellings come off the same grants, so the two cannot name one directory two ways.
-/// Dropped when the list does not hold it: under `--allow-read /usr --allow-read /work` a
-/// command starts in the system binaries, which the sentence leaves out and its next clause
-/// calls refused.
+/// Dropped when absent from the list: under `--allow-read /usr --allow-read /work` a command
+/// starts in the system binaries, which the sentence leaves out and calls refused.
 fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<PathBuf> {
     let start = policy.working_root()?.to_path_buf();
 
@@ -234,11 +231,9 @@ mod tests {
     }
 
     /// The flags take a path verbatim, and the tools take only absolute ones — so a grant
-    /// named as given would send the model looking for the form it can actually pass.
-    ///
-    /// Driven through argv, that being the only route a non-canonical spelling still has:
-    /// the policy holds vetted paths, which resolve at the vet, so the flag is where the two
-    /// forms are still distinguishable.
+    /// named as given would send the model looking for the form it can actually pass. Driven
+    /// through argv, the only route a non-canonical spelling still has: the policy holds
+    /// vetted paths, which resolve at the vet, so the flag is where the two forms differ.
     #[test]
     fn a_grant_is_named_in_the_form_the_guard_holds() {
         let (work, named) = work();
@@ -266,9 +261,8 @@ mod tests {
         );
     }
 
-    /// Pinned against the policy the child is actually spawned with, not a literal: a
-    /// sentence naming a directory the spawn does not use is the refusal #191 is about,
-    /// reported as orientation.
+    /// Pinned against the policy the child is actually spawned with, not a literal: naming a
+    /// directory the spawn doesn't use is the refusal #191 is about, reported as orientation.
     #[test]
     fn the_prompt_names_where_a_command_starts() {
         let (work, named) = work();
@@ -327,10 +321,9 @@ mod tests {
     }
 
     /// Compared against the whole tools sentence: a roots sentence over an empty list names
-    /// no path either, so a check for one would pass with the guard gone.
-    ///
-    /// Granted while it exists and removed after, a grant naming nothing being unconstructible
-    /// now that one carries the object it was vetted against (#212).
+    /// no path either, so a check for one would pass with the guard gone. Granted while it
+    /// exists and removed after — a grant naming nothing is unconstructible now that one
+    /// carries the object it was vetted against (#212).
     #[test]
     fn a_grant_that_resolves_to_nothing_is_not_named() {
         let (work, _) = work();

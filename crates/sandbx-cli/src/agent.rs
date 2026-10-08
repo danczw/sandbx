@@ -60,8 +60,8 @@ const NO_CONSENT: i32 = 3;
 
 /// Where one run writes, and where it asks.
 ///
-/// One argument rather than two because they are the same operator seen twice: stdout
-/// carries the model's answer and is piped, so a question has to go somewhere else.
+/// One argument, not two: stdout and stderr are the same operator seen twice, and a
+/// question has to go somewhere stdout's piping can't reach.
 struct Channels<W, E> {
     /// The answer, streamed as it arrives.
     out: W,
@@ -69,9 +69,8 @@ struct Channels<W, E> {
     /// Everything about the answer: reasoning, and how the turn ended.
     err: E,
 
-    /// The controlling terminal, `Some` under `--approve call` alone. Opening the real
-    /// device ([`Terminal::open`]) is what no suite here covers, nor the process's own
-    /// stderr that an account falls back to.
+    /// The controlling terminal, `Some` only under `--approve call`. No suite here opens
+    /// the real device ([`Terminal::open`]), nor the stderr an account falls back to.
     terminal: Option<Terminal>,
 }
 
@@ -261,13 +260,10 @@ impl AgentRun {
             return Err(AgentError::EmptyPrompt);
         }
 
-        // No `with_helper`: the default path re-execs this binary, and `main` dispatches
-        // helper mode before parsing, so the shipped binary is its own helper. Derived
-        // before the client, so a refused policy never reads the credential.
+        // Derived before the client, so a refused policy never reads the credential.
         let policy = self.policy()?;
-        // Read off the one policy the context is about to take by value: a second
-        // `self.policy()?` re-reads `getcwd`, and a cwd that moved in between would name
-        // the model a root the sandbox did not grant.
+        // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
+        // meanwhile would name the model a root the sandbox did not grant.
         let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
         let ctx = ExecutionContext::new(policy);
 
@@ -314,16 +310,15 @@ impl AgentRun {
             Approve::Call => {
                 let terminal =
                     Terminal::open().map_err(|source| AgentError::NoTerminal { source })?;
-                // After the open, not before: a line claiming the run will ask is false
-                // for the run that could not.
+                // After the open: claiming the run will ask would be false for one that couldn't.
                 if gate::asks_about_anything(self.allow_tool.as_deref()) {
                     eprintln!(
                         "sandbx: each call that writes or runs a program will be asked for \
                          on this terminal"
                     );
                 } else {
-                    // Argv is the ceiling, so the flag is inert here rather than wrong.
-                    // Said plainly, or an operator reads the silence as consent granted.
+                    // Inert, not wrong: argv is the ceiling. Said plainly, or silence reads
+                    // as consent.
                     eprintln!(
                         "sandbx: nothing in this run will be asked for: `{APPROVE_CALL}` \
                          asks only about the tools `{}` approved, and none was",
@@ -338,9 +333,8 @@ impl AgentRun {
     /// Run one turn against `open`, writing the answer to `out` and saving it to
     /// `session`.
     ///
-    /// The stream opener and the channels are arguments so a test can drive a canned turn
-    /// and read back what the request carried — the only way to check either without a
-    /// key.
+    /// The opener and the channels are arguments so a test can drive a canned turn and
+    /// read back the request — the only way to check either without a key.
     async fn drive<W: Write, E: Write>(
         &self,
         mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
@@ -356,8 +350,7 @@ impl AgentRun {
             content: vec![ContentBlock::Text { text: prompt }],
         };
 
-        // The stored turns first, so the new prompt is the conversation's latest and not
-        // a request of its own.
+        // Stored turns first: the new prompt is the conversation's latest, not its own request.
         let mut history = match &session {
             Some(session) => session::request_history(session.messages()),
             None => Vec::new(),
@@ -373,16 +366,14 @@ impl AgentRun {
             max_output_tokens: self.max_tokens,
             system,
             tools: &BuiltinTool::ALL,
-            // The model's to make: this is the turn that may use a tool.
-            tool_choice: None,
+            tool_choice: None, // The model's to make.
             thinking: self.show_thinking.then_some(Thinking::Visible),
             history: &merged.history,
             limits: TurnLimits {
                 max_rounds: self.max_rounds,
                 ..TurnLimits::default()
             },
-            // What the resumed conversation last measured, so a continued one and a
-            // resumed one carry the same figures. Both are `None`/`0` without a session.
+            // Last measured by the resumed conversation; `None`/`0` without one.
             observed: session
                 .as_ref()
                 .and_then(Session::observed)
@@ -390,8 +381,7 @@ impl AgentRun {
             withheld: merged.withheld,
         };
 
-        // Read off before `run_turn` takes the turn by value.
-        let next = wrapup::Next::after(&turn);
+        let next = wrapup::Next::after(&turn); // Read off before `run_turn` takes it by value.
 
         let mut render = Render::with(out, err).showing_thinking(self.show_thinking);
         let outcome = run_turn(
@@ -403,15 +393,13 @@ impl AgentRun {
         )
         .await;
 
-        // Read after the loop, where `observe`'s borrow on `render` has ended: no event
-        // carries the turn's own stop, only a round's.
+        // After the loop, where `render`'s borrow has ended: no event carries the turn's own stop.
         let stop = match &outcome {
             Ok(outcome) => Some(outcome.stop),
             Err(_) => None,
         };
 
-        // Exhaustive on `TurnStop`, so a fourth way for a turn to end cannot reach
-        // `finish` as a clean one and exit 0.
+        // Exhaustive on `TurnStop`, so a fourth way to end cannot reach `finish` as a clean one.
         let (outcome, ending) = match (stop, outcome) {
             (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
                 let (outcome, summarised) = next
@@ -435,8 +423,8 @@ impl AgentRun {
             (Some(TurnStop::Answered) | None, outcome) => (outcome, None),
         };
 
-        // The outcome's figure, not the stream's: on the `Discarded` path that is the first
-        // turn's, the wrap-up round's text not being an answer.
+        // The outcome's figure, not the stream's: on `Discarded` that's the first turn's,
+        // the wrap-up round's text not being an answer.
         let truncated = outcome
             .as_ref()
             .is_ok_and(|outcome| matches!(outcome.round_stop, Some(StopReason::MaxTokens)));
@@ -452,8 +440,8 @@ impl AgentRun {
             self.save(session, &asked, outcome, &merged)?;
         }
 
-        // Last, so an append still happens for a turn whose stdout was a closed pipe:
-        // the transcript is the conversation, not what reached the terminal.
+        // Last: an append still happens for a closed stdout — the transcript is the
+        // conversation, not what reached the terminal.
         code
     }
 
@@ -536,8 +524,7 @@ mod tests {
         }
     }
 
-    /// A misplaced `--` turns `--allow-tool write -- "…"` into the bare flag plus a
-    /// prompt. What that does to the approved set is `gate`'s to pin; this is the prompt.
+    /// What this leaves the approved set is `gate`'s to pin; this only asserts the prompt.
     #[test]
     fn a_misplaced_separator_leaves_the_flag_a_prompt() {
         let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "write", "it"]);
@@ -545,7 +532,6 @@ mod tests {
         assert_eq!(args.prompt(), "write it");
     }
 
-    /// The default is what every existing run keeps, and the opt-in has to parse.
     #[test]
     fn approval_is_once_per_run_unless_asked_for_per_call() {
         assert_eq!(
@@ -558,15 +544,12 @@ mod tests {
         );
     }
 
-    /// A run with no channel to ask on exits before the first request. Asserting only
-    /// that it exits nonzero would pass for a provider failure too, so the assertion is
-    /// that the refusal names the flag to drop.
+    /// Asserting only a nonzero exit would also pass for a provider failure, so this
+    /// checks that the refusal names the flag to drop.
     #[test]
     fn a_run_with_no_terminal_to_ask_on_names_the_flag() {
-        // ENXIO on Linux, which is what opening `/dev/tty` returns with no controlling
-        // terminal.
         let error = AgentError::NoTerminal {
-            source: std::io::Error::from_raw_os_error(6),
+            source: std::io::Error::from_raw_os_error(6), // ENXIO: no controlling terminal
         };
 
         let message = error.to_string();
@@ -600,10 +583,8 @@ mod tests {
         }
     }
 
-    /// An `EventStream` that replays `events` and then ends.
-    ///
-    /// `fuse()` because `EventStream` promises a `FusedStream`: a caller may poll it
-    /// past its end without panicking.
+    /// An `EventStream` that replays `events` and then ends. `fuse()` because
+    /// `EventStream` promises a `FusedStream`: a caller may poll past its end without panicking.
     fn canned(events: Vec<AgentEvent>) -> EventStream {
         use futures_util::StreamExt;
         Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)).fuse())
@@ -622,10 +603,8 @@ mod tests {
     /// What a scripted run reports: every request it sent, its stdout, and its exit code.
     type Driven = (Vec<Prompt>, String, Result<i32, AgentError>);
 
-    /// Drive one scripted round through `drive`, and report what was sent and written.
-    ///
-    /// A default policy grants nothing, so the request carries the approved tools and
-    /// whatever `--system` held, with no roots line.
+    /// Drive one scripted round through `drive`. A default policy grants nothing, so the
+    /// request carries the approved tools and whatever `--system` held, with no roots line.
     fn one_round(
         args: &AgentRun,
         prompt: &str,
@@ -641,11 +620,9 @@ mod tests {
         )
     }
 
-    /// `one_round` over a script of several rounds, under a policy of its caller's
-    /// choosing, composing the system prompt the way `execute` does.
-    ///
-    /// A script, not one round: a turn out of rounds is asked again with no tool call
-    /// allowed, so the round-limited cases here open two streams.
+    /// `one_round` over a script of several rounds, composing the system prompt the way
+    /// `execute` does. A script, not one round: a turn out of rounds is asked again with
+    /// no tool call allowed, so the round-limited cases here open two streams.
     fn under(
         policy: SandboxPolicy,
         args: &AgentRun,
@@ -750,10 +727,8 @@ mod tests {
         Terminal::on(slave).expect("the terminal")
     }
 
-    /// One round asking to write `path`, then a round that must never be reached.
-    ///
-    /// Two rounds, so a request count of one is evidence none was opened rather than
-    /// evidence the script ran dry.
+    /// Two rounds — one asking to write `path`, one that must never be reached — so a
+    /// request count of one is evidence none opened rather than evidence the script ran dry.
     fn asking_to_write(path: &std::path::Path) -> Vec<Vec<AgentEvent>> {
         vec![
             vec![
@@ -796,8 +771,7 @@ mod tests {
         assert_eq!(sent[0].messages, vec![asked("what is in /srv?")]);
     }
 
-    /// Both halves: the default has to be absent and not `Visible`, asking for a summary
-    /// being a 400 on every model before Claude 4.6.
+    /// A summary request is a 400 on every model before Claude 4.6, so both halves matter.
     #[test]
     fn show_thinking_asks_for_it_and_nothing_else_does() {
         let round = || vec![text("etc"), stop(StopReason::EndTurn)];
@@ -813,9 +787,8 @@ mod tests {
         assert_eq!(sent[0].thinking, Some(Thinking::Visible));
     }
 
-    /// The last edge before the file, the replay itself being `run_turn`'s. Asserted on
-    /// the bytes, not the parse: a variant added later would store it somewhere this does
-    /// not know to look.
+    /// The last edge before the file; `run_turn` owns the replay. Asserted on raw bytes,
+    /// not the parse, so a later variant can't hide from this.
     #[test]
     fn a_stored_turn_carries_no_reasoning() {
         let args = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
@@ -953,8 +926,7 @@ mod tests {
         assert!(matches!(error, AgentError::Turn(_)), "got {error:?}");
         let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
             .expect("the transcript exists");
-        // A prompt saved without its answer would make the next resume send two user
-        // turns in a row, which the API rejects.
+        // An unanswered prompt would make the next resume send two user turns in a row.
         assert_eq!(after, before);
     }
 
@@ -1137,8 +1109,7 @@ mod tests {
             !file.exists(),
             "the call the operator was never asked about ran"
         );
-        // What arrived before the hangup, and no wrap-up prose.
-        assert_eq!(written, "looking\n");
+        assert_eq!(written, "looking\n"); // What arrived before the hangup; no wrap-up prose.
     }
 
     /// A `TurnError` would discard exactly this, which is why the abort is a `TurnStop`:

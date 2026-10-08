@@ -31,11 +31,10 @@ fn cannot_resolve(policy: &SandboxPolicy) -> bool {
 
 /// What such a run most likely needed, once it has failed.
 ///
-/// Hedged: sandbx cannot see the command's own `getaddrinfo`, so a failure for any other
-/// reason gets this too. Names both answers, the flag that bounds which names resolve first —
-/// except where `--allow-unix-sockets` is already held, `PolicyError::DnsWithUnixSockets`
-/// refusing that pair, and advice sending an operator from a failed run to a refused one is
-/// worse than advice naming one answer.
+/// Hedged: sandbx can't see the command's own `getaddrinfo`, so any failure gets this too.
+/// Names both answers, except where `--allow-unix-sockets` is already held — that pair is
+/// refused by `PolicyError::DnsWithUnixSockets`, and advice pointing at a refused answer is
+/// worse than naming only one.
 fn resolver_advice(cannot_resolve: bool, unix_sockets: bool, code: i32) -> Option<&'static str> {
     if !cannot_resolve || code == 0 {
         return None;
@@ -87,9 +86,8 @@ pub struct SandboxRun {
     ///
     /// It is not a path flag, so it grants nothing and does not replace the
     /// working-directory default.
-    // Here and not on `Grants`, which `agent-run` flattens too: there the program is the
-    // agent's to choose, so the flag would parse and pin nothing. `Vec` and not `Option`
-    // because clap's action on an `Option` is last-wins, and two digests is a mistake.
+    // Not on `Grants`, which `agent-run` also flattens with no fixed program to pin.
+    // `Vec` not `Option`: clap's `Option` action is last-wins, and two digests is a mistake.
     #[arg(long = "pin-sha256", value_name = "HEX", value_parser = pin_digest)]
     pin_sha256: Vec<Sha256Digest>,
 
@@ -121,9 +119,9 @@ impl SandboxRun {
 
     /// The digest the program was pinned to, or why the pin cannot stand.
     ///
-    /// Outside [`policy`](Self::policy) and outside `Grants`: a pin grants nothing, so it
-    /// must neither widen a policy nor suppress the working-directory default. The helper
-    /// refuses a relative program too, but only here is it in scope to name in the advice.
+    /// Outside [`policy`](Self::policy) and `Grants`: a pin must neither widen a policy nor
+    /// suppress the cwd default. The helper also refuses a relative program, but only here
+    /// can the advice name it.
     pub fn pin(&self) -> Result<Option<Sha256Digest>, PolicyError> {
         let pin = match self.pin_sha256.as_slice() {
             [] => None,
@@ -162,8 +160,7 @@ impl SandboxRun {
         }
         let output = command.output()?;
 
-        // Interleaving is lost: `output()` runs the command to completion rather than
-        // streaming.
+        // Interleaving is lost: `output()` runs to completion rather than streaming.
         let _ = std::io::stdout().write_all(&output.stdout);
         let _ = std::io::stderr().write_all(&output.stderr);
 
@@ -232,8 +229,7 @@ mod tests {
         );
     }
 
-    /// sandbx opens the file itself, so a bare name resolves against the policy's `PATH` —
-    /// hashing one file and execing another.
+    /// sandbx opens the file itself, so a bare name would hash one file and exec another.
     #[test]
     fn a_pin_on_a_relative_program_is_refused() {
         let run = pinned("target/debug/mytool", &[digest()]);
@@ -274,8 +270,7 @@ mod tests {
         }
     }
 
-    /// Including the clause about the default a path flag replaces, the trap in the three
-    /// flags it names.
+    /// Includes the clause that a path flag replaces the working-directory default.
     #[test]
     fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
         let advice = resolver_advice(true, false, 6).expect("a failure with no way to resolve");
@@ -317,8 +312,7 @@ mod tests {
         assert!(!cannot_resolve(&ported().allow_network_port(53)));
     }
 
-    /// A name it does not hold is refused on purpose, so advice naming a missing port is
-    /// wrong here.
+    /// A name it does not hold is refused on purpose, so naming a missing port would mislead.
     #[test]
     fn a_policy_bounding_resolution_is_silent() {
         assert!(!cannot_resolve(&ported().allow_dns("example.com")));
