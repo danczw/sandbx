@@ -207,7 +207,11 @@ fn a_kernel_below_the_baseline_is_unsupported() {
 #[test]
 fn every_prose_copy_of_the_floor_is_current() {
     let abi = format!("ABI {}", BASELINE_ABI as i32);
+    // `decision-port-allowlist.md` writes the ABI as landlock's variant name instead. Built
+    // off the discriminant, like the line above: landlock documents its `Debug` as unstable.
+    let variant = format!("V{}", BASELINE_ABI as i32);
     let both: &[&str] = &[abi.as_str(), BASELINE_KERNEL];
+    let variant_form: &[&str] = &[variant.as_str(), BASELINE_KERNEL];
     let kernel_only: &[&str] = &[BASELINE_KERNEL];
 
     for (name, text, wanted) in [
@@ -235,6 +239,18 @@ fn every_prose_copy_of_the_floor_is_current() {
             "tests/enforcement.rs",
             include_str!("../../../../tests/enforcement.rs"),
             both,
+        ),
+        // The only two of 31 `context/` files stating the floor: a file that never names it
+        // cannot drift from it, and each one added is another way for a trim to break this build.
+        (
+            "context/guide-sandboxing.md",
+            include_str!("../../../../../../context/guide-sandboxing.md"),
+            both,
+        ),
+        (
+            "context/decision-port-allowlist.md",
+            include_str!("../../../../../../context/decision-port-allowlist.md"),
+            variant_form,
         ),
     ] {
         for want in wanted {
