@@ -112,13 +112,17 @@ quota:
 ```sh
 find crates/<crate> -name '*.rs' \
   -not -path '*/sandbx-cli/src/lib.rs' -not -path '*/sandbx-tools/src/tools/*' \
+  -not -path '*/sandbx-core/src/helper/*' \
   -exec cat {} + | awk '
   { t++ } /^[[:space:]]*(\/\/\/|\/\/!|\/\/([^\/!]|$))/ { c++ }
   END { printf "%d/%d  %.1f%%\n", c, t, 100 * c / t }'
 ```
 
-The two `-not` clauses are the rendered docs excluded above, out of scope by nature
-rather than by reading.
+The `-not` clauses are the rendered docs and the by-nature exemption below, out of
+scope rather than under budget. Both leave the numerator *and* the denominator:
+`sandbx-core/src/helper/` is a third of that crate's lines at twice the target, so
+counting its lines while exempting its comments puts 15% out of reach for the crate
+however hard the rest of it is cut.
 
 The denominator sits in the same sentence as the threshold because the two drift
 apart otherwise, and a ratio whose denominator is undefined cannot be read against
