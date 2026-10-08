@@ -467,8 +467,9 @@ fn a_missing_path_outside_a_grant_is_a_refusal() {
     );
 }
 
-/// `within` tests a resolved path, so one that will not resolve is inside no root. A loop
-/// has no target to conceal and is concealed anyway, the three failures reading alike.
+/// Containment is tested on a resolved path, so one that will not resolve is inside no
+/// root. A loop has no target to conceal and is concealed anyway, the three failures
+/// reading alike.
 #[cfg(unix)]
 #[test]
 fn an_unresolvable_path_in_a_grant_is_not_absent() {
