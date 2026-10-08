@@ -94,15 +94,17 @@ impl Consent {
             )
             .and_then(|()| out.flush());
             if asked.is_err() {
-                return deny(CLOSED);
+                return abort(CLOSED);
             }
 
             let mut answer = String::new();
             // A read error is as final as an end of input, and a hangup is the error
             // case: a controlling terminal revoked mid-run fails the read with `EIO`
-            // where a merely closed one returns 0, so both arms refuse.
+            // where a merely closed one returns 0. Both arms abort, which takes one
+            // typed `VEOF` with them: the two are indistinguishable from a read, and
+            // both mean nobody is answering.
             if matches!(input.read_line(&mut answer), Ok(0) | Err(_)) {
-                return deny(CLOSED);
+                return abort(CLOSED);
             }
 
             match answer.trim() {
@@ -131,6 +133,18 @@ fn verb(tool: BuiltinTool) -> &'static str {
 
 fn deny(reason: &str) -> ApprovalDecision {
     ApprovalDecision::Deny {
+        reason: reason.to_owned(),
+    }
+}
+
+/// A verdict that ends the turn: the channel is gone, so there is no later call to ask
+/// about either.
+///
+/// Drawn here because this is the only layer that can draw it without guessing — an
+/// operator's `n` refuses one call, a read that cannot complete refuses every call there
+/// will ever be.
+fn abort(reason: &str) -> ApprovalDecision {
+    ApprovalDecision::Abort {
         reason: reason.to_owned(),
     }
 }
@@ -202,7 +216,7 @@ impl Terminal {
     /// # Errors
     ///
     /// Whatever `tcflush` reports. A flush that failed left the queue intact, so the
-    /// caller refuses rather than asking over a channel it could not clear.
+    /// caller ends the turn rather than asking over a channel it could not clear.
     fn discard_typeahead(&mut self) -> nix::Result<()> {
         nix::sys::termios::tcflush(self.input.get_ref(), nix::sys::termios::FlushArg::TCIFLUSH)?;
 
@@ -232,11 +246,11 @@ impl Operator for Terminal {
         // installs none, so a flush that failed will fail again — and asking anyway is
         // asking over a queue that may already hold its own answer.
         if self.discard_typeahead().is_err() {
-            return deny(UNCLEARED);
+            return abort(UNCLEARED);
         }
 
         // From a known rendition, per `RESET`. A failed write is not handled here: the
-        // question's own write fails too, and denies.
+        // question's own write fails too, and aborts.
         let _ = self.out.write_all(RESET.as_bytes());
 
         self.consent.ask(call, &mut self.input, &mut self.out)
