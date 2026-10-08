@@ -58,6 +58,28 @@ and [`SECURITY.md`](../../SECURITY.md) carries it as an explicit *non-claim*
 rather than leaving it to be discovered. The harness process is the same: a
 vulnerability in sandbx's own code is not contained by sandbx.
 
+The check is one grep, and it is worth running once so the picture stops being
+something you took on trust: `apply` has exactly one call site in the
+workspace, in `restrict_and_exec` — stage 2, and nowhere above it. Why it cannot
+move up is in `exec_sandboxed`'s own doc comment in
+[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs):
+
+> Must run in a freshly executed helper process, never inside sandbx: the
+> namespaces and the capability drops are irreversible for this process, so
+> doing them in sandbx would cage the harness itself.
+
+**Unconfined is not unhardened,** and the two unconfined processes are not
+equally exposed. Stage 1 holds no capabilities, has `no_new_privs` set and
+`RLIMIT_CORE` at 0, and sits inside the user namespace it just made — plus the
+network one when the policy denies network, and a mount one when there are
+resolver files to bind. It is outside only the *PID* namespace, which is the
+whole reason it has to spawn stage 2. Process 0 has none of that: the host's
+namespaces, whatever privileges the invoking user holds, and one step of its own
+in `conceal_process_state` below. `SECURITY.md`'s non-claim scopes the
+supervisor — it "lives outside the command's PID namespace", and it is a fresh
+`exec` holding none of the harness's state — and makes no such scoping offer
+about the harness.
+
 - **Worth questioning:** the harness is the one process in this picture that
   parses untrusted input — the model's output, and file contents arriving as
   tool results — and it is the one process with no boundary at all. The
@@ -80,6 +102,16 @@ because a command may call `setsid` and leave the process group, and `pdeathsig`
 does not care about group membership.
 [guide-process-lifetime.md](../guide-process-lifetime.md) has the kill chain,
 and the one ordering rule inside it.
+
+One qualification that guide bolds, and that the table above states only in
+passing: **the process group and the kill exist on a timed run and nowhere
+else.** `SandboxedCommand::output` with no deadline is a plain
+`Command::output()` — no `process_group(0)` and no `killpg` — and since nothing
+then kills stage 1 early, stage 2's `pdeathsig` has nothing to fire on either.
+There namespace teardown carries the promise by itself. A `bash` tool call is
+always timed, `ExecutionContext` applying its `DEFAULT_TIMEOUT` where a second
+spawning built-in could forget it; `sandbox-run` with no `--timeout` is the
+untimed shape.
 
 ## View 2 — one request, end to end
 
@@ -130,6 +162,32 @@ order is the security property, and each line carries the counterexample that
 fixes it in place. You will meet the same pattern inside `apply`, inside the
 `pdeathsig` pair, and inside the default-policy guard.
 
+### From the setup to the loop
+
+`execute` does not call `run_turn` itself. It calls `self.drive`, and that is
+where the values the sequence above produced become the five arguments the loop
+takes — so it is also where three of View 3's boundaries are actually spent:
+
+| `run_turn` takes | and `drive` supplies |
+|---|---|
+| `open` | a closure over `client.stream_chat` — the provider seam, so no trait and no `dyn` |
+| `turn` | a `Turn`: the model, both caps, the system prompt, the merged history |
+| `ctx` | the `&ExecutionContext` the policy moved into |
+| `observe` | a closure over `render.event`, called on every event in arrival order |
+| `gate` | `ArgvGate::new(self.allow_tool.as_deref(), terminal)` |
+
+The last row is what the startup order was for. `--allow-tool` is the ceiling
+and the terminal is how a per-call answer gets asked for, so the gate cannot be
+constructed until both exist — which is why `self.terminal()?` sits up in that
+sequence ahead of the credential, rather than opening a device at the first call
+that needs one. The split from `execute` is deliberate too, and the reason is in
+`drive`'s own doc: the opener and the channels are *arguments* rather than
+fields "so a test can drive a canned turn and read back the request — the only
+way to check either without a key".
+
+[21](21-crate-agent.md) has the signature those five arguments satisfy, and
+[13](13-turn-loop-and-gate.md) has the gate.
+
 ### The round
 
 `run_turn` then loops. [guide-turn-loop.md](../guide-turn-loop.md) is the
@@ -178,6 +236,22 @@ For six of the seven built-ins, `FsGuard` **is** the enforcement. There is no
 kernel boundary under them, because they never spawn anything for a kernel
 boundary to apply to. A reader who has absorbed "sandbx uses Landlock" and
 stopped there has the wrong model of the majority of what an agent does.
+
+The right branch is also where the policy leaves the harness — and the request
+traced above never takes it, no `--allow-tool` having approved `bash`. When one
+does, the hop is two calls: `sandboxed_command` is the only route to that
+private field and it *spends* it, handing `SandboxedCommand` a clone, whose
+`command_line` renders policy and command as a single argv.
+
+```
+--sandbx-core-exec --sandbx-audit-stdin  …the policy…  -- /bin/sh -c <command>
+```
+
+That argv is the whole of what crosses. Nothing of the caller's memory survives
+an `execve`, and the environment — the obvious alternative channel — is
+unavailable on purpose, being itself part of what the policy governs.
+[11](11-the-two-seams.md) walks the encoding and
+[12](12-a-flag-to-a-kernel-rule.md) traces one flag through it.
 
 Everything else follows from the same run: a decision is recorded through
 `tracing` under `AUDIT_TARGET`, one made *inside* the helper is relayed back
@@ -264,15 +338,28 @@ before it.
 | which crate owns what | [05](05-seven-crates.md) | [guide-repo-map.md](../guide-repo-map.md) |
 | what is claimed, and what is not | [06](06-claims-and-non-claims.md), [17](17-gaps-and-open-questions.md) | [`SECURITY.md`](../../SECURITY.md) |
 
+That table answers "which chapter explains this box". The other question a
+reader arrives with — "which chapter explains this *crate*" — is
+[18](18-crate-core.md) through [24](24-crate-cli.md), one chapter each, in the
+order [05](05-seven-crates.md) introduces them: core, tools, providers, agent,
+session, tui, cli.
+
 ## You should now be able to explain
 
 - Why there are three processes rather than two, in terms of what
   `unshare(CLONE_NEWPID)` does and does not place.
-- Which processes in that picture are unconfined, and why one of them has to be.
+- Which processes in that picture are unconfined, and why one of them has to be
+  — and how to check with one grep that no process above stage 2 installs
+  anything.
+- What the lifetime promise rests on for a run with no timeout set, and which
+  of the two paths is simply absent there.
 - Why `with_helper_dispatch` is the first thing `main` does, and what would
   break if logging were initialised above it.
 - Why the policy is derived before the API key is read.
+- Which five arguments `run_turn` takes, and which step of the setup sequence
+  supplies each one.
 - Which six tools never reach Landlock, and what enforces them instead.
+- What crosses from the harness into the helper, and what deliberately does not.
 - What `CallGate` being a mandatory parameter rather than an `Option` buys.
 - Why "a closed enum plus an exhaustive match" keeps appearing, and name two
   places it does.

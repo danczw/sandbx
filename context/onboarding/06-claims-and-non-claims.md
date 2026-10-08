@@ -36,7 +36,7 @@ What that third condition leaves outside is most of the program:
 
 | outside the scope sentence | what bounds it instead |
 |---|---|
-| the harness process | nothing, and `SECURITY.md` says so as a non-claim |
+| the harness process | nothing confines it; one step hides it, below — and `SECURITY.md` says so as a non-claim |
 | the helper's supervisor stage | nothing; it has to be able to spawn the stage that installs the ruleset |
 | `read`, `write`, `edit`, `ls`, `grep`, `find` | `FsGuard`, in-process |
 | `hash` and `auth` | nothing — neither confines anything ([01](01-what-sandbx-is.md)) |
@@ -146,6 +146,16 @@ each of the four was unfalsifiable, because deleting any one left a later one
 covering for it and the command's environment byte-identical.
 [05](05-seven-crates.md) is where that argument is traced through the lint.
 
+The other half of *at every spawn stage* is a check, not a clear. Before
+applying anything, `restrict_and_exec` in
+[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) refuses outright
+if the environment stage 2 *inherited* holds a name the policy does not permit —
+`permits_env`, the one predicate the factory and the check share, being the
+allowlist plus the single compile-time pair `imposed_env` carries under
+`--dns-over-tcp`. Clearing again would answer with silence, the command's
+`environ` coming out identical either way; refusing says whether the stage above
+went through the factory at all.
+
 ### Syscalls
 
 - **Syscalls — seccomp-bpf, as a denylist.** Promised: process inspection and
@@ -172,9 +182,10 @@ covering for it and the command's environment byte-identical.
 
 - **Process state — prctl, rlimit, capset.** Promised: `no_new_privs`,
   `RLIMIT_CORE=0`, and empty effective, permitted, inheritable and ambient
-  capability sets. `harden_process_state` drops the four hard, propagating a
-  failure. The *bounding* set is the fifth and is best-effort, which is a
-  non-claim below rather than a footnote on this row.
+  capability sets. `harden_process_state` in
+  [`hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) drops the
+  four hard, propagating a failure. The *bounding* set is the fifth and is
+  best-effort, which is a non-claim below rather than a footnote on this row.
 - **Process lifetime — a PID namespace plus `PR_SET_PDEATHSIG`.** Promised:
   every process the command spawned dies when the call ends, including one that
   called `setsid`. Two independent paths, because a command can leave the
@@ -239,11 +250,19 @@ deliberately makes two grants for `--allow-write`, and
   reached through procfs is closed by a different mechanism:
   [`concealment.rs`](../../crates/sandbx-core/src/concealment.rs) clears the
   harness's own dumpable flag at startup, so `/proc/<harness-pid>/environ` is
-  refused even to a reader running as you (#192).
+  refused even to a reader running as you (#192) — which is what keeps an
+  exported provider key out of a tool granted `/proc`.
   [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) is where
   the choice between refusing and hiding is made, and why subtraction — grant
   the tree, carve out the file — was never available: Landlock composes rules by
   union and has no exclusion form.
+
+  That clearing is the only step sandbx takes against its *own* process, and
+  `SECURITY.md` carries it in this property and under *Not vulnerabilities*
+  rather than as a table row — the cost named there being that sandbx dumps no
+  core and `gdb -p` against a running one is refused. A same-thread-group reader
+  stays exempt for `fd/` and `exe`, and an `execve` resets the flag regardless,
+  so neither `digest` nor the readback in the next property is affected.
 - **The path a grant was vetted as is the path the kernel is told about.**
   Policy is judged in the harness and the rules are opened in the helper, which
   is a window a symlink can be redirected in. `VettedPath::vet` is the only
@@ -308,14 +327,14 @@ no-flag run from a user-level install prefix grants write there.
   repo. All of that is about the *spawn inside this run*, which the inode
   closes. The residue is a different hazard with a different actor: a human
   running `sandbx` again tomorrow, reached entirely by name. The existing
-  derived-default guard already refuses four shapes by location and is decidable
+  derived-default guard already refuses five shapes by location and is decidable
   from argv plus `/proc/self/exe`, which is exactly the test
   [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) sets for
   a refusal. Its own framing — the two on-disk roots are the harness's, not the
   project's — seems to reach the installed binary as readily as it reaches the
   session store, and the record does not weigh it in those terms. The cost is
-  real and should be named with the objection: a fifth arm takes the no-flag run
-  away from anybody who installed to `~/.local/bin` and works there.
+  real and should be named with the objection: a further arm takes the no-flag
+  run away from anybody who installed to `~/.local/bin` and works there.
 
 ### Identity is measured, not held
 
@@ -388,7 +407,9 @@ Unix sockets are all-or-nothing for the same kind of reason:
 reach — an ssh-agent, a docker socket, the session bus — because seccomp cannot
 follow the pointer to `connect`'s path and Landlock gained a path-scoped right
 only at a level not available in practice. What the command can *read* bounds
-which sockets exist to be dialled.
+which sockets exist to be dialled. Under a port allowlist the flag lifts one
+thing more: the netns no longer isolates the host's abstract socket namespace,
+so the `socket(AF_UNIX)` denial was the only layer left in front of it.
 
 A variable you pass through is passed in full: the allowlist is by *name*, so
 `--allow-env GH_TOKEN` hands over the value the harness holds, verbatim, and
@@ -437,7 +458,9 @@ A stored credential is protected from other users, not from the agent.
 it when any group or other bit is set on either — a directory another user may
 write is one they can substitute a credential in. The mode is part of the claim:
 a too-wide file is refused and named rather than quietly `chmod`ed back, because
-it was already disclosed and the fix is to rotate the key. It is not encryption:
+it was already disclosed and the fix is to rotate the key. `auth logout` is the
+single exception, reading a too-wide file rather than refusing — a refusal there
+would leave the disclosed key on disk. It is not encryption:
 the key is plaintext, readable by your own uid and by root, held by the harness,
 which is not sandboxed. Storing it removes exactly one exposure — a key in the
 file is not in the harness's environment, so no `--allow-env` has it to hand
@@ -564,7 +587,10 @@ Three habits, in the order they pay off.
 - Why a port allowlist is in one respect narrower and in another wider than
   withholding the network entirely.
 - What a saved transcript is protected against, and what it is not.
-- Why "the harness is not sandboxed" is a non-claim rather than a weakness.
+- Why "the harness is not sandboxed" is a non-claim rather than a weakness, and
+  which single step sandbx does take against its own process.
+- Why the environment claim says *at every spawn stage*, and which stage refuses
+  rather than clears.
 
 ## Next
 

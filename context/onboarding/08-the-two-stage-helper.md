@@ -145,6 +145,13 @@ match flag.as_str() {
 Those inner `match`es have one arm each and are exhaustive, which is a thing
 `Infallible` buys and a comment cannot: the compiler agrees there is no `Ok`.
 
+The elided half of `Failed`'s doc is the half a caller has to read. *Usually*
+the command never started, the restrictions going in before the `exec` — but a
+failure while waiting on the inner stage lands in the same variant, and that one
+may have run. It ran with the restrictions applied either way, which is why one
+variant covers both: `Failed` is a claim about *unrestricted* execution, not a
+claim that nothing ran.
+
 `with_helper_dispatch` then owns the half a hand-written `main` gets wrong. It
 takes the ordinary main as a closure, so for any binary that uses it the
 ordinary path *cannot* run before dispatch; `Failed` prints with
@@ -197,6 +204,17 @@ things that *cannot* be done in the process that becomes the command. It
 installs no Landlock ruleset and no seccomp filter — it has to be able to spawn
 the stage that installs them — and `SECURITY.md` carries that as a non-claim.
 
+Read the non-claim as written: **stage 1 is not sandboxed.** No ruleset, no
+filter, and a bug in this stage is contained by nothing. What it *is* inside is
+whatever `isolate`'s single `unshare` placed it in, because those flags move the
+*caller*: the fresh user namespace always, and the empty network namespace and
+the mount namespace when the policy asks for them. On top of that it runs with
+all four capability sets cleared, `RLIMIT_CORE` at zero and `no_new_privs` set.
+`CLONE_NEWPID` is the one flag that places only children, so stage 1 is
+deliberately *outside* the PID namespace the command runs in — which is what
+leaves a process alive to `wait` for the command and relay its status, and also
+why killing stage 1 takes the whole namespace with it.
+
 Read `start_inner_stage` and the `prepare_supervisor` it calls with the question
 "why here?" and every step answers:
 
@@ -207,7 +225,7 @@ Read `start_inner_stage` and the `prepare_supervisor` it calls with the question
 | `isolate` | the single `unshare` — user and pid always, net when the policy grants no network, mount when there are resolver files to bind. One call, so there is no window holding some of the isolation and not the rest |
 | `resolver::bound_resolution` | **after** the unshare, which made the mount namespace, and **before** the capability drops, which take away the `CAP_SYS_ADMIN` the mounts need |
 | `harden_process_state` | **after** the unshare: a fresh user namespace grants the full capability set within it, so dropping earlier would be undone |
-| `set_no_new_privs` | here as well as in stage 2, so every `exec` this design performs is covered |
+| `set_no_new_privs` | here as well as in stage 2, so every `exec` this design performs is covered; without it, a capability regained across the exec into stage 2 would be stopped only by facts about the binary — unprivileged, no file capabilities — and by uid 0 being unmapped in the fresh user namespace |
 | `report` the degradations | **before** the spawn, so stage 1's records reach the channel ahead of anything stage 2 says |
 | spawn stage 2 | last: this is the process that becomes PID 1 |
 
@@ -247,7 +265,10 @@ In order:
   halves are the point: a command holding the write end could forge records, or
   hold the channel open and leave the parent waiting on an EOF that never comes.
 - **`restrict_and_exec`**: decode, arm, confirm, check the environment, `apply`,
-  open the pin, `exec`.
+  open the pin, `exec`. That decode is the policy's second and last, off the
+  tokens stage 1 passed on untouched, and it is the one that refuses rather than
+  infers — [11 — the two seams](11-the-two-seams.md) owns why the child does not
+  trust the parent.
 
 The environment check is the one place the two stages are allowed to differ, and
 it is a check rather than a re-narrowing. `spawn::command` is the crate's only
@@ -260,10 +281,14 @@ arms.
 
 The pin is opened *after* `apply`, which looks backwards until you read the
 reason: opening first would hash a file no grant covers and report a digest
-mismatch where the honest answer is a denied read. Then `exec` — through
+mismatch where the honest answer is a denied read. After `apply` the descriptor
+is provably one the policy authorizes, because the read that produced the digest
+was itself subject to the ruleset the kernel now holds. Then `exec` — through
 `/proc/self/fd/N` when there is a pin, so the kernel opens the very inode that
-was hashed, with `arg0` set back to the requested program name unconditionally,
-so a matching pin changes nothing the command can observe about `$0`.
+was hashed. The pin itself, and what `arg0` has to do to keep it invisible to
+the command, belong to
+[12 — one flag to a kernel rule](12-a-flag-to-a-kernel-rule.md); what this
+chapter owns is its position in the sequence.
 
 - **Worth questioning:** `HELPER_INNER_FLAG` is `pub`, and its own doc says it
   is public "only so a test can invoke the inner stage directly; elsewhere it
@@ -313,6 +338,17 @@ yet, a supervisor death is caught by neither. Arm first and every instant is
 covered by one of the two — "a death before the check is caught by the check, a
 death after it by the armed signal."
 
+When the signal does fire it is the hinge of the kill chain rather than a
+tidy-up. `SIGKILL` reaches stage 2, stage 2 is PID 1, and the kernel kills every
+process left in a namespace whose init has died — which is where the bound on
+the command's *descendants* comes from, a parent death signal not being
+inherited across `fork`. Two paths reach stage 2 on purpose: the process group
+sandbx kills, which a descendant can leave with `setsid`, and this signal, which
+ignores group membership and survives an ordinary `execve` — the kernel clears
+it for a secure one, where the group kill is what still reaps.
+[guide-process-lifetime.md](../guide-process-lifetime.md#the-kill-chain) draws
+both.
+
 `getppid()` is no help here, and this is the detail most people have to be told.
 Stage 2 is PID 1 of a PID namespace whose parent lives *outside* it, so the
 kernel has no number in this namespace to report and returns 0. `/proc` is still
@@ -345,6 +381,12 @@ pid-based check: the comparison is against the kernel's live parent link, and an
 orphan is reparented to init or a subreaper — neither of which can be the pid of
 a supervisor that just spawned this process.
 
+Both calls are also pinned ahead of `apply`, and the comment on
+`confirm_supervisor` gives the reason: it runs before Landlock and seccomp, so
+it needs no grant for `/proc` and no privilege. Move the pair below `apply` and
+a liveness check sandbx owns outright starts depending on the policy being
+enforced having granted the one path that check reads.
+
 ## `apply`'s order, step by step
 
 [guide-sandboxing.md](../guide-sandboxing.md#apply-sequence) is the authority on
@@ -355,13 +397,52 @@ question against each step: what breaks if it moves?
 |---|---|
 | `set_no_new_privs` | nothing later can install a seccomp filter: unprivileged installation needs this bit, and this process holds no capabilities at all, stage 1 having dropped them |
 | `deny_dangerous_syscalls` | the syscalls that could undo the rest — `mount_setattr`, namespace creation, the `clone3` refusal — stay available while the Landlock ruleset is being built |
-| `requested(policy)` | the ABI negotiation would be in scope beside the rules; keeping it inside means the handled set and the rules cannot come from different ABIs |
+| `requested(policy)` | the ABI negotiation would be in scope beside the rules; keeping it inside means the handled set and the rules cannot come from different ABIs. It is also where a kernel too old to enforce the policy is refused — before a ruleset exists to half-build |
 | `handle_access` for fs, then for net | Landlock requires the whole handled set *before* `create`, and an axis left unhandled is unrestricted everywhere rather than denied |
 | `create` | there is no ruleset to add a rule to |
 | `open_grant` + `add_rule`, per grant | a rule needs a descriptor, and `create` must already have happened — Landlock splits the two calls across it |
 | the port rules | same split; under `HardRequirement` a port right the ruleset does not handle is an error rather than a right the kernel quietly drops |
 | `restrict_self` | nothing is enforced at all; this is the call that makes the ruleset this thread's |
 | `enforcement_verdict` | a partially enforced ruleset passes for a whole one |
+
+One question the table invites: how can a syscall filter go in *before* the
+Landlock steps that follow it? Because `BLOCKED_SYSCALLS` is a denylist over an
+`Allow` default, and nothing the rest of `apply` needs is on it — not
+`landlock_create_ruleset`, `landlock_add_rule` or `landlock_restrict_self`, not
+`openat`, and not the `prctl` and `seccomp` pair that installs the second and
+third filters. That is also the one place inside the sequence where order does
+*not* matter: `deny_dangerous_syscalls` installs its filters in any order,
+because the kernel takes the most severe verdict across every filter a process
+has. Worth knowing while reading the first row, too:
+`seccompiler::apply_filter` sets `no_new_privs` itself before it installs, so
+sandbx's own `set_no_new_privs` is the explicit, *reported* refusal rather than
+the only thing standing between the filter and `EACCES`.
+
+The middle of that table is not held by review at all. The `landlock` crate is a
+typestate: `handle_access` comes from `RulesetAttr`, which is implemented for
+`Ruleset`, while `add_rule` and `restrict_self` come from `RulesetCreatedAttr`,
+which is implemented for the `RulesetCreated` that `create` returns — and
+`create` takes `self` by value. The hinge is visible in `apply` as a change of
+binding:
+
+```rust
+let mut builder = Ruleset::default()
+    .set_compatibility(CompatLevel::HardRequirement)
+    .handle_access(handled)
+    .map_err(landlock_failed)?;
+
+if let Some((handled, _)) = net_axis {
+    builder = builder.handle_access(handled).map_err(landlock_failed)?;
+}
+
+let mut ruleset = builder.create().map_err(landlock_failed)?;
+```
+
+`builder` has no `add_rule` and `ruleset` has no `handle_access`, and
+`restrict_self` consumes the ruleset, so a rule added after it has nothing left
+to add to. Those three permutations are compile errors. Every other row holds
+because somebody read the sequence in order, which is the whole argument for it
+being one function.
 
 Two properties hold the sequence together. Everything in it is **irreversible**,
 so no step can be a trial run and nothing can be relaxed later for the command's
@@ -390,6 +471,10 @@ counterexamples. That is the same justification the startup order in
 - Which steps have to happen in stage 1 because it still has to spawn a process,
   and which two of them are pinned between the `unshare` and the capability
   drops.
+- Which of the two stages is unsandboxed, what still bounds it, and why it is
+  outside the PID namespace it created.
+- What reaches stage 2 and the command when the harness dies, and which of the
+  two paths a `setsid` defeats.
 - Why stage 2 claims the audit channel before `apply` and opens the pin after
   it.
 - Why arming the parent death signal before confirming the supervisor is the
@@ -397,6 +482,8 @@ counterexamples. That is the same justification the startup order in
 - Why `/proc/self/stat` is parsed from its last `)` and compared as a string.
 - At least three steps of `apply` whose position is load-bearing, and what
   moving each one costs.
+- Which of `apply`'s orderings the compiler refuses outright, and which hold
+  only because the sequence is read in order.
 
 ## Next
 
