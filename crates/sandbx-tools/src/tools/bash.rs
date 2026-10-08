@@ -105,9 +105,8 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
                     subject: ran(),
                     reason: detail,
                 },
-                // The policy refusing a grant, not the environment failing to apply one: the
-                // in-process twin is `RootReplaced`, and one substitution must not read as
-                // "ask for something else" through one tool and "try again" through the other.
+                // The policy refusing a grant, not the environment failing to apply one: one
+                // substitution must not read as "try again" here and `RootReplaced` in-process.
                 HelperRefusal::GrantRedirected | HelperRefusal::GrantReplaced => {
                     ToolError::Denied {
                         subject: ran(),

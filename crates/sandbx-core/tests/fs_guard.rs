@@ -760,8 +760,7 @@ fn an_unresolvable_root_grants_nothing() {
 }
 
 /// The substitution the second half of #212 exists to refuse: a real directory moved onto a
-/// granted name, which every spelling comparison agrees with. The refusal has to carry both
-/// objects, the operator having one name and two directories to tell apart.
+/// granted name, which every spelling comparison agrees with. The refusal carries both objects.
 #[test]
 fn a_real_directory_put_at_a_granted_name_is_refused() {
     let work = tempfile::tempdir().unwrap();
@@ -839,9 +838,8 @@ fn a_write_to_a_substituted_root_is_refused() {
     );
 }
 
-/// Both answers come from one function, so the pair cannot become a one-bit oracle for what
-/// the substituted directory holds: before the swap the absence is named, after it neither
-/// the present name nor the missing one is.
+/// Both answers come from one function, so the pair is no one-bit oracle: before the swap the
+/// absence is named, after it neither the present name nor the missing one is.
 #[test]
 fn a_substituted_root_conceals_an_absence() {
     let work = tempfile::tempdir().unwrap();
@@ -874,10 +872,8 @@ fn a_substituted_root_conceals_an_absence() {
     );
 }
 
-/// The one shape that reads back by its resolved path and not its requested one: a link in the
-/// substitute leaves every root, so nothing matches it lexically and the commonest refusal
-/// answers. Beside an absent name reporting the substitution, that is a bit about what the
-/// substitute holds — the oracle the pair above closes, through the one door it does not use.
+/// The one shape that reads back by its resolved path: a link in the substitute matches no root
+/// lexically, so beside an absent name reporting the substitution it would be the same bit.
 #[test]
 fn a_link_out_of_a_substituted_root_conceals_itself() {
     let work = tempfile::tempdir().unwrap();
@@ -909,9 +905,8 @@ fn a_link_out_of_a_substituted_root_conceals_itself() {
     );
 }
 
-/// The other direction of the same bit, which the spelling cannot see: the link sits in a root
-/// that confirms, so only the resolution reaches the substitute — and whoever planted it is
-/// whoever can write the confirmed root, which the default policy gives the model.
+/// The other direction, which the spelling cannot see: the link sits in a root that confirms, so
+/// only the resolution reaches the substitute — and the default policy lets the model write it.
 #[test]
 fn a_link_planted_in_a_confirmed_root_conceals_an_absence() {
     let work = tempfile::tempdir().unwrap();
@@ -965,9 +960,8 @@ fn a_link_planted_in_a_confirmed_root_conceals_an_absence() {
     );
 }
 
-/// The reason above must come off the requested path's own root, not from any root being
-/// substituted: a link out of a *confirmed* root is plainly out of bounds, and calling that a
-/// substitution would accuse a root that never moved.
+/// The reason comes off the requested path's own root: a link out of a *confirmed* root is
+/// plainly out of bounds, and calling that a substitution accuses a root that never moved.
 #[test]
 fn a_link_out_of_a_confirmed_root_is_plainly_outside() {
     let work = tempfile::tempdir().unwrap();
@@ -1155,9 +1149,8 @@ fn a_link_between_confirmed_roots_still_resolves() {
     );
 }
 
-/// A write refuses a symlinked leaf on sight, before resolving anything, so that reason has
-/// to come after the root's: chosen by what the substitute holds, it answers whether a name in
-/// a swapped-in directory is a symlink.
+/// A write refuses a symlinked leaf on sight, so that reason has to come after the root's: it
+/// is chosen by what the substitute holds, and answers whether a name there is a symlink.
 #[test]
 fn a_write_to_a_moved_root_outranks_its_leaf() {
     let work = tempfile::tempdir().unwrap();
@@ -1198,8 +1191,7 @@ fn a_write_to_a_moved_root_outranks_its_leaf() {
 }
 
 /// A symlinked component is refused inside a confirmed root — the concealment rule — so the
-/// root has to be measured before the spelling is judged, or the one shape that cannot be
-/// concealed is also the one the substitution is never measured for.
+/// root has to be measured first, or the one shape that cannot be concealed is never measured.
 #[test]
 fn a_moved_root_refuses_alike_through_a_symlink() {
     let work = tempfile::tempdir().unwrap();
@@ -1272,10 +1264,9 @@ fn a_walk_of_a_substituted_root_is_refused() {
     );
 }
 
-/// A guard that resolved its own roots followed this link and granted its target, so the
-/// grant moved to wherever the link had been pointed since the policy was vetted. Both
-/// guards come off one policy: the pin is taken once, and the second is built after the swap
-/// to stand for any consumer constructing a guard later in the run.
+/// A guard that resolved its own roots granted the link's target, moving the grant wherever the
+/// link was pointed. The second guard is built after the swap, for a consumer that constructs
+/// one later in the run; both come off one policy, whose pin is taken once.
 #[cfg(unix)]
 #[test]
 fn a_root_replaced_by_a_symlink_is_refused() {
@@ -1303,9 +1294,8 @@ fn a_root_replaced_by_a_symlink_is_refused() {
         matches!(direct, SandboxError::PathNotAllowed { .. }),
         "the link's target became a root of its own: {direct}"
     );
-    // `confirm` opens the granted name without `O_NOFOLLOW`, so the link's target is the object
-    // it measures: a name that now leads somewhere else holds something else, which is the
-    // moved-root reason and not a bare out-of-bounds.
+    // `confirm` omits `O_NOFOLLOW`, so it measures the link's target: a name leading elsewhere
+    // holds something else, which is the moved-root reason and not a bare out-of-bounds.
     let through = guard.check_read(&granted.join("secret.txt")).unwrap_err();
     assert!(
         matches!(through, SandboxError::RootReplaced { .. }),

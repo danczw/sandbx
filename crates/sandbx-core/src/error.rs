@@ -119,9 +119,8 @@ pub enum SandboxError {
     /// would have reached a directory the harness never judged.
     ///
     /// The in-process twin of [`GrantReplaced`](Self::GrantReplaced), decided by
-    /// [`FsGuard`](crate::FsGuard) rather than by a helper stage: the guard measures the
-    /// matched root per access, so there is no descriptor to carry and nothing to relay
-    /// (#212).
+    /// [`FsGuard`](crate::FsGuard) per access: there is no descriptor to carry, and no helper
+    /// stage to relay it (#212).
     RootReplaced {
         /// The root the policy grants, as the harness resolved it.
         granted: PathBuf,
@@ -748,9 +747,8 @@ mod tests {
         }
     }
 
-    /// The same line read from the wire: a forged record carrying one of those labels would
-    /// outrank the outcome the parent watched itself. Derived from every variant rather than
-    /// listed, a list being one label behind each time a reason is added.
+    /// A forged record would outrank the exit status the parent watched. Derived, not listed:
+    /// a list goes one label behind each time a reason is added.
     #[test]
     fn the_reasons_the_helper_does_not_decide_cannot_cross_the_channel() {
         for error in every_variant() {

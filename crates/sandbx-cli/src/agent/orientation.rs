@@ -86,10 +86,8 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
     let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
     for (axis, granted) in policy.granted_paths() {
-        // Re-vetted only as a test, never to be named: the guard compares the grant whole,
-        // so a root whose spelling now resolves elsewhere *or* whose name holds another
-        // directory refuses every path under it.
-        // A name that vets to nothing is left out too, as it was before.
+        // Re-vetted only as a test, never named: the guard compares the grant whole, so a root
+        // resolving elsewhere, holding another directory, or gone grants nothing.
         if !VettedPath::vet(granted.path()).is_ok_and(|now| &now == granted) {
             continue;
         }
@@ -351,9 +349,7 @@ mod tests {
         );
     }
 
-    /// The grant stays, and reaches nothing: the guard compares against the spelling the
-    /// policy holds, so a root that became a symlink refuses every path under it (#212). A
-    /// sentence naming it sends the model at a directory it will be refused for every time.
+    /// Naming it would send the model at a root the guard refuses every path under (#212).
     #[test]
     fn a_grant_that_became_a_symlink_is_not_named() {
         let (work, _) = work();
@@ -375,8 +371,7 @@ mod tests {
         );
     }
 
-    /// The spelling cannot tell this one: a root renamed over resolves to itself, so only the
-    /// object says the directory the prompt would name is not the one the policy judged.
+    /// The spelling cannot tell this one: a root renamed over still resolves to itself.
     #[test]
     fn a_grant_renamed_over_is_not_named() {
         let (work, _) = work();

@@ -4,8 +4,7 @@
 //! split puts the record in a different file from the check it has to agree with.
 //! `decision=` names the access, not the verdict; see `context/guide-logging.md`.
 //!
-//! A root is confirmed against its grant's pin per access, not once at construction, so the
-//! window is the two syscalls between the confirmation and the open.
+//! A root is confirmed against its grant's pin per access: the window is confirmation to open.
 
 use std::path::{Path, PathBuf};
 
@@ -73,12 +72,9 @@ impl FsGuard {
     ///
     /// The nearest ancestor that does resolve decides, and must speak for the path below it
     /// (`reaches_plainly`): inside a confirmed root the caller could already enumerate the
-    /// area, so "no such file" is honest. Anywhere else `deny` answers, so a name under a
-    /// root that has moved tells the caller only that it moved, whether the name is there or
-    /// not — and the record stays `denied` either way.
-    ///
-    /// The root is measured before the spelling is judged. Under `reaches_plainly` the
-    /// measurement would be skipped for exactly the paths it has most to say about.
+    /// area, so "no such file" is honest. Anywhere else `deny` answers, present and absent
+    /// alike. The root is measured first, before any reason the leaf would name — see
+    /// `context/decision-enforcement-seam.md`.
     ///
     /// `failed` is the component resolution tripped on, the parent for a write, and is named
     /// only on the granted path, where it is inside the roots already.
@@ -183,9 +179,8 @@ impl FsGuard {
     /// `max_files` bounds the walk and not the result: it stops at the `max_files + 1`th
     /// file, where trimming afterwards would bound neither time nor memory.
     ///
-    /// The widest confirmation window of the six tools: `root` is confirmed once, for the
-    /// whole walk, since one record covers the walk and re-confirming per directory would
-    /// have to refuse mid-result.
+    /// The widest confirmation window of the six tools: `root` is confirmed once for the whole
+    /// walk, one record covering it, and re-confirming per directory would refuse mid-result.
     pub fn walk_readable(
         &self,
         root: &Path,
@@ -223,12 +218,8 @@ impl FsGuard {
                     let Ok(resolved) = link.canonicalize() else {
                         continue;
                     };
-                    // The reason comes off the same measurement that refused, as everywhere
-                    // else: a link into a moved root is not out of bounds, and a trail
-                    // calling it that hides the substitution behind the commonest refusal.
-                    // The link's own spelling answers first, as at the other refusal sites —
-                    // inside the confirm-to-walk window the entries are the substitute's, so
-                    // a reason taken off where one resolved is a reason it chose.
+                    // The link's own spelling answers first: inside the confirm-to-walk window
+                    // the entries are the substitute's, so a resolved reason is one it chose.
                     let placement = match moved_root(&link, &self.readable) {
                         Some(moved) => Containment::Outside(Some(moved)),
                         None => contains(&resolved, &self.readable),
@@ -291,9 +282,8 @@ impl FsGuard {
                     access: Access::Write,
                 };
 
-                // The root answers first. Both reasons below are chosen by what sits at the
-                // path, so under a substituted root they report what the substitute holds
-                // instead of refusing it, and the two read apart where they must read alike.
+                // The root answers first: both reasons below are chosen by what sits at the
+                // path, so under a substituted root they report what the substitute holds.
                 if let Some(moved) = moved_root(path, &self.writable) {
                     return Err(deny(Some(moved), path, Access::Write));
                 }
@@ -397,8 +387,7 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
 /// Where the deepest part of `requested` that resolves sits, and which part that was.
 ///
 /// A path that does not resolve is judged by its nearest resolving ancestor, so the root under
-/// it is measured here rather than in each caller — and measured before any reason drawn from
-/// the leaf, which under a substituted root would be a reason the substitute chose.
+/// it is measured here and before any reason the leaf would name.
 fn nearest_area<'a>(requested: &'a Path, roots: &[VettedPath]) -> (Option<&'a Path>, Containment) {
     let Some((ancestor, existing)) = requested
         .ancestors()
@@ -415,10 +404,8 @@ fn nearest_area<'a>(requested: &'a Path, roots: &[VettedPath]) -> (Option<&'a Pa
 enum Containment {
     /// Inside a root that still holds the object the policy granted it on.
     Inside,
-    /// Inside no such root. A root that matched the spelling but has moved is carried out, so
-    /// the refusal can name it off this measurement: taking a second one to find out which
-    /// root moved can disagree with the first, and would report a moved root as merely out of
-    /// bounds.
+    /// Inside no such root, carrying the root that matched the spelling but had moved: a
+    /// second measurement to find out which can disagree with the first.
     Outside(Option<Replacement>),
 }
 
@@ -431,16 +418,10 @@ struct Replacement {
 
 /// The root the requested spelling names, when it no longer holds the object it was vetted on.
 ///
-/// Lexical, and deliberately not by nearest resolving ancestor: a link planted in a substituted
-/// root resolves past the root being asked about — into another grant that confirms, or out of
-/// every one — so a measurement taken after resolution is one the substitute chose. Every path
-/// that can refuse consults this first, so the reason cannot depend on what the substitute holds.
-///
-/// Both the spelling as given and its collapse, because neither covers the other: `starts_with`
-/// is a component prefix, so `root/link/../..` names the root while collapsing out of it, and
-/// `other/../root` collapses into the root while naming it nowhere in front. Either one matching
-/// refuses — this only ever adds a refusal, and what it cannot see the resolved path is judged
-/// for separately.
+/// Lexical, and not by nearest resolving ancestor: a measurement taken after resolution is one
+/// the substitute chose. Two forms, because neither covers the other — `starts_with` compares
+/// whole components, so `root/link/../..` names the root while collapsing out of it, and
+/// `other/../root` matches only once collapsed. See `context/decision-enforcement-seam.md`.
 fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
     let collapsed = collapsed(requested).filter(|form| form != requested);
 
@@ -455,10 +436,9 @@ fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
 
 /// `requested` made absolute with `.` and `..` resolved away, without touching the filesystem.
 ///
-/// Not a `canonicalize`, and not equivalent to one: a `..` above a symlink collapses to the
-/// link's parent here and to its target's parent in the kernel. That is why this is one of two
-/// forms tested rather than a replacement for the spelling as given. `None` where the process
-/// has no working directory to make a relative path absolute against.
+/// Not a `canonicalize` and not equivalent to one: a `..` above a symlink collapses to the
+/// link's parent here and to its target's parent in the kernel — hence one of two forms tested,
+/// not a replacement for the spelling. `None` where there is no cwd to make `requested` absolute.
 fn collapsed(requested: &Path) -> Option<PathBuf> {
     let absolute = match requested.is_absolute() {
         true => requested.to_path_buf(),
@@ -482,10 +462,9 @@ fn collapsed(requested: &Path) -> Option<PathBuf> {
 /// Find the root that covers `resolved`, confirming each candidate's object as it goes.
 ///
 /// `Path::starts_with` compares whole components and not string prefixes, so `/work-secrets`
-/// does not match the root `/work`. The first root that is both lexical and confirmed wins:
-/// nested and sibling grants overlap, and a moved root must not deny a path another root
-/// still covers. A root that cannot be measured at all accuses nothing and is passed over —
-/// it also grants nothing, having no confirmed object for a path to be inside of.
+/// does not match the root `/work`. The first root both lexical and confirmed wins: nested and
+/// sibling grants overlap, so a moved root must not deny a path another root still covers. One
+/// that cannot be measured accuses nothing and grants nothing.
 fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
     let mut moved = None;
 
@@ -512,8 +491,7 @@ fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
 /// Refuse `requested`, recording which of the two reasons the gate decided on.
 ///
 /// One function for both, so a path under a substituted root answers alike whether or not it
-/// exists: a `NotFound` for the absent against a refusal for the present would be a one-bit
-/// oracle for what the substitute holds.
+/// exists — the absent and the present reading apart is a one-bit oracle.
 fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> SandboxError {
     let subject = requested.display().to_string();
 
@@ -552,15 +530,13 @@ fn permit(
     access: Access,
 ) -> Result<PathBuf, SandboxError> {
     // Before the resolution is judged: a link out of a substituted root lands wherever the
-    // substitute points, and an `Ok` for one that reached another grant, beside an absent
-    // name's refusal, is a bit about what the substitute holds.
+    // substitute points, and an `Ok` there beside an absent name's refusal is a bit about it.
     if let Some(moved) = moved_root(requested, roots) {
         return Err(deny(Some(moved), requested, access));
     }
 
-    // And the measurement the resolution reached does not get to name a reason: a link
-    // planted in a root that *confirms* resolves into one that does not, so a
-    // `root_replaced` here beside an absent name's `path_not_allowed` is the same one bit.
+    // And no reason comes off the resolution: a link planted in a root that *confirms*
+    // resolves into one that does not, which is the same bit the other way round.
     match contains(&resolved, roots) {
         Containment::Inside => Ok(resolved),
         Containment::Outside(_) => Err(deny(None, requested, access)),
@@ -647,8 +623,7 @@ pub struct ReadableWalk {
 mod tests {
     use super::*;
 
-    /// The relative arm, which the public-surface tests cannot reach: `set_current_dir` is
-    /// process-wide and would race every other test in the binary.
+    /// The relative arm the public tests cannot reach: `set_current_dir` is process-wide.
     #[test]
     fn a_relative_spelling_collapses_against_the_working_directory() {
         let here = std::env::current_dir().expect("a working directory");
@@ -663,8 +638,7 @@ mod tests {
         );
     }
 
-    /// A `..` collapses lexically here and through the link's *target* in the kernel, so the
-    /// two forms disagree by design — hence both are tested against the roots, not just this one.
+    /// Lexically here, through the link's *target* in the kernel — hence both forms are tested.
     #[test]
     fn a_collapse_is_not_a_canonicalization() {
         assert_eq!(

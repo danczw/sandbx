@@ -64,9 +64,8 @@ fn capture(f: impl FnOnce()) -> Vec<String> {
     sink.lines()
 }
 
-/// The `reason=` field of one refusal, to the end of the line — `AuditEvent::Denied` emits it
-/// last, so a comparison of two lines whose subjects differ can still be a comparison of one
-/// field.
+/// The `reason=` field of one refusal, to the end of the line: `AuditEvent::Denied` emits it
+/// last, so two lines with different subjects can still be compared on this one field.
 fn reason(line: &str) -> &str {
     line.split_once("reason=")
         .map(|(_, reason)| reason.trim())
@@ -335,9 +334,8 @@ fn a_path_naming_no_file_records_its_refusal() {
     );
 }
 
-/// A moved root and a path outside every root are one `decision=denied` apart, so the reason
-/// is all an operator counting substitutions has — and the trail and the caller have to agree
-/// about which of the two happened (#212).
+/// A moved root and a path outside every root are both `decision=denied`, so the reason is all
+/// an operator counting substitutions has, and it has to agree with the caller's (#212).
 #[test]
 fn a_moved_root_records_the_reason_it_returns() {
     let work = tempfile::tempdir().unwrap();
@@ -370,9 +368,8 @@ fn a_moved_root_records_the_reason_it_returns() {
     );
 }
 
-/// The walk is the one refusal with no caller to tell, so the trail is the whole report: a
-/// link into a moved root recorded as out of bounds hides the substitution behind the
-/// commonest reason there is (#212).
+/// The walk is the one refusal with no caller to tell, so the trail is the whole report: a link
+/// into a moved root recorded as out of bounds hides the substitution (#212).
 #[test]
 fn a_link_into_a_moved_root_records_the_swap() {
     let work = tempfile::tempdir().unwrap();
@@ -408,9 +405,8 @@ fn a_link_into_a_moved_root_records_the_swap() {
         .find(|line| line.contains("decision=denied"))
         .unwrap_or_else(|| panic!("no refusal was recorded: {lines:?}"));
 
-    // Against the record a direct read of the same moved root writes, not against the string:
-    // the reason is a private const, and asserting only that it is not `outside` would pass
-    // on any other reason the walk might come to emit.
+    // Against the record a direct read of the same moved root writes, the reason being a
+    // private const: asserting only that it is not `outside` would pass on any other reason.
     let mut direct = None;
     let expected = capture(|| direct = guard.check_read(&linked.join("target.txt")).err());
     assert_eq!(

@@ -4,8 +4,7 @@
 //! between can put one real directory where another was vetted — identical spelling, so the
 //! readback in `helper/ruleset/opened.rs` agrees and only the object tells the two apart (#212).
 //!
-//! `FsGuard` asks the same question of its own roots, per access, so the measurement both
-//! layers compare lives here once.
+//! `FsGuard` asks the same question of its own roots per access, so the measurement lives here.
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
@@ -22,10 +21,8 @@ const SEPARATOR: char = ':';
 /// property that makes the pair worth carrying: an object that moved is not the one that was
 /// vetted, whatever it is now called.
 ///
-/// An inode number is reused after the object holding it is unlinked, so a directory deleted
-/// and re-created at a granted name can be handed the same pair and compare equal. Bounds
-/// what either layer's pin can claim, and is why `SECURITY.md` scopes the claim to a
-/// substitution and not to any path that was once something else.
+/// An inode number is reused after its object is unlinked, so a directory deleted and
+/// re-created at a granted name can compare equal — the floor on what either pin can claim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectId {
     dev: u64,
@@ -140,11 +137,9 @@ impl VettedPath {
 
     /// Whether the path still names the object it was vetted on, measured now.
     ///
-    /// `O_PATH`, so the open is a lookup and not an access: it needs no permission on the
-    /// object and reads nothing. `fstat` on the descriptor rather than a second walk of the
-    /// path, so the two steps cannot resolve to different objects. No `O_NOFOLLOW` — a
-    /// spelling that has become a symlink names a different object *through* it, which is
-    /// this function's answer and not an error.
+    /// `O_PATH`, so the open is a lookup and not an access, and `fstat` on that descriptor
+    /// rather than a second walk, so the two steps cannot resolve to different objects. No
+    /// `O_NOFOLLOW`: a spelling that became a symlink names another object *through* it.
     pub(crate) fn confirm(&self) -> Confirmation {
         let Ok(opened) = std::fs::OpenOptions::new()
             .read(true)
@@ -170,8 +165,7 @@ pub(crate) enum Confirmation {
     /// Some other object, under the same spelling.
     Replaced(ObjectId),
     /// Nothing to compare: the path names no object now, or this kernel would not say which.
-    /// Distinct from [`Replaced`](Self::Replaced), which accuses a substitution that a
-    /// vanished path has not made.
+    /// Not [`Replaced`](Self::Replaced), which would accuse a removed grant of a swap.
     Unmeasurable,
 }
 
@@ -292,8 +286,7 @@ mod tests {
         );
     }
 
-    /// The positive the other two are read against: a grant nobody touched confirms, so a
-    /// guard built on this cannot be refusing every access for its own reasons.
+    /// The positive the other two are read against: without it the guard could refuse all.
     #[test]
     fn confirming_a_path_that_did_not_move() {
         let work = tempfile::tempdir().expect("a temporary directory");
@@ -306,8 +299,7 @@ mod tests {
         );
     }
 
-    /// A refusal has to name what it found, not only that it found something else: the
-    /// operator reading it has one name and two objects to tell apart.
+    /// A refusal names what it found: the operator has one name and two objects to tell apart.
     #[test]
     fn confirming_a_renamed_over_path_names_it() {
         let work = tempfile::tempdir().expect("a temporary directory");
@@ -328,8 +320,7 @@ mod tests {
         );
     }
 
-    /// Not [`Confirmation::Replaced`]: a path that names nothing has substituted nothing, and
-    /// a caller that treated the two alike would accuse a removed grant of a swap.
+    /// Not [`Confirmation::Replaced`]: a path that names nothing has substituted nothing.
     #[test]
     fn confirming_a_path_that_is_gone() {
         let work = tempfile::tempdir().expect("a temporary directory");
