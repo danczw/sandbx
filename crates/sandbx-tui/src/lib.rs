@@ -1,9 +1,8 @@
-//! Terminal UI: the screen one turn is drawn on, the keys that interrupt it, and the
-//! state in between.
+//! Terminal UI: the screen a turn is drawn on, the keys that interrupt it, and the state
+//! in between.
 //!
-//! Takes `&AgentEvent` and hands back a keypress, so a caller keeps the policy, the
-//! provider and the session. Model-chosen text is stripped here rather than at the
-//! caller: the screen is the thing an escape sequence inside it would rewrite.
+//! Takes `&AgentEvent` and hands back a keypress; model-chosen text is stripped here, not
+//! at the caller, because the screen is what an escape sequence inside it would rewrite.
 
 mod input;
 mod screen;
