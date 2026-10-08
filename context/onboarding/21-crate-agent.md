@@ -43,7 +43,7 @@ edit to `TurnStop`, one to the loop that chooses it and one to the outcome that
 carries it. **The test tree is larger than `src/`**, about 2,500 lines against
 1,500 — the last section is why.
 
-Of four runtime dependencies, one carries its constraint in a comment:
+Of five runtime dependencies, one carries its constraint in a comment:
 
 ```toml
 # Not `rt-multi-thread`: the runtime flavour is the binary's call. `time` is not
@@ -51,7 +51,9 @@ Of four runtime dependencies, one carries its constraint in a comment:
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 ```
 
-The other three are `sandbx-providers`, `sandbx-tools` and `serde_json`.
+The other four are `sandbx-providers`, `sandbx-tools`, `serde_json` and
+`futures-util` — the last for `StreamExt` alone, which is what makes
+`stream.next()` in `accumulate` the only place this crate touches a stream.
 `sandbx-core` is missing on purpose: it is a **dev**-dependency, the only one of
 its kind in the workspace, so `sandbx_core` cannot be named anywhere in `src/`
 and the crate deciding which tool calls happen cannot form an opinion about a
@@ -60,8 +62,9 @@ and the crate deciding which tool calls happen cannot form an opinion about a
 ## `lib.rs` is thirteen names, and that is the whole API
 
 [`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is fifteen lines: four private
-`mod` declarations and three `pub use` lines. The re-export list *is* the public
-surface, so group it by what each name is for:
+`mod` declarations and four `pub use` lines, one of them braced over five names
+— which is why the count is read off the items and not off the lines. The
+re-export list *is* the public surface, so group it by what each name is for:
 
 | group | names |
 |---|---|
@@ -119,9 +122,46 @@ still `Send`. `observe` is generic for the mirror reason, `dyn FnMut` not being
 `Send`. `gate` being mandatory rather than an `Option` is
 [13](13-turn-loop-and-gate.md)'s opening point.
 
-The body is a `for` over `max_rounds` with seven mutable locals above it, three
-there only for compaction, and exactly one place a `TurnOutcome` is built: a
-private `outcome` helper whose first act is to strip every reasoning block, per
+**The other two parameters are the request and the sandbox.** `turn` is taken by
+value and borrows everything large. `Turn<'a>` has no `Default` and no builder,
+so a caller names all ten fields — which is how the two nobody would think to
+ask for get noticed at all (doc comments elided; each field carries one):
+
+```rust
+pub struct Turn<'a> {
+    pub model: String,
+    pub max_output_tokens: u32,
+    pub system: Option<String>,
+    pub tools: &'a [BuiltinTool],
+    pub tool_choice: Option<ToolChoice>,
+    pub thinking: Option<Thinking>,
+    pub history: &'a [RequestMessage],
+    pub limits: TurnLimits,
+    pub observed: Option<PromptUsage>,
+    pub withheld: usize,
+}
+```
+
+`history` is read and never appended to, `observed` and `withheld` are the
+compaction thread-back `compact.rs` below is about, and `tools` left empty
+offers none rather than all — which is still not how to stop a model calling
+one, since a history replaying a `tool_use` needs them defined. `tool_choice` is
+that knob,
+and it is dropped from the request when `tools` is empty, the API refusing a
+choice over tools nothing defined.
+
+`ctx` is the one borrowed parameter and the one `run_turn` itself does nothing
+with: it is cloned per call in `turn/tools.rs` and handed to
+`BuiltinTool::execute`, never read here. Nor could it be — `ExecutionContext`
+is `sandbx-tools`', and the `SandboxPolicy` inside it is a name `src/` cannot
+write at all, for the dev-dependency reason above.
+
+The body is a `for` over `max_rounds` with eight mutable locals above it, five
+there only for compaction — `observed`, `cut`, `floor`, `measured` and
+`sent_cut`, that last one tracking what the *previous* request withheld so a
+cut that moved can trigger the reasoning strip — and exactly one place a
+`TurnOutcome` is built: a private `outcome` helper whose first act is to strip
+every reasoning block, per
 [decision-thinking-replay.md](../decision-thinking-replay.md).
 
 ## `turn/accumulate.rs` — a round's message, rebuilt
@@ -131,8 +171,13 @@ one `EventStream` into the blocks it describes, plus the round's token counts
 and stop reason, as a crate-private `Round`. Text deltas accumulate into a
 `String` flushed immediately before any `ToolUse` or reasoning block, the API
 reading a content array in order. Counts are last-one-wins rather than summed,
-which makes `Usage` having to arrive *before* `Stop` an ordering dependency
-whose breakage would be silent: counts always `None`, compaction never firing.
+and the reason is the wire's: Anthropic restates them cumulatively on every
+`message_delta`, so adding them up would multiply the figure. That makes `Usage`
+having to arrive *before* `Stop` an ordering dependency — the `Stop` arm
+`return`s, so anything behind it is never seen — whose breakage would be silent:
+counts always `None`, compaction never firing. The order is pinned a layer down,
+in
+[`providers/.../wire/tests/usage.rs`](../../crates/sandbx-providers/src/anthropic/wire/tests/usage.rs).
 
 **Two files in this repo are named `accumulate.rs`, doing different jobs**, and
 a reader grepping the name hits both:
@@ -246,11 +291,28 @@ once per `tool_use` block, whatever became of it.
 
 **The trait, and the blanket impl.** `CallGate` has two required methods and no
 provided one: a reporter a caller acquires by omitting an argument is one nobody
-chose. Both run on the async task, so neither may wait on anything *the runtime
-drives* — a tokio primitive, a channel, a lock a task holds — which on a
-current-thread runtime deadlocks the turn being decided. A descriptor no task
-feeds is outside that class, which is what lets `sandbx-cli` read `/dev/tty`
-inside `approve`. The file's last lines are the piece a caller trips over:
+chose (doc comments elided; both carry one):
+
+```rust
+pub trait CallGate {
+    fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
+
+    fn settled(&mut self, call: Settled<'_>);
+}
+```
+
+That is the whole of what the crate knows about consent: two `&mut self`
+methods, both synchronous, nothing about a terminal or a flag. **`approve` has
+exactly one call site** — the `let verdict = …` in `answer_calls`, behind the
+abort latch, which [13](13-turn-loop-and-gate.md) takes apart line by line — so
+"nothing runs until the gate has answered" is a property of one expression
+rather than a convention spread across the loop. `settled` has six, one per
+outcome arm above. Both run on the async task, so neither may wait on anything
+*the runtime drives* — a tokio primitive, a channel, a lock a task holds — which
+on a current-thread runtime deadlocks the turn being decided. A descriptor no
+task feeds is outside that class, which is what lets `sandbx-cli` read
+`/dev/tty` inside `approve`. The file's last lines are the piece a caller trips
+over:
 
 ```rust
 /// So a caller that keeps its gate can lend it, `run_turn` taking one by value.
@@ -293,6 +355,21 @@ against the window.
 The consequence to get right: compaction cannot fire on the first round of a
 *conversation*, there being no figure yet — but it can fire on the first round
 of a later turn, on the figure the caller threaded in through `Turn::observed`.
+Three tests in `turn_compaction.rs` fix the corners, and reading them together
+is what keeps the claim at its real strength:
+
+| test | what it pins |
+|---|---|
+| `compaction_cannot_fire_on_a_turns_first_round` | `observed: None` and a zero budget, and the first request still goes out whole |
+| `a_turn_over_budget_sends_only_the_recent_messages` | a figure threaded in, and `sent(&script, 0)` is already `&history[2..]` — request zero, cut |
+| `a_first_turn_compacts_after_it_measures_itself` | nothing threaded in: the turn measures on round one and acts on round two |
+
+So the property that holds without qualification is **no measurement, no new
+cut**. "Not on the first round" follows from it only for a turn handed nothing —
+which a conversation's first turn is, and a resumed one is not. The first test
+has `withheld: 0` as well, which is the other half of "handed nothing": a turn
+given a floor applies it to round one with no measurement at all, holding a cut
+rather than making one.
 Within a turn the `measured` flag allows at most one re-plan per round that
 reported a figure:
 
@@ -358,11 +435,40 @@ it cannot panic, diverge, or return an invalid or empty cut". Four guarantees
 - **The cut only deepens.** A plan always contains the previous cut, and
   `run_turn` applies it with `unwrap_or(cut)`, so a declined plan cannot restore
   withheld history.
-- **A legal `floor` is met exactly**; an *illegal* one, which only a caller that
-  rewrote its own history produces, is met from below.
+- **A legal `floor` is met exactly.** An *illegal* one — which only a caller
+  that rewrote its own history produces — is met from **above**, the first scan
+  snapping to the next boundary deeper than it; from below only when nothing
+  legal sits at or after it, which is the second scan's one job.
+  `an_illegal_floor_snaps_to_the_boundary_above` and
+  `an_illegal_floor_falls_back_below_itself` are the pair. A floor at or past
+  the *end* of the history is neither: it is clamped to `0` and dropped, because
+  meeting it would withhold all but the newest exchange permanently, that cut
+  becoming the next turn's floor.
 
-When nothing legal is deep enough there are three rungs, ending in "send it
-uncompacted"; the reasoning for each is the guide's.
+The mechanism behind all four is that `plan_cut` never *computes* a cut. It
+computes a target — `history.len() + produced` less `keep_recent`, saturating,
+clamped to the ceiling and then raised to the floor, or the floor alone when
+within budget — and then searches the legal set for the nearest member, upward
+first:
+
+```rust
+    (target..ceiling)
+        .find(|&cut| opens_a_request(history, cut))
+        .or_else(|| {
+            // From the target, not the floor: when the floor isn't itself legal, only this
+            // scan can reach below it.
+            (1..target).rev().find(|&cut| opens_a_request(history, cut))
+        })
+```
+
+Every value that can come back out passed through `opens_a_request`, which is
+the invariant in one line: the legal set is the only source of cuts, so a target
+is a *request* and never an answer. `ceiling` is `history.len()`, excluded
+because a cut there opens the request on `produced[0]` — always an assistant
+message — or on nothing. Those two scans are the guide's first two rungs; the
+third is the `None` they can both decline to, which `run_turn` turns straight
+back into the previous cut with `unwrap_or`, so declining sends the history as
+it already stood. The reasoning for each rung is the guide's.
 
 ### What is lost
 
@@ -421,10 +527,18 @@ Verified in this worktree rather than inferred. The two places that build a
 `TurnLimits` — `AgentRun::execute` in
 [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs) and the TUI's in
 [`cli/src/agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) — both write
-`max_rounds: …, ..TurnLimits::default()`, and the wrap-up round copies what it
-was handed. `max_rounds` has a flag; compaction has none, so the feature is
-reachable only by a library caller. [02](02-what-a-harness-is.md) raises that as
-a design question and [17](17-gaps-and-open-questions.md) collects it. Even so,
+`max_rounds: …, ..TurnLimits::default()`. A third literal exists and closes the
+last hop: the wrap-up round's, in
+[`cli/src/agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs), is
+`TurnLimits { max_rounds: 1, ..self.limits }`, copying the first turn's bounds
+rather than defaulting again, so it can introduce no `Compaction` the first turn
+did not have. It does thread the figures across —
+`first.usage.or(self.observed)` and `first.withheld` — so a *library* caller
+with compaction on gets a wrap-up round that compacts on its first and only
+round, the threaded-figure case above. `max_rounds` has a flag; compaction has
+none, so the feature is reachable only by a library caller.
+[02](02-what-a-harness-is.md) raises that as a design question and
+[17](17-gaps-and-open-questions.md) collects it. Even so,
 [decision-on-disk-state.md](../decision-on-disk-state.md) has `agent-run` store
 `observed` and `withheld` in every transcript, recoverable as they are only at
 the moment the turn produces them — "Do not delete it as dead weight."
@@ -463,7 +577,26 @@ a refused or malformed call goes back to the model as a `tool_result` marked
 `ProviderError::is_retryable` and `retry_after`. `EndedMidToolUse` is a *choice*
 rather than a fault: returning `Ok` would hand back a transcript ending on an
 unanswered `tool_result`, breaking the request *after* the one that went wrong,
-so the turn is discarded instead.
+so the turn is discarded instead. It has one raise site, the pair of checks that
+decide whether an empty round is an answer or a fault:
+
+```rust
+        // Reasoning doesn't count: stripped on the way out, so a round producing only that
+        // leaves an empty content array the API rejects.
+        if !blocks.iter().any(|block| !block.is_thinking()) {
+            // Unless a `tool_result` is waiting to be answered; see `EndedMidToolUse`.
+            if matches!(produced.last(), Some(last) if matches!(last.role, Role::User)) {
+                return Err(TurnError::EndedMidToolUse);
+            }
+```
+
+The outer condition is why "empty" cannot mean "no blocks at all": a round
+carrying only reasoning is emptied by the strip on the way out, so reading it as
+content would skip both arms. The inner one reads `produced` — this turn's own
+messages, not `history` — so an empty *first* round has nothing of its own
+behind it and comes back as a short turn and an `Ok`, where the identical round
+one round later is the error. [02](02-what-a-harness-is.md) walks the loop that
+reaches it.
 
 **`TurnError` and `TurnStop` are the two halves of "how did this end", and they
 do not overlap.** `TurnError` is the `Err` side, five ways a turn failed;
@@ -550,14 +683,22 @@ And what it therefore cannot test:
   of the thirteen a caller threading no token counts never touches.
 - What being generic over a stream-opening closure buys, and what `AsyncFnMut`
   costs a generic wrapper.
+- Which two of `run_turn`'s five parameters are not generic, and why the crate
+  can do nothing with `ctx` but clone it and pass it on.
 - Why a tool call is the one thing in this async program that has to leave the
   executor, and the four consequences #26 records of its being uncancellable.
 - The three answers a gate may give and which ends the turn, plus the five
   outcomes a call may be reported to have reached.
+- The two methods `CallGate` requires, where `approve` is called from, and what
+  having exactly one such site buys over a convention.
 - Why the legal cut points of a tool-heavy transcript are exactly the human
   prose turns, and the three conditions `opens_a_request` checks to say so.
+- Why `plan_cut` cannot return a cut `opens_a_request` has not approved, and
+  which direction a floor that is not itself a boundary is met from.
 - Why compaction fires on a measured figure and never a predicted one, why both
-  `usage` and `withheld` have to be threaded back, and what it loses.
+  `usage` and `withheld` have to be threaded back, what it loses, and which
+  turns' first rounds "no measurement, no compaction" still leaves it free to
+  fire on.
 - The difference between `TurnError`, `TurnStop` and `TurnOutcome::round_stop`.
 - Why the agent suite fakes the provider and not the tools, and three things
   that choice cannot test.
