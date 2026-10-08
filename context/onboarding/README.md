@@ -29,6 +29,8 @@ does, `SECURITY.md` is right.
 | [01 — what sandbx is](01-what-sandbx-is.md) | the product and its thesis, the five subcommands, what the kernel has to provide, and the five commands to run first |
 | [04 — the architecture](04-the-architecture.md) | three views of one system — the processes, the request path, the boundaries. The spine every later chapter locates itself in |
 | [05 — seven crates](05-seven-crates.md) | the static view under 04: the dependency graph, who owns what, and the three mechanisms that keep one crate the only one able to spawn a process |
+| [09 — Landlock](09-landlock.md) | how a grant becomes a kernel rule: the ABI ladder, why a partly applied ruleset is a hole, and the bit arithmetic that keeps read from conferring execute |
+| [10 — seccomp](10-seccomp.md) | the syscall filter: what each blocked group would buy an attacker, why `clone3` is answered rather than denied, and the hand-assembled x32 gate |
 | [11 — the two seams](11-the-two-seams.md) | the correction most newcomers need: six of the seven tools never reach the kernel boundary, and what enforces them instead |
 | [12 — a flag to a kernel rule](12-a-flag-to-a-kernel-rule.md) | one trace, end to end — `--allow-read /tmp/x` from argv through vetting and the argv seam to a rule the kernel holds |
 | [16 — how the repo is maintained](16-how-the-repo-is-maintained.md) | guide versus decision, the Rust tests that hold the prose to the code, and a walkthrough of your first PR |
