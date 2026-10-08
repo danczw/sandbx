@@ -19,6 +19,10 @@ Where to look, and where to put something new:
 | which crates a change lands in | its `crate:*` labels |
 | what shipped in which release | GitHub releases, and that release's milestone |
 
+`SECURITY.md` may never overstate the sandbox. Where the mechanism and the claim
+disagree, one of them changes — the claim is weakened, or the mechanism is
+widened to match. Neither is left to drift.
+
 There is no roadmap file. Planned-but-missing work goes on an issue, where it can
 be closed; a decision that held goes in a `decision-*.md`. If you are about to
 write "planned" into a doc, file an issue instead.
