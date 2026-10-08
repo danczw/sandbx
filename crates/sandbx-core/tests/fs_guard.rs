@@ -931,6 +931,100 @@ fn a_link_out_of_a_confirmed_root_is_plainly_outside() {
     );
 }
 
+/// The link lands in a root that *does* confirm, so judging by where it resolved finds nothing
+/// wrong and permits a path the substitute chose.
+#[test]
+fn a_link_from_a_substituted_root_into_another_root_is_refused() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&data).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(data.join("secret.txt"), b"another grant's").unwrap();
+    std::os::unix::fs::symlink(data.join("secret.txt"), other.join("peek")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&granted))
+            .allow_read(vetted(&data)),
+    );
+    substitute(&granted, &other);
+
+    let peek = guard.check_read(&granted.join("peek")).unwrap_err();
+    let missing = guard.check_read(&granted.join("missing")).unwrap_err();
+
+    assert_eq!(
+        peek.label(),
+        missing.label(),
+        "a link into a second grant reads back differently for being there: \
+         {peek} against {missing}"
+    );
+    assert!(
+        matches!(peek, SandboxError::RootReplaced { .. }),
+        "{peek} is not the moved-root refusal"
+    );
+}
+
+/// The same door on the write axis, where passing it creates a file rather than reading one.
+#[test]
+fn a_write_through_a_substituted_root_into_another_root_is_refused() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&data).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::os::unix::fs::symlink(&data, other.join("dir")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_write(vetted(&granted))
+            .allow_write(vetted(&data)),
+    );
+    substitute(&granted, &other);
+
+    let error = guard
+        .check_write(&granted.join("dir").join("new.txt"))
+        .unwrap_err();
+
+    assert!(
+        matches!(error, SandboxError::RootReplaced { .. }),
+        "{error} permitted a new file through a root the policy no longer holds"
+    );
+    assert!(
+        !data.join("new.txt").exists(),
+        "the refusal still named a path under the second grant"
+    );
+}
+
+/// The positive the rule above must not take with it: grants overlap by design, and a link from
+/// one confirmed root into another resolves inside the granted set.
+#[test]
+fn a_link_between_confirmed_roots_still_resolves() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("shared.txt"), b"both grants").unwrap();
+    std::os::unix::fs::symlink(data.join("shared.txt"), granted.join("link")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&granted))
+            .allow_read(vetted(&data)),
+    );
+
+    assert_eq!(
+        guard.check_read(&granted.join("link")).unwrap(),
+        data.join("shared.txt").canonicalize().unwrap(),
+        "a link between two roots the policy still holds was refused"
+    );
+}
+
 /// A write refuses a symlinked leaf on sight, before resolving anything, so that reason has
 /// to come after the root's: chosen by what the substitute holds, it answers whether a name in
 /// a swapped-in directory is a symlink.
@@ -1079,10 +1173,20 @@ fn a_root_replaced_by_a_symlink_is_refused() {
         matches!(direct, SandboxError::PathNotAllowed { .. }),
         "the link's target became a root of its own: {direct}"
     );
+    // `confirm` opens the granted name without `O_NOFOLLOW`, so the link's target is the object
+    // it measures: a name that now leads somewhere else holds something else, which is the
+    // moved-root reason and not a bare out-of-bounds.
     let through = guard.check_read(&granted.join("secret.txt")).unwrap_err();
     assert!(
-        matches!(through, SandboxError::PathNotAllowed { .. }),
+        matches!(through, SandboxError::RootReplaced { .. }),
         "the grant followed the link: {through}"
+    );
+    let absent = guard.check_read(&granted.join("missing.txt")).unwrap_err();
+    assert_eq!(
+        through.label(),
+        absent.label(),
+        "a name under a symlinked root reads back differently for being there: \
+         {through} against {absent}"
     );
 }
 
