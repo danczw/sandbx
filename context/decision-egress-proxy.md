@@ -15,7 +15,7 @@ Nothing here bounds where a command connects.
 
 ## No kernel mechanism sees a destination
 
-Landlock's network rule is `NetPort::new(port, rights)` (`helper/mod.rs:420`)
+Landlock's network rule is `NetPort::new(port, rights)` (`helper/mod.rs`'s `apply`)
 and there is no address in that shape. seccomp compares register values, and the
 `sockaddr` carrying the destination is behind a pointer the filter cannot follow
 — at `connect`, at `sendto`, and at every syscall further down the chain, which
@@ -49,11 +49,12 @@ refusal is **enforcement**, a mechanism a program can simply ignore is
 **The listener has no free spelling.** `decision-tool-credentials.md`'s channel
 table applies to this unchanged, because it is the same question asked for a
 secret instead of a destination: loopback TCP means `--allow-network <port>`,
-which drops `CLONE_NEWNET` (`helper/hardening.rs:240`) and puts the command in
-the host's netns; a unix socket means `--allow-unix-sockets`, one boolean
-covering every pathname socket the filesystem policy reaches (`policy.rs:92`);
-stdin and stdout are spent on the command's own I/O. A proxy that bounds egress
-by granting a network the command did not previously have refutes itself.
+which drops `CLONE_NEWNET` (`helper/hardening.rs`'s `isolate`) and puts the
+command in the host's netns; a unix socket means `--allow-unix-sockets`, one
+boolean covering every pathname socket the filesystem policy reaches
+(`SandboxPolicy::allow_unix_sockets`); stdin and stdout are spent on the
+command's own I/O. A proxy that bounds egress by granting a network the command
+did not previously have refutes itself.
 
 **Interception is cooperation, and sandbx ships the binary that defeats it.**
 `decision-tool-credentials.md` has this in full: `HTTP_PROXY` binds only
@@ -98,11 +99,11 @@ of one.
 
 Under a port allowlist seccomp already denies UDP and raw sockets, so
 `getaddrinfo` can reach neither a UDP nameserver nor `AF_NETLINK`
-(`helper/seccomp/rules.rs:182-190`). The one transport left is TCP, on a port
-the operator names. Hold the only thing that can answer there and a name outside
-the allowlist has nowhere else to be asked: the enforcement is positional, the
-same shape as the credential refusal, and it needs no interception and no
-termination to be true.
+(`helper/seccomp/rules.rs`'s `blocked_syscalls`, under `confine_to_tcp`). The
+one transport left is TCP, on a port the operator names. Hold the only thing
+that can answer there and a name outside the allowlist has nowhere else to be
+asked: the enforcement is positional, the same shape as the credential refusal,
+and it needs no interception and no termination to be true.
 
 What this note first specified as holding that position was a DNS responder of
 sandbx's own. That shape cannot be built unprivileged — the measurements are
@@ -183,14 +184,13 @@ reads `nsswitch.conf`, the rendered file cannot turn that off, and
 What the trail records is a count on `Spawned`, `dns_names`, and no per-name
 record at all. The responder would have had one query per name to report;
 resolution ahead of the spawn has one event, and `Spawned` carries counts and
-not values (`guide-logging.md:41`) — doubly so here, an internal host name being
-infrastructure rather than a pointer to it.
+not values (`guide-logging.md`, *What is built*) — doubly so here, an internal
+host name being infrastructure rather than a pointer to it.
 
-Two things that have not changed. No label joins `REPORTED_BY_HELPER`
-(`error.rs:290`): that set is closed around what crosses the helper's audit
-channel, and nothing about the allowlist is decided on it. And the
-operator-facing failure is legible without the trail, which is what the advice
-above is for.
+Two things that have not changed. No label joins `HelperRefusal::ALL`: that set
+is closed around what crosses the helper's audit channel, and nothing about the
+allowlist is decided on it. And the operator-facing failure is legible without
+the trail, which is what the advice above is for.
 
 ## The claim, written first
 
@@ -230,7 +230,7 @@ re-derive it.
 
 **No host field may enter `SandboxPolicy` before something enforces it, and no
 name allowlist either.** The type is read as the record of what was granted
-(`policy.rs:87`), so a field nothing honours tells its next reader that a grant
+(`policy.rs`), so a field nothing honours tells its next reader that a grant
 is respected. This is the rule that kept #42 to per-port, and it is the same rule
 `decision-tool-credentials.md` states for a credential placeholder, under the
 same heading. An intermediate step, if one is wanted, is a separate opt-in type
@@ -254,7 +254,7 @@ specified, and unbuildable unprivileged. Three measurements, on an ordinary
 desktop kernel with no sandbx in the way:
 
 - a port allowlist sets `allows_network()`, so `isolate` keeps the host netns
-  (`helper/hardening.rs:239-242`), and an unprivileged `bind(127.0.0.1:53)`
+  (`helper/hardening.rs`), and an unprivileged `bind(127.0.0.1:53)`
   there is `EPERM` — `net.ipv4.ip_unprivileged_port_start` is 1024;
 - inside a netns sandbx owns, the same bind succeeds and the netns has no route
   out, so a name it resolves is unreachable and nothing is gained;
