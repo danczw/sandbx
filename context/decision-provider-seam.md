@@ -47,7 +47,10 @@ there are:
   them), and `stream: true`. It is `pub(super)`, so nothing above `anthropic.rs` can
   post a neutral type to an API.
 - `StopReason` is a neutral enum with `Other(String)`; the string table is a free
-  `stop_reason` in `anthropic/wire/`.
+  `stop_reason` in `anthropic/wire/`. `sandbx-agent` names it in its own public API,
+  as `TurnOutcome::round_stop` (#190), and does not re-export it — one path to one
+  type. That is the test of the neutrality above, passed because nothing outside
+  `anthropic/` can build one from a wire string.
 - `ProviderError::ApiError` carries `transient: bool` and `is_retryable` reads only
   that. Which codes and statuses are worth retrying is per-adapter, and the two
   construction sites in `anthropic.rs` are what decide.

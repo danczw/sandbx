@@ -169,8 +169,9 @@ accident — see [decision-provider-seam.md](decision-provider-seam.md).
 
 ```
 src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
-                          PromptUsage, Compaction, CallGate, ToolCall,
-                          ApprovalDecision, Settled, Outcome, run_turn
+                          TurnStop, PromptUsage, Compaction, CallGate,
+                          ToolCall, ApprovalDecision, Settled, Outcome,
+                          run_turn
    turn.rs    run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site

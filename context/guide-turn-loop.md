@@ -61,6 +61,9 @@ feeds is not that class: `agent-run` prints its report, and under
 Re-entry is decided by the **presence of `ToolUse` blocks**, not by
 `StopReason::ToolUse` — the blocks are what have to be answered, and trusting the
 stop reason would mean trusting the provider to label its own output correctly.
+The reason is *reported* and still not trusted: it comes back as
+`TurnOutcome::round_stop` for a caller to read, and nothing in the loop branches on
+it.
 
 `Thinking` is the renderer's increment and enters nothing; the replayable block
 arrives separately as `ThinkingBlock` or `RedactedThinking`, carries a signature, and
@@ -70,7 +73,9 @@ no history either but is **kept** — the latest round's prompt counters come ba
 `TurnOutcome::usage`, which
 a caller threads into the next turn's `Turn::observed` with
 `observed = outcome.usage.or(observed)`. That is half of the loop compaction runs on;
-`withheld = outcome.withheld` is the other half, and neither works alone.
+`withheld = outcome.withheld` is the other half, and neither works alone. `Stop` is
+kept the same way, last round wins, as `TurnOutcome::round_stop` — `None` when no
+round reached one, which `max_rounds: 0` is.
 
 ## The three traps
 
@@ -235,6 +240,10 @@ No truncation of that transcript would make it end on an answer: it ends on a
 `tool_result` the model never answered, and so does every prefix of it, the alternative
 being a `tool_use` with nothing answering it. `TurnStop` is what says it is not an answer.
 
+`round_stop` is orthogonal to it rather than an alternative spelling: a turn that ran
+out of rounds has a last round too, and that round may itself have been cut at
+`max_tokens`, so both figures can be set at once and both are worth naming.
+
 What a caller does with that is the caller's. `agent-run` asks once more under
 `Turn::tool_choice`, so the reply is prose and the batch ends on an answer — see
 `decision-round-limit-answer.md`, including why that round still sends the tool
@@ -255,8 +264,9 @@ below.
 | `StreamEndedWithoutStop` | — |
 | `ToolPanicked { name }` | — |
 
-A discarding variant discards the turn's `usage` and `withheld` with it, so a caller's
-`observed` and `withheld` both keep what the last request that actually completed set.
+A discarding variant discards the turn's `usage`, `withheld` and `round_stop` with it,
+so a caller's `observed` and `withheld` both keep what the last request that actually
+completed set.
 
 ## What bounds what
 
