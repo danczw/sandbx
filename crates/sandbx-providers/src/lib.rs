@@ -4,10 +4,9 @@
 //! [`EventStream`], so there is no trait or enum over the backends. No vendor SDK
 //! sits between sandbx and the wire format; see `context/decision-provider-seam.md`.
 //!
-//! [`Prompt`], [`AgentEvent`] and [`ProviderError`] are this crate's own vocabulary —
-//! including [`invisible`], the one thing model-chosen text may never carry to a terminal,
-//! owned here so no sink keeps its own copy of the table. Everything that knows one API's
-//! field names, string tables and body rules lives under `anthropic`.
+//! [`Prompt`], [`AgentEvent`] and [`ProviderError`] are this crate's own vocabulary, with
+//! [`invisible`] for what that text may not carry to a terminal. Everything that knows one
+//! API's field names, string tables and body rules lives under `anthropic`.
 
 mod anthropic;
 mod credentials;

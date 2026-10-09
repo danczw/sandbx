@@ -529,8 +529,8 @@ fn a_transcript_ending_on_a_user_turn_is_refused() {
 
     let err = store.resume(&id).unwrap_err();
 
-    // The path and not only the variant: this is the one refusal on the read side that is
-    // about a file, and it carried none until #258.
+    // The path and not only the variant: carrying the transcript it read is what separates
+    // this refusal from `IncompleteTurn`.
     assert!(
         matches!(&err, SessionError::Unresumable { path: refused } if refused == &path),
         "got {err:?}"

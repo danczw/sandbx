@@ -74,8 +74,7 @@ pub(super) fn fold(
         };
 
         // Ahead of the match, so it reads every header and not only line 0's: a later one
-        // declaring a version this build does not read is a file it cannot replay,
-        // whatever the first line said.
+        // declaring a version this build cannot read is a file it cannot replay.
         if let Record::Header(header) = &record
             && header.version != VERSION
         {
