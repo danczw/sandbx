@@ -136,7 +136,7 @@ the ladder walk in one process.
 ## `apply` sequence
 
 ```
-set_no_new_privs()        ◄── required before seccomp; Landlock sets it itself
+set_no_new_privs()        ◄── both installs need it, and both set it themselves
 deny_dangerous_syscalls(policy)
 requested(policy)  ──► Requested { handled, rules, net }   ◄── negotiates internally
   handle_access(handled)
@@ -149,16 +149,20 @@ enforcement_verdict()
 ```
 
 `apply` is the one place all three mechanisms are sequenced, and one order
-*between* them is required: `set_no_new_privs` before seccomp. (Inside Landlock
-there are two more, forced by its API: both `handle_access` calls before
-`create`, and every `add_rule` after it.) Without `no_new_privs` or
-`CAP_SYS_ADMIN` the install fails — `EACCES` from `seccomp(2)`, `EPERM` from
-`landlock_restrict_self(2)` — and this stage holds no capabilities.
-`landlock_restrict_self(2)` has the same precondition and satisfies it itself —
-the `landlock` crate's `restrict_self` calls `try_set_no_new_privs` — and
-neither mechanism restricts the other's setup calls: the denylist names no
-`landlock_*` syscall, and Landlock polices no `seccomp(2)`. So the order between
-seccomp and Landlock is free.
+*between* them is required: `set_no_new_privs` before *either* install. (Inside
+Landlock there are two more, forced by its API: both `handle_access` calls
+before `create`, and every `add_rule` after it.) Without `no_new_privs` or
+`CAP_SYS_ADMIN` both fail — `EACCES` from `seccomp(2)`, `EPERM` from
+`landlock_restrict_self(2)` — and this stage holds no capabilities. Both
+libraries also set the bit themselves inside that install: `seccompiler`'s
+`apply_filter` calls `prctl(PR_SET_NO_NEW_PRIVS, 1)` ahead of the `seccomp(2)`
+and returns `Error::Prctl` if it fails, and the `landlock` crate's
+`restrict_self` calls `try_set_no_new_privs`. So the explicit call enables
+neither install; it is the *reported* refusal, raised here and ahead of both
+rather than surfacing as whichever happened to run first. Neither mechanism
+restricts the other's setup calls — the denylist names no `landlock_*` syscall,
+and Landlock polices no `seccomp(2)` — so the order between seccomp and Landlock
+is free.
 
 `negotiated_abi` is no longer a step of its own: the handled set and the rules
 have to come from *one* ABI, and `apply` used to derive them from two separate
