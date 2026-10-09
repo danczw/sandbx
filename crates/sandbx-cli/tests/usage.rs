@@ -64,6 +64,23 @@ fn an_unknown_auth_flag_is_not_the_code_an_unreadable_source_takes() {
     assert_ne!(run.code, Some(2));
 }
 
+/// An argv that names no subcommand is a refusal, whichever level it stopped at, and the
+/// help clap answers it with is not a help anyone asked for.
+///
+/// Both codes, because both would read as an answer: 0 from `sandbx auth` is the 0
+/// `auth status` spends on a key it found, and 2 is the code a cut round earns. The channel
+/// with them, since what separates this from `--help` is that clap wrote it to stderr.
+#[test]
+fn an_argv_naming_no_subcommand_exits_sixty_four() {
+    for argv in [[].as_slice(), &["auth"]] {
+        let run = sandbx(argv);
+
+        assert_eq!(run.code, Some(64), "{argv:?}: {}", run.stderr);
+        assert!(run.stdout.is_empty(), "{argv:?}: {}", run.stdout);
+        assert!(run.stderr.contains("Usage"), "{argv:?}: {}", run.stderr);
+    }
+}
+
 /// `--help` is not a refusal, and the code it keeps is what a script testing for one reads.
 #[test]
 fn help_and_version_still_exit_zero_on_stdout() {
