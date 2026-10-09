@@ -617,7 +617,7 @@ the enforcement targets include — `vetted`, `runtime_paths`, `allow_probe`,
 **the intersection only**, because `dead_code` is per test crate, so a helper
 one target does not use warns there and belongs in the file that uses it.
 Everything else beside it is a `[[bin]]` probe declared in
-[`Cargo.toml`](../../crates/sandbx-core/Cargo.toml) — eight of them, every one
+[`Cargo.toml`](../../crates/sandbx-core/Cargo.toml) — nine of them, every one
 behind `required-features = ["sandbox-integration"]` except
 `sandbx-concealment-probe`, which needs no Landlock ABI, "only a second process
 to be concealed from". Two manifest comments there are small lessons in their

@@ -23,7 +23,7 @@ outright.
    ▼
 Grants { allow_read: vec!["/tmp/x"] }     one Vec<PathBuf> per path axis
    │ absolute          ──► PathBuf, joined to the cwd if it was relative
-   │ resolved          ──► PathBuf, deepest resolvable ancestor replaced
+   │ resolved          ──► ResolvedPath, deepest resolvable ancestor replaced
    │ bound_by_resolver ──► bool, noted now and refused with the DNS flags
    │ reaches_owned     ──► Option<&OwnedPath>; Some is a refusal
    │ pinned            ──► VettedPath, the only answer that is kept
@@ -75,10 +75,10 @@ appear in the file is not the order they run.** Trace the chain in
 | # | function | takes | gives back |
 |---|---|---|---|
 | 1 | `absolute` | the path as typed, plus a `cwd` closure | `Result<PathBuf, PolicyError>` |
-| 2 | `resolved` | that absolute path | `PathBuf`, total — never fails |
+| 2 | `resolved` | that absolute path | `ResolvedPath`, total — never fails |
 | 3 | `bound_by_resolver` | both spellings | `bool`, noted for later |
-| 4 | `reaches_owned` | the resolved path, plus the owned paths | `Option<&OwnedPath>` |
-| 5 | `pinned` | the resolved path, plus the typed one | `Result<VettedPath, PolicyError>` |
+| 4 | `reaches_owned` | a `ResolvedPath`, plus the owned paths | `Option<&OwnedPath>` |
+| 5 | `pinned` | a `ResolvedPath`, plus the typed path | `Result<VettedPath, PolicyError>` |
 
 **`absolute` joins a relative flag to the working directory** — this process's,
 while it is still the one that knows it. The grant crosses the argv seam in this
@@ -94,6 +94,12 @@ component to exist: a credential nobody has stored yet does not exist, and
 comparing canonical forms alone would miss the host where `/home` is a symlink
 to `/var/home`. The function is total — a path that resolves nowhere comes back
 unchanged — which is what lets stages 3 and 4 be plain predicates.
+
+**And it is the only way to hold a `ResolvedPath`**, which is what stages 4 and
+5 take. The type is a one-field wrapper over a `PathBuf` with a `path()`
+accessor, no `Deref` and a private field, so the one producer in the module is
+the only road in. What that buys has its own section below, where the
+requirement it replaced is traced.
 
 **`bound_by_resolver` asks whether the flag names a file sandbx's own bounded
 resolver will bind-mount over.** It tests both spellings on purpose: the
@@ -118,7 +124,9 @@ resolved spelling included, since the path the policy ends up holding is the one
 `vet` canonicalized and not the one `resolved` built.
 
 ```rust
-pub(super) fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
+pub(super) fn pinned(granted: &ResolvedPath, typed: &Path) -> Result<VettedPath, PolicyError> {
+    let granted = granted.path();
+
     let vetted = VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
         granted: typed.to_path_buf(),
         source,
@@ -138,8 +146,9 @@ pub(super) fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyE
 
 `VettedPath::vet` canonicalizes and then `stat`s, and it is the only producer of
 a `VettedPath` that performs any I/O at all. The comparison after it is the part
-worth sitting with. `granted` arrived `resolved`, and `vet` resolves again — so
-if a component was swapped for a symlink in between, the two spellings differ.
+worth sitting with. `granted` arrived `resolved` — the parameter type says so,
+not a comment — and `vet` resolves again, so if a component was swapped for a
+symlink in between, the two spellings differ.
 Every refusal above ran against the first spelling, and the policy would hold
 the second: a path no check here ever saw, pinned to whatever object is at it.
 That is `GrantMovedWhileVetting`, and it is a refusal rather than a re-run of
@@ -475,7 +484,8 @@ compares whole components, not bytes, so `~/.config/sandbx-notes` still derives.
 ```rust
 owned.iter().find(|owned| {
     let path = resolved(&owned.path);
-    path.starts_with(granted) || granted.starts_with(&path)
+
+    path.path().starts_with(granted) || granted.starts_with(path.path())
 })
 ```
 
@@ -522,24 +532,6 @@ before any subcommand, so no code path reaches a policy with the flag still set.
 [`SECURITY.md`](../../SECURITY.md) carries the pair as one claim and the record
 puts it plainly: this is a different mechanism, not more of the path refusal.
 
-- **Worth questioning:** `reaches_owned` requires its `granted` argument to have
-  arrived through `resolved`, and the way that requirement is held is a doc
-  comment plus `debug_assert!(granted == resolved(granted), …)`. The published
-  binary is a release build, so in the artefact that ships, the precondition on
-  the refusal that protects the credential file and the transcripts is enforced
-  by convention.
-  [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) reasons
-  carefully about *which* spelling must reach the comparison — "vetting one
-  spelling and granting another is the window this closes" — and the owned side
-  normalises itself inside the function. What the record does not weigh is
-  making the caller's side unforgeable, which this codebase already knows how to
-  do: `VettedPath` is precisely a path that cannot be unpinned, because `grant`
-  accepts nothing else. A `Resolved` newtype returned by `resolved` and demanded
-  by `reaches_owned` would turn today's debug-only assertion into the same kind
-  of build failure, in the one place where the two production callers are the
-  only thing standing between a lexical mismatch and a grant over the session
-  history.
-
 - **Worth questioning:** the departure at `axis.grants().write` is keyed so that
   "a future write-conferring axis inherits the affordance instead of silently
   missing it", and [decision-axis-table.md](../decision-axis-table.md) presents
@@ -551,6 +543,40 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
   test suite fails until it does. The two goals conflict here and only one is
   priced. A `match` on `Axis` with a comment on each arm would fail to compile
   for the new axis and get the same outcome with the decision made deliberately.
+
+## Why stage 2 returns a type and not a `PathBuf`
+
+`reaches_owned` needs its `granted` argument to have come through `resolved`,
+and for a while the way that requirement was held was a doc comment plus
+`debug_assert!(granted == resolved(granted), …)` — the workspace's only
+assertion outside a test module. A `debug_assert!` is compiled out of a release
+build, so in the artefact that ships, the precondition on the refusal that
+protects the credential file and the transcripts was held by convention. Both
+callers complied, so there was no defect to fix. What there was, was a third
+caller waiting to be written.
+
+[decision-harness-owned-paths.md](../decision-harness-owned-paths.md) reasons
+carefully about *which* spelling must reach the comparison — "vetting one
+spelling and granting another is the window this closes" (#205) — and the owned
+side normalises itself inside the function. The caller's side is what
+`ResolvedPath` makes unforgeable, and the pattern was already in the tree one
+layer down: `VettedPath` is precisely a path that cannot be unpinned, because
+`grant` accepts nothing else. So the fix (#248) is that shape and not that type
+— `VettedPath` cannot carry it, because `vet` canonicalizes and `resolved`
+exists to name a path whose leaf does not exist yet. A second wrapper, then,
+built to the first one's rules: private field, exactly one producer, a `path()`
+accessor and no `Deref`, so there is no way to hand `reaches_owned` a path that
+only looks resolved.
+
+What that changes for a reader is where to look for the requirement. It is in
+the signature, which means a third call site inside `grants` that forgets it
+does not compile — and there is no new test, because a compile-time guarantee
+has no runtime failure mode to assert on. Two existing tests changed shape, and
+**one of them had been passing by accident**: `an_absolute_grant_needs_no_cwd`
+handed `reaches_owned` an unresolved path and satisfied the old assertion only
+because `/srv/app` happens not to exist on the test host, so `resolved` returned
+it unchanged. That is what a `debug_assert!` over a filesystem predicate cannot
+tell you — whether the precondition held, or the host merely agreed with it.
 
 ## The pin is the flag that becomes no rule at all
 
@@ -784,6 +810,9 @@ auditor cannot recover is that it was checked.
 - Why a grant reaching a harness-owned path is refused in both directions and
   with no exact-path hatch, and why the same hazard through `/proc` needed a
   different mechanism.
+- Why `resolved` returns a type rather than a `PathBuf`, what a `debug_assert!`
+  held before it, and why the replacement needed a second wrapper rather than
+  `VettedPath`.
 
 ## Next
 

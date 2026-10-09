@@ -210,10 +210,10 @@ than by enumeration:
 
 ```rust
 let read_rights = AccessFs::from_read(abi) & !AccessFs::Execute;
-let write_rights = AccessFs::from_all(abi) & !AccessFs::from_read(abi);
+let write_rights = AccessFs::from_all(abi) & !AccessFs::from_read(abi) & !AccessFs::ResolveUnix;
 ```
 
-Both subtractions are load-bearing, and for different reasons.
+Every subtraction there is load-bearing, and for a different reason.
 
 - **Read is `from_read` minus `Execute`,** because the kernel's own read set
   bundles `Execute` in with `ReadFile` and `ReadDir`, and no axis but
@@ -223,7 +223,10 @@ Both subtractions are load-bearing, and for different reasons.
   `from_all` contains `ReadFile` and `ReadDir` too, so subtracting only
   `Execute` would confer read at the kernel while `FsGuard` refused it in
   process — and the write-only drop directory the policy advertises would be
-  readable.
+  readable. **And minus `ResolveUnix`**, which is the one named subtraction on
+  top of the two set-shaped ones: writing a file is not dialling a socket, and
+  the bit is conferred from its own flag instead. The paragraph after next is
+  why that line exists at all.
 - **Subtraction rather than a list is what makes a future ABI fail safe.** A
   right added to `from_all` next year is denied by `allow_read` automatically,
   rather than being permitted until somebody notices it is not in the
@@ -233,16 +236,51 @@ Both subtractions are load-bearing, and for different reasons.
   right that is not a read right joins every `--allow-write` grant with no edit
   anywhere. At `LATEST_ABI` that has already happened twice, and both are rights
   beyond writing bytes — `IoctlDev`, device ioctls on a node beneath the path,
-  and `ResolveUnix`, `connect(2)` to a pathname socket beneath it, which
-  [`SECURITY.md`](../../SECURITY.md) treats as seccomp's business. That second
-  one reaches a flag:
-  [decision-axis-table.md](../decision-axis-table.md) works it through to
-  `--allow-unix-sockets` acquiring a path condition on a V9 kernel with no line
-  edited (#259), which is the asymmetry arriving at the surface. Which is why
+  and `ResolveUnix`, `connect(2)` to a pathname socket beneath it. Which is why
   `each_axis_confers_exactly_the_documented_set` spells all three axes' rights
   out literally, at both ends of the negotiable range, rather than deriving them
   from `from_all`/`from_read` — a derived expectation would move with the very
   bump it is meant to catch.
+
+**The second of those two is the worked example of what the open top end
+costs**, and it is the reason the subtraction list has a named bit on it. New at
+V9 (Linux 7.1), `ResolveUnix` would have joined the write set with no line
+edited, and `handled_access` being `from_all(abi)` means a V9 kernel handles it
+too — so on the first V9 kernel `--allow-unix-sockets`, one boolean documented
+as all-or-nothing, would have silently acquired a path condition: a pathname
+socket would have to sit inside a *write* grant to be dialled, and a command
+that works today would fail on a newer kernel with the same flags.
+
+So it is subtracted from the axis and conferred from the flag instead, in
+`unix_socket_rights`. Three things about that function are the whole of its
+correctness:
+
+- **It is masked by `from_all(abi)` and never compared against `V9`.**
+  `PathBeneath::check_consistency` refuses a rule whose rights exceed the
+  handled set, outside `CompatLevel` and so unconditionally — an unmasked bit
+  would refuse *every* run on every kernel shipping today, which is the one way
+  to get this wrong.
+- **It rides on the grants and not on `RuleTarget::Installed`.** A resolver file
+  is a bind mount of sandbx's own file that no grant names, and
+  [`SECURITY.md`](../../SECURITY.md) and `policy.rs` both say "the paths it
+  granted". Inert either way — `opens_as_itself` admits only existing
+  non-symlink regular files, which hold no socket — so this is the claim and the
+  mechanism agreeing rather than a hole being closed.
+- **It is OR'd in after `rights_for`'s `from_file` narrowing, which does not
+  re-widen it.** `ResolveUnix` is in landlock's own `ACCESS_FILE`, so a rule
+  naming a socket inode directly keeps the bit.
+
+What `SECURITY.md` gave up in the same commit is the sentence that read like a
+mechanism and was an aspiration: "what the command can *read* bounds which
+sockets exist to be dialled". Below V9 nothing sandbx installs conditions a unix
+`connect` on a path grant, Landlock having no traversal right there, so the
+claim is now the narrower true one — the filesystem policy bounds *which*
+pathname socket at V9 only, and below it a socket whose path the command knows
+is reachable with no grant naming it. That was measured, not assumed: dropping
+the directory grants from `an_explicit_unix_grant_permits_the_connection` still
+connects on a 6.18 host settling at V8. The claim weakened and the mechanism
+widened in one commit, which is the move `CLAUDE.md` requires when the two
+disagree.
 
 Then the axis table decides which of the three primitives apply:
 

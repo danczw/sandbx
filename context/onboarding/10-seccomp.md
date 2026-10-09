@@ -99,7 +99,7 @@ inside the sandbox:
   resolve.** `io_uring_setup`, `io_uring_enter`, `io_uring_register` run
   operations from a submission queue without the matching syscalls ever being
   issued, so a ring set up in here would route around every rule in this
-  filter — including the `socket(AF_UNIX)` denial added on top of the list.
+  filter — including the `AF_UNIX` denials added on top of the list.
   `userfaultfd` is the same shape one level down: it hands the faulting process
   control over *when* a page fault resolves, turning any check-then-use in the
   kernel into an arbitrarily wide window.
@@ -464,20 +464,55 @@ Four pieces of shape in that table repay attention:
   port nothing may write to is no grant at all.
 
 Unix sockets are a separate axis, not a sub-case of this one, and the code is
-careful to keep them apart in both directions. `socket(AF_UNIX)` is denied
-whenever the policy does not grant unix sockets, regardless of network policy,
-because a netns isolates only *abstract* unix sockets while pathname sockets
-live in the filesystem and cross a namespace freely — a command that can dial
-the session bus, a docker socket or an ssh-agent has them act outside the
-sandbox. That is an escape rather than egress, so granting the internet does not
-grant it. `socketpair` is deliberately left out: an anonymous pair has no path
-to reach a host daemon with, and shells use it routinely. In the other
-direction, every type rule above carries an explicit
-`domain != AF_UNIX` condition, so a denial aimed at IP egress does not silently
-narrow a grant it never mentions. It is all-or-nothing for the same pointer
-reason as everything else here: `connect`'s path is behind a pointer, and a
-path-scoped Landlock right exists only at the ladder's top rung, which
-`negotiated_abi` cannot settle on until a kernel hard-requires it in full.
+careful to keep them apart in both directions. The denial applies whenever the
+policy does not grant unix sockets, regardless of network policy, because a
+netns isolates only *abstract* unix sockets while pathname sockets live in the
+filesystem and cross a namespace freely — a command that can dial the session
+bus, a docker socket or an ssh-agent has them act outside the sandbox. That is
+an escape rather than egress, so granting the internet does not grant it. In the
+other direction, every type rule above carries an explicit `domain != AF_UNIX`
+condition, so a denial aimed at IP egress does not silently narrow a grant it
+never mentions.
+
+**There are two routes to an `AF_UNIX` descriptor, and the second one does not
+call `socket`.** `socket(AF_UNIX)` is the one the rule above names;
+`socketpair(AF_UNIX, …)` is the other, and it hands back a descriptor the first
+rule never sees. What makes that matter is not the descriptor but whether it can
+be re-aimed: a *connectionless* pair can be, `connect` on a `SOCK_DGRAM` half
+taking a `sockaddr_un` and delivering to a host pathname socket no grant named.
+So a second rule denies `socketpair` for every type except `SOCK_STREAM` and
+`SOCK_SEQPACKET`.
+
+Three details of that rule are worth the stare, and each is a shape this chapter
+has already met:
+
+- **An allowlist, not a `SOCK_DGRAM` denylist** — the same choice the `Ports`
+  type loop above makes, for the same reason. A connectionless type a future
+  kernel gives `AF_UNIX` arrives denied rather than permitted.
+- **`MaskedEq` against `SOCK_TYPE_MASK`**, because `__sys_socketpair` masks
+  `type` exactly as `__sys_socket` does, so a plain `Eq` would be walked past by
+  the `SOCK_CLOEXEC` a caller sets anyway. One constant now documents both
+  call sites.
+- **What makes permitting the two connection-oriented types safe is a kernel
+  *state*, not a type.** `unix_stream_connect` refuses any socket not in
+  `TCP_CLOSE`, and a pair is born `TCP_ESTABLISHED`, so `connect` on either half
+  answers `EISCONN`. That is a claim about the kernel and so it was measured
+  rather than reasoned from — with the peer open, with it closed, after
+  `shutdown(SHUT_RDWR)` and after both — and
+  [guide-sandboxing.md](../guide-sandboxing.md) keeps the measurement as the
+  paragraph to re-measure against. The compatibility cost is the datagram pair
+  alone; the connected pair shells and build tools use as a pipe still works,
+  which is what the earlier, laxer comment had been protecting.
+
+The flag stays all-or-nothing, and the reason has two halves now rather than
+one. seccomp cannot follow the pointer to `connect`'s path, so only the
+filesystem policy could narrow *which* socket is dialled — and the mechanism for
+that is Landlock's `ResolveUnix`, which exists at ABI V9 (Linux 7.1) and which
+this same flag confers on the paths it granted ([09](09-landlock.md)). At or
+below V8, which is every kernel shipping today, this denial is the whole of the
+control: a hardcoded `/run/docker.sock` is dialable holding no grant that names
+it. `SECURITY.md` states it that way rather than as what the filesystem policy
+*would* bound.
 
 One structural guard holds the two producers apart. `socket` can receive rules
 from the unix-socket branch and from the port-allowlist branch, and `deny_when`
@@ -496,7 +531,7 @@ because a number was added to `BLOCKED_SYSCALLS`, and
   `hardening::isolate` drops `CLONE_NEWNET` and the command lands in the
   *host's* network namespace — host loopback reachable on an allowlisted port,
   and the host's abstract unix socket namespace no longer isolated, leaving only
-  the `socket(AF_UNIX)` denial in front of it. The record's conclusion,
+  the two `AF_UNIX` denials in front of it. The record's conclusion,
   "narrower on remote ports, wider on what is local", is right, and
   `SECURITY.md` repeats it. What neither weighs is that the *flag* carries none
   of this: `--allow-network 443` reads as a narrower `--allow-network`, and the
@@ -531,8 +566,8 @@ because a number was added to `BLOCKED_SYSCALLS`, and
   port allowlist.
 - How a family that tunnels IP, a `TCP_ULP` conversion and a TCP Fast Open send
   all reach a port without `security_socket_connect` running.
-- Why `socket(AF_UNIX)` is governed by a different grant from the network
-  policy.
+- Why `AF_UNIX` is governed by a different grant from the network policy, which
+  two syscalls reach one, and why a connected `socketpair` is left permitted.
 
 ## Next
 

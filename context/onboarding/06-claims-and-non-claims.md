@@ -112,11 +112,22 @@ promise covers and does not. The third is the part a reader skips.
 
 ### Unix sockets, and the environment
 
-- **Unix sockets — one seccomp rule.** Promised: pathname sockets are denied
-  unless granted, by a rule on `socket` with `AF_UNIX` in argument zero, gated
-  on `allows_unix_sockets()` independently of any network grant. Covers whether
-  the command may open one at all. Does not cover *which* one, and that limit
-  has its own non-claim below.
+- **Unix sockets — two seccomp rules, and one Landlock right where the kernel
+  has it.** Promised: a unix socket that reaches anything outside the sandbox is
+  denied unless granted — `socket` with `AF_UNIX` in argument zero, and a
+  connectionless `socketpair(AF_UNIX)`, which reaches a descriptor without
+  calling `socket` at all. Both gated on `allows_unix_sockets()` independently
+  of any network grant. **Read the "what it bounds" cell closely, because it is
+  narrower than the obvious reading and says so twice.** It is not "may open one
+  at all": a *connected* `socketpair` is left permitted, and the row names it so
+  the gap is not read as an oversight — both halves are inside the sandbox and
+  neither can be re-aimed at a host socket ([10](10-seccomp.md) has the kernel
+  state that makes that true). And *which* pathname socket may be dialled is
+  bounded by the filesystem policy at Landlock ABI V9 only, where the flag
+  confers `ResolveUnix` on the paths it granted ([09](09-landlock.md)); below
+  V9, which is every kernel shipping today, nothing bounds it and a socket whose
+  path the command knows is reachable with no grant naming it. That limit has
+  its own non-claim below.
 - **Environment — `env_clear`, a name allowlist, then the imposed constants.**
   Promised: everything the policy neither names nor imposes is dropped, at every
   spawn stage. The row is careful about the difference: the allowlist governs
@@ -415,13 +426,20 @@ example of this whole chapter:
   local.
 
 Unix sockets are all-or-nothing for the same kind of reason:
-`--allow-unix-sockets` grants *every* pathname socket the filesystem policy can
-reach — an ssh-agent, a docker socket, the session bus — because seccomp cannot
-follow the pointer to `connect`'s path and Landlock gained a path-scoped right
-only at a level not available in practice. What the command can *read* bounds
-which sockets exist to be dialled. Under a port allowlist the flag lifts one
-thing more: the netns no longer isolates the host's abstract socket namespace,
-so the `socket(AF_UNIX)` denial was the only layer left in front of it.
+`--allow-unix-sockets` grants *every* pathname socket the command can reach — an
+ssh-agent, a docker socket, the session bus — because seccomp cannot follow the
+pointer to `connect`'s path and Landlock gained a path-scoped right only at a
+level not available in practice. The denial it lifts covers both routes to an
+`AF_UNIX` descriptor, `socket` and a connectionless `socketpair`, the second
+reaching one without calling the first. What is missing below Landlock ABI V9 is
+not a narrower flag but a *traversal right*: nothing sandbx installs conditions
+a unix `connect` on a path grant, so a hardcoded `/run/docker.sock` is dialable
+holding no grant that names it, and the filesystem policy does not bound it. At
+V9 the flag confers `ResolveUnix` on the paths it granted, and then — and only
+then — what the command may reach bounds what it may dial. Every kernel shipping
+today is below V9. Under a port allowlist the flag lifts one thing more: the
+netns no longer isolates the host's abstract socket namespace, so the two
+`AF_UNIX` denials were the only layer left in front of it.
 
 A variable you pass through is passed in full: the allowlist is by *name*, so
 `--allow-env GH_TOKEN` hands over the value the harness holds, verbatim, and

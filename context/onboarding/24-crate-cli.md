@@ -596,8 +596,10 @@ flag and the axis loop that turns them into a policy, so the one widening and
 the working-directory default exist once rather than once per subcommand.
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) holds no flag at
 all: it decides where a no-flag run may root a default and what a path flag is
-vetted against, and its module doc warns that two of its orders are load-bearing
-and neither belongs to one function. Both are
+vetted against, and its module doc warns that one order is load-bearing and is
+not one function's — `vetted_root` refuses in the order written — while the
+second thing it used to warn about, the spelling every comparison needs, is now
+a type the module is the only producer of. Both are
 [12](12-a-flag-to-a-kernel-rule.md)'s whole subject, traced from argv to a
 kernel rule. [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) is the one
 subcommand that confines nothing: a `Sha256Digest::of_file` and a `write_all` —

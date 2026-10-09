@@ -204,9 +204,13 @@ Everything behind a pointer is consequently invisible, and three limits in
 `SECURITY.md` are that one fact wearing different hats. `connect`'s destination
 sits in a `sockaddr` behind a pointer, so seccomp can police a socket's family,
 type and protocol but never its address — which is why a port allowlist is not a
-destination allowlist. A unix socket's path is in the same structure, so unix
-sockets are all-or-nothing. And a filename is always behind a pointer, which is
-the whole reason a second mechanism — Landlock — has to exist for paths.
+destination allowlist. A unix socket's path is in the same structure, so the
+seccomp rule on it can only ask *whether*, never *which* — and the flag it gates
+is one boolean for that reason. And a filename is always behind a pointer, which
+is the whole reason a second mechanism — Landlock — has to exist for paths. That
+third hat is also where the limit stops being permanent: Landlock gained a right
+that conditions a unix `connect` on a path grant, so what seccomp cannot see the
+LSM can, on a kernel new enough to have it ([09](09-landlock.md)).
 
 The sharpest case is a pair of syscalls that do the same job with the arguments
 in different places. `clone(2)` takes its flags as an integer argument, so a
