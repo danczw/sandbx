@@ -106,6 +106,7 @@ pub(super) const NAMESPACE_CLONE_FLAGS: &[libc::c_int] = &[
 
 /// `SOCK_TYPE_MASK` from `include/linux/net.h`: `__sys_socket` reads the socket type as
 /// `type & 0xf` and takes the bits above it as `SOCK_NONBLOCK`/`SOCK_CLOEXEC`.
+/// `__sys_socketpair` masks the same way, so one constant serves both.
 ///
 /// Hence masking rather than comparing: `SOCK_DGRAM | SOCK_CLOEXEC` is `0x8_0002`, so an `Eq`
 /// against `SOCK_DGRAM` never fires while the kernel still hands back a datagram socket.
@@ -186,14 +187,37 @@ pub(super) fn blocked_syscalls(
     // All or nothing: seccomp compares register values and cannot follow the pointer to
     // `connect`'s path. The path mechanism is Landlock's `ResolveUnix` at ABI V9 (Linux
     // 7.1), which this same flag confers in `rights::unix_socket_rights` — so at or below
-    // V8 this denial is the whole of the control. `socketpair` is left alone: shells use it
-    // routinely, and an anonymous pair carries no path for a `connect` to name.
+    // V8 this denial is the whole of the control.
     if !policy.allows_unix_sockets() {
         deny_when(
             &mut rules,
             libc::SYS_socket,
             vec![arg(0, Eq, libc::AF_UNIX as u64)?],
         )?;
+
+        // `socketpair` hands back an `AF_UNIX` descriptor with no `socket` call for the rule
+        // above to see, and a *connectionless* pair is re-targetable: `connect` on a
+        // `SOCK_DGRAM` half takes a `sockaddr_un` and delivers, measured on 6.18 at V8 to a
+        // host socket no grant named. The two connection-oriented types are born
+        // `TCP_ESTABLISHED` and answer `EISCONN`, in every state that might reset that —
+        // which `context/guide-sandboxing.md` records, and is what makes permitting them
+        // safe rather than merely convenient. An allowlist and not a `SOCK_DGRAM` denylist,
+        // for the reason the type loop below gives.
+        for socket_type in 0..=SOCK_TYPE_MASK {
+            if socket_type == libc::SOCK_STREAM as u64 || socket_type == libc::SOCK_SEQPACKET as u64
+            {
+                continue;
+            }
+
+            deny_when(
+                &mut rules,
+                libc::SYS_socketpair,
+                vec![
+                    arg(0, Eq, libc::AF_UNIX as u64)?,
+                    arg(1, MaskedEq(SOCK_TYPE_MASK), socket_type)?,
+                ],
+            )?;
+        }
     }
 
     // A port allowlist claims egress reaches the ports it names and nowhere else, and Landlock

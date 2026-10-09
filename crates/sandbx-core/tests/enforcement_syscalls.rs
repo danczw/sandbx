@@ -116,6 +116,73 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
         "data crossed the sandbox boundary over a unix socket"
     );
 }
+
+/// `socketpair` returns an `AF_UNIX` descriptor with no `socket(2)` call, so the rule the two
+/// tests above rest on never sees it — and a datagram pair is connectionless, so `connect`
+/// re-targets one half at any path. Measured reachable before the rule existed: with network
+/// denied, `unix_sockets=false` and no grant naming the socket, a sandboxed command delivered
+/// to it.
+#[test]
+fn a_socketpair_cannot_reach_a_pathname_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("host.sock");
+    let host = std::os::unix::net::UnixDatagram::bind(&socket).unwrap();
+    host.set_read_timeout(Some(std::time::Duration::from_millis(500)))
+        .unwrap();
+
+    let probe = env!("CARGO_BIN_EXE_sandbx-socketpair-probe");
+    let policy = allow_probe(runtime_paths(SandboxPolicy::default()), probe);
+    let output = run(&policy, probe, &[socket.to_str().unwrap()]);
+
+    // The arriving datagram and not the exit status: the probe can fail for its own reasons,
+    // and the sandwiched test below is what rules that out.
+    assert!(
+        host.recv(&mut [0u8; 64]).is_err(),
+        "a datagram crossed the sandbox boundary through a socketpair descriptor"
+    );
+    assert!(
+        !output.status.success(),
+        "the probe reported success reaching a pathname socket: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+/// The grant that permits it, so the denial above is not the probe failing to start.
+#[test]
+fn an_explicit_unix_grant_permits_a_socketpair_datagram() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("host.sock");
+    let host = std::os::unix::net::UnixDatagram::bind(&socket).unwrap();
+    host.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+
+    let probe = env!("CARGO_BIN_EXE_sandbx-socketpair-probe");
+    // Granted for V9, as in the connect test above: at V8 the filesystem policy conditions
+    // nothing here, and at V9 `ResolveUnix` on the granted path is what admits the retarget.
+    let policy = allow_probe(
+        runtime_paths(SandboxPolicy::default().allow_unix_sockets()),
+        probe,
+    )
+    .allow_read(vetted(dir.path()))
+    .allow_write(vetted(dir.path()));
+    let output = run(&policy, probe, &[socket.to_str().unwrap()]);
+
+    assert!(
+        output.status.success(),
+        "a granted policy could not make a datagram pair: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut got = [0u8; 64];
+    let read = host
+        .recv(&mut got)
+        .expect("the datagram the grant was supposed to permit");
+    assert_eq!(
+        &got[..read],
+        b"FROM-SOCKETPAIR",
+        "something other than the probe's datagram arrived"
+    );
+}
+
 /// io_uring runs operations from a submission queue without issuing the syscalls, so a ring
 /// inside the sandbox sidesteps the whole denylist; denying setup keeps it from existing.
 #[test]

@@ -1,7 +1,7 @@
-//! The conditional rules on `socket`, the one syscall the policy both widens and narrows: the
-//! unix-socket axis lifts a rule on its `domain`, and a port allowlist adds rules on its
-//! `domain`, `type` and `protocol` — plus the `MSG_FASTOPEN` rules on the send syscalls, which
-//! belong to the same claim.
+//! The conditional rules on the socket-creating syscalls, which the policy both widens and
+//! narrows: the unix-socket axis lifts rules on `socket`'s `domain` and on `socketpair`'s
+//! `type`, and a port allowlist adds rules on `socket`'s `domain`, `type` and `protocol` —
+//! plus the `MSG_FASTOPEN` rules on the send syscalls, which belong to the same claim.
 
 use super::*;
 
@@ -25,10 +25,18 @@ fn socket_is_blocked_only_while_unix_is_withheld() {
         "the socket entry must be conditional, not an unconditional block"
     );
 
+    // Fourteen of the sixteen type values, `SOCK_STREAM` and `SOCK_SEQPACKET` excepted.
+    assert_eq!(
+        denied[&libc::SYS_socketpair].len(),
+        14,
+        "the socketpair entry must name the connectionless types one at a time, \
+         conditions inside a rule being AND'd"
+    );
+
     let granted = blocked_syscalls(&SandboxPolicy::default().allow_unix_sockets()).unwrap();
     assert!(
-        !granted.contains_key(&libc::SYS_socket),
-        "granting unix sockets must lift the socket() filter"
+        !granted.contains_key(&libc::SYS_socket) && !granted.contains_key(&libc::SYS_socketpair),
+        "granting unix sockets must lift both routes to an AF_UNIX descriptor"
     );
 }
 
@@ -70,7 +78,7 @@ fn the_af_unix_test_ignores_the_domains_high_half() {
 /// The second assertion is the one worth having: a grant that also widened the denylist would
 /// otherwise be invisible here.
 #[test]
-fn granting_unix_sockets_lifts_only_the_socket_rule() {
+fn granting_unix_sockets_lifts_only_the_unix_rules() {
     let program = compiled_filter(&SandboxPolicy::default().allow_unix_sockets()).unwrap();
 
     assert_eq!(
@@ -79,10 +87,72 @@ fn granting_unix_sockets_lifts_only_the_socket_rule() {
         "the policy grants unix sockets but the filter still refuses them"
     );
     assert_eq!(
+        socketpair_verdict(&program, libc::AF_UNIX as u64, libc::SOCK_DGRAM as u64),
+        ALLOW,
+        "the policy grants unix sockets but a datagram pair is still refused"
+    );
+    assert_eq!(
         verdict(&program, libc::SYS_ptrace),
         EPERM,
         "granting unix sockets also lifted the denylist, which no policy may do"
     );
+}
+
+/// `socketpair` is the second route to an `AF_UNIX` descriptor, and it calls no `socket`, so
+/// the rule above cannot see it. The reachable half is the connectionless type: `connect` on a
+/// datagram pair re-targets it at a pathname socket, measured delivering outside the sandbox
+/// before this rule existed. Why the other two stay permitted is in
+/// `context/guide-sandboxing.md`.
+#[test]
+fn socketpair_refuses_a_connectionless_unix_pair() {
+    let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+
+    assert_eq!(
+        socketpair_verdict(&program, libc::AF_UNIX as u64, libc::SOCK_DGRAM as u64),
+        EPERM,
+        "a datagram socketpair is permitted, so `connect` on one half reaches any \
+         pathname socket without the denied `socket(AF_UNIX, …)` ever being called"
+    );
+
+    for permitted in [libc::SOCK_STREAM, libc::SOCK_SEQPACKET] {
+        assert_eq!(
+            socketpair_verdict(&program, libc::AF_UNIX as u64, permitted as u64),
+            ALLOW,
+            "socketpair({permitted}) is refused, which breaks the shells and build \
+             tools that use a connected pair as a pipe"
+        );
+    }
+
+    assert_eq!(
+        socketpair_verdict(&program, libc::AF_INET as u64, libc::SOCK_DGRAM as u64),
+        ALLOW,
+        "the rule widened past AF_UNIX into a family the netns is what bounds"
+    );
+}
+
+/// The allowlist shape: a connectionless type a future kernel assigns to `AF_UNIX` arrives
+/// denied rather than permitted.
+///
+/// The flag bits are set on every case because `__sys_socketpair` masks `type` with
+/// `SOCK_TYPE_MASK` before dispatching, exactly as `__sys_socket` does — an `Eq` comparison
+/// here would be escaped by a `SOCK_CLOEXEC` the caller sets anyway.
+#[test]
+fn every_connectionless_socketpair_type_is_refused() {
+    let program = compiled_filter(&SandboxPolicy::default()).unwrap();
+    let flags = (libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK) as u64;
+
+    for socket_type in 0..=super::rules::SOCK_TYPE_MASK {
+        let connection_oriented =
+            socket_type == libc::SOCK_STREAM as u64 || socket_type == libc::SOCK_SEQPACKET as u64;
+        let expected = if connection_oriented { ALLOW } else { EPERM };
+
+        assert_eq!(
+            socketpair_verdict(&program, libc::AF_UNIX as u64, socket_type | flags),
+            expected,
+            "socketpair type {socket_type:#x} with the flag bits set got the wrong \
+             verdict, so the comparison is not masking `type` the way the kernel does"
+        );
+    }
 }
 
 /// The datagram half of what a port allowlist has to deny: Landlock's port rules police TCP
