@@ -93,6 +93,19 @@ list is the entire API. Two of the twelve modules, `degradation` and `spawn`,
 export nothing at all — the visibility half of the spawn monopoly
 [05](05-seven-crates.md) describes.
 
+Who comes through that one door is the shape worth seeing, because two of the
+three sit inside this crate's own directory and still see only what is `pub`:
+
+```mermaid
+flowchart LR
+    subgraph lib["the library crate"]
+        M["twelve private modules"] --> L["lib.rs, the only public surface"]
+    end
+    L --> O["another crate's src/"]
+    L --> H["bin/sandbx-helper.rs"]
+    L --> T["crates/sandbx-core/tests/"]
+```
+
 The list is in [guide-repo-map.md](../guide-repo-map.md). The interesting
 question is what it tells you, and the answer comes from grepping the other six
 crates for each name.
@@ -287,9 +300,21 @@ So resolution happens in stage 1 before `isolate`, and the mounting after it:
 made, and `CAP_SYS_ADMIN` within it, which the capability drops below it take
 away. Three steps in one function, each wedged between the two it has to sit
 between — and the lookups cannot move up into the harness either, because the
-addresses would then have to cross the argv the command can read. A name that
-resolves to nothing contributes no line and does not fail the run, "as an absent
-path contributes no Landlock rule"; the count comes back as a
+addresses would then have to cross the argv the command can read.
+
+```mermaid
+flowchart TD
+    A["resolver::files, the lookups"]
+    B["isolate, the unshare"]
+    C["resolver::bound_resolution, the binds"]
+    D["harden_process_state, the capability drops"]
+    A -->|"before the unshare, which may leave no network"| B
+    B -->|"needs the mount namespace isolate just made"| C
+    C -->|"and CAP_SYS_ADMIN, which the drops take away"| D
+```
+
+A name that resolves to nothing contributes no line and does not fail the run,
+"as an absent path contributes no Landlock rule"; the count comes back as a
 `Resolved { files, unresolved }` for the parent to emit as a degradation — a
 count and not the names, because [guide-logging.md](../guide-logging.md) keeps
 values off the trail.

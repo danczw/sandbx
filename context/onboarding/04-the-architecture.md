@@ -14,28 +14,24 @@ picture or the reverse.
 
 A tool that only reads and writes files never leaves the harness process. A tool
 that runs a program costs three processes, and the reason there are three rather
-than two is a kernel detail worth getting straight early.
+than two is a kernel detail worth getting straight early. `spawn::command`
+re-execs `/proc/self/exe` once per stage; read the shape below for which boxes
+the confinement covers, and note that nothing above the last of them installs
+it.
 
-```
-sandbx                                              ← unconfined
-  │  parses argv, derives the policy, asks the model,
-  │  decides, records
-  │
-  ├─► FsGuard                                       ← in-process enforcement
-  │      6 of the 7 built-in tools never go further
-  │
-  └─► spawn::command  ──exec──►  /proc/self/exe --sandbx-core-exec
-         │
-         ├─ stage 1: helper supervisor               ← unconfined
-         │    unshare(NEWUSER | NEWPID [| NEWNET] [| NEWNS])
-         │    uid/gid map, the resolver bind mount,
-         │    drop capability sets, RLIMIT_CORE = 0,
-         │    no_new_privs
-         │    └─exec─► /proc/self/exe --sandbx-core-exec-inner
-         │
-         └─ stage 2: helper inner, PID 1             ← confined by apply()
-              pdeathsig, confirm the supervisor,
-              apply(), then execve the command
+```mermaid
+flowchart TD
+    subgraph unconfined["unconfined"]
+        H["sandbx: argv, policy, model, decisions, audit"]
+        G["FsGuard: in-process, 6 of the 7 tools"]
+        S1["stage 1: helper supervisor"]
+    end
+    subgraph confined["confined by apply()"]
+        S2["stage 2: helper inner, PID 1"]
+    end
+    H --> G
+    H -->|"exec --sandbx-core-exec"| S1
+    S1 -->|"exec --sandbx-core-exec-inner"| S2
 ```
 
 | # | process | job |
@@ -190,19 +186,29 @@ way to check either without a key".
 
 ### The round
 
-`run_turn` then loops. [guide-turn-loop.md](../guide-turn-loop.md) is the
-authority; the shape is:
+`run_turn` then loops, at most `max_rounds` times — 8 by default — with each
+round's stream consumption under the per-round timeout, text flushed into a
+block before every `ToolUse` and the round's `Usage` kept.
+[guide-turn-loop.md](../guide-turn-loop.md) is the authority; what the shape
+adds is one branch, one back-edge, and a chain of per-call checks no call leaves
+except by being settled:
 
-```
-┌─ round (max_rounds = 8) ────────────────────────────────────┐
-│  request = history[cut..] ++ produced                       │
-│  open(request)                     ◄── per-round timeout    │
-│  consume stream ──► flush text before ToolUse, keep Usage   │
-│  no ToolUse blocks?  ──► return TurnOutcome                 │
-│  answer_calls (sequential)                                  │
-│    resolve ─► offered? ─► approve ─► spawn_blocking         │
-│    and each one, however it ended ─► settled                │
-└─ loop ──────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    REQ["request = history[cut..] ++ produced"] --> OPEN["open(request)"]
+    OPEN --> STREAM["consume stream"]
+    STREAM --> Q{"any ToolUse blocks?"}
+    Q -->|no| OUT["return TurnOutcome"]
+    Q -->|yes| CALLS["answer_calls, sequential"]
+    CALLS --> RES{"resolves to a built-in?"}
+    RES -->|no| SETTLED["settled, however it ended"]
+    RES -->|yes| OFF{"offered this turn?"}
+    OFF -->|no| SETTLED
+    OFF -->|yes| APP{"approve?"}
+    APP -->|no| SETTLED
+    APP -->|yes| RUN["spawn_blocking"]
+    RUN --> SETTLED
+    SETTLED -->|"next round"| REQ
 ```
 
 Two things in that diagram are decisions rather than mechanics.
@@ -222,14 +228,15 @@ Two things in that diagram are decisions rather than mechanics.
 This is the fork in the road, and the single most important thing to carry out
 of this chapter:
 
-```
-tool call
-   │
-   ├── read, write, edit, ls, grep, find  ──► FsGuard  ──► O_NOFOLLOW handle
-   │        (6 of 7)                              in-process; Landlock never sees it
-   │
-   └── bash                               ──► SandboxedCommand ──► the three processes above
-                (1 of 7)                              Landlock + seccomp + namespaces
+```mermaid
+flowchart LR
+    T["tool call"] -->|"6 of 7"| F["read, write, edit, ls, grep, find"]
+    T -->|"1 of 7"| B["bash"]
+    F --> G["FsGuard, in-process"]
+    G --> HANDLE["O_NOFOLLOW handle"]
+    B --> SC["SandboxedCommand"]
+    SC --> P["the three processes above"]
+    P --> K["Landlock, seccomp, namespaces"]
 ```
 
 For six of the seven built-ins, `FsGuard` **is** the enforcement. There is no

@@ -315,6 +315,21 @@ for itself, re-measuring a matched root through an `O_PATH` descriptor at every
 access, so the two layers answer a substituted root alike whether or not a
 process was spawned.
 
+Both questions in series, with the crossing between the two processes in the
+middle and a refusal of its own behind each one:
+
+```mermaid
+flowchart TD
+    V["VettedPath::vet, in the harness"]
+    V -->|"(dev, ino)"| GR["SandboxPolicy::grant"]
+    GR -->|argv| OG["open_grant, in the helper"]
+    OG --> Q1{"reads_back == the granted path?"}
+    Q1 -->|no| E1["GrantRedirected"]
+    Q1 -->|yes| Q2{"ObjectId::of_fd == the vetted pair?"}
+    Q2 -->|no| E2["GrantReplaced"]
+    Q2 -->|yes| OK["PathFd becomes the rule"]
+```
+
 ## The non-claims, by theme
 
 `SECURITY.md` lists these in the order they were written. Grouped, they are

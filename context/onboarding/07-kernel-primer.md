@@ -446,6 +446,20 @@ so emptying those empties ambient as well. And all five sets, like the
 namespaces, are inherited across `fork` and across `exec`, so a process that
 empties them before becoming the command has emptied them *for* the command.
 
+The four `execve`-facing sets are better read as routes into one place — the
+permitted set the command starts with:
+
+```mermaid
+flowchart LR
+    INH["inheritable, with the file's inheritable set"] --> EXEC
+    FP["the file's permitted set"] --> EXEC
+    AMB["ambient"] -->|"an ordinary execve only"| EXEC
+    BND["bounding"] -->|"masks what a file may add"| EXEC
+    EXEC["the next execve"] --> NP["the new permitted set"]
+    EXEC -->|"from ambient"| NE["the new effective set"]
+    NP -->|"the only set effective is raised from"| NE
+```
+
 Dropping the bounding set is the one that needs a privilege of its own:
 `PR_CAPBSET_DROP` requires `CAP_SETPCAP` **in the effective set**. So the order
 is forced — bounding first, effective afterwards — and an LSM that strips

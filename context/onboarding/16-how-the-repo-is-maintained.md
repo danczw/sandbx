@@ -173,7 +173,26 @@ about the repo. Documentation rot is normally caught by a human noticing. Here,
 where it can be, it is caught by `cargo test`.
 
 Five tests across four mechanisms, and a fifth mechanism that is not a test at
-all.
+all. Which way round each one reads is the thing to hold on to, and that is all
+the diagram carries: two of the four assert in both directions, one makes the
+prose follow a constant, and the last never opens a doc at all.
+
+```mermaid
+flowchart LR
+    CIT["a doc citation"]
+    DISK["a guide- or decision- file"]
+    ORD["the reading order"]
+    ABI["BASELINE_ABI, BASELINE_KERNEL"]
+    COPY["each prose copy of the floor"]
+    CLM["CLAIMED"]
+    FLT["BLOCKED_SYSCALLS"]
+    CIT -->|"must name a file"| DISK
+    ORD -->|"names every one"| DISK
+    DISK -->|"is in the order"| ORD
+    ABI -->|"current in all seven"| COPY
+    CLM -->|"is actually denied"| FLT
+    FLT -->|"is one the docs claim"| CLM
+```
 
 ### A citation must name a file that exists
 
@@ -463,6 +482,27 @@ before and after rather than trusting the source diff.
 Docs-only, comment-only and test-rename branches need neither review. The
 comment pass still applies to a comment-only branch, which is the only reason it
 exists as a separate step rather than part of code review.
+
+Read the diagram for the two things the ordered list cannot show: which kind of
+branch enters where, and the loop a finding puts you back into, in which each
+fix invalidates the diffstat the next pass has to be handed.
+
+```mermaid
+flowchart TD
+    A{"what the branch changed"}
+    A -->|"docs only, or a test rename"| P["open the PR"]
+    A -->|"comments only"| T["the comment pass"]
+    A -->|"significant code"| M1["re-measure the diffstat"]
+    M1 --> C["/code-review"]
+    C -->|"findings"| X1["fix them"]
+    X1 --> M1
+    C -->|"nothing left"| M2["re-measure the diffstat"]
+    M2 --> S["/security-review"]
+    S -->|"findings"| X2["fix them"]
+    X2 --> M2
+    S -->|"nothing left"| T
+    T --> P
+```
 
 ### Confirm what each review read, before believing it
 

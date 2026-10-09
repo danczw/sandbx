@@ -304,6 +304,34 @@ the typo arm, and a third question for one bad byte.
 three, which is what pins that — and the comment names `BufReader<File>` as the
 only reader this holds for, so substituting another means re-checking it.
 
+The ceiling and the floor as one path, and the node to look at is the drain: it
+sits above the loop the typo arm returns to, so it runs once per call rather
+than once per question written.
+
+```mermaid
+flowchart TD
+    L{"an earlier Abort latched?"}
+    L -->|yes| DL["Deny, unasked"]
+    L -->|no| F1{"--allow-tool approves the tool?"}
+    F1 -->|no| D1["Deny, naming the flag"]
+    F1 -->|yes| RK{"risk is ReadOnly?"}
+    RK -->|yes| OK["Allow"]
+    RK -->|no| TTY{"a terminal to ask on?"}
+    TTY -->|no| OK
+    TTY -->|yes| DR{"typeahead drained?"}
+    DR -->|tcflush failed| AB1["Abort, UNCLEARED"]
+    DR -->|cleared| BL{"blanket a for this tool?"}
+    BL -->|yes| OK
+    BL -->|no| Q["the question, on /dev/tty"]
+    Q --> RL{"the line read back"}
+    RL -->|y or yes| OK
+    RL -->|a or all| OK
+    RL -->|n or no| D2["Deny, REFUSED"]
+    RL -->|anything else| Q
+    RL -->|a byte that is not text| Q
+    RL -->|end of input or an error| AB2["Abort, CLOSED"]
+```
+
 ## The adversary at the prompt
 
 Now the attack this subsystem exists to survive, in order. The model has read a
@@ -322,9 +350,12 @@ gate will ask its question on.
 4. **The real question is asked, and reads.** Without a defence it gets that
    queued `y` — an answer bound to a call the operator never saw.
 
-The defence is to discard the queue immediately before each question, at both
-layers. `discard_typeahead`'s own doc states the terminal behaviour the attack
-rides on, which is the part worth having first-hand:
+The defence is to discard the queue once per call, immediately before the first
+question and at both layers. A re-ask inside the same call needs no second
+drain, because `read_line` consumes the line it rejected through its newline and
+nothing writes to the device in between. `discard_typeahead`'s own doc states
+the terminal behaviour the attack rides on, which is the part worth having
+first-hand:
 
 > Canonical mode queues a finished line until something reads it, so an answer
 > typed earlier — at a counterfeit question in the model's own prose, which
@@ -346,6 +377,25 @@ Both, because either alone leaves the path open: `tcflush` clears the kernel
 queue, and one read can deliver several lines, so the `BufReader` may already
 hold a later one. The invariant it buys, in one sentence: **an answer cannot
 predate the question it answers.**
+
+The exchange on the device both sides share. The step to look for is the drain,
+between the queued `y` and the question it would otherwise answer:
+
+```mermaid
+sequenceDiagram
+    participant M as the model
+    participant O as the operator
+    participant T as the shared terminal
+    participant G as the gate
+    M->>T: prose shaped like a consent prompt
+    O->>T: types y at the forgery
+    Note over T: canonical mode queues a finished line
+    Note over G: a read runs unasked, and the y waits
+    G->>T: tcflush, then drop what the BufReader holds
+    G->>T: the real question
+    O->>T: types n
+    T->>G: n
+```
 
 A flush that *failed* ends the turn rather than asking over a channel it could
 not clear. `ask` returns `Abort` carrying `UNCLEARED` — its own reason, not the

@@ -105,6 +105,17 @@ let-chain above, and for the fallback a `lookup("HOME")` behind
 variable fails both, because `PathBuf::from("")` is not absolute, and a relative
 `$HOME` is `NoStateHome` rather than a guess.
 
+The order, with the refusal standing where a third root would have gone:
+
+```mermaid
+flowchart TD
+    A["sessions_directory"] --> B{"XDG_STATE_HOME absolute?"}
+    B -->|"yes"| C["that root, joined with sandbx/sessions"]
+    B -->|"unset, blank or relative"| D{"HOME absolute?"}
+    D -->|"yes"| E["HOME/.local/state, joined with sandbx/sessions"]
+    D -->|"unset, blank or relative"| F["NoStateHome, and no third root tried"]
+```
+
 The clause worth stopping on names no variable at all: nothing falls back to the
 working directory. The function's doc says what that rules out — "a transcript
 there would sit inside the tree a run can grant a tool write over, and the
@@ -203,6 +214,26 @@ One mode, read once, two things done with it: the next arm refuses
 it, `DirWritable` for `Writable`, going first because a writable directory makes
 the file's mode irrelevant — [14](14-audit-sessions-credentials.md) has the
 asymmetry and the `0700`/`0600` family it belongs to.
+
+Follow the sequence down, and the refusals out of the side of it:
+
+```mermaid
+flowchart TD
+    A["resume"] --> B["open_root, O_NOFOLLOW"]
+    B --> C["ownership of the directory descriptor"]
+    C -->|"WRITABLE_BITS"| D["DirWritable"]
+    C -->|"another uid"| E["ForeignOwner"]
+    C --> F["open_transcript, O_NOFOLLOW"]
+    F --> G["ownership of the file descriptor"]
+    G -->|"WRITABLE_BITS"| H["Writable"]
+    G -->|"another uid"| I["ForeignOwner"]
+    G --> J["shared_read: reported, not refused"]
+    J --> K["fold, then the shape checks"]
+    K -->|"a bad line"| L["Malformed"]
+    K -->|"a refused order"| O["Unresumable, Disordered"]
+    K --> M["reopen_for_append, last"]
+    M --> N["a Session carrying shared_read"]
+```
 
 What is at the signature level is **where each verdict goes**. A refusal is an
 `Err`, so it ends the call. A report has nowhere to go — the crate cannot print

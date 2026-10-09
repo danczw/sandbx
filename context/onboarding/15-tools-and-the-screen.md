@@ -413,6 +413,25 @@ takes `NO_CONSENT` with no outcome to account for at all (#264), a turn nobody
 could see being one nobody watched rather than the recoverable stop an
 interrupt is.
 
+All of it as one path — and the two the race resolves on its own never produce a
+`TurnStop` at all:
+
+```mermaid
+flowchart TD
+    A{"the select resolves as"}
+    A -->|a keypress| P["Stopped::Pressed: exit 2, nothing stored"]
+    A -->|a hangup| H["Stopped::Gone: exit 3, nothing stored"]
+    A -->|a turn that ended| T{"ended how"}
+    T -->|an error| ER["the error, which main reports"]
+    T -->|GateAborted| C3["3"]
+    T -->|RoundLimit| C2["2"]
+    T -->|anything else| C0["0"]
+    C3 --> M["a round cut at max tokens raises a 0 to 2"]
+    C2 --> M
+    C0 --> M
+    M --> X["the code the run exits"]
+```
+
 - **Worth questioning:** the interrupt sharing `--max-rounds`'s code. The
   guide's justification is four words — "because that is what it is" — and the
   argument against it is the one

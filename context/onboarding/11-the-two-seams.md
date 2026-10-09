@@ -17,6 +17,26 @@ line is worth keeping in view: *where policy stops being data and becomes
 something the kernel holds*. Across seam 1 it never becomes something the kernel
 holds at all.
 
+The fork itself, and what each branch ends in:
+
+```mermaid
+flowchart TD
+    Call["a built-in tool call"] --> Fork{"which seam"}
+
+    subgraph SeamOne["seam 1, the harness's own address space"]
+        Guard["FsGuard"] --> Roots["two private root lists"]
+        Roots --> Handle["an open handle, or one refusal"]
+    end
+
+    subgraph SeamTwo["seam 2, a process the kernel confines"]
+        Spawn["SandboxedCommand"] --> Argv["the policy, encoded as argv"]
+        Argv --> Enforced["Landlock and seccomp"]
+    end
+
+    Fork -->|"read, write, edit, ls, grep, find"| Guard
+    Fork -->|"bash"| Spawn
+```
+
 ## Seam 1 — `FsGuard`, in-process
 
 The seven built-ins are a closed enum, `BuiltinTool` in
@@ -369,8 +389,11 @@ Now the other branch of the fork. When `bash` runs a command, the policy has to
 reach a process that does not exist yet and will not share memory with the
 harness, because it arrives there by `execve`. It crosses as **argv**, twice:
 
-```
-sandbx ──argv──► helper stage 1 (supervisor) ──argv verbatim──► stage 2 ──► apply()
+```mermaid
+flowchart LR
+    Harness["sandbx"] -->|"argv"| One["helper stage 1, the supervisor"]
+    One -->|"argv verbatim"| Two["helper stage 2"]
+    Two --> Apply["apply()"]
 ```
 
 The encoding is [`helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs)

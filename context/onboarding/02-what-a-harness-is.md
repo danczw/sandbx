@@ -138,6 +138,28 @@ stateless, so the only way to let it act on that information is another request
 carrying everything including the result. That is the round, and it is not a
 design choice — it is what the two facts at the top add up to.
 
+Two things to watch in the cycle below: the first arrow carries the entire
+conversation every time, and a `tool_use` is answered in the very next message
+or not at all.
+
+```mermaid
+sequenceDiagram
+    participant H as harness
+    participant E as the endpoint
+    participant T as a tool
+    loop each round, up to the bound
+        H->>E: the whole conversation, resent
+        E-->>H: one assistant message, streamed as blocks
+        alt it contains a tool_use
+            H->>T: the call, once the gate allows it
+            T-->>H: output, or a reason it did not run
+            H->>H: append the assistant message, then every tool_result
+        else no tool_use in it
+            H->>H: strip the reasoning and return the answer
+        end
+    end
+```
+
 `run_turn` in [`turn.rs`](../../crates/sandbx-agent/src/turn.rs) is that loop.
 Per round:
 
@@ -250,6 +272,21 @@ a `thinking` block cannot be replayed until the `signature_delta` behind it
 lands. So those two kinds are held open until `content_block_stop` and emitted
 whole, while text deltas go straight out to whatever is drawing the screen —
 which is why the unit the loop turns on is a round and not a token.
+
+The two layers in order, and what each kind of block is waiting for:
+
+```mermaid
+flowchart TD
+    C["HTTP byte chunks"] --> K["SSE framing, newline by newline"]
+    K --> P["one wire event"]
+    P --> F["the fold"]
+    F -->|"a fragment at a time"| X["text, out as it arrives"]
+    F -->|"held until the block closes"| U["a whole tool_use, input parsed"]
+    F -->|"held until the signature lands"| G["a whole thinking block"]
+    X --> R["the round's blocks"]
+    U --> R
+    G --> R
+```
 
 That fold is
 [`accumulate.rs`](../../crates/sandbx-providers/src/anthropic/wire/accumulate.rs)

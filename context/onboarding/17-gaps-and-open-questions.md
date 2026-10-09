@@ -647,6 +647,21 @@ understates what the code does is drift in the cheaper direction, but it is
 still drift, and leaving it makes every other sentence in the document slightly
 less worth believing.
 
+The diagram is for the order of the two questions: the claim check comes first,
+because answering it *yes* takes the thing off this path altogether, and the
+maintainer's okay sits between a verdict and a filed issue.
+
+```mermaid
+flowchart TD
+    A["something looks wrong"] --> B{"contradicts a claim in SECURITY.md?"}
+    B -->|"yes"| M["to the maintainer, not into a chapter"]
+    M --> N["the claim or the mechanism changes"]
+    B -->|"no"| R{"does a record already weigh it?"}
+    R -->|"answered"| S["resolved against that record"]
+    R -->|"partly, or none asks"| D["draft it, and wait for the okay"]
+    D --> F["file it, labelled and assigned"]
+```
+
 ## You should now be able to explain
 
 - Why a gap with an issue number, a gap documented without one, and a thing

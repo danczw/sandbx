@@ -32,6 +32,48 @@ three different answers: the denylist answers `EPERM`, `clone3` answers
 every installed filter and takes the most severe verdict, so a later filter
 cannot loosen an earlier one.
 
+All three judge every call; the three answers meet at the bottom, where the
+most severe wins:
+
+```mermaid
+flowchart TD
+    CALL["one syscall from the sandboxed command"]
+    CALL --> FAN["every installed filter sees the call"]
+
+    subgraph DENYLIST["the denylist filter"]
+        ARCH{"native architecture?"}
+        ARCH -->|"no"| KILLARCH["kill the process"]
+        ARCH -->|"yes"| MATCH{"a rule matches?"}
+        MATCH -->|"yes"| EPERM["EPERM"]
+    end
+
+    subgraph CLONE3F["the clone3 filter"]
+        ISC3{"nr is clone3?"}
+        ISC3 -->|"yes"| ENOSYS["ENOSYS"]
+    end
+
+    subgraph GATE["the x32 gate on x86_64"]
+        SIGN{"sign bit set in nr?"}
+        SIGN -->|"no"| BIT{"X32_SYSCALL_BIT set?"}
+        BIT -->|"yes"| KILLX32["kill the process"]
+    end
+
+    FAN --> ARCH
+    FAN --> ISC3
+    FAN --> SIGN
+
+    MATCH -->|"no"| ALLOW["allow: this filter has no opinion"]
+    ISC3 -->|"no"| ALLOW
+    SIGN -->|"yes"| ALLOW
+    BIT -->|"no"| ALLOW
+
+    ALLOW --> SEVEREST["the kernel takes the most severe verdict"]
+    KILLARCH --> SEVEREST
+    EPERM --> SEVEREST
+    ENOSYS --> SEVEREST
+    KILLX32 --> SEVEREST
+```
+
 `EPERM` rather than killing, for the denylist: the syscall does not run either
 way, and `EPERM` is what tools already expect on a hardened system, so a program
 fails that one operation instead of dying mid-run.
@@ -414,6 +456,28 @@ of the two families a port rule can speak about rather than a denylist of the
 ones known to tunnel — `AF_TIPC` and `AF_IB` have the same shape. The last two
 bullets below are that same hook missed twice more: a conversion after the
 socket exists, and a connect hidden inside a send.
+
+The four routes to a connected socket, and the one of them that reaches the
+hook. The three that miss it are drawn as the kernel leaves them — which is
+why each one's *entry* carries a seccomp rule, the left-hand column being
+exactly the rules the table above lists:
+
+```mermaid
+flowchart LR
+    CONNECT["connect"] --> SYSCF["__sys_connect_file"]
+    SYSCF --> HOOK["security_socket_connect"]
+    HOOK --> POLICED["Landlock's port rules decide"]
+
+    SMC["socket AF_SMC, denied"] --> SMCC["smc_connect"]
+    ULP["setsockopt TCP_ULP, denied"] --> SMCC
+    SMCC --> KC["kernel_connect, no hook runs"]
+
+    FAST["sendto, sendmsg, sendmmsg, denied"] --> TSF["tcp_sendmsg_fastopen"]
+    TSF --> ISC["__inet_stream_connect, no hook runs"]
+
+    KC --> ANY["any TCP port, were the entry left open"]
+    ISC --> ANY
+```
 
 Four pieces of shape in that table repay attention:
 

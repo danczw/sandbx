@@ -186,6 +186,22 @@ row, so a kept break would mint a second marked row from whatever followed it â€
 which is how a provider error, whose text is the vendor's string verbatim, would
 otherwise smuggle a row in.
 
+Four ways text becomes a cell, and one function between all of them and the
+screen:
+
+```mermaid
+flowchart TD
+    A["Transcript::new: the prompt"] --> P["printable"]
+    B["Transcript::event: a Text or Thinking delta"] --> C["append"]
+    C --> P
+    D["Transcript::call: the gate's line"] --> E["push"]
+    F["Transcript::note: the run's own line"] --> E
+    E --> P
+    P -->|"a model-written kind"| G["Entry text, as a cell may hold it"]
+    P -->|"back in push"| H["its breaks spelled, so one line is one row"]
+    H --> G
+```
+
 `invisible` is the bidi-and-zero-width denylist, and it is literally the same
 function [13](13-turn-loop-and-gate.md) meets at the approval prompt:
 `sandbx_providers::invisible`, imported here beside `AgentEvent`.
@@ -497,6 +513,24 @@ reasons that compose, the first from the module doc:
   not something the runtime waits on.
 - **The crate could not spawn a task anyway**, `tokio` being here with
   `sync` alone: a channel, no runtime, no timer.
+
+What those three force, from the two threads to the one race:
+
+```mermaid
+flowchart TD
+    L["Keys::listen"] --> R["reader thread: poll for POLLIN, then crossterm"]
+    L --> W["watch thread: poll asking nothing"]
+    R -->|"presses, stop"| S["one watch channel, holding Seen"]
+    W -->|"gone"| S
+    S --> K["Keys, holding the receiver"]
+    K -->|"Keys::press"| H["the finished screen, held until a key"]
+    K -->|"Keys::stop"| X{"tokio::select! in the driver"}
+    T["run_turn"] --> X
+    T -->|"each event"| O["folded into the Transcript, then drawn"]
+    X -->|"the turn returned"| C["the code the turn earned"]
+    X -->|"Stopped::Pressed"| P["exit 2, the future dropped where it stood"]
+    X -->|"Stopped::Gone"| G["exit 3"]
+```
 
 The reader holds crossterm's one reader lock only while an event is in
 flight, not for as long as it parks â€” a comment `Screen::redraw` carries

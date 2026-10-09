@@ -19,6 +19,27 @@ ABI, `opened` is which directory a grant turns out to name, and `mod.rs` is
 where the first two meet — because the rights a grant confers depend on which
 ABI was negotiated. Nothing in any of the four restricts the calling process.
 
+Those four files add up to one path, and it is the spine of this chapter.
+Nothing is restricted until `restrict_self`, so everything above it is a
+description the kernel has not acted on yet — and three separate steps can end
+the run instead:
+
+```mermaid
+flowchart TD
+    POLICY["SandboxPolicy"] --> ABI["negotiate an ABI"]
+    ABI --> REQ["Requested: handled, rules, net"]
+    REQ --> HANDLE["handle_access"]
+    HANDLE --> CREATE["create"]
+    CREATE --> OPEN["open_grant, one rule at a time"]
+    OPEN --> ADD["add_rule: PathBeneath, then NetPort"]
+    ADD --> RESTRICT["restrict_self"]
+    RESTRICT --> VERDICT{"RulesetStatus"}
+    VERDICT -->|"FullyEnforced"| RUN["stage 2 execs the command"]
+    VERDICT -->|"PartiallyEnforced, NotEnforced"| REFUSED["the run is refused"]
+    ABI -->|"no rung, or no answer"| REFUSED
+    OPEN -->|"not the grant that was vetted"| REFUSED
+```
+
 ## The ladder is walked newest first and stops at the floor
 
 [`compat.rs`](../../crates/sandbx-core/src/helper/ruleset/compat.rs) holds three
@@ -392,6 +413,22 @@ rule can be added anywhere that skips either check. It opens with
 one that deliberately follows every component, so the descriptor may well name
 an inode no part of the spelling pointed at when it was vetted. Catching that is
 the next two steps' job, not the open flags'.
+
+Those two steps in order, with the one target that leaves before the second:
+
+```mermaid
+flowchart TD
+    OPEN["PathFd::new: O_PATH, every component followed"]
+    OPEN --> BACK{"reads_back is the granted spelling?"}
+    BACK -->|"no"| RED["GrantRedirected"]
+    BACK -->|"cannot be read at all"| UNSUP["Unsupported"]
+    BACK -->|"yes"| KIND{"Granted or Installed?"}
+    KIND -->|"Installed"| FD["the descriptor, for add_rule"]
+    KIND -->|"Granted"| PIN{"ObjectId::of_fd is the vetted pin?"}
+    PIN -->|"no"| REPL["GrantReplaced"]
+    PIN -->|"cannot be taken at all"| UNSUP
+    PIN -->|"yes"| FD
+```
 
 **First the spellings.** `reads_back` reads `/proc/self/fd/<n>` and returns the
 path the kernel says that descriptor names. Mismatch is `GrantRedirected`,
