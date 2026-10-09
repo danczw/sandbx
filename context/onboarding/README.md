@@ -56,7 +56,7 @@ sits early rather than at the end.
 | [12 — a flag to a kernel rule](12-a-flag-to-a-kernel-rule.md) | one trace, end to end — `--allow-read /tmp/x` from argv through vetting and the argv seam to a rule the kernel holds |
 | [13 — the turn loop and the gate](13-turn-loop-and-gate.md) | where prompt injection stops being an abstraction: the two refusals above the gate, why a typo is not consent, and the typeahead a counterfeit prompt relies on |
 | [14 — audit, sessions, credentials](14-audit-sessions-credentials.md) | what is written down and who may read it — two trails separated by target, the helper's own channel, the mode asymmetry that refuses rather than repairs |
-| [15 — tools and the screen](15-tools-and-the-screen.md) | the seven built-ins bounded by work rather than time, a policy spent rather than lent, and a renderer that holds a security property |
+| [15 — tools and the screen](15-tools-and-the-screen.md) | why only one of the seven built-ins is bounded by time, a policy spent rather than lent, and a renderer that holds a security property |
 | [16 — how the repo is maintained](16-how-the-repo-is-maintained.md) | guide versus decision, the Rust tests that hold the prose to the code, and a walkthrough of your first PR |
 | [17 — gaps and open questions](17-gaps-and-open-questions.md) | the far side of every boundary: the project's own map of what is missing, each gap against the issue that scopes it, then every objection the earlier chapters raised |
 
@@ -83,7 +83,7 @@ that crate.
 | [20 — sandbx-providers](20-crate-providers.md) | a tree with the vendor boundary in the middle: the neutral half above `anthropic.rs`, the four parts of that boundary the compiler holds, SSE framing, the delta fold, the two halves of the wire, and the one text denylist two other crates read |
 | [21 — sandbx-agent](21-crate-agent.md) | a small crate holding the control flow: thirteen public names, `run_turn`'s signature read before its body, the offered tool set, the gate's one blocking site, and compaction as a cut-point algebra |
 | [22 — sandbx-session](22-crate-session.md) | the one thing that outlives the run: a three-line identifier allowlist, two roots tried and one never considered, five types that are deliberately not the provider's, and which bit of a file's mode refuses rather than reports |
-| [23 — sandbx-tui](23-crate-tui.md) | a crate that decides nothing and sanitises everything it draws: a `lib.rs` of four names whose manifest is the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
+| [23 — sandbx-tui](23-crate-tui.md) | a crate that decides nothing and sanitises everything it draws: a `lib.rs` of five names whose manifest is the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
 | [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent.rs` and its six submodules as one pipeline, and the exit codes |
 
 These run longer than the read-through chapters, and that is the one place in

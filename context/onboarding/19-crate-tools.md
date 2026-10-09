@@ -348,8 +348,10 @@ module and not a `ToolLimits` field, so no builder can move it — bounds that
 overshoot. The skip reads `file.metadata()`, never the file, which is the whole
 point of its doc comment: a pack file or a binary fails UTF-8 validation anyway,
 and `read_to_string` discovers that only after allocating the whole thing.
-`max_entries` trims the rendered hits. Either input bound sets `stopped_early`,
-which `listing` turns into the partial-scan marker. Nothing is sorted, because
+`max_entries` trims the rendered hits. Either `ToolLimits` input cap sets
+`stopped_early`, which `listing` turns into the partial-scan marker; the
+`MAX_FILE_BYTES` skip sets nothing, so a tree whose only match sat in an
+oversized file answers "no output" with no marker at all. Nothing is sorted, because
 `walk_readable` returns files sorted and lines are visited ascending — sorting
 the rendered `path:line: text` strings would put `:10` before `:2`.
 
@@ -426,8 +428,8 @@ the helper override,** so `bash` cannot forget either; it never sees them. And
 **the timeout bounds this tool and no other** — 15 is the chapter on why the
 other six get nothing from it.
 
-Most of the module's length is `sandbox_error`, `bash`'s answer to the question
-`guard_error` answers for the other six. It matches exhaustively over
+The module's longest function is `sandbox_error`, `bash`'s answer to the
+question `guard_error` answers for the other six. It matches exhaustively over
 `HelperRefusal`: a program pin and a substituted grant are `Denied`, and every
 refusal meaning the sandbox *would not apply* is `Failed`, because "refused by
 the sandbox policy" would be false about a kernel that would not unshare (#185).

@@ -1,10 +1,11 @@
-# sandbx-cli is where argv becomes a policy, and the only crate with a binary
+# sandbx-cli is where argv becomes a policy, and the only crate that ships a binary
 
 [`sandbx-cli`](../../crates/sandbx-cli/) is process 0 in
 [04](04-the-architecture.md)'s View 1 — the unconfined one that "parses argv,
 derives the policy, asks the model, decides, records". It is the only crate that
-depends on all six others and the only one that produces a binary, so every box
-in that drawing is reached from here. Read
+depends on all six others and the only one whose binary ships — `sandbx-core`
+builds a standalone `sandbx-helper` and a row of probes beside it, all test
+support — so every box in that drawing is reached from here. Read
 [04](04-the-architecture.md)'s *The CLI architecture* section first: it states
 the lib-plus-bin split, the five subcommands, and what `tui` shares with
 `agent-run`. This chapter zooms into that section, file by file.
@@ -28,8 +29,8 @@ and `error.rs` have one each.
 | [`sandbox.rs`](../../crates/sandbx-cli/src/sandbox.rs) | `sandbox-run`: one of the two `SandboxedCommand` build sites in the workspace | [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) | the one subcommand that confines nothing | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`agent.rs`](../../crates/sandbx-cli/src/agent.rs) | `agent-run`'s flags and the one sequence that consumes them | here |
-| [`agent/gate.rs`](../../crates/sandbx-cli/src/agent/gate.rs) | which tools `--allow-tool` approved, and `ArgvGate` | [13](13-turn-loop-and-gate.md) |
-| [`agent/prompt.rs`](../../crates/sandbx-cli/src/agent/prompt.rs) | the terminal question, typeahead, and bidi stripping | [13](13-turn-loop-and-gate.md) |
+| [`agent/gate.rs`](../../crates/sandbx-cli/src/agent/gate.rs) | which tools `--allow-tool` approved, `ArgvGate`, and the one line per call — bidi-stripped and capped | [13](13-turn-loop-and-gate.md) |
+| [`agent/prompt.rs`](../../crates/sandbx-cli/src/agent/prompt.rs) | the terminal question and the typeahead drain | [13](13-turn-loop-and-gate.md) |
 | [`agent/orientation.rs`](../../crates/sandbx-cli/src/agent/orientation.rs) | the system prompt naming the approved tools and the granted roots | here |
 | [`agent/render.rs`](../../crates/sandbx-cli/src/agent/render.rs) | the stdout/stderr split, and `finish`'s code | here, and [13](13-turn-loop-and-gate.md) for `finish`'s ordering |
 | [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) | the wrap-up round's mechanics | here; [13](13-turn-loop-and-gate.md) for why it is spent |
@@ -213,6 +214,7 @@ Read the whole thing as one mapping, in the order it is actually decided:
 | a command line sandbx would not take | 64 | `usage_code`, before a `Command` exists |
 | `--help` or `--version` | 0 | `usage_code` |
 | the command under `sandbox-run` exited | its own code | `sandbx_core::exit_code`, passed through |
+| stdout failed mid-turn | 1 | `AgentError::Output`, latched in `render.rs` and decided ahead of 0, 2 and 3 |
 | a turn ended on an answer | 0 | `Render::finish` |
 | a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent.rs` |
 | a keypress ended a turn on the screen | 2 | the same `INCOMPLETE`, from `tui`'s `select!` |
@@ -229,7 +231,7 @@ code for, so nothing later in this table can override it. `failure_code`'s
 own doc states the consequence directly: a usage error never reaches it, which
 is why `USAGE` is one number and not one per command.
 
-Both of the row-2/row-3 constants live in `agent.rs`, but under `tui` the code
+Both the `2` and the `3` live in `agent.rs` as constants, but under `tui` the code
 comes from `ending` rather than from `Render::finish` — and `ending` is the one
 mapping in the crate that reads `TurnStop` *non*-exhaustively, closing on
 `_ => 0` with a comment saying it is deliberate: a stop it has no account of
@@ -392,9 +394,10 @@ than a type — `Axis::ReadExecute` becomes "run".
 which tools this run approved — `approves` returns true for any `ReadOnly` tool,
 true for a bare `--allow-tool`, and otherwise asks whether the name was listed.
 [`prompt.rs`](../../crates/sandbx-cli/src/agent/prompt.rs) is the `--approve
-call` question: it opens `/dev/tty` rather than using stderr, discards
-typeahead, strips bidi controls from what it echoes, and caps the subject it
-shows (#169). Both are [13](13-turn-loop-and-gate.md)'s material, including
+call` question: it opens `/dev/tty` rather than using stderr and discards
+typeahead. The line it echoes was already stripped of bidi controls and capped
+by `printable` in `gate.rs`, which owns `SUBJECT_CAP` (#169). Both are
+[13](13-turn-loop-and-gate.md)'s material, including
 `Consent::ask`, why a typo is not consent, and how a `GateAborted` becomes exit
 3. Read that chapter; this one does not have a better version of it.
 
@@ -555,12 +558,16 @@ is `0o077` — any group or other bit. Three details:
   directory checked and the key's never looked at. A writable directory is
   enough to refuse on, because it is one another user can rename their own
   `0600` file into.
-- **Refuse, never repair.** A too-wide file raises
+- **Refuse rather than widen.** A too-wide file raises
   `AuthError::Permissions { path, mode }` with the mode printed in octal, and
-  nothing is chmod'd. `store` reads before it creates, so a too-wide file is
-  refused rather than quietly replaced. The one relaxation is `discard`, which
-  passes `Shared::Tolerate` — `auth logout` on a file you cannot safely read is
-  still the right thing to let someone do.
+  the file is never chmod'd into readability. `store` reads before it creates,
+  so a too-wide file is refused rather than quietly replaced. What *is* repaired
+  is narrowed: `write` sets the directory to `0700` through an open descriptor
+  even when it did not create it, and `discard` rewrites a file it keeps at
+  `0600` — the one place a mode is fixed rather than refused, and only once no
+  credential is left in the file to protect. `discard` is also the one
+  relaxation on the read side, passing `Shared::Tolerate`, because `auth logout`
+  on a file you cannot safely read is still the right thing to let someone do.
 
 `write` is deliberate about three failure modes. `DirBuilder::mode` is masked by
 the umask and a no-op when the directory already exists, so the mode is set
@@ -712,7 +719,7 @@ fixture for a hung-up terminal. Twelve integration files, split by surface:
 
 | file | asserts |
 |---|---|
-| `agent_run.rs`, `sandbox_run.rs`, `auth.rs` | what an argv parses to and what policy it derives, over `Cli::parse` alone |
+| `agent_run.rs`, `sandbox_run.rs`, `auth.rs` | what an argv parses to, and for the first two what policy it derives, over `Cli::parse` alone |
 | `agent_session.rs` | what `--session` accepts, and what it refuses before any I/O happens |
 | `cwd_policy.rs` | the working-directory guard — spawned, because it reads `getcwd` and `HOME`, and `set_current_dir` is process-global |
 | `auth_store.rs` | the credential file end to end — spawned, because the chain reads real environment variables and `set_var` is `unsafe` under edition 2024 |

@@ -235,8 +235,23 @@ the mount namespace when the policy asks for them. On top of that it runs with
 all four capability sets cleared, `RLIMIT_CORE` at zero and `no_new_privs` set.
 `CLONE_NEWPID` is the one flag that places only children, so stage 1 is
 deliberately *outside* the PID namespace the command runs in — which is what
-leaves a process alive to `wait` for the command and relay its status, and also
-why killing stage 1 takes the whole namespace with it.
+leaves a process alive to `wait` for the command and relay its status.
+
+That asymmetry cuts the other way too, and it is the reason stage 1 being
+unsandboxed costs less than it reads. Stage 2 is PID 1 of a namespace stage 1 is
+not in, and `getppid()` there reports 0 rather than a number — so the command
+has no pid to signal its own supervisor with, and `kill` cannot name a process
+outside its namespace. What stops stage 2 reaching stage 1 is that stage 1 is
+unaddressable from inside, not a rule forbidding it. The one route back is a
+`/proc` that is the host's, which is why host pids in `/proc` are a disclosed
+gap rather than an oversight.
+
+What does *not* follow is that killing stage 1 tears the namespace down.
+Teardown follows the death of its init, which is stage 2; a `SIGKILL`ed stage 1
+leaves the command running with its parent death signal still armed and
+undelivered (#272). The command stays fully confined either way — the ruleset,
+the filter and the empty capability sets are properties it carries, not ones
+stage 1 holds for it.
 
 Read `start_inner_stage` and the `prepare_supervisor` it calls with the question
 "why here?" and every step answers:
@@ -479,9 +494,11 @@ whichever install happens to be first.
 
 The middle of that table is not held by review at all. The `landlock` crate is a
 typestate: `handle_access` comes from `RulesetAttr`, which is implemented for
-`Ruleset`, while `add_rule` and `restrict_self` come from `RulesetCreatedAttr`,
-which is implemented for the `RulesetCreated` that `create` returns — and
-`create` takes `self` by value. The hinge is visible in `apply` as a change of
+`Ruleset`, while `add_rule` comes from `RulesetCreatedAttr`, implemented for the
+`RulesetCreated` that `create` returns — and `create` takes `self` by value.
+`restrict_self` is not on that trait at all: it is an inherent method on
+`RulesetCreated`, which is the stronger arrangement, since it cannot be reached
+through a generic bound at all. The hinge is visible in `apply` as a change of
 binding:
 
 ```rust

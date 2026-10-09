@@ -61,8 +61,10 @@ What changed is that `CLONE_NEWUSER` may be requested by anyone, and a process
 that enters a user namespace it just created holds a **full capability set
 within that namespace**. Request `CLONE_NEWUSER` in the *same* `unshare` call as
 the others and the kernel grants the new credentials before it checks the
-permission for the rest — so one call makes all four namespaces unprivileged,
-while two calls would not.
+permission for the rest, so one call makes all four namespaces unprivileged.
+Two calls reach the same place — `unshare(CLONE_NEWUSER)` and then the rest
+succeeds, because by the second call the full set is already held — so the
+single call is one syscall and one failure mode rather than a requirement.
 
 That capability set is confined to the new namespace. It is `CAP_SYS_ADMIN` over
 *these* mounts and *this* network stack, and nothing at all over the host's.
@@ -105,8 +107,11 @@ One line, and your own id, is not an arbitrary quota. A wider map needs
 `CAP_SETUID` — `CAP_SETGID` for the gid map — held over the **parent**
 namespace, and the full capability set the creator holds *inside* the new one
 is no help, because that is not where the kernel checks. Which is why the tool
-that hands out a range of subordinate ids, `newuidmap(1)`, is a set-user-ID
-binary: the privilege has to come from outside the namespace being mapped.
+that hands out a range of subordinate ids, `newuidmap(1)`, runs with a privilege
+its caller does not have — historically set-user-ID, and on current
+distributions usually the `CAP_SETUID` file capability instead. Either way the
+point is the same: the privilege has to come from outside the namespace being
+mapped.
 sandbx has no such helper, so one id mapped to itself is all it can write.
 
 But `/proc/self/gid_map` is refused for an unprivileged writer until
@@ -126,7 +131,12 @@ denied.
 So the kernel forces the order. Writing `deny` to `setgroups` permanently
 disables `setgroups(2)` in that namespace, and only then may an unprivileged
 process write `gid_map`; once `gid_map` is written, `deny` can no longer be
-written at all. One order works and the other cannot be recovered from.
+written at all. The wrong order is not a trap — an unprivileged `gid_map` write
+with `setgroups` still open fails `EPERM` having written nothing, and writing
+`deny` and retrying works. What is one-way is the *successful* `gid_map` write,
+after which no later code can close `setgroups` behind it. So the order is
+forced for a writer that gets as far as a map, which is why sandbx writes it as
+a literal rather than reacting to the error.
 
 **In sandbx:** `map_identity_into_userns_with` in `hardening.rs` writes the
 three paths in that order, and the order is a literal:
@@ -442,9 +452,15 @@ next `execve`", which is exactly the question a sandbox cares about.
 
 Two corollaries sandbx depends on. Ambient is masked by the other two — a
 capability stays in ambient only while it is in both permitted and inheritable,
-so emptying those empties ambient as well. And all five sets, like the
-namespaces, are inherited across `fork` and across `exec`, so a process that
-empties them before becoming the command has emptied them *for* the command.
+so emptying those empties ambient as well. And *empty* survives an `execve` of
+an ordinary binary, which is the property that matters here rather than
+inheritance: `fork` does copy all five, but `execve` recomputes permitted and
+effective from the table above, so what carries across is bounding,
+inheritable and ambient. With all three empty and no file capabilities on the
+binary, every term in that recomputation is empty — so a process that empties
+them before becoming the command has emptied them *for* the command. The
+qualifier is the one `SECURITY.md` already carries: a file capability on the
+`exec`d binary is a term the bounding set is what masks.
 
 The four `execve`-facing sets are better read as routes into one place — the
 permitted set the command starts with:
@@ -523,10 +539,16 @@ order, in the inner stage — the subject of
 `pdeathsig` cannot provide comes from the PID namespace instead: the inner stage
 is its init, so the kernel kills everything left in the namespace when it dies.
 [guide-process-lifetime.md](../guide-process-lifetime.md) has the kill chain the
-two mechanisms form, and `SECURITY.md` names the one shape that survives both —
-a command whose `pdeathsig` a secure `exec` cleared *and* which called `setsid`
-to leave the process group — along with the reason it is unreaped rather than
-unrestricted.
+two mechanisms form.
+
+That split is worth holding onto, because it is why clearing `pdeathsig` buys a
+command less than the two cases above suggest. `setsid` leaves the process
+group, not the namespace, and the descendant bound was never the signal's job —
+so a command that cleared the signal and called `setsid` is still reaped when
+the namespace's init goes. What a survivor would be is unreaped and not
+unrestricted: Landlock, the filter and the empty capability sets are all
+properties of the process, and outliving the call does not return any of them
+(#272).
 
 ## You should now be able to explain
 

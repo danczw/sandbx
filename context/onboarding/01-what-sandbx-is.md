@@ -106,7 +106,10 @@ directory.
 Three consequences that catch everybody once:
 
 - **A path flag replaces the working-directory default rather than adding to
-  it.** `--allow-read /srv` is read on `/srv` and nothing else. The alternative
+  it.** `--allow-read /srv` buys read on `/srv` and no working-directory grant
+  at all — not *nothing* else, since read on the system binaries and the startup
+  environment are granted either way, before the flags are consulted, because
+  nothing starts without them. The alternative
   — an unconditional default plus an opt-out — was rejected because a
   deliberately tight hand-written policy would then silently gain write over
   the whole working tree.

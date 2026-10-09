@@ -369,8 +369,9 @@ nearest-resolving-ancestor rule on its own sees neither.
 
 - **Worth questioning:** `check_read` and `check_write` are `pub` on a type
   `sandbx-core` exports, they bound nothing after the measurement, their own doc
-  comments say to prefer the opening forms, and no production code in the
-  workspace calls either — every call site is in `crates/sandbx-core/tests/`.
+  comments say to prefer the opening forms, and nothing outside the guard calls
+  either — the four opening forms call them internally, and every other call
+  site is in `crates/sandbx-core/tests/`.
   [decision-enforcement-seam.md](../decision-enforcement-seam.md) marks them "no
   tool" in its own seam diagram and [`SECURITY.md`](../../SECURITY.md) carries
   them as a non-claim, so the exposure is known; what neither prices is why the
@@ -468,10 +469,10 @@ keeps nothing of the caller's memory. The obvious alternative, the environment,
 is unavailable for a sharper reason than inconvenience — it is cleared at every
 stage (#98) precisely because *the environment is part of what the policy
 governs*. Argv is the channel that is left. It is not private: the confined
-command can read its own `/proc/self/cmdline`, which is why the rule is that
-argv carries variable **names** and never values, and why `--dns-over-tcp` is a
-bare flag standing for a constant the policy holds rather than a flag with the
-value on it.
+command can read the helper's `/proc/<pid>/cmdline`, which is why the rule is
+that argv carries variable **names** and never values, and why `--dns-over-tcp`
+is a bare flag standing for a constant the policy holds rather than a flag with
+the value on it.
 
 **Which side is trusted: neither.** That stance is easier to state than to
 believe, so here is what it buys in each direction.
@@ -541,9 +542,12 @@ two documents above are careful about.
   factory is named in the config. Seam 1 has no equivalent. Nothing stops a
   seventh in-process tool from calling `std::fs::File::open` directly; it would
   compile, pass review that was not looking for it, and leave no trail, since
-  the audit record is emitted by the guard it skipped. Today the chokepoint
-  holds — `read_file` is the only `open_read` call site in the tools crate, and
-  nothing there reaches `std::fs` at all. But that is convention, where
+  the audit record is emitted by the guard it skipped. The convention has
+  already slipped once: `grep`'s size skip calls `file.metadata()` directly, a
+  symlink-following `stat` no guard covers and no audit record names. It reads
+  a length and never the contents, which is why it has not cost anything yet —
+  but it is the shape above, already compiled. `read_file` is still the only
+  `open_read` call site in the crate, and that is convention, where
   [04](04-the-architecture.md) names this repo's recurring move as converting
   "did we remember?" into a build failure, and `BuiltinTool`'s closed enum only
   forces a new tool to be *handled* everywhere, not to be handled through the
