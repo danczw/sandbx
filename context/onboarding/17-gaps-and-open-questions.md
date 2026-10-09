@@ -79,10 +79,19 @@ make easy.
   carries it below as an open one.
 - **The helper's supervisor stage is unconfined.** Also an explicit non-claim,
   and structurally so: stage 1 has to be able to spawn the stage that installs
-  the ruleset, which is why there are three processes rather than two. This one
-  has no number because there is nothing to file — the alternative would be a
-  process that confines itself before creating the child that is supposed to be
-  confined.
+  the ruleset, which is why there are three processes rather than two. Read the
+  non-claim for what it lists rather than only for the word *unconfined* — the
+  stage touches the host with your privileges, reading `/proc/self/exe` every
+  run and, under `--allow-dns`, `/etc/nsswitch.conf` and whatever
+  `getaddrinfo` touches per allowlisted name, then writing the identity maps and
+  binding the files the command reads as `/etc`.
+  [08](08-the-two-stage-helper.md) has the ordering that puts them there: the
+  lookups build the `hosts` file the bind installs, so they precede it, and the
+  bind needs the mount namespace the unshare creates. Those reads are in the
+  unconfined stage because they have to be, not because nobody moved them.
+  This one has no number because there is nothing to file — the
+  alternative would be a process that confines itself before creating the child
+  that is supposed to be confined.
 - **The capability bounding set is dropped best-effort.** Clearing it needs
   `CAP_SETPCAP`, which an LSM may strip from a user namespace an unprivileged
   process created, so on such a host the set stays as inherited. The run

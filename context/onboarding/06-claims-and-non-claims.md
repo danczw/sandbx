@@ -117,8 +117,12 @@ promise covers and does not. The third is the part a reader skips.
   on `allows_unix_sockets()` independently of any network grant. Covers whether
   the command may open one at all. Does not cover *which* one, and that limit
   has its own non-claim below.
-- **Environment — `env_clear` plus a name allowlist.** Promised: everything the
-  policy does not name is dropped, at every spawn stage. This is the one bound
+- **Environment — `env_clear`, a name allowlist, then the imposed constants.**
+  Promised: everything the policy neither names nor imposes is dropped, at every
+  spawn stage. The row is careful about the difference: the allowlist governs
+  what the command *inherits*, and `imposed_env` is a set of compile-time
+  constants added after it, so the environment is not the allowlist alone. This
+  is the one bound
   none of the three kernel primitives can reach, because the kernel hands the
   environment over during `exec` before any filter the new image installs has a
   say. So it is enforced by never putting it there, in
@@ -159,10 +163,16 @@ went through the factory at all.
 ### Syscalls
 
 - **Syscalls — seccomp-bpf, as a denylist.** Promised: process inspection and
-  descriptor theft, namespace manipulation and creation on every route, mounting
-  by name and by descriptor, module loading, the keyring, `io_uring`,
-  `userfaultfd`, `memfd_create` — and a foreign architecture killed rather than
-  refused per call, its syscall numbers meaning something else. The
+  descriptor theft, namespace manipulation and creation on every route,
+  reshaping the filesystem under Landlock by name and by descriptor, loading
+  code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`,
+  whole-host state — and a foreign architecture killed rather than
+  refused per call, its syscall numbers meaning something else. Both the row and
+  [10](10-seccomp.md) group by what a group would buy an attacker, but they do
+  not group identically — the row's six groups are coarser than the chapter's
+  eight, which splits the keyring off from kernel code loading and moves
+  `userfaultfd` beside `io_uring` as the other way to act without issuing a
+  syscall. Neither grouping is the filter; the list is. The
   unconditional entries are one list, `BLOCKED_SYSCALLS` in
   [`seccomp/rules.rs`](../../crates/sandbx-core/src/helper/seccomp/rules.rs);
   `blocked_syscalls` then adds the conditional rules a policy earns — the
@@ -328,7 +338,7 @@ no-flag run from a user-level install prefix grants write there.
   repo. All of that is about the *spawn inside this run*, which the inode
   closes. The residue is a different hazard with a different actor: a human
   running `sandbx` again tomorrow, reached entirely by name. The existing
-  derived-default guard already refuses five shapes by location and is decidable
+  derived-default guard already refuses six shapes by location and is decidable
   from argv plus `/proc/self/exe`, which is exactly the test
   [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) sets for
   a refusal. Its own framing — the two on-disk roots are the harness's, not the
@@ -503,6 +513,16 @@ processes spawned. A fork bomb is unbounded while the call lasts; what *is*
 bounded is that it does not outlive it. And a running tool call cannot be
 interrupted at all — only its own deadline stops it (#26).
 
+One bound in this section is deliberately *not* a containment claim, and the
+document says so rather than leaving a reader to infer it. A turn is bounded:
+`TurnLimits::max_rounds` caps the requests one turn may make of the model, and
+`TurnLimits::stream_timeout` how long one of them may spend streaming
+([guide-turn-loop.md](../guide-turn-loop.md),
+[13](13-turn-loop-and-gate.md)). But what those bound is sandbx's own loop, not
+anything a sandboxed command can reach — so they belong with the non-claims and
+not in the table, which is the distinction the scope sentence drew at the top of
+this chapter.
+
 ### Where a mechanism is weaker than its name
 
 The capability bounding set is cleared best-effort, not guaranteed. Dropping it
@@ -522,7 +542,7 @@ process, by `conceal_process_state`, a different process in a different section
 of the document. `RLIMIT_CORE=0` does persist across `exec`, so core dumps stay
 suppressed; the ptrace-attach protection is not achievable here, and it costs
 the command nothing because the command's environment holds only what
-`--allow-env` named.
+`--allow-env` named plus the `imposed_env` constants, none of them secret.
 
 `/proc` inside the sandbox shows host PIDs. It is not remounted for the new
 namespace, since that needs `mount(2)`, which the filter denies — so a command
