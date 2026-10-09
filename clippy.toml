@@ -9,10 +9,15 @@ disallowed-methods = [
     { path = "tokio::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied", allow-invalid = true },
     # Each reaches `ratatui::restore`, which `eprintln!`s a failed `tcsetattr` — a panic
     # from inside a panic hook or an unwinding `Drop`, which aborts and loses both the
-    # turn's earned exit code and the audit trail it still held (#264, #270). `init` and
-    # `init_with_options` also `expect` the error away; `run` does both.
+    # turn's earned exit code and the audit trail it still held (#264, #270). The four
+    # `init` forms reach it by installing `set_panic_hook`, whose hook calls it, as their
+    # own first statement: a later call also overwrites the hook `Screen::enter` installed,
+    # so `try_` is no safer here than `init` and neither is a replacement for the other.
+    # `ratatui::try_restore` is the one that stays, having nothing to write with.
     { path = "ratatui::restore", reason = "ratatui::try_restore, which cannot write to a dead stderr" },
-    { path = "ratatui::init", reason = "ratatui::try_init, or Screen::enter's own three statements" },
-    { path = "ratatui::init_with_options", reason = "ratatui::try_init_with_options, which returns the error" },
+    { path = "ratatui::init", reason = "Screen::enter, which installs a hook that cannot write" },
+    { path = "ratatui::try_init", reason = "Screen::enter, which installs a hook that cannot write" },
+    { path = "ratatui::init_with_options", reason = "Screen::enter, which installs a hook that cannot write" },
+    { path = "ratatui::try_init_with_options", reason = "Screen::enter, which installs a hook that cannot write" },
     { path = "ratatui::run", reason = "Screen::enter and Screen::drop, neither of which writes on failure" },
 ]

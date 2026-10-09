@@ -369,13 +369,17 @@ may *draw* one — which is what `forgeable` is:
 
 ```rust
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-/// Three sets, bounded per arm below so an addition is checkable against Unicode's names
-/// rather than asserted: box drawing's verticals, the extensions drawn to tile vertically,
-/// and the confusable mappings for the mark. A denylist, for [`invisible`]'s reason.
-/// ASCII `|` is excluded, having to survive a shell pipeline in prose — why the gutter is
-/// box-drawing at all. A vertical joining across rows where `|` doesn't is font-dependent,
-/// too weak to rely on instead.
+/// Three sets, bounded per arm below: box drawing's verticals, the extensions drawn to tile
+/// vertically, and single-cell vertical strokes outside both. A denylist, for
+/// [`invisible`]'s reason. ASCII `|` is excluded, having to survive a shell pipeline in
+/// prose — why the gutter is box-drawing at all. A vertical joining across rows where `|`
+/// doesn't is font-dependent, too weak to rely on instead.
 ```
+
+Only the first of the three is a *scope*: it is the Box Drawing block swept
+against Unicode's names, so an addition there is checkable. The other two are
+enumerations, and that is the part of #276 the fix does not close — Unicode's
+confusables data is not in the tree to derive a scope from.
 
 This is the paragraph that answers "why does a rendering crate get a security
 review". The mark is not decoration; it is an authentication tag on a row, and
@@ -388,10 +392,14 @@ seriously rather than from making it look nice:
 - **A break inside a verdict or a note is spelled `\n` rather than kept**,
   because those kinds are marked on *every* row — so a kept break would mint a
   second marked row from whatever followed it, needing no confusable at all.
-- **The box-drawing horizontals are left alone**, a table or a `tree` being
-  ordinary output. The defence is per-claim, not per-character-class — and the
-  split is pinned both ways, `the_box_drawing_horizontals_do_survive` sweeping
-  the 113 the carve-out keeps against the 15 it does not (#276).
+- **Everything in the block that also draws a horizontal is left alone** — the
+  horizontals, and the junctions and corners too, a table or a `tree` being
+  ordinary output. A junction draws a full-height vertical, so this is a real
+  carve-out and not a gap: the nub beside the stroke is a difference an operator
+  can see on screen, where a weight or a dash density is not. The defence is
+  per-claim, not per-character-class — and the split is pinned both ways,
+  `the_rest_of_the_box_drawing_block_survives` sweeping the 113 the carve-out
+  keeps against the 15 it does not (#276).
 
 The guide is also candid about what the column does not buy: a wrapped
 continuation row carries no gutter, since the gutter is inside the paragraph's
