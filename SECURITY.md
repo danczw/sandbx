@@ -36,8 +36,8 @@ through `SandboxedCommand`:
 | network | an empty network namespace; or, with a port allowlist, Landlock TCP port rules plus seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion, TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when granted per port |
 | name resolution | with `--allow-dns NAME`: the files every resolver reads — a `hosts` sandbx resolved before the command started, `nsswitch.conf` with no `dns` source, a nameserver-less `resolv.conf` — bind-mounted read-only over `/etc` in the command's own mount namespace | which names resolve, nothing about which hosts are reachable. An unlisted name does not resolve, immediately rather than by timeout, and no nameserver is left to ask instead — see *[What `--allow-dns` bounds](#what---allow-dns-bounds)* |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
-| environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`) | which variables the command inherits; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross |
-| syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, mounting, module loading, the keyring, `io_uring`, `userfaultfd`, `memfd_create` — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
+| environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`), then the constants `SandboxPolicy::imposed_env` sets | which variables the command *inherits*; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross. Not the whole of what it holds: `--dns-over-tcp` imposes `RES_OPTIONS=use-vc` with no `--allow-env` naming it, so the child's environment is the allowlist plus a set of compile-time constants. `permits_env` — allowlisted or imposed — is the predicate `spawn::command` builds and the helper's inherited-environment check asks |
+| syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, mounting, loading code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`, whole-host state — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (bounding set best-effort — see below) |
 | process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` |
 | process signalling | PID namespace | a command cannot signal, or even name, a process outside its own namespace |
@@ -74,14 +74,19 @@ Which file carries which half of that, and why each refusal is a refusal:
 Beyond the network calls a port allowlist must shut, seccomp-bpf denies:
 
 - process inspection, and handles on other processes — `pidfd_getfd` steals an
-  open descriptor;
+  open descriptor, and `perf_event_open` is tracing infrastructure, a known
+  side-channel surface;
 - namespace manipulation, and *creation* on every route: `clone` filtered per
   `CLONE_NEW*` flag, `clone3` answers `ENOSYS`;
-- mounting by name (`mount`) and by descriptor (`open_tree`, `move_mount`,
-  `fsopen`, `fsconfig`, `fsmount`, `fspick`), plus `mount_setattr`, which would
-  clear `MS_RDONLY` on a mount already there;
-- kernel module loading, the keyring, `userfaultfd`, `memfd_create`;
-- `io_uring`, which runs operations without issuing them.
+- reshaping the filesystem under Landlock: mounting by name (`mount`) and by
+  descriptor (`open_tree`, `move_mount`, `fsopen`, `fsconfig`, `fsmount`,
+  `fspick`), `mount_setattr`, which would clear `MS_RDONLY` on a mount already
+  there, and `umount2`, `pivot_root` and `chroot`, which move the tree out from
+  under rules bound to it;
+- loading code into the kernel (the module calls, `bpf`, and `kexec_load`, which
+  loads a whole one), the keyring, `userfaultfd`, `memfd_create`;
+- `io_uring`, which runs operations without issuing them;
+- whole-host state: `reboot`, `swapon`, `swapoff`.
 
 A foreign architecture is killed outright rather than refused per call — i386 on
 `x86_64`, AArch32 on `aarch64` — its syscall numbers mean something else. The x32
@@ -103,9 +108,9 @@ architecture the filter gates on.
   The CLI is the convenience layer, and opts into three things — read on the
   system binaries and libraries, a handful of environment variables, and, with
   *no* path flag, read **and write** on the working directory, which any path
-  flag replaces rather than adds to. That derived default refuses to be rooted at
-  `/`, at `$HOME`, or anywhere overlapping the system binaries it grants execute
-  on
+  flag replaces rather than adds to. That derived default refuses six shapes of
+  working directory outright rather than deriving a narrower root, and the record
+  lists them
   ([context/decision-default-policy.md](context/decision-default-policy.md)).
   What the write grant means for files executed *later* is a non-claim below.
 - **Grants do not widen each other, with one named exception.** Read does not
@@ -160,8 +165,16 @@ architecture the filter gates on.
 - **The harness process itself is not sandboxed** — only the commands it runs; a
   vulnerability in sandbx's own code is not contained by sandbx. Nor is the
   helper's supervisor stage: no Landlock ruleset, no seccomp filter, since it must
-  spawn the stage that has them. It reads nothing but its own argv and lives
-  outside the command's PID namespace.
+  spawn the stage that has them. It lives outside the command's PID namespace, and
+  touches more than its own argv — with your own privileges: it reads
+  `/proc/self/exe` on every run, and under `--allow-dns` the host's
+  `/etc/nsswitch.conf` plus whatever `getaddrinfo` touches resolving each
+  allowlisted name; it writes the identity maps that make the user namespace
+  usable, and renders and binds the files the command then reads as `/etc`. The
+  lookups are what the bound `hosts` file is built from, so they precede the bind
+  that installs it, and that bind needs the mount namespace the unshare creates —
+  which is why these reads land in the unconfined stage rather than the confined
+  one.
 - **A dependency is not contained.** Anything linked into the binary runs with the
   harness's privileges, not a tool's.
 - **The sandbox helper is reached by inode, not by name.** Re-exec goes through
@@ -176,8 +189,12 @@ architecture the filter gates on.
   measures a granted root and then performs the access beneath it, so a
   substitution landing between the two — of the root, or of a parent directory a
   walk reopens by path — is granted on the object the confirmation saw. Two swaps,
-  both open: a few syscalls wide for the five per-path tools, the whole traversal
-  for `find` and `grep`, whose walk confirms its root once and then descends.
+  both open: a few syscalls wide for the four single-path tools, five guard calls
+  between them — `edit` confirms twice, `crate::read_file` then `open_write` once
+  the match is known unique. Four of the five confirm then open with `O_NOFOLLOW`;
+  the fifth is `ls`, which has no handle form to open and reads the path again. And
+  the whole traversal for `find` and `grep`, whose walk confirms its root once and
+  then descends.
   Closing either needs the access to run off a directory descriptor, with
   `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it
   ([#230](https://github.com/danczw/sandbx/issues/230); the `FsGuard` TOCTOU row
@@ -292,6 +309,12 @@ architecture the filter gates on.
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).
+- **A bound on the harness's own loop is not a containment claim.** A turn is
+  bounded — `TurnLimits::max_rounds` caps the requests one turn may make of the
+  model, `TurnLimits::stream_timeout` how long one of them may spend streaming
+  ([context/guide-turn-loop.md](context/guide-turn-loop.md)) — but what those
+  bound is sandbx's own work, not what a sandboxed command can reach, which is
+  what every claim here is about.
 - **An unhandled signal aimed at the command itself is ignored.** The command is
   PID 1 of its namespace and the kernel discards a default-disposition signal sent
   to a namespace's init, so `kill -TERM` at the command does nothing unless it
@@ -416,12 +439,13 @@ architecture the filter gates on.
   `/proc` grant.
 - **The sandboxed command is not marked non-dumpable.** The kernel resets
   `PR_SET_DUMPABLE=0` to dumpable on every `execve` of an ordinary binary, so
-  setting it in the helper covers the helper only. `RLIMIT_CORE=0` does persist
-  across exec, so core dumps are still suppressed; the ptrace-attach protection is
-  not achievable here. sandbx's own process *is* non-dumpable — a different
-  process, in *What sandbx keeps for itself is out of a grant's reach* above — and
+  setting it in the helper would cover the helper only. `RLIMIT_CORE=0` does
+  persist across exec, so core dumps are still suppressed; the ptrace-attach
+  protection is not achievable here. sandbx's own process *is* non-dumpable — a
+  different process, in *What sandbx keeps for itself is out of a grant's reach*
+  above — and
   that same reset is why it costs the command nothing: the command's environment
-  holds only what `--allow-env` named.
+  holds only what `--allow-env` named, plus the constants `imposed_env` sets.
 
 ## Known weaknesses
 
