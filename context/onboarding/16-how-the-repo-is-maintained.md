@@ -62,9 +62,12 @@ doc that answered the question starts being wrong the day it merges.
 ## The three convention guides
 
 Three guides constrain how code is written rather than what it does. Each one is
-a budget table plus a shell command that measures it, and each says explicitly
-that a hit is a judgement call rather than a failure. The numbers are
-deliberately not repeated here — they have changed (#245), and a figure copied
+a budget table plus a shell command that measures it, and none of the three
+treats a hit as a failure: `guide-module-layout.md` says so outright, the
+comment ratio is "a smell test, not a quota", and a long name is "a rewrite,
+not an abbreviation". The numbers are
+deliberately not repeated here — how they are measured has already changed
+once (#245), and a figure copied
 into a second file is a figure that goes stale in one of them.
 
 | guide | what it constrains |
@@ -75,18 +78,22 @@ into a second file is a figure that goes stale in one of them.
 
 Four things about them that the tables themselves do not say.
 
-- **Each guide is a budget plus a measurement.** Every one of the three has a
-  `## Measuring` section holding a `sh` snippet. Run the snippet, read the
+- **Each guide is a budget plus a measurement.** Each of the three carries its
+  measurement as a `sh` snippet — `## Measuring` in `guide-naming.md` and
+  `guide-module-layout.md`, `## Verifying a pass` in
+  `guide-code-comments.md`. Run the snippet, read the
   worst offenders, then read the file. `guide-module-layout.md` adds the rule
   for disagreements: a count that contradicts the module in front of you is the
   command being wrong about that module's shape, not the module being over —
   there is no second method to break the tie, only the file.
 - **A hit is a rewrite, not an abbreviation or a deletion.** Over budget on a
   name means a name describing two things; over budget on a comment means
-  finding the sentence doing the work and keeping that one. Both guides say that
-  a pass which deletes a kernel quirk, an ordering requirement or the origin of
-  an ABI number has failed however much shorter it made the file. `CLAUDE.md`
-  repeats it for the comment pass, which tells you how often it goes wrong.
+  finding the sentence doing the work and keeping that one. `guide-code-comments.md`
+  says that a pass which deletes a quirk, an ordering requirement or a "this
+  does not imply that" has failed however much shorter it made the file;
+  `CLAUDE.md` states it again for the comment pass, as a kernel quirk, an
+  ordering requirement or the origin of an ABI number — which tells you how
+  often it goes wrong.
 - **The comment ratio states its denominator in the same sentence as its
   threshold,** and the denominator is every line of every `.rs` file in the
   crate, test code included. That is not an accident of drafting.
@@ -360,9 +367,10 @@ dropped before the assertion read it, a comparison that fell through — every o
 of those denies everything, and a suite of denial tests stays green through all
 of them.
 
-So [decision-axis-table.md](../decision-axis-table.md) and
-[decision-default-policy.md](../decision-default-policy.md) each carry a
-`## The mutation check` section: a list of single-line mutations to the code,
+So five `decision-*.md` files carry a `## The mutation check` section, of which
+[decision-axis-table.md](../decision-axis-table.md) and
+[decision-default-policy.md](../decision-default-policy.md) are the clearest: a
+list of single-line mutations to the code,
 each one applied and the suite run, with the tests that failed recorded
 underneath. The axis table's framing is the clearest statement of the point —
 change one row, see what breaks, because that is what distinguishes a table from
@@ -382,7 +390,8 @@ default becomes unconditional (drop the paths_given guard)
 That last line is a whole lesson. `the_default_matches_what_sandbox_run_derives`
 survives the mutation because both sides of its comparison mutate together — it
 reads its expectation off the thing under test. `decision-default-policy.md`
-names it as the derived-expectation trap, and draws the right conclusion rather
+identifies it as the derived-expectation trap that
+`decision-enforcement-seam.md` names, and draws the right conclusion rather
 than deleting the test: it is a cross-subcommand *consistency* test, and not the
 one pinning what the default is. The same table shows the opposite result too —
 dropping the guard breaks tests in two suites that never mention the default,
@@ -431,8 +440,9 @@ With no roadmap file, the issue tracker carries the whole of what is intended.
   lint-table change: none of these takes one. The absence is informative, which
   is why it is not filled in for tidiness.
 
-Beyond those there is a topical set — `security` with a `severity:*` pair, `ci`,
-`tests`, `tooling`, `refactor`, `audit`, `documentation` — and `security`'s
+Beyond those there is a topical set — among them `security` with a `severity:*`
+pair, `ci`, `tests`, `tooling`, `refactor`, `audit`, `accessibility`,
+`documentation` — and `security`'s
 severity labels are worth reading for their wording alone: high is "escape, or
 execution that is not restricted as claimed", low is "contained, but narrower or
 wider than documented". Both are about the gap between the mechanism and the
@@ -565,8 +575,9 @@ Assume a small change to `sandbx-cli`.
 - **Run the suite yourself, because no hook does.** The default run is
   `cargo test --workspace --features sandbx-providers/mock`, which is CI's
   `test` job: the mock feature is named explicitly there because
-  `sandbx-providers`' test target carries `required-features = ["mock"]`, so a
-  plain workspace run skips it and reports zero tests for that crate
+  `sandbx-providers`' `mock_provider` test target carries
+  `required-features = ["mock"]`, so a plain workspace run skips that target and
+  reports zero tests for it
   ([20](20-crate-providers.md)). On a host whose kernel reaches the floor, add
   `cargo test --workspace --features sandbox-integration` — that is the
   enforcement suite, gated whole-file, and the one CI runs on two

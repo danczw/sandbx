@@ -6,13 +6,14 @@ names twice in View 3: **the provider seam** at
 boundary** at [`anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs)
 and below. In View 2 it is one line — `open(request)` at the top of every round.
 In View 1 it is nowhere, because nothing in here spawns a process or installs a
-kernel rule. It has no internal dependency, and it is the one crate that could
-be lifted out of the workspace and still compile.
+kernel rule. It has no internal dependency — one of the three that could be
+lifted out of the workspace and still compile, beside `sandbx-core` and
+`sandbx-session`.
 
 [02 — what a harness is](02-what-a-harness-is.md) is the on-ramp, and it owns
 the protocol: the stateless `POST /v1/messages`, `tool_use`/`tool_result`
 pairing, the streaming event sequence, reasoning that comes back signed. Read it
-first. Nothing here re-derives any of that. This chapter is about the seventeen
+first. Nothing here re-derives any of that. This chapter is about the eighteen
 files that implement it, what each one is allowed to know, and where its tests
 are.
 
@@ -85,9 +86,12 @@ flowchart TD
 - **Worth questioning:** the neutral half of this crate is held by convention
   and review, not by a check.
   [decision-provider-seam.md](../decision-provider-seam.md) frames #59 as
-  changing "where the vendor's vocabulary stops", and the four mechanisms it
-  lists are each genuinely enforced by the compiler — that part is solid. What
-  it does not price is that the *name* has no enforcement at all, while the
+  changing "where the vendor's vocabulary stops", and three of the four
+  mechanisms it lists are genuinely enforced by the compiler. The fourth is
+  not: `ProviderError` is a plain public enum with public fields and no
+  `#[non_exhaustive]`, so `transient` is a construction-site convention and
+  `is_retryable` just reads the field it was handed. What the bullet does not
+  price is that the *name* has no enforcement at all either, while the
   claim about it is stated absolutely in two places a maintainer will reach for
   before reading the code. The repo already has the shape of the answer:
   `every_prose_copy_of_the_floor_is_current` is a Rust test that reads files in
@@ -161,8 +165,8 @@ One `Prompt` is one request, so it is one **round** and not one turn.
 `max_output_tokens` goes out as `max_tokens` in every body `body.rs` builds, so
 `--max-tokens` bounds each round's reply and a turn of eight rounds may produce
 eight of them; [13 — the turn loop and the gate](13-turn-loop-and-gate.md) owns
-that accounting. The field's own doc calls it "a ceiling on the turn's output",
-which is *turn* in the API's sense — one model turn, which is one round here.
+that accounting. The field's own doc says it in the same accounting: "a ceiling
+on the model's reply, so on one round".
 
 `ContentBlock` is the one to read properly, because it is the type
 `sandbx-agent` and `sandbx-cli` both build by hand. The derive line is part of
@@ -285,9 +289,9 @@ reorders what follows it. Its doc gives the reason the obvious predicate will
 not do: `char::is_control` is category `Cc` exactly, so U+202E and the
 directional isolates pass it and let text *display* as something other than
 what it says.
-There is no `char` predicate for the category, so this is a denylist, "which a
-new Unicode version can outgrow silently" — the kind of limit this repo states
-rather than leaves to be discovered.
+There is no `char` predicate for the category, so this is a denylist, and "a
+new Unicode version can outgrow it silently" — the kind of limit this repo
+states rather than leaves to be discovered.
 
 Two places consume it, and they are the two places model-chosen text reaches a
 human: `sandbx-cli`'s `gate::stripped`, deciding what an operator reads before

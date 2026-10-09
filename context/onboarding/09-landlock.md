@@ -22,7 +22,10 @@ ABI was negotiated. Nothing in any of the four restricts the calling process.
 Those four files add up to one path, and it is the spine of this chapter.
 Nothing is restricted until `restrict_self`, so everything above it is a
 description the kernel has not acted on yet — and three separate steps can end
-the run instead:
+the run on a judgement of their own instead. They are the three edges below;
+every library call on the path can additionally fail on its own error, each
+`?`-propagated as `SandboxError::Landlock`, which is a refusal too but not a
+decision this code makes:
 
 ```mermaid
 flowchart TD
@@ -44,8 +47,9 @@ flowchart TD
 
 [`compat.rs`](../../crates/sandbx-core/src/helper/ruleset/compat.rs) holds three
 constants and nothing else decides which ABI a run gets. `LATEST_ABI` is the
-top, `BASELINE_ABI` is the floor, and `NEGOTIABLE_ABI` is the rungs between
-them, written out newest first. Written out rather than generated because
+top, `BASELINE_ABI` is the floor, and `NEGOTIABLE_ABI` is the ladder spanning
+them — both bounds included, not just the rungs between — written out newest
+first. Written out rather than generated because
 `landlock::ABI` is a closed enum with no iterator and no arithmetic — and a
 literal ladder is the thing an ABI bump is forced to edit, beside the two
 constants that bound it.
@@ -225,8 +229,9 @@ field added later fails to compile at `apply` instead of being quietly ignored.
 
 `landlock::AccessFs` is a `BitFlags` set, so the familiar operators do set
 algebra: `!` is complement, `&` is intersection, `|=` is union-assign. The
-kernel ships three named sets per ABI — `from_all`, `from_read`, `from_file` —
-and `rights_for` builds each axis's rights out of them by **subtraction** rather
+landlock crate ships four named sets per ABI — `from_all`, `from_read`,
+`from_write`, `from_file` — of which `rights_for` uses three, and it builds each
+axis's rights out of them by **subtraction** rather
 than by enumeration:
 
 ```rust

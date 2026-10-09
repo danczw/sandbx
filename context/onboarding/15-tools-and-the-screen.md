@@ -62,7 +62,7 @@ level; a denylist in the CLI would have been silently missing it.
 Chapter 13 is where that level is spent: `ArgvGate` allows every `ReadOnly` call
 unasked and takes argv's answer for the rest.
 
-## Six are bounded by work, one by time
+## One is bounded by time, four by work, two by neither
 
 This is the section to read twice. A timeout bounds a *process*. Six of the
 seven built-ins never start one, so a timeout bounds nothing about them.
@@ -71,11 +71,16 @@ seven built-ins never start one, so a timeout bounds nothing about them.
 end, since too long silently fails to catch the wedge this exists for" — applies
 to `bash` and to nothing else. The figure is calibrated rather than round: the
 same doc comment names what against — "the known pressure point is a cold
-`cargo build` on a large workspace". The other six are bounded by **work**:
-`ToolLimits` in [`tools/src/limits.rs`](../../crates/sandbx-tools/src/limits.rs)
-carries two output caps (entries returned, bytes returned) and two input caps
-(files visited, bytes scanned), and `grep` carries a hardcoded per-file skip of
-its own, `MAX_FILE_BYTES`. [guide-tools.md](../guide-tools.md) has the figures
+`cargo build` on a large workspace" — and it bounds `bash` by **bytes** as well,
+its output going through the same cap `read`'s does. Four of the other six are
+bounded by **work**: `ToolLimits` in
+[`tools/src/limits.rs`](../../crates/sandbx-tools/src/limits.rs) carries two
+output caps (entries returned, bytes returned) and two input caps (files
+visited, bytes scanned), and `grep` carries a hardcoded per-file skip of its
+own, `MAX_FILE_BYTES`. `read` takes the byte cap, `ls` and `find` the entry cap,
+`grep` four of the five. The last two read no cap at all: `write` and `edit`
+write what the model handed them, bounded by the path policy and the context
+window and nothing in this file. [guide-tools.md](../guide-tools.md) has the figures
 and [19](19-crate-tools.md) the per-tool account of which bound each one
 actually reads; what matters here is the distinction between the two kinds:
 
@@ -163,7 +168,8 @@ holds the `SandboxPolicy` in a private field with exactly one way to reach it:
 &SandboxPolicy` would be the obvious API, and it is the API that used to exist:
 the split between the two enforcement halves was documented and nothing enforced
 it, so an in-process tool could read the granted path lists and open files
-itself, bypassing the guard entirely (#56). Now the type enforces it.
+itself, bypassing the guard entirely (#56). Now the type enforces the *accessor*
+— with two routes still open around it, both named below.
 
 What does the enforcing is a Rust privacy rule, and it is the rule's *scope*
 that makes it hold. `new` takes the policy by value and moves it in behind the
@@ -190,13 +196,31 @@ crate. What a tool may ask the context for is small and deliberate:
 | `limits()` | the work and output caps |
 | `sandboxed_command(program)` | a command with the policy, helper and timeout already applied |
 
-There is no fourth thing, and the absence has a second effect worth naming: **no
-tool can tell the model what its roots are, and no refusal does either.**
+There is no fourth *accessor*, which is not the same as no fourth route. Two
+survive, and a reader who takes "the type enforces it" literally will miss both.
+`ExecutionContext` derives `Debug` over the policy field, so `format!("{ctx:?}")`
+inside any built-in prints the granted path lists — no accessor, no `unsafe`, no
+compile error. And `sandboxed_command` hands back a `SandboxedCommand`, whose
+`command_line` is the argv the helper is invoked with; `HelperArgs::decode` is
+public, and so is the `policy` field on what it returns. Neither is a hole in the
+*kernel* seam — a tool that reads the lists still has to go through the guard to
+touch a file — but "the type enforces it" is a claim about the accessor and not
+about the type.
+
+The absence has a second effect worth naming: **no tool can tell the model what
+its roots are, and almost no refusal does either.**
 `conceal_unless_granted` has to keep a refusal for a path outside every root
 indistinguishable from any other refusal, or a sequence of probes reads back as
 a map of the host. `agent-run` names the roots in the system prompt instead,
 above the tool boundary, where the policy is still the operator's own text
 rather than something a `tool_result` carries back.
+
+"Almost no" rather than "no", because one refusal names a root back:
+`SandboxError::RootReplaced` renders as "granted root *P* holds object … and not
+the … it was checked against". It fires only when a granted root was swapped
+under the harness, so it tells the model a path it already had access to — but it
+is the one message in the set that is not root-blind, and a reader who learnt the
+rule as absolute would not look for it.
 
 ## A closed enum, and what an eighth tool would cost
 

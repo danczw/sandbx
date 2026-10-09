@@ -67,9 +67,12 @@ promise covers and does not. The third is the part a reader skips.
   onto Landlock access bits is `rights_for` in
   [`ruleset/rights.rs`](../../crates/sandbx-core/src/helper/ruleset/rights.rs),
   and it is written as subtraction rather than enumeration — a write grant is
-  everything the ABI handles *minus* the read set — so a right some future ABI
-  adds is denied by a read grant automatically instead of being permitted until
-  somebody notices. Covers paths; says nothing about what a granted program does
+  everything the ABI handles *minus* the read set. Read that direction carefully:
+  a right a future ABI adds lands in `from_all` and so joins *every* write grant
+  until somebody subtracts it by hand. `ResolveUnix` at V9 arrived exactly that
+  way and is now subtracted by name (#259); `IoctlDev`, device ioctls on a node
+  beneath the path, is one such right already in the set. Covers paths; says
+  nothing about what a granted program does
   with what it reaches. Does not cover the six in-process tools, per the scope
   sentence.
 - **Entry point — a SHA-256 over a descriptor.** Promised, only when
@@ -376,15 +379,19 @@ no-flag run from a user-level install prefix grants write there.
 ### Identity is measured, not held
 
 `FsGuard` measures a granted root and *then* performs the access beneath it, so
-a substitution landing between the two is granted on the object the measurement
+a substitution landing between the two — of the root, or of a parent directory a
+walk reopens by path — is granted on the object the measurement
 saw. Two swaps stay open, two adjacent syscalls wide across the four
 single-path tools — five guard calls between them, `edit` confirming twice — and
 the whole traversal for `find` and `grep`, whose walk confirms its root once and
 then descends; both close the same way, by running the access off a directory
 descriptor with `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it
 (#230). The bare `check_read` and `check_write` bound nothing after the
-measurement at all, which is why no tool calls them — the tools take handles,
-via `open_read`, `open_write`, `read_dir` and `walk_readable`.
+measurement at all, which is why no tool calls them — the tools take a handle
+where one exists, via `open_read` and `open_write`. `read_dir` and
+`walk_readable` have none: a directory read has no `O_NOFOLLOW` handle form, so
+`ls` reads the path again and every directory below a walk root is reopened by
+path. That is the wider half of what #230 closes.
 
 Two floors sit under the pin itself. An inode number is free once what held it
 is unlinked, so a granted directory deleted and re-created can compare equal on
@@ -467,9 +474,9 @@ the provider call in-process, by the one name it reads as a credential rather
 than by a pattern, and `sandbox-run` still passes it. It closes the
 `--allow-env` route only.
 
-The policy itself is visible to the command. It crosses into the helper as argv
-and a process can read its own `/proc/self/cmdline`, so the granted paths and
-the allowlisted variable *names* are readable from inside the sandbox. Only
+The policy itself is visible to the command. It crosses into the helper as argv,
+and the helper's `/proc/<pid>/cmdline` is readable from inside the sandbox, so
+the granted paths and the allowlisted variable *names* are too. Only
 names travel that way, never values — which is why `--allow-env` takes a name
 and not a `NAME=VALUE` pair. Policy is a boundary, not a secret.
 

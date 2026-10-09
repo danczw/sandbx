@@ -26,7 +26,7 @@ has to show the record it read.
 
 | gap | what the issue scopes | cited in |
 |---|---|---|
-| `FsGuard` measures a root and then performs the access beneath it | #230 — the window, and the `openat2(dirfd, …, RESOLVE_BENEATH)` shape that closes it | [`SECURITY.md`](../../SECURITY.md), [guide-sandboxing.md](../guide-sandboxing.md) |
+| `FsGuard` measures a root and then performs the access beneath it | #230 — the window, and the `openat2(dirfd, …, RESOLVE_BENEATH)` shape that closes it | [`SECURITY.md`](../../SECURITY.md) |
 | approval is per tool per run, not per call, by default | #165 — the scope of an approval, and the twenty-prompt turn a per-call default would cost | [`SECURITY.md`](../../SECURITY.md), [decision-approval-gate.md](../decision-approval-gate.md) |
 | a pin covers the entry point, not what it goes on to run | #146 — what a digest over one image does and does not fix | [`SECURITY.md`](../../SECURITY.md), [decision-pinned-entry-point.md](../decision-pinned-entry-point.md) |
 | a stored credential is protected from other users, not from the agent | #184 — the config-directory route to the key, and the refusal that closes it | [`SECURITY.md`](../../SECURITY.md), [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) |
@@ -35,20 +35,28 @@ has to show the record it read.
 | a port allowlist bounds the port and not the host | #145 — destinations, and the resolver grant that bounds names instead | [`SECURITY.md`](../../SECURITY.md), [decision-egress-proxy.md](../decision-egress-proxy.md), [decision-port-allowlist.md](../decision-port-allowlist.md) |
 | x32 is killed as an ABI rather than enumerated per call | #117 — the mask over the syscall number, and the four calls that sit at different x32 numbers | [guide-sandboxing.md](../guide-sandboxing.md) |
 | tool calls run one at a time, and two sharing one `ExecutionContext` have no ordering semantics | #242 — sequential execution as a constraint rather than a choice, which the per-call gate's no-racing argument rests on | [guide-turn-loop.md](../guide-turn-loop.md), [decision-approval-gate.md](../decision-approval-gate.md) |
-| `--allow-unix-sockets` bounds whether a unix socket reaches outside the sandbox, never which one | #259 — the path condition a V9 `ResolveUnix` makes available, and the two routes to an `AF_UNIX` descriptor | [`SECURITY.md`](../../SECURITY.md), [guide-sandboxing.md](../guide-sandboxing.md), [decision-axis-table.md](../decision-axis-table.md) |
+| `--allow-unix-sockets` bounds whether a unix socket reaches outside the sandbox, never which one | #259 — the path condition a V9 `ResolveUnix` makes available, and the two routes to an `AF_UNIX` descriptor | [guide-sandboxing.md](../guide-sandboxing.md), [decision-axis-table.md](../decision-axis-table.md) |
 
-Two of those rows deserve a note, because reading the table without them
+Three of those rows deserve a note, because reading the table without them
 misleads in opposite directions.
 
-**#117 is not a gap at all, and finding that out is the exercise.** It is cited
-where the *mechanism* is explained — a mask over the syscall number rather than
-a list of x32 numbers, hand-assembled as classic BPF because the filter
-library's conditions address syscall arguments and the number is reachable only
-as a filter key. The residual it carries is a behaviour, not a hole: x32 dies by
-signal instead of getting an `EPERM`, which is the intended outcome for an ABI
-whose numbers mean something else. A number beside a sentence is not evidence
-that the sentence describes a weakness, and the only way to know which it is is
-to read where it is cited.
+**#117 is a hole that was closed, not a hole that is open, and finding that out
+is the exercise.** Its own title is the shape of the original defect — the
+denylist missed every x32 syscall — and the reason it could is the reason any
+denylist can: an entry names a number, and x32 gives the same call a second
+number the entry does not name. An allowlist would have failed shut on the
+unknown number; a denylist fails open on it, which is #117 and is also why the
+`BLOCKED_SYSCALLS` shape is worth understanding before trusting it.
+
+What the number is cited beside now is the *mechanism that closed it* — a mask
+over the syscall number rather than a list of x32 numbers, hand-assembled as
+classic BPF because the filter library's conditions address syscall arguments
+and the number is reachable only as a filter key. The residual is a behaviour,
+not a hole: x32 dies by signal instead of getting an `EPERM`, which is the
+intended outcome for an ABI whose numbers mean something else. A number beside a
+sentence is not evidence that the sentence describes a present weakness, and the
+only way to know which it is is to read where it is cited — and, for this one,
+the issue itself.
 
 **#230 is the row that is a boundary's own edge.** It sits under the property
 that says the path a grant was vetted as is the path the kernel is told about —
@@ -59,16 +67,31 @@ window is two adjacent syscalls across the four single-path tools and the whole
 traversal for the two that walk. Same property, two mechanisms, one of them not
 yet closed.
 
+**#165 is a scope, and the sentence above it is the load-bearing part.**
+`SECURITY.md` leads that non-claim with **approval is not enforcement**, and the
+row's wording — per tool per run — is easy to read as the whole of it. It is
+not. An approval answers *whether a tool may be called*; it never narrows *what
+that call may touch*, which is the policy's job and was fixed before the model
+said anything. So the two bound different things and neither substitutes for the
+other: approving `bash` once does not widen the grants, and a tight grant does
+not make a per-run approval per-call. Where they compose badly is the grain — an
+approval granted once covers every later call with arguments nobody saw, and the
+only thing still bounding those is the policy, which is why a loose grant and a
+per-run approval are worse together than either reads alone.
+
 ### Gaps carried without an issue number
 
 These are written down and have no number beside them. The distinction matters
 more than it looks: a gap nobody has written down is invisible, a gap documented
 without a number is visible but unfilable-against, and a gap *declined on a
 record* is neither — it is a decision, and treating it as a gap is a misreading.
-All four below are in the middle category, and the category is not stable: two
+Every entry below is in the middle category, and the category is not stable: two
 entries that sat here while this set was being written have since acquired
 numbers and moved into the table above, which is the movement it is meant to
-make easy.
+make easy. Read the list as a sample and not as a census —
+[`SECURITY.md`](../../SECURITY.md)'s non-claims are the authority, they are
+longer than this, and the last three below are there because reading the first
+four as the whole set is the mistake this section is otherwise shaped to invite.
 
 - **The harness is unconfined.** The one process that parses untrusted input —
   the model's output, and file contents arriving as tool results — carries no
@@ -110,6 +133,33 @@ make easy.
   [guide-process-lifetime.md](../guide-process-lifetime.md) — which is also
   where the absence is stated plainly. `bash` has a wall-clock default and
   `sandbox-run` an opt-in `--timeout`; neither is a resource limit.
+- **Write access to a project tree is write access to the next thing you run in
+  it.** The one on this list most likely to be read as a technicality and least
+  likely to be. A granted tree — typed, or derived from the working directory —
+  almost always holds files that execute *outside* the sandbox later and under
+  your own account: `.git/hooks/*`, `.git/config`, `.cargo/config.toml`,
+  `Makefile`, `package.json` scripts, `rust-toolchain`. So a write grant is a
+  deferred execute grant on the host, and no mechanism in the sandbox can see
+  that, because nothing is violated at the time of the write. The sandbox
+  bounded the write exactly as asked; the escape happens when you later type a
+  command yourself.
+- **Standing in a system directory is not refused by name.** The derived default
+  refuses the trees it grants execute on, and `/etc`, `/var`, `/proc` and `/sys`
+  it does not — on the stated reasoning that depth is not sensitivity and a list
+  of dangerous directories has a silent first omission. What *is* refused is a
+  grant reaching a path sandbx owns, which is a fact about sandbx's own state
+  rather than a list that can be incomplete. Worth pairing with the entry above:
+  both are cases where the policy is precisely what was asked for and the ask
+  was the problem.
+- **`/proc` inside the sandbox shows host PIDs.** Not remounted for the new
+  namespace, because that needs `mount(2)`, which the filter denies — so a
+  command reads `getpid() == 1` while `/proc/self/stat` reports its host pid,
+  and one building `/proc/<getpid()>` by hand reads a different process.
+  Disclosed as a compatibility limitation rather than a boundary claim, and that
+  is the right reading: it leaks host numbering, not access. It is also the one
+  route by which the confined command can read its supervisor's command line,
+  which is how the policy is visible from inside at all — see
+  [06](06-claims-and-non-claims.md).
 
 The two that left are worth reading as a pair, because they left for opposite
 reasons. **Sequential tool execution** (#242) was documented in
@@ -418,7 +468,9 @@ ordinary outcome and not a rare one.
   stated principle points the other way — not the digest, which is already in
   the process's own command line, but the fact that it was checked, because that
   is what an auditor cannot otherwise recover — and a command line is gone at
-  exit. The gate already caps and strips a subject for display (#234).
+  exit. The machinery for a bounded field is already in the repo, the gate
+  capping and stripping a subject for display, so what is missing is the
+  decision rather than the code; #234 is the same omission seen from the pane.
 - **A gate refusal reaches nothing on the audit target.** **Partly answered.**
   [decision-approval-gate.md](../decision-approval-gate.md) is sound about why
   a denial is not an access and so has no access to record;
@@ -610,8 +662,10 @@ did.
 ## From an objection to a filed issue
 
 This chapter files nothing, and that is deliberate: the step between an
-objection and an issue is a human one. [`CLAUDE.md`](../../CLAUDE.md) sets the
-path.
+objection and an issue is a human one. [`CLAUDE.md`](../../CLAUDE.md) sets part
+of the path — the labels, the milestones, and the two prohibitions at the end.
+The first and last steps below are house convention rather than a rule you can
+read off a file in the repo, which is worth knowing before you rely on either.
 
 1. **Draft it, and wait.** The maintainer's okay comes before `gh issue create`,
    not after. An objection that has not been agreed is a paragraph in a chapter,

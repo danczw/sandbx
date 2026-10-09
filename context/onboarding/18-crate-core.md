@@ -2,9 +2,11 @@
 
 `sandbx-core` is the largest crate in the workspace — thirty-six source files —
 and it is the whole left-hand column of
-[04 — the architecture](04-the-architecture.md). Every box in 04's View 1 lives
-here: `FsGuard`, `spawn::command`, both helper stages, the ruleset, the filter.
-Both of View 3's enforcement seams are files in this crate. And it is the only
+[04 — the architecture](04-the-architecture.md). Three of the four boxes in 04's
+View 1 live here — `FsGuard` and both helper stages, and so the ruleset and the
+filter the inner one installs. The fourth is the box the other six crates
+divide between them: argv, the model, the decisions, the trail. Both of View 3's
+enforcement seams are files in this crate. And it is the only
 crate whose `src/` may build a `std::process::Command` at all, which
 [05 — seven crates](05-seven-crates.md) takes apart in detail.
 
@@ -51,8 +53,8 @@ third column.
 | [`error.rs`](../../crates/sandbx-core/src/error.rs) | `SandboxError`, `Access`, and the label the trail is filtered by | below |
 | [`error/refusal.rs`](../../crates/sandbx-core/src/error/refusal.rs) | `HelperRefusal`, and the one place the two sets are mapped | below |
 | [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs) | a standalone helper binary, so the enforcement path tests end to end | below |
-| `helper/seccomp/tests/` | five unit-test files plus the `eval` interpreter they read the filter through | [10](10-seccomp.md) |
-| `helper/ruleset/tests/` | six unit-test files, all kernel-free | [09](09-landlock.md) |
+| `helper/seccomp/tests/` | four unit-test files, plus a `mod.rs` holding the `eval` interpreter they read the filter through and tests of its own | [10](10-seccomp.md) |
+| `helper/ruleset/tests/` | five unit-test files, all kernel-free, over a `mod.rs` that holds only their shared fixtures | [09](09-landlock.md) |
 
 Two naming traps. `resolver.rs` *renders* three files and is pure apart from the
 lookups, while `helper/resolver.rs` *mounts* what the first produced; the
@@ -209,13 +211,19 @@ things about that funnel are easy to miss having read only 12.
 | `granted_paths` | `impl Iterator<Item = (Axis, &VettedPath)>` | one pair per *grant*, not per path, in `Axis::ALL` order — a path granted on two axes appears twice |
 | `working_root` | `Option<&Path>` | the first writable **directory**, else the first readable one |
 | `allowed_env` | `&[String]` | names only, "never values; the value is read at spawn time from the harness" |
-| `imposed_env` | `&'static [(&str, &str)]` | the one place a value is implied, and only because it is a compile-time constant |
+| `imposed_env` | `&'static [(&'static str, &'static str)]` | the one place a value is implied, and only because it is a compile-time constant |
 | `permits_env` | `bool` | the single answer `spawn::command` and the helper's inherited-environment check share |
 
-`granted_paths` is the one to internalise, because two consumers are built on
-it: `FsGuard::new` folds it into two lists through `axis.grants()`, and
-`AuditEvent::spawned` derives its per-axis counts the same way, so a new axis
-reaches both without either growing a table of its own. `working_root`
+`granted_paths` is the one to internalise, because the enforcement path on both
+sides of the argv seam is built on it: `FsGuard::new` folds it into two lists
+through `axis.grants()`, `helper_args.rs` encodes the argv off it, and
+`rights.rs` builds one Landlock rule per pair it yields, in its order. A new
+axis reaches all three without any of them growing a table of its own, which is
+why `tests/policy.rs` calls a pair dropped here a permission bug rather than a
+reporting one. `AuditEvent::spawned` is pointedly *not* one of them: it matches
+`Axis::ALL` by hand and asks `paths(axis).len()` per arm, and there it is the
+exhaustive match, not a shared iterator, that makes a new axis fail to compile
+(#51). `working_root`
 deliberately does *not* take its first entry, because that order puts `Read`
 first and `ReadExecute` last, "which would start a writable run read-only, or
 one granted only execute inside the system binaries" — and it insists on a
@@ -234,16 +242,21 @@ on *both* sides of the argv seam, in `SandboxedCommand::command_line` and again
 in `HelperArgs::decode`. `grant_bound_by_resolver` reads the filesystem, so
 `decode` cannot ask it without giving up the no-I/O property
 [12](12-a-flag-to-a-kernel-rule.md) calls the invariant the whole trace rests
-on. Its doc says so, and names what covers the gap: an entry retargeted after
-the harness looked "fails closed — the pair is kept, and the pin refuses the run
-in the helper."
+on. Its own doc says exactly that. What covers the gap is named a level down, on
+the free `bound_by_resolver` in `resolver.rs`: an entry retargeted after the
+harness looked "fails closed — the pair is kept, and the pin refuses the run in
+the helper."
 
 `unbounded_resolution` is also where the threat model for `--allow-dns` can be
 read off one function. It names four routes to a nameserver that would leave a
 name allowlist holding nothing: `--dns-over-tcp`, a pathname unix socket (glibc
 asks nscd before it reads `nsswitch.conf`), `AnyPort`, and an allowlist
-containing `NAMESERVER_PORT`. `Grants::policy` in the CLI refuses four *other*
-shapes; this one is "the fifth, pointless rather than unenforceable".
+containing `NAMESERVER_PORT`. `Grants::policy` in the CLI refuses five, and they
+are not a disjoint set: four of them are these four, raised as a hard error
+instead of a report, and the fifth — a name allowlist with no egress at all —
+has no counterpart here. So the CLI is the stricter of the two on the same
+ground, and what `unbounded_resolution` is for is the embedder who never passes
+through `Grants::policy`.
 
 ## `resolver.rs` — three files, and no nameserver in the loop
 
@@ -272,12 +285,14 @@ directions, including that the *directory* holding a bound file is not reported
 — a bind leaves its inode alone, which is why `--allow-read /etc` collides with
 nothing while `--allow-read /etc/hosts` is refused.
 
-### `files` is the only impure call, and its position is forced
+### `files` is the only call that touches the network, and its position is forced
 
 `files(policy)` returns `None` when the policy bounds nothing, keeping a run
 with no `--allow-dns` off the mount path entirely. Otherwise it resolves every
 allowlisted name through `getaddrinfo` and renders the three bodies — so where
-it is called from is a constraint rather than a preference. In
+it is called from is a constraint rather than a preference. `bound_by_resolver`
+is impure too, but only of the filesystem: it `canonicalize`s each of the three
+names, which is why a retargeted entry has to fail closed somewhere else. In
 [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs),
 `prepare_supervisor` calls it as its first real statement, above the comment
 that says why:
@@ -550,11 +565,15 @@ model inside a `tool_result`.
 
 Crate-private, exhaustive, and the only place the two sets are related. The
 `None` arm is a single match arm covering eleven variants, carrying a comment
-that gives the reason *per variant* — `ProcessConcealment` is decided past
-dispatch, which no helper runs (#192); `RootReplaced` is `FsGuard`'s per-access
-measurement; `UnboundedResolution` and `GrantBoundByResolver` are decided off
-the policy before the spawn. That comment is the closest thing the repo has to a
-written-out criterion, and it sits beside the code it governs.
+that names six of them individually — `HelperRefused` is the relay's own output,
+so reporting it would be a second crossing; `ProcessConcealment` is decided past
+dispatch, which no helper runs (#192); `GrantUnpinnable` is the harness's own
+vetting; `RootReplaced` is `FsGuard`'s per-access measurement;
+`UnboundedResolution` and `GrantBoundByResolver` are decided off the policy
+before the spawn. The other five it leaves to the arm's opening clause, that
+each is decided by the parent or `FsGuard` and never the helper. That comment is
+the closest thing the repo has to a written-out criterion, and it sits beside
+the code it governs.
 
 Five tests hold the two sets together, and the division of labour between
 compiler and test is the thing to carry away: the exhaustive match makes a new

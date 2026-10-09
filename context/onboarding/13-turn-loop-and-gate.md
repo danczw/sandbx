@@ -182,7 +182,9 @@ runtime drives, and why the trait has no `async fn`.
 ## Argv is the ceiling, and it is asked first
 
 [`cli/src/agent/gate.rs`](../../crates/sandbx-cli/src/agent/gate.rs) holds the
-only gate that ships — see `ArgvGate`. Its `approve` is three decisions in a
+only gate that asks — see `ArgvGate`. The other two that ship decide without
+asking: `RefuseAll` in `wrapup.rs` only refuses, and `tui::Gate` is a one-line
+delegate to this one. Its `approve` is three decisions in a
 fixed order, and the order is the design.
 
 **First, argv.** `--allow-tool` is the ceiling: a tool no flag approved is
@@ -630,7 +632,7 @@ either. [22](22-crate-session.md) is where the stored shapes live.
 The exit code does not come out of the merge. `ending` is derived from the
 *first* turn's `TurnStop::RoundLimit` before the second request is sent, so the
 merged `stop: Answered` never reaches it, and `finish` returns `INCOMPLETE` for
-any `ending` at all. The three cap variants — `CutShort`, `Summarised` and
+any cap `ending`. The three cap variants — `CutShort`, `Summarised` and
 `Discarded` — exit the same 2 and differ only in the stderr line they write,
 which is the split the record chose deliberately: `2` means a bound cut the turn
 short, not that anything failed, and the answer on stdout may be complete and
@@ -715,7 +717,7 @@ Two orderings around it are load-bearing in the same way:
   [`cli/src/agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) — see
   `ending` — maps `GateAborted` to the same code ahead of the bounds, and its
   comment points back at `render.rs` so the two cannot drift apart silently.
-- **`tui` also reaches 3 by a route `GateAborted` never takes.** `Keys::listen`
+- **`tui` also reaches 3 by a route `GateAborted` never takes.** `keys.stop()`
   races the turn itself in a `tokio::select!`, and a hung-up screen or keyboard
   resolves that race as `Stopped::Gone` before the turn ever produces a
   `TurnStop` — the turn's future is dropped where it stood, the same as an

@@ -218,9 +218,16 @@ attempt gets wrong.
   because every argument these rules examine is read by the kernel as a 32-bit
   value — `clone`'s flags through `lower_32_bits`, `socket`'s three `int`s,
   `sendmsg`'s `int flags`. A 64-bit compare would consult register bits no
-  kernel check ever sees, so `clone(0x1_0000_0000 | CLONE_NEWUSER)` would walk
-  past a rule that named the flag. That is
-  `the_clone_flag_comparison_ignores_the_high_half`.
+  kernel check ever sees, so `socket(0xdeadbeef_00000001, …)` — which the kernel
+  dispatches as `AF_UNIX` — would walk past a `Qword` rule that named the
+  family. That is `the_af_unix_test_ignores_the_domains_high_half`, with
+  `the_protocol_rules_ignore_the_arguments_high_half` beside it. Both are
+  equality rules, which is where the width bites: `Eq` and `Ne` compile against
+  the high half directly. A *masked* rule such as `clone`'s flag test is
+  width-insensitive by accident — `seccompiler` emits `high & (mask >> 32)` for
+  it, and every mask here fits in 32 bits, so the extra compare is vacuously
+  true. `the_clone_flag_comparison_ignores_the_high_half` therefore pins the
+  convention rather than a behaviour that would change without it.
 
 The rules must also not cost an ordinary `fork`, which is `clone` with no
 namespace flag at all, or a thread, which is `CLONE_VM | CLONE_FS |
@@ -412,9 +419,15 @@ appear somewhere in this file will not find it.
 
 The other two variants get *none* of the five classes below, which makes the
 strictest policy carry the fewest socket rules of the three — an inversion worth
-having a reason for. `Denied` is already in an empty network namespace, where a
-datagram has nowhere to go, so the rules would add no confinement while costing
-`getaddrinfo` the `AF_NETLINK` socket it opens.
+having a reason for. `Denied` is already in an empty network namespace, where an
+*IP* datagram has nowhere to go, so the rules would add no confinement over IP
+while costing `getaddrinfo` the `AF_NETLINK` socket it opens. Over IP is the
+limit of that argument: `AF_VSOCK` is not network-namespace scoped, so a
+`SOCK_STREAM` vsock to the hypervisor is creatable and dialable under `Denied`
+on a VM host, where under `Ports` the family rule refuses it. `SECURITY.md`
+scopes its claim to IP egress for this reason, and
+[decision-port-allowlist.md](../decision-port-allowlist.md) prices the vsock the
+family rule costs an allowlist.
 `a_denied_policy_permits_udp_in_an_empty_netns` covers a UDP socket and both
 netlink types, `netlink_create` accepting either. `AnyPort` asked for
 unrestricted egress, and narrowing it would make *that* flag the lie —
@@ -507,8 +520,9 @@ Four pieces of shape in that table repay attention:
 - **A socket's family does not stay fixed at `socket` time.**
   `setsockopt(fd, SOL_TCP, TCP_ULP, "smc")` on exactly the shape the allowlist
   permits runs `smc_ulp_init`, which reassigns the file's private data so a
-  later `connect` dispatches into a path that calls `sock->ops->connect` without
-  the LSM hook — no Landlock check, any TCP port. Nothing privileged is
+  later `connect` dispatches to `smc_connect`. The hook still runs — it is an
+  ordinary `connect(2)` — but `sk_is_tcp` is false for the `PF_SMC` sock, so
+  Landlock returns 0, meaning unrestricted: any TCP port. Nothing privileged is
   involved. So the denial is a second rule on a second syscall rather than a
   wider version of the family rule, and it names the *option* and not the ULP,
   `optval` being behind a pointer. That costs in-process kTLS, and it is

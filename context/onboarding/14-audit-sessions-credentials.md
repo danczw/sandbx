@@ -207,14 +207,14 @@ principle worth remembering:
   any command was. The guide's rule is "metadata only, never output… output is
   where secrets live", which is sound about output and is doing different work
   here: a command string is an *input*, chosen by the model, and
-  `/proc/self/cmdline` — the guide's own reason for omitting the digest — is
-  gone the moment the process exits, so this is exactly the class the `pinned`
-  field was added for. The one real counter-argument is width, since a record of
-  fixed width is one a filter can rely on (#146); but the gate already caps and
-  strips a model-chosen argument to a fixed length for the consent prompt, so
-  the machinery for a bounded `command` field is in the repo and reusable. Under
-  `tui` the gap is visible as a defect rather than an argument, which is what
-  #234 is about.
+  the helper's command line — the guide's own reason for omitting the digest —
+  is gone the moment that process exits, so this is exactly the class the
+  `pinned` field was added for. The one real counter-argument is width, since a
+  record of fixed width is one a filter can rely on (#146); but the gate already
+  caps and strips a model-chosen argument to a fixed length for the consent
+  prompt, so the machinery for a bounded `command` field is in the repo and
+  reusable. Under `tui` the gap is visible as a defect rather than an argument,
+  which is what #234 is about.
 - **Worth questioning:** a gate refusal reaches the audit target at all.
   [decision-approval-gate.md](../decision-approval-gate.md) states it plainly —
   "No audit record either. `AuditEvent::Denied` records what the sandbox refused
@@ -539,7 +539,10 @@ guide is careful about what that does and does not buy:
 
 Now the part that matters for the agent. **A sandboxed tool is handed no
 credential at all.** The environment a `bash` call runs in is the
-`--allow-env` allowlist and nothing else, and one name is refused outright:
+`--allow-env` allowlist and one imposed pair — `spawn::command` adds
+`policy.imposed_env()`, which is `RES_OPTIONS=use-vc` under `--dns-over-tcp` and
+empty otherwise, the single place a *value* rather than a name crosses, and only
+because it is a compile-time constant. One name is refused outright:
 
 ```rust
 /// Checked before the file, and the one name `agent-run` refuses to `--allow-env`

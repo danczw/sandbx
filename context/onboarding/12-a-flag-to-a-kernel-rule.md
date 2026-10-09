@@ -317,8 +317,9 @@ order `fs_rules` will build rules in at stage 5. The four `--rx` entries are
 a typed flag reaches, which is why `/bin`, `/lib` and `/lib64` arrive spelled
 `/usr/bin`, `/usr/lib` and `/usr/lib64` on this host: a grant has to name what
 it opens. And every `--env` token is a *name*, with no value anywhere on the
-line — the confined command reads its own `/proc/self/cmdline`, so a value here
-would be a disclosure to the process the policy is about.
+line — this argv is readable from inside the sandbox, off the stage-1 helper's
+`/proc/<pid>/cmdline` as above, so a value here would be a disclosure to the
+process the policy is about.
 
 One thing the argv deliberately does not carry is where the command starts.
 `output` chdirs to the policy's `working_root` — [18](18-crate-core.md) has the
@@ -423,8 +424,9 @@ the left-hand branch, with its measure-then-open guard, does not.
 
 `restrict_self()` installs the ruleset and
 `enforcement_verdict(status.ruleset)?` reads the result: under the
-`HardRequirement` compatibility level set at the top of `apply`, a ruleset the
-kernel took only partly is an error rather than a quietly weaker sandbox.
+`HardRequirement` compatibility level, set on the `Ruleset::default()` builder
+as the first call in its chain, a ruleset the kernel took only partly is an
+error rather than a quietly weaker sandbox.
 
 ## The no-flag default, and why a flag replaces it
 
@@ -767,8 +769,8 @@ digest *had* to match and not that it did; whether it did is the second record
 of the pair, an `exited` against a `failed` carrying `reason="pin_mismatch"`.
 That is the same intent-not-outcome reading `decision="spawned"` has throughout
 [14](14-audit-sessions-credentials.md). A boolean and not the digest, for a
-reason worth keeping: the digest is already in `/proc/self/cmdline`, and what an
-auditor cannot recover is that it was checked.
+reason worth keeping: the digest is already on the helper's command line, and
+what an auditor cannot recover is that it was checked.
 
 - **Worth questioning:** the script refusal is two bytes wide and the hazard is
   not. `starts_with_shebang` tests for `#!` because that is the format

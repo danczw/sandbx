@@ -62,8 +62,8 @@ and the crate deciding which tool calls happen cannot form an opinion about a
 ## `lib.rs` is thirteen names, and that is the whole API
 
 [`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is fifteen lines: four private
-`mod` declarations and four `pub use` lines, one of them braced over five names
-— which is why the count is read off the items and not off the lines. The
+`mod` declarations and four `pub use` lines, two of them braced, over five names
+and six — which is why the count is read off the items and not off the lines. The
 re-export list *is* the public surface, so group it by what each name is for:
 
 | group | names |
@@ -321,8 +321,9 @@ methods, both synchronous, nothing about a terminal or a flag. **`approve` has
 exactly one call site** — the `let verdict = …` in `answer_calls`, behind the
 abort latch, which [13](13-turn-loop-and-gate.md) takes apart line by line — so
 "nothing runs until the gate has answered" is a property of one expression
-rather than a convention spread across the loop. `settled` has six, one per
-outcome arm above. Both run on the async task, so neither may wait on anything
+rather than a convention spread across the loop. `settled` has six, at least
+one per outcome arm above — `Denied` has two, a refusal and an abort. Both run
+on the async task, so neither may wait on anything
 *the runtime drives* — a tokio primitive, a channel, a lock a task holds — which
 on a current-thread runtime deadlocks the turn being decided. A descriptor no
 task feeds is outside that class, which is what lets `sandbx-cli` read
@@ -557,7 +558,7 @@ enumerate. The other thirty-odd tests are named after single facts —
 ### Nothing in the shipped binary turns it on
 
 Verified in this worktree rather than inferred. The two places that build a
-`TurnLimits` — `AgentRun::execute` in
+`TurnLimits` — `AgentRun::drive` in
 [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs) and the TUI's in
 [`cli/src/agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) — both write
 `max_rounds: …, ..TurnLimits::default()`. A third literal exists and closes the

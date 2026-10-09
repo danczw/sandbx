@@ -254,7 +254,10 @@ composes.
 - **Worth questioning:** the gutter authenticates sandbx's voice and nothing
   authenticates the operator's. `view::gutter` draws two marks: `│ ` on a
   verdict or a note, `> ` on the prompt's first row. `forgeable` covers the
-  first and its confusables; `>` is ASCII and let through deliberately, on
+  first and the confusables somebody enumerated — a hand-written denylist of
+  fourteen codepoints, which is a different thing from every character that
+  draws that cell, and the gap between the two is the shape of the risk rather
+  than a bug in any one entry. `>` is ASCII and let through deliberately, on
   `GUTTER_MARK`'s own reasoning that "`|` or `>` is plausible in prose, and
   stripping either would mangle shell pipelines". For `|` the trade has a
   backstop — the real mark is a different character, and the guide notes that a

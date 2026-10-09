@@ -30,8 +30,8 @@ wrote around it. There is no part of this that the API does for you.
 
 ## A conversation is a list of blocks, not a list of strings
 
-Each element of `messages` carries a `role` — `user` or `assistant`, and those
-are the only two — and a `content`. Content is either a plain string or an array
+Each element of `messages` carries a `role` — `user` or `assistant`, the only
+two sandbx ever sends — and a `content`. Content is either a plain string or an array
 of typed **content blocks** ([the Messages API reference][messages]). Once a
 conversation involves tools it is always the array form, because the things that
 have to be said no longer fit in a string.
@@ -56,7 +56,10 @@ Two things in that table surprise people.
   is the harness.
 - **The system prompt is not a message.** It is a top-level `system` parameter
   beside `messages`, not an element of it ([the Messages API
-  reference][messages]). sandbx omits it entirely when there is none rather than
+  reference][messages]) — the API does take a mid-conversation `system` message
+  in the array ([mid-conversation system messages][midsystem]), for an
+  instruction arriving after a cached prefix, and sandbx sends none.
+  sandbx omits the parameter entirely when there is none rather than
   sending `null`, and the comment in
   [`body.rs`](../../crates/sandbx-providers/src/anthropic/body.rs) says why:
   "the API rejects a null `system`".
@@ -256,7 +259,8 @@ Two instructions in the streaming docs are implemented literally here.
   types gracefully."** Every tagged enum in
   [`payload.rs`](../../crates/sandbx-providers/src/anthropic/wire/payload.rs)
   has a `#[serde(other)]` catch-all variant, and the accumulator's arms for
-  those variants do nothing at all.
+  those variants either do nothing at all or clear what the unknown tag would
+  otherwise have left half-built.
 - **"The token counts shown in the usage field of the `message_delta` event are
   cumulative."** So summing them double-counts. `AgentEvent::Usage` is emitted
   at most once, and its doc in
@@ -307,8 +311,10 @@ downstream needs the seam between two adjacent text blocks, so it is not
 carried.
 
 - **Worth questioning:** an unmodeled tag is dropped *silently*. The
-  `RawStreamEvent::Unknown`, `RawDelta::Unknown` and `content_block_start`
-  catch-all arms all evaluate to nothing, and `sandbx-providers` has no
+  `RawStreamEvent::Unknown` and `RawDelta::Unknown` arms evaluate to nothing
+  and the `content_block_start` catch-all discards any block open at that
+  index — so an unknown start drops accumulated state, not just a frame — and
+  `sandbx-providers` has no
   `tracing` dependency at all, so there is no emitter that could record the
   drop. Skipping is right, and upstream asks for exactly that; what neither
   record prices is skipping it with nothing recorded.
@@ -340,10 +346,15 @@ every message before the block.
 
 Two facts turn that check into something a harness has to handle rather than
 opt out of. The first is that reasoning is **on by default**: on current models
-there is no `thinking` field in the request at all and `display` defaults to
-omitted ([extended thinking][extended]), so every assistant turn already arrives
+thinking "is already on and needs no configuration" and `display` defaults to
+`"omitted"` ([thinking][adaptive]), so an assistant turn normally arrives
 carrying a `thinking` block with an empty text and a real signature, whether or
-not anyone asked to see reasoning. The second is that breaking the rule *inside*
+not anyone asked to see reasoning. Normally, not always: sandbx sends
+`type: "adaptive"`, and the same page says that when the model skips thinking
+for a simple request "no thinking block is produced regardless of `display`" —
+so a harness has to handle the block's absence as well as its presence, which
+is why `accumulate.rs` keys off what arrived rather than off what was asked for.
+The second is that breaking the rule *inside*
 a turn does not announce itself.
 [decision-thinking-replay.md](../decision-thinking-replay.md) exists because
 sandbx was breaking it on every multi-round turn — parsing the `signature_delta`
@@ -627,4 +638,6 @@ one.
 [streaming]: https://platform.claude.com/docs/en/build-with-claude/streaming
 [thinking]: https://platform.claude.com/docs/en/build-with-claude/preserved-thinking
 [extended]: https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+[adaptive]: https://platform.claude.com/docs/en/build-with-claude/thinking
+[midsystem]: https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages
 [tool-use]: https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls

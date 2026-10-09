@@ -45,16 +45,19 @@ Four things about that shape are worth more than the picture.
   kernel, `sandbx-providers` owns the wire, `sandbx-session` owns the disk. None
   of the three can name another's types, which is why a stored transcript is not
   a `Prompt` and a `SandboxPolicy` is not a request body. The module doc on
-  [`session/src/lib.rs`](../../crates/sandbx-session/src/lib.rs) says the
-  consequence out loud — the stored shapes are declared there rather than
-  imported, because a file format that moved whenever a provider type moved
+  [`session/src/message.rs`](../../crates/sandbx-session/src/message.rs) says
+  the consequence out loud — the stored shapes are declared again there rather
+  than imported, because a file format that moved whenever a provider type moved
   would not be a file format.
 - **`sandbx-cli` is the only crate that depends on all the others, and the only
-  one that ships a binary.** Everything converges there because that is where
+  one whose binary is the shipped artifact.** `sandbx-core` builds a standalone
+  `sandbx-helper` and a row of probes beside it, all test support. Everything
+  converges in the CLI because that is where
   argv becomes a policy and a policy becomes a run. 04's *The CLI architecture*
   section covers the lib-plus-bin split.
 - **`sandbx-tui` reaches `sandbx-providers` for the vocabulary, not the
-  transport.** The only names it borrows are `AgentEvent` and `StopReason` — see
+  transport.** The only names it borrows are `AgentEvent`, `StopReason` and
+  `invisible`, the terminal-safety predicate — see
   [`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs). No client, no
   credential, no policy. The screen folds events it is handed; it never opens a
   stream.
@@ -287,8 +290,8 @@ error: use of a disallowed method `std::process::Command::new`
   = note: requested on the command line with `-D clippy::disallowed-methods`
 ```
 
-That command is the whole gate, and it runs in two places: the first line of
-[`.githooks/pre-commit`](../../.githooks/pre-commit) states that all three of
+That command is the whole gate, and it runs in two places: a comment at the top
+of [`.githooks/pre-commit`](../../.githooks/pre-commit) states that all three of
 its commands are byte-identical to CI's Format, Clippy and Doc steps, so the
 hook and CI cannot disagree about this one. It is also why
 [`SECURITY.md`](../../SECURITY.md) words the non-claim as "spawning a process
@@ -376,8 +379,10 @@ thinking in a single line, and it generalises past clippy:
   beside it are the only place in the tree that states "this is the only
   `Command::new` in any crate's `src/`" next to the line that makes it true. A
   grep for `disallowed_methods` across the tree turns up a handful of allows
-  under `crates/*/tests/`, which are separate crates driving the built binary,
-  and exactly one under any `src/`. That ratio is checkable in one command,
+  under `crates/*/tests/` — separate crates, mostly driving the built binary,
+  a few spawning what std cannot do itself (`mkfifo` for a named-pipe fixture,
+  `/usr/bin/id` as a subject to confine) — and exactly one under any `src/`.
+  That ratio is checkable in one command,
   which is the point.
 - **The lint is the backstop, not the record.** `guide-repo-map.md` makes the
   comparison explicitly: a CI grep for `Command::new` would be a second
