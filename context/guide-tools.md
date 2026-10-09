@@ -189,6 +189,11 @@ UTF-8, and one the guard or the host refused to open all leave part of the tree
 unsearched, and the caller's one move — narrow the search — is the same for each
 (#274). A skip that went unmarked read as a tree with no match in it.
 
+The cost is that the marker is close to always on at a repo root, a checkout's
+pack files being both oversized and not text, and narrowing the path does not
+clear it. It still reports the truth about those bytes; it carries less
+information than the budget markers do.
+
 ## Sync, and staying that way
 
 Tools are synchronous. The boundary itself, and what a cancelled turn still
