@@ -75,10 +75,11 @@ pub struct Grants {
 
     /// Let a sandboxed command open unix-domain sockets.
     ///
-    /// All of them, not a chosen one — the kernel cannot scope this per path
-    /// below Landlock ABI V9. That includes an ssh-agent, a docker socket or
-    /// the session bus if the filesystem policy can reach them, so what it can
-    /// read still bounds what it can dial.
+    /// All of them, not a chosen one, and below Landlock ABI V9 (Linux 7.1) the
+    /// kernel cannot scope this per path at all: an ssh-agent, a docker socket
+    /// or the session bus is reachable whether or not a grant names it. At V9
+    /// the flag covers the granted paths, and then what it can reach bounds
+    /// what it can dial.
     #[arg(long = "allow-unix-sockets")]
     allow_unix_sockets: bool,
 

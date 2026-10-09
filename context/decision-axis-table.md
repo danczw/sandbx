@@ -43,7 +43,10 @@ variable name, so a fourth variant would have to carry a `Grants` value where al
 three fields are meaningless and every `fs_rules` / `FsGuard` consumer would need
 a special case to skip it. The structural precedent is the `network` and
 `unix_sockets` toggles, which are policy fields with their own accessors and are
-not rows either; the environment is the same shape, as a list rather than a bool.
+not rows either — `unix_sockets` confers a Landlock right all the same, through
+`fs_rules` rather than through an axis, as `--allow-dns` does through
+`resolver_paths`, which is why neither needs to be one. The environment is the
+same shape again, as a list rather than a bool.
 
 The cost of staying off the table was that nothing *forced* a site to notice it.
 While the four `env::restrict` calls were hand-written, a fifth spawn site added
@@ -69,8 +72,9 @@ narrowed. One site to delete, 24 failures when it goes. See
 
 ```
 read  = from_read(abi) & !Execute
-write = from_all(abi)  & !from_read(abi)
+write = from_all(abi)  & !from_read(abi) & !ResolveUnix
 exec  = read | Execute        ← so read | Execute == from_read(abi)
+unix  = from_all(abi)  &  ResolveUnix    ← from the flag, not from an axis
 ```
 
 Stated as what each axis *removes* from the kernel's own sets, not as an
@@ -85,15 +89,44 @@ a new right the kernel does not put in `from_read` is *conferred* by
 there is. Subtracting the whole read set rather than `Execute` alone is what buys
 it: one bit less and a write grant confers read at the kernel that `FsGuard`
 refuses, leaving the write-only drop directory readable (`rights_for`'s `///`).
-`ResolveUnix` is the worked example rather than a hypothetical — it arrived at
-ABI V9 and joined the write set, which is why
-`each_axis_confers_exactly_the_documented_set` pins the write axis at both ends
-of the range and the two sets differ by exactly that bit. It also reaches a flag:
-on a V9 kernel (Linux 7.1, `LATEST_ABI`) `--allow-unix-sockets` lifts the seccomp
-denial on `socket(AF_UNIX, …)` and Landlock then refuses the `connect` for any
-pathname socket outside a write grant, so a flag documented as all-or-nothing
-acquires a path condition with no line edited, and a command that works today
-fails on a newer kernel with the same flags (#259).
+
+`ResolveUnix` is the worked example rather than a hypothetical, and the one
+exception. It arrived at ABI V9 and joined the write set with no line edited, so
+on the first V9 kernel (Linux 7.1, `LATEST_ABI`) `--allow-unix-sockets` — one
+boolean, documented as all-or-nothing — would have acquired a path condition: a
+pathname socket must sit inside a *write* grant to be dialled, and a command that
+works today fails on a newer kernel with the same flags. #259 subtracted it back
+out and gave the flag the right instead, on every path the policy granted, masked
+by `from_all(abi)` so nothing moves at or below V8.
+
+Four shapes were rejected, and the first is the one someone will re-propose:
+
+- **Leave `ResolveUnix` unhandled while the flag is set.** The only shape that
+  preserves today's behaviour exactly across V8→V9. Fail-open by construction;
+  `compat.rs` forbids precisely that edit; it makes the flag *wider* than
+  documented; and it breaks the probe/apply agreement `compat.rs` keeps
+  policy-independent, so `negotiated_abi` would report V9 while asking for a V8
+  set.
+- **Additive only** — leave the write axis alone and confer on the read axes too.
+  A strict superset of what shipped, differing only in whether a `--allow-write`
+  grant carries the bit with the flag off. Rejected because it gives one bit two
+  sources, where `net_rules` makes a point of being the only place that chooses,
+  and it leaves the worry above live.
+- **Enumerate the write set literally**, for full `net_rules` symmetry. Rejected
+  for a test reason: `each_axis_confers_exactly_the_documented_set` spells its
+  rights out *because* the code derives them. Have the code enumerate too and the
+  test reads the same list, proving only that the code agrees with itself — which
+  `guide-module-layout.md` forbids. The teeth that keeps over the other twelve
+  bits are worth more than the symmetry.
+- **A fourth `Axis` row, or a second rule pair on an existing axis.** The section
+  above rules out a variant whose `Grants` fields are meaningless, and an extra
+  pair breaks the one-rule-per-`(axis, path)` invariant `tests/rules.rs` asserts.
+
+This fixes the instance, not the class: a future write-side right still arrives
+conferred on every `--allow-write` grant.
+`each_axis_confers_exactly_the_documented_set` stays the tripwire, and its two
+columns now read identical, so a new bit on any axis shows up as the two ends of
+the range disagreeing.
 
 Narrowed once more by target kind: a non-directory intersects `from_file(abi)`.
 So the real mapping is `axis × target_is_dir × abi`, and the ABI is a negotiated

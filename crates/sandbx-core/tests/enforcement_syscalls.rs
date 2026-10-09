@@ -61,8 +61,9 @@ fn an_explicit_unix_grant_permits_the_connection() {
     });
 
     let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
-    // The socket's directory must be readable too: the grant lifts the seccomp denial,
-    // it does not bypass the filesystem policy.
+    // Granted for V9, not for today: at the V8 this kernel negotiates nothing conditions a
+    // unix `connect` on the filesystem policy — measured by dropping these two. At V9
+    // `ResolveUnix` is that condition, and `allow_unix_sockets` confers it on granted paths.
     let policy = allow_probe(
         runtime_paths(SandboxPolicy::default().allow_unix_sockets()),
         probe,

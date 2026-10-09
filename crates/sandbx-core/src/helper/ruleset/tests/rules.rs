@@ -199,19 +199,20 @@ fn no_combination_of_grants_confers_execute() {
 /// to differ on without a kernel.
 ///
 /// `handled` ⊆ `union` is not a general invariant: it holds here only because the policy
-/// saturates, one directory on all three axes. Under default-deny, a handled right no grant
-/// reaches is the ordinary case.
+/// saturates every *source* of an fs right — one directory on all three axes, and the
+/// unix-socket flag, which since #259 is the only thing conferring `ResolveUnix`. Drop the
+/// flag and this fails at `LATEST_ABI`, the three axes no longer partitioning `from_all`.
+/// Under default-deny, a handled right no grant reaches is the ordinary case.
 ///
 /// [`Requested`]: super::super::Requested
 #[test]
 fn the_handled_set_and_the_rules_come_from_one_abi() {
     let dir = tempdir();
     let root = root(&dir);
-    let policy = crate::Axis::ALL
-        .into_iter()
-        .fold(SandboxPolicy::default(), |policy, axis| {
-            policy.grant(axis, vetted(&root))
-        });
+    let policy = crate::Axis::ALL.into_iter().fold(
+        SandboxPolicy::default().allow_unix_sockets(),
+        |policy, axis| policy.grant(axis, vetted(&root)),
+    );
 
     for abi in [BASELINE_ABI, LATEST_ABI] {
         let requested = requested_at(&policy, abi);
@@ -259,5 +260,66 @@ fn the_handled_set_and_the_rules_come_from_one_abi() {
         at_ceiling.contains(AccessFs::ResolveUnix) && !at_floor.contains(AccessFs::ResolveUnix),
         "ResolveUnix is the one right that differs across the negotiable range, \
          and it no longer does — this test needs a new discriminator"
+    );
+}
+
+/// The flag, and nothing else, is what puts `ResolveUnix` on a rule — two policies differing
+/// only in it, over every axis and both target kinds.
+///
+/// The half that matters is the *present* half: the mechanism's own failure mode is the bit
+/// going missing, so a test that only asserted its absence would pass on a `fs_rules` that
+/// never conferred it at all. `ResolveUnix` is spelled out rather than read off
+/// `unix_socket_rights`, which would only prove that function agrees with itself.
+#[test]
+fn the_unix_socket_flag_is_what_confers_resolve_unix() {
+    let dir = tempdir();
+    let root = root(&dir);
+    let file = plain_file(&dir);
+
+    for axis in crate::Axis::ALL {
+        for target in [&root, &file] {
+            let without = SandboxPolicy::default().grant(axis, vetted(target));
+            let with = SandboxPolicy::default()
+                .allow_unix_sockets()
+                .grant(axis, vetted(target));
+
+            assert!(
+                !rule(&without, axis, target).contains(AccessFs::ResolveUnix),
+                "{axis:?} on {} dials sockets with the flag unset",
+                target.display()
+            );
+            assert!(
+                rule(&with, axis, target).contains(AccessFs::ResolveUnix),
+                "{axis:?} on {} cannot dial a socket beneath a path the flag covers",
+                target.display()
+            );
+        }
+    }
+}
+
+/// The ABI mask, which is the one way to get #259's fix wrong: `PathBeneath` refuses a rule
+/// whose rights exceed the handled set outside `CompatLevel`, so conferring `ResolveUnix`
+/// unmasked would refuse every run on every kernel shipping today rather than narrow a grant.
+///
+/// Implicitly covered by [`the_handled_set_and_the_rules_come_from_one_abi`], but as the
+/// complaint "the kernel handles a right no grant confers" — which points at the opposite bug.
+#[test]
+fn the_flag_confers_nothing_below_the_abi_that_has_the_right() {
+    let dir = tempdir();
+    let root = root(&dir);
+    let policy = crate::Axis::ALL.into_iter().fold(
+        SandboxPolicy::default().allow_unix_sockets(),
+        |policy, axis| policy.grant(axis, vetted(&root)),
+    );
+
+    let rights = union(&policy, &root, BASELINE_ABI);
+
+    assert!(
+        !rights.contains(AccessFs::ResolveUnix),
+        "the floor's rules carry a right the floor cannot handle, so every grant is refused"
+    );
+    assert!(
+        rights.contains(AccessFs::WriteFile),
+        "the floor's rules carry nothing, so the assertion above holds for the wrong reason"
     );
 }

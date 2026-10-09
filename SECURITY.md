@@ -35,7 +35,7 @@ through `SandboxedCommand`:
 | entry point | SHA-256 over the descriptor the helper execs, when `--pin-sha256` names a digest | the bytes of the one program sandbx executes, not what it spawns — hashed through the descriptor it then execs, so no path is re-resolved between check and `execve`. A mismatch refuses the run before anything executes, as does an image a pin cannot cover: a `#!` script, or a program granted execute but not read ([context/decision-pinned-entry-point.md](context/decision-pinned-entry-point.md)) |
 | network | an empty network namespace; or, with a port allowlist, Landlock TCP port rules plus seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion, TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when granted per port |
 | name resolution | with `--allow-dns NAME`: the files every resolver reads — a `hosts` sandbx resolved before the command started, `nsswitch.conf` with no `dns` source, a nameserver-less `resolv.conf` — bind-mounted read-only over `/etc` in the command's own mount namespace | which names resolve, nothing about which hosts are reachable. An unlisted name does not resolve, immediately rather than by timeout, and no nameserver is left to ask instead — see *[What `--allow-dns` bounds](#what---allow-dns-bounds)* |
-| unix sockets | seccomp-bpf on `socket(AF_UNIX)` | pathname sockets, denied unless granted |
+| unix sockets | seccomp-bpf on `socket(AF_UNIX)`, plus Landlock `ResolveUnix` on every granted path where the kernel handles it — ABI V9, Linux 7.1 | whether the command may open a unix socket at all: one boolean, never a chosen path. *Which* pathname socket it may dial is bounded by the filesystem policy at V9 only; below V9 nothing bounds it, and a socket whose path the command knows is reachable with no grant naming it — see *[What sandbx does not claim](#what-sandbx-does-not-claim)* |
 | environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`), then the constants `SandboxPolicy::imposed_env` sets | which variables the command *inherits*; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross. Not the whole of what it holds: `--dns-over-tcp` imposes `RES_OPTIONS=use-vc` with no `--allow-env` naming it, so the child's environment is the allowlist plus a set of compile-time constants. `permits_env` — allowlisted or imposed — is the predicate `spawn::command` builds and the helper's inherited-environment check asks |
 | syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, mounting, loading code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`, whole-host state — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (bounding set best-effort — see below) |
@@ -358,12 +358,15 @@ architecture the filter gates on.
   is no longer isolated by the netns, leaving only the `socket(AF_UNIX)` denial
   (which `--allow-unix-sockets` lifts) in front of it. Narrower on remote ports,
   wider on what is local.
-- **Unix sockets are all-or-nothing.** `--allow-unix-sockets` grants *every*
-  pathname socket the filesystem policy can reach — an ssh-agent, a docker socket,
-  the session bus — not a chosen one. seccomp cannot follow the pointer to
-  `connect`'s path, and Landlock gained a path-scoped right only in ABI V9
-  (Linux 7.1), not available in practice. What the command can *read* bounds
-  which sockets exist to be dialled.
+- **Unix sockets are all-or-nothing.** `--allow-unix-sockets` is one boolean, not
+  a chosen path: it grants *every* pathname socket the command can reach — an
+  ssh-agent, a docker socket, the session bus. seccomp cannot follow the pointer
+  to `connect`'s path, so the filesystem policy is the only thing that could
+  narrow it, and below Landlock ABI V9 (Linux 7.1) it does not: Landlock has no
+  traversal right there, so a hardcoded `/run/docker.sock` is dialable holding no
+  grant that names it. At V9 the flag confers `ResolveUnix` on the paths it
+  granted, and then — and only then — what the command may reach bounds what it
+  may dial. Every kernel shipping today is below V9.
 - **A variable you pass through is passed in full.** The allowlist is by *name*:
   `--allow-env GH_TOKEN` hands the command the value the harness holds, verbatim.
   No redaction, no partial value, no per-tool scoping, and every process the
