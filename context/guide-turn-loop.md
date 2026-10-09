@@ -103,8 +103,10 @@ that already went out — a cache read is a real prompt token, so counting `inpu
 alone under-reads a long cached conversation badly. An unreported counter sums as zero;
 the API omits the cache fields entirely when no cache was involved, and reading that as
 "unknown" would switch compaction off for every uncached request. No measurement at all
-means no compaction, so it can never fire on a turn's *first round* — see the third
-property below for why that is a weaker claim than "a conversation's first turn".
+means no compaction, so it cannot fire before some request has been measured. Which is
+not the same as a turn's first round: `Turn::observed` is the caller's, so a turn handed
+the previous turn's figure plans its cut before its own first request goes out — see the
+third property below.
 
 **Both halves have to be threaded back, not just the usage.** `TurnOutcome::withheld`
 goes into the next `Turn::withheld`, where it is the *floor* for the next cut: this turn
@@ -202,7 +204,9 @@ Three properties that are easier to state than to infer:
   This is the only in-turn bound there is — `produced` grows the request as the turn goes
   round — and it holds whatever was threaded in: a turn compacts on its own figure from
   round two whether it was handed a floor or not. "No measurement means no compaction"
-  therefore bounds a turn's **first round**, not the whole turn.
+  therefore bounds **a request nothing has measured**, not a position in the turn: a
+  turn handed `observed` compacts on its own round zero, which
+  `a_turn_over_budget_sends_only_the_recent_messages` is.
 
 ### Reasoning blocks are the one thing a deepened cut edits
 
@@ -309,7 +313,7 @@ filesystem still does not.
 
 Tools are synchronous. `run_turn` is the sole `spawn_blocking` site, which keeps
 the sync/async boundary in one place rather than spreading `async` through seven
-tool bodies that do blocking I/O anyway. `answer_calls` runs them sequentially.
+tool bodies that do blocking I/O anyway. `answer_calls` runs them sequentially (#242).
 
 **A cancelled turn still runs its tool.** Dropping the `run_turn` future drops the
 `JoinHandle` while the blocking task runs to completion — so a turn abandoned

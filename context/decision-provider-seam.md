@@ -51,9 +51,11 @@ there are:
   as `TurnOutcome::round_stop` (#190), and does not re-export it — one path to one
   type. That is the test of the neutrality above, passed because nothing outside
   `anthropic/` can build one from a wire string.
-- `ProviderError::ApiError` carries `transient: bool` and `is_retryable` reads only
-  that. Which codes and statuses are worth retrying is per-adapter, and the two
-  construction sites in `anthropic.rs` are what decide.
+- `ProviderError::ApiError` carries `transient: bool`, and for that variant
+  `is_retryable` reads nothing else — a transport failure and a rate limit are
+  retryable on their own. Which codes and statuses are worth retrying is
+  per-adapter, and the two construction sites, in `anthropic.rs` and
+  `anthropic/wire/accumulate.rs`, are what decide.
 
 The weakness this leaves, stated rather than designed around: with one adapter the
 neutral shape is informed by one wire format, so a second backend will still move

@@ -136,7 +136,7 @@ the ladder walk in one process.
 ## `apply` sequence
 
 ```
-set_no_new_privs()        ◄── seccomp will not install without it
+set_no_new_privs()        ◄── required before seccomp; Landlock sets it itself
 deny_dangerous_syscalls(policy)
 requested(policy)  ──► Requested { handled, rules, net }   ◄── negotiates internally
   handle_access(handled)
@@ -148,9 +148,17 @@ restrict_self()
 enforcement_verdict()
 ```
 
-Order is required, not incidental. `apply` is the one place all three mechanisms
-are sequenced; seccomp precedes Landlock because the filter needs `no_new_privs`
-first.
+`apply` is the one place all three mechanisms are sequenced, and one order
+*between* them is required: `set_no_new_privs` before seccomp. (Inside Landlock
+there are two more, forced by its API: both `handle_access` calls before
+`create`, and every `add_rule` after it.) Without `no_new_privs` or
+`CAP_SYS_ADMIN` the install fails — `EACCES` from `seccomp(2)`, `EPERM` from
+`landlock_restrict_self(2)` — and this stage holds no capabilities.
+`landlock_restrict_self(2)` has the same precondition and satisfies it itself —
+the `landlock` crate's `restrict_self` calls `try_set_no_new_privs` — and
+neither mechanism restricts the other's setup calls: the denylist names no
+`landlock_*` syscall, and Landlock polices no `seccomp(2)`. So the order between
+seccomp and Landlock is free.
 
 `negotiated_abi` is no longer a step of its own: the handled set and the rules
 have to come from *one* ABI, and `apply` used to derive them from two separate
@@ -211,9 +219,10 @@ than refused.
 Three facts the readback rests on: a task may always read its own `/proc/self/fd`
 (`proc_fd_permission` exempts a same-thread-group reader, which is also why #192's
 dumpable clearing does not reach it, and stage 2 is a fresh `execve` that resets
-the flag anyway); `hardening::isolate` unshares no `CLONE_NEWNS`, so both
-spellings are in one mount namespace; and a grant naming nothing still fails at
-`PathFd::new` with `SandboxError::Landlock`, unchanged.
+the flag anyway); `hardening::isolate` adds `CLONE_NEWNS` only for a policy that
+bounds resolution, so for every other policy both spellings are in the harness's
+own mount namespace; and a grant naming nothing still fails at `PathFd::new`
+with `SandboxError::Landlock`, unchanged.
 
 The mount namespace is the one to be careful with, because `open_grant` runs in
 stage 2 — inside whatever stage 1 unshared, so a mount made there is a mount the
@@ -276,8 +285,13 @@ itself gets its own directory — which that method's doc carries.
 
 ## Syscall denylist
 
-35 entries in `BLOCKED_SYSCALLS`; the filter is built from that list and nothing
-else. Three rungs of evidence, strongest first:
+35 entries in `BLOCKED_SYSCALLS`, which every command gets. The list is where the
+filter starts, not the whole of it: `blocked_syscalls` seeds from it, then adds a
+`clone` rule per flag in `NAMESPACE_CLONE_FLAGS` — unconditional too — and then
+the policy-gated rules: the `socket(AF_UNIX)` denial unless unix sockets are
+granted, and the `Ports` type/family/protocol, `TCP_ULP` and `MSG_FASTOPEN`
+rules. `installed_filters` installs that program, `clone3_filter` and, on
+x86\_64, `x32_gate`. Three rungs of evidence, strongest first:
 
 | Rung | Where | Covers |
 |---|---|---|
@@ -317,7 +331,7 @@ cannot loosen an earlier one.
 
 | Filter | Action | Why not `EPERM` |
 |---|---|---|
-| every entry of the list, the conditional `socket`, `setsockopt`, `sendto` and `sendmsg` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
+| every entry of the list, the conditional `socket`, `setsockopt`, `sendto`, `sendmsg` and `sendmmsg` rules, `clone` with a `CLONE_NEW*` flag | `EPERM` | — |
 | `clone3` | `ENOSYS` | glibc 2.34+ calls it from `pthread_create` and falls back to `clone` only on `ENOSYS`; `EPERM` breaks every threaded program instead of routing it onto the filtered `clone` |
 | any non-negative `nr` carrying `__X32_SYSCALL_BIT`, x86\_64 only | kill | a foreign ABI whose numbers mean something else, so no per-call verdict is meaningful — the same reason the architecture gate kills |
 
@@ -439,8 +453,8 @@ path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 | Gap | Residual |
 |---|---|
 | Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have, and that proxy is declined rather than pending: its interception is cooperation and TLS termination widens the boundary it would narrow, per `decision-egress-proxy.md`. What that note carves out is `--allow-dns NAME`, which bounds which *names* resolve (#145) and is not a destination control: an IP literal, or an address the command already holds, reaches any allowlisted port exactly as before. The UDP denial breaks name resolution, which `--allow-dns` closes on both libcs and `--dns-over-tcp` routes around under glibc only. |
-| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `negotiated_abi` hard-requires a whole level, so V9 brings no automatic narrowing — the grant has to be written. It is one all-or-nothing toggle. |
-| `FsGuard` TOCTOU | **Two swaps, both mid-open, both needing full `openat`-chain resolution.** A *parent-directory* swap: `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. And a *granted-root* swap between the confirmation and the open, two adjacent syscalls for the five per-path tools and the whole traversal for `find` and `grep`, whose walk confirms its root once. Both close the same way: run the access off a directory descriptor, with `openat2(dirfd, …, RESOLVE_BENEATH)` below it, so the confirmed object *is* what the access resolves from. |
+| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). The narrowing is automatic: `handled_access` is `AccessFs::from_all(abi)`, so on a kernel whose probe settles at V9 `ResolveUnix` lands in the handled set and `connect(2)` to a pathname socket is denied unless an axis confers it — and `rights_for`'s write set, `from_all(abi) & !from_read(abi)`, confers it on every `--allow-write` grant, which `each_axis_confers_exactly_the_documented_set` pins. `negotiated_abi` hard-requiring a whole level makes that a step rather than a slide: below V9 nothing moves, and the seccomp `socket(AF_UNIX)` denial is the one all-or-nothing toggle. What has to be *written* is a grant narrower than a write root, if a narrower one is wanted. Same asymmetry as `context/decision-axis-table.md` records. |
+| `FsGuard` TOCTOU | **Two swaps, both mid-open, both needing full `openat`-chain resolution.** A *parent-directory* swap: `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. And a *granted-root* swap between the confirmation and the access: two adjacent syscalls across the four single-path tools, five guard calls between them — `edit` confirms twice, `crate::read_file` then `open_write` once the match is known unique — and the whole traversal for `find` and `grep`, whose walk confirms its root once. Four of the five confirm then open with `O_NOFOLLOW`; the fifth is `ls`, which has no handle form to open and reads the path again. Both close the same way: run the access off a directory descriptor, with `openat2(dirfd, …, RESOLVE_BENEATH)` below it, so the confirmed object *is* what the access resolves from. |
 | Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
 | `Degraded` raised by nothing a test enters | **Pinned on any host.** Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted anywhere; `tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |
 

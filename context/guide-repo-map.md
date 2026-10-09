@@ -4,8 +4,9 @@ Virtual Cargo workspace, `members = ["crates/*"]`, resolver 3, edition 2024.
 
 ```
 Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
-                    workspace-wide with no per-crate exemption, sandbx-core
-                    included; zero unsafe anywhere)
+                    every member, sandbx-core included, no per-crate exemption;
+                    dependencies are out of its reach, so no first-party unsafe
+                    block and every raw syscall through a vetted wrapper)
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
 .githooks/          pre-commit: fmt --check, clippy -D warnings, doc -D warnings;
@@ -121,8 +122,11 @@ lacked rather than implying none was given.
 One per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` in
 `src/`, in `spawn::command` — that site, not the whole crate; test files that
 spawn the built binary carry their own. The lint *is* the backstop: a
-CI grep for `Command::new` would be a second one, but a lint that fails the build
-at the call site beats a grep that fails after it.
+CI grep for `Command::new` would be a second one, but a lint that names the call
+site beats a grep that runs after it. Not `cargo build`, which compiles a stray
+`Command::new` without complaint: `disallowed_methods` is `deny` in the
+workspace lint table, so `cargo clippy` refuses it — in `.githooks/pre-commit`
+and CI's Clippy step.
 
 ## `sandbx-tools`
 
@@ -158,10 +162,21 @@ tests/            anthropic_client, credentials, crypto_provider, error,
                   live_anthropic (needs `live-anthropic-tests`)
 ```
 
-The tree is the boundary: everything above `anthropic.rs` is neutral, and every
-vendor name, string and rule sits at or below it (#59). The body serializer is
-private to `anthropic/`, so the top-level types cannot be posted to any API by
-accident — see [decision-provider-seam.md](decision-provider-seam.md).
+The tree is the boundary for every vendor *rule*, and for every wire string
+sandbx writes or matches on — the ones it carries verbatim cross as opaque data
+(`StopReason::Other`, `ApiError::kind`). The rules are compiler-enforced: `Body`
+is `pub(super)` in a private `mod body` and no neutral type derives `Serialize`,
+so the top-level types cannot be posted to any API by accident; the wire
+payloads are `pub(super)` bar the two error envelopes at `pub(crate)`;
+`stop_reason` is a private free function, so no `StopReason` comes from a wire
+string outside `anthropic/`; and `is_retryable` reads an `ApiError`'s
+`transient` bool rather than a vendor status code, set at its two construction
+sites (#59). The vendor *name* is the one row nothing *contains* — no lint, no
+containment test, no CI grep — and two siblings of `anthropic.rs` carry it:
+`lib.rs` re-exports `AnthropicClient`, and `credentials.rs` holds
+`anthropic_api_key` and the `"ANTHROPIC_API_KEY"` literal, which a test pins.
+Four more files name it in doc comments only. Per-rule account in
+[decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-agent`
 

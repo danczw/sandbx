@@ -26,6 +26,7 @@ tools could choose.
 |---|---|---|
 | group/other **write** (`0o022`) | refuse | refuse |
 | group/other **read** (`0o044`) | refuse | resume, and say so on stderr |
+| group/other **execute** (`0o011`) | refuse | untested |
 
 The asymmetry is recovery. A leaked key can be rotated, so refusing to *use* one
 whose mode says it may have leaked is a control that still buys something. A
@@ -40,6 +41,11 @@ tools; that is the one novel hazard in session persistence and the read path is
 the only place it can be caught. So `sandbx-session` names `WRITABLE_BITS` and
 `READABLE_BITS` separately where `auth/store.rs` has a single `SHARED_BITS`. Do not
 unify them.
+
+That single `SHARED_BITS` is the whole of `0o077`, read off `credentials.toml` and
+off its canonicalised parent, so group/other execute alone refuses a load. The two
+session halves cover `0o022` and `0o044` and leave `0o011` out: `create` sheds it
+from the root (`DIR_SHARED_BITS`) and no resume reads it.
 
 Both paths check the containing directory as well. A directory another user may
 write lets them rename their own `0600` file over the target whatever its own

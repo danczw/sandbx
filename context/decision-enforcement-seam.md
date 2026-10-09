@@ -10,13 +10,16 @@ spawn anything, so Landlock never sees them. For those, `FsGuard` *is* the
 enforcement.
 
 ```
-SandboxPolicy ──► FsGuard::new ──► readable[] / writable[]     (execute discarded)
+SandboxPolicy ──► FsGuard::new ──► readable[] / writable[]     (execute dropped, not the path)
                        │
                        └──► open_read / open_write  ──► O_NOFOLLOW handle
                             walk_readable           ──► ReadableWalk { files, truncated }
                             read_dir                ──► ReadDir        ◄── ls only
                             check_read / check_write ─► resolved path  ◄── no tool
 ```
+
+`Axis::ReadExecute` confers read, so an `--allow-read-execute` path still lands in
+`readable[]`: what `FsGuard::new` drops is the execute right, not the path.
 
 Tools hold **handles, not paths**. That is what closes the TOCTOU window: if the
 leaf became a symlink between check and use, the open fails. `ls` is the one
@@ -177,7 +180,8 @@ a failed helper run cannot fall through to unrestricted execution.
 
 ```
 rights_for(axis: Axis, target_is_dir: bool, abi: landlock::ABI) -> BitFlags<AccessFs>
-fs_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> [(Axis, &Path, BitFlags<AccessFs>)]
+fs_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> [(Axis, RuleTarget, BitFlags<AccessFs>)]
+RuleTarget::Granted(&VettedPath) | ::Installed(&'static Path)   ──► path()
 net_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> RequestedNet<'_>
                                                                       helper/ruleset/rights.rs
 handled_access(abi: landlock::ABI) -> BitFlags<AccessFs>
@@ -187,7 +191,7 @@ negotiated_abi_from(probe: impl FnMut(ABI) -> Result<(), RulesetError>) -> Resul
 negotiated_abi() -> Result<ABI, _>
 enforcement_verdict(status: RulesetStatus) -> Result<(), _>
                                                                       helper/ruleset/compat.rs
-Requested { handled: BitFlags<AccessFs>, rules: [(Axis, &Path, BitFlags<AccessFs>)],
+Requested { handled: BitFlags<AccessFs>, rules: [(Axis, RuleTarget, BitFlags<AccessFs>)],
             net: RequestedNet }
 RequestedNet::Unhandled | ::Ports { handled, granted: BitFlags<AccessNet>, ports: &[u16] }
 requested_at(policy: &SandboxPolicy, abi: landlock::ABI) -> Requested<'_>
@@ -196,6 +200,11 @@ requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
 ```
 
 The syscall list is in `helper/seccomp/rules.rs`; `apply` in `helper/mod.rs`.
+
+A rule names a `RuleTarget`, not a path: `Granted` carries the object the harness
+vetted and `Installed` is a resolver file bind-mounted in this process, so
+`open_grant` checks the pin on one and has nothing to check on the other
+(`decision-grant-identity.md`).
 
 `abi` is a **parameter**, not ambient — that is what makes the mapping
 kernel-independent and testable at both ends of the range. The stronger form
@@ -214,7 +223,7 @@ an *ABI verdict* (step down a rung) and which are not (refuse). `RulesetError` w
 named in exactly one place in the workspace and no test constructed one, so the
 refusing arm was not merely untested but unreachable (#87).
 
-`apply` ignores the axis (`for (_, path, rights)`): the kernel is told the rights
+`apply` ignores the axis (`for (_, target, rights)`): the kernel is told the rights
 and nothing else. The axis rides along only so tests can assert the mapping.
 
 ### Why the axis rides along

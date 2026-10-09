@@ -2,8 +2,8 @@
 
 Why a no-flag `sandbx sandbox-run` grants read and write on the directory it was
 run from, why a path flag *replaces* that rather than adding to it, and why some
-working directories are refused instead. The mechanism is the guard at the top of
-`crates/sandbx-cli/src/grants.rs`; this is what the choices were between.
+working directories are refused instead. The mechanism is `vetted_root` in
+`crates/sandbx-cli/src/grants/root.rs`; this is what the choices were between.
 
 ## What it is for
 
@@ -65,6 +65,7 @@ A derived write grant is reachable by accident in a way a typed one is not, so
 | cwd is where homes live, or holds it | `holds_home_directories(cwd)`, below |
 | no usable `$HOME`, and cwd is shaped like a home | `looks_like_a_home(cwd)`, below |
 | cwd overlaps a path already granted execute | `granted.iter().any(\|p\| p.starts_with(cwd) \|\| cwd.starts_with(p))` |
+| cwd reaches a path the harness owns | `reaches_owned(cwd, owned)`, below |
 
 One `starts_with` covers both `$HOME` cases: it is true of equal paths, so "cwd is
 `$HOME`" and "cwd is `/home`" fall out of the same test, and it is
@@ -74,6 +75,13 @@ root rule stays alongside it because it subsumes the root only when `HOME` is se
 Of the two arms that consult `$HOME`, the exact one is there to *name* a directory
 the arm below it already covers by location. That ordering is deliberate: it was
 the other way round once, and the inversion was a hole — see below.
+
+The last arm is the only one reading `owned` — the sessions directory and the
+credential file. A no-flag run from inside the session directory derives write
+over the transcripts a resumed run replays
+([#173](https://github.com/danczw/sandbx/issues/173)), so one rule covers the
+derived root and what a path flag names. `decision-harness-owned-paths.md` holds
+that rule and both of its messages.
 
 Every arm is a refusal and not a narrower default, because both fallbacks are
 worse. Falling back to the system paths alone makes an ordinary command fail for a
@@ -289,12 +297,12 @@ accord.
 
 ## The seam
 
-`vetted_root(cwd, homes, granted)` is pure, with all three inputs injected as values,
-and `named_homes(home) -> Homes` takes the one variable the same way; `current_root()`
-is the thin wrapper that reads both off the process. Same split as
-`resolve_api_key(env_var, lookup)` / `anthropic_api_key()` in
-`crates/sandbx-providers/src/credentials.rs`, with values rather than a closure
-since nothing is called twice.
+`vetted_root(cwd, homes, granted, owned)` is pure, with all four inputs injected
+as values, and `named_homes(home) -> Homes` takes the one variable the same way;
+`current_root()` is the thin wrapper that reads the cwd and `$HOME` off the
+process. Same split as `resolve_api_key(env_var, lookup)` /
+`anthropic_api_key()` in `crates/sandbx-providers/src/credentials.rs`, with
+values rather than a closure since nothing is called twice.
 
 All three are private, and the tests for them are inline. Making the seam public so
 `tests/sandbox_run.rs` could drive the refusals is the trade

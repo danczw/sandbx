@@ -61,8 +61,8 @@ pub(super) fn prepare_supervisor(
     // by the binary being our own — unprivileged, no file capabilities — plus uid 0 unmapped
     // in the fresh user namespace. Both hold, so this costs one syscall and rests on nothing
     // about the binary. Irreversible and inherited, so the inner stage's call is a no-op —
-    // but that stage must not depend on a caller having set it, seccomp not installing
-    // without it.
+    // but that stage must not depend on a caller having set it, neither seccomp nor Landlock
+    // installing without it.
     set_no_new_privs()?;
 
     Ok(degraded)
@@ -220,7 +220,8 @@ fn drop_bounding_set<E: std::fmt::Display>(
 /// Set `no_new_privs`, refusing if the kernel will not.
 ///
 /// Shared by both stages. Irreversible and inherited across `exec`, and a precondition for
-/// installing a seccomp filter without `CAP_SYS_ADMIN` — so a failure here is a refusal.
+/// seccomp and `landlock_restrict_self` alike without `CAP_SYS_ADMIN` — so a failure here is
+/// a refusal. Landlock sets it itself; seccomp does not, which is why this call exists.
 pub(super) fn set_no_new_privs() -> Result<(), SandboxError> {
     nix::sys::prctl::set_no_new_privs().map_err(|errno| SandboxError::Seccomp {
         detail: format!("could not set no_new_privs: {errno}"),
