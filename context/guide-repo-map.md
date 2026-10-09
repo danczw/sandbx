@@ -278,8 +278,9 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
                 AuthError — what stops `auth`, or a key resolution under `agent-run`
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
-tests/          agent_run, agent_session, audit_log, audit_log_install, auth,
-                auth_store, cwd_policy, hash, name, sandbox_run, usage
+tests/          agent_run, agent_session, audit_log, audit_log_held,
+                audit_log_install, auth, auth_store, cwd_policy, hash, name,
+                sandbox_run, usage
 ```
 
 Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,
