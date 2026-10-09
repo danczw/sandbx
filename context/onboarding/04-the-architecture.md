@@ -27,10 +27,10 @@ sandbx                                              ← unconfined
   └─► spawn::command  ──exec──►  /proc/self/exe --sandbx-core-exec
          │
          ├─ stage 1: helper supervisor               ← unconfined
-         │    unshare(NEWUSER | NEWPID [| NEWNET])
-         │    uid/gid map, drop capability sets,
-         │    RLIMIT_CORE = 0, no_new_privs,
-         │    the resolver bind mount
+         │    unshare(NEWUSER | NEWPID [| NEWNET] [| NEWNS])
+         │    uid/gid map, the resolver bind mount,
+         │    drop capability sets, RLIMIT_CORE = 0,
+         │    no_new_privs
          │    └─exec─► /proc/self/exe --sandbx-core-exec-inner
          │
          └─ stage 2: helper inner, PID 1             ← confined by apply()

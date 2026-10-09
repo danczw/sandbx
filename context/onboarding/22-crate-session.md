@@ -71,11 +71,10 @@ What each refusal buys, because the module doc only implies it:
 |---|---|
 | `..`, `../../etc/passwd` | `.` is outside the alphabet, so a traversal never has a character to start with |
 | `/etc/passwd`, `a/b` | `path_for` does `self.root.join(format!("{id}.jsonl"))`, and `Path::join` with an absolute component **replaces** the base — the transcript would be `/etc/passwd.jsonl` |
-| a leading `-` | the id reaches a shell in the copyable advice `SessionError::Writable` prints — `run chmod 600 <path>` — where a leading `-` is an option rather than a name |
 | `""` | the path would be `<root>/.jsonl`, a hidden file in the root, and `Display` would print nothing in the line that tells you what to pass `--session` |
 | 33 characters | `MAX_LENGTH`'s doc says what the bound is for: it "bounds the path component a typo can build". Nothing about the clock needs it — `base36(u64::MAX)` is thirteen characters, pinned by a unit test |
 | `UPPER` | on a case-insensitive filesystem `A` and `a` name one file while `SessionId` compares them as two, so `resume("A")` would read the transcript `create` wrote as `a` |
-| `a.b`, `a_b`, `a b`, `a\0b`, `a\\b`, `~` | nothing in particular, and that is the point of an allowlist: no case had to be foreseen |
+| `a-b`, `a.b`, `a_b`, `a b`, `a\0b`, `a\\b`, `~` | nothing in particular, and that is the point of an allowlist: no case had to be foreseen |
 
 The last row is the argument. A denylist has to anticipate every interpreter —
 the kernel's path parser, a shell, a filesystem's case folding, `chmod`'s

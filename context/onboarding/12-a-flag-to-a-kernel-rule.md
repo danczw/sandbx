@@ -108,7 +108,9 @@ form catches one that cannot be canonicalized at all. The answer is *noted* here
 and refused further down, alongside the DNS flags, so that an operator with no
 egress at all hears the more fundamental thing first.
 
-**`reaches_owned` is the first place the run can be refused.** It is the subject
+**`reaches_owned` is the next place the run can be refused** — `absolute`
+already can, over an unreadable working directory, where this refusal is over
+the grant itself. It is the subject
 of [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) and the
 later section of this chapter; for now, note that it answers in `Option` and
 that `Grants::policy` turns `Some` into `PolicyError::GrantReachesOwned` naming
@@ -366,9 +368,12 @@ The rights come from `rights_for(axis, target_is_dir, abi)`, derived from
 - read is `from_read(abi)` minus `Execute`, because `from_read` bundles
   `Execute` in with `ReadFile`/`ReadDir` and no axis but `ReadExecute` says
   *run*;
-- write is `from_all(abi)` minus the whole read set — not merely minus
-  `Execute`, which would confer read at the kernel while `FsGuard` refuses it
-  and break the write-only drop directory the library promises;
+- write is `from_all(abi)` minus the whole read set and minus `ResolveUnix` —
+  not merely minus `Execute`, which would confer read at the kernel while
+  `FsGuard` refuses it and break the write-only drop directory the library
+  promises. `ResolveUnix`, new at ABI V9, is conferred instead by
+  `--allow-unix-sockets`, over the policy rather than this axis — writing a
+  file is not dialling a socket;
 - execute is the single bit, so it adds on top of read without widening anything
   else.
 
@@ -427,7 +432,7 @@ Now the other half of the question, because `--allow-read /tmp/x` does not only
 if !self.paths_given() {
     // Inside the branch: a run that typed its own flags never depends on `HOME`.
     let root = current_root(policy.executable_paths(), &owned)?;
-    let root = pinned(&root, &root)?;
+    let root = pinned(&root, root.path())?;
     policy = policy.allow_read(root.clone()).allow_write(root);
 }
 ```
@@ -449,10 +454,11 @@ lacked. The record's own summary is the line worth carrying: **narrow and loud
 beats wide and silent.** It also notes that nothing here forecloses going the
 other way, since unconditional-plus-opt-out is a strict widening of this.
 
-Note too that `pinned(&root, &root)?` on the derived path is the same function
-the flag route calls, with the same spelling in both arguments. A derived grant
-is pinned exactly as a typed one is; there is no second, laxer road into the
-policy.
+Note too that `pinned(&root, root.path())?` on the derived path is the same
+function the flag route calls, passing the resolved path where the flag route
+passes `path`, the spelling the operator typed and the one a refusal names — a
+derived grant has no typed spelling of its own. It is pinned exactly as a typed
+one is; there is no second, laxer road into the policy.
 
 Some working directories are refused rather than derived from — `vetted_root`
 answers that, and it refuses **in the order written**: the filesystem root, then
