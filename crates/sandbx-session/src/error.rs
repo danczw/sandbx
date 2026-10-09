@@ -101,6 +101,14 @@ pub enum SessionError {
         path: PathBuf,
     },
 
+    /// The stored transcript ends on a prompt nothing answered, so no turn can be replayed
+    /// from it — the read-side twin of `IncompleteTurn`, which refuses the same shape on
+    /// the way in.
+    Unresumable {
+        /// The transcript that was refused.
+        path: PathBuf,
+    },
+
     /// The turn ends on a prompt nothing answered — neither the model's reply nor the
     /// tool results a turn out of rounds breaks off on, so storing it bricks the session.
     IncompleteTurn,
@@ -183,6 +191,13 @@ impl std::fmt::Display for SessionError {
                  since sandbx wrote it",
                 path.display()
             ),
+            Self::Unresumable { path } => write!(
+                f,
+                "{} ends on a prompt with nothing answering it, neither a reply nor a \
+                 tool result, so no turn can be replayed from it — it has been edited \
+                 since sandbx wrote it",
+                path.display()
+            ),
             Self::IncompleteTurn => write!(
                 f,
                 "the turn ends on a prompt with nothing answering it, \
@@ -216,6 +231,7 @@ impl std::error::Error for SessionError {
             | Self::Symlink { .. }
             | Self::ForeignOwner { .. }
             | Self::Disordered { .. }
+            | Self::Unresumable { .. }
             | Self::IncompleteTurn
             | Self::DisorderedTurn => None,
         }
