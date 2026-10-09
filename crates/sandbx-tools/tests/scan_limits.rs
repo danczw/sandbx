@@ -111,8 +111,8 @@ fn grep_stops_at_the_byte_scan_budget() {
 /// One byte past `MAX_FILE_BYTES`, which is 2 MiB in `grep` and not a knob.
 const OVER_THE_CAP: usize = 2 * 1024 * 1024 + 1;
 
-/// The budget is not the only thing that leaves a file unsearched, and the model cannot
-/// act on a distinction it is not shown: an unmarked skip says the pattern is not there.
+/// The budget is not the only thing that leaves a file unsearched, and an unmarked skip
+/// says the pattern is not there.
 #[test]
 fn an_oversized_file_is_not_a_file_without_the_match() {
     let root = tempfile::tempdir().unwrap();
@@ -148,8 +148,7 @@ fn an_oversized_file_is_not_a_file_without_the_match() {
     );
 }
 
-/// A refusal mid-walk is the same gap as the cap, and used to render the same way:
-/// as a tree with no match in it.
+/// A refusal mid-walk is the same gap as the cap: a tree that reads as holding no match.
 #[test]
 fn a_file_the_host_refuses_marks_the_search_partial() {
     use std::os::unix::fs::PermissionsExt;

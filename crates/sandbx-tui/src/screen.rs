@@ -27,10 +27,9 @@ impl Screen {
     /// Take the terminal: raw mode on, alternate screen entered. Raw mode makes ctrl-c reach
     /// [`Keys`](crate::Keys) as a key, not a `SIGINT` killing the process with the screen up.
     pub fn enter() -> io::Result<Self> {
-        // First, before anything fallible and before the terminal exists, so a panic in
-        // `take_terminal` is covered too. `restore` reports a failed `tcsetattr` with
-        // `eprintln!` to the descriptor that just died, and that panic raised inside a hook
-        // is a panic while panicking, which aborts; this one cannot write (#264).
+        // First, before anything fallible, so a panic in `take_terminal` is covered too.
+        // `try_restore` and not `restore`: inside a hook its `eprintln!` to the descriptor
+        // that just died would be a panic while panicking, which aborts (#264).
         let reported = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |panicked| {
             let _ = ratatui::try_restore();
@@ -103,13 +102,12 @@ impl Screen {
     }
 }
 
-/// `ratatui::try_init`'s three fallible statements, without the `set_panic_hook()` it runs
-/// before them.
+/// `ratatui::try_init`'s three fallible statements, without the hook it installs first.
 ///
-/// Reproduced rather than called because that hook restores with `restore`, and it is
-/// installed first: replacing it afterwards still leaves a window where the aborting one is
-/// in force (#270). Copied from `init.rs:397-403` of ratatui `=0.30.2` — exactly pinned
-/// (`Cargo.toml`), so a bump re-reads that function rather than assuming it still says this.
+/// Reproduced, not called: that hook restores with `restore` and goes in first, so
+/// replacing it after still leaves a window where the aborting one is in force (#270).
+/// Copied from `init.rs:397-403` of ratatui `=0.30.2` — exactly pinned, so a bump re-reads
+/// that function rather than assuming it still says this.
 fn take_terminal() -> io::Result<DefaultTerminal> {
     // Raw mode before the alt screen, so a failed second step leaves the first in force.
     enable_raw_mode()?;

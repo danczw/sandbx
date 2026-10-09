@@ -152,19 +152,16 @@ fn printable(text: &str) -> String {
 }
 
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-/// Three sets, bounded per arm below: box drawing's verticals, the extensions drawn to tile
-/// vertically, and single-cell vertical strokes outside both. A denylist, for
-/// [`invisible`]'s reason. ASCII `|` is excluded, having to survive a shell pipeline in
-/// prose — why the gutter is box-drawing at all. A vertical joining across rows where `|`
-/// doesn't is font-dependent, too weak to rely on instead.
+/// Three sets, each bounded in its arm below. A denylist, for [`invisible`]'s reason.
+/// ASCII `|` is excluded, having to survive a shell pipeline in prose — which is why the
+/// gutter is box-drawing instead, a `|` joining across rows being font-dependent.
 fn forgeable(c: char) -> bool {
     matches!(
         c,
-        // Every Box Drawing codepoint with a vertical stroke and no horizontal one: both
-        // weights, the three dash densities, the double, and the half-height stubs. What
-        // draws a horizontal too is left alone — the junctions and corners, not only the
-        // horizontals: a table or a `tree` is ordinary output, and the nub beside the
-        // stroke is a difference on screen where a weight is not.
+        // Every Box Drawing codepoint with a vertical stroke and no horizontal one. What
+        // draws a horizontal too is left alone, junctions and corners included: a `tree` or
+        // a table is ordinary output, and the nub beside the stroke is a difference on
+        // screen where a weight is not.
         GUTTER_MARK
         | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
         | '\u{254e}' | '\u{254f}' | '\u{2551}'
@@ -173,10 +170,9 @@ fn forgeable(c: char) -> bool {
         | '\u{239c}' | '\u{239f}' | '\u{23a2}' | '\u{23a5}' | '\u{23aa}' | '\u{23ae}'
         | '\u{23b8}' | '\u{23b9}' | '\u{23d0}'
         // Single-cell vertical strokes outside both ranges — an enumeration, not a scope:
-        // Unicode's confusables data is not in the tree to derive one from, which is what
-        // #276 leaves open. Out on purpose: U+1175 and U+4E28, letters in running text, on
-        // ASCII `|`'s reasoning; and every Block Element wider than an eighth, which reads
-        // as filled area rather than a line, and whose loss would cost a sparkline.
+        // Unicode's confusables data is not in the tree to derive one from (#276). Out on
+        // `|`'s reasoning: U+1175 and U+4E28 are letters in running text, and a Block
+        // Element wider than an eighth reads as filled area, its loss costing a sparkline.
         | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
         | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
         | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
@@ -370,9 +366,8 @@ mod tests {
         }
     }
 
-    /// Every Box Drawing codepoint with a vertical stroke and no horizontal one, spelled
-    /// out: a codepoint added to `forgeable` and not here fails a test rather than
-    /// widening the set silently, and one dropped from `forgeable` fails this one.
+    /// The Box Drawing verticals, spelled out rather than derived: a codepoint added to
+    /// `forgeable` and not here fails a test, and one dropped from `forgeable` fails too.
     const BOX_VERTICALS: [char; 15] = [
         '\u{2502}', '\u{2503}', '\u{2506}', '\u{2507}', '\u{250a}', '\u{250b}', '\u{254e}',
         '\u{254f}', '\u{2551}', '\u{2575}', '\u{2577}', '\u{2579}', '\u{257b}', '\u{257d}',
@@ -391,9 +386,7 @@ mod tests {
         }
     }
 
-    /// The carve-out the set's scope claims, and the half of it no test covered: the
-    /// horizontals, and the junctions and corners that draw one too. A table or a `tree`
-    /// is ordinary output and must render.
+    /// The carve-out: the horizontals, and the junctions and corners that draw one too.
     #[test]
     fn the_rest_of_the_box_drawing_block_survives() {
         let rest: Vec<char> = ('\u{2500}'..='\u{257f}')
@@ -406,8 +399,8 @@ mod tests {
             "BOX_VERTICALS holds a duplicate or an entry outside the block"
         );
 
-        // A junction draws a full-height vertical, and is in the carve-out on purpose: the
-        // nub beside the stroke is a difference an operator can see.
+        // A junction draws a full-height vertical and renders anyway, for the reason
+        // `forgeable` gives.
         assert!(rest.contains(&'\u{253c}') && rest.contains(&'\u{251c}'));
 
         for c in rest {
@@ -415,8 +408,7 @@ mod tests {
         }
     }
 
-    /// The two sets outside the Box Drawing block: extensions drawn to tile vertically,
-    /// and the single-cell vertical strokes.
+    /// The two sets outside the block: the vertical extensions, and the single-cell strokes.
     #[test]
     fn the_strokes_outside_the_block_cannot_survive() {
         let outside = [
@@ -430,9 +422,8 @@ mod tests {
             assert!(forgeable(c), "U+{:04X} survives", c as u32);
         }
 
-        // Non-vacuous, and the exclusions the set must keep: a shell pipeline in prose, two
-        // letters whose stripping would mangle Hangul and Chinese, and the quarter-width
-        // block that reads as filled area — the thin edge of the sparkline carve-out.
+        // Non-vacuous, and the exclusions `forgeable`'s third arm names: a pipeline in
+        // prose, the two letters, and the first Block Element wider than an eighth.
         for c in ['|', '\u{1175}', '\u{4e28}', '\u{258e}'] {
             assert!(!forgeable(c), "U+{:04X} no longer renders", c as u32);
         }

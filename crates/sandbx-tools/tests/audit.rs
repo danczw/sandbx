@@ -53,8 +53,7 @@ fn capture(f: impl FnOnce()) -> Vec<String> {
 /// One byte past `MAX_FILE_BYTES`, which is 2 MiB in `grep` and not a knob.
 const OVER_THE_CAP: usize = 2 * 1024 * 1024 + 1;
 
-/// `grep` measured this one and read nothing of it, and a measurement it makes by
-/// opening is a measurement the trail sees (#275).
+/// `grep` read nothing of this one, and measuring it by opening is what the trail sees (#275).
 #[test]
 fn the_file_grep_only_measures_is_still_an_access() {
     let root = tempfile::tempdir().unwrap();
