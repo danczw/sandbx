@@ -55,11 +55,13 @@ a tab becomes spaces, and everything else `char::is_control` matches is marked.
 `is_control` is category `Cc` exactly, which is not the whole hazard. U+202E and
 the directional isolates render *nothing* and reorder what follows them, so a
 line can display as a different line — in the same pane, and the same `sandbx: `
-grammar, as the gate's account of what a tool did. The same denylist `gate.rs`
-carries therefore applies at the cell too. It is a denylist because `char` has no
-predicate for the category, so a new Unicode version can outgrow it silently;
-it is duplicated rather than shared, and nothing fails if the two copies drift
-apart (#233).
+grammar, as the gate's account of what a tool did. The same denylist therefore
+applies at the cell too: `sandbx_providers::invisible`, one table, which
+`gate.rs` reads for the line sink and this crate reads for the cell. It is a
+denylist because `char` has no predicate for the category, so a new Unicode
+version can outgrow it silently — and it has one owner, so a character added to
+it reaches both sinks. What is shared is the hazard; each sink keeps its own
+replacement, there being no one answer to what to put in a cell versus a line.
 
 One more character cannot reach a cell, and it is sandbx's own: the gutter the
 view draws at the start of every row it wrote. See below.

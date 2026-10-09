@@ -3,7 +3,7 @@
 //! No terminal behind it, so the fold is a unit test rather than a screenshot. Nothing
 //! here renders a *requested* call: only a settled one has an outcome.
 
-use sandbx_providers::AgentEvent;
+use sandbx_providers::{AgentEvent, invisible};
 
 use crate::view::GUTTER_MARK;
 
@@ -168,33 +168,6 @@ fn forgeable(c: char) -> bool {
         | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
         | '\u{2575}' | '\u{2577}' | '\u{2579}' | '\u{257b}'
     )
-}
-
-/// Whether `c` renders as nothing, or reorders what follows it. `char::is_control` is `Cc`
-/// only, so U+202E and the directional isolates pass it, letting a line *display*
-/// differently in the same pane and grammar as the gate's own account. A denylist, `char`
-/// having no predicate for the category, so a new Unicode version can outgrow it silently.
-///
-/// Duplicates `sandbx-cli`'s `gate::invisible`; the two sets must not diverge (#233).
-fn invisible(c: char) -> bool {
-    matches!(c,
-        '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
-        | '\u{180e}' | '\u{3164}' | '\u{feff}' | '\u{ffa0}' | '\u{110bd}' | '\u{110cd}'
-        | '\u{0600}'..='\u{0605}'
-        | '\u{0890}'..='\u{0891}'
-        // The Hangul fillers: not `Cf`, and they render as blank width.
-        | '\u{115f}'..='\u{1160}'
-        | '\u{200b}'..='\u{200f}'
-        | '\u{202a}'..='\u{202e}'
-        | '\u{2060}'..='\u{2064}'
-        | '\u{2066}'..='\u{206f}'
-        | '\u{fe00}'..='\u{fe0f}'
-        | '\u{fff9}'..='\u{fffb}'
-        | '\u{1bca0}'..='\u{1bca3}'
-        | '\u{1d173}'..='\u{1d17a}'
-        | '\u{13430}'..='\u{1343f}'
-        | '\u{e0000}'..='\u{e007f}'
-        | '\u{e0100}'..='\u{e01ef}')
 }
 
 #[cfg(test)]

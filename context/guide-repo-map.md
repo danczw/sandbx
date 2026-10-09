@@ -35,7 +35,7 @@ sandbx-tui ───────────────────────
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients | — |
+| `sandbx-providers` | hand-rolled streaming API clients, and what their text may not carry to a terminal | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
 | `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, session, tools, tui |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
@@ -46,8 +46,9 @@ tools over a temp dir rather than mocking below the tool boundary.
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
 `sandbx-providers` directly rather than through `sandbx-agent`, which re-exports
-none of it: `agent-run` builds the client and the first user turn itself, and
-renders the events the loop hands back.
+none of it: `agent-run` builds the client and the first user turn itself, renders
+the events the loop hands back, and strips its own operator lines with
+`invisible`.
 
 ## `sandbx-core`
 
@@ -149,6 +150,8 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    prompt.rs      Prompt, RequestMessage, ContentBlock, ToolDefinition,
                   ToolChoice, Thinking — data, with no Serialize
    event.rs       AgentEvent, StopReason
+   text.rs        invisible — the one denylist of what model text may not carry
+                  to a terminal, read by both the cli's line sink and the tui's
    error.rs
    sse.rs         SSE framing
    credentials.rs resolve_api_key, anthropic_api_key — the pair hands back a

@@ -5,6 +5,7 @@
 //! call.
 
 use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
+use sandbx_providers::invisible;
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
 use super::prompt::{Operator, to_stderr};
@@ -243,32 +244,6 @@ fn stripped(text: &str) -> String {
     }
 
     out
-}
-
-/// Whether `c` renders as nothing, or reorders what follows it.
-///
-/// `char::is_control` is `Cc` exactly, so U+202E and the directional isolates pass it and
-/// make a path *display* as a different path. Ranges because `char` has no predicate for
-/// the category — so a denylist, which a new Unicode version can outgrow silently.
-fn invisible(c: char) -> bool {
-    matches!(c,
-        '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
-        | '\u{180e}' | '\u{3164}' | '\u{feff}' | '\u{ffa0}' | '\u{110bd}' | '\u{110cd}'
-        | '\u{0600}'..='\u{0605}'
-        | '\u{0890}'..='\u{0891}'
-        // The Hangul fillers: not `Cf`, and they render as blank width.
-        | '\u{115f}'..='\u{1160}'
-        | '\u{200b}'..='\u{200f}'
-        | '\u{202a}'..='\u{202e}'
-        | '\u{2060}'..='\u{2064}'
-        | '\u{2066}'..='\u{206f}'
-        | '\u{fe00}'..='\u{fe0f}'
-        | '\u{fff9}'..='\u{fffb}'
-        | '\u{1bca0}'..='\u{1bca3}'
-        | '\u{1d173}'..='\u{1d17a}'
-        | '\u{13430}'..='\u{1343f}'
-        | '\u{e0000}'..='\u{e007f}'
-        | '\u{e0100}'..='\u{e01ef}')
 }
 
 /// Accept a tool `--allow-tool` can actually approve, and refuse anything else.
