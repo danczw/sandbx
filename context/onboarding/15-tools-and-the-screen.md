@@ -320,10 +320,11 @@ chapter 13's reason: dropped, a hostile string reads as plausible prose.
 The first two predicates are the gate's, for the gate's reasons — the
 zero-width and bidi-override characters, which `char::is_control` lets through
 because it is category `Cc` exactly, so a line can *display* as a different line
-([13](13-turn-loop-and-gate.md)). `invisible` is literally the same denylist,
-duplicated rather than shared, with the two copies required not to diverge
-(#233). The third is the interesting one,
-and it exists because of a problem `agent-run` does not have.
+([13](13-turn-loop-and-gate.md)). `invisible` is literally the same function,
+`sandbx_providers::invisible`, read by the prompt and by the cell: one table, so
+a character added to it reaches both. What differs is the replacement, which
+each sink keeps. The third predicate is the interesting one, and it exists
+because of a problem `agent-run` does not have.
 
 `agent-run` has two channels, and the channel authenticates the line: the answer
 is on stdout, every account of the run on stderr. The pane has one. So a model

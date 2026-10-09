@@ -423,11 +423,15 @@ handles it, and the two interesting arms are about *not* dropping things:
   that frame it off the end, and a cut is marked with `…` rather than being
   silent — an operator who cannot see the whole argument can still refuse.
 
-This is the gate's copy of the denylist. `sandbx-tui` carries a second for the
-cells it draws, required character-for-character identical to this one (#233);
-[15](15-tools-and-the-screen.md) and [23](23-crate-tui.md) own that screen —
-where `\n` and `\t` are handled differently and a third predicate is added,
+`invisible` is not the gate's own, and the import is worth following:
+`sandbx_providers::invisible`, one table read here and by `sandbx-tui` for the
+cells it draws, because the hazard is a property of model-chosen text rather
+than of either sink. What the gate does *with* a flagged character is still the
+gate's — `\n` and `\t` spelled out, U+FFFD for the rest — and the screen makes
+different choices with the same table, adding a third predicate of its own,
 because a cell is not a line of prompt.
+[15](15-tools-and-the-screen.md) and [23](23-crate-tui.md) own that screen;
+[20](20-crate-providers.md) has why one crate owns the table.
 
 ## A turn out of rounds is asked once more, with no tool
 

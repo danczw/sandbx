@@ -27,6 +27,7 @@ crates/sandbx-providers/src/
   prompt.rs        Prompt, RequestMessage, ContentBlock, Role,
                    ToolDefinition, ToolChoice, Thinking — data, no Serialize
   event.rs         AgentEvent, StopReason
+  text.rs          invisible — what model text may not carry to a terminal
   error.rs         ProviderError
   sse.rs           SSE framing, knowing no API's field names
   credentials.rs   resolve_api_key, anthropic_api_key
@@ -81,7 +82,7 @@ magnitude above any real Anthropic frame". None of that is checked by anything.
 
 ## `lib.rs` — the seam is a type, not an object
 
-Forty-nine lines, and three of them are the crate's whole public abstraction:
+Fifty-one lines, and three of them are the crate's whole public abstraction:
 
 ```rust
 pub type EventStream = std::pin::Pin<
@@ -252,6 +253,58 @@ nothing is recorded, because this crate has no `tracing` dependency to record
 with. That is upstream's own instruction followed literally, and
 [02](02-what-a-harness-is.md) raises the cost of doing it silently; it is not
 re-raised here.
+
+## `text.rs` — one table, two sinks, and no shared replacement
+
+[`text.rs`](../../crates/sandbx-providers/src/text.rs) is the one file in this
+crate that is about a *hazard* rather than a format, and it is here for a reason
+worth reading carefully, because it is a judgement about where a shared fact
+belongs.
+
+`invisible` answers one question — whether a character renders as nothing, or
+reorders what follows it. Its doc gives the reason the obvious predicate will
+not do: `char::is_control` is category `Cc` exactly, so U+202E and the
+directional isolates pass it and let text *display* as something other than
+what it says.
+There is no `char` predicate for the category, so this is a denylist, "which a
+new Unicode version can outgrow silently" — the kind of limit this repo states
+rather than leaves to be discovered.
+
+Two places consume it, and they are the two places model-chosen text reaches a
+human: `sandbx-cli`'s `gate::stripped`, deciding what an operator reads before
+consenting to a tool call ([13](13-turn-loop-and-gate.md)), and `sandbx-tui`'s
+`transcript::printable`, deciding what reaches a cell
+([23](23-crate-tui.md)). **What they share is the table and not the
+replacement**, which is the distinction to take from this file. Each sink keeps
+its own strip where it is, because the placement is itself a property — the tui
+strips at the screen "because the screen is what an escape sequence inside it
+would rewrite" — and the two want different things: `gate::stripped` spells `\n`
+and `\t` out and replaces with U+FFFD, while `transcript::printable` keeps `\n`
+literal, expands `\t` to four spaces, and ORs in a confusable list of its own.
+Only the hazard is common, so only the hazard is shared.
+
+Why *this* crate owns it, and not the two more obvious homes: the hazard is a
+property of model-chosen text, which is this crate's vocabulary, and
+`sandbx-tui` already depends on it for `AgentEvent`, so the edge costs nothing.
+`sandbx-core` would have meant a new `tui` → `core` edge and would have made a
+pure-Unicode predicate Linux-only, since `core` does not compile off Linux.
+`sandbx-tui` exporting it would have put a `char` predicate in a terminal-UI
+crate's public API and had the gate read it for text going to stderr and
+`/dev/tty`. No `decision-*.md` carries this; the ownership is recorded in
+[guide-repo-map.md](../guide-repo-map.md), which is why this crate's one-line
+description in the dependency table ends "and what their text may not carry to a
+terminal", and in [guide-tui.md](../guide-tui.md) from the cell's side.
+
+`every_arm_of_the_denylist_holds` is the test, and the thing to notice is that
+it fixtures **both endpoints of every range**, not one per range: a fixture for
+U+200B alone would still pass if the arm were narrowed to `200b..=200d`, with
+U+200E and U+200F reaching a terminal. Then two counts — twelve singles,
+twenty-eight bounds — because nothing can count `matches!`'s arms at runtime, so
+a deleted fixture fails while a *new* arm is on whoever adds it. Its partner
+`text_that_renders_is_left_alone` passes prose and a path through whole, then
+the codepoint just outside a range at either end and the gap between two
+adjacent ranges — a range widened by one, which is the error in the other
+direction.
 
 ## `sse.rs` — a byte stream becomes frames
 
@@ -813,6 +866,7 @@ really is installed and usable.
 |---|---|
 | the body serializer, every field and omission | `src/anthropic/body.rs`, `mod tests` |
 | SSE framing, chunk by chunk | `src/sse.rs`, `mod tests` |
+| every arm of the invisible-character denylist, both ends of every range | `src/text.rs`, `mod tests` |
 | the fold, by what a turn is doing | `src/anthropic/wire/tests/` — `content`, `lifecycle`, `tool_use`, `usage` |
 | the client over real HTTP, no key | `tests/anthropic_client.rs` |
 | key resolution, through an injected lookup | `tests/credentials.rs` |
@@ -836,6 +890,8 @@ case where *being a separate crate* is itself the thing asserted.
   is allowed to supply it.
 - Which of the seven `AgentEvent`s stream and which arrive whole, and why a
   thinking block with no signature never leaves the crate.
+- Why a `char` predicate lives in a crate that talks to an HTTP API, which two
+  sinks read it, and what those two deliberately do not share.
 - What the tokenizer does with a frame that has no trailing blank line, and why
   nothing may be emitted after a terminal item.
 - Where a frame boundary is actually found, and which of the two
