@@ -93,10 +93,18 @@ impl Keys {
     }
 
     /// Resolves on the next key of any kind, for holding a finished screen; at once if the
-    /// reader is gone — opposite [`stop`](Self::stop), since with no key able to arrive,
+    /// terminal is gone — opposite [`stop`](Self::stop), since with no key able to arrive,
     /// waiting would hold the alternate screen until the process was killed.
+    ///
+    /// Read off `gone` rather than off the channel closing: in the window the hangup watch
+    /// exists for, the reader is wedged inside crossterm forever and holds its sender, so
+    /// the channel never closes. The borrow also marks the value seen, so a hangup landing
+    /// after it still wakes the wait below.
     pub async fn press(&mut self) {
-        self.seen.mark_unchanged();
+        if self.seen.borrow_and_update().gone {
+            return;
+        }
+
         let _ = self.seen.changed().await;
     }
 }
@@ -183,7 +191,10 @@ fn read(
         // Ahead of every call into crossterm: on a hung-up terminal `event::read` loops on
         // a `read` returning zero bytes with no timeout check at all (crossterm 0.29,
         // `event::source::unix::mio`), so a hangup is seen here or never.
-        match hung_up(tty, out, wait) {
+        match hung_up(tty, out, PollFlags::POLLIN, wait) {
+            // Bytes the terminal queued before it died are abandoned: a dead pty reports
+            // `POLLIN|POLLHUP` in one `revents`, and parsing them would put crossterm back
+            // in the loop above for whatever those bytes did not complete.
             Ok(true) => break,
             // crossterm handles `SIGWINCH`, and `poll` is not restarted by `SA_RESTART`: a
             // resize arrives here as `EINTR`. Returning on it would end the reader on every
@@ -218,12 +229,19 @@ fn read(
 /// Its own thread, calling into no library: [`read`]'s gate covers a hangup that lands while
 /// the reader is between calls, and this covers one that lands while the reader is inside
 /// crossterm — where crossterm spins on it rather than returning.
+///
+/// Nothing asked of either descriptor, so this wakes on a hangup and on nothing else. Asking
+/// `POLLIN` of the keyboard the way the gate does would wake this on the operator's first
+/// ordinary keypress, read it back as "not a hangup", and end the one thread covering that
+/// window — leaving #264 one keystroke away.
 fn hangup(sender: &watch::Sender<Seen>, tty: BorrowedFd<'_>, out: BorrowedFd<'_>) {
     loop {
-        match hung_up(tty, out, PollTimeout::NONE) {
+        match hung_up(tty, out, PollFlags::empty(), PollTimeout::NONE) {
             Ok(true) => break,
             Err(Errno::EINTR) => continue,
-            // Neither a hangup nor worth retrying. The gate in `read` is what is left.
+            // Asking for nothing and waiting without bound, so this is a `revents` nix
+            // cannot name or an error that is not a resize — neither a hangup nor worth
+            // polling again for. The gate in `read` is what is left.
             Ok(false) | Err(_) => return,
         }
     }
@@ -237,11 +255,19 @@ fn hangup(sender: &watch::Sender<Seen>, tty: BorrowedFd<'_>, out: BorrowedFd<'_>
 /// `sandbx tui -- prompt < /dev/pts/5` the screen and the keys are two different ptys, and
 /// either one dying leaves the turn undrawable.
 ///
-/// Nothing asked of `out`: an empty mask still reports a hangup, where `POLLIN` would also
-/// report input on a standard output nobody reads from and spin the caller's loop.
-fn hung_up(tty: BorrowedFd<'_>, out: BorrowedFd<'_>, wait: PollTimeout) -> nix::Result<bool> {
+/// `asked` is what the caller wants of `tty` besides a hangup: `POLLIN` for [`read`], which
+/// learns from the same call when crossterm has bytes to parse, and nothing for [`hangup`],
+/// which a keypress may not wake. Nothing is ever asked of `out` — an empty mask still
+/// reports a hangup, where `POLLIN` would also report input on a standard output nobody
+/// reads from and spin the caller's loop.
+fn hung_up(
+    tty: BorrowedFd<'_>,
+    out: BorrowedFd<'_>,
+    asked: PollFlags,
+    wait: PollTimeout,
+) -> nix::Result<bool> {
     let mut watched = [
-        PollFd::new(tty, PollFlags::POLLIN),
+        PollFd::new(tty, asked),
         PollFd::new(out, PollFlags::empty()),
     ];
     poll(&mut watched, wait)?;
@@ -307,6 +333,16 @@ mod tests {
         (File::from(pair.master), File::from(pair.slave))
     }
 
+    /// Whether `future` finishes without ever being woken. No runtime, because what is under
+    /// test is that `press` answers from the value the channel already holds rather than from
+    /// a notification — which is exactly one poll with a waker nothing can call.
+    fn ready(future: impl Future<Output = ()>) -> bool {
+        let mut future = std::pin::pin!(future);
+        let mut polling = std::task::Context::from_waker(std::task::Waker::noop());
+
+        future.as_mut().poll(&mut polling).is_ready()
+    }
+
     /// Wait for `fd` to carry something, or fail the test.
     ///
     /// Not a sleep: a pty queues a written line from a workqueue, and a poll that ran before
@@ -370,14 +406,17 @@ mod tests {
     /// returns from once the terminal is gone.
     #[test]
     fn a_hung_up_terminal_is_seen_and_a_live_one_is_not() {
+        let asked = PollFlags::POLLIN;
+
         let (master, dead) = pty();
         drop(master);
-        assert!(hung_up(dead.as_fd(), dead.as_fd(), PollTimeout::ZERO).expect("poll"));
+        assert!(hung_up(dead.as_fd(), dead.as_fd(), asked, PollTimeout::ZERO).expect("poll"));
 
         // Non-vacuous: a live pty answers no, so the answer above is the hangup and not the
-        // call. Bounded rather than blocking, an empty mask on a live pty never waking.
+        // call. Bounded rather than blocking, a quiet pty never satisfying `POLLIN`.
         let (_master, live) = pty();
-        assert!(!hung_up(live.as_fd(), live.as_fd(), PollTimeout::from(50u16)).expect("poll"));
+        let wait = PollTimeout::from(50u16);
+        assert!(!hung_up(live.as_fd(), live.as_fd(), asked, wait).expect("poll"));
     }
 
     /// Input is not a hangup: both arrive in one `revents` on a dead pty (`POLLIN|POLLHUP`),
@@ -389,7 +428,35 @@ mod tests {
         // Queued before the poll runs, or this asserts nothing about pending input.
         wait_readable(&slave);
 
-        assert!(!hung_up(slave.as_fd(), slave.as_fd(), PollTimeout::ZERO).expect("poll"));
+        let asked = PollFlags::POLLIN;
+        assert!(!hung_up(slave.as_fd(), slave.as_fd(), asked, PollTimeout::ZERO).expect("poll"));
+    }
+
+    /// And the watch is not woken by it at all. With `POLLIN` the operator's first ordinary
+    /// keypress would wake that thread, read back as "not a hangup" and end it — leaving the
+    /// window where the reader is already inside crossterm uncovered from then on.
+    ///
+    /// The timeout is the whole assertion: a mask that took the input would have answered at
+    /// once. A slow machine only waits longer, so the measurement cannot fail falsely.
+    #[test]
+    fn pending_input_does_not_wake_the_watch() {
+        let (mut master, slave) = pty();
+        writeln!(master, "x").expect("the typed line");
+        wait_readable(&slave);
+
+        let wait = Duration::from_millis(50);
+        let polled = std::time::Instant::now();
+        let gone = hung_up(
+            slave.as_fd(),
+            slave.as_fd(),
+            PollFlags::empty(),
+            PollTimeout::try_from(wait).expect("a timeout in range"),
+        )
+        .expect("poll");
+        let waited = polled.elapsed();
+
+        assert!(!gone, "a live pty was reported as hung up");
+        assert!(waited >= wait, "the watch woke on input after {waited:?}");
     }
 
     /// Either descriptor, because `tui` validates standard output while crossterm reads
@@ -463,5 +530,38 @@ mod tests {
         let seen = seen.borrow();
         assert_eq!((seen.presses, seen.stop), (1, true));
         assert!(!seen.gone, "a live terminal was reported as hung up");
+    }
+
+    /// The finished screen is not held on a terminal that already went away — and the
+    /// sender stays alive for the poll, so what resolves `press` is the hangup and not a
+    /// channel that closed. It has to be: where the watch is the only thread that saw the
+    /// hangup, the reader is still wedged inside crossterm holding the other sender.
+    #[test]
+    fn a_hangup_releases_a_screen_waiting_on_the_final_key() {
+        let (sender, seen) = watch::channel(Seen {
+            presses: 0,
+            stop: false,
+            gone: true,
+        });
+        let mut keys = Keys { seen };
+
+        assert!(
+            ready(keys.press()),
+            "a finished screen outlived its terminal"
+        );
+
+        drop(sender);
+    }
+
+    /// The pair: with no hangup recorded the wait stands, so the test above is the flag and
+    /// not a `press` that waits for nothing.
+    #[test]
+    fn a_live_terminal_still_holds_it() {
+        let (sender, seen) = watch::channel(Seen::default());
+        let mut keys = Keys { seen };
+
+        assert!(!ready(keys.press()), "the screen was dropped unread");
+
+        drop(sender);
     }
 }
