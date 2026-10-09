@@ -479,9 +479,10 @@ transcript, a wider directory narrowed, and a resume refused when another user
 can write or owns either. One another user can merely *read* resumes with a note
 on stderr, because the disclosure has already happened and a conversation cannot
 be rotated (#173). What stays unprotected is a *copy* — a transcript you move
-into a granted tree, or another program of yours reading it. A turn interrupted
-on `tui`'s screen writes nothing at all, not even the part of the answer you
-read, while a tool call already running still finished (#133).
+into a granted tree, or another program of yours reading it. A turn stopped on
+`tui`'s screen writes nothing at all, not even the part of the answer you read —
+an interrupt and a hung-up terminal discard it alike — while a tool call already
+running still finished (#271).
 
 A stored credential is protected from other users, not from the agent.
 `auth login` writes the key `0600` in a `0700` directory and refuses to *read*

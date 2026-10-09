@@ -284,10 +284,11 @@ architecture the filter gates on.
   `$XDG_STATE_HOME/sandbx/sessions`, else `~/.local/state/sandbx/sessions`.
   Whatever a tool read is in it: a token in a config, a `.env` under
   `--allow-read`, a key a `bash` printed. No encryption, no redaction, no expiry,
-  no deletion. A turn interrupted on `tui`'s screen writes nothing at all — not
-  the prompt and not the part of the answer you read — while a tool call already
-  running still finished, and what it did is only on the screen you stopped
-  ([#133](https://github.com/danczw/sandbx/issues/133)).
+  no deletion. A turn stopped on `tui`'s screen writes nothing at all — not the
+  prompt and not the part of the answer you read — and an interrupt and a
+  hung-up terminal discard it alike, while a tool call already running still
+  finished, and what it did is only on the screen you stopped
+  ([#271](https://github.com/danczw/sandbx/issues/271)).
 
   Ownership and integrity are enforced, not secrecy: directory `0700`, transcript
   `0600`, a wider directory narrowed, and a resume refused when another user can
