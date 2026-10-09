@@ -5,7 +5,7 @@
 //! refused rather than downgraded (#225), and the per-call account is drawn on the screen
 //! instead of written to stderr, which the alternate screen does not redirect (#224).
 
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal};
 use std::sync::{Mutex, PoisonError};
 
 use sandbx_agent::{
@@ -226,23 +226,43 @@ impl Tui {
         let failed = pane.screen.failure();
         drop(pane);
 
-        // Only now is there a stderr with no screen over it: the trail in emission order,
-        // then the account again, the pane having gone with the screen and a redirected log
-        // needing the line that says why a run exited 3 rather than 2 (#224). Not on the
-        // error path, where `main` reports the same error itself.
+        // Only now is there a stderr with no screen over it, which is why the trail is
+        // dropped here: in emission order, ahead of everything `reported` writes.
         drop(audit);
-        if code.is_ok() {
-            for line in &account {
-                eprintln!("{line}");
-            }
-        }
 
-        let code = code?;
-        match failed {
-            Some(error) => Err(AgentError::Screen(error)),
-            None => Ok(code),
-        }
+        reported(code, failed, &account)
     }
+}
+
+/// Write what the run has to say on a stderr with no screen over it, and report the code.
+///
+/// The account again, the pane having gone with the screen and a redirected log needing the
+/// line that says why a run exited 3 rather than 2 (#224). Not on the error path, where
+/// `main` reports the same error itself.
+///
+/// A latched draw failure is one more line and not the code: the screen is not the channel
+/// this turn's answer came back on, so whatever `ending` earned survives it. `agent-run`
+/// does the opposite with `AgentError::Output` because there stdout *is* that channel.
+/// Apart from `execute` so the precedence is a unit test — `Screen` needs a terminal no test
+/// has, and the latch is private with no setter.
+fn reported(
+    code: Result<i32, AgentError>,
+    failed: Option<io::Error>,
+    account: &[String],
+) -> Result<i32, AgentError> {
+    // First, so a turn that failed outright prints neither: its own error is the account.
+    let code = code?;
+
+    for line in account {
+        eprintln!("{line}");
+    }
+    // Through the variant's own `Display`, so the wording is the one `main` would have
+    // printed had this stayed the return value.
+    if let Some(error) = failed {
+        eprintln!("sandbx: {}", AgentError::Screen(error));
+    }
+
+    Ok(code)
 }
 
 /// The code a finished turn exits with, and every line accounting for it.
@@ -353,6 +373,7 @@ impl CallGate for Gate<'_> {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
+    use sandbx_agent::TurnError;
 
     use super::*;
     use crate::{Cli, Command};
@@ -471,6 +492,33 @@ mod tests {
                 account.iter().all(|line| line.starts_with("sandbx: ")),
                 "{account:?}"
             );
+        }
+    }
+
+    /// A finished turn keeps the code it earned, whatever the screen did last.
+    ///
+    /// Codes as literals, so a const renumbered under a claim `README.md` and `SECURITY.md`
+    /// both make fails here. The screen is not the channel the answer came back on: the
+    /// account is already on stderr and the turn already in the session, which leaves the
+    /// code as the only machine-readable signal there is.
+    #[test]
+    fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
+        let latched = || Some(io::Error::from(io::ErrorKind::BrokenPipe));
+        let kept = |code| reported(Ok(code), latched(), &[]);
+
+        assert!(matches!(kept(NO_CONSENT), Ok(3)));
+        assert!(matches!(kept(INCOMPLETE), Ok(2)));
+        assert!(matches!(kept(0), Ok(0)));
+
+        // Non-vacuous both ways: a turn that failed outright still reports its own error
+        // rather than the screen's, latch or no latch — so what is kept above is the code
+        // and not every input this takes.
+        let failed = || AgentError::from(TurnError::StreamEndedWithoutStop);
+        for screen in [latched(), None] {
+            assert!(matches!(
+                reported(Err(failed()), screen, &[]),
+                Err(AgentError::Turn(TurnError::StreamEndedWithoutStop))
+            ));
         }
     }
 
