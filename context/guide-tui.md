@@ -141,6 +141,32 @@ failed `tcsetattr` with an `eprintln!` to that same dead descriptor and panics �
 inside a `Drop` already unwinding, a panic while panicking, which aborts. The
 ignored error is the only thing left to do with a terminal that stopped answering.
 
+### A dead stderr may not take the code
+
+Hand-walking the hangup found the rest of that hazard, which no test reaches:
+when the screen *was* the terminal, stderr is the same dead descriptor, and every
+`eprintln!` on the way out panics on the failed write. Three places had to change
+before the earned code survived one — measured, in order, as `134` (`SIGABRT`),
+then `101`, then the code the turn earned:
+
+- **ratatui's panic hook.** `try_init` installs one that restores with `restore`,
+  so *any* panic with a dead stderr aborts. `Screen::enter` replaces it with one
+  that calls `try_restore` and chains to the hook that was in force before
+  `try_init` — a hook that cannot write cannot panic while panicking.
+- **`Terminal`'s own `Drop`.** It shows the cursor if a draw hid it and
+  `eprintln!`s when it cannot, and `show_cursor` clears the flag it reads only
+  once the backend accepted the write — which a dead one never does. So the panic
+  cannot be prevented from here, only contained: `Screen::drop` drops the terminal
+  inside a `catch_unwind`, which is the whole reason the field is an `Option`.
+- **`main`'s `report`.** Its `eprintln!` for a failed run is on the hangup path:
+  `tui` returns, the screen is already gone, and the write panics with the code
+  still unreported. `writeln!` and an ignored error. The two `eprintln!`s above it
+  keep theirs — they run before any screen exists, so stderr there is the one the
+  operator started the process with rather than one sandbx took and lost.
+
+The `ratatui::restore()` hazard is upstream's and wider than this path; sandbx
+covers its own `Drop` and its own hook, and nothing more.
+
 ### A terminal that went away ends the turn
 
 A pty whose master is gone answers `read` with zero bytes forever. crossterm 0.29

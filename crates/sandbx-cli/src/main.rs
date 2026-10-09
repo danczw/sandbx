@@ -3,6 +3,8 @@
 //! Holds only what needs a real process; the parsing and policy derivation it drives
 //! live in the library half.
 
+use std::io::Write;
+
 use clap::Parser;
 use clap::error::ErrorKind;
 use sandbx_cli::{Cli, Command};
@@ -92,7 +94,13 @@ fn report(result: Result<i32, impl std::fmt::Display>, failure: u8) -> std::proc
     match result {
         Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(failure)),
         Err(error) => {
-            eprintln!("sandbx: {error}");
+            // `writeln!` and not `eprintln!`: under `tui` a hung-up screen leaves stderr
+            // the same dead descriptor, where the macro's failed write panics and the
+            // process exits 101 instead of the code the run earned (#264). The two
+            // `eprintln!`s above keep theirs — they run before any screen exists, so
+            // stderr there is the one the operator started the process with, not one
+            // sandbx took and lost.
+            let _ = writeln!(std::io::stderr(), "sandbx: {error}");
             std::process::ExitCode::from(failure)
         }
     }
