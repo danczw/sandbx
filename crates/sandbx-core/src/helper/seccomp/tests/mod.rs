@@ -219,6 +219,22 @@ fn socket_verdict(program: seccompiler::BpfProgramRef<'_>, domain: u64) -> u32 {
     protocol_socket_verdict(program, domain, 0, 0)
 }
 
+/// The verdict for `socketpair(domain, socket_type, 0, …)`.
+///
+/// `socket_type` is wider than the `int` the kernel reads, so a test can set the
+/// `SOCK_CLOEXEC`/`SOCK_NONBLOCK` bits the comparison must mask off.
+fn socketpair_verdict(
+    program: seccompiler::BpfProgramRef<'_>,
+    domain: u64,
+    socket_type: u64,
+) -> u32 {
+    verdict_with_args(
+        program,
+        libc::SYS_socketpair,
+        [domain, socket_type, 0, 0, 0, 0],
+    )
+}
+
 /// The verdict for `socket(domain, socket_type, 0)`.
 fn typed_socket_verdict(
     program: seccompiler::BpfProgramRef<'_>,

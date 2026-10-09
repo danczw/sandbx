@@ -288,15 +288,16 @@ itself gets its own directory — which that method's doc carries.
 35 entries in `BLOCKED_SYSCALLS`, which every command gets. The list is where the
 filter starts, not the whole of it: `blocked_syscalls` seeds from it, then adds a
 `clone` rule per flag in `NAMESPACE_CLONE_FLAGS` — unconditional too — and then
-the policy-gated rules: the `socket(AF_UNIX)` denial unless unix sockets are
-granted, and the `Ports` type/family/protocol, `TCP_ULP` and `MSG_FASTOPEN`
-rules. `installed_filters` installs that program, `clone3_filter` and, on
-x86\_64, `x32_gate`. Three rungs of evidence, strongest first:
+the policy-gated rules: the `socket(AF_UNIX)` and connectionless
+`socketpair(AF_UNIX)` denials unless unix sockets are granted, and the `Ports`
+type/family/protocol, `TCP_ULP` and `MSG_FASTOPEN` rules. `installed_filters`
+installs that program, `clone3_filter` and, on x86\_64, `x32_gate`. Three rungs
+of evidence, strongest first:
 
 | Rung | Where | Covers |
 |---|---|---|
-| a real kernel refuses the call | `tests/enforcement_syscalls.rs` | 4 of them — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` rule, which is not a list entry |
-| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp/tests/mod.rs` | every entry, plus what the `AF_UNIX`, `clone`-flag and x32 rules compare against |
+| a real kernel refuses the call | `tests/enforcement_syscalls.rs` | 4 of them — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` and `socketpair(AF_UNIX)` rules, which are not list entries |
+| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp/tests/mod.rs` | every entry, plus what the two `AF_UNIX`, `clone`-flag and x32 rules compare against |
 | the documented set matches the list | `tests/denylist.rs` | every entry |
 
 The middle rung is a test-only classic-BPF interpreter run over a synthetic
@@ -319,7 +320,32 @@ are OR'd, and an `insert` in either would wipe the other silently. The
 `NetworkPolicy::Ports` alone, as is the `TCP_ULP` rule on `setsockopt` — the
 family of a socket is not fixed at `socket` time — and the `MSG_FASTOPEN` rules
 on the send syscalls. `context/decision-port-allowlist.md` is why.
-`socketpair` is left alone.
+
+`socketpair` carries the same gate, for the types that are connectionless.
+It hands back an `AF_UNIX` descriptor having called no `socket`, so the rule
+above does not see it, and `connect` on a datagram half re-targets it at any
+pathname socket — measured delivering out of the sandbox on a V8 kernel with
+network denied, `unix_sockets=false` and no grant naming the socket. The two
+connection-oriented types answer `EISCONN` to that `connect` and `EPROTOTYPE` to
+a mismatched listener, so they are allowlisted rather than `SOCK_DGRAM`
+denylisted: a connectionless type a future kernel gives `AF_UNIX` arrives denied,
+and the pair shells use as a pipe keeps working.
+
+What makes that allowlist safe is a state, not a type check, so it was measured
+as one: `unix_stream_connect` refuses anything not in `TCP_CLOSE`, and a pair is
+born `TCP_ESTABLISHED`. Closing the peer leaves the survivor established — it
+takes `sk_shutdown` and `ECONNRESET`, not a state reset — and a
+`shutdown(SHUT_RDWR)` only ORs into `sk_shutdown` too, so all four combinations
+still answer `EISCONN`,
+each tried against a *listening* host socket of the matching type so that no type
+check could stand in for the state check. `AF_UNSPEC` is refused earlier by
+`unix_validate_addr`, and a SEQPACKET `sendmsg` carrying `msg_name` drops the
+address and delivers to the peer. Measured on 6.18; a kernel that let a connected
+half be re-aimed would make the two permitted types a hole, so this is the
+paragraph to re-measure against, not to reason from.
+`a_socketpair_cannot_reach_a_pathname_socket` is the kernel rung,
+`socketpair_refuses_a_connectionless_unix_pair` and
+`every_connectionless_socketpair_type_is_refused` the program rung.
 
 ### Three filters, three actions
 
@@ -453,7 +479,7 @@ path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 | Gap | Residual |
 |---|---|
 | Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have, and that proxy is declined rather than pending: its interception is cooperation and TLS termination widens the boundary it would narrow, per `decision-egress-proxy.md`. What that note carves out is `--allow-dns NAME`, which bounds which *names* resolve (#145) and is not a destination control: an IP literal, or an address the command already holds, reaches any allowlisted port exactly as before. The UDP denial breaks name resolution, which `--allow-dns` closes on both libcs and `--dns-over-tcp` routes around under glibc only. |
-| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `handled_access` is `AccessFs::from_all(abi)`, so on a kernel whose probe settles at V9 the right lands in the handled set and `connect(2)` to a pathname socket is denied unless a rule confers it. `--allow-unix-sockets` is what confers it, on every path the policy granted: `unix_socket_rights` in `helper/ruleset/rights.rs`, masked by `from_all(abi)` so nothing moves below V9. No axis confers it — the write set is `from_all(abi) & !from_read(abi) & !ResolveUnix`, the third subtraction added by #259, because `from_all` would otherwise hand the bit to every `--allow-write` grant with no line edited. `no_axis_confers_the_unix_socket_right` and `the_unix_socket_flag_is_what_confers_resolve_unix` pin the two halves, `the_flag_confers_nothing_below_the_abi_that_has_the_right` the mask. `negotiated_abi` hard-requiring a whole level makes V9 a step rather than a slide: below it the seccomp `socket(AF_UNIX)` denial is the only control, and *nothing* conditions a unix `connect` on the filesystem policy — measured on a V8 kernel by dropping the directory grants from `an_explicit_unix_grant_permits_the_connection`, which still connects. What has to be *written* is a grant narrower than a write root, if a narrower one is wanted. Same asymmetry as `context/decision-axis-table.md` records. |
+| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `handled_access` is `AccessFs::from_all(abi)`, so on a kernel whose probe settles at V9 the right lands in the handled set and `connect(2)` to a pathname socket is denied unless a rule confers it. `--allow-unix-sockets` is what confers it, on every path the policy granted: `unix_socket_rights` in `helper/ruleset/rights.rs`, masked by `from_all(abi)` so nothing moves below V9. No axis confers it — the write set is `from_all(abi) & !from_read(abi) & !ResolveUnix`, the third subtraction added by #259, because `from_all` would otherwise hand the bit to every `--allow-write` grant with no line edited. `no_axis_confers_the_unix_socket_right` and `the_unix_socket_flag_is_what_confers_resolve_unix` pin the two halves, `the_flag_confers_nothing_below_the_abi_that_has_the_right` the mask. `negotiated_abi` hard-requiring a whole level makes V9 a step rather than a slide: below it the seccomp denials on `socket(AF_UNIX)` and a connectionless `socketpair(AF_UNIX)` are the only control, and *nothing* conditions a unix `connect` on the filesystem policy — measured on a V8 kernel by dropping the directory grants from `an_explicit_unix_grant_permits_the_connection`, which still connects. What has to be *written* is a grant narrower than a write root, if a narrower one is wanted. Same asymmetry as `context/decision-axis-table.md` records. |
 | `FsGuard` TOCTOU | **Two swaps, both mid-open, both needing full `openat`-chain resolution.** A *parent-directory* swap: `open_read`/`open_write` take handles with `O_NOFOLLOW`, but `ls`, `grep` and `find` resolve paths — `read_dir` has no handle form, and `walk_readable` checks the walk root alone, so every directory below it is reopened by path. And a *granted-root* swap between the confirmation and the access: two adjacent syscalls across the four single-path tools, five guard calls between them — `edit` confirms twice, `crate::read_file` then `open_write` once the match is known unique — and the whole traversal for `find` and `grep`, whose walk confirms its root once. Four of the five confirm then open with `O_NOFOLLOW`; the fifth is `ls`, which has no handle form to open and reads the path again. Both close the same way: run the access off a directory descriptor, with `openat2(dirfd, …, RESOLVE_BENEATH)` below it, so the confirmed object *is* what the access resolves from. |
 | Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
 | `Degraded` raised by nothing a test enters | **Pinned on any host.** Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted anywhere; `tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |

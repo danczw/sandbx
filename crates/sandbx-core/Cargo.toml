@@ -56,6 +56,11 @@ path = "tests/support/unix_probe.rs"
 required-features = ["sandbox-integration"]
 
 [[bin]]
+name = "sandbx-socketpair-probe"
+path = "tests/support/socketpair_probe.rs"
+required-features = ["sandbox-integration"]
+
+[[bin]]
 name = "sandbx-iouring-probe"
 path = "tests/support/iouring_probe.rs"
 required-features = ["sandbox-integration"]

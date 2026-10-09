@@ -106,13 +106,15 @@ against the threshold.
 ```rust
 /// Grant unix-domain sockets, every one the command can reach.
 ///
-/// All or nothing: the denial is a seccomp rule on `socket(AF_UNIX, …)`, and
-/// seccomp cannot follow the pointer to `connect`'s path. The path mechanism
-/// is Landlock's `ResolveUnix` (ABI V9, Linux 7.1), which this confers on the
-/// paths it granted; below V9 nothing bounds which socket is dialled.
+/// All or nothing: seccomp denies `socket(AF_UNIX, …)` and a connectionless
+/// `socketpair`, and cannot follow the pointer to `connect`'s path. The path
+/// mechanism is Landlock's `ResolveUnix` (ABI V9, Linux 7.1), which this confers
+/// on the paths it granted; below V9 nothing bounds which socket is dialled.
 ```
 
-Four facts in, four facts out, a third of the lines.
+Four facts in, five facts out, half the lines. The fifth is the second denial
+route, which the rewrite had room for because the first four got shorter — the
+direction a pass is supposed to run in.
 
 ## Verifying a pass
 

@@ -296,11 +296,11 @@ are written down.
 
 ## All of them run, or none of the files compiles
 
-62 real-kernel enforcement tests, split by what enforces them: 40 in
-`tests/enforcement.rs` for paths and grants, 8 in `tests/enforcement_syscalls.rs`
-for the calls Landlock cannot express, 6 in `tests/enforcement_network.rs` for
-the ports it does, and 8 in `tests/enforcement_resolver.rs` for the names that
-resolve. All four files are
+64 real-kernel enforcement tests, split by what enforces them: 40 in
+`tests/enforcement.rs` for paths and grants, 10 in
+`tests/enforcement_syscalls.rs` for the calls Landlock cannot express, 6 in
+`tests/enforcement_network.rs` for the ports it does, and 8 in
+`tests/enforcement_resolver.rs` for the names that resolve. All four files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 62 run or none of the files compiles, and
+count is unconditional — all 64 run or none of the files compiles, and
 `cargo test` reports `0 ignored`. Nothing checks this number against the files.
