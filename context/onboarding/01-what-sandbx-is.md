@@ -216,15 +216,23 @@ branch on. From [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs):
 | 0 | the turn ended on an answer |
 | 1 | a failure, named on stderr |
 | 2 | `INCOMPLETE` — a bound the operator chose cut the turn short |
-| 3 | `NO_CONSENT` — the operator could no longer be asked |
+| 3 | `NO_CONSENT` — the operator could no longer be asked, under `--approve call` or a `tui` hangup |
+| 64 | `EX_USAGE` — sandbx would not take the command line, before any turn exists |
 
 Three rather than two is the point: a run that stopped because nobody could
 approve a tool call is neither a failure nor a bound being hit, and a caller has
-to be able to tell the three apart (#218). `auth` uses 2 for a failure
-instead of 1 — `failure_code` in
+to be able to tell the three apart (#218). `tui` reaches the same 3 by a second
+route: a screen or a keyboard that hangs up mid-turn is a turn nobody is
+watching, which is the same unrecoverable ending as a lost `--approve call`
+terminal (#264). `auth` uses 2 for a failure instead of 1 — `failure_code` in
 [`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs) picks it per
 subcommand — because `auth status` already spends 1 on "no key anywhere" and a
 script must not read a refused credential file as an absent one.
+
+64 sits outside all of that. `EX_USAGE` from `sysexits.h`, and `usage_code` in
+the same file maps a refused command line to it before `Cli::command` even
+exists — clear of 0, 1, 2 and 3 and of the `128 + n` a signal takes, so neither
+a turn's codes nor `auth`'s own are reachable by mistyping a flag (#265).
 
 ## Where it is
 
@@ -246,7 +254,8 @@ is on the releases page rather than in a file here.
   directory away.
 - Why read does not confer execute, and the one grant that confers both.
 - Why an old kernel is a refusal rather than a weaker sandbox.
-- What exit code 3 means and why it is not 1 or 2.
+- What exit code 3 means, why it is not 1 or 2, and `tui`'s second route to it.
+- Why exit 64 cannot collide with a turn's own codes or `auth`'s.
 
 ## Next
 

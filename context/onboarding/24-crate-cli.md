@@ -11,7 +11,7 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-one source files under [`src/`](../../crates/sandbx-cli/src/), ten
+Twenty-one source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each file holds and, where another chapter
@@ -116,11 +116,15 @@ and become the target command rather than fall through into `Cli::parse`.
 [08](08-the-two-stage-helper.md) has the two flags, the dispatch enum with no
 success variant, and why the re-exec is this binary at all.
 
-Inside that closure the order is `logging::init`, then `Cli::parse`, then
+Inside that closure the order is `logging::init`, then `Cli::try_parse`, then
 `conceal_process_state`, then the dispatch — and three of those four are where
 they are for a reason of their own. Logging is initialised there because in
 helper mode this process becomes the sandboxed command, whose stderr is
 forwarded verbatim, so a subscriber installed above would write into it.
+`try_parse` stands in for `Cli::parse` so a refused command line leaves on a
+code sandbx chose rather than the 2 clap would spend on it; *The exit-code
+mapping* below has the reason. A refusal there returns before a `Command`
+exists at all, so neither `conceal_process_state` nor the dispatch runs.
 `conceal_process_state` is called there so the flag is sandbx's own rather than
 a sandboxed command's — and after parsing, so a refusal exits with the
 subcommand's code. Then the dispatch: five arms, two wrapped in `block_on`.
@@ -150,8 +154,33 @@ pick, and `AgentError::Runtime` has exactly one site that can produce it.
 
 ### The exit-code mapping
 
+A command line clap refuses never reaches a subcommand's own code. `main`
+calls `Cli::try_parse` rather than `Cli::parse`, and on `Err` maps the
+refusal through `usage_code`, before any `Command` exists:
+
+```rust
+fn usage_code(kind: ErrorKind) -> u8 {
+    match kind {
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => 0,
+        _ => USAGE,
+    }
+}
+```
+
+`USAGE` is 64, `EX_USAGE` from `sysexits.h`: clear of 0, of the 2 a bound cuts
+a turn short with, of the 3 a lost operator takes, and of the `128 + n` a
+signal takes, so a caller can tell "sandbx refused your arguments" from "the
+turn ran and was cut short" without grepping stderr (#265). `--help` and
+`--version` are the only two `ErrorKind`s that are not refusals, and keep the
+0 they always had; everything else clap reports as an error, including an
+argv naming no subcommand, which clap answers by printing the help to
+*stderr* — a refusal that answers with the help, not a help anyone asked
+for — so it takes 64 and not the 0 that would make a bare `sandbx auth` read
+as the 0 `auth status` spends on a key it found.
+
 `report` turns a subcommand's `Result<i32, _>` into an `ExitCode`, and
-`failure_code` says what an `Err` costs for *that* subcommand:
+`failure_code` says what an `Err` costs for *that* subcommand — reached only
+once a `Command` exists for it to key on:
 
 ```rust
 fn failure_code(command: &Command) -> u8 {
@@ -162,27 +191,43 @@ fn failure_code(command: &Command) -> u8 {
 }
 ```
 
-Read the whole thing as one mapping:
+Read the whole thing as one mapping, in the order it is actually decided:
 
 | what happened | code | decided by |
 |---|---|---|
+| a command line sandbx would not take | 64 | `usage_code`, before a `Command` exists |
+| `--help` or `--version` | 0 | `usage_code` |
 | the command under `sandbox-run` exited | its own code | `sandbx_core::exit_code`, passed through |
 | a turn ended on an answer | 0 | `Render::finish` |
 | a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent.rs` |
 | a keypress ended a turn on the screen | 2 | the same `INCOMPLETE`, from `tui`'s `select!` |
-| the operator could no longer be asked | 3 | `NO_CONSENT` in `agent.rs` |
+| the operator could no longer be asked, or `tui`'s terminal hung up | 3 | `NO_CONSENT` in `agent.rs` |
 | `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `auth.rs` |
 | any `Err` under `sandbox-run`, `agent-run`, `tui`, `hash` | 1 | `failure_code` |
 | any `Err` under `auth` | 2 | `failure_code` |
 | an `Ok(code)` that does not fit a `u8` | the subcommand's failure code | `report` |
 
-Both constants live in `agent.rs`, but under `tui` the code comes from `ending`
-rather than from `Render::finish` — and `ending` is the one mapping in the crate
-that reads `TurnStop` *non*-exhaustively, closing on `_ => 0` with a comment
-saying it is deliberate: a stop it has no account of must not be given a code
-`agent-run` already claims. [13](13-turn-loop-and-gate.md) has that argument,
-and [15](15-tools-and-the-screen.md) has what the interrupt's `2` costs a caller
+64 outranks every other row by construction, not by priority. `usage_code`
+runs inside the `match Cli::try_parse()` in `main`, before the `Command` that
+`failure_code` keys on is even built — there is no subcommand yet to take the
+code for, so nothing later in this table can override it. `failure_code`'s
+own doc states the consequence directly: a usage error never reaches it, which
+is why `USAGE` is one number and not one per command.
+
+Both of the row-2/row-3 constants live in `agent.rs`, but under `tui` the code
+comes from `ending` rather than from `Render::finish` — and `ending` is the one
+mapping in the crate that reads `TurnStop` *non*-exhaustively, closing on
+`_ => 0` with a comment saying it is deliberate: a stop it has no account of
+must not be given a code `agent-run` already claims.
+[13](13-turn-loop-and-gate.md) has that argument, and
+[15](15-tools-and-the-screen.md) has what the interrupt's `2` costs a caller
 that a round limit's `2` does not.
+
+`tui` reaches `NO_CONSENT` a second way that never calls `ending` at all: a
+hung-up screen or keyboard ends the turn on the same reasoning as a lost
+consent prompt — a turn nobody could see is one nobody watched — decided
+directly in `tui.rs`'s own match rather than through `agent.rs`'s mapping.
+[15](15-tools-and-the-screen.md) and [23](23-crate-tui.md) have the mechanism.
 
 Nothing downstream of `ending` may take the code back. A screen that stopped
 redrawing mid-turn latches its failure, and `reported` — the free function
@@ -190,12 +235,16 @@ redrawing mid-turn latches its failure, and `reported` — the free function
 the code regardless; [23](23-crate-tui.md) has why a broken *view* is not a
 broken *result*.
 
-The two oddities are both about a script being able to branch. `3` exists
-because a run that stopped with nobody left to approve a tool call is neither a
-failure nor a bound, and a caller cannot learn it any other way (#218). And
-`auth` spends `2` on failure because `auth status` has already spent `1` on "no
-key anywhere" — so `sandbx auth status || sandbx auth login` cannot read a
-credential file it was refused as an absent one.
+The oddities are all about a script being able to branch. `3` exists because a
+run that stopped with nobody left to approve a tool call, or whose screen or
+keyboard hung up, is neither a failure nor a bound, and a caller cannot learn
+it any other way (#218, #264). `auth` spends `2` on failure because `auth
+status` has already spent `1` on "no key anywhere" — so `sandbx auth status ||
+sandbx auth login` cannot read a credential file it was refused as an absent
+one. And `64` exists so neither collision above is reachable by mistyping a
+flag: before it, a refused command line fell to clap's own 2, indistinguishable
+from the 2 a cut round earns and, under `auth`, from the 2 a refused credential
+source already spends (#265).
 
 ## agent.rs and its six submodules, as one pipeline
 
@@ -426,7 +475,9 @@ argument for spending the round at all.
 ### tui.rs — the same turn, on a screen
 
 `Tui` is `AgentRun`'s flags verbatim. What differs is where the turn is
-reported, and that a keypress can end one: `logging::hold()` buffers the audit
+reported, and that a keypress or a hung-up terminal can end one — the second
+exiting 3 rather than the keypress's 2, on the reasoning that a turn nobody
+could see is one nobody watched (#264). `logging::hold()` buffers the audit
 trail while the screen owns the terminal, `Screen::enter()` precedes
 `Keys::listen()` because without raw mode ctrl-c is a signal rather than a key,
 and the interrupt is a `tokio::select!` that drops the turn's future where it
@@ -493,6 +544,11 @@ two would leave an empty file where `login` just reported a stored key.
 | `status`, neither source has one | stdout, "not authenticated" | 1 |
 | `login` or `logout` succeeded | stderr | 0 |
 | any `AuthError` at all | stderr | 2 |
+
+This table assumes the argv already parsed. A flag `auth` would not take —
+`auth status --nonsense` — never reaches it: that is a usage error, exiting 64
+before an `AuthError` could exist, which is also what keeps 64 from colliding
+with the 2 this table already spends on its own failures.
 
 The key itself is a `secrecy::SecretString` throughout, whose `Debug` redacts
 and which has no `Display`. `login` reads it from stdin and refuses a terminal
@@ -617,7 +673,7 @@ Unit tests sit in the module they test, except where a file has enough of them
 to warrant its own: `agent/gate.rs` and `agent/prompt.rs` both have `tests.rs`
 siblings, and `prompt`'s is `pub(super) mod tests` so `agent.rs`'s own tests —
 not `gate`'s, which builds its own fake `Operator` — can reach its `pty`
-fixture for a hung-up terminal. Ten integration files, split by surface:
+fixture for a hung-up terminal. Twelve integration files, split by surface:
 
 | file | asserts |
 |---|---|
@@ -626,8 +682,10 @@ fixture for a hung-up terminal. Ten integration files, split by surface:
 | `cwd_policy.rs` | the working-directory guard — spawned, because it reads `getcwd` and `HOME`, and `set_current_dir` is process-global |
 | `auth_store.rs` | the credential file end to end — spawned, because the chain reads real environment variables and `set_var` is `unsafe` under edition 2024 |
 | `hash.rs` | `hash` and `--pin-sha256` asserted together, over the real binary's stdout |
+| `usage.rs` | the code a shell actually sees for a refused command line, and the channel it arrived on — spawned, since nothing a unit test can reach returns an `ExitStatus` |
 | `audit_log.rs` | the real subscriber, driven over an in-memory sink |
 | `audit_log_install.rs` | one test, and it must stay one: installing a `tracing` dispatcher is process-global |
+| `audit_log_held.rs` | the audit trail a held screen releases, end to end: a record on a blocking thread through the real subscriber into `Held`, onto stderr when the guard drops — re-exec'd to read fd 2, since `Held::drop` writes there directly and libtest's capture only intercepts the print macros (#266) |
 | `name.rs` | that the binary's name is not one a POSIX shell resolves before searching `$PATH` — a security test, because such a name "does not fail, it succeeds", so a hand check of the sandbox looks like a working run |
 
 [guide-module-layout.md](../guide-module-layout.md) is the authority on which of
@@ -639,10 +697,12 @@ those a new test belongs in.
   `main.rs`, and what that buys CI.
 - Why `Grants` is one flattened struct rather than a copy per subcommand, and
   what the two-copy version would have drifted into.
-- Why helper dispatch must run before `Cli::parse`, and why logging is
+- Why helper dispatch must run before `Cli::try_parse`, and why logging is
   initialised inside its closure rather than above it.
 - Which error becomes which exit code, and why `auth` fails with 2 while
   everything else fails with 1.
+- Why a command line clap refuses exits 64 before any subcommand's own
+  failure code can apply, and what that 64 keeps from colliding with.
 - What the model is told before the first request, what is left out of that
   message, and why the flags are never named in it.
 - Why the answer goes to stdout and everything about it goes to stderr, and

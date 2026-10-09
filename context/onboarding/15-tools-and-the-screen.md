@@ -383,8 +383,9 @@ process mid-turn and leave the alternate screen on the operator's terminal. So
 Nothing covers `SIGKILL`.
 
 The interrupt itself is a `tokio::select!` in `sandbx-cli` racing the turn's
-future against the keypress. The turn loop gains nothing from it: no stop
-variant, no cancel token, no second way for a turn to end. Which means the cost
+future against the keypress, and since #264 against the terminal hanging up as
+well. The turn loop gains nothing from either: no stop variant, no cancel
+token, no second way for a turn to end. Which means the cost
 is exactly what dropping a future costs, and
 [guide-tui.md](../guide-tui.md) states it in two bullets this chapter will not
 soften:
@@ -406,7 +407,11 @@ where the cut is the recoverable one. `GateAborted` exits 3 ahead of either
 bound — unreachable under `tui` today, because it refuses the flag that would
 give it an operator to lose, and written anyway because the outcome holds its
 messages and usage like an answered one, so a 0 there would look like an answer
-to every caller branching on the status.
+to every caller branching on the status. A hangup reaches the same 3 by the
+other road: `Stopped::Gone` is the keypress's sibling in that `select!` and
+takes `NO_CONSENT` with no outcome to account for at all (#264), a turn nobody
+could see being one nobody watched rather than the recoverable stop an
+interrupt is.
 
 - **Worth questioning:** the interrupt sharing `--max-rounds`'s code. The
   guide's justification is four words — "because that is what it is" — and the

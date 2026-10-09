@@ -1,12 +1,12 @@
 # The tui crate decides nothing, and sanitises everything it draws
 
 [`sandbx-tui`](../../crates/sandbx-tui/) is the screen one turn is drawn on and
-the keys that stop it: five source files, under a thousand lines, the smallest
-crate in the workspace. In [04 — the architecture](04-the-architecture.md) it is
-the box a turn is *reported* in, and the one crate with no row in View 3's table
-of boundaries — no policy, no gate, no session, no client. 04 also sets the
-frame: `tui` is not a sixth subcommand but `agent-run`'s flags derived into the
-same policy, reported elsewhere.
+the keys that stop it: five source files, about fourteen hundred lines. In
+[04 — the architecture](04-the-architecture.md) it is the box a turn is
+*reported* in, and the one crate with no row in View 3's table of boundaries —
+no policy, no gate, no session, no client. 04 also sets the frame: `tui` is
+not a sixth subcommand but `agent-run`'s flags derived into the same policy,
+reported elsewhere.
 
 What the screen draws, and what interrupting a turn loses, belongs to
 [15 — the seven tools and the screen](15-tools-and-the-screen.md) and to
@@ -20,7 +20,7 @@ overrides the gate's `settled`.
 ## The module tree
 
 ```
-src/lib.rs          re-exports four names; no policy, no gate, no session here
+src/lib.rs          re-exports five names; no policy, no gate, no session here
    transcript.rs    AgentEvent folded into entries, and the control bytes a cell
                     may not hold — no terminal behind it, so it is unit-tested
    view.rs          the layout: the transcript tail-aligned over a status bar
@@ -34,7 +34,7 @@ src/lib.rs          re-exports four names; no policy, no gate, no session here
 | [`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs) | `Transcript`, `Entry`, `Kind`, `printable` — the fold, and the sanitiser | here, as the centre; [15](15-tools-and-the-screen.md) for why a renderer gets a security chapter |
 | [`view.rs`](../../crates/sandbx-tui/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
 | [`screen.rs`](../../crates/sandbx-tui/src/screen.rs) | `Screen` — raw mode, the alternate screen, the `Drop`, the latched failure | here |
-| [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `interrupts` — the reader thread and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
+| [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
 Tests are inline, in the file whose private items they touch, as
 [guide-module-layout.md](../guide-module-layout.md) asks: `transcript.rs`,
@@ -42,19 +42,19 @@ Tests are inline, in the file whose private items they touch, as
 `crates/sandbx-tui/tests/` directory, and `screen.rs` has none — it is the one
 file that needs a real terminal.
 
-## lib.rs is four names, and the manifest is the interesting half
+## lib.rs is five names, and the manifest is the interesting half
 
-Four `mod` lines and four `pub use` lines, and no `pub mod`, so no module path
-is part of the API: a caller gets four names and their methods —
-`Transcript::new`/`event`/`call`/`note`,
+Four `mod` lines and four `pub use` lines — one of them now binding two
+items — and no `pub mod`, so no module path is part of the API: a caller gets
+five names and their methods — `Transcript::new`/`event`/`call`/`note`,
 `Screen::enter`/`draw`/`redraw`/`failure`, `Keys::listen`/`stop`/`press`,
-`Hint::Running`/`Done`. Deliberately *not* exported is the shape of a
-transcript: `Entry` and `Kind` are `pub(crate)`, as are `Transcript::entries`,
-`rounds`, `tokens` and `view::draw`. The only way out of a `Transcript` is a
-drawn frame, so no caller can read the folded entries back and print them where
-the fold does not cover.
+`Stopped::Pressed`/`Gone`, `Hint::Running`/`Done`. Deliberately *not*
+exported is the shape of a transcript: `Entry` and `Kind` are `pub(crate)`,
+as are `Transcript::entries`, `rounds`, `tokens` and `view::draw`. The only
+way out of a `Transcript` is a drawn frame, so no caller can read the folded
+entries back and print them where the fold does not cover.
 
-The dependency edge is the second half of
+The dependency edges are the second half of
 [`Cargo.toml`](../../crates/sandbx-tui/Cargo.toml).
 
 ```toml
@@ -62,18 +62,27 @@ ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
   "unstable-rendered-line-info",
 ] }
+# `poll` alone: the key reader gates every call into crossterm on a `poll`, which is
+# the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
+# spins on the zero-byte read behind it (#264).
+nix = { version = "0.31.3", default-features = false, features = ["poll"] }
 sandbx-providers = { path = "../sandbx-providers" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 ```
 
-One internal crate, and `serde_json` as a dev-dependency only. Read that as a
-negative fact stated at the type level: **a renderer cannot leak what it cannot
-name.** With no edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or
-`sandbx-session`, nothing here can mention a `SandboxPolicy`, an
-`ExecutionContext`, a `BuiltinTool`, a `CallGate` or a session transcript — not
-"does not" but cannot, as a build error. The borrowed vocabulary is two types:
+One internal crate. `nix`'s `poll` feature is the production edge the hangup
+fix added (#264) — the key reader's whole mechanism for seeing a terminal
+that stopped answering, below and in
+[guide-tui.md](../guide-tui.md). The dev profile repeats `nix` with `term`
+added, for opening a pty pair and reading its termios in a test, and keeps
+`serde_json` beside it. Read the one internal edge as a negative fact stated
+at the type level: **a renderer cannot leak what it cannot name.** With no
+edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or `sandbx-session`,
+nothing here can mention a `SandboxPolicy`, an `ExecutionContext`, a
+`BuiltinTool`, a `CallGate` or a session transcript — not "does not" but
+cannot, as a build error. The borrowed vocabulary is two types:
 `transcript.rs` names `sandbx_providers::AgentEvent`, and its tests name
 `StopReason`.
 
@@ -259,9 +268,10 @@ and `forgeable` inside the test.
 [`view.rs`](../../crates/sandbx-tui/src/view.rs) draws state and reads none, so
 its tests render into ratatui's `TestBackend` and read cells back as rows of
 strings — which is how `an_answer_cannot_forge_the_row_a_verdict_is_drawn_on`
-can assert that exactly one row starts with the mark. What no test reaches is
-`Screen::enter` and the `event::read` loop — and neither holds a decision, which
-is the order to take that in.
+can assert that exactly one row starts with the mark. What no test reaches
+is `Screen::enter` and crossterm's reader itself — the loop around it in
+`input.rs` is tested through a private `Source` fake, and neither of the two
+still untested holds a decision, which is the order to take that in.
 
 ## view.rs tail-aligns, and loses nothing it could show
 
@@ -306,11 +316,19 @@ joined with ` · ` and drawn `REVERSED`.
 ## screen.rs takes the terminal, and `Drop` gives it back
 
 `Screen::enter` calls `ratatui::try_init`, which turns raw mode on and enters
-the alternate screen in that order — "so a failed second step leaves the first
-in force" — with `inspect_err(|_| ratatui::restore())` to undo a half-done take.
-Raw mode is not a convenience: it is what makes ctrl-c arrive at `Keys` as a
-`KeyEvent` rather than raising `SIGINT`, which is why `Keys::listen` is started
-after `enter` and never before.
+the alternate screen in that order — "so a failed second step leaves the
+first in force." Before that call it takes the panic hook already installed,
+so there is something to chain to once its own replaces `try_init`'s:
+ratatui's hook restores with `restore`, whose `eprintln!` on a failed
+`tcsetattr` panics on a terminal that cannot be written to, and a panic
+raised inside a hook is a panic while panicking, which aborts (#264). The
+replacement calls `try_restore` instead and then the hook taken earlier —
+installed whether or not the terminal was entered, and on a failed
+`try_init` too, for the reason `Screen::drop` gives below: a terminal that
+cannot be entered may be one that cannot be reported to either. Raw mode is
+not a convenience: it is what makes ctrl-c arrive at `Keys` as a `KeyEvent`
+rather than raising `SIGINT`, which is why `Keys::listen` is started after
+`enter` and never before.
 
 `enter` is reached only on a run that can be drawn at all, and the driver
 settles that first: `Tui::drawable` refuses `--approve call`
@@ -330,29 +348,53 @@ impl Drop for Screen {
     ///
     /// `Drop`, not a method: an unwinding panic must still restore the terminal, which
     /// `try_init`'s hook covers only earlier. Neither covers `SIGKILL`.
+    ///
+    /// `try_restore` and not `restore`: `restore` reports a failed `tcsetattr` with
+    /// `eprintln!` to the descriptor that just died, and that panic inside an unwinding
+    /// `Drop` aborts (#264).
     fn drop(&mut self) {
-        ratatui::restore();
+        // Ignored: there is nothing left to report a terminal that stopped answering to.
+        let _ = ratatui::try_restore();
+
+        if let Some(terminal) = self.terminal.take() {
+            // `Terminal::drop` `eprintln!`s when it cannot show the cursor a draw hid, which
+            // is the same panic from inside this `Drop`. Contained rather than prevented:
+            // `show_cursor` clears the flag `Drop` reads only once the backend accepted it,
+            // which a dead one never will.
+            let _ = std::panic::catch_unwind(AssertUnwindSafe(move || drop(terminal)));
+        }
     }
 }
 ```
 
 A panic anywhere in the turn — the fold, a gate line, the driver — would
-otherwise leave the operator in raw mode with no echo, on an alternate screen,
-in a shell that still works and shows nothing it is told. Unwinding runs `Drop`,
-so the panic message lands on a usable terminal.
+otherwise leave the operator in raw mode with no echo, on an alternate
+screen, in a shell that still works and shows nothing it is told. Unwinding
+runs `Drop`, so the panic message lands on a usable terminal — except where
+stderr is the very descriptor that stopped answering, which is why
+`try_restore` replaces `restore` above. The field became an `Option` for a
+second such write: ratatui's own `Terminal::drop` `eprintln!`s when it
+cannot show a cursor a draw hid, on the same dead descriptor, and that one
+cannot be prevented from here — only contained, by dropping the terminal
+inside a `catch_unwind`.
 
-The limit is the comment's last sentence, and it generalises past `SIGKILL`: a
-`Drop` impl does not run on `SIGKILL` or `SIGSTOP`, on `std::process::abort` or
-a double panic, or in a `panic = "abort"` build. Each leaves the terminal as the
-turn left it, `reset` in the shell the only fix — the same shape as the held
-audit trail losing everything to a signal that runs no `Drop` (#235).
+The limit is the first doc comment's last sentence, and it generalises past
+`SIGKILL`: a `Drop` impl does not run on `SIGKILL` or `SIGSTOP`, on
+`std::process::abort`, or in a `panic = "abort"` build — and a panic the
+`catch_unwind` above does not reach still double-panics and aborts, same as
+before. Each leaves the terminal as the turn left it, `reset` in the shell
+the only fix — the same shape as the held audit trail losing everything to
+a signal that runs no `Drop` (#235).
 
 Two draw methods and a latch. `draw` repaints from the transcript; `redraw`
-discards the back buffer first by resizing to the size already in force, since
-ratatui flushes only the diff between its two buffers and a cell a third party
-wrote would never be rewritten. The comment records the trap: not
-`Terminal::clear`, whose cursor query would deadlock against crossterm's single
-reader while `Keys` parks it in `event::read`.
+discards the back buffer first by resizing to the size already in force,
+since ratatui flushes only the diff between its two buffers and a cell a
+third party wrote would never be rewritten. The comment records the trap:
+not `Terminal::clear`, whose cursor query takes crossterm's one reader lock,
+which `Keys` may be holding — and if it wins the lock instead, it races the
+reader for the reply bytes rather than deadlocking against it, now that the
+reader holds that lock only while an event is in flight and not for as long
+as it parks.
 
 Both return `()` because the seam they are called through cannot carry an error:
 `run_turn`'s observer is `O: FnMut(&AgentEvent)`, so the closure that folds an
@@ -367,7 +409,7 @@ latches instead:
         }
 
         if let Err(error) = self
-            .terminal
+            .terminal()
             .draw(|frame| view::draw(frame, transcript, hint))
         {
             self.failed = Some(error);
@@ -392,13 +434,16 @@ gate's decision is argv's — and what is lost is the watching. Nothing acts on
 after the final redraw and after the key that holds the finished screen, and
 hands it to `reported` beside the code the turn earned.
 
-What `reported` does with that pair is worth reading closely, because it is one
-rule stated twice in this repo. A latched failure is **one more stderr line and
-not the code.** It runs `code?` first, so a turn that failed outright reports
-its own error and prints nothing else; then the account; then the screen's
-failure, through `AgentError::Screen`'s own `Display` so the wording is the one
-`main` would have printed; and it returns the code regardless. A turn cut short
-at `--max-rounds` therefore exits 2 and one that lost its operator exits 3,
+What `reported` does with that pair is worth reading closely, because it is
+one rule stated twice in this repo. A latched failure is **one more stderr
+line and not the code.** It runs `code?` first, so a turn that failed
+outright reports its own error and prints nothing else; then the account,
+each line written with `writeln!` into a stderr taken once rather than
+`eprintln!`'s implicit one, since under a hangup that same descriptor can be
+the one that just died (#264); then the screen's failure, through
+`AgentError::Screen`'s own `Display` so the wording is the one `main` would
+have printed; and it returns the code regardless. A turn cut short at
+`--max-rounds` therefore exits 2 and one that lost its operator exits 3,
 whatever the screen did last.
 
 The reason is in [guide-tui.md](../guide-tui.md): the code answers what the
@@ -431,26 +476,81 @@ calls the function with a `BrokenPipe` latch and asserts `Ok(3)`, `Ok(2)` and
 still returns `Err` with its own error, latch or no latch. Without that pair
 the test would pass on a function that ignored `code` entirely.
 
-## input.rs is a thread, because `event::read` cannot be cancelled
+## input.rs is two threads, because `event::read` cannot be cancelled
 
-`Keys` is one `watch::Receiver<Seen>`, and `Seen` is a press tally plus a sticky
-`stop` flag. `listen` spawns a plain `std::thread` that loops on `event::read`
-and sends after each press. Why a thread and not an async task — three reasons
-that compose, the first from the module doc:
+`Keys` is one `watch::Receiver<Seen>`, and `Seen` is a press tally plus two
+sticky flags: `stop`, set by an interrupting key, and `gone`, set by
+whichever thread first finds the terminal has hung up (#264). `listen`
+spawns two plain `std::thread`s sharing one `watch::Sender` through an
+`Arc` — one loops on `event::read` and sends after each press, the other
+blocks on nothing but a hangup. Why threads and not async tasks — three
+reasons that compose, the first from the module doc:
 
-- **`event::read` cannot be cancelled.** It parks until the next key or process
-  exit, holding no state. There is no future to drop.
-- **`spawn_blocking` would hang the exit.** A blocking task runs to completion
-  once spawned (#26) and `Runtime::drop` waits for an in-flight one with no
-  timeout, as [guide-tui.md](../guide-tui.md) records for the `bash` case — so
-  parking `event::read` there is a process that cannot exit until somebody
-  presses a key. A `std::thread` is not something the runtime waits on.
-- **The crate could not spawn a task anyway**, `tokio` being here with `sync`
-  alone: a channel, no runtime, no timer.
+- **Neither `event::read` nor `poll` can be cancelled.** Each parks until
+  the next key, the next hangup, or process exit, holding no state. There
+  is no future to drop.
+- **`spawn_blocking` would hang the exit.** A blocking task runs to
+  completion once spawned (#26) and `Runtime::drop` waits for an in-flight
+  one with no timeout, as [guide-tui.md](../guide-tui.md) records for the
+  `bash` case — so parking either call there is a process that cannot exit
+  until somebody presses a key or the terminal hangs up. A `std::thread` is
+  not something the runtime waits on.
+- **The crate could not spawn a task anyway**, `tokio` being here with
+  `sync` alone: a channel, no runtime, no timer.
 
-The reader also holds crossterm's one reader lock while parked, which is the
-constraint `Screen::redraw` is written around: anything asking the terminal a
-question answered on stdin deadlocks against it.
+The reader holds crossterm's one reader lock only while an event is in
+flight, not for as long as it parks — a comment `Screen::redraw` carries
+used to say otherwise, and was rewritten with the hangup fix (#264). What
+`redraw` is still written around is that lock, not a permanent hold.
+
+### A hangup is caught by `poll`, not by `event::read`
+
+crossterm 0.29 reads a hung-up tty in a loop with no end-of-file arm
+(`event::source::unix::mio`), so a zero-byte read is read again forever:
+`event::read` never returns on one, and `event::poll` spins on it the same
+way (#264). `POLLHUP` is the tell crossterm swallows, so `Keys` reads it off
+`poll(2)` itself, ahead of every call into crossterm:
+
+```rust
+/// Everything in `revents` that means the descriptor will never carry input again. Linux
+/// reports these whatever the mask asked for, so a `poll` asking nothing sees these alone.
+const GONE: PollFlags = PollFlags::POLLHUP
+    .union(PollFlags::POLLERR)
+    .union(PollFlags::POLLNVAL);
+```
+
+Both threads call the same `hung_up`, but with different masks, and the
+difference is the mechanism and not an incidental choice. The reader asks
+`POLLIN` of the keyboard — the same call that tells it crossterm has bytes
+to parse — so it can see a hangup ahead of a read that would never return.
+The watch thread asks for *nothing*: `GONE` arrives in `revents` whatever
+the mask asked for, so it wakes on a hangup and on nothing else, covering
+the one window the reader's own gate cannot — a hangup landing while the
+reader is already inside crossterm. Asking the watch for `POLLIN` too would
+wake it on the operator's first ordinary keypress and read that back as
+"not a hangup." [guide-tui.md](../guide-tui.md) has the rest: the
+`POLLIN|POLLHUP` case that abandons bytes queued just before the terminal
+died, and the `EINTR` a healthy resize delivers that is retried rather than
+read as one.
+
+Both threads watch two descriptors, `tty` and standard output, because
+`tui` validates the screen while crossterm reads the keyboard: under a
+redirected `< /dev/pts/5` they are two different ptys, and either dying
+alone ends the turn. Six tests carry the mechanism with no terminal
+emulator at all, over a real `openpty` pair whose master is closed —
+`a_hung_up_terminal_is_seen_and_a_live_one_is_not`,
+`pending_input_is_not_a_hangup`, `pending_input_does_not_wake_the_watch`,
+`a_hangup_on_the_screens_descriptor_alone_is_seen`,
+`a_reader_on_a_hung_up_terminal_enters_no_source` and
+`a_reader_on_a_live_terminal_reads_its_source` — the last two behind a
+private `Source` trait, since crossterm's own reader is a process-global no
+test can aim at a pty of its own.
+
+A hangup ends the turn at exit 3 — the code `--approve call` already takes
+when it loses its terminal, on the same reasoning: a turn nobody could see
+is a turn nobody watched. `Keys::stop` now resolves with a [`Stopped`],
+saying which of the two it was; [24](24-crate-cli.md) and
+[guide-tui.md](../guide-tui.md) have what each of the two costs.
 
 Which keys end a turn is four lines.
 
@@ -470,61 +570,84 @@ fn interrupts(key: KeyEvent) -> bool {
 not — "or the screen is unusable once it takes typed input". Only
 `KeyEventKind::Press` counts, Windows also reporting a release per key.
 
-How that intent reaches a loop awaiting a provider stream: it does not reach the
-loop at all. `Keys` exposes two futures and the driver races one against the
-turn, so the turn loop gains no stop variant and no cancel token — what that
-costs is [15](15-tools-and-the-screen.md)'s. Three properties of the channel are
+How that intent reaches a loop awaiting a provider stream: it does not
+reach the loop at all. `Keys` exposes two futures — `stop`, which resolves
+with a [`Stopped`] saying which of a keypress or a hangup it was, and
+`press` — and the driver races one against the turn, so the turn loop gains
+no stop variant and no cancel token. What that costs is
+[15](15-tools-and-the-screen.md)'s. Three properties of the channel are
 this file's own:
 
 - **`stop` is sticky.** A `watch` keeps one slot, so a later keypress would
   overwrite an unobserved interrupt; `seen.stop |= interrupts(key)` latches
   instead, and `an_interrupt_survives_a_later_keypress` is the test.
-- **`stop` never resolves on a dead reader.** When `changed()` errors it awaits
-  `std::future::pending()` forever, "since a closed channel must not end a turn
-  nobody asked to end".
-- **`press` resolves at once on a dead reader**, the deliberate opposite: it
-  holds a finished screen until a key arrives, and with none able to arrive,
-  waiting would hold the alternate screen until the process was killed.
+- **`stop` never resolves on a closed channel**, since that must not end a
+  turn nobody asked to end — but a hangup is not a closed channel, it is a
+  descriptor the kernel confirmed had hung up, and `stop` does resolve on
+  one, as `Stopped::Gone`
+  (`a_hangup_stops_the_turn_and_a_keypress_outranks_it`).
+- **`press` resolves at once on the sticky `gone` flag, not on the channel
+  closing.** A reader stuck inside crossterm holds its half of the shared
+  sender forever, so the channel may never close, and a `press` that
+  waited for it would hold a finished screen until the process was
+  killed — the wedge, moved from the turn to the screen after it. Reading
+  `gone` instead means a hangup only the watch thread saw still releases a
+  screen already waiting on the final key
+  (`a_hangup_releases_a_screen_waiting_on_the_final_key`, paired with
+  `a_live_terminal_still_holds_it`).
 
-The thread exits on a send error — the receiver dropped — and on a read error
-without retrying, "the descriptor is gone, and looping would spin the thread at
-full speed". Resize, mouse, paste and focus events are ignored.
+The reader thread ends four ways: a hangup `poll` confirms, which it
+reports by setting `gone` before it returns; a `poll` error that is not
+`EINTR`; the receiver dropping, found right after a send; and a crossterm
+read error. Only the first sets `gone` — the other three are silent, the
+same shape the thread had before the hangup fix. Resize, mouse, paste and
+focus events are ignored; only a `Press` counts, Windows also reporting a
+release per key.
 
-Both exits are reached *through* `event::read`, so neither is prompt: a dropped
-`Keys` is noticed at the next keypress, which the thread consumes and discards
-on its way out. Usually there is no next keypress, and nothing joins the
-thread — `listen` drops the `JoinHandle` — so the thread is abandoned still
-parked and the process exits over it. That is the whole of what buys the exit
-the alternative does not: `Runtime::drop` waits for an in-flight blocking task,
-and nothing waits for this one.
+The closed-channel exit is reached only at the next keypress, as before:
+nothing interrupts a reader parked in `event::read`, so it learns the
+receiver is gone only when it next has a key to send and finds nobody
+listening. A hangup is different, and is the fix's whole point — caught by
+the `poll` ahead of `event::read`, not by `event::read` itself, which
+crossterm's own loop never returns from on one (#264). Usually neither a
+keypress nor a hangup is left outstanding when a turn ends normally, and
+nothing joins either thread — `listen` drops both `JoinHandle`s — so each
+is abandoned still parked and the process exits over it. That is the whole
+of what buys the exit the alternative does not: `Runtime::drop` waits for
+an in-flight blocking task, and nothing waits for a `std::thread`.
 
 ## You should now be able to explain
 
-- Why `sandbx-tui` has no row in 04's table of boundaries, which four names it
-  exports, and why `Entry` and `Kind` are not among them.
-- What the single internal dependency rules out as a build error, and the two
-  things it does not.
-- Why a terminal renderer is a sanitisation boundary, in terms of where the text
-  in a cell came from, and why that file is also the one with real coverage.
+- Why `sandbx-tui` has no row in 04's table of boundaries, which five names
+  it exports, and why `Entry` and `Kind` are not among them.
+- What the single internal dependency rules out as a build error, and the
+  two things it does not.
+- Why a terminal renderer is a sanitisation boundary, in terms of where the
+  text in a cell came from, and why that file is also the one with real
+  coverage.
 - The four classes `printable` sorts a character into, why `\n` is treated
-  differently at the cell than at the approval prompt, and which crate owns the
-  `invisible` table both sinks read.
-- What "tail-aligned" is measured against, and whether a row that scrolled off
-  is gone or merely off-screen.
-- What `Screen`'s `Drop` impl protects against, and the ways a process can end
-  without running it.
+  differently at the cell than at the approval prompt, and which crate owns
+  the `invisible` table both sinks read.
+- What "tail-aligned" is measured against, and whether a row that scrolled
+  off is gone or merely off-screen.
+- What `Screen`'s `Drop` impl protects against — on a terminal that hung up
+  as much as on an ordinary panic — and the ways a process can end without
+  running it.
 - Why `draw` returns `()` rather than a `Result`, what the first `io::Error`
-  latches, and why that latch is one more stderr line rather than the exit code
-  — where `agent-run` does the opposite and is right to.
-- Why the key reader is a `std::thread`, and why `Keys::stop` never resolves on
-  a closed channel while `press` resolves at once.
-- What ends the reader thread, why neither ending is prompt, and what becomes of
-  it when the process exits.
+  latches, and why that latch is one more stderr line rather than the exit
+  code — where `agent-run` does the opposite and is right to.
+- Why the key reader and the hangup watch are two `std::thread`s rather than
+  one, why `Keys::stop` never resolves on a closed channel but does on a
+  hangup, and why `press` reads the sticky `gone` flag instead of waiting
+  for the channel to close.
+- What two masks on the same `poll` buy that one could not, and why a
+  terminal hanging up exits 3 rather than the 2 an interrupt earns.
+- What ends each thread, which ending is prompt and which is not, and what
+  becomes of an abandoned thread when the process exits.
 
 ## Next
 
 [24 — the cli crate](24-crate-cli.md), where all of this is driven from:
 `cli/src/agent/tui.rs` enters the `Screen`, starts the `Keys`, folds each event
 into the `Transcript`, races the turn against the keypress, and draws the gate's
-verdicts instead of printing them. It is the largest crate in the workspace, and
-the only caller this one has.
+verdicts instead of printing them. It is the only caller this one has.
