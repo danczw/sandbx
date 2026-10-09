@@ -231,7 +231,7 @@ impl Grants {
         if !self.paths_given() {
             // Inside the branch: a run that typed its own flags never depends on `HOME`.
             let root = current_root(policy.executable_paths(), &owned)?;
-            let root = pinned(&root, &root)?;
+            let root = pinned(&root, root.path())?;
             policy = policy.allow_read(root.clone()).allow_write(root);
         }
 
@@ -247,7 +247,7 @@ impl Grants {
                 // it itself, against its own directory and whatever links point at by then (#205).
                 let typed = absolute(path, &std::env::current_dir)?;
                 let granted = resolved(&typed);
-                if bound_file.is_none() && bound_by_resolver(&typed, &granted) {
+                if bound_file.is_none() && bound_by_resolver(&typed, granted.path()) {
                     bound_file = Some(path.clone());
                 }
                 if let Some(found) = reaches_owned(&granted, &owned) {

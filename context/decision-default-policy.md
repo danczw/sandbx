@@ -65,7 +65,7 @@ A derived write grant is reachable by accident in a way a typed one is not, so
 | cwd is where homes live, or holds it | `holds_home_directories(cwd)`, below |
 | no usable `$HOME`, and cwd is shaped like a home | `looks_like_a_home(cwd)`, below |
 | cwd overlaps a path already granted execute | `granted.iter().any(\|p\| p.starts_with(cwd) \|\| cwd.starts_with(p))` |
-| cwd reaches a path the harness owns | `reaches_owned(cwd, owned)`, below |
+| cwd reaches a path the harness owns | `reaches_owned(root, owned)`, below |
 
 One `starts_with` covers both `$HOME` cases: it is true of equal paths, so "cwd is
 `$HOME`" and "cwd is `/home`" fall out of the same test, and it is
@@ -297,7 +297,7 @@ accord.
 
 ## The seam
 
-`vetted_root(cwd, homes, granted, owned)` is pure, with all four inputs injected
+`vetted_root(root, homes, granted, owned)` is pure, with all four inputs injected
 as values, and `named_homes(home) -> Homes` takes the one variable the same way;
 `current_root()` is the thin wrapper that reads the cwd and `$HOME` off the
 process. Same split as `resolve_api_key(env_var, lookup)` /
