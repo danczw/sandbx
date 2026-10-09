@@ -199,6 +199,29 @@ list of cases.
 
 ## Stage 1: everything that must happen in a process that still has to spawn one
 
+The two stages are one ordered walk, and before the step-by-step it is worth
+seeing which process each step runs in and where each boundary falls:
+
+```mermaid
+sequenceDiagram
+    participant H as harness
+    participant S1 as stage 1
+    participant S2 as stage 2
+    participant C as the command
+    H->>S1: exec /proc/self/exe --sandbx-core-exec, audit flag, policy
+    S1->>S1: decode the policy, resolve names, one unshare
+    S1->>S1: bind the resolver files, drop capabilities, set no_new_privs
+    S1-->>H: degradation records, ahead of the spawn
+    S1->>S2: spawn --sandbx-core-exec-inner, supervisor pid, policy verbatim
+    Note over S2: PID 1 of the new PID namespace, and single-threaded
+    S2->>S2: claim the audit channel, before apply
+    S2->>S2: decode, arm, confirm, check the environment
+    S2->>S2: apply, then open the pin
+    S2->>C: execve, which replaces this image
+    C-->>S1: exit status
+    S1-->>H: relay, re-raising a signal
+```
+
 `exec_sandboxed` is stage 1. Its job description is in the negative: it does the
 things that *cannot* be done in the process that becomes the command. It
 installs no Landlock ruleset and no seccomp filter — it has to be able to spawn
@@ -420,6 +443,24 @@ the first of them spans the mechanisms:
   unprivileged process without the bit.
 - Both `handle_access` calls before `create`, Landlock's own rule.
 - Every `add_rule` after `create`, and `restrict_self` after all of them.
+
+Drawn as edges, those three are two chains that touch only at the bit — and
+every pair the diagram leaves unconnected is a pair whose order is free:
+
+```mermaid
+flowchart TD
+    NNP["set_no_new_privs"]
+    SEC["deny_dangerous_syscalls"]
+    HA["handle_access, both axes"]
+    CR["create"]
+    AR["add_rule, per grant and per port"]
+    RS["restrict_self"]
+    NNP -->|"an unprivileged seccomp install needs the bit"| SEC
+    NNP -->|"and so does restrict_self"| RS
+    HA -->|"the handled set must precede create"| CR
+    CR -->|"a rule needs a created ruleset"| AR
+    AR -->|"restrict_self consumes the ruleset"| RS
+```
 
 Everything else in the table is a cost of a different kind — a worse failure
 mode, a wider scope, a check that would start depending on the thing it checks —

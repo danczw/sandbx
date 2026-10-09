@@ -147,6 +147,20 @@ it rather than cache its result. `execute` is one line more,
 `(self.spec().run)(input, ctx)`. An eighth variant with no arm here is a compile
 error before it is anything else.
 
+The path end to end, from the model's JSON to whichever seam the tool stops at:
+
+```mermaid
+flowchart TD
+    V["serde_json::Value from the model"] --> E["BuiltinTool::execute"]
+    E --> S["spec(), the exhaustive match"]
+    S --> R["that tool's run, calling crate::parse"]
+    R --> X["the tool's own execute, holding its input struct"]
+    X -->|"six tools"| G["ctx.guard(), an FsGuard call"]
+    X -->|bash| C["ctx.sandboxed_command()"]
+    G --> I["the first seam, in process"]
+    C --> K["the second seam, the kernel"]
+```
+
 The rest of the file is the helpers the seven modules share, and reading them
 first makes every tool module shorter than it looks:
 

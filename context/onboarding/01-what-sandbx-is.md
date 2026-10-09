@@ -177,6 +177,18 @@ below the floor the run is refused. Nothing falls back to running unconfined —
 that is what "fails closed" means here, and it is a claim you can check rather
 than a slogan.
 
+The walk, and the two endings it can have:
+
+```mermaid
+flowchart TD
+    N["the newest ABI sandbx knows"] --> Q{"kernel hard-requires all of it?"}
+    Q -->|yes| A["settle here, apply the ruleset"]
+    Q -->|no| D{"another ABI above the floor?"}
+    D -->|yes| S["step down one"]
+    S --> Q
+    D -->|no| R["refuse the run"]
+```
+
 ## Run it
 
 Five commands, from the project [`README.md`](../../README.md). Run them in a

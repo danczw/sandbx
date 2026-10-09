@@ -129,6 +129,21 @@ exists at all, so neither `conceal_process_state` nor the dispatch runs.
 a sandboxed command's — and after parsing, so a refusal exits with the
 subcommand's code. Then the dispatch: five arms, two wrapped in `block_on`.
 
+The order, and where each step's own refusal leaves:
+
+```mermaid
+flowchart TD
+    A["main"] --> B["with_helper_dispatch"]
+    B -->|"--sandbx-core-exec"| C["restricts itself, becomes the command"]
+    B --> D["logging::init"]
+    D --> E["Cli::try_parse"]
+    E -->|"refused"| F["usage_code, before a Command exists"]
+    E --> G["conceal_process_state"]
+    G -->|"failed"| H["the subcommand's failure_code"]
+    G --> I["five arms, two under block_on"]
+    I --> J["report"]
+```
+
 The runtime is built once, in `block_on`, whose doc comment explains both
 choices: `new_current_thread` "because `spawn_blocking` is all the loop asks of
 the scheduler", so the flavour stays the binary's and the agent crate can ask
@@ -293,6 +308,26 @@ closure returning a canned `EventStream` and two `Vec<u8>`s for the channels,
 then reads back the request that would have gone out and the bytes that reached
 stdout. `Tui::drive` takes its opener for the same reason, its doc comment
 saying so by pointing here.
+
+One `agent-run` from its first refusal to its code, and which module owns each
+step the sections below walk:
+
+```mermaid
+flowchart TD
+    A["AgentRun::execute"] --> B{"the prompt blank?"}
+    B -->|"yes"| C["EmptyPrompt, before anything is opened"]
+    B -->|"no"| D["policy"]
+    D --> E["orientation::system_prompt, off that one policy"]
+    E --> F["terminal, under --approve call: prompt.rs"]
+    F --> G["auth::api_key, then AnthropicClient"]
+    G --> H["session::open"]
+    H --> I["drive: run_turn, render observing, gate::ArgvGate deciding"]
+    I -->|"RoundLimit, by default"| J["wrapup::Next::run, gated by RefuseAll"]
+    I -->|"Answered or GateAborted"| K["Render::finish: the code"]
+    J --> K
+    K --> L["session.append"]
+    L --> M["the code, returned after the append"]
+```
 
 ### orientation.rs — the harness volunteers its own constraints
 

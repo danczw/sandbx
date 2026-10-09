@@ -24,9 +24,12 @@ There is one `tracing` subscriber in the whole process tree, built in
 [`cli/src/logging.rs`](../../crates/sandbx-cli/src/logging.rs) — see
 `subscriber` and `init`. Two kinds of event go through it:
 
-```
-diagnostics   ──► default targets      ──► for whoever is debugging sandbx
-audit trail   ──► "sandbx::audit"      ──► for whoever asks what the agent did
+```mermaid
+flowchart LR
+    D[diagnostics] --> DT["default targets"]
+    DT --> DR["whoever is debugging sandbx"]
+    A["audit trail"] --> AT["sandbx::audit"]
+    AT --> AR["whoever asks what the agent did"]
 ```
 
 The split is by **target**, not by level, and that is a decision rather than a
@@ -277,6 +280,30 @@ Four hops, none of them implied:
    `AuditEvent::degraded(step.label(), detail).emit()` here, in the one process
    with a subscriber. A `Failed` is returned rather than emitted, and becomes
    the `failed` record the `match` above writes in place of the exit status.
+
+The four hops as one path, with the boundary in the middle: only `sandbx` has a
+subscriber, and nothing crosses but encoded lines.
+
+```mermaid
+flowchart TD
+    subgraph helper["the helper, which installs no subscriber"]
+        S1["stage 1: what degraded, or its own refusal"]
+        S2["stage 2: claims fd 0, then becomes the command"]
+        CMD["the command, with /dev/null in the slot"]
+    end
+    subgraph harness["sandbx, the one process with a subscriber"]
+        RD["record_reports, after the wait"]
+        DC["decode, against a closed label set"]
+        DG["emitted as a degraded record"]
+        FL["the failed record, in place of the exit status"]
+    end
+    S1 -->|written before the spawn| RD
+    S1 --> S2
+    S2 --> CMD
+    RD --> DC
+    DC -->|Degraded| DG
+    DC -->|Failed| FL
+```
 
 Which makes `Report` the type the whole channel is about:
 

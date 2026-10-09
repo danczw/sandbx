@@ -63,6 +63,25 @@ a neutral type's shape was decided by one API's behaviour — `Thinking` having
 one variant, `Usage` being emitted once, the frame cap being "orders of
 magnitude above any real Anthropic frame". None of that is checked by anything.
 
+The same line seen from the other side — one round's path through the crate,
+out and back:
+
+```mermaid
+flowchart TD
+    subgraph above["neutral, at or above lib.rs"]
+        P["Prompt, prompt.rs"]
+        K["sse::tokenize, framing only"]
+        A["AgentEvent, event.rs"]
+    end
+    subgraph below["one API's vocabulary, anthropic.rs and under it"]
+        B["Body, body.rs"]
+        H["POST /v1/messages"]
+        Y["response.bytes_stream()"]
+        W["wire::event_stream over payload.rs"]
+    end
+    P --> B --> H --> Y --> K --> W --> A
+```
+
 - **Worth questioning:** the neutral half of this crate is held by convention
   and review, not by a check.
   [decision-provider-seam.md](../decision-provider-seam.md) frames #59 as
@@ -527,6 +546,31 @@ second is which endings flush:
     /// paths that end without `message_stop` do not flush — a truncated block's JSON
     /// is incomplete, so flushing would put a `MalformedEvent` ahead of the honest
     /// [`ProviderError::StreamEndedUnexpectedly`].
+```
+
+Both rules and the signature rule land on one index's entry, from the frame that
+opens it to the event it becomes:
+
+```mermaid
+stateDiagram-v2
+    state "no entry at this index" as Idle
+    state "OpenBlock::ToolUse" as ToolUse
+    state "OpenBlock::Thinking" as Thinking
+    state "AgentEvent::ToolCallRequested" as Requested
+    state "AgentEvent::ThinkingBlock" as Signed
+    state "dropped" as Dropped
+
+    [*] --> Idle
+    Idle --> ToolUse: content_block_start of tool_use
+    Idle --> Thinking: content_block_start of thinking
+    Idle --> Idle: a text or redacted_thinking start clears it
+    ToolUse --> ToolUse: input_json_delta appends
+    Thinking --> Thinking: thinking_delta and signature_delta append
+    ToolUse --> Idle: another start reuses this index
+    ToolUse --> Requested: content_block_stop or a flush at message_stop
+    Thinking --> Signed: closes holding a signature
+    Thinking --> Dropped: closes holding none
+    ToolUse --> Dropped: the stream ends without message_stop
 ```
 
 - **Worth questioning:** the layer below this one caps a single frame precisely

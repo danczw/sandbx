@@ -17,30 +17,33 @@ Everything below is one trace of `--allow-read /tmp/x`. Five stages, each of
 which changes the *shape* of the grant, and three of which can refuse the run
 outright.
 
-```
---allow-read /tmp/x                       argv, as typed
-   │ clap
-   ▼
-Grants { allow_read: vec!["/tmp/x"] }     one Vec<PathBuf> per path axis
-   │ absolute          ──► PathBuf, joined to the cwd if it was relative
-   │ resolved          ──► ResolvedPath, deepest resolvable ancestor replaced
-   │ bound_by_resolver ──► bool, noted now and refused with the DNS flags
-   │ reaches_owned     ──► Option<&OwnedPath>; Some is a refusal
-   │ pinned            ──► VettedPath, the only answer that is kept
-   ▼
-SandboxPolicy { readable: [VettedPath], … }    no I/O here at all
-   │ HelperArgs::encode
-   ▼
---ro /tmp/x <dev>:<ino>                   argv again, three tokens
-   │ stage 1 decodes for its own use, then passes argv verbatim
-   ▼
-stage 2: HelperArgs::decode ──► SandboxPolicy  rebuilt with no I/O
-   │ requested ──► fs_rules ──► rights_for
-   ▼
-(Axis::Read, RuleTarget::Granted(&VettedPath), BitFlags<AccessFs>)
-   │ open_grant: PathFd, read back, pin confirmed
-   ▼
-PathBeneath::new(fd, rights) ──► restrict_self ──► enforcement_verdict
+```mermaid
+flowchart TD
+    Typed["--allow-read /tmp/x, as typed"]
+    Flag["Grants.allow_read, one Vec per axis"]
+
+    subgraph Vetting["the vetting chain, in call order"]
+        Absolute["absolute"] --> Resolved["resolved"]
+        Resolved --> Bound["bound_by_resolver"]
+        Bound --> Owned["reaches_owned"]
+        Owned --> Pinned["pinned"]
+    end
+
+    Policy["SandboxPolicy, built with no I/O"]
+    Wire["argv: a flag, the path, the object pin"]
+    Decode["stage 2 decodes, still no I/O"]
+    Rule["axis, RuleTarget, AccessFs rights"]
+    Beneath["PathBeneath::new, on the descriptor"]
+    Held["a rule the kernel holds"]
+
+    Typed -->|"clap"| Flag
+    Flag --> Absolute
+    Pinned -->|"VettedPath"| Policy
+    Policy -->|"HelperArgs::encode"| Wire
+    Wire -->|"stage 1 passes argv verbatim"| Decode
+    Decode -->|"requested, fs_rules, rights_for"| Rule
+    Rule -->|"open_grant: read back, pin confirmed"| Beneath
+    Beneath -->|"restrict_self, then enforcement_verdict"| Held
 ```
 
 ## Stage 1 — the flag

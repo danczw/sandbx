@@ -15,16 +15,27 @@ them.
 ## The graph
 
 Seven crates under `members = ["crates/*"]`, and every internal edge is a path
-dependency. Read `──►` as "may name the types of":
+dependency. Read an arrow as "may name the types of", and look for the three
+crates no arrow leaves:
 
-```
-sandbx-cli        ──►  agent  tui  session  providers  tools  core
-sandbx-agent      ──►  providers  tools        (core: dev-dependency only)
-sandbx-tui        ──►  providers
-sandbx-tools      ──►  core
-sandbx-core       ──►  —
-sandbx-providers  ──►  —
-sandbx-session    ──►  —
+```mermaid
+flowchart TD
+    subgraph leaves["no internal dependency"]
+        core["sandbx-core: the kernel"]
+        providers["sandbx-providers: the wire"]
+        session["sandbx-session: the disk"]
+    end
+    cli["sandbx-cli"] --> agent["sandbx-agent"]
+    cli --> tui["sandbx-tui"]
+    cli --> session
+    cli --> providers
+    cli --> tools["sandbx-tools"]
+    cli --> core
+    agent --> providers
+    agent --> tools
+    agent -->|"dev-dependency only"| core
+    tui --> providers
+    tools --> core
 ```
 
 Four things about that shape are worth more than the picture.

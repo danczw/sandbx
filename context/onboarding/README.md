@@ -192,6 +192,9 @@ read.
   a second pass.
 - **Snippets are copied verbatim and kept short.** They are there to be read in
   place; the link above one is how you see the rest of the file.
+- **A diagram carries shape, not detail.** A mermaid figure earns its place when
+  it shows an ordering, a branch or a boundary being crossed; the prose beside
+  it carries the particulars, and a diagram never replaces a table.
 - **An issue is cited as a bare number,** usually parenthesised, and never with
   a status attached. Whether #230 is open is a question for GitHub, and a doc
   that answered it would start being wrong the day it was merged.

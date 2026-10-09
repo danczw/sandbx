@@ -164,6 +164,21 @@ cut that moved can trigger the reasoning strip — and exactly one place a
 every reasoning block, per
 [decision-thinking-replay.md](../decision-thinking-replay.md).
 
+What one pass of that loop does, and the one condition that re-enters it:
+
+```mermaid
+flowchart TD
+    A["run_turn builds one Prompt"] --> B["open(prompt), the caller's closure"]
+    B --> C["EventStream"]
+    C --> D["accumulate, one Round rebuilt from deltas"]
+    D --> E{"any ToolUse block"}
+    E -->|no| F["outcome, the one TurnOutcome site"]
+    E -->|yes| G["answer_calls, the gate then the tool"]
+    G --> H["tool_result blocks appended to produced"]
+    H -->|"rounds remain"| A
+    H -->|"max_rounds spent"| F
+```
+
 ## `turn/accumulate.rs` — a round's message, rebuilt
 
 [`turn/accumulate.rs`](../../crates/sandbx-agent/src/turn/accumulate.rs) drains
@@ -469,6 +484,24 @@ message — or on nothing. Those two scans are the guide's first two rungs; the
 third is the `None` they can both decline to, which `run_turn` turns straight
 back into the previous cut with `unwrap_or`, so declining sends the history as
 it already stood. The reasoning for each rung is the guide's.
+
+The target, then the three rungs in the order `plan_cut` tries them:
+
+```mermaid
+flowchart TD
+    A["plan_cut, given a floor"] --> B{"keep_recent"}
+    B -->|"None, within budget"| C["target is the floor"]
+    B -->|"Some, over budget"| D["target is what keep_recent implies"]
+    C --> Z{"target is 0"}
+    D --> Z
+    Z -->|yes| N["None"]
+    Z -->|no| U["scan up to the ceiling"]
+    U -->|"a cut opens_a_request"| S1["the shallowest legal cut at or after it"]
+    U -->|"none does"| W["scan back down from the target"]
+    W -->|"a cut opens_a_request"| S2["the deepest legal cut below it"]
+    W -->|"none does"| N
+    N --> R["run_turn keeps the cut it already had"]
+```
 
 ### What is lost
 
