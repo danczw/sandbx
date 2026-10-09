@@ -63,11 +63,17 @@ fn main() -> std::process::ExitCode {
 /// A free function so the mapping is a unit test rather than a shape only a spawned
 /// process shows. `--help` and `--version` are not refusals — clap reports them as errors
 /// so the caller decides where they print — and both keep the 0 they have always had.
+///
+/// Those two and no more, which is the one line to get wrong here. An argv naming no
+/// subcommand is `DisplayHelpOnMissingArgumentOrSubcommand`, and clap prints that one to
+/// *stderr* and exits 2: it is a refusal that happens to answer with the help, not a help
+/// anyone asked for. Taking 0 for it would make a bare `sandbx auth` — which checks no
+/// credential and starts no turn — indistinguishable from the 0 `auth status` spends on a
+/// key it found, and would break the claim `README.md` and `SECURITY.md` both make, that no
+/// code of a run is reachable by mistyping a flag.
 fn usage_code(kind: ErrorKind) -> u8 {
     match kind {
-        ErrorKind::DisplayHelp
-        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
-        | ErrorKind::DisplayVersion => 0,
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => 0,
         _ => USAGE,
     }
 }
@@ -141,7 +147,10 @@ mod tests {
         };
 
         // #265's own repro first, then a value clap will not take, an unknown flag and a
-        // missing required argument — the four shapes already in tree.
+        // missing required argument — the four shapes already in tree. Then the two argvs
+        // that name no subcommand at all: clap answers both by printing the help, which is
+        // why they are easy to read as a help anyone asked for, and prints it to stderr
+        // because neither is.
         for argv in [
             ["sandbx", "tui", "--max-rounds", "1", "no-dashdash"].as_slice(),
             &[
@@ -154,17 +163,14 @@ mod tests {
             ],
             &["sandbx", "auth", "status", "--nonsense"],
             &["sandbx", "sandbox-run"],
+            &["sandbx"],
+            &["sandbx", "auth"],
         ] {
             assert_eq!(usage_code(kind(argv)), 64, "{argv:?}");
         }
 
-        // A bare `sandbx` is the third of these, not a refusal: clap reports a missing
-        // subcommand by printing the help, which is what it has always exited 0 doing.
-        for argv in [
-            ["sandbx", "--help"].as_slice(),
-            &["sandbx", "--version"],
-            &["sandbx"],
-        ] {
+        // Only what the caller asked for takes 0.
+        for argv in [["sandbx", "--help"].as_slice(), &["sandbx", "--version"]] {
             assert_eq!(usage_code(kind(argv)), 0, "{argv:?}");
         }
     }

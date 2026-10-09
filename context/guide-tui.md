@@ -375,8 +375,13 @@ own account — both after the turn rather than during it, which is the one thin
 
 What the hold costs: the release waits on the keypress that holds the finished
 screen, so the trail sits in memory for as long as the operator is away, and a
-signal arriving there runs no `Drop` and loses all of it (#235). A hangup releases
-it instead of losing it — that is what ending the turn on one buys the trail.
+signal arriving there runs no `Drop` and loses all of it (#235). A hangup *runs*
+the `Drop` instead of skipping it, which is what ending the turn on one buys the
+trail — but where stderr is the descriptor that died, which under `tui` is the
+usual case, the one `write_all` fails and the records go with it. The guard has
+nowhere to report that to and ignores it. So a hangup is a trail released, not a
+trail delivered: `2>` a file is what makes it readable afterwards, and that is the
+same redirection the account line needs.
 
 The hold covers `tracing` and nothing else, so a bare `eprintln!` reached from
 inside the screen still lands on it — `AgentRun::save`'s "nothing to store" line
