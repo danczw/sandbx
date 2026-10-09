@@ -368,10 +368,9 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // apply to the command itself and could not be done in a process that still had to
     // spawn one.
 
-    // Installing a seccomp filter requires either CAP_SYS_ADMIN or no_new_privs, and this
-    // process holds no capabilities, the supervisor having dropped them. Landlock shares the
-    // precondition but sets the bit itself, so this call is seccomp's. Irreversible and
-    // inherited across exec, which makes the filter stick to the command.
+    // Both installs below need either CAP_SYS_ADMIN or no_new_privs, and this process holds no
+    // capabilities, the supervisor having dropped them. Each library sets the bit itself, so
+    // this call does not enable them; it is the refusal, raised here and ahead of either.
     set_no_new_privs()?;
 
     deny_dangerous_syscalls(policy)?;
