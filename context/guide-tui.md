@@ -186,11 +186,32 @@ on two threads:
   it covers the one window the gate cannot: a hangup landing while the reader is
   already inside crossterm.
 
+**The two masks are the mechanism, not a detail.** The gate asks `POLLIN` of the
+keyboard, the same call telling it when crossterm has bytes to parse; the watch
+asks for nothing. Giving the watch `POLLIN` too wakes it on the operator's first
+ordinary keypress, which it reads back as "not a hangup" and exits on — leaving
+#264 one keystroke away, with the gate as the only cover for the window the gate
+by construction cannot see.
+
 Both watch two descriptors, because `tui` validates standard output while
 crossterm reads standard input: under `sandbx tui -- prompt < /dev/pts/5` the
 screen and the keys are two different ptys, and a screen that died is as unwatched
 as a keyboard that did. Standard output is polled with an empty mask rather than
 `POLLIN`, which would also report input nobody reads from it and spin the gate.
+
+Two costs of reading the hangup off `poll` rather than out of crossterm. A dead
+pty reports `POLLIN|POLLHUP` in one `revents`, so bytes queued just before the
+terminal died are **abandoned**: a ctrl-c typed in that moment is accounted to the
+terminal, not the operator, because parsing those bytes would put crossterm back
+in the loop that never returns for whatever they did not complete. And in the
+window only the watch sees, the reader is still spinning when the turn ends — the
+code is earned and reported, and the thread goes with the process.
+
+Both the stop and the **final keypress** resolve off that flag rather than off the
+reader's channel closing. In that same window the wedged reader holds its sender
+forever, so a `press` waiting for the channel to close would hold the alternate
+screen until the process was killed — which is the hang, moved from the turn to
+the screen after it.
 
 `EINTR` is retried rather than read as a hangup: crossterm handles `SIGWINCH`, and
 `poll` is not restarted by `SA_RESTART`, so resizing a healthy window arrives here
@@ -276,10 +297,9 @@ every agent event, so a terminal that died while the turn was already waiting on
 the final keypress latches nothing. A caller that needs the text and not just the
 status has to pass `--session` and read the transcript — which a hangup leaves
 nothing in either, that turn being dropped rather than finished. Making the code
-depend on the latch instead
-would have reported a
-lost operator as a generic failure, and making it depend on whether a session was
-open would give one turn outcome two codes.
+depend on the latch instead would have reported a lost operator as a generic
+failure, and making it depend on whether a session was open would give one turn
+outcome two codes.
 
 ## Light by intent
 
