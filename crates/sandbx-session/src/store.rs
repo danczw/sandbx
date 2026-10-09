@@ -161,7 +161,7 @@ impl SessionStore {
         // of user turns anywhere, or open on the model's reply.
         if !messages.is_empty() {
             if !resumable(&messages) {
-                return Err(SessionError::IncompleteTurn);
+                return Err(SessionError::Unresumable { path: path.clone() });
             }
             if !alternating(&messages) || !opens(&messages) {
                 return Err(SessionError::Disordered { path: path.clone() });
