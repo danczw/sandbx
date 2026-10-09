@@ -121,9 +121,9 @@ fn only_the_execute_axis_carries_execute() {
 ///
 /// `write` is the sharpest case, being defined by subtraction — `from_all` minus `from_read` —
 /// so every right a new ABI adds to the write half joins every `--allow-write` grant. At
-/// `LATEST_ABI` that is already two rights beyond writing bytes: `IoctlDev` (device ioctls on
-/// a node beneath the path) and `ResolveUnix` (`connect(2)` to a pathname socket beneath it,
-/// which `SECURITY.md` treats as seccomp's business).
+/// `LATEST_ABI` that is already one right beyond writing bytes: `IoctlDev`, device ioctls on a
+/// node beneath the path. The other right V9 adds, `ResolveUnix`, is subtracted back out and
+/// conferred by `--allow-unix-sockets` instead (#259), which is why no axis moves here.
 ///
 /// Spelled out rather than derived from `from_all`/`from_read`, which would move with the bump
 /// it is meant to catch. Both ends are claims — [`BASELINE_ABI`] is what sandbx refuses to run
@@ -131,8 +131,9 @@ fn only_the_execute_axis_carries_execute() {
 /// intentional bump has one place to edit.
 #[test]
 fn each_axis_confers_exactly_the_documented_set() {
-    // Only the write axis differs across the range: `ResolveUnix` arrives in V9, and it
-    // is a write-side right.
+    // Both columns identical, which is the claim: `ResolveUnix` is the only fs right V9 adds,
+    // and no axis confers it. Kept as two columns so a right that *does* arrive on an axis
+    // shows up as a disagreement rather than as an edit to one shared literal.
     let expected = [
         (
             crate::Axis::Read,
@@ -147,7 +148,7 @@ fn each_axis_confers_exactly_the_documented_set() {
             }),
             landlock::make_bitflags!(AccessFs::{
                 WriteFile | RemoveDir | RemoveFile | MakeChar | MakeDir | MakeReg | MakeSock
-                | MakeFifo | MakeBlock | MakeSym | Refer | Truncate | IoctlDev | ResolveUnix
+                | MakeFifo | MakeBlock | MakeSym | Refer | Truncate | IoctlDev
             }),
         ),
         (
@@ -186,4 +187,36 @@ fn a_write_grant_carries_neither_read_nor_execute() {
         "a write-only grant handed out read, so the drop directory is readable"
     );
     assert!(!rights.contains(AccessFs::Execute));
+}
+
+/// `--allow-unix-sockets` is the only source of `ResolveUnix`, so no axis may carry it — the
+/// shape #259 reported was the write subtraction picking it up from `from_all` at V9 with no
+/// line edited, which would give the flag a path condition it never documented.
+///
+/// Over both target kinds, because `from_file` is where a narrowing could hand it back.
+#[test]
+fn no_axis_confers_the_unix_socket_right() {
+    // First, or the rest goes green on a ceiling past V9, or on a landlock release that moves
+    // the bit: the assertion below is only evidence while the right exists to be withheld.
+    use landlock::Access;
+    assert!(
+        AccessFs::from_all(LATEST_ABI).contains(AccessFs::ResolveUnix),
+        "`ResolveUnix` is not in the ceiling's right set, so withholding it proves nothing"
+    );
+
+    for axis in crate::Axis::ALL {
+        for target_is_dir in [true, false] {
+            let rights = rights_for(axis, target_is_dir, LATEST_ABI);
+
+            assert!(
+                !rights.contains(AccessFs::ResolveUnix),
+                "{axis:?} confers `ResolveUnix` on a {} target, so a grant dials sockets \
+                 beneath it with the flag unset",
+                if target_is_dir { "directory" } else { "file" }
+            );
+        }
+    }
+
+    // The subtraction took one bit and not the set it was carved out of.
+    assert!(rights_for(crate::Axis::Write, true, LATEST_ABI).contains(AccessFs::WriteFile));
 }

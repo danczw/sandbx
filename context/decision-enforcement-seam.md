@@ -270,7 +270,11 @@ failure — not the length of `Axis::ALL`, which nothing needs at compile time.
 a limit rather than an oversight.** Its union check is a *theorem*: `rights_for`'s
 three subtractions partition `from_all`, and landlock's own invariant test asserts
 `from_read | from_write == from_all`, so the union equals the handled set at every
-ABI — including one the code got wrong. No hard-coded expectation is available to
+ABI — including one the code got wrong. Since #259 that is a partition only with
+the unix-socket flag set: the write axis subtracts `ResolveUnix` as well, and the
+flag is what puts it back. That is why the test's policy sets the flag, and why
+dropping it from the policy to "simplify" the test makes the union fall short of
+`handled` at `LATEST_ABI`. No hard-coded expectation is available to
 replace it, because pinning `handled` literally would make a third site spelling
 out the same sixteen-or-seventeen rights, against the "one place to edit" argument
 that `each_axis_confers_exactly_the_documented_set` rests on. So the test carries

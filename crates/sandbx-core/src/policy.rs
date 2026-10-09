@@ -385,10 +385,12 @@ impl SandboxPolicy {
         self
     }
 
-    /// Grant every unix-domain socket the filesystem policy can reach. All or nothing: the
-    /// denial is a seccomp rule on `socket(AF_UNIX, …)`, and seccomp cannot follow the
-    /// pointer to `connect`'s path. Per-socket grants need Landlock ABI V9 (Linux 7.1). The
-    /// filesystem policy is what bounds which sockets exist to be dialled.
+    /// Grant unix-domain sockets, every one the command can reach.
+    ///
+    /// All or nothing: the denial is a seccomp rule on `socket(AF_UNIX, …)`, and seccomp
+    /// cannot follow the pointer to `connect`'s path. The path mechanism is Landlock's
+    /// `ResolveUnix` (ABI V9, Linux 7.1), which this confers on the paths it granted; below
+    /// V9 nothing bounds which socket is dialled.
     #[must_use]
     pub fn allow_unix_sockets(mut self) -> Self {
         self.unix_sockets = true;

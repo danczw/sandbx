@@ -159,7 +159,7 @@ untouched. For the record alone, `2>&1 >/dev/null | grep sandbx::audit`; a plain
 | `--pin-sha256 HEX`   | refuse the run unless the program named after `--` hashes to `HEX`. Grants nothing, absolute path, once per run |
 | `--allow-network`    | IP egress on any TCP port, plus UDP and raw sockets. Shares the host's netns |
 | `--allow-network PORT` | IP connect and bind on `PORT` alone, on every host — the kernel matches the port, not the destination. Denies UDP and raw sockets, so names resolve only over TCP. Shares the host's netns. Repeatable |
-| `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path |
+| `--allow-unix-sockets` | unix-domain sockets. *All* of them, not a chosen path — on a V9 kernel, those inside a granted path |
 | `--allow-env NAME`   | inherit `NAME`, with the value `sandbx` itself holds. Repeatable |
 | `--allow-dns NAME`   | let `NAME` resolve and nothing else. Grants no path and no port. Repeatable |
 | `--dns-over-tcp`     | ask glibc's stub resolver to use TCP, via `RES_OPTIONS=use-vc`. Allowlists no port. Not with `--allow-dns` |

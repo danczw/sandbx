@@ -184,10 +184,10 @@ pub(super) fn blocked_syscalls(
     // grant this.
     //
     // All or nothing: seccomp compares register values and cannot follow the pointer to
-    // `connect`'s path. Per-socket grants need Landlock ABI V9 (Linux 7.1), which
-    // `negotiated_abi` cannot settle on until a kernel accepts it in full. `socketpair` is
-    // left alone: an anonymous pair has no path to reach a host daemon with, and shells use
-    // it routinely.
+    // `connect`'s path. The path mechanism is Landlock's `ResolveUnix` at ABI V9 (Linux
+    // 7.1), which this same flag confers in `rights::unix_socket_rights` — so at or below
+    // V8 this denial is the whole of the control. `socketpair` is left alone: shells use it
+    // routinely, and an anonymous pair carries no path for a `connect` to name.
     if !policy.allows_unix_sockets() {
         deny_when(
             &mut rules,

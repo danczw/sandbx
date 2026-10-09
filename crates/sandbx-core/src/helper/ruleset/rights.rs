@@ -17,7 +17,8 @@
 /// - write is `from_all` minus the whole read set, not just `Execute`: `from_all` includes
 ///   `ReadFile`/`ReadDir`, so subtracting `Execute` alone confers read at the kernel while
 ///   `FsGuard` refuses it, and the write-only drop directory `writable_paths` promises is
-///   readable.
+///   readable. Minus `ResolveUnix` as well, which `from_all` adds at V9 and
+///   [`unix_socket_rights`] confers instead — writing a file is not dialling a socket.
 /// - execute is the single bit, hence addable on top of read without widening anything else.
 ///
 /// Directory-only rights (`ReadDir`, `MakeDir`, `Refer`, …) are invalid on a regular file, so
@@ -37,7 +38,7 @@ pub(super) fn rights_for(
     use landlock::{Access, AccessFs};
 
     let read_rights = AccessFs::from_read(abi) & !AccessFs::Execute;
-    let write_rights = AccessFs::from_all(abi) & !AccessFs::from_read(abi);
+    let write_rights = AccessFs::from_all(abi) & !AccessFs::from_read(abi) & !AccessFs::ResolveUnix;
 
     // Destructured, not read field by field — see `Grants`.
     let crate::Grants {
@@ -123,20 +124,42 @@ pub(super) fn fs_rules(
     // otherwise have inference demand the policy live as long.
     let resolver: Vec<(crate::Axis, &std::path::Path)> =
         resolver_paths(policy.bounds_resolution()).collect();
+    let unix = unix_socket_rights(policy.allows_unix_sockets(), abi);
 
     policy
         .granted_paths()
-        .map(|(axis, granted)| (axis, RuleTarget::Granted(granted)))
+        // On the grants and not on `Installed`, which is a bind mount of sandbx's own file
+        // that no grant names — the flag is documented as covering the paths it granted.
+        .map(|(axis, granted)| (axis, RuleTarget::Granted(granted), unix))
         .chain(
             resolver
                 .into_iter()
-                .map(|(axis, path)| (axis, RuleTarget::Installed(path))),
+                .map(|(axis, path)| (axis, RuleTarget::Installed(path), landlock::BitFlags::EMPTY)),
         )
-        .map(|(axis, target)| {
-            let rights = rights_for(axis, target.path().is_dir(), abi);
+        .map(|(axis, target, conferred)| {
+            // After the `from_file` narrowing, which does not re-widen it: `ResolveUnix` is in
+            // landlock's `ACCESS_FILE`, so a rule naming a socket inode directly keeps the bit.
+            let rights = rights_for(axis, target.path().is_dir(), abi) | conferred;
             (axis, target, rights)
         })
         .collect()
+}
+
+/// `ResolveUnix` where the policy granted unix sockets, nothing otherwise.
+///
+/// Masked by `from_all(abi)` and never compared against `V9`:
+/// `PathBeneath::check_consistency` refuses a rule whose rights exceed the handled set,
+/// outside `CompatLevel` and so unconditionally — an unmasked bit would refuse every run on
+/// every kernel shipping today. Conferred from the flag rather than an axis because it is one
+/// boolean over the whole policy, as `--allow-dns` is.
+fn unix_socket_rights(granted: bool, abi: landlock::ABI) -> landlock::BitFlags<landlock::AccessFs> {
+    use landlock::Access;
+
+    if granted {
+        landlock::AccessFs::from_all(abi) & landlock::AccessFs::ResolveUnix
+    } else {
+        landlock::BitFlags::EMPTY
+    }
 }
 
 /// Read on the three files a bounded resolver replaces, or nothing when it bounds nothing.

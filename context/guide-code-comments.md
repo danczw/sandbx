@@ -79,8 +79,9 @@ The exemption follows the item, not the file. Schemars' derives are confined to
 eight modules — `sandbx-cli/src/` `lib.rs`, `grants.rs`, `agent.rs`, `auth.rs`,
 `sandbox.rs`, `hash.rs`, `agent/prompt.rs`, `agent/tui.rs` — interleaved with code
 no exemption reaches, so a path cannot. Only `lib.rs` is excluded below, which
-leaves 195 rendered lines of `sandbx-cli` counted as commentary (measured at
-`843e24e`; recount when the flag surface moves, and when a trim rewraps one of
+leaves 196 rendered lines of `sandbx-cli` counted as commentary (measured at
+`843e24e` as 195, one line more since `--allow-unix-sockets` took the ABI
+condition; recount when the flag surface moves, and when a trim rewraps one of
 those docs — merging two rendered lines into one moves the figure while leaving
 `--help` byte-identical). Subtract them from both terms before reading that crate
 against the threshold.
@@ -93,22 +94,22 @@ against the threshold.
 /// **All of them**, not a chosen one. The denial is a seccomp rule on
 /// `socket(AF_UNIX, …)`, and seccomp compares register values: the path
 /// passed to `connect` lives behind a pointer it cannot follow. Landlock
-/// gained a path-scoped right for this in ABI V9 (Linux 7.1), and a
-/// per-socket grant can be added once that is available in practice.
+/// gained a path-scoped right for this in ABI V9 (Linux 7.1), which this
+/// flag confers on every path it granted.
 ///
 /// So this opens every pathname socket the filesystem policy can reach —
 /// an ssh-agent, a docker socket, the session bus. Grant it deliberately,
-/// and keep the filesystem policy narrow, because that is what still bounds
-/// which sockets exist to be dialled.
+/// and keep the filesystem policy narrow, because below V9 nothing bounds
+/// which of them is dialled at all.
 ```
 
 ```rust
-/// Grant every unix-domain socket the filesystem policy can reach.
+/// Grant unix-domain sockets, every one the command can reach.
 ///
 /// All or nothing: the denial is a seccomp rule on `socket(AF_UNIX, …)`, and
-/// seccomp cannot follow the pointer to `connect`'s path. Per-socket grants
-/// need Landlock ABI V9 (Linux 7.1). The filesystem policy is what bounds
-/// which sockets exist to be dialled.
+/// seccomp cannot follow the pointer to `connect`'s path. The path mechanism
+/// is Landlock's `ResolveUnix` (ABI V9, Linux 7.1), which this confers on the
+/// paths it granted; below V9 nothing bounds which socket is dialled.
 ```
 
 Four facts in, four facts out, a third of the lines.
