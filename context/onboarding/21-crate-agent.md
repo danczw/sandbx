@@ -1,4 +1,4 @@
-# The smallest crate holds the control flow
+# A small crate holds the control flow
 
 `sandbx-agent` is eight source files and about fifteen hundred lines, and it is
 the box [04 — the architecture](04-the-architecture.md) draws twice: in View 2

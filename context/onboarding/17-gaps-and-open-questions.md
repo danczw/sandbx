@@ -450,10 +450,12 @@ ordinary outcome and not a rare one.
   session and left nothing running, while an interrupted one stored nothing and
   may have a shell still writing files.
   [decision-approval-gate.md](../decision-approval-gate.md) already made the
-  distinguishability argument in this exact direction, and that the screen
-  cannot currently reach the third code is not a reason to reuse the second —
-  it is the condition under which the same record chose to add a code before
-  anything could produce it (#218).
+  distinguishability argument in this exact direction, over a third code that
+  reached no caller yet: `TurnStop::GateAborted` stayed unreachable under
+  `tui`, whose own gate never asks and so never aborts. A hangup now reaches
+  that code by a mechanism of its own instead, never through the variant
+  (#264), which is the condition the record anticipated when it chose to add
+  a code before anything could produce it (#218).
 
 ### From 16 — how the repo is maintained
 

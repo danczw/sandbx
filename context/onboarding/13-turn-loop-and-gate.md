@@ -644,8 +644,15 @@ whole point:
 That sits **ahead** of the round-limit check that returns `INCOMPLETE`. A turn
 can hit a bound *and* lose its operator; the two co-occur, and only one of them
 is recoverable by raising a flag. From 01's table: `2` is a bound the operator
-chose, `3` is an operator who could no longer be asked. Collapsing them would
-leave the difference discoverable only by grepping stderr.
+chose, `3` is an operator who could no longer be asked — under `--approve call`
+or, by the second route below, a `tui` whose screen or keyboard hung up.
+Collapsing either pair would leave the difference discoverable only by grepping
+stderr.
+
+Neither code is reachable by a command line sandbx refuses. `main`'s
+`usage_code` settles that before `Cli::command` even exists — before a gate,
+a turn, or a sandbox does — so a mistyped flag exits 64 and never competes with
+`GateAborted` or `RoundLimit` for 2 or 3 (#265).
 
 Two orderings around it are load-bearing in the same way:
 
@@ -658,6 +665,13 @@ Two orderings around it are load-bearing in the same way:
   [`cli/src/agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) — see
   `ending` — maps `GateAborted` to the same code ahead of the bounds, and its
   comment points back at `render.rs` so the two cannot drift apart silently.
+- **`tui` also reaches 3 by a route `GateAborted` never takes.** `Keys::listen`
+  races the turn itself in a `tokio::select!`, and a hung-up screen or keyboard
+  resolves that race as `Stopped::Gone` before the turn ever produces a
+  `TurnStop` — the turn's future is dropped where it stood, the same as an
+  interrupt, but reported as `NO_CONSENT` rather than `INCOMPLETE` because a
+  turn nobody could see is one nobody watched (#264). `ending` never runs for
+  this exit; the account comes from `lost` instead.
 
 Three things record the refusal durably, and none of them needs a live terminal:
 the exit code, the stderr line, and the `tool_result` in the session transcript.
@@ -692,6 +706,10 @@ ran performed none. Chapter 14 is that distinction.
   why its outcome is merged into the capped turn rather than stored beside it.
 - Why exit 3 is checked before exit 2, what a caller could not otherwise learn,
   and what an abort stops besides the call it landed on.
+- `tui`'s second route to exit 3, and why it bypasses `GateAborted` and
+  `ending` entirely.
+- Why a mistyped flag reaches neither 2 nor 3, and what `usage_code` decides
+  before `Cli::command` exists.
 
 ## Next
 

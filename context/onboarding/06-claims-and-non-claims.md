@@ -513,7 +513,11 @@ start where there is no terminal to ask on. It is refused outright under `tui`,
 the screen having taken the terminal that question wants (#225). A terminal that
 goes away *during* a run is fail-closed and noticed: the read fails rather than
 returning an answer, that call and the ones behind it are refused, and the
-process exits 3 rather than 0 (#218).
+process exits 3 rather than 0 (#218). Under `tui` nothing is being asked, but a
+terminal that hangs up is a turn nobody is watching, so it ends the turn and
+exits 3 on the same reasoning — the screen or the keyboard, either one (#264). A
+command line sandbx would not take exits 64 instead, before a turn or a sandbox
+exists, so none of these codes is reachable by mistyping a flag (#265).
 
 The sentence to carry out of that row:
 [decision-approval-gate.md](../decision-approval-gate.md) draws the line as the

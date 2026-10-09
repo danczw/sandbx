@@ -72,6 +72,39 @@ Three more properties of the sink, each with a counterexample attached:
   `sandbx-agent/tests/audit_trail.rs` is a test binary of its own: a process
   installs exactly one global subscriber.
 
+## Under `tui`, the trail is held and released, not dropped
+
+A screen owns the terminal for the length of a `tui` turn, and the alternate
+screen it draws into neither redirects stderr nor hands back what was written
+there when it drops — so a record emitted mid-turn would land in the pane and
+die with the screen. `logging::hold` in
+[`cli/src/logging.rs`](../../crates/sandbx-cli/src/logging.rs) diverts the
+sink's writer into a buffer for as long as the screen owns the terminal, and
+the `Held` guard it returns writes that buffer to stderr on `Drop`, so a panic
+unwinding past the screen still releases what the turn was allowed to touch.
+`Held`'s own field is private — nothing but `hold` can build one, so no second
+caller can release a trail `hold` never started, or clear the buffer out from
+under the holder it belongs to. The ordering an operator sees is the trail,
+then the run's own account, both after the turn rather than during it.
+
+A `tui` turn that runs tools therefore does write its audit records; it
+defers them. That composition — a record emitted on a blocking thread, into
+the global subscriber, through `Audit` into the held buffer, and onto stderr
+once the guard drops — is what
+[`cli/tests/audit_log_held.rs`](../../crates/sandbx-cli/tests/audit_log_held.rs)
+drives end to end, re-execing itself to read fd 2 from outside the test
+binary, because libtest's own capture intercepts only the print macros and
+`Held::drop` writes straight to the descriptor. Each half of the chain was
+already covered on its own and the composition was not, which is how #266
+could be filed against a replay that provably ran.
+
+Release is not delivery. A hangup *runs* that `Drop` instead of skipping it —
+which is what ending the turn on one buys the trail — but where stderr is the
+descriptor that died, the usual case under `tui`, the one `write_all` fails
+and the records go with it: `Held::drop` has nowhere left to report that to,
+and ignores the error. So a hangup releases the trail rather than delivering
+it, and `2>` a file is what keeps it readable afterwards.
+
 ## The trail records the access, not the verdict
 
 `AuditEvent` has seven variants and `emit` is one `match` writing one
@@ -646,6 +679,8 @@ enforcing it is that the translation does not compile when they diverge.
 - Why the audit trail is separated from diagnostics by target rather than by
   level, and what each half of `Targets::new().with_target(…)` keeps out.
 - Why every audit event is at `INFO`, in terms of the defect that made it so.
+- Why a `tui` turn's trail is held for the length of the screen rather than
+  written as it happens, and what a hangup still manages to release.
 - Why a `spawned` record can name a command that never ran, and which single
   record closes it.
 - Why `allowed` is emitted after the open rather than after the check, and what
