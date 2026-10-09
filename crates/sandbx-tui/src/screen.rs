@@ -78,9 +78,9 @@ impl Screen {
     /// is never rewritten, so discarding the back buffer is the only fix. `resize`, never
     /// `Terminal::clear`: `clear`'s cursor query takes crossterm's one reader lock, which
     /// [`Keys`](crate::Keys) may be holding — and if it wins the lock instead, it races the
-    /// reader for the reply bytes. Resizing to the size already in force
-    /// asks the terminal nothing only on the fullscreen viewport `try_init` gives: an inline
-    /// one recomputes its origin from the cursor, which is that query back again.
+    /// reader for the reply bytes. Resizing to the size already in force asks the terminal
+    /// nothing only on the fullscreen viewport `try_init` gives: an inline one recomputes its
+    /// origin from the cursor, which is that query back again.
     pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
         if self.failed.is_some() {
             return;
@@ -112,18 +112,16 @@ impl Drop for Screen {
     /// `Drop`, not a method: an unwinding panic must still restore the terminal, which
     /// `try_init`'s hook covers only earlier. Neither covers `SIGKILL`.
     ///
-    /// `try_restore` and not `restore`: on a terminal that hung up, `restore` reports the
-    /// failed `tcsetattr` with `eprintln!` to the same dead descriptor and panics. Inside
-    /// a `Drop` already unwinding, that is a panic while panicking, which aborts (#264).
+    /// `try_restore` and not `restore`: `restore` reports a failed `tcsetattr` with
+    /// `eprintln!` to the descriptor that just died, and that panic inside an unwinding
+    /// `Drop` aborts (#264).
     fn drop(&mut self) {
         // Ignored: there is nothing left to report a terminal that stopped answering to.
         let _ = ratatui::try_restore();
 
         if let Some(terminal) = self.terminal.take() {
-            // `Terminal::drop` shows the cursor if a draw hid it and `eprintln!`s when it
-            // cannot. On a hung-up terminal stderr is usually that same descriptor, so the
-            // write fails and the macro panics — from inside this `Drop`, where it would
-            // unwind past the code the turn earned. Contained rather than prevented:
+            // `Terminal::drop` `eprintln!`s when it cannot show the cursor a draw hid, which
+            // is the same panic from inside this `Drop`. Contained rather than prevented:
             // `show_cursor` clears the flag `Drop` reads only once the backend accepted it,
             // which a dead one never will.
             let _ = std::panic::catch_unwind(AssertUnwindSafe(move || drop(terminal)));
