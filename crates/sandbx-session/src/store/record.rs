@@ -73,16 +73,20 @@ pub(super) fn fold(
             }
         };
 
+        // Ahead of the match, so it reads every header and not only line 0's: a later one
+        // declaring a version this build does not read is a file it cannot replay,
+        // whatever the first line said.
+        if let Record::Header(header) = &record
+            && header.version != VERSION
+        {
+            return Err(SessionError::UnsupportedVersion {
+                path: path.to_owned(),
+                version: header.version,
+            });
+        }
+
         match (index, record) {
-            (0, Record::Header(header)) => {
-                if header.version != VERSION {
-                    return Err(SessionError::UnsupportedVersion {
-                        path: path.to_owned(),
-                        version: header.version,
-                    });
-                }
-                headed = true;
-            }
+            (0, Record::Header(_)) => headed = true,
             (0, _) => {
                 return Err(SessionError::MissingHeader {
                     path: path.to_owned(),
@@ -93,7 +97,8 @@ pub(super) fn fold(
                 observed = accounting.observed.or(observed);
                 withheld = accounting.withheld;
             }
-            // A second header carries nothing that would change what is replayed.
+            // Its version was read above; nothing else a second header carries would
+            // change what is replayed.
             (_, Record::Header(_)) => {}
         }
     }
@@ -162,5 +167,30 @@ mod tests {
         let line = r#"{"type":"compaction","dropped":4}"#;
 
         assert!(serde_json::from_str::<Record>(line).is_err());
+    }
+
+    /// Versions as literals, so a `VERSION` bump fails this rather than passing unread.
+    #[test]
+    fn a_later_header_is_read_for_its_version_too() {
+        let header = |version| {
+            serde_json::to_string(&Record::Header(Header {
+                version,
+                id: "01k6n0".to_owned(),
+                created_at_millis: 0,
+            }))
+            .unwrap()
+        };
+        let body = |second| format!("{}\n{}\n", header(1), header(second));
+        let path = Path::new("/sessions/01k6n0.jsonl");
+
+        let err = fold(path, &body(2)).unwrap_err();
+
+        assert!(
+            matches!(err, SessionError::UnsupportedVersion { version: 2, .. }),
+            "got {err:?}"
+        );
+        // Not vacuous: the same two lines fold when the second header declares the version
+        // the first one does, so what is refused is the version and not the extra header.
+        assert!(fold(path, &body(1)).is_ok());
     }
 }
