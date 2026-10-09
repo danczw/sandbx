@@ -220,8 +220,8 @@ fn drop_bounding_set<E: std::fmt::Display>(
 /// Set `no_new_privs`, refusing if the kernel will not.
 ///
 /// Shared by both stages. Irreversible and inherited across `exec`, and a precondition for
-/// seccomp and `landlock_restrict_self` alike without `CAP_SYS_ADMIN` — so a failure here is
-/// a refusal. Landlock sets it itself; seccomp does not, which is why this call exists.
+/// seccomp and `landlock_restrict_self` alike without `CAP_SYS_ADMIN`. Both libraries set it
+/// themselves inside that install, so what this call adds is the refusal, ahead of either.
 pub(super) fn set_no_new_privs() -> Result<(), SandboxError> {
     nix::sys::prctl::set_no_new_privs().map_err(|errno| SandboxError::Seccomp {
         detail: format!("could not set no_new_privs: {errno}"),
