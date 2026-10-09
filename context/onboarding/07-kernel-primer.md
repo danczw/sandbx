@@ -411,11 +411,14 @@ unprivileged process has to spend before either will install.
 **In sandbx:** `set_no_new_privs` is called in the supervisor *and* again as the
 first statement of `apply`. The second call is a no-op, and the comment in
 `prepare_supervisor` says why it is there anyway: the stage that installs the
-filter must not depend on a caller having set the bit for it. The Landlock half
-is not relying on those two calls: the `landlock` crate sets the bit inside
-`restrict_self`, and defaults to doing so. What sandbx's own calls buy is the
-seccomp half — which is why they sit *before* `deny_dangerous_syscalls` in
-`apply` and not anywhere later.
+filter must not depend on a caller having set the bit for it. Neither install
+relies on those two calls: `seccompiler::apply_filter` opens with the same
+`prctl` and returns `Error::Prctl` if it fails, and the `landlock` crate sets
+the bit inside `restrict_self` and defaults to doing so. What sandbx's own call
+buys is the *refusal* — a kernel that will not set the bit is reported once,
+under one named error, ahead of either install rather than as whichever of the
+two happened to run first — which is why it sits before
+`deny_dangerous_syscalls` in `apply` and not anywhere later.
 
 ## Five capability sets, and what dropping each one means
 
