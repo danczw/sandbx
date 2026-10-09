@@ -203,6 +203,38 @@ terminal, and a revoked one can be observed end to end. Asked on stdin the same
 run would lose every record with the device it was asked on, and the failure
 this section is about would not be checkable at all.
 
+### The rule covers a second surface, where nothing was being asked
+
+"A lost operator is neither a bound nor anything they configured" is about
+consent, but it does not depend on a question being in flight. Under `tui` no
+call is waiting on an answer — the gate decided from argv before the first
+request — and yet a terminal that hangs up mid-turn is the same event: the turn
+goes on with nobody watching what it does, and the per-call account is drawn to a
+screen that no longer exists. So `tui` ends the turn on a hangup and exits 3 on
+this rule rather than on one of its own (#264).
+
+Three differences follow from there being no question to refuse:
+
+- **The stop is the whole of it.** There is no call to deny and no `tool_result`
+  to write, so of the three durable records only two remain: the exit code and
+  the stderr line. Both are written after the screen is given back, which is what
+  makes them survive the device that died.
+- **It is detected, not returned.** `--approve call` learns of the hangup from a
+  read that failed; `tui` has to go looking, because crossterm answers a hung-up
+  pty with zero bytes forever instead of an error —
+  [guide-tui.md](guide-tui.md) has the mechanism.
+- **The watched descriptor is not the asked-on one.** Consent is deliberately a
+  third device so the account outlives the terminal; `tui` has no third device,
+  so the hangup it must notice is on standard output and standard input both.
+
+It also keeps less. The abort is a `TurnStop`, so the turn returns and its
+messages, usage and `withheld` are stored; `tui` races the turn with a `select!`
+and drops the future, so there is no outcome to append and the turn is stored
+nowhere. That is the existing cost of the interrupt rather than a choice made
+here — ending on a hangup makes a lost turn no worse than an interrupted one, and
+the account says so where the operator can read it. A tool call already running
+finishes unseen (#26) on both surfaces alike.
+
 ## Deny by default, and the honest claim
 
 `agent-run` is non-interactive, which forces the question a TUI would have hidden:

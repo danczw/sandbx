@@ -264,7 +264,10 @@ architecture the filter gates on.
     it are refused, no further request is sent, and the process exits 3 rather
     than 0. A typed end-of-input ends it the same way. What the turn did before is
     on stdout and in `--session`
-    ([#218](https://github.com/danczw/sandbx/issues/218)).
+    ([#218](https://github.com/danczw/sandbx/issues/218)). Under `tui` nothing is
+    being asked, but a terminal that hangs up is a turn nobody is watching, so it
+    ends the turn and exits 3 on the same reasoning — the screen or the keyboard,
+    either one ([#264](https://github.com/danczw/sandbx/issues/264)).
 
   The gate narrows *which* tools a hijacked turn can use; only the sandbox bounds
   *where* an approved one reaches — with no path flag, read *and write* over the
