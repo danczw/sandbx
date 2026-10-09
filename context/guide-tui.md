@@ -207,7 +207,7 @@ is the one reading of a hangup that is certainly wrong, and a turn nobody could
 see is a turn nobody watched — which is the same reason `TurnStop::GateAborted`
 takes 3 under `--approve call`.
 
-Two other codes, neither of which the stop alone decides:
+Three other codes, none of which the stop alone decides:
 
 - a round cut at `--max-tokens` exits 2, whatever the turn's own stop was. The
   bound ends a round inside the turn, so a turn that stops `Answered` can still
@@ -218,6 +218,10 @@ Two other codes, neither of which the stop alone decides:
   and written now because the outcome holds its messages and usage like an
   answered one — so a 0 there would look like an answer to every test and to
   every caller branching on the status.
+- a command line `tui` would not take exits 64, decided in `main` before a `Tui`
+  exists at all. It is in this list because it used to be 2: clap's default
+  collides with the code a cut round earns, so "sandbx refused your arguments"
+  and "the turn ran and was cut short" were one number (#265).
 
 A stop `tui` has no account of exits 0, an answer being the thing a turn is for.
 Both bounds can cut one turn, so the screen's account is a list and a turn that

@@ -279,7 +279,7 @@ src/lib.rs      Cli, Command — the clap surface and nothing else
    logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
 tests/          agent_run, agent_session, audit_log, audit_log_install, auth,
-                auth_store, cwd_policy, hash, name, sandbox_run
+                auth_store, cwd_policy, hash, name, sandbox_run, usage
 ```
 
 Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,

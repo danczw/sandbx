@@ -4,7 +4,16 @@
 //! live in the library half.
 
 use clap::Parser;
+use clap::error::ErrorKind;
 use sandbx_cli::{Cli, Command};
+
+/// The exit code for a command line sandbx would not accept.
+///
+/// `EX_USAGE` from `sysexits.h`. Clear of every code a turn can earn — 0, the 2 a bound
+/// cut short takes and the 3 a lost operator takes — and of the `128 + n` a signal takes,
+/// because a caller has to tell "sandbx refused your arguments" from "the turn ran and was
+/// cut short" without grepping stderr (#265).
+const USAGE: u8 = 64;
 
 fn main() -> std::process::ExitCode {
     // Must precede argument parsing: `SandboxedCommand` re-execs this binary as its
@@ -17,7 +26,17 @@ fn main() -> std::process::ExitCode {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }
 
-        let command = Cli::parse().command;
+        // `try_parse`, so the code for a refused command line is sandbx's choice rather
+        // than clap's 2 — which is the code a cut round earns.
+        let command = match Cli::try_parse() {
+            Ok(cli) => cli.command,
+            Err(error) => {
+                // Ignored: clap routes help and version to stdout and a refusal to
+                // stderr, and a caller that closed the one it asked for already knows.
+                let _ = error.print();
+                return std::process::ExitCode::from(usage_code(error.kind()));
+            }
+        };
         let failure = failure_code(&command);
 
         // Inside the closure so the flag is sandbx's own, not a sandboxed command's; after
@@ -37,10 +56,27 @@ fn main() -> std::process::ExitCode {
     })
 }
 
+/// The code a command line clap would not take leaves on.
+///
+/// A free function so the mapping is a unit test rather than a shape only a spawned
+/// process shows. `--help` and `--version` are not refusals — clap reports them as errors
+/// so the caller decides where they print — and both keep the 0 they have always had.
+fn usage_code(kind: ErrorKind) -> u8 {
+    match kind {
+        ErrorKind::DisplayHelp
+        | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        | ErrorKind::DisplayVersion => 0,
+        _ => USAGE,
+    }
+}
+
 /// The code an `Err` exits with, for the subcommand and for anything refused ahead of it.
 ///
 /// 2 under `auth`, not 1: `auth status` already spends 1 on "no key anywhere", and a script
 /// branching on that must not read a refused file as an absent one.
+///
+/// A usage error never reaches here: there is no subcommand to take the code for, which is
+/// why [`USAGE`] is one number and not one per command.
 fn failure_code(command: &Command) -> u8 {
     match command {
         Command::Auth(_) => 2,
@@ -77,4 +113,59 @@ fn block_on(
         // `From`, which would label any later io error as this one.
         .map_err(sandbx_cli::AgentError::Runtime)?
         .block_on(future)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every way clap can refuse an argv takes one code, and the two it reports as errors
+    /// without refusing anything take 0.
+    ///
+    /// Codes as literals, so renumbering [`USAGE`] under the claim `README.md` and
+    /// `SECURITY.md` both make fails here.
+    #[test]
+    fn a_refused_command_line_exits_sixty_four_and_help_exits_zero() {
+        let kind = |argv: &[&str]| {
+            Cli::try_parse_from(argv)
+                .expect_err("clap took an argv it should have refused")
+                .kind()
+        };
+
+        // #265's own repro first, then a value clap will not take, an unknown flag and a
+        // missing required argument — the four shapes already in tree.
+        for argv in [
+            ["sandbx", "tui", "--max-rounds", "1", "no-dashdash"].as_slice(),
+            &[
+                "sandbx",
+                "sandbox-run",
+                "--allow-network",
+                "65536",
+                "--",
+                "true",
+            ],
+            &["sandbx", "auth", "status", "--nonsense"],
+            &["sandbx", "sandbox-run"],
+        ] {
+            assert_eq!(usage_code(kind(argv)), 64, "{argv:?}");
+        }
+
+        // A bare `sandbx` is the third of these, not a refusal: clap reports a missing
+        // subcommand by printing the help, which is what it has always exited 0 doing.
+        for argv in [
+            ["sandbx", "--help"].as_slice(),
+            &["sandbx", "--version"],
+            &["sandbx"],
+        ] {
+            assert_eq!(usage_code(kind(argv)), 0, "{argv:?}");
+        }
+    }
+
+    /// Non-vacuity for the test above: an argv sandbx accepts produces no code at all, so
+    /// what is asserted there is the refusal and not every call.
+    #[test]
+    fn an_argv_sandbx_accepts_is_not_a_usage_error() {
+        Cli::try_parse_from(["sandbx", "sandbox-run", "--", "true"])
+            .expect("a well-formed sandbox-run");
+    }
 }
