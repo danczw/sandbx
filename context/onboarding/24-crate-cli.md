@@ -184,6 +184,12 @@ saying it is deliberate: a stop it has no account of must not be given a code
 and [15](15-tools-and-the-screen.md) has what the interrupt's `2` costs a caller
 that a round limit's `2` does not.
 
+Nothing downstream of `ending` may take the code back. A screen that stopped
+redrawing mid-turn latches its failure, and `reported` — the free function
+`Tui::drive` hands that pair to — prints it as one more stderr line and returns
+the code regardless; [23](23-crate-tui.md) has why a broken *view* is not a
+broken *result*.
+
 The two oddities are both about a script being able to branch. `3` exists
 because a run that stopped with nobody left to approve a tool call is neither a
 failure nor a bound, and a caller cannot learn it any other way (#218). And

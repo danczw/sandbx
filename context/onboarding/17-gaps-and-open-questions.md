@@ -151,6 +151,17 @@ objection — [03](03-the-landscape.md) is the deliberate case, since critique o
 another project is out of this set's scope and its closing comparison states
 sandbx's own costs as description rather than as a complaint.
 
+**A fourth verdict exists and is not in the list, because it stops being a
+verdict:** the mechanism moves. Three objections this set raised are described
+in their chapters as behaviour rather than as questions, and the chapters are
+shorter for it: the second header now read for its version and the resume
+refusal that names the transcript it read, both in [22](22-crate-session.md),
+and the exit code a latched screen no longer takes, in
+[23](23-crate-tui.md). The work is #256, #257 and #258 — the path at the end of
+this chapter, run forwards rather than described. The lesson for a reader
+holding an objection of their own is that this is an ordinary outcome and not a
+rare one.
+
 ### From 01 — what sandbx is
 
 - **The Linux-only trade.** Per-run, per-path precision is bought by refusing to
@@ -542,16 +553,6 @@ sandbx's own costs as description rather than as a complaint.
 
 ### From 22 — the session crate
 
-- **A second header is skipped without its version being read.** The version
-  gate runs only on line 0, so a transcript concatenated or hand-edited to carry
-  a later header resumes with lines a v1 reader does not understand. **Partly
-  answered.** [decision-on-disk-state.md](../decision-on-disk-state.md) refuses
-  exactly that outcome when the version sits on line 0, because "a reader that
-  silently dropped a field it did not understand would change the history the
-  model is shown"; it weighs an unknown version and an unknown record type, and
-  not a repeated header. The read path already assumes a transcript may have
-  been edited — that assumption is why the shape checks run over the whole
-  history rather than its end.
 - **The create path repairs a wide root, where the rule one bit away refuses.**
   **Partly answered.** The record answers for the narrowing with "at create time
   the directory holds nothing a refusal would protect", which is sound about the
@@ -561,17 +562,6 @@ sandbx's own costs as description rather than as a complaint.
   against the transcript rule — a merely readable transcript resumes *and* sets
   a field, precisely so the operator hears about a disclosure that cannot be
   undone.
-- **One refusal serves two call sites and is worded for one of them.**
-  `IncompleteTurn` is raised by `append` and by `resume`, and its message ends
-  "so there is nothing to append" — on the resume path nothing was being
-  appended and a hand-edited transcript is what is wrong. It names no path,
-  where every other refusal about a file does, and `sandbx-cli` compounds it
-  from the other side by treating the variant as benign on the append path.
-  **Open.** [decision-on-disk-state.md](../decision-on-disk-state.md) settles
-  what `resume` must check and says nothing about what it reports when the check
-  fails, so the record has not been asked whether the two cases want two
-  variants.
-
 ### From 23 — the tui crate
 
 - **The dependency graph carries less of the isolation than the guide implies.**
@@ -592,18 +582,6 @@ sandbx's own costs as description rather than as a complaint.
   for the other mark: a gutter in an area of its own. Weaker than forging a
   verdict — misattributed authorship rather than consent — and not nothing
   either, the pane being the only record a `bash` call's text gets (#234).
-- **A latched draw failure replaces the code the turn earned.** `drive` returns
-  `AgentError::Screen` where one latched, which maps to 1 — so a turn cut short
-  at its round bound exits 1 rather than 2 if the screen died anywhere in it,
-  while the account naming the bound still reaches stderr. `agent-run` does the
-  same with a closed stdout, in the same order, so it is a consistent choice
-  rather than one subcommand's oversight. **Open.**
-  [decision-approval-gate.md](../decision-approval-gate.md) weighs a third code
-  against reusing the second, on the grounds that reuse would leave the defect
-  "distinguishable only by grepping stderr" (#218) — and on this path the code a
-  script reads is the output device's and the stop it configured is what is left
-  on stderr to be grepped. The asymmetry is the thing nothing has weighed.
-
 ### From 24 — the cli crate
 
 - **One grant failing its own identity check is dropped in silence.** It is the

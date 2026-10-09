@@ -7,8 +7,8 @@ round loop has finished and the gate has gone quiet; in **View 1** it is not a
 box, because nothing here spawns, forks or `exec`s — it opens files in the
 harness process, and that is the whole of it.
 
-Nine source files, a little under a thousand lines with nearly as many again in
-`tests/`, and one of the three leaves of
+Nine source files, a little over a thousand lines outside their test modules
+with nearly as many again in `tests/`, and one of the three leaves of
 [05 — seven crates](05-seven-crates.md)'s graph: no internal dependency, and
 three external ones — `nix` with only `fs` and `user`, `serde`, `serde_json` —
 plus `tempfile` for the tests. The reason to read it anyway is proportion. A
@@ -28,7 +28,7 @@ carries what that costs as a non-claim (#133).
 | [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
 | [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, three opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
-| [`error.rs`](../../crates/sandbx-session/src/error.rs) | `SessionError`, sixteen variants | below |
+| [`error.rs`](../../crates/sandbx-session/src/error.rs) | `SessionError`, seventeen variants | below |
 | `tests/` | `identifier`, `permissions`, `recovery`, `transcript` | below |
 
 Two shapes to notice first. **`store/` is the only subdirectory**, and its three
@@ -274,32 +274,44 @@ a resumed conversation and a continued one carry the same numbers;
 [decision-on-disk-state.md](../decision-on-disk-state.md) explains why figures
 nothing reads today are written at all.
 
-Line 0 is the only position that means anything, which is why `fold` matches on
-the pair `(index, record)` rather than on the record alone:
+Two things are checked per line, and only one of them cares where the line sits.
+The version is read off *every* header, ahead of the match; the match then
+decides what is genuinely position-specific, which is why it takes the pair
+`(index, record)` rather than the record alone:
 
 ```rust
-            (0, Record::Header(header)) => {
-                if header.version != VERSION {
-                    return Err(SessionError::UnsupportedVersion {
-                        path: path.to_owned(),
-                        version: header.version,
-                    });
-                }
-                headed = true;
-            }
-            // ... the `(0, _)`, message and turn arms, elided ...
-            // A second header carries nothing that would change what is replayed.
-            (_, Record::Header(_)) => {}
+        // Ahead of the match, so it reads every header and not only line 0's: a later one
+        // declaring a version this build cannot read is a file it cannot replay.
+        if let Record::Header(header) = &record
+            && header.version != VERSION
+        {
+            return Err(SessionError::UnsupportedVersion {
+                path: path.to_owned(),
+                version: header.version,
+            });
+        }
+
+        match (index, record) {
+            (0, Record::Header(_)) => headed = true,
+            // ... the other arms, elided; a second header reaches the last and is skipped
 ```
 
-Two refusals and one deliberate silence. The version test is `!=`, not `>`, so
-any header this build does not write is refused rather than read on a best
-effort — `a_future_version_is_refused_not_guessed` pins a `2` — and the
-variant's own doc gives the reason: "refused, since best-effort would drop a
-field and so change the history the model is shown". Anything but a header on
-line 0 is `MissingHeader`, and so is a file whose only line was a torn one,
-which is what `headed` is for. A second header reaches the last arm and is
-skipped, for the reason the comment states and the aside below questions.
+The version test is `!=`, not `>`, so any header this build does not write is
+refused rather than read on a best effort —
+`a_future_version_is_refused_not_guessed` pins a `2` — and the variant's own doc
+gives the reason: "refused, since best-effort would drop a field and so change
+the history the model is shown". Reading it off every header rather than off
+line 0 is what makes that hold for a file somebody concatenated or edited by
+hand: a `version: 1` line 0 followed by a `version: 2` header and v2 content is
+a file this reader cannot replay whatever the first line said, and
+`a_later_header_is_read_for_its_version_too` drives exactly that pair, with both
+versions as literals so a `VERSION` bump fails the test rather than passing
+unread. What the later arm still skips is everything *else* a second header
+carries, which really is nothing the replay uses.
+
+Position decides the other refusal: anything but a header on line 0 is
+`MissingHeader`, and so is a file whose only line was a torn one, which is what
+`headed` is for.
 
 An undeclared *field* is the third case and the lenient one: an extra key on a
 stored line reads back without it, which
@@ -335,21 +347,14 @@ parses, and nothing throws it away.
 | the file replaced by one partial line | `MissingHeader` — nothing is left to replay, so the header was never read |
 | a bad line *with* a newline after it | `Malformed`, carrying the one-based line number and `serde_json`'s own error as `source` |
 | an interior pair of user turns inserted | `Disordered`, caught by the whole-history check and not by anything in `fold` |
+| a second header spliced in, declaring another version | `UnsupportedVersion`, the check sitting ahead of the match so it sees every header |
 | a `turn` line and no messages at all | resumes; the figure survives, which is the only place a blockless round's usage can live |
 
-- **Worth questioning:** `fold` skips a second `Header` with the comment "A
-  second header carries nothing that would change what is replayed," and so
-  never reads its `version`. That holds for the *fields*, not the file: a second
-  header means a hand edit or two transcripts concatenated, and the lines after
-  it were written by whatever build wrote them, so a v1 header followed by a v2
-  header and v2 content resumes with v2 lines replayed by a v1 reader — the
-  outcome [decision-on-disk-state.md](../decision-on-disk-state.md) refuses when
-  the version sits on line 0, because "a reader that silently dropped a field it
-  did not understand would change the history the model is shown". The record
-  weighs an unknown version and an unknown record `type` and does not weigh a
-  repeated header, while the read path already assumes a transcript may have
-  been edited — that assumption is why the shape checks run over the whole
-  history rather than its end. Checking the version on every header closes it.
+Read that table alongside what the shape checks do, because they share one
+premise: **the read path assumes a transcript may have been edited.** That is
+why the ordering predicates run over the whole history rather than its end, and
+it is the same reason the version is read off every header — a file is not taken
+to be internally consistent just because its first line was well-formed.
 
 ## `store/shape.rs` — eight predicates and no I/O
 
@@ -393,7 +398,7 @@ Where they are applied matters, because the call sites use different sets:
 
 | site | predicates | refuses as | the one it cannot use |
 |---|---|---|---|
-| `SessionStore::resume` | `resumable`, `alternating`, `opens` | `IncompleteTurn`, then `Disordered` | `follows` — there is no batch |
+| `SessionStore::resume` | `resumable`, `alternating`, `opens` | `Unresumable`, then `Disordered` | `follows` — there is no batch |
 | `Session::append` | `resumable`, `alternating`, `follows` | `IncompleteTurn`, then `DisorderedTurn` | `opens`, subsumed by `follows`'s empty-store arm |
 | `Session::pending_call` | `answers_only` on the last message | nothing — it returns a `bool` | — |
 
@@ -485,58 +490,55 @@ their own directory there, `ForeignOwner`, or a link, `Symlink`.
   mechanism costs a `bool`; the refusal the record rejects is not the only
   alternative to silence.
 
-## `error.rs` — sixteen variants, and the two kinds
+## `error.rs` — seventeen variants, and the two kinds
 
 The module doc opens with a rule: "No `From` impls, and do not add one: every
 wrapped failure is paired with the path and operation it came from, which a
-blanket conversion would discard." Nine of the sixteen carry a `PathBuf`, which
+blanket conversion would discard." Ten of the seventeen carry a `PathBuf`, which
 is what that rule protects. The split worth holding is between a **refusal** —
 sandbx decided not to — and a **host failure**, where the machine could not:
 
 | kind | variants |
 |---|---|
 | refusal, about what was asked | `InvalidIdentifier`, `NotFound` |
-| refusal, about what is on disk | `MissingHeader`, `UnsupportedVersion`, `Malformed`, `Writable`, `DirWritable`, `Symlink`, `ForeignOwner`, `Disordered` |
+| refusal, about what is on disk | `MissingHeader`, `UnsupportedVersion`, `Malformed`, `Writable`, `DirWritable`, `Symlink`, `ForeignOwner`, `Disordered`, `Unresumable` |
 | refusal, about a shape no later resume would accept | `IncompleteTurn`, `DisorderedTurn` |
 | host failure | `NoStateHome`, `Clock`, `Collision`, `Io` |
 
-Two things follow from the table rather than from the file. **`IncompleteTurn`
-and `DisorderedTurn` carry nothing at all**, where their post-write twin
-`Disordered` carries a path — and `append` has `self.path` to hand, so the
-omission is a choice. For `DisorderedTurn` it matches where the defect is: it
-rejects the *argument*, and the transcript on disk is still correct, so there is
-no file to blame. `IncompleteTurn` is not that clean, because **`resume` raises
-it too** — a stored history failing `resumable` is `IncompleteTurn` before the
-`Disordered` arm is reached, which
-`a_transcript_ending_on_a_user_turn_is_refused` drives by appending a blockless
-user line to a good file. It is the only *refusal* both paths raise — `Io` they
-share too, and that is a host failure — and so the one refusal about a file that
-does not name the file. And
-**`source` returns `Some` for two variants only**, `Malformed` and
-`Io`, the two that wrap a foreign error, with the remaining fourteen listed by
-name in one arm so a new variant does not compile until somebody has decided
-whether it has a cause. `Malformed` exposing `serde_json`'s message is a
-deliberate difference from the credential path;
-[14](14-audit-sessions-credentials.md) has why.
+Two things follow from the table rather than from the file. **The last two rows
+are the same two shapes refused from two sides, and the enum splits rather than
+shares.** A history ending on a prompt nothing answered is `Unresumable` coming
+off disk and `IncompleteTurn` going in; one out of order is `Disordered` coming
+off disk and `DisorderedTurn` going in. The read-side pair carries a `PathBuf`
+and the write-side pair carries nothing at all, which is not an oversight but
+where the defect is: `append` rejects the *argument*, and the transcript on disk
+is still correct, so there is no file to blame — while a refused resume is about
+a file and nothing else, and an operator with several sessions needs to be told
+which one to open. `a_transcript_ending_on_a_user_turn_is_refused` asserts the
+path and not just the variant, for that reason. The cost of sharing one variant
+instead is worth seeing, because `sandbx-cli` reads these from the other side:
+`agent.rs` special-cases `IncompleteTurn` on the append path as not an error at
+all, printing "the turn produced nothing to store" and returning `Ok`. That is
+right for an append and would be wrong for a resume, and under one variant the
+two were told apart only by which call site the match sat on.
+
+And **`source` returns `Some` for two variants only**, `Malformed` and `Io`, the
+two that wrap a foreign error, with the remaining fifteen listed by name in one
+arm so a new variant does not compile until somebody has decided whether it has
+a cause. `Malformed` exposing `serde_json`'s message is a deliberate difference
+from the credential path; [14](14-audit-sessions-credentials.md) has why.
 
 Two messages end in the command to type — `chmod 600`, `chmod 700` — while
 `NotFound`, `Collision` and `Clock` name the condition, there being no fix to
 name: the habit [01](01-what-sandbx-is.md) notes about the policy refusals.
 
-- **Worth questioning:** `IncompleteTurn` is raised from both `append` and
-  `resume`, and its message is written for only one of them — it ends "so there
-  is nothing to append", on a path where nothing was being appended and a
-  hand-edited transcript is what is wrong. It names no path, where every other
-  refusal about a file does, so an operator with several sessions is not told
-  which one to open. `sandbx-cli` compounds it from the other side: `agent.rs`
-  special-cases the variant on the append path as not an error at all, printing
-  "the turn produced nothing to store" and returning `Ok`, which is right there
-  and would be wrong for a refused resume — the two cases are told apart only by
-  which call site the match sits on.
-  [decision-on-disk-state.md](../decision-on-disk-state.md) settles what
-  `resume` must check and says nothing about what it reports when the check
-  fails. A second variant, or the path `resume` already holds, costs nothing the
-  record argues against.
+Worth noticing what the records do and do not settle here.
+[decision-on-disk-state.md](../decision-on-disk-state.md) is the authority on
+what `resume` must *check*, and says nothing at all about what it reports when a
+check fails. The wording and the split are therefore the enum's own business,
+governed by nothing but the rule in the module doc — which is a useful thing to
+know about this repo: a decision record binds the mechanism, not every
+consequence of it.
 
 ## Where the tests are
 
@@ -574,11 +576,11 @@ is masked by the umask, which can only clear bits.
 - What one line of a transcript looks like, how many lines one exchange of prose
   writes, and the three conditions that must hold together for `fold` to drop
   one.
-- Which two refusals `fold` makes on line 0, why a second header further down is
-  skipped instead, and how an unknown field, an unknown record `type` and an
-  unknown version are each answered differently.
-- Which single refusal both `append` and `resume` raise, and what that costs
-  whoever reads its message.
+- Which of `fold`'s checks depends on a line's position and which does not, why
+  the version is read off every header, and how an unknown field, an unknown
+  record `type` and an unknown version are each answered differently.
+- Which two shapes `SessionError` refuses from both sides, why each side gets
+  its own variant, and which side carries a path.
 - Why a file format needs a check about the Messages API in it at all, and which
   single pair of user turns is legal.
 - Why `ownership` takes a `&File` and not a `&Path`, and what is different here

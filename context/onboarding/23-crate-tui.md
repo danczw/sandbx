@@ -177,13 +177,16 @@ row, so a kept break would mint a second marked row from whatever followed it �
 which is how a provider error, whose text is the vendor's string verbatim, would
 otherwise smuggle a row in.
 
-`invisible` is the bidi-and-zero-width denylist, the same one
-[13](13-turn-loop-and-gate.md) meets at the approval prompt: `char::is_control`
-is category `Cc` exactly, so U+202E and the directional isolates pass it and a
-line can *display* as a different line. The two copies are identical
-character-for-character, duplicated rather than shared, and the comment here
-says what rides on that: "Duplicates `sandbx-cli`'s `gate::invisible`; the two
-sets must not diverge (#233)."
+`invisible` is the bidi-and-zero-width denylist, and it is literally the same
+function [13](13-turn-loop-and-gate.md) meets at the approval prompt:
+`sandbx_providers::invisible`, imported here beside `AgentEvent`.
+`char::is_control` is category `Cc` exactly, so U+202E and the directional
+isolates pass it and a line can *display* as a different line — in this pane
+and the same `sandbx: ` grammar as the gate's own account, which is why one
+table and not two. [20](20-crate-providers.md) has why the owner is a crate
+that talks to an HTTP API, and what the two sinks deliberately do not share:
+each keeps its own replacement, there being no one answer to what belongs in a
+cell versus a line.
 
 `forgeable` has no counterpart at the prompt, and is this crate's own:
 
@@ -387,22 +390,46 @@ nothing. No consent is bypassed — `tui` refuses `--approve call` (#225), so it
 gate's decision is argv's — and what is lost is the watching. Nothing acts on
 `failure()` before the turn ends: [24](24-crate-cli.md)'s `Tui::drive` takes it
 after the final redraw and after the key that holds the finished screen, and
-returns it as `AgentError::Screen` in place of the code the turn had earned.
+hands it to `reported` beside the code the turn earned.
 
-- **Worth questioning:** a latched draw failure replacing the code the turn
-  earned. `Tui::drive` ends on `let code = code?;` and then returns
-  `AgentError::Screen` where one latched, which `failure_code` maps to 1 — so a
-  turn cut short at `--max-rounds` exits 1 rather than 2 if the screen died
-  anywhere in it, while the account naming the bound still prints to stderr,
-  its branch testing the `Ok` code before the screen error replaces it.
-  `agent-run` does the same with a closed stdout, deliberately and in the same
-  order — `render.rs`'s `finish` returns `AgentError::Output` ahead of every
-  ending — so this is a consistent choice rather than an oversight in one
-  subcommand. What is unweighed is the asymmetry against
-  [decision-approval-gate.md](../decision-approval-gate.md)'s reason for buying
-  a third code at all, "reusing it would leave the defect distinguishable only
-  by grepping stderr" (#218): on this path the code a script reads is the
-  device's, and the stop it configured is what is left on stderr to be grepped.
+What `reported` does with that pair is worth reading closely, because it is one
+rule stated twice in this repo. A latched failure is **one more stderr line and
+not the code.** It runs `code?` first, so a turn that failed outright reports
+its own error and prints nothing else; then the account; then the screen's
+failure, through `AgentError::Screen`'s own `Display` so the wording is the one
+`main` would have printed; and it returns the code regardless. A turn cut short
+at `--max-rounds` therefore exits 2 and one that lost its operator exits 3,
+whatever the screen did last.
+
+The reason is in [guide-tui.md](../guide-tui.md): the code answers what the
+*turn* did, and a draw that failed is not something the turn did — the stop, the
+bounds and the lost operator are all decided before `failure()` is read, and the
+account naming them reaches stderr either way. `agent-run` does the opposite
+with `AgentError::Output`, and is right to, because there stdout *is* the
+channel the answer came back on. That is the distinction to carry away: a
+failure of the result channel may take the code, a failure of the view may not.
+
+**What a frozen screen does lose is the answer, and no code can say so.** `tui`
+draws the model's prose and the per-call lines to the screen and nowhere else —
+not stdout, and the per-call account deliberately not stderr (#224) — so without
+`--session` a run whose screen latched mid-turn exits 0 with its text gone, the
+`drawing the screen:` line being the only tell. Both
+[guide-tui.md](../guide-tui.md) and
+[decision-approval-gate.md](../decision-approval-gate.md) state that where they
+state the codes, rather than leaving it to be discovered. The alternative of
+keying the code off the latch reports a lost operator as a generic failure, and
+keying it off whether a session was open gives one turn outcome two codes.
+
+Why `reported` is a free function beside `drive` rather than the tail of it:
+that is what makes the precedence assertable at all. `Screen` wraps a concrete
+terminal with no backend seam, the latch is private with no setter, and
+`Keys::listen` spawns a real reader thread on real stdin, so nothing can drive
+the method. `a_latched_screen_failure_does_not_replace_a_code_the_turn_earned`
+calls the function with a `BrokenPipe` latch and asserts `Ok(3)`, `Ok(2)` and
+`Ok(0)` — as literals, so renumbering a const under a claim `README.md` and
+`SECURITY.md` both make fails here — and pairs them with a `TurnError` that
+still returns `Err` with its own error, latch or no latch. Without that pair
+the test would pass on a function that ignored `code` entirely.
 
 ## input.rs is a thread, because `event::read` cannot be cancelled
 
@@ -480,14 +507,15 @@ and nothing waits for this one.
 - Why a terminal renderer is a sanitisation boundary, in terms of where the text
   in a cell came from, and why that file is also the one with real coverage.
 - The four classes `printable` sorts a character into, why `\n` is treated
-  differently at the cell than at the approval prompt, and which file holds the
-  other copy of the same `invisible` denylist (#233).
+  differently at the cell than at the approval prompt, and which crate owns the
+  `invisible` table both sinks read.
 - What "tail-aligned" is measured against, and whether a row that scrolled off
   is gone or merely off-screen.
 - What `Screen`'s `Drop` impl protects against, and the ways a process can end
   without running it.
 - Why `draw` returns `()` rather than a `Result`, what the first `io::Error`
-  latches, and what the latched error costs the code the turn exits with.
+  latches, and why that latch is one more stderr line rather than the exit code
+  — where `agent-run` does the opposite and is right to.
 - Why the key reader is a `std::thread`, and why `Keys::stop` never resolves on
   a closed channel while `press` resolves at once.
 - What ends the reader thread, why neither ending is prompt, and what becomes of
