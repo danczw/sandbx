@@ -221,7 +221,7 @@ Read `start_inner_stage` and the `prepare_supervisor` it calls with the question
 | step | why not earlier, why not later |
 |---|---|
 | `HelperArgs::decode` | stage 1 needs the policy to know which namespaces to unshare; the argv it passes down is the original, not a re-encode |
-| `resolver::files` | **before** the unshare: a policy that denies IP egress lands in an empty network namespace, where a DNS lookup resolves nothing |
+| `resolver::files` | **before** `bound_resolution`, because the `hosts` file that step binds is rendered from exactly these lookups — the ordering holds on every run. The empty-network reason is real but conditional: it needs a policy denying IP egress, and the CLI refuses every `--allow-dns` shape that would leave one, so it bites an embedder rather than a `sandbx` run |
 | `isolate` | the single `unshare` — user and pid always, net when the policy grants no network, mount when there are resolver files to bind. One call, so there is no window holding some of the isolation and not the rest |
 | `resolver::bound_resolution` | **after** the unshare, which made the mount namespace, and **before** the capability drops, which take away the `CAP_SYS_ADMIN` the mounts need |
 | `harden_process_state` | **after** the unshare: a fresh user namespace grants the full capability set within it, so dropping earlier would be undone |

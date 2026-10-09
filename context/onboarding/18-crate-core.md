@@ -266,10 +266,17 @@ it is called from is a constraint rather than a preference. In
 that says why:
 
 ```rust
-    // Before the unshare, which puts a policy that denies IP egress into an empty network
-    // namespace — where a lookup resolves nothing at all.
+    // What the bound `hosts` file is built from, so they precede `bound_resolution` below; and
+    // before the unshare, which for an egress-denying policy leaves no network to resolve on.
     let resolved = crate::resolver::files(policy);
 ```
+
+Two reasons, and the comment puts the unconditional one first: the bodies
+`bound_resolution` binds are rendered from these lookups, so the lookups precede
+the bind on every run that has any. The namespace reason holds only where the
+policy denies IP egress — and `sandbx-cli` refuses every `--allow-dns` shape
+that would leave `allows_network()` false, so it is a constraint on an embedder
+calling the library rather than on anything the CLI can produce.
 
 So resolution happens in stage 1 before `isolate`, and the mounting after it:
 `super::resolver::bound_resolution` needs the mount namespace `isolate` just
