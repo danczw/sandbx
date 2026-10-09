@@ -166,6 +166,29 @@ A stop `tui` has no account of exits 0, an answer being the thing a turn is for.
 Both bounds can cut one turn, so the screen's account is a list and a turn that
 met both says both.
 
+A screen that stopped accepting draws takes none of these three. It is reported —
+one more stderr line, in `AgentError::Screen`'s own wording, after the account —
+but the code is what the turn earned. The code answers what the *turn* did, and a
+draw that failed is not something the turn did: the stop, the bounds and the lost
+operator are all decided before `Screen::failure` is read, and the account naming
+them reaches stderr either way. `agent-run` does the opposite with a stdout it
+could not write to, because there that *is* the channel the answer came back on.
+Taking the code here collapsed all three to 1 the moment a draw failed, leaving
+the stderr account saying one thing and `$?` another (#257) — which is why the
+precedence is a unit test: `Screen` needs a terminal no test has, so the choice
+is made in a free function rather than inside `execute`.
+
+**What a frozen screen does lose is the answer**, and the code does not say so.
+`tui` writes the model's prose and the per-call lines to the screen and nowhere
+else — not to stdout, and the per-call account deliberately not to stderr (#224)
+— so unless `--session` was passed, a run whose screen latched mid-turn exits 0
+with its answer gone. That is the cost of reporting the turn rather than the
+view, and the `drawing the screen:` line on stderr is the only tell: a caller
+that needs the text and not just the status has to pass `--session` and read the
+transcript. Making the code depend on the latch instead would have reported a
+lost operator as a generic failure, and making it depend on whether a session was
+open would give one turn outcome two codes.
+
 ## Light by intent
 
 The first iteration draws one turn and takes one key. Named here because each is

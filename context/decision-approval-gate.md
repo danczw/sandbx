@@ -178,6 +178,24 @@ instead, the line and the transcript still saying why it stopped, which is why
 the line is written ahead of that check rather than after it. That is what lets
 "No audit record either" above stand as a claim rather than as a gap.
 
+Only the *result* channel may take the code, which is what separates the two
+subcommands. Under `agent-run` stdout carries the answer, so an answer that could
+not be written is a run with nothing to show and 1 is the honest report. Under
+`tui` the screen is not where the refusal was recorded: the line naming the lost
+operator goes to stderr from `reported`, and the latch is read after the code is
+already decided — so a draw that stopped partway leaves that line standing and
+the earned 3 with it. Taking the code there reported a lost operator as a generic
+failure, which was the whole of #257.
+
+Two of the three durable things are thinner under `tui`, which is worth naming
+here rather than leaving to be discovered. The per-call `settled` line is *drawn*
+and not written, the alternate screen neither redirecting stderr nor giving it
+back (#224), so a latched screen loses it; and `--session` is off unless asked
+for, so the `tool_result` may not be stored at all. The stderr account and the
+exit code are what survive unconditionally, which is why neither may be taken by
+a failure of the screen. [guide-tui.md](guide-tui.md) states the same where it
+specifies the codes.
+
 All three survive the hangup *because* consent is a third device. With the
 question on `/dev/tty`, stdout and stderr can both be redirected to files
 without breaking the exchange — so the status and the account outlive the
