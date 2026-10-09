@@ -220,8 +220,10 @@ fn forgeable(c: char) -> bool {
     matches!(
         c,
         // Every Box Drawing codepoint with a vertical stroke and no horizontal one: both
-        // weights, the three dash densities, the double, and the half-height stubs. Its
-        // horizontals are left alone, a table or a `tree` being ordinary output.
+        // weights, the three dash densities, the double, and the half-height stubs. What
+        // draws a horizontal too is left alone — the junctions and corners, not only the
+        // horizontals: a table or a `tree` is ordinary output, and the nub beside the
+        // stroke is a difference on screen where a weight is not.
         GUTTER_MARK
         | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
         | '\u{254e}' | '\u{254f}' | '\u{2551}'
@@ -229,9 +231,13 @@ fn forgeable(c: char) -> bool {
         // The bracket, box-line and integral extensions, drawn to tile vertically.
         | '\u{239c}' | '\u{239f}' | '\u{23a2}' | '\u{23a5}' | '\u{23aa}' | '\u{23ae}'
         | '\u{23b8}' | '\u{23b9}' | '\u{23d0}'
-        // Unicode's confusable mappings for the mark.
-        | '\u{00a6}' | '\u{01c0}' | '\u{2016}' | '\u{2223}' | '\u{2225}' | '\u{2758}'
-        | '\u{fe31}' | '\u{ff5c}' | '\u{ffe8}'
+        // Single-cell vertical strokes outside both ranges — an enumeration, not a scope:
+        // Unicode's confusables data is not in the tree to derive one from, which is what
+        // #276 leaves open. U+1175 and U+4E28 stay out as letters in running text, on
+        // ASCII `|`'s own reasoning.
+        | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
+        | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
+        | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
     )
 }
 ```
@@ -260,13 +266,15 @@ composes.
 - **Worth questioning:** the gutter authenticates sandbx's voice and nothing
   authenticates the operator's. `view::gutter` draws two marks: `│ ` on a
   verdict or a note, `> ` on the prompt's first row. `forgeable` covers the
-  first — a hand-written denylist of 33 codepoints, which is a different thing
+  first — a hand-written denylist of 40 codepoints, which is a different thing
   from every character that draws that cell, and the gap between the two is the
   shape of the risk rather than a bug in any one entry. What closed most of it
-  was giving the list a scope a reader can check against Unicode's names instead
-  of an enumeration to trust, and three tests that sweep it (#276); what keeps
-  it open is that a property lookup, which is what "every character" would need,
-  is a new dependency. `>` is ASCII and let through deliberately, on
+  was making the first of its three arms a *scope* — the Box Drawing block,
+  swept against Unicode's names — and pinning it both ways in tests (#276). The
+  other two arms are still enumerations, and that is what stays open: a
+  property lookup, which is what "every character" would need, is a new
+  dependency, and Unicode's confusables data is not in the tree to derive the
+  third arm from either. `>` is ASCII and let through deliberately, on
   `GUTTER_MARK`'s own reasoning that "`|` or `>` is plausible in prose, and
   stripping either would mangle shell pipelines". For `|` the trade has a
   backstop — the real mark is a different character, and the guide notes that a
@@ -292,10 +300,11 @@ free function over `&str`. Inline in
 survives as ordinary text is visible in the expectation; two more cover the
 reordering characters and the gutter confusables, each asserting
 `!c.is_control()` of its own inputs to keep the justification for `invisible`
-and `forgeable` inside the test. Three more sweep `forgeable`'s scope rather
-than spot-checking it: the 15 Box Drawing verticals, the 113 the carve-out
-keeps, and the extensions and confusables outside that block. A codepoint
-added to the function and not to a test now fails one.
+and `forgeable` inside the test. Three more pin the set instead of
+spot-checking it: the 15 Box Drawing verticals, the 113 the carve-out keeps —
+a genuine sweep, the range being walked — and the 25 strokes outside that
+block, which is the enumeration restated. A codepoint added to the function
+and not to a test now fails one.
 [`view.rs`](../../crates/sandbx-tui/src/view.rs) draws state and reads none, so
 its tests render into ratatui's `TestBackend` and read cells back as rows of
 strings — which is how `an_answer_cannot_forge_the_row_a_verdict_is_drawn_on`
@@ -360,9 +369,12 @@ So `enter` does not call `try_init`. `take_terminal` reproduces its other three
 statements — raw mode, then the alternate screen, then `Terminal::new` — in that
 order, "so a failed second step leaves the first in force", and the ratatui
 dependency is pinned exactly (`=0.30.2`) because that is a copy of a function
-body in `init.rs`. `clippy.toml` bans `restore`, `init`, `init_with_options` and
-`run`, so reintroducing any of them is a build failure rather than a review
-miss. A failed `take_terminal` still restores, for the reason `Screen::drop`
+body in `init.rs`. `clippy.toml` bans `restore`, `run` and all four `init`
+forms, so reintroducing any of them is a build failure rather than a review
+miss — the `try_` ones too, because the hazard is the hook they install rather
+than how they report a failure, and a call after `enter` would replace `enter`'s
+own hook with the aborting one. Only `try_restore` is left reachable, having
+nothing to write with. A failed `take_terminal` still restores, for the reason `Screen::drop`
 gives below: a terminal that cannot be entered may be one that cannot be
 reported to either. Raw mode is
 not a convenience: it is what makes ctrl-c arrive at `Keys` as a `KeyEvent`

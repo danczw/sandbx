@@ -98,13 +98,20 @@ Every row therefore carries a gutter the view draws, not the text: `│ ` on a
 verdict or a note, `> ` on the prompt's first row, two spaces on anything the
 model chose. `│` is what the claim rests on, so no entry's text may *draw* one.
 `Transcript` replaces the mark and the characters that render the same single
-cell, in three sets with a scope a reader can check rather than an enumeration to
-trust: every Box Drawing codepoint with a vertical stroke and no horizontal one,
-the bracket and box-line extensions drawn to tile vertically, and Unicode's
-confusable mappings for `│`. A heavier, dashed or doubled vertical differs by a
-weight an operator has nothing on screen to compare against. The horizontals are
-left alone, a table being ordinary output; three tests sweep both halves of that
-line (#276).
+cell, in three sets: every Box Drawing codepoint with a vertical stroke and no
+horizontal one, the bracket, box-line and integral extensions drawn to tile
+vertically, and the single-cell vertical strokes outside both. A heavier, dashed
+or doubled vertical differs by a weight an operator has nothing on screen to
+compare against. Only the first set is a scope a reader can check against
+Unicode's names; the other two are enumerations, and that is what #276 leaves
+open — a property lookup means a new dependency, and the confusables data is not
+in the tree.
+
+What also draws a horizontal is left alone — the horizontals, and the junctions
+and corners with them. A junction draws a full-height vertical, so this is a
+carve-out rather than a gap: a table or a `tree` is ordinary output, and the nub
+beside the stroke is a difference an operator can see where a weight is not.
+Three tests pin the line both ways (#276).
 
 ASCII `|` is the one it lets through, and is why the mark is box-drawing at all: a
 shell pipeline in ordinary prose has to survive the fold. What stands against a
@@ -159,9 +166,10 @@ then `101`, then the code the turn earned:
   `try_init` at all: that hook goes on before anything fallible, so replacing it
   afterwards still left a window where the aborting one was the one in force.
   `take_terminal` reproduces `try_init`'s other three statements, which is why
-  ratatui is pinned exactly and why `init`, `init_with_options`, `run` and
-  `restore` are banned in `clippy.toml` rather than only avoided (#270). A hook
-  that cannot write cannot panic while panicking.
+  ratatui is pinned exactly. `clippy.toml` bans `restore`, `run`, and all four
+  `init` forms — the `try_` ones included, since what reaches the `eprintln!` is
+  the hook they install, and a later call also overwrites `enter`'s (#270). A
+  hook that cannot write cannot panic while panicking.
 - **`Terminal`'s own `Drop`.** It shows the cursor if a draw hid it and
   `eprintln!`s when it cannot, and `show_cursor` clears the flag it reads only
   once the backend accepted the write — which a dead one never does. So the panic
