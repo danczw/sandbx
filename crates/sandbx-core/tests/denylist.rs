@@ -71,8 +71,8 @@ fn every_claimed_syscall_is_actually_denied() {
     assert!(
         missing.is_empty(),
         "these syscalls are documented as denied but are not in \
-         BLOCKED_SYSCALLS: {missing:?}. The filter is built from that list, so \
-         they are permitted inside the sandbox and the security docs now \
+         BLOCKED_SYSCALLS: {missing:?}. Nothing outside that list denies them, \
+         so they are permitted inside the sandbox and the security docs now \
          overstate the boundary. Fix by restoring the entries in \
          crates/sandbx-core/src/helper/seccomp/rules.rs — or, if the removal was \
          deliberate, \

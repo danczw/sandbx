@@ -84,9 +84,10 @@ needed. `ArgvGate` writes its report with `eprintln!`, as `Render` already write
 stdout from `observe`, and under `--approve call` it reads the operator's answer
 from `/dev/tty` inside `approve` — unbounded in time, bounded in scheduling.
 During that read nothing else is in flight in `agent-run`: the round's stream has
-ended, its timeout is dropped, and `answer_calls` is sequential. Staying sync is
-what keeps `run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`)
-and keeps RPITIT off the trait. The limit is a precondition on the caller, so
+ended, its timeout is dropped, and `answer_calls` is sequential, which #242
+records as a constraint rather than a design choice. Staying sync is what keeps
+`run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`) and keeps
+RPITIT off the trait. The limit is a precondition on the caller, so
 #133, which drives a UI from the same runtime, has to meet it again rather than
 inherit it.
 

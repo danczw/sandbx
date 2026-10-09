@@ -12,8 +12,13 @@ use super::seccomp_failed;
 ///
 /// A denylist: sandbx runs arbitrary commands — shells, compilers, package managers — whose
 /// syscall use is unbounded, so the stronger allowlist shape would break real tools
-/// constantly. Landlock can express none of these; they are not filesystem access. The filter
-/// is built from this and nothing else, so a test can assert it still covers `SECURITY.md`.
+/// constantly. Landlock can express none of these; they are not filesystem access.
+///
+/// The unconditional seed and not the whole filter: `blocked_syscalls` adds the `clone` flag
+/// rules, also unconditional, then the policy-gated ones, and `installed_filters` puts the
+/// `clone3` program beside the result — plus the x32 gate on x86_64. `tests/denylist.rs`
+/// compares this against `CLAIMED`, a hand mirror of what `SECURITY.md` says; the mirror
+/// itself nothing checks (#212).
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // Inspect or modify other processes.
     libc::SYS_ptrace,

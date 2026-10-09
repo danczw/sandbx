@@ -369,8 +369,9 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     // spawn one.
 
     // Installing a seccomp filter requires either CAP_SYS_ADMIN or no_new_privs, and this
-    // process holds no capabilities at all, the supervisor having dropped them.
-    // Irreversible and inherited across exec, which makes the filter stick to the command.
+    // process holds no capabilities, the supervisor having dropped them. Landlock shares the
+    // precondition but sets the bit itself, so this call is seccomp's. Irreversible and
+    // inherited across exec, which makes the filter stick to the command.
     set_no_new_privs()?;
 
     deny_dangerous_syscalls(policy)?;

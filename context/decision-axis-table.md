@@ -78,6 +78,23 @@ enumeration of what it grants. A right added by a future ABI lands in `from_all`
 and is denied by `allow_read` automatically, rather than being permitted until
 someone notices.
 
+It runs the other way on the write axis, which is the cost of the second line and
+not an oversight. `write` is the complement of the read set within `from_all`, so
+a new right the kernel does not put in `from_read` is *conferred* by
+`allow_write` automatically — permitted until someone notices, on the widest axis
+there is. Subtracting the whole read set rather than `Execute` alone is what buys
+it: one bit less and a write grant confers read at the kernel that `FsGuard`
+refuses, leaving the write-only drop directory readable (`rights_for`'s `///`).
+`ResolveUnix` is the worked example rather than a hypothetical — it arrived at
+ABI V9 and joined the write set, which is why
+`each_axis_confers_exactly_the_documented_set` pins the write axis at both ends
+of the range and the two sets differ by exactly that bit. It also reaches a flag:
+on a V9 kernel (Linux 7.1, `LATEST_ABI`) `--allow-unix-sockets` lifts the seccomp
+denial on `socket(AF_UNIX, …)` and Landlock then refuses the `connect` for any
+pathname socket outside a write grant, so a flag documented as all-or-nothing
+acquires a path condition with no line edited, and a command that works today
+fails on a newer kernel with the same flags (#259).
+
 Narrowed once more by target kind: a non-directory intersects `from_file(abi)`.
 So the real mapping is `axis × target_is_dir × abi`, and the ABI is a negotiated
 parameter, not ambient.
