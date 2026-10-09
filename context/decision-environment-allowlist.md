@@ -43,8 +43,9 @@ The policy carries `Vec<String>` of **names**. Values are read with
 a constant instead; *One variable sandbx sets itself* has it.
 
 Two reasons, and the first is the hard one. The policy crosses into the helper as
-argv, and argv is not private: the sandboxed command reads its own
-`/proc/self/cmdline`. A value on the wire would therefore be handed to exactly the
+argv, and argv is not private: `/proc` in the sandbox is the host's, so the
+sandboxed command reads the supervisor's `/proc/<pid>/cmdline` — not its own, which
+the `exec` overwrites. A value on the wire would therefore be handed to exactly the
 process the allowlist exists to keep it from. (This is also why the CLI flag is
 `--allow-env NAME` and not `NAME=VALUE` — the latter is #41's problem, and solving
 it this way would solve it wrongly. The one name `agent-run` refuses outright is

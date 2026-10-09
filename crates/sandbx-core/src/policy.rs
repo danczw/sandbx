@@ -255,9 +255,10 @@ impl SandboxPolicy {
     /// says. The one combination that reports as applied and holds nothing: the files are
     /// bound, `Spawned` records `dns_names`, and the command asks a resolver that answers for
     /// every name. Lives on the policy, not the CLI alone, so [`SandboxedCommand`] and
-    /// `HelperArgs::decode` both reach it. `Grants::policy` refuses four shapes of this; a
-    /// name allowlist with no egress is the fifth, pointless rather than unenforceable, so
-    /// it is reported here instead.
+    /// `HelperArgs::decode` both reach it. The four reported here are also refused outright by
+    /// `Grants::policy`, which refuses a fifth this cannot see — a name allowlist with no
+    /// egress, pointless rather than unenforceable. So this is for the embedder who never
+    /// passes through the CLI.
     ///
     /// [`SandboxedCommand`]: crate::SandboxedCommand
     pub fn unbounded_resolution(&self) -> Option<&'static str> {

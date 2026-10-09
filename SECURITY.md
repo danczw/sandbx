@@ -420,11 +420,13 @@ architecture the filter gates on.
   keyring would not change that and is not offered
   ([context/decision-credentials.md](context/decision-credentials.md)).
 - **The policy itself is visible to the command.** It crosses into the helper as
-  argv, and a process can read its own `/proc/self/cmdline`, so the granted paths
-  and the allowlisted variable *names* are readable from inside the sandbox. Only
-  names travel that way, never values — which is why `--allow-env` takes a name
-  rather than a `NAME=VALUE` pair — but a command can enumerate what it was
-  granted. Policy is a boundary, not a secret.
+  argv, and `/proc` inside the sandbox is the host's, so the supervisor's
+  `/proc/<pid>/cmdline` is readable from inside and the granted paths and the
+  allowlisted variable *names* are readable with it. Not the command's own
+  `cmdline`, which the `exec` overwrites with the command. Only names travel that
+  way, never values — which is why `--allow-env` takes a name rather than a
+  `NAME=VALUE` pair — but a command can enumerate what it was granted. Policy is
+  a boundary, not a secret.
 - **The capability bounding set is cleared best-effort, not guaranteed.** Dropping
   it needs `CAP_SETPCAP`, which an LSM may strip from a user namespace an
   unprivileged process created: AppArmor's `restrict_unprivileged_userns`
@@ -517,7 +519,12 @@ Documented behaviour; reports of these will be closed as such:
   boot, or where unprivileged user namespaces are disabled — the PID namespace
   that bounds a command's descendants needs one whatever the policy says. And
   failure to *build* for a non-Linux target. All fail-closed, as intended.
-- A descendant surviving the call because the command both had its parent death
-  signal cleared by a secure `exec` *and* called `setsid` to leave the process
-  group. A survivor is still fully confined — Landlock, seccomp and the
-  namespaces are irreversible and inherited — so it is unreaped, not unrestricted.
+- A command surviving its *supervisor* being killed mid-run rather than the call
+  ending ([#272](https://github.com/danczw/sandbx/issues/272)). The parent death
+  signal is observed armed and undelivered in that case, and the mechanism is
+  not yet isolated. Clearing the signal is not the route it once was: the
+  command is PID 1 of the PID namespace, `setsid` leaves the process group and
+  not the namespace, and the descendant bound comes from the namespace rather
+  than from the signal. A survivor is still fully confined — Landlock, seccomp
+  and the namespaces are irreversible and inherited — so it is unreaped, not
+  unrestricted.

@@ -49,9 +49,10 @@ fn axis_for(flag: &str) -> Option<Axis> {
 }
 
 /// A policy plus a command, as carried between sandbx and the helper process. Argv is not
-/// private: the command reads its own `/proc/self/cmdline`, so everything here is visible
-/// to the process being confined — hence variable names and never values. The environment
-/// cannot carry them instead, being the thing the policy governs.
+/// private: `/proc` in the sandbox is the host's, so the command reads the supervisor's
+/// `/proc/<pid>/cmdline` and everything here is visible to the process being confined —
+/// hence variable names and never values. Not its own `cmdline`, which the `exec`
+/// overwrites. The environment cannot carry them instead, being what the policy governs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperArgs {
     /// Restrictions the helper must apply to itself.

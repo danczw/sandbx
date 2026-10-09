@@ -53,9 +53,11 @@ pub enum Command {
     /// needs in order to start: read access to the system binaries and
     /// libraries, and a handful of environment variables. The rest of the
     /// environment is cleared, so a secret in the shell that launched `sandbx`
-    /// does not reach the command. The command runs under Landlock, an empty
-    /// network namespace and a seccomp filter; on a kernel that cannot enforce
-    /// those, it is refused rather than run unrestricted.
+    /// does not reach the command. The command runs under Landlock, a seccomp
+    /// filter, and — unless a flag grants network — an empty network namespace;
+    /// where a port is allowlisted the filter bounds the port instead, and the
+    /// host is not bounded at all. On a kernel that cannot enforce those, it is
+    /// refused rather than run unrestricted.
     ///
     /// Put the command after `--`:
     ///
@@ -68,14 +70,16 @@ pub enum Command {
     /// Ask an agent one question, and let it use tools to answer.
     ///
     /// The prompt goes out, the answer streams back on stdout, and every tool
-    /// the model calls runs under the same boundary `sandbox-run` uses, derived
-    /// from the same flags: denied unless a flag grants it, refused rather than
-    /// run unrestricted on a kernel that cannot enforce it. Needs a key, from
-    /// `ANTHROPIC_API_KEY` or from `sandbx auth login`. The key is sandbx's own:
-    /// `--allow-env ANTHROPIC_API_KEY` is refused here, since sandbx makes the
-    /// provider call itself and no tool call needs that value. A stored key is
-    /// not in the environment at all, but it is on disk under your config
-    /// directory, where a read grant reaches it instead.
+    /// the model calls is bounded by the same flags: denied unless a flag grants
+    /// it, refused rather than run unrestricted on a kernel that cannot enforce
+    /// it. Only `bash` reaches the kernel boundary `sandbox-run` uses; the other
+    /// six are confined in-process against the same policy, so a bug there is
+    /// not caught by Landlock. Needs a key, from `ANTHROPIC_API_KEY` or from
+    /// `sandbx auth login`. The key is sandbx's own: `--allow-env
+    /// ANTHROPIC_API_KEY` is refused here, since sandbx makes the provider call
+    /// itself and no tool call needs that value. A stored key is not in the
+    /// environment, and a path flag reaching it is refused — what remains is
+    /// anything reading the file as you, outside sandbx.
     ///
     /// That includes the working-directory default, which here is what a prompt
     /// injection reaches: with no path flag the model may rewrite anything under
