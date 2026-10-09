@@ -18,12 +18,19 @@ ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
   "unstable-rendered-line-info",
 ] }
+# `poll` alone: the key reader gates every call into crossterm on a `poll`, which is
+# the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
+# spins on the zero-byte read behind it (#264).
+nix = { version = "0.31.3", default-features = false, features = ["poll"] }
 sandbx-providers = { path = "../sandbx-providers" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
+# `term` on top of the production `poll`: a hangup is tested by opening a pty pair
+# and closing the master, and `openpty` and `termios` both live behind that feature.
+nix = { version = "0.31.3", default-features = false, features = ["poll", "term"] }
 serde_json = "1.0.145"
 
 [lints]

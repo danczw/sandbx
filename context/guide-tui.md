@@ -34,14 +34,22 @@ to look for what approved a call.
 Transcript   the events folded into entries          no terminal → unit-tested
 view::draw   the entries laid out as rows            TestBackend → unit-tested
 Screen       raw mode, the alternate screen, Drop    a real terminal only
-Keys         the reader thread and the press         the predicate → unit-tested
+Keys         the reader thread and the press         a pty pair → unit-tested
 ```
 
 The split is for testability. `Transcript` is a fold with no screen behind it, so
 what each event becomes is an assertion rather than a screenshot; `view::draw`
-renders into a buffer a test reads cell by cell. What is left needing a real
-terminal is `Screen::enter` and the `event::read` loop, and neither holds a
-decision.
+renders into a buffer a test reads cell by cell. `Keys` holds two decisions — what
+stops a turn, and what a hangup means — and both are folds over a `Seen`, tested
+without a terminal; the loop around them is tested over an `openpty` pair whose
+master is closed, which is a hangup with no emulator and no subprocess.
+
+What is left needing a real terminal is `Screen::enter` and crossterm's reader
+itself. The reader is a process-global over standard input or `/dev/tty`, so no
+test can aim it at a pty of its own — which is why `Keys` puts it behind a private
+`Source` trait with a one-method fake. Driving `Tui::drive` end to end would need
+a vt parser, a child under a pty and a paid turn, for coverage the three seams
+above already give.
 
 ### Model text cannot reach a cell unchanged
 
@@ -128,11 +136,54 @@ alternate screen on the operator's terminal. So `Keys` is started after
 terminal back; ratatui's own panic hook covers the window before the `Screen`
 exists. Neither covers `SIGKILL`, and nothing can.
 
+`try_restore` and not `restore`: on a terminal that hung up, `restore` reports its
+failed `tcsetattr` with an `eprintln!` to that same dead descriptor and panics —
+inside a `Drop` already unwinding, a panic while panicking, which aborts. The
+ignored error is the only thing left to do with a terminal that stopped answering.
+
+### A terminal that went away ends the turn
+
+A pty whose master is gone answers `read` with zero bytes forever. crossterm 0.29
+reads it in a loop with no timeout check and no end-of-file arm
+(`event::source::unix::mio`), so `event::read` never returns, `event::poll` spins
+on it just the same, and the reader thread burns a core until the process is
+killed — the turn earns no code and prints no account (#264).
+
+`POLLHUP` is the tell crossterm swallows, so `Keys` reads it off `poll(2)` itself,
+on two threads:
+
+- the reader gates every call into crossterm on a `poll`, so a hangup is seen
+  before anything that would spin on it;
+- a second thread blocks on a `poll` asking for *nothing*. Linux reports `POLLHUP`
+  and `POLLERR` in `revents` whatever the mask asked for, so that thread wakes on
+  a hangup and on nothing else — it cannot take a keypress the reader is owed, and
+  it covers the one window the gate cannot: a hangup landing while the reader is
+  already inside crossterm.
+
+Both watch two descriptors, because `tui` validates standard output while
+crossterm reads standard input: under `sandbx tui -- prompt < /dev/pts/5` the
+screen and the keys are two different ptys, and a screen that died is as unwatched
+as a keyboard that did. Standard output is polled with an empty mask rather than
+`POLLIN`, which would also report input nobody reads from it and spin the gate.
+
+`EINTR` is retried rather than read as a hangup: crossterm handles `SIGWINCH`, and
+`poll` is not restarted by `SA_RESTART`, so resizing a healthy window arrives here
+as an error. Returning on it would end the reader on every resize and lose the key
+that stops the turn.
+
+**Reach.** Nothing in sandbx handles `SIGHUP`, so when an emulator closes the
+master the kernel kills the foreground process group and the run ends at 129 long
+before any of this. The wedge needs a hangup with no `SIGHUP`: `nohup`, `setsid`,
+an orphaned process group, `trap '' HUP`, a dying descriptor that is not the
+controlling terminal, or an `openpty` pair that never became one — which is what
+the tests use.
+
 ## What interrupting costs
 
 The interrupt is a `tokio::select!` in `sandbx-cli`, racing the turn's future
-against the keypress. The turn loop gains nothing: no stop variant, no cancel
-token, no second way for a turn to end.
+against whatever `Keys` reports first — the keypress, or the terminal going away.
+The turn loop gains nothing: no stop variant, no cancel token, no second way for a
+turn to end.
 
 Two consequences, which the screen states at the time rather than leaving to be
 discovered:
@@ -149,6 +200,12 @@ discovered:
 
 The exit code is 2 — the same code a turn cut short by `--max-rounds` gets,
 because that is what it is.
+
+A hangup costs the same two things and takes a different code: 3, and an account
+of its own. The operator did not stop that turn, so reporting it as an interrupt
+is the one reading of a hangup that is certainly wrong, and a turn nobody could
+see is a turn nobody watched — which is the same reason `TurnStop::GateAborted`
+takes 3 under `--approve call`.
 
 Two other codes, neither of which the stop alone decides:
 
@@ -183,9 +240,14 @@ is made in a free function rather than inside `execute`.
 else — not to stdout, and the per-call account deliberately not to stderr (#224)
 — so unless `--session` was passed, a run whose screen latched mid-turn exits 0
 with its answer gone. That is the cost of reporting the turn rather than the
-view, and the `drawing the screen:` line on stderr is the only tell: a caller
-that needs the text and not just the status has to pass `--session` and read the
-transcript. Making the code depend on the latch instead would have reported a
+view, and the `drawing the screen:` line on stderr is the tell where there is one:
+the latch is set by a draw *attempted* after the screen went, and `paint` draws on
+every agent event, so a terminal that died while the turn was already waiting on
+the final keypress latches nothing. A caller that needs the text and not just the
+status has to pass `--session` and read the transcript — which a hangup leaves
+nothing in either, that turn being dropped rather than finished. Making the code
+depend on the latch instead
+would have reported a
 lost operator as a generic failure, and making it depend on whether a session was
 open would give one turn outcome two codes.
 
@@ -263,7 +325,8 @@ own account — both after the turn rather than during it, which is the one thin
 
 What the hold costs: the release waits on the keypress that holds the finished
 screen, so the trail sits in memory for as long as the operator is away, and a
-signal arriving there runs no `Drop` and loses all of it (#235).
+signal arriving there runs no `Drop` and loses all of it (#235). A hangup releases
+it instead of losing it — that is what ending the turn on one buys the trail.
 
 The hold covers `tracing` and nothing else, so a bare `eprintln!` reached from
 inside the screen still lands on it — `AgentRun::save`'s "nothing to store" line

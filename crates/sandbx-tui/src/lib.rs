@@ -9,7 +9,7 @@ mod screen;
 mod transcript;
 mod view;
 
-pub use input::Keys;
+pub use input::{Keys, Stopped};
 pub use screen::Screen;
 pub use transcript::Transcript;
 pub use view::Hint;

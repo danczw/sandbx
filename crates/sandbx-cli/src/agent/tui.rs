@@ -5,7 +5,7 @@
 //! refused rather than downgraded (#225), and the per-call account is drawn on the screen
 //! instead of written to stderr, which the alternate screen does not redirect (#224).
 
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 use std::sync::{Mutex, PoisonError};
 
 use sandbx_agent::{
@@ -18,7 +18,7 @@ use sandbx_providers::{
 };
 use sandbx_session::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
-use sandbx_tui::{Hint, Keys, Screen, Transcript};
+use sandbx_tui::{Hint, Keys, Screen, Stopped, Transcript};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
@@ -174,8 +174,8 @@ impl Tui {
             // The whole of the interrupt: the turn's future is dropped where it stood, so
             // the loop gains no stop of its own. What that costs is drawn below.
             tokio::select! {
-                outcome = turn => Some(outcome),
-                () = keys.stop() => None,
+                outcome = turn => Ok(outcome),
+                stopped = keys.stop() => Err(stopped),
             }
         };
 
@@ -183,7 +183,7 @@ impl Tui {
         let mut pane = pane.into_inner().unwrap_or_else(PoisonError::into_inner);
 
         let (code, outcome, account) = match outcome {
-            None => (
+            Err(Stopped::Pressed) => (
                 Ok(INCOMPLETE),
                 None,
                 vec![
@@ -193,11 +193,14 @@ impl Tui {
                         .to_string(),
                 ],
             ),
-            Some(Ok(outcome)) => {
+            // 3 and not 2, the code a lost gate already takes: a turn nobody could see is
+            // one nobody watched, and that is not the recoverable stop an interrupt is.
+            Err(Stopped::Gone) => (Ok(NO_CONSENT), None, vec![lost()]),
+            Ok(Ok(outcome)) => {
                 let (code, account) = ending(&outcome);
                 (Ok(code), Some(outcome), account)
             }
-            Some(Err(error)) => {
+            Ok(Err(error)) => {
                 // Drawn before it is returned: the operator reads the reason on the screen
                 // rather than in what scrolls past after it is torn down.
                 let line = format!("sandbx: {error}");
@@ -234,6 +237,16 @@ impl Tui {
     }
 }
 
+/// The account of a terminal that went away mid-turn.
+///
+/// Its own line and not the interrupt's: the operator did not stop this turn, and telling
+/// them they did is the one reading of a hangup that is certainly wrong (#264).
+fn lost() -> String {
+    "sandbx: the terminal went away, so the turn stopped where it stood. Nothing of it is \
+     stored, and a tool call already running finishes unseen before the process exits (#26)"
+        .to_string()
+}
+
 /// Write what the run has to say on a stderr with no screen over it, and report the code.
 ///
 /// The account again, the pane having gone with the screen and a redirected log needing the
@@ -241,6 +254,10 @@ impl Tui {
 /// more line and not the code — `context/guide-tui.md` has why, and why `agent-run` does the
 /// opposite. Apart from `execute` so the precedence is a unit test: `Screen` needs a
 /// terminal no test has, and the latch is private with no setter.
+///
+/// `writeln!` and not `eprintln!`: when the screen was the terminal that hung up, stderr is
+/// the same dead descriptor, and a panicking macro here would lose the code the turn earned
+/// (#264).
 fn reported(
     code: Result<i32, AgentError>,
     failed: Option<io::Error>,
@@ -248,14 +265,15 @@ fn reported(
 ) -> Result<i32, AgentError> {
     // First, so a turn that failed outright prints neither: its own error is the account.
     let code = code?;
+    let mut stderr = io::stderr();
 
     for line in account {
-        eprintln!("{line}");
+        let _ = writeln!(stderr, "{line}");
     }
     // Through the variant's own `Display`, so the wording is the one `main` would have
     // printed had this stayed the return value.
     if let Some(error) = failed {
-        eprintln!("sandbx: {}", AgentError::Screen(error));
+        let _ = writeln!(stderr, "sandbx: {}", AgentError::Screen(error));
     }
 
     Ok(code)
@@ -513,6 +531,20 @@ mod tests {
                 Err(AgentError::Turn(TurnError::StreamEndedWithoutStop))
             ));
         }
+    }
+
+    /// A terminal that went away is accounted for as itself, not as an interrupt the
+    /// operator never made — and it exits 3, the code a lost gate already takes (#264).
+    ///
+    /// The code as a literal, for the reason the test above it gives.
+    #[test]
+    fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
+        assert!(matches!(reported(Ok(NO_CONSENT), None, &[lost()]), Ok(3)));
+
+        let account = lost();
+        assert!(account.starts_with("sandbx: "), "{account}");
+        assert!(account.contains("terminal went away"), "{account}");
+        assert!(!account.contains("interrupted"), "{account}");
     }
 
     /// The flattened flags are the same flags: one `--allow-tool` cannot approve two

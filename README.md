@@ -322,7 +322,7 @@ resuming one another user can write is refused — [SECURITY.md](SECURITY.md).
 |---|---|
 | `0` | the model finished its answer |
 | `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Out of rounds, one more request answers the turn with no tool, so stdout usually holds a summary a blank line below what arrived before the cap; `--no-wrap-up` skips it, leaving nothing at all if the model opened with a tool call ([context/decision-round-limit-answer.md](context/decision-round-limit-answer.md)). Under `tui` it also means you interrupted the turn, and there no wrap-up round is sent |
-| `3` | `--approve call` lost the terminal it asks on, so the turn ended there: that call and the ones behind it were refused and no further request was sent. What the turn did before is on stdout and in `--session` |
+| `3` | the terminal went away, so the turn ended there and nobody was watching it. Under `--approve call` that is the terminal it asks on: that call and the ones behind it were refused and no further request was sent. What the turn did before is on stdout and in `--session`. Under `tui` it is the screen or the keyboard hanging up mid-turn, which ends the turn where it stood and stores nothing of it — the audit trail of what it touched still reaches stderr |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
 > **By default nothing asks you before an approved tool call runs.**
