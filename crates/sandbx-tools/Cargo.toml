@@ -18,6 +18,10 @@ workspace = true
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# The audit trail is this crate's own contract too: a tool's access has to appear in it,
+# which needs a subscriber to collect what `sandbx-core` emits.
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
 
 [features]
 # Needs a sandbox-capable kernel, like `sandbx-core`'s feature of the same name.

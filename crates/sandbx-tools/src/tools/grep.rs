@@ -21,7 +21,7 @@ fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, T
     execute(crate::parse(input)?, ctx)
 }
 
-/// Files above this size are skipped without reading.
+/// Files above this size are opened and measured, but not read.
 ///
 /// No source file is this large; a checkout's pack files and binaries are, and they
 /// fail UTF-8 validation anyway — which `read_to_string` discovers only after
@@ -61,13 +61,10 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
             break;
         }
 
-        if file.metadata().is_ok_and(|m| m.len() > MAX_FILE_BYTES) {
-            continue;
-        }
-
-        // A binary that slipped under the size cap fails UTF-8 validation here.
-        let Ok(content) = crate::read_file(&file, ctx) else {
-            continue;
+        // The size comes off the handle, so the file measured is the file read (#275).
+        let content = match crate::read_capped(&file, ctx, MAX_FILE_BYTES) {
+            Ok(Some(content)) => content,
+            Ok(None) | Err(_) => continue,
         };
         scanned += content.len();
 

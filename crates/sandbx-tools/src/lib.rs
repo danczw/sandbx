@@ -214,11 +214,46 @@ pub(crate) fn read_file(
     path: &std::path::Path,
     ctx: &ExecutionContext,
 ) -> Result<String, ToolError> {
-    let mut file = ctx
+    let file = ctx
         .guard()
         .open_read(path)
         .map_err(|error| guard_error(path, error))?;
 
+    slurp(file, path)
+}
+
+/// Read a file through the guard, declining one past `max` bytes.
+///
+/// `Ok(None)` is a file that was not searched and so answers nothing: past `max`, or not
+/// text. `Err` is the access itself refused. The size is measured on the handle the read
+/// will use, never on the path — a `stat` of the path is a second resolution the guard did
+/// not vet, and the file it answers for need not be the one opened (#275).
+pub(crate) fn read_capped(
+    path: &std::path::Path,
+    ctx: &ExecutionContext,
+    max: u64,
+) -> Result<Option<String>, ToolError> {
+    let file = ctx
+        .guard()
+        .open_read(path)
+        .map_err(|error| guard_error(path, error))?;
+
+    if file
+        .metadata()
+        .map_err(|error| failed("measure", path, error))?
+        .len()
+        > max
+    {
+        return Ok(None);
+    }
+
+    // A binary under the cap fails UTF-8 validation here, and so does a read that died
+    // mid-file; neither is a file with no match in it.
+    Ok(slurp(file, path).ok())
+}
+
+/// Read an open handle to a `String`, the path being for the error only.
+fn slurp(mut file: std::fs::File, path: &std::path::Path) -> Result<String, ToolError> {
     let mut content = String::new();
     std::io::Read::read_to_string(&mut file, &mut content)
         .map_err(|error| failed("read", path, error))?;
