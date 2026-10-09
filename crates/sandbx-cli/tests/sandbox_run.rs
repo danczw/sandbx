@@ -656,8 +656,8 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
 }
 
 /// `NAME=VALUE` would put the value in helper argv, which the sandboxed command reads
-/// back out of its own `/proc/self/cmdline`. Only the name is asserted: clap's refusal
-/// echoes the value, which `ps` and the shell history already have.
+/// back out of the supervisor's `/proc/<pid>/cmdline`. Only the name is asserted: clap's
+/// refusal echoes the value, which `ps` and the shell history already have.
 #[test]
 fn a_name_with_a_value_is_refused_rather_than_dropped() {
     let refusal = Cli::try_parse_from([

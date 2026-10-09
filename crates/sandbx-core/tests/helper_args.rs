@@ -372,8 +372,8 @@ fn round_trips_an_env_allowlist() {
     assert_eq!(decoded.policy, policy);
 }
 
-/// The sandboxed command can read argv through its own `/proc/self/cmdline`, so a value
-/// here reaches the process the allowlist exists to keep it from.
+/// The sandboxed command can read argv through the supervisor's `/proc/<pid>/cmdline`, so
+/// a value here reaches the process the allowlist exists to keep it from.
 #[test]
 fn the_wire_carries_the_name_and_not_the_value() {
     let args = HelperArgs::encode(

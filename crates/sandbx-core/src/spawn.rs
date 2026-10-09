@@ -12,7 +12,8 @@ use crate::SandboxPolicy;
 /// Clear and re-add, so the allowlist stays correct as the harness gains variables.
 /// Allowlisted values are read out of this process here and never carried on the policy,
 /// which crosses into the helper as argv and so is readable from inside the sandbox
-/// through `/proc/self/cmdline`; an imposed value rides the policy, being a constant.
+/// through the supervisor's `/proc/<pid>/cmdline`; an imposed value rides the policy,
+/// being a constant.
 pub(crate) fn command(program: impl AsRef<OsStr>, policy: &SandboxPolicy) -> std::process::Command {
     // The only `Command::new` in any crate's `src/`; tests that spawn the binary carry
     // their own allow. See `clippy.toml`.
