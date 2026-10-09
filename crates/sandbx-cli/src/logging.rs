@@ -89,11 +89,14 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 /// the first's records, so there is one caller.
 pub fn hold() -> Held {
     *HELD.lock().unwrap_or_else(PoisonError::into_inner) = Some(Vec::new());
-    Held
+    Held(())
 }
 
 /// Releases the held audit trail onto stderr when it drops.
-pub struct Held;
+///
+/// The private field is the whole of the type: without it any caller could build one and
+/// drop it, releasing a trail `hold` never started and clearing `HELD` under the holder.
+pub struct Held(());
 
 impl Drop for Held {
     /// `Drop`, not a method: a panic unwinding past the screen must still leave the trail.
