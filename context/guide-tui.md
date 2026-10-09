@@ -136,8 +136,9 @@ alternate screen on the operator's terminal. So `Keys` is started after
 `Screen::enter`, never before.
 
 `Screen` restores on `Drop`, so a panic unwinding through the turn still puts the
-terminal back; ratatui's own panic hook covers the window before the `Screen`
-exists. Neither covers `SIGKILL`, and nothing can.
+terminal back; `Screen::enter`'s own panic hook, installed before the first
+fallible step, covers the window before the `Screen` exists. Neither covers
+`SIGKILL`, and nothing can.
 
 `try_restore` and not `restore`: on a terminal that hung up, `restore` reports its
 failed `tcsetattr` with an `eprintln!` to that same dead descriptor and panics —
@@ -153,9 +154,14 @@ before the earned code survived one — measured, in order, as `134` (`SIGABRT`)
 then `101`, then the code the turn earned:
 
 - **ratatui's panic hook.** `try_init` installs one that restores with `restore`,
-  so *any* panic with a dead stderr aborts. `Screen::enter` replaces it with one
-  that calls `try_restore` and chains to the hook that was in force before
-  `try_init` — a hook that cannot write cannot panic while panicking.
+  so *any* panic with a dead stderr aborts. `Screen::enter` installs its own
+  first — `try_restore`, then the hook that was in force before — and never calls
+  `try_init` at all: that hook goes on before anything fallible, so replacing it
+  afterwards still left a window where the aborting one was the one in force.
+  `take_terminal` reproduces `try_init`'s other three statements, which is why
+  ratatui is pinned exactly and why `init`, `init_with_options`, `run` and
+  `restore` are banned in `clippy.toml` rather than only avoided (#270). A hook
+  that cannot write cannot panic while panicking.
 - **`Terminal`'s own `Drop`.** It shows the cursor if a draw hid it and
   `eprintln!`s when it cannot, and `show_cursor` clears the flag it reads only
   once the backend accepted the write — which a dead one never does. So the panic
@@ -168,7 +174,8 @@ then `101`, then the code the turn earned:
   operator started the process with rather than one sandbx took and lost.
 
 The `ratatui::restore()` hazard is upstream's and wider than this path; sandbx
-covers its own `Drop` and its own hook, and nothing more.
+covers its own `Drop` and its own hook, and now reaches none of upstream's
+aborting entry points from anywhere — which is a build failure, not a convention.
 
 ### A terminal that went away ends the turn
 

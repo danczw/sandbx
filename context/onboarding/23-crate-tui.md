@@ -346,17 +346,25 @@ joined with ` · ` and drawn `REVERSED`.
 
 ## screen.rs takes the terminal, and `Drop` gives it back
 
-`Screen::enter` calls `ratatui::try_init`, which turns raw mode on and enters
-the alternate screen in that order — "so a failed second step leaves the
-first in force." Before that call it takes the panic hook already installed,
-so there is something to chain to once its own replaces `try_init`'s:
-ratatui's hook restores with `restore`, whose `eprintln!` on a failed
-`tcsetattr` panics on a terminal that cannot be written to, and a panic
-raised inside a hook is a panic while panicking, which aborts (#264). The
-replacement calls `try_restore` instead and then the hook taken earlier —
-installed whether or not the terminal was entered, and on a failed
-`try_init` too, for the reason `Screen::drop` gives below: a terminal that
-cannot be entered may be one that cannot be reported to either. Raw mode is
+`Screen::enter` installs a panic hook and then takes the terminal, in that
+order. The hook first because of what it replaces: `ratatui::try_init` restores
+with `restore`, whose `eprintln!` on a failed `tcsetattr` panics on a terminal
+that cannot be written to, and a panic raised inside a hook is a panic while
+panicking, which aborts (#264). `enter`'s own hook calls `try_restore` instead
+and then the hook that was in force before — and it goes on before anything
+fallible, which is more than replacing ratatui's after the fact could manage:
+`try_init` installs its hook as its own first statement, so a panic in the three
+after it had the aborting one in force (#270).
+
+So `enter` does not call `try_init`. `take_terminal` reproduces its other three
+statements — raw mode, then the alternate screen, then `Terminal::new` — in that
+order, "so a failed second step leaves the first in force", and the ratatui
+dependency is pinned exactly (`=0.30.2`) because that is a copy of a function
+body in `init.rs`. `clippy.toml` bans `restore`, `init`, `init_with_options` and
+`run`, so reintroducing any of them is a build failure rather than a review
+miss. A failed `take_terminal` still restores, for the reason `Screen::drop`
+gives below: a terminal that cannot be entered may be one that cannot be
+reported to either. Raw mode is
 not a convenience: it is what makes ctrl-c arrive at `Keys` as a `KeyEvent`
 rather than raising `SIGINT`, which is why `Keys::listen` is started after
 `enter` and never before.
@@ -378,7 +386,7 @@ impl Drop for Screen {
     /// Leave raw mode and the alternate screen, whatever the turn did.
     ///
     /// `Drop`, not a method: an unwinding panic must still restore the terminal, which
-    /// `try_init`'s hook covers only earlier. Neither covers `SIGKILL`.
+    /// [`Screen::enter`]'s hook covers only earlier. Neither covers `SIGKILL`.
     ///
     /// `try_restore` and not `restore`: `restore` reports a failed `tcsetattr` with
     /// `eprintln!` to the descriptor that just died, and that panic inside an unwinding

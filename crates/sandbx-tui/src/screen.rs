@@ -4,6 +4,9 @@ use std::io;
 use std::panic::AssertUnwindSafe;
 
 use ratatui::DefaultTerminal;
+use ratatui::backend::CrosstermBackend;
+use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::Rect;
 
 use crate::transcript::Transcript;
@@ -24,23 +27,17 @@ impl Screen {
     /// Take the terminal: raw mode on, alternate screen entered. Raw mode makes ctrl-c reach
     /// [`Keys`](crate::Keys) as a key, not a `SIGINT` killing the process with the screen up.
     pub fn enter() -> io::Result<Self> {
-        // Taken before `try_init`, which installs a hook chaining to whatever is in force:
-        // this is the one to chain to once that hook is replaced below.
+        // First, before anything fallible and before the terminal exists, so a panic in
+        // `take_terminal` is covered too. `restore` reports a failed `tcsetattr` with
+        // `eprintln!` to the descriptor that just died, and that panic raised inside a hook
+        // is a panic while panicking, which aborts; this one cannot write (#264).
         let reported = std::panic::take_hook();
-
-        // Raw mode before the alt screen, so a failed second step leaves the first in force.
-        let entered = ratatui::try_init();
-
-        // Replaced whether or not the terminal was entered, `try_init` installing its hook
-        // before anything that can fail. ratatui's hook restores with `restore`, whose
-        // `eprintln!` on a failed `tcsetattr` panics — and a panic raised inside the hook
-        // is a panic while panicking, which aborts. This one cannot write (#264).
         std::panic::set_hook(Box::new(move |panicked| {
             let _ = ratatui::try_restore();
             reported(panicked);
         }));
 
-        let terminal = entered.inspect_err(|_| {
+        let terminal = take_terminal().inspect_err(|_| {
             // `try_restore`, for the reason `Screen::drop` gives: a terminal that cannot be
             // entered may be one that cannot be reported to either.
             let _ = ratatui::try_restore();
@@ -79,8 +76,8 @@ impl Screen {
     /// `Terminal::clear`: `clear`'s cursor query takes crossterm's one reader lock, which
     /// [`Keys`](crate::Keys) may be holding — and if it wins the lock instead, it races the
     /// reader for the reply bytes. Resizing to the size already in force asks the terminal
-    /// nothing only on the fullscreen viewport `try_init` gives: an inline one recomputes its
-    /// origin from the cursor, which is that query back again.
+    /// nothing only on the fullscreen viewport `Terminal::new` gives: an inline one recomputes
+    /// its origin from the cursor, which is that query back again.
     pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
         if self.failed.is_some() {
             return;
@@ -106,11 +103,25 @@ impl Screen {
     }
 }
 
+/// `ratatui::try_init`'s three fallible statements, without the `set_panic_hook()` it runs
+/// before them.
+///
+/// Reproduced rather than called because that hook restores with `restore`, and it is
+/// installed first: replacing it afterwards still leaves a window where the aborting one is
+/// in force (#270). Copied from `init.rs:397-403` of ratatui `=0.30.2` — exactly pinned
+/// (`Cargo.toml`), so a bump re-reads that function rather than assuming it still says this.
+fn take_terminal() -> io::Result<DefaultTerminal> {
+    // Raw mode before the alt screen, so a failed second step leaves the first in force.
+    enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+    ratatui::Terminal::new(CrosstermBackend::new(io::stdout()))
+}
+
 impl Drop for Screen {
     /// Leave raw mode and the alternate screen, whatever the turn did.
     ///
     /// `Drop`, not a method: an unwinding panic must still restore the terminal, which
-    /// `try_init`'s hook covers only earlier. Neither covers `SIGKILL`.
+    /// [`Screen::enter`]'s hook covers only earlier. Neither covers `SIGKILL`.
     ///
     /// `try_restore` and not `restore`: `restore` reports a failed `tcsetattr` with
     /// `eprintln!` to the descriptor that just died, and that panic inside an unwinding
