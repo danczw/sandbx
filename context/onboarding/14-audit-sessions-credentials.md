@@ -338,6 +338,7 @@ Then the rule that differs, deliberately:
 |---|---|---|
 | group/other **write** (`0o022`) | refuse | refuse |
 | group/other **read** (`0o044`) | refuse | resume, and say so on stderr |
+| group/other **execute** (`0o011`) | refuse | untested |
 
 **The asymmetry is recovery.** A leaked key can be rotated, so refusing to *use*
 one whose mode says it may have leaked still buys something. A leaked
@@ -358,14 +359,15 @@ not to merge them:
 pub(super) const WRITABLE_BITS: u32 = 0o022;
 ```
 
-The table's two rows are the two interesting cases rather than the whole test.
-The credential side tests one constant, `SHARED_BITS` — `0o077`, the entire
-non-owner triad with execute in it — against a mode `File::metadata` read off
-the open descriptor, so a lone group-execute bit is refused as well. The session
-*root* is that same width, and `DIR_SHARED_BITS`'s own doc gives the reason: a
-transcript's name is clock-derived and so guessable, and group or other execute
-alone lets somebody else traverse to it. Only the transcript file splits the
-triad into the two constants above.
+The third row is why the credential side needs no second constant. It tests one,
+`SHARED_BITS` — `0o077`, the entire non-owner triad with execute in it — against
+a mode `File::metadata` read off the open descriptor and off the canonicalised
+parent, so a lone group-execute bit refuses a load. The session *root* is that
+same width, and `DIR_SHARED_BITS`'s own doc gives the reason: a transcript's
+name is clock-derived and so guessable, and group or other execute alone lets
+somebody else traverse to it. Only the transcript *file* splits the triad, into
+the two constants above, which is why `0o011` has nothing on its transcript
+side: `create` sheds it from the root and no resume reads it.
 
 Either refusal ends in the command to type, which is why the mode is printed at
 all:

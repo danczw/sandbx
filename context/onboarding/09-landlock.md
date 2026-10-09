@@ -234,7 +234,11 @@ Both subtractions are load-bearing, and for different reasons.
   anywhere. At `LATEST_ABI` that has already happened twice, and both are rights
   beyond writing bytes — `IoctlDev`, device ioctls on a node beneath the path,
   and `ResolveUnix`, `connect(2)` to a pathname socket beneath it, which
-  [`SECURITY.md`](../../SECURITY.md) treats as seccomp's business. Which is why
+  [`SECURITY.md`](../../SECURITY.md) treats as seccomp's business. That second
+  one reaches a flag:
+  [decision-axis-table.md](../decision-axis-table.md) works it through to
+  `--allow-unix-sockets` acquiring a path condition on a V9 kernel with no line
+  edited (#259), which is the asymmetry arriving at the surface. Which is why
   `each_axis_confers_exactly_the_documented_set` spells all three axes' rights
   out literally, at both ends of the negotiable range, rather than deriving them
   from `from_all`/`from_read` — a derived expectation would move with the very

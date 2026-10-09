@@ -395,8 +395,8 @@ question against each step: what breaks if it moves?
 
 | step | what moving it costs |
 |---|---|
-| `set_no_new_privs` | nothing later can install a seccomp filter: unprivileged installation needs this bit, and this process holds no capabilities at all, stage 1 having dropped them |
-| `deny_dangerous_syscalls` | the syscalls that could undo the rest — `mount_setattr`, namespace creation, the `clone3` refusal — stay available while the Landlock ruleset is being built |
+| `set_no_new_privs` | nothing later installs at all: unprivileged installation of *either* mechanism needs this bit — `EACCES` from `seccomp(2)`, `EPERM` from `landlock_restrict_self(2)` — and this process holds no capabilities, stage 1 having dropped them. This is the one order between the two mechanisms that is required |
+| `deny_dangerous_syscalls` | nothing enforceable: the denylist names no `landlock_*` syscall and Landlock polices no `seccomp(2)`, so the two do not restrict each other's setup, and no untrusted code runs between here and the `execve`. Defence in depth rather than a precondition — see below |
 | `requested(policy)` | the ABI negotiation would be in scope beside the rules; keeping it inside means the handled set and the rules cannot come from different ABIs. It is also where a kernel too old to enforce the policy is refused — before a ruleset exists to half-build |
 | `handle_access` for fs, then for net | Landlock requires the whole handled set *before* `create`, and an axis left unhandled is unrestricted everywhere rather than denied |
 | `create` | there is no ruleset to add a rule to |
@@ -410,13 +410,31 @@ Landlock steps that follow it? Because `BLOCKED_SYSCALLS` is a denylist over an
 `Allow` default, and nothing the rest of `apply` needs is on it — not
 `landlock_create_ruleset`, `landlock_add_rule` or `landlock_restrict_self`, not
 `openat`, and not the `prctl` and `seccomp` pair that installs the second and
-third filters. That is also the one place inside the sequence where order does
-*not* matter: `deny_dangerous_syscalls` installs its filters in any order,
+third filters.
+
+**Which means the order between the two mechanisms is free, and the sequence is
+shorter on forced orders than it looks.** Three are genuinely required, and only
+the first of them spans the mechanisms:
+
+- `set_no_new_privs` before either install, since neither will install for an
+  unprivileged process without the bit.
+- Both `handle_access` calls before `create`, Landlock's own rule.
+- Every `add_rule` after `create`, and `restrict_self` after all of them.
+
+Everything else in the table is a cost of a different kind — a worse failure
+mode, a wider scope, a check that would start depending on the thing it checks —
+and `deny_dangerous_syscalls` installs its own filters in any order at all,
 because the kernel takes the most severe verdict across every filter a process
-has. Worth knowing while reading the first row, too:
-`seccompiler::apply_filter` sets `no_new_privs` itself before it installs, so
-sandbx's own `set_no_new_privs` is the explicit, *reported* refusal rather than
-the only thing standing between the filter and `EACCES`.
+has.
+
+Worth knowing while reading the first row, too: **both libraries set the bit
+themselves.** The `landlock` crate's `restrict_self` calls
+`try_set_no_new_privs`, and `seccompiler::apply_filter` opens with
+`prctl(PR_SET_NO_NEW_PRIVS, 1)` before the `seccomp(2)`. So sandbx's own
+`set_no_new_privs` is not the only thing standing between the installs and their
+errnos — it is the explicit, *reported* refusal, raised as
+`SandboxError::Seccomp` at a line that names the bit, rather than surfacing as
+whichever install happens to be first.
 
 The middle of that table is not held by review at all. The `landlock` crate is a
 typestate: `handle_access` comes from `RulesetAttr`, which is implemented for
