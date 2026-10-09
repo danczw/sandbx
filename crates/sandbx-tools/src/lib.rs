@@ -284,7 +284,10 @@ pub(crate) fn listing(
 
 /// Tells the model its search was abandoned, not exhausted — otherwise a scan that
 /// gave up reads as one that found nothing, and the symbol looks absent.
-const PARTIAL_SEARCH: &str = "... stopped early: scan limit reached, results are incomplete";
+///
+/// Names no cause. A budget, an oversized file, a binary and a refused open all leave
+/// part of the tree unsearched, and the caller's one move is the same for each.
+const PARTIAL_SEARCH: &str = "... stopped early: results are incomplete";
 
 /// Parse tool arguments, reporting a schema mismatch rather than a panic.
 pub(crate) fn parse<T: serde::de::DeserializeOwned>(

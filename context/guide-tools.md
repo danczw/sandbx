@@ -183,6 +183,12 @@ Two things a contributor can break silently:
 A complete-but-empty listing returns `"no matches"`, which is a different
 proposition from "stopped early".
 
+Everything the walk produced and the search did not read sets that marker, and it
+names no cause: the scan budget, a file over `MAX_FILE_BYTES`, one that is not
+UTF-8, and one the guard or the host refused to open all leave part of the tree
+unsearched, and the caller's one move — narrow the search — is the same for each
+(#274). A skip that went unmarked read as a tree with no match in it.
+
 ## Sync, and staying that way
 
 Tools are synchronous. The boundary itself, and what a cancelled turn still
