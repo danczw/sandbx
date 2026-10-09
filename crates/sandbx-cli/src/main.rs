@@ -65,11 +65,10 @@ fn main() -> std::process::ExitCode {
 /// so the caller decides where they print — and both keep the 0 they have always had.
 ///
 /// Those two and no more, which is the one line to get wrong here. An argv naming no
-/// subcommand is `DisplayHelpOnMissingArgumentOrSubcommand`, and clap prints that one to
-/// *stderr* and exits 2: it is a refusal that happens to answer with the help, not a help
-/// anyone asked for. Taking 0 for it would make a bare `sandbx auth` — which checks no
-/// credential and starts no turn — indistinguishable from the 0 `auth status` spends on a
-/// key it found, and would break the claim `README.md` and `SECURITY.md` both make, that no
+/// subcommand is `DisplayHelpOnMissingArgumentOrSubcommand`, which clap prints to *stderr*
+/// and exits 2: a refusal that answers with the help, not a help anyone asked for. Taking 0
+/// for it would make a bare `sandbx auth` indistinguishable from the 0 `auth status` spends
+/// on a key it found, and break the claim `README.md` and `SECURITY.md` both make — that no
 /// code of a run is reachable by mistyping a flag.
 fn usage_code(kind: ErrorKind) -> u8 {
     match kind {

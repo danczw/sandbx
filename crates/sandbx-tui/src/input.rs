@@ -12,8 +12,7 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, Ke
 use tokio::sync::watch;
 
 /// Everything in `revents` that means the descriptor will never carry input again. Linux
-/// reports these whatever was asked for, so a `poll` requesting nothing still sees a hangup
-/// — and sees nothing else.
+/// reports these whatever the mask asked for, so a `poll` asking nothing sees these alone.
 const GONE: PollFlags = PollFlags::POLLHUP
     .union(PollFlags::POLLERR)
     .union(PollFlags::POLLNVAL);
@@ -47,18 +46,14 @@ impl Keys {
     /// Start reading keys, and watching for the terminal going away, on two threads that
     /// outlive the turn: neither `poll` nor `event::read` can be cancelled.
     ///
-    /// Two threads because each covers what the other cannot. `read` gates every call into
-    /// crossterm on a `poll`, so a hangup almost always lands where it can be seen; the
-    /// watch catches the remainder, where the hangup arrives while the reader is inside
-    /// crossterm and crossterm spins on it forever (#264).
+    /// Two threads, each covering what the other cannot — `guide-tui.md` has which (#264).
     pub fn listen() -> Self {
         let (sender, seen) = watch::channel(Seen::default());
 
-        // Resolved once and owned by the threads: a borrowed descriptor cannot outlive this
-        // call, and an fd closed here could be reopened as something else before `poll`
-        // reads it. A failure is one `event::read` would hit too, crossterm resolving the
-        // same descriptor the same way — so no thread starts, and the dropped sender closes
-        // the channel at once.
+        // Owned by the threads, not borrowed from here: an fd closed in this frame could be
+        // reopened as something else before `poll` read it. A failure to resolve is one
+        // `event::read` would hit too, so no thread starts and the dropped sender closes the
+        // channel at once.
         if let Ok(tty) = Tty::resolve() {
             let tty = Arc::new(tty);
             let sender = Arc::new(sender);
@@ -66,8 +61,7 @@ impl Keys {
             let watched = Arc::clone(&tty);
             let watching = Arc::clone(&sender);
             let out = io::stdout();
-            // `as_fd` inside each closure, never across the spawn: the borrow has to come
-            // from the owner the thread itself holds.
+            // `as_fd` inside the closure, never across the spawn, which needs `'static`.
             std::thread::spawn(move || hangup(&watching, watched.as_fd(), out.as_fd()));
 
             let out = io::stdout();
@@ -78,8 +72,8 @@ impl Keys {
     }
 
     /// Resolves on the first thing that means "stop this turn", saying which; never on a
-    /// reader that is merely gone, since a closed channel must not end a turn nobody asked
-    /// to end. A hangup is not that: it is a descriptor the kernel reported had hung up.
+    /// closed channel, which must not end a turn nobody asked to end. A hangup is not that
+    /// — it is a descriptor the kernel reported had hung up.
     pub async fn stop(&mut self) -> Stopped {
         loop {
             if let Some(stopped) = stopped(*self.seen.borrow_and_update()) {
@@ -93,13 +87,12 @@ impl Keys {
     }
 
     /// Resolves on the next key of any kind, for holding a finished screen; at once if the
-    /// terminal is gone — opposite [`stop`](Self::stop), since with no key able to arrive,
-    /// waiting would hold the alternate screen until the process was killed.
+    /// terminal is gone, since with no key able to arrive, waiting would hold the alternate
+    /// screen until the process was killed.
     ///
-    /// Read off `gone` rather than off the channel closing: in the window the hangup watch
-    /// exists for, the reader is wedged inside crossterm forever and holds its sender, so
-    /// the channel never closes. The borrow also marks the value seen, so a hangup landing
-    /// after it still wakes the wait below.
+    /// Off `gone` and not off the channel closing: where only the watch saw the hangup, the
+    /// reader is wedged inside crossterm holding its sender, and the channel never closes.
+    /// The borrow marks the value seen, so a hangup landing after it still wakes the wait.
     pub async fn press(&mut self) {
         if self.seen.borrow_and_update().gone {
             return;
@@ -146,10 +139,9 @@ impl AsFd for Tty {
 
 /// One question put to crossterm: the next event, or none waiting.
 ///
-/// A trait so the loop in [`read`] is reachable in a test: crossterm's reader is a
+/// A trait so the loop in [`read`] is reachable in a test — crossterm's reader is a
 /// process-global over standard input or `/dev/tty`, which no test can aim at a pty of its
-/// own. Both calls behind one method, so the loop cannot reach past its gate into a
-/// `event::read` that never returns.
+/// own. Both calls behind one method, so the loop cannot reach past its gate.
 trait Source {
     fn next(&mut self) -> io::Result<Option<Event>>;
 }
@@ -160,8 +152,7 @@ struct Crossterm;
 impl Source for Crossterm {
     fn next(&mut self) -> io::Result<Option<Event>> {
         // The read behind a true poll cannot block: crossterm enqueues the event it polled
-        // before answering true, and pops that queue before touching the terminal again
-        // (`event::read` internals, crossterm 0.29).
+        // before answering true, and pops that queue before touching the terminal (0.29).
         if event::poll(Duration::ZERO)? {
             event::read().map(Some)
         } else {
@@ -189,15 +180,15 @@ fn read(
         };
 
         // Ahead of every call into crossterm: on a hung-up terminal `event::read` loops on
-        // a `read` returning zero bytes with no timeout check at all (crossterm 0.29,
+        // a zero-byte read with no timeout check at all (crossterm 0.29,
         // `event::source::unix::mio`), so a hangup is seen here or never.
         match hung_up(tty, out, PollFlags::POLLIN, wait) {
-            // Bytes the terminal queued before it died are abandoned: a dead pty reports
-            // `POLLIN|POLLHUP` in one `revents`, and parsing them would put crossterm back
-            // in the loop above for whatever those bytes did not complete.
+            // Bytes queued before the terminal died are abandoned, a dead pty reporting
+            // `POLLIN|POLLHUP` together: parsing them puts crossterm back in that loop for
+            // whatever they did not complete.
             Ok(true) => break,
-            // crossterm handles `SIGWINCH`, and `poll` is not restarted by `SA_RESTART`: a
-            // resize arrives here as `EINTR`. Returning on it would end the reader on every
+            // crossterm handles `SIGWINCH` and `poll` is not restarted by `SA_RESTART`, so a
+            // resize arrives as `EINTR`. Returning on it would end the reader on every
             // resize of a healthy window, losing the key that stops the turn.
             Err(Errno::EINTR) => continue,
             Err(_) => return,
@@ -226,22 +217,19 @@ fn read(
 
 /// Wait for either descriptor to hang up, and say so once one has.
 ///
-/// Its own thread, calling into no library: [`read`]'s gate covers a hangup that lands while
-/// the reader is between calls, and this covers one that lands while the reader is inside
-/// crossterm — where crossterm spins on it rather than returning.
+/// Its own thread, calling into no library: this covers the hangup that lands while the
+/// reader is inside crossterm, which spins on it rather than returning.
 ///
-/// Nothing asked of either descriptor, so this wakes on a hangup and on nothing else. Asking
-/// `POLLIN` of the keyboard the way the gate does would wake this on the operator's first
-/// ordinary keypress, read it back as "not a hangup", and end the one thread covering that
-/// window — leaving #264 one keystroke away.
+/// Nothing asked of either descriptor, so it wakes on a hangup and on nothing else. Asking
+/// `POLLIN` as the gate does would wake it on the operator's first ordinary keypress, read
+/// that back as "not a hangup", and end the one thread covering that window.
 fn hangup(sender: &watch::Sender<Seen>, tty: BorrowedFd<'_>, out: BorrowedFd<'_>) {
     loop {
         match hung_up(tty, out, PollFlags::empty(), PollTimeout::NONE) {
             Ok(true) => break,
             Err(Errno::EINTR) => continue,
-            // Asking for nothing and waiting without bound, so this is a `revents` nix
-            // cannot name or an error that is not a resize — neither a hangup nor worth
-            // polling again for. The gate in `read` is what is left.
+            // Asking nothing and waiting unbounded, so this is a `revents` nix cannot name
+            // or an error that is not a resize — polling again would answer the same.
             Ok(false) | Err(_) => return,
         }
     }
@@ -251,15 +239,12 @@ fn hangup(sender: &watch::Sender<Seen>, tty: BorrowedFd<'_>, out: BorrowedFd<'_>
 
 /// Whether `tty` or `out` has hung up, having waited `wait` for one of them to.
 ///
-/// Both, because `tui` validates standard output while crossterm reads standard input: under
-/// `sandbx tui -- prompt < /dev/pts/5` the screen and the keys are two different ptys, and
-/// either one dying leaves the turn undrawable.
+/// Both, because under `sandbx tui -- prompt < /dev/pts/5` the screen and the keys are two
+/// different ptys, and either one dying leaves the turn undrawable.
 ///
-/// `asked` is what the caller wants of `tty` besides a hangup: `POLLIN` for [`read`], which
-/// learns from the same call when crossterm has bytes to parse, and nothing for [`hangup`],
-/// which a keypress may not wake. Nothing is ever asked of `out` — an empty mask still
-/// reports a hangup, where `POLLIN` would also report input on a standard output nobody
-/// reads from and spin the caller's loop.
+/// `asked` is what the caller wants of `tty` besides a hangup — the two masks are the
+/// mechanism, and `guide-tui.md` has why. Nothing is ever asked of `out`: `POLLIN` would
+/// report input on a standard output nobody reads from and spin the caller's loop.
 fn hung_up(
     tty: BorrowedFd<'_>,
     out: BorrowedFd<'_>,
@@ -432,12 +417,11 @@ mod tests {
         assert!(!hung_up(slave.as_fd(), slave.as_fd(), asked, PollTimeout::ZERO).expect("poll"));
     }
 
-    /// And the watch is not woken by it at all. With `POLLIN` the operator's first ordinary
-    /// keypress would wake that thread, read back as "not a hangup" and end it — leaving the
-    /// window where the reader is already inside crossterm uncovered from then on.
+    /// And the watch is not woken by it at all: with `POLLIN` the operator's first keypress
+    /// would end the one thread covering a hangup that lands inside crossterm.
     ///
-    /// The timeout is the whole assertion: a mask that took the input would have answered at
-    /// once. A slow machine only waits longer, so the measurement cannot fail falsely.
+    /// The timeout is the whole assertion — a mask that took the input would have answered
+    /// at once, and a slow machine only waits longer.
     #[test]
     fn pending_input_does_not_wake_the_watch() {
         let (mut master, slave) = pty();
@@ -532,10 +516,9 @@ mod tests {
         assert!(!seen.gone, "a live terminal was reported as hung up");
     }
 
-    /// The finished screen is not held on a terminal that already went away — and the
-    /// sender stays alive for the poll, so what resolves `press` is the hangup and not a
-    /// channel that closed. It has to be: where the watch is the only thread that saw the
-    /// hangup, the reader is still wedged inside crossterm holding the other sender.
+    /// The finished screen is not held on a terminal that already went away. The sender
+    /// stays alive, so what resolves `press` is the hangup and not a closed channel — which
+    /// is the real shape: the wedged reader holds its sender forever.
     #[test]
     fn a_hangup_releases_a_screen_waiting_on_the_final_key() {
         let (sender, seen) = watch::channel(Seen {
