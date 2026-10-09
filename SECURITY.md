@@ -194,7 +194,10 @@ architecture the filter gates on.
   the match is known unique. Four of the five confirm then open with `O_NOFOLLOW`;
   the fifth is `ls`, which has no handle form to open and reads the path again. And
   the whole traversal for `find` and `grep`, whose walk confirms its root once and
-  then descends.
+  then descends — though `grep`'s per-file size test is taken on the handle it is
+  about to read rather than on the path a second time, so the measurement and the
+  read cannot name different files, and it reaches the trail like any other access
+  ([#275](https://github.com/danczw/sandbx/issues/275)).
   Closing either needs the access to run off a directory descriptor, with
   `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it
   ([#230](https://github.com/danczw/sandbx/issues/230); the `FsGuard` TOCTOU row
