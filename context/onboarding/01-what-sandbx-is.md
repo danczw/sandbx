@@ -118,12 +118,13 @@ Three consequences that catch everybody once:
   loader pulls in. This is why `cargo test` under `sandbox-run` needs seven
   flags: the working directory needs write for `target/` **and** execute for
   the test binary it just built.
-- **Some working directories are refused rather than granted.** Standing at the
-  filesystem root, in `$HOME`, in a directory that holds home directories, or
-  anywhere overlapping the system binaries, a no-flag run is refused with a
-  message naming the two flags to type instead. The guard governs what sandbx
-  *derives* and never what you ask for — the refusal lifts the moment you say
-  what you mean.
+- **Some working directories are refused rather than granted.** Six shapes, and
+  four of them are the ones you would guess: the filesystem root, `$HOME`, a
+  directory that holds home directories, anywhere overlapping the system
+  binaries. A no-flag run from one is refused with a message naming the two
+  flags to type instead. The guard governs what sandbx *derives* and never what
+  you ask for — the refusal lifts the moment you say what you mean.
+  [12](12-a-flag-to-a-kernel-rule.md) has all six, in the order they fire.
 
 ### Under `agent-run`, that default is the blast radius
 
