@@ -1,3 +1,9 @@
+//! The audit trail: what the sandbox did, as `tracing` events on [`AUDIT_TARGET`].
+//!
+//! All seven variants emit at `INFO`, the one property to defend: at `DEBUG` a trail would
+//! reach only those who opted in, and a record matters most where nobody did. Field table,
+//! and why a record names the access and not the verdict: `context/guide-logging.md`.
+
 use crate::{Axis, NetworkPolicy, SandboxPolicy};
 
 /// `tracing` target carrying the audit trail, kept apart from ordinary diagnostics so a

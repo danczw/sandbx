@@ -11,9 +11,8 @@ use crate::SandboxError;
 /// ceiling it negotiates up to.
 ///
 /// This pair is the only place the floor `SECURITY.md` claims — ABI 5, Linux 6.10 — is
-/// enforced; `README.md`, `tests/enforcement.rs`, this crate's `Cargo.toml` and `ci.yml`
-/// restate it in prose, and `every_prose_copy_of_the_floor_is_current` fails if a bump here
-/// leaves one behind.
+/// enforced; seven files restate it in prose, that one included, and a bump leaving any of
+/// them behind fails `every_prose_copy_of_the_floor_is_current`, which lists them.
 ///
 /// A floor rather than a preference: Landlock leaves any access type *not* in the handled set
 /// unrestricted everywhere, so pinning a lower ABI leaves whole categories unguarded. Hence

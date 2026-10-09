@@ -29,8 +29,8 @@ pub(super) fn prepare_supervisor(
 ) -> Result<Vec<(Degradation, String)>, SandboxError> {
     let mut degraded = Vec::new();
 
-    // Before the unshare, which puts a policy that denies IP egress into an empty network
-    // namespace — where a lookup resolves nothing at all.
+    // What the bound `hosts` file is built from, so they precede `bound_resolution` below; and
+    // before the unshare, which for an egress-denying policy leaves no network to resolve on.
     let resolved = crate::resolver::files(policy);
 
     // A name that resolved to nothing bounds resolution all the same, so the run goes on, and

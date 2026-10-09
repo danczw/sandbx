@@ -42,7 +42,7 @@ pub enum SessionError {
         path: PathBuf,
     },
 
-    /// A newer format than this build reads; refused, since best-effort would drop a field
+    /// Not the format this build reads; refused, since best-effort would drop a field
     /// and so change the history the model is shown.
     UnsupportedVersion {
         /// The file that was read.

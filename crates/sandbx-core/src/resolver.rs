@@ -25,10 +25,14 @@ pub const RESOLVER_FILES: [&str; 3] = [HOSTS, NSSWITCH, RESOLV_CONF];
 /// is matched by its own name and by what it resolves to, because `mount(2)` resolves its
 /// target and a pin does not: a systemd `/etc/resolv.conf` is a symlink, so the bind
 /// replaces the stub it points at, which is the name a grant on it is pinned to. An entry
-/// resolving to nothing matches by name alone. Never of `path` itself, which arrives
-/// resolved: resolving it here would judge a spelling no caller vetted. An entry retargeted
+/// resolving to nothing matches by name alone. Never of `path` itself: resolving it here would
+/// judge a spelling no caller vetted. [`SandboxPolicy::grant_bound_by_resolver`] passes a path
+/// already resolved; `sandbx-cli`'s wrapper of this function passes both spellings on purpose,
+/// the typed one matching where an entry cannot be canonicalized at all. An entry retargeted
 /// between this and the bind fails closed — the pair is kept, and the pin refuses the run
 /// in the helper.
+///
+/// [`SandboxPolicy::grant_bound_by_resolver`]: crate::SandboxPolicy::grant_bound_by_resolver
 pub fn bound_by_resolver(path: &Path) -> bool {
     bound_by_any(&RESOLVER_FILES.map(Path::new), path)
 }

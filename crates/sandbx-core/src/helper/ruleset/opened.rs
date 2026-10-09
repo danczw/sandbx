@@ -68,8 +68,7 @@ pub(in crate::helper) fn open_grant(target: &RuleTarget<'_>) -> Result<PathFd, S
 fn reads_back(fd: &PathFd) -> Result<PathBuf, SandboxError> {
     // A task may always read its own `fd/`, `proc_fd_permission` exempting a same-thread-group
     // reader from `__ptrace_may_access`. Independently, `execve` resets the dumpable flag that
-    // check turns on, so neither sandbx's own clearing of it (`concealment`) nor the
-    // supervisor's reaches this stage.
+    // check turns on, so sandbx's own clearing of it (`concealment`) does not reach this stage.
     let link = format!("/proc/self/fd/{}", fd.as_fd().as_raw_fd());
 
     // Not `GrantRedirected`, which would claim to know where the grant went: a sandbox whose
