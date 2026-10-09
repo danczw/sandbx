@@ -120,11 +120,13 @@ the interface the harnesses use. Apple documents [App Sandbox][apple] for macOS
 app bundles, where access is gated on entitlements — "App Sandbox provides
 protection to system resources and user data by limiting your app’s access to
 resources requested through entitlements" — while `sandbox-exec`, which takes a
-profile on the command line, has no current page on developer.apple.com; the
-archived man page returns a 404, and the Security framework's own navigation
-index does not contain the string. So the profile language that Claude Code,
-Codex CLI and Cursor all generate is, in practice, documented by those harnesses
-rather than by Apple.
+profile on the command line, has no current page on developer.apple.com: the
+[archived man page][apple-sbx] returns a 404, and the Security framework's own
+[navigation index][apple-idx] does not contain the string — `app-sandbox` is in
+it, `sandbox-exec` and `seatbelt` are not. Both are checkable with `curl`, which
+is why the URLs are here rather than the claim alone. So the profile language
+that Claude Code, Codex CLI and Cursor all generate is, in practice, documented
+by those harnesses rather than by Apple.
 
 **Landlock** is a stackable Linux Security Module, and its
 [kernel documentation][landlock] states the property that makes it unusual among
@@ -353,6 +355,8 @@ is bound by, and [06](06-claims-and-non-claims.md) is the on-ramp to it.
 [aider-modes]: https://aider.chat/docs/usage/modes.html
 [aider-options]: https://aider.chat/docs/config/options.html
 [apple]: https://developer.apple.com/documentation/security/app-sandbox
+[apple-sbx]: https://developer.apple.com/library/archive/documentation/Darwin/Reference/ManPages/man1/sandbox-exec.1.html
+[apple-idx]: https://developer.apple.com/tutorials/data/index/security
 [landlock]: https://docs.kernel.org/userspace-api/landlock.html
 [bwrap]: https://github.com/containers/bubblewrap
 [docker]: https://docs.docker.com/engine/security/
