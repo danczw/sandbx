@@ -87,9 +87,10 @@ During that read nothing else is in flight in `agent-run`: the round's stream ha
 ended, its timeout is dropped, and `answer_calls` is sequential, which #242
 records as a constraint rather than a design choice. Staying sync is what keeps
 `run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`) and keeps
-RPITIT off the trait. The limit is a precondition on the caller, so
-#133, which drives a UI from the same runtime, has to meet it again rather than
-inherit it.
+RPITIT off the trait. The limit is a precondition on the caller, not something
+a second front end inherits: `tui` drives a UI from the same runtime and met it
+by building the gate with no terminal at all, refusing `--approve call` rather
+than downgrading it (#225).
 
 ## A refusal is a `tool_result`, not a `TurnError`
 
@@ -330,5 +331,5 @@ operator asked for, so the terminal is shared and that is the cost of sharing it
 whether it may. `SECURITY.md`'s standing commitment holds under both — a tool call
 you approve runs; sandbx bounds what it can reach, it does not judge the intent
 behind it — and an operator answering `y` to a question whose arguments they did
-not read has approved it as surely as a flag would have. #133 is where the same
+not read has approved it as surely as a flag would have. #225 is where the same
 question gets a surface with somewhere to render it.

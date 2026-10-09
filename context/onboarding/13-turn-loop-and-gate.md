@@ -367,7 +367,7 @@ What that does not reach is stated in the record rather than hidden: a
 counterfeit that makes the *real* question look already answered. No flush
 helps, because the bytes were never typed. Stripping the model's prose would
 mangle the answer the operator asked for. The terminal is shared, and that is
-the cost of sharing it; #133 is where the same question gets a surface of its
+the cost of sharing it; #225 is where the same question gets a surface of its
 own.
 
 ### The decoy argument

@@ -14,7 +14,7 @@ three external ones â€” `nix` with only `fs` and `user`, `serde`, `serde_json` â
 plus `tempfile` for the tests. The reason to read it anyway is proportion. A
 transcript is the only plaintext copy of a conversation sandbx keeps, it is
 replayed to a model that calls tools, and [`SECURITY.md`](../../SECURITY.md)
-carries what that costs as a non-claim (#133).
+carries what that costs as a non-claim.
 
 ## The module tree
 
