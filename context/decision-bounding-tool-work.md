@@ -24,10 +24,14 @@ The formula is gone. **A turn has no total wall-clock bound to state.**
 |---|---|---|
 | Caps | how much the tool *looks at* | how much it *hands back* |
 | Hit means | stopped early, answer incomplete | answer complete, display trimmed |
-| Marker | `"... stopped early: scan limit reached, results are incomplete"` | `"... truncated: showing 200 of 4000 results"` |
+| Marker | `"... stopped early: results are incomplete"` | `"... truncated: showing 200 of 4000 results"` |
 
 Conflating them is how a search that silently gave up looks identical to one that
 found 4,000 matches and showed 200.
+
+The input marker names no cause. A budget, an oversized file, a binary and a
+refused open all leave part of the tree unsearched, and the caller's one move is
+the same for each (#274).
 
 The knobs themselves — each one's phase, default, and which tool it bounds — are
 the current shape, in [guide-tools.md](guide-tools.md#what-bounds-a-tool-call).

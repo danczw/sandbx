@@ -546,14 +546,18 @@ ordinary outcome and not a rare one.
 ### From 19 — the tools crate
 
 - **A guarded read that fails is skipped with no marker.** `grep`'s per-file arm
-  discards the error, which is right for the binary-file case it was written for
-  and also swallows every refusal, so a grant substituted mid-walk comes back as
-  "no matches". **Partly answered.**
+  discarded the error, which was right for the binary-file case it was written
+  for and also swallowed every refusal, so a grant substituted mid-walk came
+  back as "no matches". **Answered in the mechanism, not in a record.**
   [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) built its
   two-marker scheme against precisely this confusion — "a search that silently
   gave up looks identical to one that found 4,000 matches and showed 200" — but
-  reasons only about the budgets, never about a candidate the guard refuses. The
-  fix needs no new vocabulary.
+  reasoned only about the budgets, never about a candidate the guard refuses.
+  The fix needed no new vocabulary: the arm now sets `stopped_early` for every
+  file it did not read, refusals included (#274). What that bought in honesty
+  it spends in noise, and the new form of the question is in
+  [19](19-crate-tools.md) — a marker that is on for every repo-root search is
+  one a caller reasons past, which is the same failure from the other side.
 - **A non-zero exit is an error for the whole call.** Right for `cargo build`,
   wrong for the family where a status *is* the answer, and the loss is upstream
   rather than in the model's view: `Outcome::Ran` is never recorded, so the

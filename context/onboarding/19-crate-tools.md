@@ -324,7 +324,7 @@ justifies that: a regex adds a dependency and a class of pathological-pattern
 behaviour, for a tool mostly asked where a symbol appears.
 
 Two kinds of guard call: `walk_readable` once for the tree, then `open_read` per
-candidate through `crate::read_file`. The loop head is where the input bounds
+candidate through `crate::read_capped`. The loop head is where the input bounds
 meet:
 
 ```rust
@@ -336,38 +336,50 @@ meet:
             break;
         }
 
-        if file.metadata().is_ok_and(|m| m.len() > MAX_FILE_BYTES) {
-            continue;
-        }
+        // The size comes off the handle, so the file measured is the file read (#275).
+        let content = match crate::read_capped(&file, ctx, MAX_FILE_BYTES) {
+            Ok(Some(content)) => content,
+            Ok(None) | Err(_) => {
+                stopped_early = true;
+                continue;
+            }
+        };
 ```
 
 `max_files_scanned` goes into `walk_readable` and comes back as
 `walk.truncated`; `max_bytes_scanned` is checked here, before each read, so one
 file can overshoot the total, and `MAX_FILE_BYTES` — 2 MiB, a `const` in this
 module and not a `ToolLimits` field, so no builder can move it — bounds that
-overshoot. The skip reads `file.metadata()`, never the file, which is the whole
-point of its doc comment: a pack file or a binary fails UTF-8 validation anyway,
-and `read_to_string` discovers that only after allocating the whole thing.
-`max_entries` trims the rendered hits. Either `ToolLimits` input cap sets
-`stopped_early`, which `listing` turns into the partial-scan marker; the
-`MAX_FILE_BYTES` skip sets nothing, so a tree whose only match sat in an
-oversized file answers "no output" with no marker at all. Nothing is sorted, because
+overshoot. `max_entries` trims the rendered hits. Nothing is sorted, because
 `walk_readable` returns files sorted and lines are visited ascending — sorting
 the rendered `path:line: text` strings would put `:10` before `:2`.
 
-- **Worth questioning:** the skip on a failed read.
-  `let Ok(content) = crate::read_file(&file, ctx) else { continue };` discards
-  the `ToolError` with no marker. The comment names the case it was written for
-  — a binary under the size cap that fails UTF-8 validation — and silence is
-  right for that. But `read_file` is the *guarded* read, so the same arm
-  swallows every `Denied`: a grant substituted between the walk's single root
-  confirmation and a per-file open (`RootReplaced`) comes back as "no matches".
-  That is the confusion `decision-bounding-tool-work.md` built two markers to
-  prevent — "a search that silently gave up looks identical to one that found
-  4,000 matches and showed 200" — and the record reasons only about the budgets,
-  never about a candidate the guard refuses mid-walk. The fix needs no new
-  vocabulary: `stopped_early = true` on a `Denied` already renders as "results
-  are incomplete".
+The size check is inside `read_capped`, on the handle `open_read` returned, not
+on the path: a `stat` of the path is a second resolution the guard never vetted,
+and the file it answers for need not be the one opened (#275). The cost is that
+an oversized file is now opened to be measured — so it earns the `allowed`
+record it previously had none for, and the trail names every file the walk
+touched rather than only the ones small enough to read.
+
+Every bound here sets `stopped_early`, which `listing` turns into the
+partial-scan marker — including the three the one `Ok(None) | Err(_)` arm
+covers: over the cap, no text back, and the access refused (#274). One rule,
+because the caller's mistake is the same for all three. A file the search did
+not read is a file it has no answer about, and a bare `continue` would make it
+one with no match in it. That is the confusion
+`decision-bounding-tool-work.md` built two markers to prevent — "a search that
+silently gave up looks identical to one that found 4,000 matches and showed
+200". The refusal arm matters most: a grant substituted between the walk's
+single root confirmation and a per-file open (`RootReplaced`) used to come back
+as "no matches".
+
+- **Worth questioning:** whether one rule is too coarse at the other end. A
+  checkout's `.git/objects/pack/*.pack` is over 2 MiB and not text, so grep at
+  a repo root marks every search incomplete, and narrowing the path never
+  clears it. A marker that is always on is a marker a caller reasons past,
+  which is the same failure `decision-bounding-tool-work.md` warns of from the
+  other side. Splitting "not text" out would fix the noise and reopen #274 for
+  a latin-1 source file, which has lines a search should have read.
 
 ### `find`
 

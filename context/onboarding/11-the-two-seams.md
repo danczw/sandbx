@@ -542,12 +542,15 @@ two documents above are careful about.
   factory is named in the config. Seam 1 has no equivalent. Nothing stops a
   seventh in-process tool from calling `std::fs::File::open` directly; it would
   compile, pass review that was not looking for it, and leave no trail, since
-  the audit record is emitted by the guard it skipped. The convention has
-  already slipped once: `grep`'s size skip calls `file.metadata()` directly, a
-  symlink-following `stat` no guard covers and no audit record names. It reads
-  a length and never the contents, which is why it has not cost anything yet —
-  but it is the shape above, already compiled. `read_file` is still the only
-  `open_read` call site in the crate, and that is convention, where
+  the audit record is emitted by the guard it skipped. The convention slipped
+  exactly once, and the slip is instructive: `grep`'s size skip called
+  `file.metadata()` on a path, a symlink-following `stat` no guard covered and
+  no audit record named. It read a length and never the contents, which is why
+  it cost nothing for as long as it lasted — but it was the shape above,
+  already compiled, and it took an issue (#275) to notice and close. The two
+  `open_read` call sites in the crate are both in `lib.rs`, and the only
+  `metadata()` left is on a handle the guard returned — an `fstat`, resolving
+  nothing. That is convention, where
   [04](04-the-architecture.md) names this repo's recurring move as converting
   "did we remember?" into a build failure, and `BuiltinTool`'s closed enum only
   forces a new tool to be *handled* everywhere, not to be handled through the
