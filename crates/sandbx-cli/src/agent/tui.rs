@@ -237,14 +237,10 @@ impl Tui {
 /// Write what the run has to say on a stderr with no screen over it, and report the code.
 ///
 /// The account again, the pane having gone with the screen and a redirected log needing the
-/// line that says why a run exited 3 rather than 2 (#224). Not on the error path, where
-/// `main` reports the same error itself.
-///
-/// A latched draw failure is one more line and not the code: the screen is not the channel
-/// this turn's answer came back on, so whatever `ending` earned survives it. `agent-run`
-/// does the opposite with `AgentError::Output` because there stdout *is* that channel.
-/// Apart from `execute` so the precedence is a unit test — `Screen` needs a terminal no test
-/// has, and the latch is private with no setter.
+/// line that says why a run exited 3 rather than 2 (#224). A latched draw failure is one
+/// more line and not the code — `context/guide-tui.md` has why, and why `agent-run` does the
+/// opposite. Apart from `execute` so the precedence is a unit test: `Screen` needs a
+/// terminal no test has, and the latch is private with no setter.
 fn reported(
     code: Result<i32, AgentError>,
     failed: Option<io::Error>,
@@ -498,9 +494,7 @@ mod tests {
     /// A finished turn keeps the code it earned, whatever the screen did last.
     ///
     /// Codes as literals, so a const renumbered under a claim `README.md` and `SECURITY.md`
-    /// both make fails here. The screen is not the channel the answer came back on: the
-    /// account is already on stderr and the turn already in the session, which leaves the
-    /// code as the only machine-readable signal there is.
+    /// both make fails here.
     #[test]
     fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
         let latched = || Some(io::Error::from(io::ErrorKind::BrokenPipe));
@@ -510,9 +504,8 @@ mod tests {
         assert!(matches!(kept(INCOMPLETE), Ok(2)));
         assert!(matches!(kept(0), Ok(0)));
 
-        // Non-vacuous both ways: a turn that failed outright still reports its own error
-        // rather than the screen's, latch or no latch — so what is kept above is the code
-        // and not every input this takes.
+        // Non-vacuous: a turn that failed outright reports its own error rather than the
+        // screen's, latch or no latch, so what is kept above is the code and not every input.
         let failed = || AgentError::from(TurnError::StreamEndedWithoutStop);
         for screen in [latched(), None] {
             assert!(matches!(

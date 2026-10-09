@@ -101,9 +101,8 @@ pub enum SessionError {
         path: PathBuf,
     },
 
-    /// The stored transcript ends on a prompt nothing answered, so no turn can be replayed
-    /// from it — the read-side twin of `IncompleteTurn`, which refuses the same shape on
-    /// the way in.
+    /// The stored transcript ends on a prompt nothing answered — the read-side twin of
+    /// `IncompleteTurn`, which refuses the same shape on the way in.
     Unresumable {
         /// The transcript that was refused.
         path: PathBuf,

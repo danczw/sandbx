@@ -1,16 +1,14 @@
 //! What model-chosen text may not carry to a terminal.
 //!
-//! Here rather than in a sink, because every sink that draws this crate's text needs the
-//! same table and a character added to one copy and not another re-opens the hole in
-//! whichever was missed. Each sink keeps its own replacement: what is shared is the hazard,
-//! not what to do about it.
+//! Here rather than in a sink, because a character added to one copy and not another
+//! re-opens the hole in whichever was missed. Each sink keeps its own replacement: only the
+//! hazard is shared.
 
 /// Whether `c` renders as nothing, or reorders what follows it.
 ///
 /// `char::is_control` is `Cc` exactly, so U+202E and the directional isolates pass it and
-/// let text *display* as something other than what it says. Ranges because `char` has no
-/// predicate for the category — so a denylist, which a new Unicode version can outgrow
-/// silently.
+/// let text *display* as something other than what it says. A denylist because `char` has
+/// no predicate for the category, so a new Unicode version can outgrow it silently.
 pub fn invisible(c: char) -> bool {
     matches!(c,
         '\u{00ad}' | '\u{034f}' | '\u{061c}' | '\u{06dd}' | '\u{070f}' | '\u{08e2}'
@@ -36,12 +34,9 @@ pub fn invisible(c: char) -> bool {
 mod tests {
     use super::*;
 
-    /// Every single arm, and *both* endpoints of every range, written as literals rather
-    /// than read off the table.
-    ///
-    /// Both ends because one fixture per range only pins the end it names: narrowing
-    /// `200b..=200f` to `200b..=200d` passes a lower-bound fixture while letting U+200E and
-    /// U+200F through to a terminal, which is the whole hazard.
+    /// Every single arm, and *both* endpoints of every range, as literals rather than read
+    /// off the table: one fixture per range pins only the end it names, so narrowing
+    /// `200b..=200f` to `200b..=200d` would pass while U+200E and U+200F reached a terminal.
     #[test]
     fn every_arm_of_the_denylist_holds() {
         let singles = "\u{00ad}\u{034f}\u{061c}\u{06dd}\u{070f}\u{08e2}\
