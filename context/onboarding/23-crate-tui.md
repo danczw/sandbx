@@ -233,8 +233,9 @@ fn forgeable(c: char) -> bool {
         | '\u{23b8}' | '\u{23b9}' | '\u{23d0}'
         // Single-cell vertical strokes outside both ranges — an enumeration, not a scope:
         // Unicode's confusables data is not in the tree to derive one from, which is what
-        // #276 leaves open. U+1175 and U+4E28 stay out as letters in running text, on
-        // ASCII `|`'s own reasoning.
+        // #276 leaves open. Out on purpose: U+1175 and U+4E28, letters in running text, on
+        // ASCII `|`'s reasoning; and every Block Element wider than an eighth, which reads
+        // as filled area rather than a line, and whose loss would cost a sparkline.
         | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
         | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
         | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
