@@ -267,7 +267,10 @@ architecture the filter gates on.
     ([#218](https://github.com/danczw/sandbx/issues/218)). Under `tui` nothing is
     being asked, but a terminal that hangs up is a turn nobody is watching, so it
     ends the turn and exits 3 on the same reasoning — the screen or the keyboard,
-    either one ([#264](https://github.com/danczw/sandbx/issues/264)).
+    either one ([#264](https://github.com/danczw/sandbx/issues/264)). A command
+    line sandbx would not take exits 64 instead, before a turn or a sandbox
+    exists, so none of these codes is reachable by mistyping a flag
+    ([#265](https://github.com/danczw/sandbx/issues/265)).
 
   The gate narrows *which* tools a hijacked turn can use; only the sandbox bounds
   *where* an approved one reaches — with no path flag, read *and write* over the

@@ -162,7 +162,10 @@ as filed.
   lost operator is neither bound nor anything they configured, and the two can
   co-occur. Reusing it would leave the defect distinguishable only by grepping
   stderr. `3` wins over a `max_tokens` cut, a bound being recoverable by raising
-  a flag where this is not.
+  a flag where this is not. The same argument moved a usage error off 2 and onto
+  64: clap's default collided with the bound, so a mistyped flag and a cut round
+  were one number (#265). A code a caller has to grep stderr to read is not a
+  code.
 
 One typed `VEOF` ends the turn with it, which is a real behaviour change: `read`
 returns 0 for a bare close and for an end of input alike, and both mean nobody is

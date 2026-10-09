@@ -226,7 +226,9 @@ sandbx auth logout
 - It writes `$XDG_CONFIG_HOME/sandbx/credentials.toml` (or `~/.config/…`) at
   `0600` in a directory at `0700`, and later refuses to read it if anyone but
   you can reach either, naming the `chmod` that fixes it.
-- `auth status` exits 0 on a key found, 1 on none, 2 on one refused.
+- `auth status` exits 0 on a key found, 1 on none, 2 on one refused. A command
+  line `auth` would not take exits 64, so a refused file is distinguishable from
+  a mistyped flag.
 - Exporting the variable wins over the stored key.
 
 The stored key is plaintext; what protects it, and what still reaches it, is in
@@ -323,7 +325,12 @@ resuming one another user can write is refused — [SECURITY.md](SECURITY.md).
 | `0` | the model finished its answer |
 | `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Out of rounds, one more request answers the turn with no tool, so stdout usually holds a summary a blank line below what arrived before the cap; `--no-wrap-up` skips it, leaving nothing at all if the model opened with a tool call ([context/decision-round-limit-answer.md](context/decision-round-limit-answer.md)). Under `tui` it also means you interrupted the turn, and there no wrap-up round is sent |
 | `3` | the terminal went away, so the turn ended there and nobody was watching it. Under `--approve call` that is the terminal it asks on: that call and the ones behind it were refused and no further request was sent. What the turn did before is on stdout and in `--session`. Under `tui` it is the screen or the keyboard hanging up mid-turn, which ends the turn where it stood and stores nothing of it — the audit trail of what it touched still reaches stderr |
+| `64` | sandbx would not take the command line, so no turn was started and nothing was spawned. The complaint is on stderr, as clap wrote it. `EX_USAGE`, and the same code under every subcommand |
 | anything else | it failed before or during the turn, with the reason on stderr |
+
+The table is these two subcommands because `sandbox-run` relays the child's own
+code, where a 64 is the child's rather than sandbx's — as a 1, 2 or 3 there
+already is.
 
 > **By default nothing asks you before an approved tool call runs.**
 > `--allow-tool` is per tool per run, not per call: approve `bash` and the model
