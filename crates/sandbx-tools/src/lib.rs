@@ -225,10 +225,9 @@ pub(crate) fn read_file(
 /// Read a file through the guard, declining one past `max` bytes.
 ///
 /// `Ok(None)` is a file that was not searched and so answers nothing: past `max`, or no
-/// text came back — a binary, or a read that died part-way. `Err` is the access refused,
-/// or the host failing to measure a handle it just opened. The size is measured on that
-/// handle, never on the path — a `stat` of the path is a second resolution the guard did
-/// not vet, and the file it answers for need not be the one opened (#275).
+/// text came back. `Err` is the access refused, or a handle the host would not measure.
+/// The size comes off that handle, never off the path: a path `stat` is a second
+/// resolution the guard did not vet, and need not answer for the file opened (#275).
 pub(crate) fn read_capped(
     path: &std::path::Path,
     ctx: &ExecutionContext,
