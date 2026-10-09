@@ -369,8 +369,9 @@ may *draw* one — which is what `forgeable` is:
 
 ```rust
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-/// U+FFE8 is Unicode's own confusable mapping for the mark, and the heavier and dashed
-/// box-drawing verticals draw the same cell; a denylist, for [`invisible`]'s reason.
+/// Three sets, bounded per arm below so an addition is checkable against Unicode's names
+/// rather than asserted: box drawing's verticals, the extensions drawn to tile vertically,
+/// and the confusable mappings for the mark. A denylist, for [`invisible`]'s reason.
 /// ASCII `|` is excluded, having to survive a shell pipeline in prose — why the gutter is
 /// box-drawing at all. A vertical joining across rows where `|` doesn't is font-dependent,
 /// too weak to rely on instead.
@@ -388,7 +389,9 @@ seriously rather than from making it look nice:
   because those kinds are marked on *every* row — so a kept break would mint a
   second marked row from whatever followed it, needing no confusable at all.
 - **The box-drawing horizontals are left alone**, a table or a `tree` being
-  ordinary output. The defence is per-claim, not per-character-class.
+  ordinary output. The defence is per-claim, not per-character-class — and the
+  split is pinned both ways, `the_box_drawing_horizontals_do_survive` sweeping
+  the 113 the carve-out keeps against the 15 it does not (#276).
 
 The guide is also candid about what the column does not buy: a wrapped
 continuation row carries no gutter, since the gutter is inside the paragraph's

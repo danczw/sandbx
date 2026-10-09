@@ -219,13 +219,19 @@ cell versus a line.
 fn forgeable(c: char) -> bool {
     matches!(
         c,
-        GUTTER_MARK | '\u{01c0}' | '\u{2223}' | '\u{2758}' | '\u{ff5c}' | '\u{ffe8}'
-        // The bracket and box-line extensions, drawn to tile vertically.
-        | '\u{239c}' | '\u{239f}' | '\u{23b8}' | '\u{23b9}'
-        // Box drawing's other verticals: heavy, dashed, and the four half-height stubs.
-        // Its horizontals are left alone, a table or a `tree` being ordinary output.
+        // Every Box Drawing codepoint with a vertical stroke and no horizontal one: both
+        // weights, the three dash densities, the double, and the half-height stubs. Its
+        // horizontals are left alone, a table or a `tree` being ordinary output.
+        GUTTER_MARK
         | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
-        | '\u{2575}' | '\u{2577}' | '\u{2579}' | '\u{257b}'
+        | '\u{254e}' | '\u{254f}' | '\u{2551}'
+        | '\u{2575}' | '\u{2577}' | '\u{2579}' | '\u{257b}' | '\u{257d}' | '\u{257f}'
+        // The bracket, box-line and integral extensions, drawn to tile vertically.
+        | '\u{239c}' | '\u{239f}' | '\u{23a2}' | '\u{23a5}' | '\u{23aa}' | '\u{23ae}'
+        | '\u{23b8}' | '\u{23b9}' | '\u{23d0}'
+        // Unicode's confusable mappings for the mark.
+        | '\u{00a6}' | '\u{01c0}' | '\u{2016}' | '\u{2223}' | '\u{2225}' | '\u{2758}'
+        | '\u{fe31}' | '\u{ff5c}' | '\u{ffe8}'
     )
 }
 ```
@@ -254,10 +260,13 @@ composes.
 - **Worth questioning:** the gutter authenticates sandbx's voice and nothing
   authenticates the operator's. `view::gutter` draws two marks: `│ ` on a
   verdict or a note, `> ` on the prompt's first row. `forgeable` covers the
-  first and the confusables somebody enumerated — a hand-written denylist of
-  fourteen codepoints, which is a different thing from every character that
-  draws that cell, and the gap between the two is the shape of the risk rather
-  than a bug in any one entry. `>` is ASCII and let through deliberately, on
+  first — a hand-written denylist of 33 codepoints, which is a different thing
+  from every character that draws that cell, and the gap between the two is the
+  shape of the risk rather than a bug in any one entry. What closed most of it
+  was giving the list a scope a reader can check against Unicode's names instead
+  of an enumeration to trust, and three tests that sweep it (#276); what keeps
+  it open is that a property lookup, which is what "every character" would need,
+  is a new dependency. `>` is ASCII and let through deliberately, on
   `GUTTER_MARK`'s own reasoning that "`|` or `>` is plausible in prose, and
   stripping either would mangle shell pipelines". For `|` the trade has a
   backstop — the real mark is a different character, and the guide notes that a
@@ -283,7 +292,10 @@ free function over `&str`. Inline in
 survives as ordinary text is visible in the expectation; two more cover the
 reordering characters and the gutter confusables, each asserting
 `!c.is_control()` of its own inputs to keep the justification for `invisible`
-and `forgeable` inside the test.
+and `forgeable` inside the test. Three more sweep `forgeable`'s scope rather
+than spot-checking it: the 15 Box Drawing verticals, the 113 the carve-out
+keeps, and the extensions and confusables outside that block. A codepoint
+added to the function and not to a test now fails one.
 [`view.rs`](../../crates/sandbx-tui/src/view.rs) draws state and reads none, so
 its tests render into ratatui's `TestBackend` and read cells back as rows of
 strings — which is how `an_answer_cannot_forge_the_row_a_verdict_is_drawn_on`
