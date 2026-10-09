@@ -1,8 +1,9 @@
 //! Where a no-flag run may root its default policy, and what a path flag is vetted against;
 //! nothing here reads a flag.
 //!
-//! Two orders are load-bearing and neither is one function's: [`vetted_root`] refuses in the
-//! order written, and [`reaches_owned`] and [`pinned`] each name the spelling that must reach them.
+//! One order is load-bearing and it is not one function's: [`vetted_root`] refuses in the
+//! order written. The spelling the comparisons need is [`ResolvedPath`], which only
+//! [`resolved`] produces.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -62,13 +63,14 @@ struct Homes {
 /// An unusable `$HOME` leaves the exact home rule nothing to compare — so
 /// [`looks_like_a_home`] stands in for it rather than being skipped, and such a cwd still
 /// derives rather than being refused: `HOME` unset with cwd `/app` is the container case.
-/// `cwd` comes resolved from [`current_root`], which every comparison here assumes.
 fn vetted_root<'a>(
-    cwd: &'a Path,
+    root: &'a ResolvedPath,
     homes: &Homes,
     granted: &[VettedPath],
     owned: &[OwnedPath],
-) -> Result<&'a Path, PolicyError> {
+) -> Result<&'a ResolvedPath, PolicyError> {
+    let cwd = root.path();
+
     if cwd.parent().is_none() {
         return Err(PolicyError::FilesystemRoot);
     }
@@ -96,8 +98,8 @@ fn vetted_root<'a>(
         });
     }
 
-    // Either direction, since Landlock rights cover a subtree. Both sides are resolved —
-    // cwd by `current_root`, grants by `allow_system_executables` — so a merged-`/usr` host
+    // Either direction, since Landlock rights cover a subtree. Both sides are resolved — the
+    // cwd by its type, grants by `allow_system_executables` — so a merged-`/usr` host
     // compares `/usr/bin` with `/usr/bin` rather than with `/bin`.
     if let Some(path) = granted
         .iter()
@@ -112,7 +114,7 @@ fn vetted_root<'a>(
 
     // The default grants write over the cwd, and inside the session directory the cwd is the
     // history — #173 with no flag.
-    if let Some(found) = reaches_owned(cwd, owned) {
+    if let Some(found) = reaches_owned(root, owned) {
         return Err(PolicyError::CwdReachesOwned {
             cwd: cwd.to_path_buf(),
             owned: found.path.clone(),
@@ -120,7 +122,7 @@ fn vetted_root<'a>(
         });
     }
 
-    Ok(cwd)
+    Ok(root)
 }
 
 /// What `$HOME` names, resolved and as written.
@@ -212,36 +214,53 @@ pub(super) fn absolute(
         .join(granted))
 }
 
+/// A path [`resolved`] produced, which is the only way to hold one.
+///
+/// Every comparison below needs this form: one symlinked spelling reaches what the other is
+/// refused for, and a relative one resolves against nothing and so reaches no owned path at
+/// all (#205). Not [`VettedPath`], which canonicalizes and so cannot name a path whose leaf
+/// does not exist yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ResolvedPath(PathBuf);
+
+impl ResolvedPath {
+    pub(super) fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// `path` with its deepest resolvable ancestor replaced by what that resolves to.
 ///
 /// `canonicalize` needs the whole path to exist, and a credential nobody has stored yet
 /// does not — so comparing canonical forms alone would miss `/home -> /var/home` (Fedora
 /// Silverblue) and let the unresolved spelling through.
-pub(super) fn resolved(path: &Path) -> PathBuf {
+pub(super) fn resolved(path: &Path) -> ResolvedPath {
     for (depth, ancestor) in path.ancestors().enumerate() {
         if let Ok(base) = ancestor.canonicalize() {
-            return path
-                .components()
-                .rev()
-                .take(depth)
-                .collect::<Vec<_>>()
-                .iter()
-                .rev()
-                .fold(base, |resolved, name| resolved.join(name));
+            return ResolvedPath(
+                path.components()
+                    .rev()
+                    .take(depth)
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .rev()
+                    .fold(base, |resolved, name| resolved.join(name)),
+            );
         }
     }
 
-    path.to_path_buf()
+    ResolvedPath(path.to_path_buf())
 }
 
 /// `granted` as a grant: the object it names now, carried beside the path so the helper can
 /// confirm it opened that one and not whatever was renamed over the name since (#212). `typed`
-/// is the spelling a refusal names. `granted` has to arrive [`resolved`], and vetting
-/// resolves again, so the two are compared:
+/// is the spelling a refusal names. Vetting resolves again, so the two forms are compared:
 /// every path refusal above ran against the first, and a component swapped for a symlink in
 /// between would have the policy hold the second — a path no guard here saw, pinned to the
 /// object at it, so nothing downstream disagrees.
-pub(super) fn pinned(granted: &Path, typed: &Path) -> Result<VettedPath, PolicyError> {
+pub(super) fn pinned(granted: &ResolvedPath, typed: &Path) -> Result<VettedPath, PolicyError> {
+    let granted = granted.path();
+
     let vetted = VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
         granted: typed.to_path_buf(),
         source,
@@ -271,19 +290,18 @@ pub(super) fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
-/// one naming something inside it both reach it. `granted` has to arrive [`resolved`], and so
-/// absolute — otherwise one symlinked spelling reaches what the other is refused for, and a
-/// relative one resolves against nothing and reaches no owned path at all. Both callers pass
-/// what they grant: vetting one spelling and granting another is the window this closes.
-pub(super) fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Option<&'a OwnedPath> {
-    debug_assert!(
-        granted == resolved(granted),
-        "an unresolved grant reaches the wrong owned paths here"
-    );
+/// one naming something inside it both reach it. Both callers pass what they grant: vetting
+/// one spelling and granting another is the window this closes.
+pub(super) fn reaches_owned<'a>(
+    granted: &ResolvedPath,
+    owned: &'a [OwnedPath],
+) -> Option<&'a OwnedPath> {
+    let granted = granted.path();
 
     owned.iter().find(|owned| {
         let path = resolved(&owned.path);
-        path.starts_with(granted) || granted.starts_with(&path)
+
+        path.path().starts_with(granted) || granted.starts_with(path.path())
     })
 }
 
@@ -291,7 +309,7 @@ pub(super) fn reaches_owned<'a>(granted: &Path, owned: &'a [OwnedPath]) -> Optio
 pub(super) fn current_root(
     granted: &[VettedPath],
     owned: &[OwnedPath],
-) -> Result<PathBuf, PolicyError> {
+) -> Result<ResolvedPath, PolicyError> {
     let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
         detail: "could not read the working directory to derive a policy from",
         source,
@@ -306,10 +324,15 @@ pub(super) fn current_root(
             source,
         })?;
 
+    // Not redundant with the canonicalize above, which answers openability: `resolved` is the
+    // only producer of the form the comparisons need, and on an already-canonical path it
+    // returns it unchanged at the first ancestor.
+    let cwd = resolved(&cwd);
+
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let homes = named_homes(home.as_deref());
 
-    vetted_root(&cwd, &homes, granted, owned).map(Path::to_path_buf)
+    vetted_root(&cwd, &homes, granted, owned).cloned()
 }
 
 #[cfg(test)]
@@ -352,15 +375,14 @@ pub(super) mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-directory")
     }
 
-    /// A cwd as `current_root` hands it over: resolved, which [`reaches_owned`] requires — a
-    /// fixture spelling is not canonical just by being written out (`/home` is a symlink to
-    /// `/var/home` on an ostree host).
-    fn at(cwd: impl AsRef<Path>) -> PathBuf {
+    /// A cwd as `current_root` hands it over — a fixture spelling is not canonical just by
+    /// being written out (`/home` is a symlink to `/var/home` on an ostree host).
+    fn at(cwd: impl AsRef<Path>) -> ResolvedPath {
         resolved(cwd.as_ref())
     }
 
-    fn root(cwd: impl AsRef<Path>, homes: &Homes) -> Result<PathBuf, PolicyError> {
-        vetted_root(&at(cwd), homes, &granted(), &[]).map(Path::to_path_buf)
+    fn root(cwd: impl AsRef<Path>, homes: &Homes) -> Result<ResolvedPath, PolicyError> {
+        vetted_root(&at(cwd), homes, &granted(), &[]).cloned()
     }
 
     /// An environment of the pairs given, and nothing else.
@@ -886,8 +908,10 @@ pub(super) mod tests {
     fn an_absolute_grant_needs_no_cwd() {
         let owned = owned_under("/home/u");
 
-        let granted = absolute(Path::new("/srv/app"), &no_cwd())
-            .expect("an absolute grant needs no working directory");
+        let granted = resolved(
+            &absolute(Path::new("/srv/app"), &no_cwd())
+                .expect("an absolute grant needs no working directory"),
+        );
 
         assert!(
             reaches_owned(&granted, &owned).is_none(),
@@ -940,9 +964,12 @@ pub(super) mod tests {
             .canonicalize()
             .expect("a resolved directory");
         let target = real.join("elsewhere");
-        let checked = real.join("checked");
         std::fs::create_dir(&target).expect("the directory swapped in");
-        std::os::unix::fs::symlink(&target, &checked).expect("the swap");
+
+        // Resolved while the name is still absent, so the walk bottoms out at `real` and
+        // leaves the leaf alone — then swapped, which is the ordering of the real race.
+        let checked = resolved(&real.join("checked"));
+        std::os::unix::fs::symlink(&target, checked.path()).expect("the swap");
 
         let error = pinned(&checked, Path::new("--as-typed")).expect_err("a moved grant");
 
