@@ -35,7 +35,7 @@ has to show the record it read.
 | a port allowlist bounds the port and not the host | #145 — destinations, and the resolver grant that bounds names instead | [`SECURITY.md`](../../SECURITY.md), [decision-egress-proxy.md](../decision-egress-proxy.md), [decision-port-allowlist.md](../decision-port-allowlist.md) |
 | x32 is killed as an ABI rather than enumerated per call | #117 — the mask over the syscall number, and the four calls that sit at different x32 numbers | [guide-sandboxing.md](../guide-sandboxing.md) |
 | tool calls run one at a time, and two sharing one `ExecutionContext` have no ordering semantics | #242 — sequential execution as a constraint rather than a choice, which the per-call gate's no-racing argument rests on | [guide-turn-loop.md](../guide-turn-loop.md), [decision-approval-gate.md](../decision-approval-gate.md) |
-| `--allow-unix-sockets` may stop being sufficient on its own on a newer kernel | #259 — the path condition a V9 `ResolveUnix` adds to a flag documented as all-or-nothing | [guide-sandboxing.md](../guide-sandboxing.md), [decision-axis-table.md](../decision-axis-table.md) |
+| `--allow-unix-sockets` bounds whether a unix socket reaches outside the sandbox, never which one | #259 — the path condition a V9 `ResolveUnix` makes available, and the two routes to an `AF_UNIX` descriptor | [`SECURITY.md`](../../SECURITY.md), [guide-sandboxing.md](../guide-sandboxing.md), [decision-axis-table.md](../decision-axis-table.md) |
 
 Two of those rows deserve a note, because reading the table without them
 misleads in opposite directions.
@@ -118,18 +118,24 @@ reasons. **Sequential tool execution** (#242) was documented in
 no-racing argument rests on it — with no number joining the two, so a reader of
 the repo alone could not tell a constraint from a design choice. Both now cite
 the number, and nothing about the behaviour changed. **Unix sockets as one
-toggle** (#259) went the other way: the gap turned out to be stated backwards.
-`--allow-unix-sockets` does grant every pathname socket the filesystem policy
-can reach — an agent socket, a container daemon's socket, the session bus — but
-the residual-gaps row said a V9 `ResolveUnix` would bring no automatic narrowing
-and that a grant would have to be written, and both halves are wrong:
-`handled_access` is `AccessFs::from_all(abi)`, so on a kernel settling at V9 the
-right lands in the handled set and `connect(2)` is denied unless an axis confers
-it, and the write axis confers it with nothing written. The consequence nothing
-predicted is the one worth carrying: the same command with the same flags works
-today and fails on a newer kernel, which is what the number is for. The
-mechanism is [09](09-landlock.md)'s write-axis asymmetry, reached from the other
-end.
+toggle** (#259) went the other way: the gap was stated backwards, and finding
+that out moved the mechanism twice. The row said a V9 `ResolveUnix` would bring
+no automatic narrowing and that a grant would have to be written, and both
+halves were wrong — `handled_access` is `AccessFs::from_all(abi)`, so on a
+kernel settling at V9 the right lands in the handled set, and the write axis was
+set-shaped (`from_all(abi) & !from_read(abi)`) and so conferred it with no line
+of code naming it. The consequence nobody predicted was that the same command
+with the same flags would work today and silently acquire a path condition on a
+newer kernel. So the write axis now subtracts `ResolveUnix` by name and the flag
+confers it, which is [09](09-landlock.md)'s open top end as a worked example.
+Reading the mechanism also found the second route to an `AF_UNIX` descriptor —
+`socketpair(2)`, which reaches one without calling `socket(2)` — and that one
+*was* a hole, measured on a 6.18 kernel rather than argued: a datagram pair,
+`connect`ed to a host pathname socket no grant named, under
+`unix_sockets=false`. [10](10-seccomp.md) has the rule and the kernel state that
+bounds what the rule leaves permitted. The residual the number still carries is
+the narrower one the table row now states: below V9, which is every kernel
+shipping today, nothing conditions a unix `connect` on a path grant at all.
 
 And the contrast case, so the categories stay distinct: a credential held by the
 OS keyring is *not* on this map.
@@ -152,15 +158,18 @@ another project is out of this set's scope and its closing comparison states
 sandbx's own costs as description rather than as a complaint.
 
 **A fourth verdict exists and is not in the list, because it stops being a
-verdict:** the mechanism moves. Three objections this set raised are described
-in their chapters as behaviour rather than as questions, and the chapters are
+verdict:** the mechanism moves. Five objections this set raised are described in
+their chapters as behaviour rather than as questions, and the chapters are
 shorter for it: the second header now read for its version and the resume
-refusal that names the transcript it read, both in [22](22-crate-session.md),
-and the exit code a latched screen no longer takes, in
-[23](23-crate-tui.md). The work is #256, #257 and #258 — the path at the end of
-this chapter, run forwards rather than described. The lesson for a reader
-holding an objection of their own is that this is an ordinary outcome and not a
-rare one.
+refusal that names the transcript it read, both in [22](22-crate-session.md);
+the exit code a latched screen no longer takes, in [23](23-crate-tui.md); the
+write axis that conferred a socket right nobody had written, in
+[09](09-landlock.md); and the owned-path comparison whose precondition is now a
+parameter type rather than a `debug_assert!`, in
+[12](12-a-flag-to-a-kernel-rule.md). The work is #256, #257, #258, #259 and
+#248 — the path at the end of this chapter, run forwards rather than described.
+The lesson for a reader holding an objection of their own is that this is an
+ordinary outcome and not a rare one.
 
 ### From 01 — what sandbx is
 
@@ -348,18 +357,6 @@ rare one.
 
 ### From 12 — a flag to a kernel rule
 
-- **The owned-path refusal's precondition is held by a debug assertion.** Its
-  comparison requires the granted side to have arrived already resolved, and
-  what holds that is a doc comment plus a `debug_assert!` — which is compiled
-  out of the release build that ships. **Partly answered.**
-  [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) reasons
-  carefully about *which* spelling must reach the comparison, and the owned side
-  normalises itself inside the function; what it does not weigh is making the
-  caller's side unforgeable, which this codebase already knows how to do.
-  `VettedPath` is exactly that move one layer down — a path that cannot be
-  unpinned, because `grant` accepts nothing else — so a newtype returned by the
-  resolver and demanded by the comparison would turn a debug-only assertion into
-  a build failure.
 - **Keying the CLI's one departure to a derived boolean widens automatically.**
   A fifth axis that confers write would inherit the CLI's read grant without
   anybody opening the flag module. **Partly answered, and the sibling of 09's
