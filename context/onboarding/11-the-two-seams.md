@@ -489,11 +489,16 @@ will not improve on its scoping: **the in-process confirmation is a measurement,
 not a resolution.** The guard measures a granted root and then performs the
 access beneath it, so a substitution that lands between the two is granted on
 the object the confirmation saw. Two swaps are open — the root itself, and a
-parent directory a walk reopens by path. The windows differ in width by tool: a
-few syscalls for the five per-path tools, and the whole traversal for `find` and
-`grep`, whose `walk_readable` confirms its root once and then descends. The
-guard's own doc comment names that as the widest window of the six and says why
-it is not re-confirmed per directory: doing so would refuse mid-result.
+parent directory a walk reopens by path. The windows differ in width by tool:
+two adjacent syscalls across the four single-path tools, and the whole traversal
+for `find` and `grep`, whose `walk_readable` confirms its root once and then
+descends. Four tools, five guard calls — `read` takes one, `write` one, `ls`
+one, and `edit` two, `crate::read_file` and then `open_write` once the match is
+known unique. Four of those five confirm and then open an `O_NOFOLLOW` handle;
+the fifth is `ls`, which has no handle form to open and reads the path a second
+time. The guard's own doc comment names the walk as the widest window of the six
+and says why it is not re-confirmed per directory: doing so would refuse
+mid-result.
 
 Closing either needs the access to run off a directory descriptor, with
 `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it (#230). The

@@ -647,6 +647,6 @@ meaning of each `<=`.
 
 [20 — the providers crate](20-crate-providers.md), the other half of what
 `sandbx-agent` depends on: the vendor boundary, the event stream, and the one
-file every vendor name sits at or below. The authorities *this* chapter is an
-on-ramp to are [guide-tools.md](../guide-tools.md) and
+row of that boundary nothing mechanical holds. The authorities *this* chapter is
+an on-ramp to are [guide-tools.md](../guide-tools.md) and
 [decision-bounding-tool-work.md](../decision-bounding-tool-work.md).

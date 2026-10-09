@@ -542,5 +542,6 @@ unrestricted.
 ## Next
 
 [08 — the two-stage helper](08-the-two-stage-helper.md), where every primitive
-above appears again as a line of this repo's own code, in an order that cannot
-be permuted.
+above appears again as a line of this repo's own code, in a sequence whose
+forced orders are fewer than they look and worth separating from the chosen
+ones.

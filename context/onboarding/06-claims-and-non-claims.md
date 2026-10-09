@@ -167,7 +167,8 @@ went through the factory at all.
   [`seccomp/rules.rs`](../../crates/sandbx-core/src/helper/seccomp/rules.rs);
   `blocked_syscalls` then adds the conditional rules a policy earns — the
   per-flag `clone` denials from `NAMESPACE_CLONE_FLAGS`, and the socket rules a
-  port allowlist needs. Three stacked filters, because a seccompiler filter
+  port allowlist needs. Three stacked filters on x86\_64 and two
+  elsewhere, because a seccompiler filter
   carries one action and two rules need a different one: `EPERM` for the list,
   `ENOSYS` for `clone3` so a threaded program falls back onto the filtered
   `clone`, and kill for x32 (#117). The kernel takes the most severe verdict
@@ -340,7 +341,8 @@ no-flag run from a user-level install prefix grants write there.
 
 `FsGuard` measures a granted root and *then* performs the access beneath it, so
 a substitution landing between the two is granted on the object the measurement
-saw. Two swaps stay open, a few syscalls wide for the five per-path tools and
+saw. Two swaps stay open, two adjacent syscalls wide across the four
+single-path tools — five guard calls between them, `edit` confirming twice — and
 the whole traversal for `find` and `grep`, whose walk confirms its root once and
 then descends; both close the same way, by running the access off a directory
 descriptor with `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it

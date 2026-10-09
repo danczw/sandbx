@@ -34,6 +34,8 @@ has to show the record it read.
 | a running tool call cannot be interrupted | #26 — cancellation, against a blocking task that runs to completion once spawned | [`SECURITY.md`](../../SECURITY.md), [guide-turn-loop.md](../guide-turn-loop.md), [guide-tools.md](../guide-tools.md), [guide-tui.md](../guide-tui.md) |
 | a port allowlist bounds the port and not the host | #145 — destinations, and the resolver grant that bounds names instead | [`SECURITY.md`](../../SECURITY.md), [decision-egress-proxy.md](../decision-egress-proxy.md), [decision-port-allowlist.md](../decision-port-allowlist.md) |
 | x32 is killed as an ABI rather than enumerated per call | #117 — the mask over the syscall number, and the four calls that sit at different x32 numbers | [guide-sandboxing.md](../guide-sandboxing.md) |
+| tool calls run one at a time, and two sharing one `ExecutionContext` have no ordering semantics | #242 — sequential execution as a constraint rather than a choice, which the per-call gate's no-racing argument rests on | [guide-turn-loop.md](../guide-turn-loop.md), [decision-approval-gate.md](../decision-approval-gate.md) |
+| `--allow-unix-sockets` may stop being sufficient on its own on a newer kernel | #259 — the path condition a V9 `ResolveUnix` adds to a flag documented as all-or-nothing | [guide-sandboxing.md](../guide-sandboxing.md), [decision-axis-table.md](../decision-axis-table.md) |
 
 Two of those rows deserve a note, because reading the table without them
 misleads in opposite directions.
@@ -53,8 +55,9 @@ that says the path a grant was vetted as is the path the kernel is told about �
 the one property both enforcement seams implement, by different means. The seam
 that spawns closes the window with a readback and an object pin before it hands
 the kernel anything; the in-process seam re-measures and *then* opens, so the
-window is a few syscalls for the five per-path tools and the whole traversal for
-the two that walk. Same property, two mechanisms, one of them not yet closed.
+window is two adjacent syscalls across the four single-path tools and the whole
+traversal for the two that walk. Same property, two mechanisms, one of them not
+yet closed.
 
 ### Gaps carried without an issue number
 
@@ -62,7 +65,10 @@ These are written down and have no number beside them. The distinction matters
 more than it looks: a gap nobody has written down is invisible, a gap documented
 without a number is visible but unfilable-against, and a gap *declined on a
 record* is neither — it is a decision, and treating it as a gap is a misreading.
-All five below are in the middle category.
+All four below are in the middle category, and the category is not stable: two
+entries that sat here while this set was being written have since acquired
+numbers and moved into the table above, which is the movement it is meant to
+make easy.
 
 - **The harness is unconfined.** The one process that parses untrusted input —
   the model's output, and file contents arriving as tool results — carries no
@@ -95,25 +101,26 @@ All five below are in the middle category.
   [guide-process-lifetime.md](../guide-process-lifetime.md) — which is also
   where the absence is stated plainly. `bash` has a wall-clock default and
   `sandbox-run` an opt-in `--timeout`; neither is a resource limit.
-- **Unix sockets are one toggle.** `--allow-unix-sockets` grants every pathname
-  socket the filesystem policy can reach — an agent socket, a container daemon's
-  socket, the session bus — because seccomp cannot follow the pointer to
-  `connect`'s path and Landlock gained a path-scoped right only at a level the
-  negotiation cannot reach in practice.
-  [guide-sandboxing.md](../guide-sandboxing.md) names both the right and the
-  fact that hard-requiring a whole ABI level means that right would bring no
-  automatic narrowing even once it is available: the grant has to be written.
 
-One more sits a layer up and is the clearest case of the middle category: **tool
-calls run one at a time, and two tools sharing one `ExecutionContext` have no
-ordering semantics.** [guide-turn-loop.md](../guide-turn-loop.md) says
-`answer_calls` runs them sequentially and
-[decision-approval-gate.md](../decision-approval-gate.md) leans on it — the
-gate's whole no-racing argument depends on it — but neither cites a number for
-it, and nothing in `context/` or `SECURITY.md` does. The tracker's own entry is
-#242. Until a `context/` sentence names it, the behaviour is documented, the
-dependency on it is documented, and the two cannot be joined up by anybody
-reading the repo alone.
+The two that left are worth reading as a pair, because they left for opposite
+reasons. **Sequential tool execution** (#242) was documented in
+[guide-turn-loop.md](../guide-turn-loop.md) and leaned on by
+[decision-approval-gate.md](../decision-approval-gate.md) — the gate's whole
+no-racing argument rests on it — with no number joining the two, so a reader of
+the repo alone could not tell a constraint from a design choice. Both now cite
+the number, and nothing about the behaviour changed. **Unix sockets as one
+toggle** (#259) went the other way: the gap turned out to be stated backwards.
+`--allow-unix-sockets` does grant every pathname socket the filesystem policy
+can reach — an agent socket, a container daemon's socket, the session bus — but
+the residual-gaps row said a V9 `ResolveUnix` would bring no automatic narrowing
+and that a grant would have to be written, and both halves are wrong:
+`handled_access` is `AccessFs::from_all(abi)`, so on a kernel settling at V9 the
+right lands in the handled set and `connect(2)` is denied unless an axis confers
+it, and the write axis confers it with nothing written. The consequence nothing
+predicted is the one worth carrying: the same command with the same flags works
+today and fails on a newer kernel, which is what the number is for. The
+mechanism is [09](09-landlock.md)'s write-axis asymmetry, reached from the other
+end.
 
 And the contrast case, so the categories stay distinct: a credential held by the
 OS keyring is *not* on this map.

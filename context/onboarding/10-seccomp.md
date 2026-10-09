@@ -61,8 +61,12 @@ so — change the body, change the twin.
 `BLOCKED_SYSCALLS` is a flat list of 35 numbers, and a denylist rather than an
 allowlist on purpose: sandbx runs shells, compilers and package managers, whose
 syscall use is unbounded, so the stronger allowlist shape would break real tools
-constantly. The filter is built from this constant and nothing else, which is
-what lets a test assert the list still covers what `SECURITY.md` says it covers.
+constantly. It is where the filter starts rather than the whole of it:
+`blocked_syscalls` seeds from the constant, adds the per-flag `clone` rules —
+unconditional too — and then the rules a policy earns, and `installed_filters`
+puts two more programs beside the result. What the constant being a flat list
+buys is the test: `tests/denylist.rs` compares it against a hand mirror of what
+`SECURITY.md` says is denied, in both directions.
 
 Read as groups, by what each one would buy an attacker who got code running
 inside the sandbox:

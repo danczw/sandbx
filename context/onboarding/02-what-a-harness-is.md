@@ -404,7 +404,10 @@ Two properties are worth carrying away.
   the previous cut, and `run_turn` applies it with `unwrap_or(cut)` so that a
   declined plan cannot restore history that was already withheld. It also fires
   only on a *measured* figure — what the provider reported for a request already
-  sent — never a predicted one, so it cannot fire on a turn's first round.
+  sent — never a predicted one, so it cannot fire ahead of any measurement at
+  all. Which is not the same as a turn's first round: a figure threaded in from
+  the previous turn is a measurement, so a turn handed one plans its cut before
+  its own first request goes out. [21](21-crate-agent.md) separates the two.
 - **A deepened cut invalidates every reasoning block already sent,** because the
   prefix those signatures were checked against has just changed. Removing them
   is the one edit the provider's rule permits, and it has to take both kinds and

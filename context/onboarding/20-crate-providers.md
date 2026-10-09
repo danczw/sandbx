@@ -49,7 +49,7 @@ the answer is a compiler rule, and one row of it is not.
 | the body — key names, omission rules, `stream: true` | `Body` is `pub(super)` inside a private `mod body`, and no neutral type has a `Serialize` at all, so there is no second way to turn one into JSON |
 | the frame shapes | every `Raw*` in `payload.rs` is `pub(super)`; the two error shapes are `pub(crate)` so `anthropic.rs` can parse a non-2xx body, and none of them leaves the crate |
 | the `stop_reason` string table | `stop_reason` is a private free function in `accumulate.rs`. `StopReason::Other(String)` is public, but nothing outside `anthropic/` can build one *from a wire string* |
-| which failures are worth retrying | `ProviderError::ApiError`'s `transient` is decided at its two construction sites, and `is_retryable` reads only that bool |
+| which failures are worth retrying | `ProviderError::ApiError`'s `transient` is decided at its two construction sites, in `anthropic.rs` and `anthropic/wire/accumulate.rs`, and for that variant `is_retryable` reads nothing else — a transport failure and a rate limit are retryable on their own |
 | the vendor's **name** | nothing mechanical |
 
 The first four rows are why the boundary holds. The last is worth stating
