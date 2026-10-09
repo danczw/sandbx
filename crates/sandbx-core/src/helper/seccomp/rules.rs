@@ -18,7 +18,7 @@ use super::seccomp_failed;
 /// rules, also unconditional, then the policy-gated ones, and `installed_filters` puts the
 /// `clone3` program beside the result — plus the x32 gate on x86_64. `tests/denylist.rs`
 /// compares this against `CLAIMED`, a hand mirror of what `SECURITY.md` says; the mirror
-/// itself nothing checks (#212).
+/// itself nothing checks.
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // Inspect or modify other processes.
     libc::SYS_ptrace,

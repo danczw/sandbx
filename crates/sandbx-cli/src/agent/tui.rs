@@ -256,7 +256,7 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
     let mut account = Vec::new();
 
     let code = match &outcome.stop {
-        // Ahead of the bounds, as `render.rs:219` has it: one round can hit `--max-rounds`
+        // Ahead of the bounds, as `Render::finish` has it: one turn can hit `--max-rounds`
         // and lose its operator, and only the second is unrecoverable.
         TurnStop::GateAborted => {
             account.push(

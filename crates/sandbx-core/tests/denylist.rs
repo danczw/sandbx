@@ -82,7 +82,7 @@ fn every_claimed_syscall_is_actually_denied() {
 
 /// The direction that drifts: the test above passes while a syscall added to the filter goes
 /// unclaimed. It stops at the arrays — `CLAIMED` is a hand mirror, so a count stated in prose
-/// is still unchecked (#212).
+/// is still unchecked.
 #[test]
 fn every_denied_syscall_is_one_the_docs_claim() {
     let unclaimed: Vec<libc::c_long> = BLOCKED_SYSCALLS

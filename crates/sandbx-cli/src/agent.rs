@@ -42,7 +42,7 @@ use crate::{AgentError, Grants, PolicyError};
 /// it, so no layer below has an opinion to inherit.
 const DEFAULT_MODEL: &str = "claude-sonnet-5";
 
-/// The output ceiling for one turn when `--max-tokens` is not given.
+/// The output ceiling for one round when `--max-tokens` is not given.
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// The exit code for an answer a bound cut short.
@@ -84,10 +84,10 @@ pub struct AgentRun {
     #[arg(long, value_name = "NAME", default_value = DEFAULT_MODEL)]
     model: String,
 
-    /// Cap the tokens the model may produce in one turn.
+    /// Cap the tokens the model may produce in one round.
     ///
-    /// Bounds the answer, not the prompt. A turn that hits the cap stops mid-sentence
-    /// and says so on stderr.
+    /// Bounds the answer, not the prompt. A round cut at the cap stops mid-sentence, and
+    /// stderr says so when it is the turn's last round.
     #[arg(long = "max-tokens", value_name = "N", default_value_t = DEFAULT_MAX_TOKENS)]
     max_tokens: u32,
 
@@ -208,7 +208,7 @@ impl AgentRun {
         &self.model
     }
 
-    /// The cap on what the model may produce in one turn.
+    /// The cap on what the model may produce in one round.
     pub fn max_tokens(&self) -> u32 {
         self.max_tokens
     }

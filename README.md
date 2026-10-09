@@ -133,7 +133,7 @@ it. Four fields do not read the way they look:
 | `decision="spawned"` | the *intent* to spawn, written before the helper execs — so it appears for a command that then fails to start — carrying the settled policy |
 | `decision="absent"` | a path naming nothing inside a root you granted — no `reason=`. Outside your roots it is a `denied` like any other, so the trail never says which outside paths exist |
 | `env=` | how many names were *granted*, not how many crossed: a name `sandbx`'s own environment lacks passes nothing |
-| `pinned=` | whether a digest had to match before the exec. A matching pin reads as unpinned; a mismatch is already the `reason="pin_mismatch"` record |
+| `pinned=` | whether a digest had to match before the exec, not whether it did: a pin that matched leaves no other mark, and a mismatch is already the `reason="pin_mismatch"` record |
 
 A `failed` record carries in `reason=` what refused the run or cut it short —
 `timeout` for a `--timeout` kill, `unsupported` for a kernel that cannot enforce,
@@ -287,7 +287,7 @@ leave you answering one call blind.
 | `--allow-tool [TOOL]` | approve a tool that does more than read. Repeatable; bare approves all seven |
 | `--approve WHEN`  | `run` (default) takes the answer from `--allow-tool` alone; `call` asks on your terminal per write and per command |
 | `--model NAME`    | which model to ask. Default `claude-sonnet-5` |
-| `--max-tokens N`  | cap what the model may produce in one turn. Default 4096 |
+| `--max-tokens N`  | cap what the model may produce in one round. Default 4096 |
 | `--max-rounds N`  | cap how many rounds of tool calls one turn may spend. Default 8, plus the wrap-up round below |
 | `--no-wrap-up`    | do not spend one more request answering a turn that hit `--max-rounds` |
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |

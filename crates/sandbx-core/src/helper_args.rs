@@ -1,3 +1,9 @@
+//! The argv seam: a policy rendered as helper argv, and parsed back in the re-exec'd helper.
+//!
+//! Neither side is trusted and nothing in the argv is a boundary, so `decode` refuses what
+//! `encode` could not have emitted rather than skipping it: such an argv speaks a different
+//! protocol. [`SandboxPolicy::unbounded_resolution`]'s refusal is re-made here for that reason.
+
 use crate::{Axis, NetworkPolicy, ObjectId, SandboxError, SandboxPolicy, Sha256Digest, VettedPath};
 
 const FLAG_NET: &str = "--allow-network";

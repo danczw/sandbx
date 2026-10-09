@@ -24,7 +24,7 @@ const SOURCE_FILE_MODE: u32 = 0o600;
 ///
 /// `None` is the no-op, and the only reason `isolate` may leave `CLONE_NEWNS` out: both read
 /// the same [`bounds_resolution`]. Takes what was already resolved rather than the policy —
-/// the lookups have to happen before the unshare, and this after it.
+/// the bodies it installs are rendered from those lookups, which therefore precede it.
 ///
 /// [`bounds_resolution`]: crate::SandboxPolicy::bounds_resolution
 pub(super) fn bound_resolution(files: Option<[File; 3]>) -> Result<(), SandboxError> {

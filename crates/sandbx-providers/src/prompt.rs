@@ -12,7 +12,7 @@
 pub struct Prompt {
     /// A freeform string, not an enum: new model IDs ship regularly.
     pub model: String,
-    /// A ceiling on the turn's output. No default opinion on a value.
+    /// A ceiling on the model's reply, so on one round. No default opinion on a value.
     pub max_output_tokens: u32,
     /// Standing instructions, outside the conversation.
     pub system: Option<String>,

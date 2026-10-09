@@ -153,6 +153,9 @@ fn installed_filters(
 
 /// Install the filters [`installed_filters`] builds, in any order: the kernel takes the most
 /// severe verdict across every installed filter, so a later one cannot loosen an earlier one.
+///
+/// Per-thread (`apply_filter`, not `apply_filter_all_threads`), which is sound only because
+/// stage 2 is a fresh `exec` and therefore single-threaded — see [`super::exec_inner`].
 pub(super) fn deny_dangerous_syscalls(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     for filter in installed_filters(policy)? {
         seccompiler::apply_filter(&filter).map_err(seccomp_failed)?;
