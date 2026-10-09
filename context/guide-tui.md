@@ -98,10 +98,13 @@ Every row therefore carries a gutter the view draws, not the text: `│ ` on a
 verdict or a note, `> ` on the prompt's first row, two spaces on anything the
 model chose. `│` is what the claim rests on, so no entry's text may *draw* one.
 `Transcript` replaces the mark and the characters that render the same single
-cell — U+FFE8 is Unicode's own confusable mapping for `│`, and a heavier or
-dashed box-drawing vertical differs by a weight an operator has nothing on screen
-to compare against. The horizontals are left alone, a table being ordinary
-output.
+cell, in three sets with a scope a reader can check rather than an enumeration to
+trust: every Box Drawing codepoint with a vertical stroke and no horizontal one,
+the bracket and box-line extensions drawn to tile vertically, and Unicode's
+confusable mappings for `│`. A heavier, dashed or doubled vertical differs by a
+weight an operator has nothing on screen to compare against. The horizontals are
+left alone, a table being ordinary output; three tests sweep both halves of that
+line (#276).
 
 ASCII `|` is the one it lets through, and is why the mark is box-drawing at all: a
 shell pipeline in ordinary prose has to survive the fold. What stands against a

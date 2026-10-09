@@ -152,21 +152,28 @@ fn printable(text: &str) -> String {
 }
 
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-/// U+FFE8 is Unicode's own confusable mapping for the mark, and the heavier and dashed
-/// box-drawing verticals draw the same cell; a denylist, for [`invisible`]'s reason.
+/// Three sets, bounded per arm below so an addition is checkable against Unicode's names
+/// rather than asserted: box drawing's verticals, the extensions drawn to tile vertically,
+/// and the confusable mappings for the mark. A denylist, for [`invisible`]'s reason.
 /// ASCII `|` is excluded, having to survive a shell pipeline in prose — why the gutter is
 /// box-drawing at all. A vertical joining across rows where `|` doesn't is font-dependent,
 /// too weak to rely on instead.
 fn forgeable(c: char) -> bool {
     matches!(
         c,
-        GUTTER_MARK | '\u{01c0}' | '\u{2223}' | '\u{2758}' | '\u{ff5c}' | '\u{ffe8}'
-        // The bracket and box-line extensions, drawn to tile vertically.
-        | '\u{239c}' | '\u{239f}' | '\u{23b8}' | '\u{23b9}'
-        // Box drawing's other verticals: heavy, dashed, and the four half-height stubs.
-        // Its horizontals are left alone, a table or a `tree` being ordinary output.
+        // Every Box Drawing codepoint with a vertical stroke and no horizontal one: both
+        // weights, the three dash densities, the double, and the half-height stubs. Its
+        // horizontals are left alone, a table or a `tree` being ordinary output.
+        GUTTER_MARK
         | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
-        | '\u{2575}' | '\u{2577}' | '\u{2579}' | '\u{257b}'
+        | '\u{254e}' | '\u{254f}' | '\u{2551}'
+        | '\u{2575}' | '\u{2577}' | '\u{2579}' | '\u{257b}' | '\u{257d}' | '\u{257f}'
+        // The bracket, box-line and integral extensions, drawn to tile vertically.
+        | '\u{239c}' | '\u{239f}' | '\u{23a2}' | '\u{23a5}' | '\u{23aa}' | '\u{23ae}'
+        | '\u{23b8}' | '\u{23b9}' | '\u{23d0}'
+        // Unicode's confusable mappings for the mark.
+        | '\u{00a6}' | '\u{01c0}' | '\u{2016}' | '\u{2223}' | '\u{2225}' | '\u{2758}'
+        | '\u{fe31}' | '\u{ff5c}' | '\u{ffe8}'
     )
 }
 
@@ -355,6 +362,59 @@ mod tests {
         for c in ['\u{ffe8}', '\u{2503}'] {
             assert!(!c.is_control() && !invisible(c), "{c:?}");
         }
+    }
+
+    /// Every Box Drawing codepoint with a vertical stroke and no horizontal one, spelled
+    /// out: a codepoint added to `forgeable` and not here fails a test rather than
+    /// widening the set silently, and one dropped from `forgeable` fails this one.
+    const BOX_VERTICALS: [char; 15] = [
+        '\u{2502}', '\u{2503}', '\u{2506}', '\u{2507}', '\u{250a}', '\u{250b}', '\u{254e}',
+        '\u{254f}', '\u{2551}', '\u{2575}', '\u{2577}', '\u{2579}', '\u{257b}', '\u{257d}',
+        '\u{257f}',
+    ];
+
+    #[test]
+    fn the_box_drawing_verticals_cannot_survive() {
+        assert!(
+            BOX_VERTICALS.contains(&GUTTER_MARK),
+            "the mark itself is outside the set this pins"
+        );
+
+        for c in BOX_VERTICALS {
+            assert!(forgeable(c), "U+{:04X} survives", c as u32);
+        }
+    }
+
+    /// The carve-out the set's scope claims, and the half of it no test covered: a table
+    /// or a `tree` is ordinary output and must render.
+    #[test]
+    fn the_box_drawing_horizontals_do_survive() {
+        let rest: Vec<char> = ('\u{2500}'..='\u{257f}')
+            .filter(|c| !BOX_VERTICALS.contains(c))
+            .collect();
+
+        assert_eq!(rest.len(), 113, "the block is not 128 codepoints");
+        for c in rest {
+            assert!(!forgeable(c), "U+{:04X} does not survive", c as u32);
+        }
+    }
+
+    /// The two sets outside the Box Drawing block: extensions drawn to tile vertically,
+    /// and Unicode's own confusable mappings for the mark.
+    #[test]
+    fn the_extensions_and_confusables_cannot_survive() {
+        let outside = [
+            '\u{239c}', '\u{239f}', '\u{23a2}', '\u{23a5}', '\u{23aa}', '\u{23ae}', '\u{23b8}',
+            '\u{23b9}', '\u{23d0}', '\u{00a6}', '\u{01c0}', '\u{2016}', '\u{2223}', '\u{2225}',
+            '\u{2758}', '\u{fe31}', '\u{ff5c}', '\u{ffe8}',
+        ];
+
+        for c in outside {
+            assert!(forgeable(c), "U+{:04X} survives", c as u32);
+        }
+
+        // Non-vacuous, and the one exclusion the set must keep: a shell pipeline in prose.
+        assert!(!forgeable('|'), "a pipeline in prose no longer renders");
     }
 
     #[test]
