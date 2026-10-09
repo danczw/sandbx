@@ -100,11 +100,11 @@ crates for each name.
 **Six names are what a consumer actually needs.** To build a policy:
 `SandboxPolicy`, `VettedPath`, `Axis`. To spend one: `FsGuard` for the
 in-process path, `SandboxedCommand` for the spawning one. To report what
-happened: `SandboxError`. That is the crate, from outside. Three more are the
-binary's rather than a library consumer's — `with_helper_dispatch`,
-`conceal_process_state` and `exit_code`, each called once from
-[`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs) or beside it, the
-process-shaped work 04's *The CLI architecture* section says `main.rs` keeps.
+happened: `SandboxError`. Three more are the binary's rather than a library
+consumer's — `with_helper_dispatch`, `conceal_process_state` and `exit_code`,
+each called once from [`cli/src/main.rs`](../../crates/sandbx-cli/src/main.rs)
+or beside it, the process-shaped work 04's *The CLI architecture* section says
+`main.rs` keeps.
 
 **Ten are reached from no other crate's `src/`**, and the reasons divide
 cleanly:
@@ -125,13 +125,17 @@ cleanly:
   *the current binary* with `HELPER_FLAG`, which assumes that binary dispatches
   at startup — the shipped `sandbx` does and a test harness does not, so the
   harness ships a binary that does nothing else. `HELPER_INNER_FLAG` is public
-  for the doc link in its module comment.
+  for the same kind of reason as the next bullet's pair: its own doc comment
+  says it is public only so a test can invoke the inner stage directly, in
+  `crates/sandbx-core/tests/enforcement.rs` and `tests/audit_channel.rs`.
 - **Needed by an integration test.** `HelperArgs` and `BLOCKED_SYSCALLS` are
   read by targets under `crates/sandbx-core/tests/`, a separate crate that sees
   only the public surface — the last section of this chapter is that trade.
 
-So this is not an API designed for callers. It is the reachability closure of
-six entry types, plus what the crate's own out-of-crate test targets need.
+So this is not an API designed for callers: most of what it exports earns its
+place either in the six entry types above or in what the crate's own
+out-of-crate test targets need, rather than in a surface shaped for a caller
+to read.
 
 ## `policy.rs` — the types, not the trace
 
