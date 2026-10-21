@@ -213,10 +213,7 @@ impl FsGuard {
                         None => contains(&resolved, &self.readable),
                     };
                     if let Containment::Outside(moved) = placement {
-                        let reason = match moved {
-                            Some(_) => ROOT_REPLACED,
-                            None => Access::Read.outside(),
-                        };
+                        let reason = moved.map_or(Access::Read.outside(), |_| ROOT_REPLACED);
                         crate::AuditEvent::denied(
                             Access::Read.operation(),
                             &link.display().to_string(),
