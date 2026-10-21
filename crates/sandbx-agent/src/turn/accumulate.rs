@@ -31,7 +31,7 @@ where
     O: FnMut(&AgentEvent),
 {
     let mut blocks = Vec::new();
-    let mut text = String::new();
+    let mut pending = String::new();
     let mut usage = None;
 
     while let Some(event) = stream.next().await {
@@ -39,26 +39,20 @@ where
         observe(&event);
 
         match event {
-            AgentEvent::Text { delta } => text.push_str(&delta),
+            AgentEvent::Text { delta } => pending.push_str(&delta),
             AgentEvent::ToolCallRequested { id, name, input } => {
                 // Before the tool block: the API reads a content array in order, and the
                 // text introducing a call precedes it.
-                flush(&mut text, &mut blocks);
+                flush(&mut pending, &mut blocks);
                 blocks.push(ContentBlock::ToolUse { id, name, input });
             }
             // Each flushed before its own block, for `ToolCallRequested`'s reason.
-            AgentEvent::ThinkingBlock {
-                text: reasoning,
-                signature,
-            } => {
-                flush(&mut text, &mut blocks);
-                blocks.push(ContentBlock::Thinking {
-                    text: reasoning,
-                    signature,
-                });
+            AgentEvent::ThinkingBlock { text, signature } => {
+                flush(&mut pending, &mut blocks);
+                blocks.push(ContentBlock::Thinking { text, signature });
             }
             AgentEvent::RedactedThinking { data } => {
-                flush(&mut text, &mut blocks);
+                flush(&mut pending, &mut blocks);
                 blocks.push(ContentBlock::RedactedThinking { data });
             }
             AgentEvent::Usage {
@@ -75,7 +69,7 @@ where
                 });
             }
             AgentEvent::Stop { reason } => {
-                flush(&mut text, &mut blocks);
+                flush(&mut pending, &mut blocks);
                 return Ok(Round {
                     blocks,
                     usage,
