@@ -133,10 +133,7 @@ pub(crate) fn fd_path(file: &std::fs::File) -> std::path::PathBuf {
 
 impl fmt::Display for Sha256Digest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in self.0 {
-            write!(f, "{byte:02x}")?;
-        }
-        Ok(())
+        self.0.iter().try_for_each(|byte| write!(f, "{byte:02x}"))
     }
 }
 
