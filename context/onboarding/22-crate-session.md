@@ -313,7 +313,7 @@ decides what is genuinely position-specific, which is why it takes the pair
             && header.version != VERSION
         {
             return Err(SessionError::UnsupportedVersion {
-                path: path.to_owned(),
+                path,
                 version: header.version,
             });
         }
