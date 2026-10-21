@@ -278,9 +278,8 @@ impl<W: Write, E: Write> Render<W, E> {
 
 /// `delta` with everything that could rewrite the lines around it replaced with U+FFFD.
 ///
-/// Per character, so an escape split across two deltas is still caught: its ESC is in one
-/// of them, and what follows it is inert text. `\n` and `\t` survive — reasoning is prose
-/// over many lines, and neither can rewrite one already written.
+/// Per character, so it holds across a delta boundary; see
+/// `context/decision-thinking-replay.md`.
 fn inert(delta: &str) -> String {
     delta
         .chars()
