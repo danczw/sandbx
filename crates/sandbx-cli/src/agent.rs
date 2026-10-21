@@ -348,12 +348,6 @@ impl AgentRun {
         channels: Channels<W, E>,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
-        let Channels {
-            out,
-            err,
-            renders,
-            terminal,
-        } = channels;
         let asked = RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],
@@ -392,15 +386,15 @@ impl AgentRun {
 
         let next = wrapup::Next::after(&turn); // Read off before `run_turn` takes it by value.
 
-        let mut render = Render::with(out, err)
+        let mut render = Render::with(channels.out, channels.err)
             .showing_thinking(self.show_thinking)
-            .rendering(renders);
+            .rendering(channels.renders);
         let outcome = run_turn(
             &mut open,
             turn,
             ctx,
             |event| render.event(event),
-            gate::ArgvGate::new(self.allow_tool.as_deref(), terminal),
+            gate::ArgvGate::new(self.allow_tool.as_deref(), channels.terminal),
         )
         .await;
 
