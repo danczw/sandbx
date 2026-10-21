@@ -85,21 +85,18 @@ impl ToolLimits {
     }
 
     /// Trim `content` to the byte cap, reporting how much was dropped.
-    pub(crate) fn take_bytes(&self, content: String) -> String {
-        if content.len() <= self.max_bytes {
-            return content;
-        }
+    pub(crate) fn take_bytes(&self, mut content: String) -> String {
+        if content.len() > self.max_bytes {
+            // Cutting at a byte offset can land mid-character; back up to a boundary.
+            let mut end = self.max_bytes;
+            while end > 0 && !content.is_char_boundary(end) {
+                end -= 1;
+            }
 
-        // Cutting at a byte offset can land mid-character; back up to a boundary.
-        let mut end = self.max_bytes;
-        while end > 0 && !content.is_char_boundary(end) {
-            end -= 1;
+            let total = content.len();
+            content.truncate(end);
+            content.push_str(&format!("\n... truncated: showing {end} of {total} bytes"));
         }
-
-        let total = content.len();
-        let mut trimmed = content;
-        trimmed.truncate(end);
-        trimmed.push_str(&format!("\n... truncated: showing {end} of {total} bytes"));
-        trimmed
+        content
     }
 }
