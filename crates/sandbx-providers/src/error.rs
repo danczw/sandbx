@@ -110,25 +110,21 @@ impl std::fmt::Display for ProviderError {
             }
             Self::Transport { detail, source } => write!(f, "{detail}: {source}"),
             Self::ApiError {
-                status: Some(status),
+                status,
                 kind,
                 message,
                 ..
-            } => write!(f, "API returned {status} ({kind}): {message}"),
-            Self::ApiError {
-                status: None,
-                kind,
-                message,
-                ..
-            } => write!(f, "API reported an error mid-stream ({kind}): {message}"),
+            } => match status {
+                Some(status) => write!(f, "API returned {status} ({kind}): {message}"),
+                None => write!(f, "API reported an error mid-stream ({kind}): {message}"),
+            },
             Self::RateLimited {
-                retry_after: Some(duration),
+                retry_after,
                 message,
-            } => write!(f, "rate limited, retry after {duration:?}: {message}"),
-            Self::RateLimited {
-                retry_after: None,
-                message,
-            } => write!(f, "rate limited: {message}"),
+            } => match retry_after {
+                Some(duration) => write!(f, "rate limited, retry after {duration:?}: {message}"),
+                None => write!(f, "rate limited: {message}"),
+            },
             Self::MalformedEvent { detail } => write!(f, "malformed stream event: {detail}"),
             Self::StreamEndedUnexpectedly => {
                 write!(f, "stream ended before the model reported it was done")
