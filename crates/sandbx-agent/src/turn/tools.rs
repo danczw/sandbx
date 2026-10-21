@@ -34,17 +34,18 @@ where
         let ContentBlock::ToolUse { id, name, input } = block else {
             continue;
         };
+        let settle = |tool, outcome| Settled {
+            name,
+            id,
+            tool,
+            input,
+            outcome,
+        };
 
         let Some(tool) = BuiltinTool::from_name(name) else {
             // Lookup is exact by design: a miss is a prompt or schema bug, not a near-miss
             // to normalise. Nothing runs; the model is told which name.
-            gate.settled(Settled {
-                name,
-                id,
-                tool: None,
-                input,
-                outcome: Outcome::Unknown,
-            });
+            gate.settled(settle(None, Outcome::Unknown));
             results.push(refused(id, format!("unknown tool: {name}")));
             continue;
         };
@@ -52,13 +53,7 @@ where
         if !offered.contains(&tool) {
             // `from_name` resolves against every built-in, so resolving alone would hand the
             // gate a call the caller never offered — which an allow-all gate then runs.
-            gate.settled(Settled {
-                name,
-                id,
-                tool: Some(tool),
-                input,
-                outcome: Outcome::NotOffered,
-            });
+            gate.settled(settle(Some(tool), Outcome::NotOffered));
             results.push(refused(id, format!("tool not offered this turn: {name}")));
             continue;
         }
@@ -76,26 +71,14 @@ where
         match verdict {
             ApprovalDecision::Allow => {}
             ApprovalDecision::Deny { reason } => {
-                gate.settled(Settled {
-                    name,
-                    id,
-                    tool: Some(tool),
-                    input,
-                    outcome: Outcome::Denied { reason: &reason },
-                });
+                gate.settled(settle(Some(tool), Outcome::Denied { reason: &reason }));
                 results.push(refused(id, reason));
                 continue;
             }
             // Answered, not skipped: a `tool_use` with no `tool_result` is a transcript no
             // provider takes back, and this one is stored and resumed.
             ApprovalDecision::Abort { reason } => {
-                gate.settled(Settled {
-                    name,
-                    id,
-                    tool: Some(tool),
-                    input,
-                    outcome: Outcome::Denied { reason: &reason },
-                });
+                gate.settled(settle(Some(tool), Outcome::Denied { reason: &reason }));
                 results.push(refused(id, reason.clone()));
                 aborted = Some(reason);
                 continue;
@@ -114,13 +97,7 @@ where
 
         results.push(match outcome {
             Ok(output) => {
-                gate.settled(Settled {
-                    name,
-                    id,
-                    tool: Some(tool),
-                    input,
-                    outcome: Outcome::Ran,
-                });
+                gate.settled(settle(Some(tool), Outcome::Ran));
                 ContentBlock::ToolResult {
                     tool_use_id: id.clone(),
                     content: output.into_content(),
@@ -128,13 +105,7 @@ where
                 }
             }
             Err(error) => {
-                gate.settled(Settled {
-                    name,
-                    id,
-                    tool: Some(tool),
-                    input,
-                    outcome: Outcome::Errored(&error),
-                });
+                gate.settled(settle(Some(tool), Outcome::Errored(&error)));
                 refused(id, error.to_string())
             }
         });
