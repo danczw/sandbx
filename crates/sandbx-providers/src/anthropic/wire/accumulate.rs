@@ -173,14 +173,9 @@ fn tool_call_event(
     let input = if partial_json.trim().is_empty() {
         serde_json::Value::Object(serde_json::Map::new())
     } else {
-        match serde_json::from_str(partial_json) {
-            Ok(input) => input,
-            Err(source) => {
-                return Err(ProviderError::MalformedEvent {
-                    detail: format!("tool_use input for block {index}: {source}"),
-                });
-            }
-        }
+        serde_json::from_str(partial_json).map_err(|source| ProviderError::MalformedEvent {
+            detail: format!("tool_use input for block {index}: {source}"),
+        })?
     };
     Ok(AgentEvent::ToolCallRequested { id, name, input })
 }
