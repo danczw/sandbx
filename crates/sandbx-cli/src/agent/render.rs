@@ -145,16 +145,14 @@ impl<W: Write, E: Write> Render<W, E> {
                 // answer's first line appended to it and its newline arrive after.
                 if !delta.is_empty() {
                     self.end_thinking_line();
-                }
-                if !delta.is_empty() && std::mem::take(&mut self.separating) {
-                    // Two newlines from mid-line, one from a line already terminated.
-                    self.write(if self.mid_line { b"\n\n" } else { b"\n" });
-                }
-                self.write(delta.as_bytes());
-                if !delta.is_empty() {
+                    if std::mem::take(&mut self.separating) {
+                        // Two newlines from mid-line, one from a line already terminated.
+                        self.write(if self.mid_line { b"\n\n" } else { b"\n" });
+                    }
                     self.mid_line = !delta.ends_with('\n');
                     self.after_gap = true;
                 }
+                self.write(delta.as_bytes());
             }
             // Stderr, stdout being the answer. Gated rather than trusted to be empty: the
             // API sends the increment whether or not a summary was asked for.
