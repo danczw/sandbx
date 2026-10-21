@@ -250,12 +250,10 @@ impl std::fmt::Display for PolicyError {
                 cwd.display(),
                 home.display()
             ),
-            Self::FilesystemRoot => {
-                write!(
-                    f,
-                    "refusing to derive a policy from the filesystem root — {ADVICE}"
-                )
-            }
+            Self::FilesystemRoot => write!(
+                f,
+                "refusing to derive a policy from the filesystem root — {ADVICE}"
+            ),
             // No `ADVICE`: this refusal is about neither a path nor the working directory.
             Self::ImposedVariable { name } => write!(
                 f,
