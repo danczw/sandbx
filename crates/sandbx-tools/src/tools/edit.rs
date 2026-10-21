@@ -10,17 +10,9 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
                   must appear exactly once — an absent or ambiguous match is an \
                   error, not a guess.",
     risk: RiskLevel::Writes,
-    schema,
-    run,
+    schema: || schemars::schema_for!(EditInput).to_value(),
+    run: |input, ctx| execute(crate::parse(input)?, ctx),
 };
-
-fn schema() -> serde_json::Value {
-    schemars::schema_for!(EditInput).to_value()
-}
-
-fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    execute(crate::parse(input)?, ctx)
-}
 
 /// Arguments for the `edit` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

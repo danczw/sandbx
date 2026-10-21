@@ -8,17 +8,9 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "ls",
     description: "List a directory's entries. Directories are marked with a trailing slash.",
     risk: RiskLevel::ReadOnly,
-    schema,
-    run,
+    schema: || schemars::schema_for!(LsInput).to_value(),
+    run: |input, ctx| execute(crate::parse(input)?, ctx),
 };
-
-fn schema() -> serde_json::Value {
-    schemars::schema_for!(LsInput).to_value()
-}
-
-fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    execute(crate::parse(input)?, ctx)
-}
 
 /// Arguments for the `ls` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

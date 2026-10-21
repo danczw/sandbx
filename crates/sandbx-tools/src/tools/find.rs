@@ -8,17 +8,9 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     name: "find",
     description: "Find files beneath a directory whose name contains a substring.",
     risk: RiskLevel::ReadOnly,
-    schema,
-    run,
+    schema: || schemars::schema_for!(FindInput).to_value(),
+    run: |input, ctx| execute(crate::parse(input)?, ctx),
 };
-
-fn schema() -> serde_json::Value {
-    schemars::schema_for!(FindInput).to_value()
-}
-
-fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    execute(crate::parse(input)?, ctx)
-}
 
 /// Arguments for the `find` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
