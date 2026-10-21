@@ -165,16 +165,12 @@ fn env_key(lookup: &impl Fn(&str) -> Option<OsString>) -> Option<SecretString> {
 pub(crate) fn config_file(
     lookup: &impl Fn(&str) -> Option<OsString>,
 ) -> Result<PathBuf, AuthError> {
-    if let Some(dir) = lookup("XDG_CONFIG_HOME").map(PathBuf::from)
-        && dir.is_absolute()
-    {
+    let absolute = |name| lookup(name).map(PathBuf::from).filter(|d| d.is_absolute());
+    if let Some(dir) = absolute("XDG_CONFIG_HOME") {
         return Ok(dir.join(FILE));
     }
 
-    let home = lookup("HOME")
-        .map(PathBuf::from)
-        .filter(|home| home.is_absolute())
-        .ok_or(AuthError::NoConfigHome)?;
+    let home = absolute("HOME").ok_or(AuthError::NoConfigHome)?;
 
     Ok(home.join(".config").join(FILE))
 }
