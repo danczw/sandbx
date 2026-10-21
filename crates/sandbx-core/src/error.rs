@@ -287,9 +287,7 @@ impl std::fmt::Display for SandboxError {
             Self::TimedOut { after } => {
                 write!(f, "command exceeded its {after:?} limit and was killed")
             }
-            Self::Unsupported { detail } => {
-                write!(f, "sandboxing is not available here: {detail}")
-            }
+            Self::Unsupported { detail } => write!(f, "sandboxing is not available here: {detail}"),
             Self::UnboundedResolution { detail } => {
                 write!(f, "a name allowlist would bound nothing here: {detail}")
             }
@@ -339,9 +337,7 @@ impl std::fmt::Display for SandboxError {
                      binary, or run the interpreter as the program instead"
                 )
             }
-            Self::Landlock { detail } => {
-                write!(f, "kernel refused the Landlock ruleset: {detail}")
-            }
+            Self::Landlock { detail } => write!(f, "kernel refused the Landlock ruleset: {detail}"),
             // Both paths: whoever redirected the link already knows where it points, the
             // grant is in an argv the command can read anyway, and without the target the
             // operator cannot tell a moved directory from a planted link.
@@ -398,9 +394,7 @@ impl std::fmt::Display for SandboxError {
                      what keeps an exported key out of a tool granted /proc: {detail}"
                 )
             }
-            Self::Seccomp { detail } => {
-                write!(f, "could not install the syscall filter: {detail}")
-            }
+            Self::Seccomp { detail } => write!(f, "could not install the syscall filter: {detail}"),
             // The detail is the helper's own `Display` as it printed it, already a whole
             // sentence; wrapping it would say twice what the label says once.
             Self::HelperRefused { refusal, detail } => match detail.is_empty() {
