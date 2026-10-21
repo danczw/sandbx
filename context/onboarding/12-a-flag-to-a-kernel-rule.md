@@ -174,7 +174,7 @@ does the work:
 
 ```rust
     pub fn vet(path: impl AsRef<Path>) -> Result<Self, SandboxError> {
-        // … canonicalize, then `ObjectId::of_path` on the result …
+        // … canonicalize, then stat the result for its `ObjectId` …
 ```
 
 That signature is the mechanism that makes the ordering above unskippable, and

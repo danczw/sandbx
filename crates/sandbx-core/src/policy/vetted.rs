@@ -28,16 +28,6 @@ pub struct ObjectId {
 }
 
 impl ObjectId {
-    /// The object `path` names now, following every symlink in it.
-    fn of_path(path: &Path) -> std::io::Result<Self> {
-        let metadata = std::fs::metadata(path)?;
-
-        Ok(Self {
-            dev: metadata.dev(),
-            ino: metadata.ino(),
-        })
-    }
-
     /// The object `fd` holds, which renaming the name it was opened under cannot change.
     /// `fstat` and not a second walk of the path: a descriptor names its object directly, so
     /// this is the one measurement the rename window cannot reach. The kernel has answered it
@@ -103,7 +93,11 @@ impl VettedPath {
         };
 
         let path = requested.canonicalize().map_err(unpinnable)?;
-        let object = ObjectId::of_path(&path).map_err(unpinnable)?;
+        let metadata = std::fs::metadata(&path).map_err(unpinnable)?;
+        let object = ObjectId {
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+        };
 
         Ok(Self { path, object })
     }
