@@ -275,11 +275,9 @@ fn pressed(seen: &mut Seen, key: KeyEvent) {
 /// The keypress first: no key can arrive after a hangup, so a `stop` that is set is an
 /// operator who really did ask, whatever became of the terminal afterwards.
 fn stopped(seen: Seen) -> Option<Stopped> {
-    if seen.stop {
-        return Some(Stopped::Pressed);
-    }
-
-    seen.gone.then_some(Stopped::Gone)
+    seen.stop
+        .then_some(Stopped::Pressed)
+        .or(seen.gone.then_some(Stopped::Gone))
 }
 
 /// Whether `key` means "stop this turn": ctrl-c, since raw mode took it from the signal it
