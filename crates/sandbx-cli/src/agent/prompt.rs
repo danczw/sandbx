@@ -169,9 +169,7 @@ pub(super) fn account(renders: bool, line: &str) -> String {
 /// cost the turn the exit 3 it still owes its caller (#218).
 pub(super) fn to_stderr(line: &str) {
     let mut err = std::io::stderr();
-    let text = account(err.is_terminal(), line);
-
-    let _ = err.write_all(text.as_bytes());
+    let _ = err.write_all(account(err.is_terminal(), line).as_bytes());
 }
 
 /// The operator, as the gate reaches them: asked about a call, then told what became of
