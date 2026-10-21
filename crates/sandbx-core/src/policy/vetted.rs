@@ -93,6 +93,7 @@ impl VettedPath {
         };
 
         let path = requested.canonicalize().map_err(unpinnable)?;
+        // The object `path` names now, following every symlink in it.
         let metadata = std::fs::metadata(&path).map_err(unpinnable)?;
         let object = ObjectId {
             dev: metadata.dev(),
