@@ -5,7 +5,7 @@
 //! know. Hand-written rather than derived, because several rules are conditional and
 //! `serde`'s attributes cannot express them.
 
-use serde::ser::{SerializeMap, SerializeSeq};
+use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 
 use crate::prompt::{
@@ -36,9 +36,9 @@ impl Serialize for Body<'_> {
         if let Some(system) = system {
             map.serialize_entry("system", system)?;
         }
-        map.serialize_entry("messages", &Messages(messages))?;
+        map.serialize_entry("messages", &Seq(messages, MessageBody))?;
         if !tools.is_empty() {
-            map.serialize_entry("tools", &Tools(tools))?;
+            map.serialize_entry("tools", &Seq(tools, ToolBody))?;
         }
         // Only alongside `tools`: the API rejects a choice over tools that were not
         // defined, so an empty list with a choice set is a request it refuses.
@@ -54,15 +54,12 @@ impl Serialize for Body<'_> {
     }
 }
 
-struct Messages<'a>(&'a [RequestMessage]);
+/// A slice, each element serialized through the wire shape `W`.
+struct Seq<'a, T, W>(&'a [T], fn(&'a T) -> W);
 
-impl Serialize for Messages<'_> {
+impl<'a, T, W: Serialize> Serialize for Seq<'a, T, W> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for message in self.0 {
-            seq.serialize_element(&MessageBody(message))?;
-        }
-        seq.end()
+        serializer.collect_seq(self.0.iter().map(self.1))
     }
 }
 
@@ -78,20 +75,8 @@ impl Serialize for MessageBody<'_> {
 
         let mut map = serializer.serialize_map(Some(2))?;
         map.serialize_entry("role", role)?;
-        map.serialize_entry("content", &Blocks(content))?;
+        map.serialize_entry("content", &Seq(content, BlockBody))?;
         map.end()
-    }
-}
-
-struct Blocks<'a>(&'a [ContentBlock]);
-
-impl Serialize for Blocks<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for block in self.0 {
-            seq.serialize_element(&BlockBody(block))?;
-        }
-        seq.end()
     }
 }
 
@@ -136,18 +121,6 @@ impl Serialize for BlockBody<'_> {
             }
         }
         map.end()
-    }
-}
-
-struct Tools<'a>(&'a [ToolDefinition]);
-
-impl Serialize for Tools<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for tool in self.0 {
-            seq.serialize_element(&ToolBody(tool))?;
-        }
-        seq.end()
     }
 }
 
