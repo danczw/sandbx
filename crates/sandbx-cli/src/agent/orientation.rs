@@ -55,13 +55,12 @@ fn tools_line(approved: &[&str]) -> String {
 /// there is nothing true to say: either the policy grants nowhere to be and the cwd is
 /// inherited, or [`start_root`] dropped a directory this sentence leaves out.
 fn roots_line(roots: &[String], start: Option<&Path>) -> String {
-    let starts_in = match start {
-        Some(root) => format!(
+    let starts_in = start.map_or_else(String::new, |root| {
+        format!(
             " A `bash` command starts in {}, and a relative path in one resolves from there.",
             root.display()
-        ),
-        None => String::new(),
-    };
+        )
+    });
 
     format!(
         "Your tools take absolute paths and reach only these directories and what they \
