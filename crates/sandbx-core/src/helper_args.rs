@@ -90,8 +90,7 @@ impl HelperArgs {
             NetworkPolicy::AnyPort => out.push(FLAG_NET.to_string()),
             NetworkPolicy::Ports(ports) => {
                 for port in ports {
-                    out.push(FLAG_NET_PORT.to_string());
-                    out.push(port.to_string());
+                    out.extend([FLAG_NET_PORT.to_string(), port.to_string()]);
                 }
             }
         }
@@ -102,20 +101,16 @@ impl HelperArgs {
             out.push(FLAG_DNS_OVER_TCP.to_string());
         }
         for name in policy.allowed_env() {
-            out.push(FLAG_ENV.to_string());
-            out.push(name.clone());
+            out.extend([FLAG_ENV.to_string(), name.clone()]);
         }
         for name in policy.allowed_dns_names() {
-            out.push(FLAG_DNS_NAME.to_string());
-            out.push(name.clone());
+            out.extend([FLAG_DNS_NAME.to_string(), name.clone()]);
         }
         if let Some(digest) = pin {
-            out.push(FLAG_PIN.to_string());
-            out.push(digest.to_string());
+            out.extend([FLAG_PIN.to_string(), digest.to_string()]);
         }
 
-        out.push(SEPARATOR.to_string());
-        out.push(program.to_string());
+        out.extend([SEPARATOR.to_string(), program.to_string()]);
         out.extend(args.iter().cloned());
         out
     }
