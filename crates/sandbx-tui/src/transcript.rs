@@ -152,7 +152,7 @@ fn printable(text: &str) -> String {
 }
 
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-/// Three sets, each bounded in its arm below. A denylist, for [`invisible`]'s reason.
+/// Four sets, each bounded in its arm below. A denylist, for [`invisible`]'s reason.
 /// ASCII `|` is excluded, having to survive a shell pipeline in prose — which is why the
 /// gutter is box-drawing instead, a `|` joining across rows being font-dependent.
 fn forgeable(c: char) -> bool {
@@ -176,10 +176,12 @@ fn forgeable(c: char) -> bool {
         | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
         | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
         | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
-        // Combining marks that draw a vertical on their base, a space included (#280).
-        // Replacing the mark alone keeps the base. Out on `|`'s reasoning too: the
-        // obliques and the centralization strokes, a slash not being the mark.
-        | '\u{030d}' | '\u{0329}' | '\u{0348}' | '\u{20d2}' | '\u{20d3}' | '\u{20e6}'
+        // Combining marks that draw a vertical on their base, a space included (#280);
+        // replacing the mark alone keeps the base. Out: the obliques, a slash not being the
+        // mark, and on `|`'s reasoning the centralization strokes and script signs such as
+        // U+0951 and U+05BD, diacritics in running text.
+        | '\u{030d}' | '\u{030e}' | '\u{0329}' | '\u{0348}' | '\u{20d2}' | '\u{20d3}'
+        | '\u{20e6}'
     )
 }
 
@@ -433,14 +435,19 @@ mod tests {
         }
     }
 
+    /// The marks in both combining blocks are pinned whole: an arm entry missing here, or
+    /// one here missing from the arm, fails.
     #[test]
-    fn a_vertical_combining_mark_cannot_survive_and_its_base_does() {
+    fn vertical_combining_mark_replaced_base_kept() {
         let marks = [
-            '\u{030d}', '\u{0329}', '\u{0348}', '\u{20d2}', '\u{20d3}', '\u{20e6}',
+            '\u{030d}', '\u{030e}', '\u{0329}', '\u{0348}', '\u{20d2}', '\u{20d3}', '\u{20e6}',
         ];
 
+        for c in ('\u{0300}'..='\u{036f}').chain('\u{20d0}'..='\u{20ff}') {
+            assert_eq!(forgeable(c), marks.contains(&c), "U+{:04X}", c as u32);
+        }
+
         for c in marks {
-            assert!(forgeable(c), "U+{:04X} survives", c as u32);
             assert!(!c.is_control() && !invisible(c), "{c:?}");
         }
 
@@ -451,9 +458,9 @@ mod tests {
             Some(&entry(Kind::Answer, " \u{fffd} and a\u{fffd}"))
         );
 
-        // The exclusions: the obliques, the centralization strokes, and a diacritic.
+        // The exclusions outside both blocks: the centralization strokes, and script signs.
         for c in [
-            '\u{0337}', '\u{0338}', '\u{20e5}', '\u{20eb}', '\u{1ab9}', '\u{1aba}', '\u{0301}',
+            '\u{1ab9}', '\u{1aba}', '\u{0951}', '\u{05bd}', '\u{0d3b}', '\u{0670}',
         ] {
             assert!(!forgeable(c), "U+{:04X} no longer renders", c as u32);
         }
