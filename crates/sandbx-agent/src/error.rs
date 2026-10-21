@@ -54,10 +54,7 @@ impl std::fmt::Display for TurnError {
                 write!(f, "the turn's event stream ended without a stop event")
             }
             Self::EndedMidToolUse => {
-                write!(
-                    f,
-                    "the turn ended with a tool result the model never answered"
-                )
+                f.write_str("the turn ended with a tool result the model never answered")
             }
             Self::TimedOut { after } => {
                 write!(f, "a round did not finish streaming within {after:?}")
