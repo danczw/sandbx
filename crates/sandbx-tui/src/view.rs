@@ -112,13 +112,11 @@ fn status(transcript: &Transcript, hint: Hint) -> Paragraph<'static> {
         fields.push(spend.join(" / "));
     }
 
-    fields.push(
-        match hint {
-            Hint::Running => "ctrl-c interrupts",
-            Hint::Done => "any key leaves",
-        }
-        .to_string(),
-    );
+    let hint = match hint {
+        Hint::Running => "ctrl-c interrupts",
+        Hint::Done => "any key leaves",
+    };
+    fields.push(hint.to_string());
 
     Paragraph::new(Line::from(fields.join(" · ")))
         .style(Style::new().add_modifier(Modifier::REVERSED))
