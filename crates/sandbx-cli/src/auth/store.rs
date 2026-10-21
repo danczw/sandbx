@@ -177,10 +177,9 @@ pub(super) fn discard(path: &Path) -> Result<bool, AuthError> {
             path: path.to_path_buf(),
             source,
         })?;
-        return Ok(removed);
+    } else {
+        write(path, &table)?;
     }
-
-    write(path, &table)?;
     Ok(removed)
 }
 
