@@ -283,11 +283,8 @@ fn stopped(seen: Seen) -> Option<Stopped> {
 /// Whether `key` means "stop this turn": ctrl-c, since raw mode took it from the signal it
 /// would otherwise raise; and escape, there being no input box for it to leave instead.
 fn interrupts(key: KeyEvent) -> bool {
-    match key.code {
-        KeyCode::Char('c') => key.modifiers.contains(KeyModifiers::CONTROL),
-        KeyCode::Esc => true,
-        _ => false,
-    }
+    key.code == KeyCode::Esc
+        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
 #[cfg(test)]
