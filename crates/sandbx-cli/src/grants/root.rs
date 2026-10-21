@@ -329,8 +329,7 @@ pub(super) fn current_root(
     // returns it unchanged at the first ancestor.
     let cwd = resolved(&cwd);
 
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let homes = named_homes(home.as_deref());
+    let homes = named_homes(std::env::var_os("HOME").as_deref().map(Path::new));
 
     vetted_root(&cwd, &homes, granted, owned).cloned()
 }
