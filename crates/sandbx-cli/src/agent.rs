@@ -487,10 +487,9 @@ impl AgentRun {
 ///
 /// A zero never opens a stream, so the turn would report reaching a bound it never tested.
 fn round_cap(value: &str) -> Result<usize, String> {
-    match value.parse() {
-        Ok(0) => Err("a turn needs at least one round".to_owned()),
-        Ok(rounds) => Ok(rounds),
-        Err(error) => Err(error.to_string()),
+    match value.parse::<usize>().map_err(|error| error.to_string())? {
+        0 => Err("a turn needs at least one round".to_owned()),
+        rounds => Ok(rounds),
     }
 }
 
