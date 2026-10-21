@@ -133,24 +133,20 @@ pub(super) fn store(path: &Path, key: &SecretString) -> Result<(), AuthError> {
     // silently replaced along with whatever else it held.
     let mut table = read(path, Shared::Refuse)?.unwrap_or_default();
 
-    let provider = table
+    // A `[anthropic]` that is not a table is the operator's own edit, and replacing it
+    // would discard what they put there.
+    let toml::Value::Table(provider) = table
         .entry(TABLE)
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    match provider {
-        toml::Value::Table(provider) => {
-            provider.insert(
-                ENTRY.to_string(),
-                toml::Value::String(key.expose_secret().to_string()),
-            );
-        }
-        // A `[anthropic]` that is not a table is the operator's own edit, and replacing it
-        // would discard what they put there.
-        _ => {
-            return Err(AuthError::NotATable {
-                path: path.to_path_buf(),
-            });
-        }
-    }
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+    else {
+        return Err(AuthError::NotATable {
+            path: path.to_path_buf(),
+        });
+    };
+    provider.insert(
+        ENTRY.to_string(),
+        toml::Value::String(key.expose_secret().to_string()),
+    );
 
     write(path, &table)
 }
