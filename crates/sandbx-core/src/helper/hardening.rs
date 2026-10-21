@@ -325,18 +325,16 @@ fn map_identity_into_userns_with(
         ("/proc/self/uid_map", format!("{uid} {uid} 1")),
     ];
 
-    for (path, contents) in maps {
-        // Returning on the first refusal: the writes are ordered, so a later one the kernel
-        // would reject says nothing the first does not.
-        if let Err(error) = write(path, contents) {
-            return Some((
+    // Stopping at the first refusal: the writes are ordered, so a later one the kernel would
+    // reject says nothing the first does not.
+    maps.into_iter()
+        .find_map(|(path, contents)| write(path, contents).err())
+        .map(|error| {
+            (
                 Degradation::UsernsIdentityMap,
                 format!("running as nobody: {error}"),
-            ));
-        }
-    }
-
-    None
+            )
+        })
 }
 
 #[cfg(test)]
