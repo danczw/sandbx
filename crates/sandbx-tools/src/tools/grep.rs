@@ -54,14 +54,11 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         }
 
         // The size comes off the handle, so the file measured is the file read (#275).
-        let content = match crate::read_capped(&file, ctx, MAX_FILE_BYTES) {
-            Ok(Some(content)) => content,
-            // Over the cap, not text, or refused: one rule, the caller's move being the
-            // same. An unmarked skip reads as a file with no match in it (#274).
-            Ok(None) | Err(_) => {
-                stopped_early = true;
-                continue;
-            }
+        // Over the cap, not text, or refused: one rule, the caller's move being the
+        // same. An unmarked skip reads as a file with no match in it (#274).
+        let Ok(Some(content)) = crate::read_capped(&file, ctx, MAX_FILE_BYTES) else {
+            stopped_early = true;
+            continue;
         };
         scanned += content.len();
 
