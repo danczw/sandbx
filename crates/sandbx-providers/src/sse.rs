@@ -83,12 +83,8 @@ where
             let line = match String::from_utf8(line) {
                 Ok(line) => line,
                 Err(source) => {
-                    return Some((
-                        Err(ProviderError::MalformedEvent {
-                            detail: format!("non-UTF-8 SSE line: {source}"),
-                        }),
-                        ended(state),
-                    ));
+                    let detail = format!("non-UTF-8 SSE line: {source}");
+                    return Some((Err(ProviderError::MalformedEvent { detail }), ended(state)));
                 }
             };
             if line.is_empty() {
