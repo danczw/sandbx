@@ -312,19 +312,18 @@ impl Session {
     /// Append records as lines, in one write, so a torn write lands at the end of the
     /// file, where [`fold`] can drop the partial line rather than refuse the transcript.
     fn write(&mut self, records: &[Record]) -> Result<(), SessionError> {
-        let mut lines = String::new();
+        let mut lines = Vec::new();
         for record in records {
             // Mapped to `Io`, not its own variant: nothing a record holds can fail to serialize.
-            let line = serde_json::to_string(record).map_err(|error| SessionError::Io {
+            serde_json::to_writer(&mut lines, record).map_err(|error| SessionError::Io {
                 path: self.path.clone(),
                 source: std::io::Error::other(error),
             })?;
-            lines.push_str(&line);
-            lines.push('\n');
+            lines.push(b'\n');
         }
 
         self.file
-            .write_all(lines.as_bytes())
+            .write_all(&lines)
             .map_err(|source| SessionError::Io {
                 path: self.path.clone(),
                 source,
