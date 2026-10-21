@@ -214,7 +214,7 @@ principle worth remembering:
   caps and strips a model-chosen argument to a fixed length for the consent
   prompt, so the machinery for a bounded `command` field is in the repo and
   reusable. Under `tui` the gap is visible as a defect rather than an argument,
-  which is what #234 is about.
+  which is what #249 is about.
 - **Worth questioning:** a gate refusal reaches the audit target at all.
   [decision-approval-gate.md](../decision-approval-gate.md) states it plainly —
   "No audit record either. `AuditEvent::Denied` records what the sandbox refused

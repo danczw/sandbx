@@ -325,7 +325,7 @@ screen owns the terminal, and the guard releases on `Drop`, so a panic unwinding
 past the screen still leaves the record of what the turn was allowed to touch.
 What that costs is on the record: the release waits on the keypress that holds
 the finished screen, so a signal arriving there runs no `Drop` and loses all of
-it (#235).
+it (#224).
 
 ### What a cell may not hold, and why that is security
 
@@ -488,7 +488,7 @@ One last limit, because it is the kind that reads as an omission and is not. The
 pane has no scrollback and auto-follows, so for a `bash` call the pane is the
 only place the command's text appears at all — the audit trail records
 `program="/bin/sh"`, not the `-c` string. An interrupted run, or one without
-`--session`, can therefore leave no record of what ran (#234), which is the same
+`--session`, can therefore leave no record of what ran (#249), which is the same
 gap chapter 14 reaches from the trail's side.
 
 ## You should now be able to explain

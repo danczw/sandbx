@@ -286,7 +286,7 @@ composes.
   grammar. Weaker than forging a verdict — misattributed authorship rather than
   consent, and the wrap has to land immediately before the mark, which a model
   that cannot see the pane's width can only spray for. Not nothing either, the
-  pane being the only record a `bash` call's text gets (#234), and the guide
+  pane being the only record a `bash` call's text gets (#249), and the guide
   already names the fix for the other mark: a gutter in an area of its own.
 
 ### Where the tests are, and why they can be here
@@ -349,7 +349,7 @@ second word-wrapper that would have to agree with ratatui's to the row.
   in the `Vec` for the `Transcript`'s life, but with auto-follow only no key
   brings a scrolled-off row back, and the alternate screen takes it when it is
   given back — which for a `bash` call is the only place the command's text
-  appeared (#234).
+  appeared (#249).
 
 The status bar is `rounds N`, the token figures if any arrived, and one `Hint`,
 joined with ` · ` and drawn `REVERSED`.
@@ -436,7 +436,7 @@ The limit is the first doc comment's last sentence, and it generalises past
 `catch_unwind` above does not reach still double-panics and aborts, same as
 before. Each leaves the terminal as the turn left it, `reset` in the shell
 the only fix — the same shape as the held audit trail losing everything to
-a signal that runs no `Drop` (#235).
+a signal that runs no `Drop` (#224).
 
 Two draw methods and a latch. `draw` repaints from the transcript; `redraw`
 discards the back buffer first by resizing to the size already in force,
