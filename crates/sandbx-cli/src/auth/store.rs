@@ -55,25 +55,18 @@ pub(super) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
 /// `0600` file into. Both modes come from a descriptor rather than a path — a mode checked
 /// before the open vets one file and reads another.
 fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
+    let io = |source| AuthError::Io {
+        path: path.to_path_buf(),
+        source,
+    };
+
     let mut file = match std::fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => {
-            return Err(AuthError::Io {
-                path: path.to_path_buf(),
-                source,
-            });
-        }
+        Err(source) => return Err(io(source)),
     };
 
-    let mode = file
-        .metadata()
-        .map_err(|source| AuthError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?
-        .permissions()
-        .mode();
+    let mode = file.metadata().map_err(io)?.permissions().mode();
 
     if shared == Shared::Refuse {
         if mode & SHARED_BITS != 0 {
@@ -85,10 +78,7 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
 
         // Canonicalised: `path.parent()` is lexical, so a symlinked `credentials.toml`
         // would have the link's directory vetted and the key's never looked at.
-        let resolved = std::fs::canonicalize(path).map_err(|source| AuthError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
+        let resolved = std::fs::canonicalize(path).map_err(io)?;
 
         if let Some(dir) = resolved.parent() {
             let dir_mode = dir_mode_of(dir)?;
@@ -102,11 +92,7 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
     }
 
     let mut text = String::new();
-    file.read_to_string(&mut text)
-        .map_err(|source| AuthError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
+    file.read_to_string(&mut text).map_err(io)?;
 
     let table = text.parse().map_err(|error| AuthError::Malformed {
         path: path.to_path_buf(),
