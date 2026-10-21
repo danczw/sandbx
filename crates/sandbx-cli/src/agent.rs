@@ -399,10 +399,7 @@ impl AgentRun {
         .await;
 
         // After the loop, where `render`'s borrow has ended: no event carries the turn's own stop.
-        let stop = match &outcome {
-            Ok(outcome) => Some(outcome.stop),
-            Err(_) => None,
-        };
+        let stop = outcome.as_ref().ok().map(|outcome| outcome.stop);
 
         // Exhaustive on `TurnStop`, so a fourth way to end cannot reach `finish` as a clean one.
         let (outcome, ending) = match (stop, outcome) {
