@@ -313,12 +313,11 @@ where
             observed = Some(reported);
             measured = true;
         }
-        let blocks = round.blocks;
         last_stop = Some(round.reason);
 
         // Reasoning doesn't count: stripped on the way out, so a round producing only that
         // leaves an empty content array the API rejects.
-        if !blocks.iter().any(|block| !block.is_thinking()) {
+        if !round.blocks.iter().any(|block| !block.is_thinking()) {
             // Unless a `tool_result` is waiting to be answered; see `EndedMidToolUse`.
             if matches!(produced.last(), Some(last) if matches!(last.role, Role::User)) {
                 return Err(TurnError::EndedMidToolUse);
@@ -329,11 +328,11 @@ where
 
         // Before pushing: answering borrows `blocks`, pushing moves them.
         let Answers { results, aborted } =
-            answer_calls(&blocks, ctx, turn.tools, &mut gate).await?;
+            answer_calls(&round.blocks, ctx, turn.tools, &mut gate).await?;
 
         produced.push(RequestMessage {
             role: Role::Assistant,
-            content: blocks,
+            content: round.blocks,
         });
 
         if results.is_empty() {
