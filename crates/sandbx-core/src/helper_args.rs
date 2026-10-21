@@ -48,6 +48,13 @@ fn axis_for(flag: &str) -> Option<Axis> {
     Axis::ALL.into_iter().find(|axis| path_flag(*axis) == flag)
 }
 
+fn next_value<'a>(
+    rest: &mut std::slice::Iter<'a, String>,
+    detail: &'static str,
+) -> Result<&'a String, SandboxError> {
+    rest.next().ok_or(SandboxError::BadHelperArgs { detail })
+}
+
 /// A policy plus a command, as carried between sandbx and the helper process. Argv is not
 /// private: `/proc` in the sandbox is the host's, so the command reads the supervisor's
 /// `/proc/<pid>/cmdline` and everything here is visible to the process being confined —
@@ -123,24 +130,16 @@ impl HelperArgs {
         let mut rest = argv.iter();
 
         let (program, args) = loop {
-            let Some(arg) = rest.next() else {
-                return Err(SandboxError::BadHelperArgs {
-                    detail: "missing `--` separator before the command",
-                });
-            };
+            let arg = next_value(&mut rest, "missing `--` separator before the command")?;
 
             match arg.as_str() {
                 SEPARATOR => {
-                    let program = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "no command after `--`",
-                    })?;
+                    let program = next_value(&mut rest, "no command after `--`")?;
                     break (program.clone(), rest.cloned().collect());
                 }
                 FLAG_NET => policy = policy.allow_network(),
                 FLAG_NET_PORT => {
-                    let port = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "network port flag with no port after it",
-                    })?;
+                    let port = next_value(&mut rest, "network port flag with no port after it")?;
                     // `parse::<u16>` is the range check, so out-of-range and not-a-number are
                     // one refusal with no `as` cast between them to truncate one into the other.
                     let port: u16 = port.parse().map_err(|_| SandboxError::BadHelperArgs {
@@ -158,9 +157,7 @@ impl HelperArgs {
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
                 FLAG_DNS_OVER_TCP => policy = policy.hint_dns_over_tcp(),
                 FLAG_ENV => {
-                    let name = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "env flag with no variable name after it",
-                    })?;
+                    let name = next_value(&mut rest, "env flag with no variable name after it")?;
                     // Refused where `allow_env` would skip it: a name `encode` could not
                     // have emitted means the argv speaks a different protocol.
                     if name.contains('=') {
@@ -171,9 +168,7 @@ impl HelperArgs {
                     policy = policy.allow_env(name);
                 }
                 FLAG_DNS_NAME => {
-                    let name = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "dns name flag with no name after it",
-                    })?;
+                    let name = next_value(&mut rest, "dns name flag with no name after it")?;
                     // Refused where `allow_dns` would skip it: such a name would forge a
                     // field or a comment in the hosts file the helper renders from these.
                     if !crate::policy::is_resolvable_name(name) {
@@ -185,9 +180,7 @@ impl HelperArgs {
                     policy = policy.allow_dns(name);
                 }
                 FLAG_PIN => {
-                    let hex = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "pin flag with no digest after it",
-                    })?;
+                    let hex = next_value(&mut rest, "pin flag with no digest after it")?;
                     // The CLI parsed this once already, so anything unparseable here means the
                     // argv speaks a different protocol — as does a second one, which last-wins
                     // would resolve to whichever came later.
@@ -206,15 +199,11 @@ impl HelperArgs {
                     let axis = axis_for(flag).ok_or(SandboxError::BadHelperArgs {
                         detail: "unrecognised helper flag",
                     })?;
-                    let path = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "path flag with no path after it",
-                    })?;
+                    let path = next_value(&mut rest, "path flag with no path after it")?;
                     // Refused and not inferred: a grant the helper cannot confirm against the
                     // object the harness vetted is one this decoder has no answer for
                     // (`context/decision-grant-identity.md`).
-                    let pin = rest.next().ok_or(SandboxError::BadHelperArgs {
-                        detail: "granted path with no object pin after it",
-                    })?;
+                    let pin = next_value(&mut rest, "granted path with no object pin after it")?;
                     let object = ObjectId::parse(pin).ok_or(SandboxError::BadHelperArgs {
                         detail: "object pin that is not a device and an inode parted by `:`",
                     })?;
