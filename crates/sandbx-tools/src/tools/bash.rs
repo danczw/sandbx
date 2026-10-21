@@ -101,14 +101,18 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
                 // today; kept because the builder is public and the next spawning tool may.
                 HelperRefusal::PinMismatch
                 | HelperRefusal::PinUnreadable
-                | HelperRefusal::PinnedScript
-                // The policy refusing a grant, not the environment failing to apply one: one
-                // substitution must not read as "try again" here and `RootReplaced` in-process.
-                | HelperRefusal::GrantRedirected
-                | HelperRefusal::GrantReplaced => ToolError::Denied {
+                | HelperRefusal::PinnedScript => ToolError::Denied {
                     subject: ran(),
                     reason: detail,
                 },
+                // The policy refusing a grant, not the environment failing to apply one: one
+                // substitution must not read as "try again" here and `RootReplaced` in-process.
+                HelperRefusal::GrantRedirected | HelperRefusal::GrantReplaced => {
+                    ToolError::Denied {
+                        subject: ran(),
+                        reason: detail,
+                    }
+                }
                 HelperRefusal::BadHelperArgs
                 | HelperRefusal::Landlock
                 | HelperRefusal::Seccomp
