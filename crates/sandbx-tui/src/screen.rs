@@ -129,8 +129,7 @@ fn take_terminal() -> io::Result<Terminal<Measured<Stdout>>> {
 /// for before it writes: on a hung-up terminal nothing is drawn, and nothing forks (#269).
 pub(crate) struct Measured<W: Write> {
     backend: CrosstermBackend<W>,
-    /// A duplicate of the descriptor `backend` writes to: ratatui hands the writer back only
-    /// behind an unstable feature, and a hangup reaches every descriptor for the file alike.
+    /// A dup of the drawn descriptor: ratatui hides the writer, and a hangup reaches every dup.
     out: OwnedFd,
 }
 
