@@ -231,12 +231,11 @@ pub(crate) fn read_capped(
         .open_read(path)
         .map_err(|error| guard_error(path, error))?;
 
-    if file
+    let len = file
         .metadata()
         .map_err(|error| failed("measure", path, error))?
-        .len()
-        > max
-    {
+        .len();
+    if len > max {
         return Ok(None);
     }
 
