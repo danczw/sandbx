@@ -622,17 +622,14 @@ is a turn nobody watched. `Keys::stop` now resolves with a [`Stopped`],
 saying which of the two it was; [24](24-crate-cli.md) and
 [guide-tui.md](../guide-tui.md) have what each of the two costs.
 
-Which keys end a turn is four lines.
+Which keys end a turn is one expression.
 
 ```rust
 /// Whether `key` means "stop this turn": ctrl-c, since raw mode took it from the signal it
 /// would otherwise raise; and escape, there being no input box for it to leave instead.
 fn interrupts(key: KeyEvent) -> bool {
-    match key.code {
-        KeyCode::Char('c') => key.modifiers.contains(KeyModifiers::CONTROL),
-        KeyCode::Esc => true,
-        _ => false,
-    }
+    key.code == KeyCode::Esc
+        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 ```
 

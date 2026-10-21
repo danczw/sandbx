@@ -95,13 +95,7 @@ same loop body, and a refusal here never reaches it.
         if !offered.contains(&tool) {
             // `from_name` resolves against every built-in, so resolving alone would hand the
             // gate a call the caller never offered — which an allow-all gate then runs.
-            gate.settled(Settled {
-                name,
-                id,
-                tool: Some(tool),
-                input,
-                outcome: Outcome::NotOffered,
-            });
+            gate.settled(settle(Some(tool), Outcome::NotOffered));
             results.push(refused(id, format!("tool not offered this turn: {name}")));
             continue;
         }
@@ -368,8 +362,7 @@ first-hand:
     fn discard_typeahead(&mut self) -> nix::Result<()> {
         nix::sys::termios::tcflush(self.input.get_ref(), nix::sys::termios::FlushArg::TCIFLUSH)?;
 
-        let buffered = self.input.buffer().len();
-        self.input.consume(buffered);
+        self.input.consume(self.input.buffer().len());
 
         Ok(())
     }
@@ -688,12 +681,16 @@ whole point:
 ```rust
         // Ahead of `INCOMPLETE`: a turn can hit a bound and lose its operator, and losing
         // the operator is the one a caller cannot find out any other way.
-        if ending == Some(Unfinished::Aborted) {
-            return Ok(NO_CONSENT);
-        }
+        Ok(if ending == Some(Unfinished::Aborted) {
+            NO_CONSENT
+        } else if ending.is_some() || truncated {
+            INCOMPLETE
+        } else {
+            0
+        })
 ```
 
-That sits **ahead** of the round-limit check that returns `INCOMPLETE`. A turn
+The `Aborted` test sits **ahead** of the round-limit one that yields `INCOMPLETE`. A turn
 can hit a bound *and* lose its operator; the two co-occur, and only one of them
 is recoverable by raising a flag. From 01's table: `2` is a bound the operator
 chose, `3` is an operator who could no longer be asked — under `--approve call`
