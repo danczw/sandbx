@@ -119,10 +119,7 @@ impl SandboxedCommand {
             });
         }
 
-        let helper = match &self.helper {
-            Some(path) => path.clone(),
-            None => self_exe()?,
-        };
+        let helper = self.helper.clone().map_or_else(self_exe, Ok)?;
         // Ahead of the policy, where `exec_sandboxed` splits it off before decoding, and
         // unconditional because both spawn paths below set the pipe up.
         let mut argv = vec![
