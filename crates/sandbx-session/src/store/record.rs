@@ -49,6 +49,7 @@ pub(super) fn fold(
         });
     }
 
+    let path = path.to_owned();
     let mut messages = Vec::new();
     let mut observed = None;
     let mut withheld = 0;
@@ -66,7 +67,7 @@ pub(super) fn fold(
             Err(_) if torn && index == last => break,
             Err(source) => {
                 return Err(SessionError::Malformed {
-                    path: path.to_owned(),
+                    path,
                     line: index + 1,
                     source,
                 });
@@ -79,7 +80,7 @@ pub(super) fn fold(
             && header.version != VERSION
         {
             return Err(SessionError::UnsupportedVersion {
-                path: path.to_owned(),
+                path,
                 version: header.version,
             });
         }
@@ -87,9 +88,7 @@ pub(super) fn fold(
         match (index, record) {
             (0, Record::Header(_)) => headed = true,
             (0, _) => {
-                return Err(SessionError::MissingHeader {
-                    path: path.to_owned(),
-                });
+                return Err(SessionError::MissingHeader { path });
             }
             (_, Record::Message(message)) => messages.push(message),
             (_, Record::Turn(accounting)) => {
@@ -104,9 +103,7 @@ pub(super) fn fold(
 
     // Reached when the only line was a torn one, so the header was never read.
     if !headed {
-        return Err(SessionError::MissingHeader {
-            path: path.to_owned(),
-        });
+        return Err(SessionError::MissingHeader { path });
     }
 
     Ok((messages, observed, withheld))
