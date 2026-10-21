@@ -137,14 +137,18 @@ impl Transcript {
 /// that holds one. [`GUTTER_MARK`] gets the same replacement: the view draws it to mark a
 /// row as sandbx's, so text carrying it could forge that claim.
 fn printable(text: &str) -> String {
-    text.replace('\t', "    ")
-        .chars()
-        .map(|c| match c {
-            '\n' => c,
-            c if c.is_control() || invisible(c) || forgeable(c) => '\u{fffd}',
-            c => c,
-        })
-        .collect()
+    let mut out = String::with_capacity(text.len());
+
+    for c in text.chars() {
+        match c {
+            '\n' => out.push('\n'),
+            '\t' => out.push_str("    "),
+            c if c.is_control() || invisible(c) || forgeable(c) => out.push('\u{fffd}'),
+            c => out.push(c),
+        }
+    }
+
+    out
 }
 
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
