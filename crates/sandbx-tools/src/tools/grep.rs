@@ -9,17 +9,9 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     description: "Search file contents beneath a directory for a literal string. \
                   Not a regular expression.",
     risk: RiskLevel::ReadOnly,
-    schema,
-    run,
+    schema: || schemars::schema_for!(GrepInput).to_value(),
+    run: |input, ctx| execute(crate::parse(input)?, ctx),
 };
-
-fn schema() -> serde_json::Value {
-    schemars::schema_for!(GrepInput).to_value()
-}
-
-fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    execute(crate::parse(input)?, ctx)
-}
 
 /// Files above this size are opened and measured, but not read.
 ///

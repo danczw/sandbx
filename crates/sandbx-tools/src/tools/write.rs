@@ -9,17 +9,9 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     description: "Write a file, creating it or replacing its contents entirely. \
                   Takes an absolute path.",
     risk: RiskLevel::Writes,
-    schema,
-    run,
+    schema: || schemars::schema_for!(WriteInput).to_value(),
+    run: |input, ctx| execute(crate::parse(input)?, ctx),
 };
-
-fn schema() -> serde_json::Value {
-    schemars::schema_for!(WriteInput).to_value()
-}
-
-fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    execute(crate::parse(input)?, ctx)
-}
 
 /// Arguments for the `write` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
