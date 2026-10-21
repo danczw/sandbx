@@ -68,14 +68,13 @@ pub(crate) fn plan_cut(
     // but the newest exchange permanently.
     let floor = if floor >= ceiling { 0 } else { floor };
 
-    let target = match keep_recent {
+    let target = keep_recent.map_or(floor, |keep| {
         // Saturating, so a `keep_recent` past the conversation lands on 0, not wrapped.
-        Some(keep) => (history.len() + produced)
+        (history.len() + produced)
             .saturating_sub(keep)
             .min(ceiling)
-            .max(floor),
-        None => floor,
-    };
+            .max(floor)
+    });
 
     if target == 0 {
         return None;
