@@ -104,8 +104,7 @@ impl Screen {
 ///
 /// Fails, and writes nothing, on a window [`Measured`] cannot read.
 fn cleared<B: Backend>(terminal: &mut Terminal<B>) -> Result<(), B::Error> {
-    let area = Rect::from(terminal.size()?);
-    terminal.resize(area)
+    terminal.resize(Rect::from(terminal.size()?))
 }
 
 /// `ratatui::try_init`'s three fallible statements, without the hook it installs first, and
