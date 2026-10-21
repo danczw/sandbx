@@ -74,15 +74,13 @@ impl ToolLimits {
     /// matches can narrow its search.
     pub(crate) fn take_entries(&self, mut lines: Vec<String>) -> Vec<String> {
         let total = lines.len();
-        if total <= self.max_entries {
-            return lines;
+        if total > self.max_entries {
+            lines.truncate(self.max_entries);
+            lines.push(format!(
+                "... truncated: showing {} of {total} results",
+                self.max_entries
+            ));
         }
-
-        lines.truncate(self.max_entries);
-        lines.push(format!(
-            "... truncated: showing {} of {total} results",
-            self.max_entries
-        ));
         lines
     }
 
