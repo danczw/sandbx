@@ -24,15 +24,12 @@ impl Hash {
     /// The hex and a newline, and nothing else, so `--pin-sha256 "$(sandbx hash …)"`
     /// composes without a `cut`.
     pub fn execute(&self) -> Result<i32, HashError> {
-        let mut file = std::fs::File::open(&self.path).map_err(|source| HashError {
-            path: self.path.clone(),
-            source,
-        })?;
-
-        let digest = Sha256Digest::of_file(&mut file).map_err(|source| HashError {
-            path: self.path.clone(),
-            source,
-        })?;
+        let digest = std::fs::File::open(&self.path)
+            .and_then(|mut file| Sha256Digest::of_file(&mut file))
+            .map_err(|source| HashError {
+                path: self.path.clone(),
+                source,
+            })?;
 
         // Not `println!`, which panics on a closed stdout with `SIGPIPE` ignored: dropped
         // the way `SandboxRun::execute` drops its own write failures.
