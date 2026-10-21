@@ -28,11 +28,9 @@ pub struct ToolOutput {
 impl ToolOutput {
     /// Wrap text for the model, reporting an empty result instead of sending it.
     pub fn new(content: impl Into<String>) -> Self {
-        let content = content.into();
+        let mut content = content.into();
         if content.trim().is_empty() {
-            return Self {
-                content: EMPTY_OUTPUT.to_string(),
-            };
+            content = EMPTY_OUTPUT.to_string();
         }
 
         Self { content }
