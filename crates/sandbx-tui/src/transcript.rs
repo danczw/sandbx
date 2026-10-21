@@ -176,6 +176,10 @@ fn forgeable(c: char) -> bool {
         | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
         | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
         | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
+        // Combining marks that draw a vertical on their base, a space included (#280).
+        // Replacing the mark alone keeps the base. Out on `|`'s reasoning too: the
+        // obliques and the centralization strokes, a slash not being the mark.
+        | '\u{030d}' | '\u{0329}' | '\u{0348}' | '\u{20d2}' | '\u{20d3}' | '\u{20e6}'
     )
 }
 
@@ -425,6 +429,32 @@ mod tests {
         // Non-vacuous, and the exclusions `forgeable`'s third arm names: a pipeline in
         // prose, the two letters, and the first Block Element wider than an eighth.
         for c in ['|', '\u{1175}', '\u{4e28}', '\u{258e}'] {
+            assert!(!forgeable(c), "U+{:04X} no longer renders", c as u32);
+        }
+    }
+
+    #[test]
+    fn a_vertical_combining_mark_cannot_survive_and_its_base_does() {
+        let marks = [
+            '\u{030d}', '\u{0329}', '\u{0348}', '\u{20d2}', '\u{20d3}', '\u{20e6}',
+        ];
+
+        for c in marks {
+            assert!(forgeable(c), "U+{:04X} survives", c as u32);
+            assert!(!c.is_control() && !invisible(c), "{c:?}");
+        }
+
+        let entries = folded(&[text(" \u{20d2} and a\u{030d}")], false);
+
+        assert_eq!(
+            entries.last(),
+            Some(&entry(Kind::Answer, " \u{fffd} and a\u{fffd}"))
+        );
+
+        // The exclusions: the obliques, the centralization strokes, and a diacritic.
+        for c in [
+            '\u{0337}', '\u{0338}', '\u{20e5}', '\u{20eb}', '\u{1ab9}', '\u{1aba}', '\u{0301}',
+        ] {
             assert!(!forgeable(c), "U+{:04X} no longer renders", c as u32);
         }
     }
