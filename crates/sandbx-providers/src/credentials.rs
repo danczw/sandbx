@@ -15,12 +15,11 @@ pub fn resolve_api_key(
     env_var: &'static str,
     lookup: impl Fn(&str) -> Result<String, std::env::VarError>,
 ) -> Result<SecretString, ProviderError> {
-    let value = lookup(env_var).map_err(|_| ProviderError::MissingCredential { env_var })?;
-    let key = value.trim();
-    if key.is_empty() {
-        return Err(ProviderError::MissingCredential { env_var });
+    let value = lookup(env_var).unwrap_or_default();
+    match value.trim() {
+        "" => Err(ProviderError::MissingCredential { env_var }),
+        key => Ok(SecretString::from(key.to_string())),
     }
-    Ok(SecretString::from(key.to_string()))
 }
 
 /// Resolve the Anthropic API key from `ANTHROPIC_API_KEY`.
