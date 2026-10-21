@@ -136,10 +136,7 @@ impl SessionStore {
         let mut file = open_transcript(&path, id)?;
         let (mode, uid) = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
-            return Err(SessionError::Writable {
-                path: path.clone(),
-                mode,
-            });
+            return Err(SessionError::Writable { path, mode });
         }
         if uid != owner {
             return Err(SessionError::ForeignOwner {
