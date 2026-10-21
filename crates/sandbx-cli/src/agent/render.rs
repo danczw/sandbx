@@ -248,15 +248,13 @@ impl<W: Write, E: Write> Render<W, E> {
 
         // Ahead of `INCOMPLETE`: a turn can hit a bound and lose its operator, and losing
         // the operator is the one a caller cannot find out any other way.
-        if ending == Some(Unfinished::Aborted) {
-            return Ok(NO_CONSENT);
-        }
-
-        if ending.is_some() || truncated {
-            return Ok(INCOMPLETE);
-        }
-
-        Ok(0)
+        Ok(if ending == Some(Unfinished::Aborted) {
+            NO_CONSENT
+        } else if ending.is_some() || truncated {
+            INCOMPLETE
+        } else {
+            0
+        })
     }
 
     /// Flushed per call: a line-buffered stdout holds the answer back until the model
