@@ -33,11 +33,9 @@ pub(super) const DIR_SHARED_BITS: u32 = 0o077;
 
 /// `O_NOFOLLOW`, so the leaf of a path this store vets is never a symbolic link. The
 /// last component only: a symlinked `~/.local/state` is the operator's business.
-fn no_follow() -> i32 {
-    nix::fcntl::OFlag::O_NOFOLLOW.bits()
-}
+const NO_FOLLOW: i32 = nix::fcntl::OFlag::O_NOFOLLOW.bits();
 
-/// Translate an open failure, naming a link that [`no_follow`] refused.
+/// Translate an open failure, naming a link that [`NO_FOLLOW`] refused.
 ///
 /// By errno, not `ErrorKind::FilesystemLoop`, which is unstable. `ELOOP` from these
 /// opens can only be the leaf, every component above it having been followed.
@@ -63,7 +61,7 @@ pub(super) fn opening(path: &Path, source: std::io::Error) -> SessionError {
 pub(super) fn open_root(root: &Path) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
-        .custom_flags(no_follow())
+        .custom_flags(NO_FOLLOW)
         .open(root)
         .map_err(|source| opening(root, source))
 }
@@ -73,7 +71,7 @@ pub(super) fn open_root(root: &Path) -> Result<File, SessionError> {
 pub(super) fn open_transcript(path: &Path, id: &SessionId) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
-        .custom_flags(no_follow())
+        .custom_flags(NO_FOLLOW)
         .open(path)
         .map_err(|source| {
             if source.kind() == std::io::ErrorKind::NotFound {
@@ -90,7 +88,7 @@ pub(super) fn open_transcript(path: &Path, id: &SessionId) -> Result<File, Sessi
 pub(super) fn reopen_for_append(path: &Path) -> Result<File, SessionError> {
     OpenOptions::new()
         .append(true)
-        .custom_flags(no_follow())
+        .custom_flags(NO_FOLLOW)
         .open(path)
         .map_err(|source| opening(path, source))
 }
