@@ -38,13 +38,11 @@ pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
 
     let occurrences = content.matches(&input.old).count();
     if occurrences != 1 {
-        return Err(ToolError::Failed {
-            subject: format!("edit {}", input.path.display()),
-            detail: match occurrences {
-                0 => "the text to replace does not appear in the file".to_string(),
-                n => format!("the text to replace appears {n} times; it must be unique"),
-            },
-        });
+        let detail = match occurrences {
+            0 => "the text to replace does not appear in the file".to_string(),
+            n => format!("the text to replace appears {n} times; it must be unique"),
+        };
+        return Err(crate::failed("edit", &input.path, detail));
     }
 
     // The write handle truncates on open, so open only once the match is unique:
