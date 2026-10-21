@@ -201,10 +201,7 @@ never acts on them. `resume` acts:
 ```rust
         let (mode, uid) = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
-            return Err(SessionError::Writable {
-                path: path.clone(),
-                mode,
-            });
+            return Err(SessionError::Writable { path, mode });
         }
 ```
 
