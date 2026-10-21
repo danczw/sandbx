@@ -176,10 +176,9 @@ fn forgeable(c: char) -> bool {
         | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
         | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
         | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
-        // Combining marks that draw a vertical on their base, a space included (#280);
-        // replacing the mark alone keeps the base. Out: the obliques, a slash not being the
-        // mark, and on `|`'s reasoning the centralization strokes and script signs such as
-        // U+0951 and U+05BD, diacritics in running text.
+        // Combining marks drawing a vertical on their base, a space included (#280); the base
+        // survives. Out: the obliques, a slash not being the mark, and on `|`'s reasoning the
+        // centralization strokes and script signs such as U+0951, diacritics in running text.
         | '\u{030d}' | '\u{030e}' | '\u{0329}' | '\u{0348}' | '\u{20d2}' | '\u{20d3}'
         | '\u{20e6}'
     )
@@ -435,8 +434,7 @@ mod tests {
         }
     }
 
-    /// The marks in both combining blocks are pinned whole: an arm entry missing here, or
-    /// one here missing from the arm, fails.
+    /// Both combining blocks are swept whole, so the arm and `marks` cannot drift apart.
     #[test]
     fn vertical_combining_mark_replaced_base_kept() {
         let marks = [
