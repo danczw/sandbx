@@ -20,16 +20,12 @@ const DIRECTORY: &str = "sandbx/sessions";
 pub fn sessions_directory(
     lookup: &impl Fn(&str) -> Option<OsString>,
 ) -> Result<PathBuf, SessionError> {
-    if let Some(dir) = lookup("XDG_STATE_HOME").map(PathBuf::from)
-        && dir.is_absolute()
-    {
+    let absolute = |name| lookup(name).map(PathBuf::from).filter(|d| d.is_absolute());
+    if let Some(dir) = absolute("XDG_STATE_HOME") {
         return Ok(dir.join(DIRECTORY));
     }
 
-    let home = lookup("HOME")
-        .map(PathBuf::from)
-        .filter(|home| home.is_absolute())
-        .ok_or(SessionError::NoStateHome)?;
+    let home = absolute("HOME").ok_or(SessionError::NoStateHome)?;
 
     Ok(home.join(".local").join("state").join(DIRECTORY))
 }

@@ -91,17 +91,16 @@ first. Order a listing by the header's `created_at_millis`.
 ## `paths.rs` — two roots tried, and one never considered
 
 ```rust
-    if let Some(dir) = lookup("XDG_STATE_HOME").map(PathBuf::from)
-        && dir.is_absolute()
-    {
+    let absolute = |name| lookup(name).map(PathBuf::from).filter(|d| d.is_absolute());
+    if let Some(dir) = absolute("XDG_STATE_HOME") {
         return Ok(dir.join(DIRECTORY));
     }
 ```
 
 [decision-on-disk-state.md](../decision-on-disk-state.md) is the authority for
-the roots. What the code adds is the shape of the two tests: `is_absolute` in a
-let-chain above, and for the fallback a `lookup("HOME")` behind
-`.filter(|home| home.is_absolute())` before `.local/state` is joined on. A blank
+the roots. What the code adds is the shape of the test: one `absolute` closure, an
+`is_absolute` filter applied to `XDG_STATE_HOME` and then to `HOME` before
+`.local/state` is joined on. A blank
 variable fails both, because `PathBuf::from("")` is not absolute, and a relative
 `$HOME` is `NoStateHome` rather than a guess.
 
