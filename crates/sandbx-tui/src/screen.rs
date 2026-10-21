@@ -133,21 +133,18 @@ pub(crate) struct Measured<W: Write> {
 }
 
 impl<W: Write> Measured<W> {
-    pub(crate) fn new(out: W) -> io::Result<Self>
+    pub(crate) fn new(writer: W) -> io::Result<Self>
     where
         W: AsFd,
     {
-        let duplicate = out.as_fd().try_clone_to_owned()?;
+        let out = writer.as_fd().try_clone_to_owned()?;
 
         // The one `CrosstermBackend::new`, whose own size would be crossterm's. See
         // `clippy.toml`.
         #[allow(clippy::disallowed_methods)]
-        let backend = CrosstermBackend::new(out);
+        let backend = CrosstermBackend::new(writer);
 
-        Ok(Self {
-            backend,
-            out: duplicate,
-        })
+        Ok(Self { backend, out })
     }
 
     /// `TIOCGWINSZ` on the descriptor drawn to, and its error as it came: no `tput` behind
