@@ -102,9 +102,7 @@ impl ProviderError {
 impl std::fmt::Display for ProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingCredential { env_var } => {
-                write!(f, "no credential found: set {env_var}")
-            }
+            Self::MissingCredential { env_var } => write!(f, "no credential found: set {env_var}"),
             Self::InvalidBaseUrl { base_url, reason } => {
                 write!(f, "invalid base URL {base_url:?}: {reason}")
             }

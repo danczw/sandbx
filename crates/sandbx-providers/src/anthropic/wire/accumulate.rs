@@ -233,9 +233,7 @@ where
         };
 
         match parsed {
-            RawStreamEvent::MessageStart { message } => {
-                state.usage.absorb(message.usage);
-            }
+            RawStreamEvent::MessageStart { message } => state.usage.absorb(message.usage),
             RawStreamEvent::ContentBlockStart {
                 index,
                 content_block,
