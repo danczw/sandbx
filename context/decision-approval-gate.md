@@ -294,7 +294,7 @@ one per call, asked on `/dev/tty`, for the tools that write or run a program.
 | why not stdin | stdout carries the model's answer and is piped, and `agent-run`'s prompt comes from argv. `/dev/tty` is the one channel the operator still holds |
 | why read-only is never asked | the twenty-prompt turn #165 describes is what this and the `a` answer exist to avoid, and a `read` has no answer worth taking |
 | why `a` is per tool | an operator who has judged one `write` has judged the tool for the run; carrying it across tools would make a single `a` a bare `--allow-tool` |
-| why the arguments are capped and stripped | they are model-chosen, and a `path` carrying ANSI escapes rewrites the question being answered. Shared with the report, so one strip covers both — and it covers the whole line, a policy refusal's own text included, since `SandboxError`'s `Display` writes the path back |
+| why the arguments are capped and stripped | they are model-chosen, and a `path` carrying ANSI escapes rewrites the question being answered. Shared with the report, so one strip covers both — and it covers the whole line, a policy refusal's own text included, since `SandboxError`'s `Display` writes the path back. The gate's sinks only: reasoning has its own strip, in `decision-thinking-replay.md` |
 | why a newline is spelled, not replaced | a heredoc shown as a row of U+FFFD is a command consented to unread, which the cap exists to avoid |
 | why the subject is keyed off the tool | no input type refuses an unknown field, so a `bash` call carrying a decoy `path` beside its `command` would be named by the path in both the question and the report |
 

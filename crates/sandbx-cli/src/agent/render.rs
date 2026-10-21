@@ -6,9 +6,9 @@
 
 use std::io::Write;
 
-use sandbx_providers::AgentEvent;
+use sandbx_providers::{AgentEvent, invisible};
 
-use super::prompt::APPROVE_CALL;
+use super::prompt::{APPROVE_CALL, account};
 use super::{INCOMPLETE, NO_CONSENT};
 use crate::AgentError;
 
@@ -63,6 +63,9 @@ pub(super) struct Render<W, E> {
     /// lines do not continue one.
     thinking_mid_line: bool,
 
+    /// Whether stderr renders an SGR escape.
+    renders: bool,
+
     /// The first write that failed, kept because `observe` has no way to end the turn.
     failed: Option<std::io::Error>,
 }
@@ -78,8 +81,16 @@ impl<W: Write, E: Write> Render<W, E> {
             after_gap: false,
             show_thinking: false,
             thinking_mid_line: false,
+            renders: false,
             failed: None,
         }
+    }
+
+    /// Reset the rendition before each line about the answer, `err` being a terminal.
+    #[must_use]
+    pub(super) fn rendering(mut self, renders: bool) -> Self {
+        self.renders = renders;
+        self
     }
 
     /// Let the model's reasoning through to stderr.
@@ -117,12 +128,12 @@ impl<W: Write, E: Write> Render<W, E> {
         let _ = self.err.write_all(bytes);
     }
 
-    /// Write one whole line about the answer.
+    /// Write one whole line about the answer, from a known rendition per `prompt::RESET`.
     ///
     /// Written once, so a line cannot interleave with the reasoning deltas reaching the
     /// same device.
     fn note(&mut self, line: &str) {
-        self.put(format!("{line}\n").as_bytes());
+        self.put(account(self.renders, line).as_bytes());
     }
 
     /// Put one event where it belongs.
@@ -148,8 +159,10 @@ impl<W: Write, E: Write> Render<W, E> {
             // Stderr, stdout being the answer. Gated rather than trusted to be empty: the
             // API sends the increment whether or not a summary was asked for.
             AgentEvent::Thinking { delta } => {
+                // Stripped, being model-chosen: a delta could otherwise hide or erase the
+                // lines after it, the gate's verdicts among them (#239).
                 if self.show_thinking && !delta.is_empty() {
-                    self.put(delta.as_bytes());
+                    self.put(inert(delta).as_bytes());
                     self.thinking_mid_line = !delta.ends_with('\n');
                 }
             }
@@ -261,6 +274,22 @@ impl<W: Write, E: Write> Render<W, E> {
             self.wrote |= !bytes.is_empty();
         }
     }
+}
+
+/// `delta` with everything that could rewrite the lines around it replaced with U+FFFD.
+///
+/// Per character, so an escape split across two deltas is still caught: its ESC is in one
+/// of them, and what follows it is inert text. `\n` and `\t` survive — reasoning is prose
+/// over many lines, and neither can rewrite one already written.
+fn inert(delta: &str) -> String {
+    delta
+        .chars()
+        .map(|c| match c {
+            '\n' | '\t' => c,
+            c if c.is_control() || invisible(c) => '\u{fffd}',
+            c => c,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -504,6 +533,51 @@ pub(super) mod tests {
             Some("sandbx: answer truncated at --max-tokens")
         );
         assert_eq!(lines.next(), None, "got {told:?}");
+    }
+
+    /// Everything stderr received from `deltas` under `--show-thinking`.
+    fn reasoned(deltas: &[&str]) -> String {
+        let mut render = captured().showing_thinking(true);
+        for delta in deltas {
+            render.event(&AgentEvent::Thinking {
+                delta: (*delta).to_string(),
+            });
+        }
+        String::from_utf8(render.err).expect("utf-8")
+    }
+
+    /// Concealing what follows, erasing the line before, reordering a line: each replaced,
+    /// an escape split across two deltas included (#239).
+    #[test]
+    fn a_reasoning_delta_cannot_rewrite_the_lines_around_it() {
+        assert_eq!(reasoned(&["hidden\x1b[8m"]), "hidden\u{fffd}[8m");
+        assert_eq!(reasoned(&["\x1b", "[30;40m"]), "\u{fffd}[30;40m");
+        assert_eq!(reasoned(&["\x1b[A\x1b[2K"]), "\u{fffd}[A\u{fffd}[2K");
+        assert_eq!(reasoned(&["\r"]), "\u{fffd}");
+        assert_eq!(reasoned(&["a\u{202e}b"]), "a\u{fffd}b");
+    }
+
+    /// Not a blanket replacement: prose, its line breaks and its indentation pass whole.
+    #[test]
+    fn reasoning_that_renders_is_left_alone() {
+        let prose = "weighing it up — naïve 日本語 ✓\n\tthen /work/notes.md\n";
+        assert_eq!(reasoned(&[prose]), prose);
+    }
+
+    /// Each line about the answer, after whatever the answer left on a terminal; and not
+    /// into a redirected stderr, which would carry the escape into the log.
+    #[test]
+    fn a_line_about_the_answer_resets_only_where_it_renders() {
+        for (renders, told) in [
+            (true, "\x1b[0msandbx: answer truncated at --max-tokens\n"),
+            (false, "sandbx: answer truncated at --max-tokens\n"),
+        ] {
+            let mut render = captured().rendering(renders);
+            render.event(&text("hidden\x1b[8m"));
+            render.finish(None, true).expect("truncated turn");
+
+            assert_eq!(String::from_utf8(render.err).expect("utf-8"), told);
+        }
     }
 
     /// Everything stdout received across a cap, and the gap that marks it.

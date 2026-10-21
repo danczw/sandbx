@@ -159,7 +159,7 @@ fn abort(reason: &str) -> ApprovalDecision {
 /// `RESET` only where it renders: `2> run.log` would carry the escape into the log.
 /// Formatted whole: `write_fmt`'s syscall per piece leaves the model's own stream a window
 /// between the reset and the line it covers.
-fn account(renders: bool, line: &str) -> String {
+pub(super) fn account(renders: bool, line: &str) -> String {
     if renders {
         format!("{RESET}{line}\n")
     } else {
