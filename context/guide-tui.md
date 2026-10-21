@@ -34,6 +34,7 @@ to look for what approved a call.
 Transcript   the events folded into entries          no terminal → unit-tested
 view::draw   the entries laid out as rows            TestBackend → unit-tested
 Screen       raw mode, the alternate screen, Drop    a real terminal only
+Measured     the window, off the drawn descriptor    a pty pair → unit-tested
 Keys         the reader thread and the press         a pty pair → unit-tested
 ```
 
@@ -242,6 +243,41 @@ before any of this. The wedge needs a hangup with no `SIGHUP`: `nohup`, `setsid`
 an orphaned process group, `trap '' HUP`, a dying descriptor that is not the
 controlling terminal, or an `openpty` pair that never became one — which is what
 the tests use.
+
+### Nothing asks crossterm how big the window is
+
+crossterm 0.29's `terminal::size` reads `TIOCGWINSZ` and, when that fails, runs
+`tput cols` and `tput lines` — `std::process::Command`, resolved through `PATH`,
+from sandbx's own unsandboxed process. A hung-up pty fails that `ioctl` with
+`EIO`, so every draw on one forked twice, and `tput` then answered with its
+terminfo default: a size for a window that is gone (#269).
+
+That was not a race. `drive` redraws the finished screen on every outcome, a
+hangup included, so each turn that lost its terminal forked on the way out; a
+paint already in flight when the hangup landed could fork before it, and so
+could `Screen::enter` on a terminal that died after `drawable` looked.
+
+So the screen's backend is `Measured`: crossterm's, except that `size` is its own
+`TIOCGWINSZ` on the descriptor it draws to, and a failure is returned as it came.
+ratatui asks the backend for the size before it writes anything — on every draw,
+on `redraw`'s clear, and when the `Terminal` is built — so a hung-up terminal is
+measured, fails, and latches the screen's failure with nothing drawn and nothing
+run. It is the descriptor drawn to and not `/dev/tty`, which crossterm reads first
+and which need not be the screen. `clippy.toml` bans `terminal::size` and
+`CrosstermBackend::new`, leaving `Measured::new` the one backend there is.
+
+Rejected: a `poll` for `POLLHUP` ahead of each draw, which is a proxy for the
+`ioctl` failing and leaves the window between the check and crossterm's own call;
+clearing `PATH` and `TERM`, which turns the fork into a failed one rather than
+none, and changes what a subshell sees; and fixing crossterm, which is not ours to
+land and whose fallback is deliberate.
+
+Left open: crossterm's event source calls the same `size` on a `SIGWINCH`, inside
+the key reader. It reaches it only on a resize, after the gate's `poll` found the
+terminal alive and before crossterm reads the signal — a hangup landing in that
+gap still forks. And `clippy.toml` sees only sandbx's own calls: a dependency's
+spawn is invisible to the ban on `Command::new`, which is what `SECURITY.md`
+says.
 
 ## What interrupting costs
 

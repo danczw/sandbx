@@ -22,6 +22,10 @@ ratatui = { version = "=0.30.2", default-features = false, features = [
 # the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
 # spins on the zero-byte read behind it (#264).
 nix = { version = "0.31.3", default-features = false, features = ["poll"] }
+# `termios` alone, for `tcgetwinsize`: the screen measures its own window, crossterm's
+# `terminal::size` forking `tput` when the measurement fails (#269). nix has no safe
+# `TIOCGWINSZ`, and this is the rustix crossterm already builds.
+rustix = { version = "1.1.4", default-features = false, features = ["std", "termios"] }
 sandbx-providers = { path = "../sandbx-providers" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.

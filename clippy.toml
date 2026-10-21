@@ -20,4 +20,9 @@ disallowed-methods = [
     { path = "ratatui::init_with_options", reason = "Screen::enter, which installs a hook that cannot write" },
     { path = "ratatui::try_init_with_options", reason = "Screen::enter, which installs a hook that cannot write" },
     { path = "ratatui::run", reason = "Screen::enter and Screen::drop, neither of which writes on failure" },
+    # crossterm's size forks `tput`, by `PATH`, from this unsandboxed process when the
+    # window cannot be read — every draw on a hung-up terminal (#269). The backend's `new`
+    # because its size is that one, reached by every draw, so `Measured::new` is the one call.
+    { path = "ratatui::crossterm::terminal::size", reason = "Measured, which reads the window off the descriptor it draws to and never forks" },
+    { path = "ratatui::backend::CrosstermBackend::new", reason = "Measured::new, whose size never forks tput" },
 ]
