@@ -98,9 +98,8 @@ impl AnthropicClient {
             return Err(map_error_response(status, response).await);
         }
 
-        Ok(Box::pin(wire::event_stream(sse::tokenize(
-            response.bytes_stream(),
-        ))))
+        let events = wire::event_stream(sse::tokenize(response.bytes_stream()));
+        Ok(Box::pin(events))
     }
 }
 
