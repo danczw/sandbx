@@ -1,7 +1,6 @@
 //! The terminal the turn is drawn on, and putting it back.
 //!
-//! Measured by [`Measured`] and never by crossterm, whose `terminal::size` forks `tput` from
-//! this unsandboxed process when the window cannot be read — every draw on a hung-up terminal.
+//! Measured by [`Measured`], never by crossterm's `terminal::size`, which can fork `tput` (#269).
 
 use std::io::{self, Stdout, Write};
 use std::os::fd::{AsFd, OwnedFd};
