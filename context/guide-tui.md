@@ -393,7 +393,7 @@ Drawn rather than printed means the verdict is in the pane and nowhere else, and
 the pane has no scrollback. For a `bash` call that is the only place the command's
 text appears at all — the audit trail records `program="/bin/sh"`, not the `-c`
 string — so an interrupted run, or one without `--session`, can leave no record of
-what ran (#234).
+what ran (#249).
 
 Both methods still run on the async task, so **neither may wait on the runtime**
 — `decision-approval-gate.md` has why. `tui`'s gate waits on nothing at all: the
@@ -429,7 +429,7 @@ own account — both after the turn rather than during it, which is the one thin
 
 What the hold costs: the release waits on the keypress that holds the finished
 screen, so the trail sits in memory for as long as the operator is away, and a
-signal arriving there runs no `Drop` and loses all of it (#235). A hangup *runs*
+signal arriving there runs no `Drop` and loses all of it (#224). A hangup *runs*
 the `Drop` instead of skipping it, which is what ending the turn on one buys the
 trail — but where stderr is the descriptor that died, which under `tui` is the
 usual case, the one `write_all` fails and the records go with it. The guard has

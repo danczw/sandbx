@@ -470,7 +470,7 @@ ordinary outcome and not a rare one.
   is what an auditor cannot otherwise recover — and a command line is gone at
   exit. The machinery for a bounded field is already in the repo, the gate
   capping and stripping a subject for display, so what is missing is the
-  decision rather than the code; #234 is the same omission seen from the pane.
+  decision rather than the code; #249 is the same omission seen from the pane.
 - **A gate refusal reaches nothing on the audit target.** **Partly answered.**
   [decision-approval-gate.md](../decision-approval-gate.md) is sound about why
   a denial is not an access and so has no access to record;
@@ -636,7 +636,7 @@ ordinary outcome and not a rare one.
   letting it through, and [guide-tui.md](../guide-tui.md) already names the fix
   for the other mark: a gutter in an area of its own. Weaker than forging a
   verdict — misattributed authorship rather than consent — and not nothing
-  either, the pane being the only record a `bash` call's text gets (#234).
+  either, the pane being the only record a `bash` call's text gets (#249).
 ### From 24 — the cli crate
 
 - **One grant failing its own identity check is dropped in silence.** It is the
