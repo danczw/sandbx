@@ -62,16 +62,15 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
         };
         scanned += content.len();
 
-        for (number, line) in content.lines().enumerate() {
-            if line.contains(&input.pattern) {
-                hits.push(format!(
-                    "{}:{}: {}",
-                    file.display(),
-                    number + 1,
-                    line.trim()
-                ));
-            }
-        }
+        hits.extend(
+            content
+                .lines()
+                .enumerate()
+                .filter(|(_, line)| line.contains(&input.pattern))
+                .map(|(number, line)| {
+                    format!("{}:{}: {}", file.display(), number + 1, line.trim())
+                }),
+        );
     }
 
     Ok(crate::listing(hits, ctx, stopped_early))
