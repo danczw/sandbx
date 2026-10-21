@@ -160,11 +160,7 @@ fn abort(reason: &str) -> ApprovalDecision {
 /// Formatted whole: `write_fmt`'s syscall per piece leaves the model's own stream a window
 /// between the reset and the line it covers.
 pub(super) fn account(renders: bool, line: &str) -> String {
-    if renders {
-        format!("{RESET}{line}\n")
-    } else {
-        format!("{line}\n")
-    }
+    format!("{}{line}\n", if renders { RESET } else { "" })
 }
 
 /// Write one account of a call to stderr.
