@@ -85,6 +85,28 @@ Unasked, the field is absent and the stream carries an empty `thinking_delta` an
 real signature — which is the shape the replay needs and the renderer has nothing
 to show from.
 
+## A delta reaches the terminal stripped
+
+What the model reasons is model-chosen, and under `--show-thinking` it streams to
+the same terminal as the gate's verdicts and the lines saying how the turn ended. A
+delta ending in `\x1b[8m` would conceal every one of them; one carrying `\x1b[A\x1b[2K`
+would erase the verdict before it (#239). So `Render` replaces each control
+character, and each one `sandbx_providers::invisible` names, with U+FFFD — the
+gate's reason for replacing rather than dropping. `\n` and `\t` survive: reasoning
+is prose over many lines. It is not capped, unlike a gate argument: nothing is
+consented to on the strength of it.
+
+The strip is per character, not per line, so streaming survives it. A delta is a
+`&str`, so an escape split across two deltas still has its ESC whole in one of
+them, and what follows the ESC is inert text. Buffering to a newline would have
+cost the stream for no gain.
+
+`agent-run`'s stdout is not stripped — the answer is what a pipe asked for — so it
+can still leave the terminal in a state of its own choosing. Each line `Render`
+writes about the answer is therefore preceded by `RESET` when stderr is a terminal,
+as the gate's are; `decision-approval-gate.md` has why. The TUI strips the same
+deltas at the cell, by its own rule: see `guide-tui.md`.
+
 An **unsigned** block — one whose `content_block_stop` arrived with no
 `signature_delta`, or one flushed by a stream that ended early — is dropped rather
 than emitted. It cannot be replayed, so emitting one trades a lost block for a 400

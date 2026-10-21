@@ -16,7 +16,7 @@ mod render;
 mod tui;
 mod wrapup;
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 use gate::tool_name;
 use prompt::{Approve, Terminal};
@@ -68,6 +68,9 @@ struct Channels<W, E> {
 
     /// Everything about the answer: reasoning, and how the turn ended.
     err: E,
+
+    /// Whether `err` renders an SGR escape. Not read off `err`, which a test fakes.
+    renders: bool,
 
     /// The controlling terminal, `Some` only under `--approve call`. No suite here opens
     /// the real device ([`Terminal::open`]), nor the stderr an account falls back to.
@@ -290,6 +293,7 @@ impl AgentRun {
             Channels {
                 out: std::io::stdout(),
                 err: std::io::stderr(),
+                renders: std::io::stderr().is_terminal(),
                 terminal,
             },
             session,
@@ -344,7 +348,12 @@ impl AgentRun {
         channels: Channels<W, E>,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
-        let Channels { out, err, terminal } = channels;
+        let Channels {
+            out,
+            err,
+            renders,
+            terminal,
+        } = channels;
         let asked = RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],
@@ -383,7 +392,9 @@ impl AgentRun {
 
         let next = wrapup::Next::after(&turn); // Read off before `run_turn` takes it by value.
 
-        let mut render = Render::with(out, err).showing_thinking(self.show_thinking);
+        let mut render = Render::with(out, err)
+            .showing_thinking(self.show_thinking)
+            .rendering(renders);
         let outcome = run_turn(
             &mut open,
             turn,
@@ -648,6 +659,7 @@ mod tests {
             Channels {
                 out: &mut out,
                 err: Vec::new(),
+                renders: false,
                 terminal: None,
             },
             session,
@@ -676,6 +688,7 @@ mod tests {
             Channels {
                 out: Vec::new(),
                 err: Vec::new(),
+                renders: false,
                 terminal: None,
             },
             session,
@@ -711,6 +724,7 @@ mod tests {
             Channels {
                 out: &mut out,
                 err: Vec::new(),
+                renders: false,
                 terminal: Some(terminal),
             },
             session,
