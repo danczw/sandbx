@@ -160,16 +160,14 @@ impl std::fmt::Display for SessionError {
             ),
             Self::Writable { path, mode } => write!(
                 f,
-                "refusing to resume {} at mode {mode:o}: another user could choose what \
-                 this conversation says you asked for — run `chmod 600 {}`",
-                path.display(),
+                "refusing to resume {0} at mode {mode:o}: another user could choose what \
+                 this conversation says you asked for — run `chmod 600 {0}`",
                 path.display()
             ),
             Self::DirWritable { path, mode } => write!(
                 f,
-                "refusing to resume a session from {} at mode {mode:o}: another user could \
-                 replace the transcript in it — run `chmod 700 {}`",
-                path.display(),
+                "refusing to resume a session from {0} at mode {mode:o}: another user could \
+                 replace the transcript in it — run `chmod 700 {0}`",
                 path.display()
             ),
             Self::Symlink { path } => write!(
