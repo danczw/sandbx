@@ -273,16 +273,15 @@ where
             floor = cut;
             measured = false;
         }
-        let withheld = cut;
 
         // A reasoning block is valid only against the messages before it, so a deepened cut
         // invalidates every one sent; dropping them is the one edit the provider's check permits.
-        if sent_cut.is_some_and(|previous| previous != withheld) {
+        if sent_cut.is_some_and(|previous| previous != cut) {
             drop_thinking(&mut produced);
         }
-        sent_cut = Some(withheld);
+        sent_cut = Some(cut);
 
-        let mut messages = turn.history[withheld..].to_vec();
+        let mut messages = turn.history[cut..].to_vec();
         messages.extend_from_slice(&produced);
 
         let prompt = Prompt {
@@ -325,13 +324,7 @@ where
                 return Err(TurnError::EndedMidToolUse);
             }
 
-            return Ok(outcome(
-                produced,
-                usage,
-                withheld,
-                TurnStop::Answered,
-                last_stop,
-            ));
+            return Ok(outcome(produced, usage, cut, TurnStop::Answered, last_stop));
         }
 
         // Before pushing: answering borrows `blocks`, pushing moves them.
@@ -351,7 +344,7 @@ where
             } else {
                 TurnStop::Answered
             };
-            return Ok(outcome(produced, usage, withheld, stop, last_stop));
+            return Ok(outcome(produced, usage, cut, stop, last_stop));
         }
 
         produced.push(RequestMessage {
@@ -365,7 +358,7 @@ where
             return Ok(outcome(
                 produced,
                 usage,
-                withheld,
+                cut,
                 TurnStop::GateAborted,
                 last_stop,
             ));
@@ -377,7 +370,6 @@ where
     Ok(outcome(
         produced,
         usage,
-        // `cut`: `withheld` is out of scope, but the two agree since a cut only deepens.
         cut,
         TurnStop::RoundLimit {
             rounds: turn.limits.max_rounds,
