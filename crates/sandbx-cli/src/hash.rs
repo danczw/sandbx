@@ -33,8 +33,7 @@ impl Hash {
 
         // Not `println!`, which panics on a closed stdout with `SIGPIPE` ignored: dropped
         // the way `SandboxRun::execute` drops its own write failures.
-        let line = format!("{digest}\n");
-        let _ = std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes());
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("{digest}\n").as_bytes());
 
         Ok(0)
     }
