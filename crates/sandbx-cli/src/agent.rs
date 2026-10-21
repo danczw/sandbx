@@ -354,10 +354,9 @@ impl AgentRun {
         };
 
         // Stored turns first: the new prompt is the conversation's latest, not its own request.
-        let mut history = match &session {
-            Some(session) => session::request_history(session.messages()),
-            None => Vec::new(),
-        };
+        let mut history = session.as_ref().map_or_else(Vec::new, |session| {
+            session::request_history(session.messages())
+        });
         history.push(asked.clone());
         // Merged, not appended: a stored turn out of rounds ends on tool results, which
         // the prompt joins rather than follows (#188).
