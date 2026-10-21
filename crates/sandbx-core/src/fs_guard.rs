@@ -264,9 +264,17 @@ impl FsGuard {
         let resolved = match path.canonicalize() {
             Ok(existing) => existing,
             Err(_) => {
-                let not_allowed = || SandboxError::PathNotAllowed {
-                    requested: path.to_path_buf(),
-                    access: Access::Write,
+                let refuse = |reason| {
+                    crate::AuditEvent::denied(
+                        Access::Write.operation(),
+                        &path.display().to_string(),
+                        reason,
+                    )
+                    .emit();
+                    SandboxError::PathNotAllowed {
+                        requested: path.to_path_buf(),
+                        access: Access::Write,
+                    }
                 };
 
                 // The root answers first: both reasons below are chosen by what sits at the
@@ -279,24 +287,12 @@ impl FsGuard {
                 // symlink; resolving only the parent would approve the link, whose write
                 // then follows it out of the root.
                 if path.symlink_metadata().is_ok_and(|m| m.is_symlink()) {
-                    crate::AuditEvent::denied(
-                        Access::Write.operation(),
-                        &path.display().to_string(),
-                        "symlink leaf may resolve outside the writable root",
-                    )
-                    .emit();
-                    return Err(not_allowed());
+                    return Err(refuse("symlink leaf may resolve outside the writable root"));
                 }
 
                 // `file_name` normalizes a `.` tail away, so only a `..` tail reaches this.
                 let Some((parent, file_name)) = path.parent().zip(path.file_name()) else {
-                    crate::AuditEvent::denied(
-                        Access::Write.operation(),
-                        &path.display().to_string(),
-                        "path names no file to write",
-                    )
-                    .emit();
-                    return Err(not_allowed());
+                    return Err(refuse("path names no file to write"));
                 };
 
                 match parent.canonicalize() {
