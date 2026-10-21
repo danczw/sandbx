@@ -254,8 +254,7 @@ impl<F> Terminal<F> {
     fn discard_typeahead(&mut self) -> nix::Result<()> {
         nix::sys::termios::tcflush(self.input.get_ref(), nix::sys::termios::FlushArg::TCIFLUSH)?;
 
-        let buffered = self.input.buffer().len();
-        self.input.consume(buffered);
+        self.input.consume(self.input.buffer().len());
 
         Ok(())
     }
