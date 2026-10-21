@@ -98,11 +98,10 @@ first. Order a listing by the header's `created_at_millis`.
 ```
 
 [decision-on-disk-state.md](../decision-on-disk-state.md) is the authority for
-the roots. What the code adds is the shape of the test: one `absolute` closure, an
-`is_absolute` filter applied to `XDG_STATE_HOME` and then to `HOME` before
-`.local/state` is joined on. A blank
-variable fails both, because `PathBuf::from("")` is not absolute, and a relative
-`$HOME` is `NoStateHome` rather than a guess.
+the roots. What the code adds is the shape of the test: one `absolute` closure,
+applied to `XDG_STATE_HOME` and then to `HOME` before `.local/state` is joined
+on. A blank variable fails it, because `PathBuf::from("")` is not absolute, and a
+relative `$HOME` is `NoStateHome` rather than a guess.
 
 The order, with the refusal standing where a third root would have gone:
 
