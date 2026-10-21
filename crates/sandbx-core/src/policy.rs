@@ -309,10 +309,7 @@ impl SandboxPolicy {
     /// credential; anything else needs [`allow_env`](Self::allow_env).
     #[must_use]
     pub fn allow_standard_env(self) -> Self {
-        STANDARD_ENV_NAMES
-            .iter()
-            .copied()
-            .fold(self, Self::allow_env)
+        STANDARD_ENV_NAMES.into_iter().fold(self, Self::allow_env)
     }
 
     /// Grant read access to `path`.
