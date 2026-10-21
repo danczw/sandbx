@@ -119,10 +119,9 @@ impl Tui {
             content: vec![ContentBlock::Text { text: prompt }],
         };
 
-        let mut history = match &session {
-            Some(session) => session::request_history(session.messages()),
-            None => Vec::new(),
-        };
+        let mut history = session.as_ref().map_or_else(Vec::new, |session| {
+            session::request_history(session.messages())
+        });
         history.push(asked.clone());
         let merged =
             session::merge_user_runs(history, session.as_ref().map_or(0, Session::withheld));
