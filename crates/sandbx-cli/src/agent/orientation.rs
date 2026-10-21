@@ -31,11 +31,7 @@ pub(super) fn system_prompt(
         operator.map(ToString::to_string),
     ];
 
-    let prompt = said
-        .into_iter()
-        .flatten()
-        .collect::<Vec<String>>()
-        .join("\n\n");
+    let prompt = said.into_iter().flatten().collect::<Vec<_>>().join("\n\n");
 
     (!prompt.is_empty()).then_some(prompt)
 }
