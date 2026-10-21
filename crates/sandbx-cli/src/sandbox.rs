@@ -40,22 +40,19 @@ fn resolver_advice(cannot_resolve: bool, unix_sockets: bool, code: i32) -> Optio
         return None;
     }
 
-    Some(match unix_sockets {
-        true => {
-            "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
-             resolve. If that was the failure, add --dns-over-tcp --allow-network 53 \
-             --allow-read /etc, remembering that a path flag replaces the working-directory \
-             default. --allow-dns is the other answer, and this run cannot take it: a name \
-             allowlist and --allow-unix-sockets are refused together, a local resolver \
-             socket answering for every name"
-        }
-        false => {
-            "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
-             resolve. If that was the failure, either add --allow-dns NAME for each name the \
-             command needs, which resolves them here and needs no further grant — or add \
-             --dns-over-tcp --allow-network 53 --allow-read /etc, which lets any name \
-             resolve, remembering that a path flag replaces the working-directory default"
-        }
+    Some(if unix_sockets {
+        "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
+         resolve. If that was the failure, add --dns-over-tcp --allow-network 53 \
+         --allow-read /etc, remembering that a path flag replaces the working-directory \
+         default. --allow-dns is the other answer, and this run cannot take it: a name \
+         allowlist and --allow-unix-sockets are refused together, a local resolver \
+         socket answering for every name"
+    } else {
+        "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
+         resolve. If that was the failure, either add --allow-dns NAME for each name the \
+         command needs, which resolves them here and needs no further grant — or add \
+         --dns-over-tcp --allow-network 53 --allow-read /etc, which lets any name \
+         resolve, remembering that a path flag replaces the working-directory default"
     })
 }
 
