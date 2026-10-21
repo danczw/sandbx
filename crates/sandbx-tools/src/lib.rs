@@ -14,6 +14,8 @@ pub use context::{DEFAULT_TIMEOUT, ExecutionContext};
 pub use error::ToolError;
 pub use limits::ToolLimits;
 
+use std::path::Path;
+
 /// What a tool produced, as the model will see it.
 ///
 /// The field is private so [`ToolOutput::new`] is the only way in, which makes an
@@ -166,7 +168,7 @@ impl BuiltinTool {
 ///
 /// Absence is the one verdict that is not a refusal: no policy objected, so the agent's
 /// move is to fix the name rather than ask for a wider grant.
-pub(crate) fn guard_error(path: &std::path::Path, error: sandbx_core::SandboxError) -> ToolError {
+pub(crate) fn guard_error(path: &Path, error: sandbx_core::SandboxError) -> ToolError {
     let subject = path.display().to_string();
 
     match error {
@@ -192,11 +194,7 @@ pub(crate) fn guard_error(path: &std::path::Path, error: sandbx_core::SandboxErr
 
 /// Turn a failed filesystem operation into the form the model sees. `verb` names
 /// what was attempted (`read /etc/hosts`, `list /tmp`), not the syscall.
-pub(crate) fn failed(
-    verb: &str,
-    path: &std::path::Path,
-    error: impl std::fmt::Display,
-) -> ToolError {
+pub(crate) fn failed(verb: &str, path: &Path, error: impl std::fmt::Display) -> ToolError {
     ToolError::Failed {
         subject: format!("{verb} {}", path.display()),
         detail: error.to_string(),
@@ -208,10 +206,7 @@ pub(crate) fn failed(
 /// The guard check lives here, not at the call sites, so no in-process tool can read
 /// a file by forgetting it. Reads the handle the guard returns, not the path again:
 /// re-resolving on open leaves a window to swap the leaf for a symlink.
-pub(crate) fn read_file(
-    path: &std::path::Path,
-    ctx: &ExecutionContext,
-) -> Result<String, ToolError> {
+pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, ToolError> {
     let file = ctx
         .guard()
         .open_read(path)
@@ -227,7 +222,7 @@ pub(crate) fn read_file(
 /// The size comes off that handle, never off the path: a path `stat` is a second
 /// resolution the guard did not vet, and need not answer for the file opened (#275).
 pub(crate) fn read_capped(
-    path: &std::path::Path,
+    path: &Path,
     ctx: &ExecutionContext,
     max: u64,
 ) -> Result<Option<String>, ToolError> {
@@ -251,7 +246,7 @@ pub(crate) fn read_capped(
 }
 
 /// Read an open handle to a `String`, the path being for the error only.
-fn slurp(mut file: std::fs::File, path: &std::path::Path) -> Result<String, ToolError> {
+fn slurp(mut file: std::fs::File, path: &Path) -> Result<String, ToolError> {
     let mut content = String::new();
     std::io::Read::read_to_string(&mut file, &mut content)
         .map_err(|error| failed("read", path, error))?;
