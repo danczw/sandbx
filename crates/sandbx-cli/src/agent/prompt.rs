@@ -55,6 +55,7 @@ const UNCLEARED: &str = "the operator's terminal could not be cleared to ask on,
                          so no call can be approved";
 
 /// What this run has already been consented to beyond the call it was asked about.
+#[derive(Default)]
 struct Consent {
     /// The tools an `a` answer approved for every later call in the run.
     blanket: Vec<BuiltinTool>,
@@ -62,9 +63,7 @@ struct Consent {
 
 impl Consent {
     fn new() -> Self {
-        Self {
-            blanket: Vec::new(),
-        }
+        Self::default()
     }
 
     /// Ask about one call, writing the question to `out` and reading the answer from
