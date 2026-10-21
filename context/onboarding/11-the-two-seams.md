@@ -436,9 +436,7 @@ flag => {
     let axis = axis_for(flag).ok_or(SandboxError::BadHelperArgs {
         detail: "unrecognised helper flag",
     })?;
-    let path = rest.next().ok_or(SandboxError::BadHelperArgs {
-        detail: "path flag with no path after it",
-    })?;
+    let path = next_arg(&mut rest, "path flag with no path after it")?;
     // … the pin token, fetched the same way …
     let object = ObjectId::parse(pin).ok_or(SandboxError::BadHelperArgs {
         detail: "object pin that is not a device and an inode parted by `:`",

@@ -337,12 +337,11 @@ meet:
         }
 
         // The size comes off the handle, so the file measured is the file read (#275).
-        let content = match crate::read_capped(&file, ctx, MAX_FILE_BYTES) {
-            Ok(Some(content)) => content,
-            Ok(None) | Err(_) => {
-                stopped_early = true;
-                continue;
-            }
+        // Over the cap, not text, or refused: one rule, the caller's move being the
+        // same. An unmarked skip reads as a file with no match in it (#274).
+        let Ok(Some(content)) = crate::read_capped(&file, ctx, MAX_FILE_BYTES) else {
+            stopped_early = true;
+            continue;
         };
 ```
 
@@ -362,7 +361,7 @@ record it previously had none for, and the trail names every file the walk
 touched rather than only the ones small enough to read.
 
 Every bound here sets `stopped_early`, which `listing` turns into the
-partial-scan marker — including the three the one `Ok(None) | Err(_)` arm
+partial-scan marker — including the three the one `let … else` arm
 covers: over the cap, no text back, and the access refused (#274). One rule,
 because the caller's mistake is the same for all three. A file the search did
 not read is a file it has no answer about, and a bare `continue` would make it
