@@ -270,9 +270,7 @@ impl Grants {
             }
         }
 
-        for name in &self.allow_env {
-            policy = policy.allow_env(name);
-        }
+        policy = self.allow_env.iter().fold(policy, SandboxPolicy::allow_env);
 
         // An empty `Vec` is the bare flag: `--allow-network --allow-network 443` allowlists
         // 443 alone — fail-closed, the broader spelling yielding the narrower policy.
@@ -318,9 +316,7 @@ impl Grants {
             }
         }
 
-        for name in &self.allow_dns {
-            policy = policy.allow_dns(name);
-        }
+        policy = self.allow_dns.iter().fold(policy, SandboxPolicy::allow_dns);
 
         // Honouring both drops the operator's value silently. Over `--allow-env`'s own names,
         // not `allowed_env()`: a name nobody typed is not one they can drop.
