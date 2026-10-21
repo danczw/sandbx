@@ -40,16 +40,12 @@ const NO_FOLLOW: i32 = nix::fcntl::OFlag::O_NOFOLLOW.bits();
 /// By errno, not `ErrorKind::FilesystemLoop`, which is unstable. `ELOOP` from these
 /// opens can only be the leaf, every component above it having been followed.
 pub(super) fn opening(path: &Path, source: std::io::Error) -> SessionError {
+    let path = path.to_owned();
     if source.raw_os_error() == Some(nix::errno::Errno::ELOOP as i32) {
-        return SessionError::Symlink {
-            path: path.to_owned(),
-        };
+        return SessionError::Symlink { path };
     }
 
-    SessionError::Io {
-        path: path.to_owned(),
-        source,
-    }
+    SessionError::Io { path, source }
 }
 
 /// Open the directory holding transcripts, refusing one that is a symbolic link.
