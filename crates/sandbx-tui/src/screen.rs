@@ -1,13 +1,18 @@
 //! The terminal the turn is drawn on, and putting it back.
+//!
+//! Measured by [`Measured`] and never by crossterm, whose `terminal::size` forks `tput` from
+//! this unsandboxed process when the window cannot be read — every draw on a hung-up terminal.
 
-use std::io;
+use std::io::{self, Stdout, Write};
+use std::os::fd::{AsFd, OwnedFd};
 use std::panic::AssertUnwindSafe;
 
-use ratatui::DefaultTerminal;
-use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use ratatui::backend::{Backend, ClearType, CrosstermBackend, WindowSize};
+use ratatui::buffer::Cell;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect, Size};
 
 use crate::transcript::Transcript;
 use crate::view::{self, Hint};
@@ -16,7 +21,7 @@ use crate::view::{self, Hint};
 pub struct Screen {
     /// `Option` only so [`Screen::drop`] can take it: `Terminal`'s own `Drop` can panic,
     /// and containing that needs the value moved rather than borrowed.
-    terminal: Option<DefaultTerminal>,
+    terminal: Option<Terminal<Measured<Stdout>>>,
 
     /// The first draw failure, `observe` having nowhere to return one. The first and not the
     /// last: a closed stdout fails once per event, and the last says only that it was gone.
@@ -49,7 +54,7 @@ impl Screen {
     }
 
     /// The terminal, which a live `Screen` always holds — only [`Screen::drop`] takes it.
-    fn terminal(&mut self) -> &mut DefaultTerminal {
+    fn terminal(&mut self) -> &mut Terminal<Measured<Stdout>> {
         self.terminal
             .as_mut()
             .expect("a screen holds its terminal until it drops")
@@ -82,13 +87,7 @@ impl Screen {
             return;
         }
 
-        let cleared = self
-            .terminal()
-            .size()
-            .map(Rect::from)
-            .and_then(|area| self.terminal().resize(area));
-
-        match cleared {
+        match cleared(self.terminal()) {
             Ok(()) => self.draw(transcript, hint),
             Err(error) => self.failed = Some(error),
         }
@@ -102,17 +101,118 @@ impl Screen {
     }
 }
 
-/// `ratatui::try_init`'s three fallible statements, without the hook it installs first.
+/// Every cell discarded and the screen cleared, at the size the window is now.
+///
+/// Fails, and writes nothing, on a window [`Measured`] cannot read.
+fn cleared<B: Backend>(terminal: &mut Terminal<B>) -> Result<(), B::Error> {
+    let area = Rect::from(terminal.size()?);
+    terminal.resize(area)
+}
+
+/// `ratatui::try_init`'s three fallible statements, without the hook it installs first, and
+/// with [`Measured`] for its backend.
 ///
 /// Reproduced, not called: that hook restores with `restore` and goes in first, so
 /// replacing it after still leaves a window where the aborting one is in force (#270).
 /// Copied from `init.rs:397-403` of ratatui `=0.30.2` — exactly pinned, so a bump re-reads
 /// that function rather than assuming it still says this.
-fn take_terminal() -> io::Result<DefaultTerminal> {
+fn take_terminal() -> io::Result<Terminal<Measured<Stdout>>> {
     // Raw mode before the alt screen, so a failed second step leaves the first in force.
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen)?;
-    ratatui::Terminal::new(CrosstermBackend::new(io::stdout()))
+    Terminal::new(Measured::new(io::stdout())?)
+}
+
+/// crossterm's backend, with the window read off the descriptor it draws to.
+///
+/// A window that cannot be read fails the size, which every draw, clear and redraw asks
+/// for before it writes: on a hung-up terminal nothing is drawn, and nothing forks (#269).
+pub(crate) struct Measured<W: Write> {
+    backend: CrosstermBackend<W>,
+    /// A duplicate of the descriptor `backend` writes to: ratatui hands the writer back only
+    /// behind an unstable feature, and a hangup reaches every descriptor for the file alike.
+    out: OwnedFd,
+}
+
+impl<W: Write> Measured<W> {
+    pub(crate) fn new(out: W) -> io::Result<Self>
+    where
+        W: AsFd,
+    {
+        let duplicate = out.as_fd().try_clone_to_owned()?;
+
+        // The one `CrosstermBackend::new`, whose own size would be crossterm's. See
+        // `clippy.toml`.
+        #[allow(clippy::disallowed_methods)]
+        let backend = CrosstermBackend::new(out);
+
+        Ok(Self {
+            backend,
+            out: duplicate,
+        })
+    }
+
+    /// `TIOCGWINSZ` on the descriptor drawn to, and its error as it came: no `tput` behind
+    /// it, and not `/dev/tty`, which crossterm reads first and need not be this screen.
+    fn window(&self) -> io::Result<rustix::termios::Winsize> {
+        Ok(rustix::termios::tcgetwinsize(&self.out)?)
+    }
+}
+
+impl<W: Write> Backend for Measured<W> {
+    type Error = io::Error;
+
+    fn draw<'a, I>(&mut self, content: I) -> io::Result<()>
+    where
+        I: Iterator<Item = (u16, u16, &'a Cell)>,
+    {
+        self.backend.draw(content)
+    }
+
+    fn append_lines(&mut self, n: u16) -> io::Result<()> {
+        self.backend.append_lines(n)
+    }
+
+    fn hide_cursor(&mut self) -> io::Result<()> {
+        self.backend.hide_cursor()
+    }
+
+    fn show_cursor(&mut self) -> io::Result<()> {
+        self.backend.show_cursor()
+    }
+
+    fn get_cursor_position(&mut self) -> io::Result<Position> {
+        self.backend.get_cursor_position()
+    }
+
+    fn set_cursor_position<P: Into<Position>>(&mut self, position: P) -> io::Result<()> {
+        self.backend.set_cursor_position(position)
+    }
+
+    fn clear(&mut self) -> io::Result<()> {
+        self.backend.clear()
+    }
+
+    fn clear_region(&mut self, clear_type: ClearType) -> io::Result<()> {
+        self.backend.clear_region(clear_type)
+    }
+
+    fn size(&self) -> io::Result<Size> {
+        let window = self.window()?;
+        Ok(Size::new(window.ws_col, window.ws_row))
+    }
+
+    fn window_size(&mut self) -> io::Result<WindowSize> {
+        let window = self.window()?;
+        Ok(WindowSize {
+            columns_rows: Size::new(window.ws_col, window.ws_row),
+            pixels: Size::new(window.ws_xpixel, window.ws_ypixel),
+        })
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Backend::flush(&mut self.backend)
+    }
 }
 
 impl Drop for Screen {
@@ -135,5 +235,102 @@ impl Drop for Screen {
             // which a dead one never will.
             let _ = std::panic::catch_unwind(AssertUnwindSafe(move || drop(terminal)));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell as Shared;
+    use std::fs::File;
+    use std::rc::Rc;
+
+    use nix::errno::Errno;
+
+    use super::*;
+    use crate::input::tests::{WINDOW, pty};
+
+    /// A pty slave, counting the writes that reach it: a draw that was attempted wrote.
+    struct Counted {
+        pty: File,
+        writes: Rc<Shared<usize>>,
+    }
+
+    impl Write for Counted {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.writes.set(self.writes.get() + 1);
+            self.pty.write(bytes)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.pty.flush()
+        }
+    }
+
+    impl AsFd for Counted {
+        fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+            self.pty.as_fd()
+        }
+    }
+
+    /// A terminal over a live pty, taken as `Screen::enter` takes stdout; the master whose
+    /// drop hangs it up; and the count of writes that reached it.
+    fn screen() -> (File, Terminal<Measured<Counted>>, Rc<Shared<usize>>) {
+        let (master, slave) = pty();
+        let writes = Rc::default();
+        let counted = Counted {
+            pty: slave,
+            writes: Rc::clone(&writes),
+        };
+
+        let measured = Measured::new(counted).expect("a duplicate of the pty");
+        let terminal = Terminal::new(measured).expect("a live pty is measured");
+
+        (master, terminal, writes)
+    }
+
+    /// The pty's own `EIO` and not a size from anywhere else, `tput`'s included.
+    fn assert_unmeasured(failed: io::Result<()>) {
+        let error = failed.expect_err("a hung-up pty was drawn on");
+        assert_eq!(error.raw_os_error(), Some(Errno::EIO as i32), "{error}");
+    }
+
+    /// The whole of #269: a draw on a hung-up terminal fails at the size, before it writes.
+    #[test]
+    fn a_hung_up_terminal_is_not_drawn_on() {
+        let (master, mut terminal, writes) = screen();
+        let transcript = Transcript::new("a prompt", false);
+        drop(master);
+
+        let drawn = terminal.draw(|frame| view::draw(frame, &transcript, Hint::Running));
+
+        assert_unmeasured(drawn.map(drop));
+        assert_eq!(writes.get(), 0, "the draw was attempted");
+    }
+
+    /// And `redraw`'s clear, which asks for the size itself rather than through a draw.
+    #[test]
+    fn a_hung_up_terminal_is_not_cleared() {
+        let (master, mut terminal, writes) = screen();
+        drop(master);
+
+        assert_unmeasured(cleared(&mut terminal));
+        assert_eq!(writes.get(), 0, "the clear was attempted");
+    }
+
+    /// The pair: a live pty is measured off its own descriptor, then cleared and drawn on,
+    /// so the two above are the hangup and not a backend that refuses everything.
+    #[test]
+    fn a_live_terminal_is_drawn_at_its_own_size() {
+        let (_master, mut terminal, writes) = screen();
+        let transcript = Transcript::new("a prompt", false);
+
+        let size = terminal.size().expect("a live pty is measured");
+        assert_eq!((size.width, size.height), WINDOW);
+
+        cleared(&mut terminal).expect("a live pty is cleared");
+        terminal
+            .draw(|frame| view::draw(frame, &transcript, Hint::Running))
+            .expect("a live pty is drawn on");
+        assert!(writes.get() > 0, "nothing reached a live pty");
     }
 }

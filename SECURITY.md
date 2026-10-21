@@ -243,7 +243,11 @@ architecture the filter gates on.
 - **The boundary is enforced by convention plus tooling**, not a capability
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
   spawning a process outside it is a clippy error — but a determined contributor
-  can add raw syscalls.
+  can add raw syscalls, and the lint sees only sandbx's own code. A dependency
+  that spawns does so unsandboxed, with your privileges, unseen by it: crossterm
+  forks `tput`, found through `PATH`, when it cannot read a terminal's size. `tui`
+  no longer asks it to, but its key reader still can when a resize races a
+  hangup ([#269](https://github.com/danczw/sandbx/issues/269)).
 - **Approval is not enforcement, and by default it is per tool per run**
   ([#165](https://github.com/danczw/sandbx/issues/165)). A gate sits between the
   model asking for a tool and `sandbx-tools` running it, and `agent-run` and
