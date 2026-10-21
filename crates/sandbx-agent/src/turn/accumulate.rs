@@ -85,10 +85,10 @@ where
     Err(TurnError::StreamEndedWithoutStop)
 }
 
-fn flush(text: &mut String, blocks: &mut Vec<ContentBlock>) {
-    if !text.is_empty() {
+fn flush(pending: &mut String, blocks: &mut Vec<ContentBlock>) {
+    if !pending.is_empty() {
         blocks.push(ContentBlock::Text {
-            text: std::mem::take(text),
+            text: std::mem::take(pending),
         });
     }
 }

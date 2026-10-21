@@ -326,7 +326,7 @@ where
             return Ok(outcome(produced, usage, cut, TurnStop::Answered, last_stop));
         }
 
-        // Before pushing: answering borrows `blocks`, pushing moves them.
+        // Before pushing: answering borrows `round.blocks`, pushing moves them.
         let Answers { results, aborted } =
             answer_calls(&round.blocks, ctx, turn.tools, &mut gate).await?;
 
