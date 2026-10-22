@@ -445,8 +445,8 @@ impl SandboxError {
     /// exhaustive match, so a new variant has to decide what a trail calls it.
     pub fn label(&self) -> &'static str {
         match self.decided_by() {
-            Ok(refusal) => refusal.label(),
-            Err(label) => label,
+            refusal::Decider::Helper(refusal) => refusal.label(),
+            refusal::Decider::Parent(label) => label,
         }
     }
 }
@@ -648,9 +648,9 @@ mod tests {
         }
     }
 
-    /// The direction the exhaustive `refusal` match cannot cover alone: a refusal given arms
-    /// in `label` and `refusal` but left out of `ALL` compiles, and then `from_label` rejects
-    /// the label its own writer emits and the record is dropped on arrival (#185).
+    /// The direction the exhaustive `decided_by` match cannot cover alone: a refusal given a
+    /// `Helper` arm but left out of `ALL` compiles, and then `from_label` rejects the label
+    /// its own writer emits and the record is dropped on arrival (#185).
     #[test]
     fn every_refusal_a_variant_reports_is_one_the_channel_admits() {
         for error in every_variant() {
