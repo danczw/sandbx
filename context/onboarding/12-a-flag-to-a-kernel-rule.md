@@ -276,7 +276,7 @@ takes this argv and spawns it themselves meets the refusals too — and that
 names the helper — `/proc/self/exe`, left unresolved, which is why the argv
 below begins with that spelling, and [08](08-the-two-stage-helper.md) has why it
 is not resolved. Only then does it write `HELPER_FLAG` and `AUDIT_STDIN_FLAG` —
-ahead of the policy, because `dispatch_helper_mode` splits the first off and
+ahead of the policy, because `with_helper_dispatch` splits the first off and
 `exec_sandboxed` the second, both before `decode` sees a token — and then
 everything `HelperArgs::encode` emits. Our one grant becomes three tokens:
 

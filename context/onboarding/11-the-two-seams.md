@@ -497,12 +497,12 @@ believe, so here is what it buys in each direction.
   enforces it.
 
 One shape worth noticing on the way past, because it is the house style from 04
-again: `HelperDispatch` in
-[`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) has
-two variants, `NotHelperMode` and `Failed`, and **no success arm** — plus
-`#[must_use]`. There is no value in the program that can represent "helper mode
-ran fine, carry on", so a failed helper run cannot fall through into running the
-command unconfined.
+again: `with_helper_dispatch` in
+[`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) is the
+only entry into helper mode, its helper arms have **no success arm**, and the
+ordinary path is a closure neither of them can reach. There is no value in the
+program that can represent "helper mode ran fine, carry on", so a failed helper
+run cannot fall through into running the command unconfined.
 
 ## What seam 1 still leaves open
 

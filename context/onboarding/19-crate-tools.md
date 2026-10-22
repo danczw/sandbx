@@ -501,11 +501,11 @@ timeout, attaching the helper path if one is set. So two sites build a
 
 `with_helper` exists for one reason worth knowing before testing `bash`.
 `SandboxedCommand` defaults to re-executing the current binary in helper mode,
-which assumes that binary calls `dispatch_helper_mode` at startup; the shipped
+which assumes that binary calls `with_helper_dispatch` at startup; the shipped
 `sandbx` does and a test harness does not. `tests/support/helper.rs` is the
 stand-in — a `[[bin]]` named `sandbx-tools-test-helper`, declared with
 `required-features = ["sandbox-integration"]`, whose `main` is one
-`dispatch_helper_mode` call. `tests/bash.rs` and `tests/spawn.rs` reach it
+`with_helper_dispatch` call. `tests/bash.rs` and `tests/spawn.rs` reach it
 through `env!("CARGO_BIN_EXE_…")` and are gated on that feature *and*
 `target_os = "linux"`, so on a host with no sandbox-capable kernel those two
 files compile to nothing and the other eight targets still run.
