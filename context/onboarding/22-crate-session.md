@@ -27,7 +27,7 @@ carries what that costs as a non-claim.
 | [`store.rs`](../../crates/sandbx-session/src/store.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
 | [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
-| [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, three opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
+| [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, two opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
 | [`error.rs`](../../crates/sandbx-session/src/error.rs) | `SessionError`, seventeen variants | below |
 | `tests/` | `identifier`, `permissions`, `recovery`, `transcript` | below |
 
@@ -214,11 +214,11 @@ Follow the sequence down, and the refusals out of the side of it:
 
 ```mermaid
 flowchart TD
-    A["resume"] --> B["open_root, O_NOFOLLOW"]
+    A["resume"] --> B["open_nofollow, the root"]
     B --> C["ownership of the directory descriptor"]
     C -->|"WRITABLE_BITS"| D["DirWritable"]
     C -->|"another uid"| E["ForeignOwner"]
-    C --> F["open_transcript, O_NOFOLLOW"]
+    C --> F["open_nofollow, the transcript"]
     F --> G["ownership of the file descriptor"]
     G -->|"WRITABLE_BITS"| H["Writable"]
     G -->|"another uid"| I["ForeignOwner"]
@@ -487,7 +487,7 @@ wider than the other two, with its own reason:
 > Wider than [`WRITABLE_BITS`]: a transcript's name is clock-derived and so
 > guessable, and group/other execute alone lets somebody else traverse to it.
 
-The absence of `O_DIRECTORY` on `open_root` is deliberate, and
+The absence of `O_DIRECTORY` on `open_nofollow` is deliberate, and
 [decision-on-disk-state.md](../decision-on-disk-state.md) owns the reasoning:
 paired with `O_NOFOLLOW` the kernel reports a symlinked directory as `ENOTDIR`,
 which is what a root that is a plain file reports too, so the flag would merge
