@@ -194,9 +194,9 @@ without the accounting that describes them, or accounting without its messages.
 
 `vet.rs`'s module doc draws the division: "Which mode bit refuses and which
 only reports stays with the sequence that applies it." `vet.rs` *names* the mode
-bits and never acts on them; the one rule it applies itself is the owner's, which
-is the same at every site, so `ownership` refuses another uid as `ForeignOwner`
-before it hands back a mode. `resume` acts on the mode:
+bits and never acts on them. Besides the symlink refusal its opens make, the one
+rule it applies itself is the owner's, which is the same at every site, so
+`ownership` refuses another uid as `ForeignOwner` before it hands back a mode. `resume` acts on the mode:
 
 ```rust
         let mode = ownership(&file, &path)?;
