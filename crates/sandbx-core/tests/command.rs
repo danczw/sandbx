@@ -493,23 +493,27 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
 #[test]
 fn an_ordinary_invocation_is_not_helper_mode() {
     let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(std::ffi::OsString::from);
+    let mut ran = false;
 
-    assert!(matches!(
-        sandbx_core::dispatch_helper_mode(argv),
-        sandbx_core::HelperDispatch::NotHelperMode
-    ));
+    sandbx_core::with_helper_dispatch(argv, || {
+        ran = true;
+        std::process::ExitCode::SUCCESS
+    });
+
+    assert!(ran);
 }
 
 #[test]
 fn an_argv_with_no_arguments_is_not_helper_mode() {
     for argv in [vec![], vec![std::ffi::OsString::from("sandbx")]] {
-        assert!(
-            matches!(
-                sandbx_core::dispatch_helper_mode(argv),
-                sandbx_core::HelperDispatch::NotHelperMode
-            ),
-            "a too-short argv must be reported as an ordinary run"
-        );
+        let mut ran = false;
+
+        sandbx_core::with_helper_dispatch(argv, || {
+            ran = true;
+            std::process::ExitCode::SUCCESS
+        });
+
+        assert!(ran, "a too-short argv must be reported as an ordinary run");
     }
 }
 

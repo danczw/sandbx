@@ -280,7 +280,7 @@ fn restrict_and_exec(
     // `HELPER_INNER_FLAG`): a caller reaching the inner stage directly arrives with a full
     // environment and is refused here rather than narrowed.
     //
-    // An error and not an `assert!`: `dispatch_helper_mode` is exhaustive so a helper run
+    // An error and not an `assert!`: `with_helper_dispatch` is exhaustive so a helper run
     // cannot end without either running the command or reporting why not, and a panic
     // leaves through neither. The message names no variable, for the reason
     // `records_how_many_variables_passed_not_which` gives.
