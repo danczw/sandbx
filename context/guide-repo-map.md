@@ -161,9 +161,7 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    anthropic.rs   AnthropicClient
       body.rs     Serialize for the Messages body, built from a &Prompt
       wire/       accumulate.rs, payload.rs + unit tests
-   mock.rs        MockProvider — behind the `mock` feature
 tests/            anthropic_client, credentials, crypto_provider, error,
-                  mock_provider (needs `mock`),
                   live_anthropic (needs `live-anthropic-tests`)
 ```
 

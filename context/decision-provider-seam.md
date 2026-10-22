@@ -10,8 +10,9 @@ and SSE accumulation — the hard part — is where a generic wrapper helps leas
 ## There is no provider object to drive
 
 `Provider` was a one-variant enum whose methods were pass-throughs. It has been
-deleted (#90); `AnthropicClient::stream_chat` returns `EventStream` directly, and
-`MockProvider::stream_chat` returns the same alias.
+deleted (#90); `AnthropicClient::stream_chat` returns `EventStream` directly, and a
+test double is a closure returning the same alias. `MockProvider`, a published
+double, went too (#305): nothing consumed it once the loop's tests rolled their own.
 
 The seam is the **return type**, not an enum or a trait:
 
@@ -20,7 +21,7 @@ F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>
 ```
 
 `run_turn` takes a closure, so it neither knows nor cares which side produced the
-stream. One adapter plus a mock is two producers of `EventStream` and one of
+stream. One adapter plus a test double is two producers of `EventStream` and one of
 `Provider` — the alias was always the real seam, and the enum only looked like one.
 
 #90 asked for this to be settled *before* the loop was written. It was written
