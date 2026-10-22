@@ -128,6 +128,7 @@ so a caller names all ten fields — which is how the two nobody would think to
 ask for get noticed at all (doc comments elided; each field carries one):
 
 ```rust
+#[derive(Clone)]
 pub struct Turn<'a> {
     pub model: String,
     pub max_output_tokens: u32,
