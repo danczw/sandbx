@@ -13,8 +13,7 @@ use crate::PolicyError;
 mod root;
 
 use root::{
-    ResolvedPath, absolute, bound_by_resolver, current_root, owned_paths, pinned, reaches_owned,
-    resolved,
+    ResolvedPath, absolute, bound_by_resolver, current_root, owned_paths, reaches_owned, resolved,
 };
 
 /// The `--allow-…` flags every subcommand that runs something accepts.
@@ -233,7 +232,6 @@ impl Grants {
         if !self.paths_given() {
             // Inside the branch: a run that typed its own flags never depends on `HOME`.
             let root = current_root(policy.executable_paths(), &owned)?;
-            let root = pinned(&root, root.path())?;
             policy = policy.allow_read(root.clone()).allow_write(root);
         }
 
