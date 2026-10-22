@@ -82,7 +82,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
                      and every variant's label spelled
    bin/sandbx-helper.rs
    helper/
-      mod.rs         the two stages — exec_sandboxed, then exec_inner as PID 1;
+      mod.rs         the two stages — exec_sandboxed, then exec_inner as the init;
                      apply() sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
       resolver.rs    bound_resolution — the ordered mount sequence that installs

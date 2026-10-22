@@ -165,7 +165,7 @@ covering for it and the command's environment byte-identical.
 [05](05-seven-crates.md) is where that argument is traced through the lint.
 
 The other half of *at every spawn stage* is a check, not a clear. Before
-applying anything, `restrict_and_exec` in
+applying anything, `restrict_and_spawn` in
 [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) refuses outright
 if the environment stage 2 *inherited* holds a name the policy does not permit —
 `permits_env`, the one predicate the factory and the check share, being the
@@ -211,12 +211,12 @@ went through the factory at all.
   [`hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) drops the
   four hard, propagating a failure. The *bounding* set is the fifth and is
   best-effort, which is a non-claim below rather than a footnote on this row.
-- **Process lifetime — a PID namespace plus `PR_SET_PDEATHSIG`.** Promised:
-  every process the command spawned dies when the call ends, including one that
-  called `setsid`. Two independent paths, because a command can leave the
-  process group and `pdeathsig` does not care about group membership —
-  [guide-process-lifetime.md](../guide-process-lifetime.md) has the chain and
-  the one ordering rule inside it (arm, *then* confirm).
+- **Process lifetime — a PID namespace whose init is sandbx's own process.**
+  Promised: every process the command spawned dies when the call ends, including
+  one that called `setsid`. Both paths — the group kill and `PR_SET_PDEATHSIG` —
+  end the init, never the command, which could shed either from itself;
+  [guide-process-lifetime.md](../guide-process-lifetime.md) has the chain, why
+  the init is not the command, and the one ordering rule (arm, *then* confirm).
 - **Process signalling — the PID namespace.** Promised: a command cannot signal,
   or even name, a process outside its own namespace. This row is free; it falls
   out of the namespace the previous row already needed.
@@ -591,16 +591,13 @@ the command nothing because the command's environment holds only what
 
 `/proc` inside the sandbox shows host PIDs. It is not remounted for the new
 namespace, since that needs `mount(2)`, which the filter denies — so a command
-reads `getpid() == 1` while `/proc/self/stat` reports its host pid, and one
+reads `getpid() == 2` while `/proc/self/stat` reports its host pid, and one
 building `/proc/<getpid()>` by hand reads a different process. A compatibility
 limitation, not a claim about the boundary.
 
-An unhandled signal aimed at the command itself is ignored. The command is PID 1
-of its namespace and the kernel discards a default-disposition signal sent to a
-namespace's init, so `kill -TERM` at the command does nothing unless it
-installed a handler. Kernel-raised faults such as `SIGSEGV` are still delivered,
-and sandbx's own kill is unaffected: it targets the supervisor with `SIGKILL`,
-which an operator killing one by hand should target too.
+A command killed by a signal reports as exit `128 + n`, not as signalled: its
+status passes through the namespace's init, which cannot die by a signal it
+raises at itself.
 
 ## Two sections it is easy to skip
 
@@ -615,9 +612,9 @@ first when something surprising happens. It is also where several claim rows get
 their final narrowing. The lifetime row promises that every process the command
 spawned dies when the call ends; the last bullet of *Not vulnerabilities* is the
 sentence that makes that smaller, naming the one shape in which a descendant
-survives — the command both having had its parent death signal cleared by a
-secure `exec` *and* having called `setsid` to leave the process group — and then
-narrowing the consequence as well: a survivor is still fully confined, Landlock,
+survives — an untimed call whose supervisor is killed, on a kernel that does not
+deliver the init's parent death signal (#272) — and then narrowing the
+consequence as well: a survivor is still fully confined, Landlock,
 seccomp and the namespaces being irreversible and inherited, so it is unreaped
 rather than unrestricted.
 

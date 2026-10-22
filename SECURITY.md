@@ -39,7 +39,7 @@ through `SandboxedCommand`:
 | environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`), then the constants `SandboxPolicy::imposed_env` sets | which variables the command *inherits*; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross. Not the whole of what it holds: `--dns-over-tcp` imposes `RES_OPTIONS=use-vc` with no `--allow-env` naming it, so the child's environment is the allowlist plus a set of compile-time constants. `permits_env` — allowlisted or imposed — is the predicate `spawn::command` builds and the helper's inherited-environment check asks |
 | syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, mounting, loading code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`, whole-host state — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (bounding set best-effort — see below) |
-| process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` |
+| process lifetime | PID namespace whose init is sandbx's own process, never the command, bound to the call by the process group and `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` |
 | process signalling | PID namespace | a command cannot signal, or even name, a process outside its own namespace |
 
 ### What `--allow-dns` bounds
@@ -329,15 +329,12 @@ architecture the filter gates on.
   ([context/guide-turn-loop.md](context/guide-turn-loop.md)) — but what those
   bound is sandbx's own work, not what a sandboxed command can reach, which is
   what every claim here is about.
-- **An unhandled signal aimed at the command itself is ignored.** The command is
-  PID 1 of its namespace and the kernel discards a default-disposition signal sent
-  to a namespace's init, so `kill -TERM` at the command does nothing unless it
-  installed a handler. Kernel-raised faults such as `SIGSEGV` are still delivered,
-  and sandbx's own kill is unaffected: it targets the supervisor with `SIGKILL`,
-  which an operator killing one by hand should target too.
+- **A command killed by a signal reports as exit `128 + n`, not as signalled.**
+  The status passes through the namespace's init, which cannot die by a signal
+  it raises at itself.
 - **`/proc` inside the sandbox shows host PIDs.** Not remounted for the new
   namespace, since that needs `mount(2)`, which the filter denies. A command reads
-  `getpid() == 1` while `/proc/self/stat` reports its host pid, and one building
+  `getpid() == 2` while `/proc/self/stat` reports its host pid, and one building
   `/proc/<getpid()>` by hand reads a different process. A compatibility
   limitation, not a claim about the boundary.
 - **A port allowlist is not a destination allowlist.** `--allow-network 443`
@@ -526,12 +523,10 @@ Documented behaviour; reports of these will be closed as such:
   boot, or where unprivileged user namespaces are disabled — the PID namespace
   that bounds a command's descendants needs one whatever the policy says. And
   failure to *build* for a non-Linux target. All fail-closed, as intended.
-- A command surviving its *supervisor* being killed mid-run rather than the call
-  ending ([#272](https://github.com/danczw/sandbx/issues/272)). The parent death
-  signal is observed armed and undelivered in that case, and the mechanism is
-  not yet isolated. Clearing the signal is not the route it once was: the
-  command is PID 1 of the PID namespace, `setsid` leaves the process group and
-  not the namespace, and the descendant bound comes from the namespace rather
-  than from the signal. A survivor is still fully confined — Landlock, seccomp
-  and the namespaces are irreversible and inherited — so it is unreaped, not
+- A command surviving its *supervisor* being killed mid-run on an untimed call,
+  where no group kill fires and the init's parent death signal is the only path,
+  on a kernel that does not deliver it — reported on WSL2 in
+  [#272](https://github.com/danczw/sandbx/issues/272), not reproduced on mainline
+  Linux. A survivor is still fully confined — Landlock, seccomp and the
+  namespaces are irreversible and inherited — so it is unreaped, not
   unrestricted.

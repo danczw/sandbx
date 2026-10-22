@@ -8,7 +8,7 @@ Nothing the sandbox starts may outlive the call that started it (#28).
 |---|---|---|
 | 0 | `sandbx` | spawns stage 1; **when a timeout is set**, in its own process group, polls the deadline, `killpg` |
 | 1 | helper supervisor | `unshare(NEWUSER\|NEWPID[\|NEWNET])`, uid/gid map, drop capsets, `RLIMIT_CORE=0`, `no_new_privs`, then `exec` stage 2 |
-| 2 | helper inner | PID 1 of the new namespace. `pdeathsig`, confirm supervisor, `apply()`, then becomes the command |
+| 2 | helper inner | PID 1 of the new namespace, and stays it. `pdeathsig`, confirm supervisor, `apply()`, non-dumpable, spawns the command, reaps until it exits |
 
 Stage 1 exists because `unshare(CLONE_NEWPID)` only places a process's
 *children* — so unsharing in the supervisor is what makes stage 2 PID 1. Stage 2
@@ -23,16 +23,39 @@ else there is a hard failure.
 ```
 deadline fires ──► killpg(SIGKILL) on the group
        │
+       ├─ stage 2 dies (it is in the group too)
        └─ stage 1 dies ──► stage 2's pdeathsig fires ──► stage 2 dies
                                   │
                                   └─ stage 2 was PID 1 ──► kernel SIGKILLs the whole namespace
 ```
 
-Two independent paths reach stage 2 on purpose. The supervisor and stage 2 are
-both in the group sandbx kills — but the command may call `setsid` and leave it,
-which is the whole of #28. `pdeathsig` does not care about group membership. The
-kernel clears it for a secure `exec` (setuid, file capabilities), where the group
-kill is then what still reaps.
+Two independent paths reach stage 2 on purpose: the group kill, and `pdeathsig`
+when stage 1 dies without one — killed by hand, or on an untimed call. Both end
+**stage 2**, never the command, and that is the point.
+
+## Why stage 2 is the init, not the command
+
+The command can shed both paths from itself. `setsid` leaves the group (#28).
+`pdeathsig` is per *thread*: a new thread starts with it at 0, so an `exec` from
+a second thread hands PID 1 an image that has none, with no `prctl` to filter
+(#272). The kernel also clears it on a secure `exec`. A process that runs
+arbitrary code cannot be the one the kill chain rests on.
+
+So stage 2 spawns the command and stays PID 1: it never calls `setsid`, never
+`exec`s and stays single-threaded, so both paths keep reaching it. It reaps
+orphans until the command exits, then exits as the command did, and its exit is
+what tears the namespace down — the shape of bubblewrap's `do_init`.
+
+Three things follow:
+
+- **The init is non-dumpable.** It applies the ruleset before spawning, so it
+  shares the command's Landlock domain, which permits `/proc/<pid>/mem` and
+  `environ` across the domain. `PR_SET_DUMPABLE` 0 makes those need
+  `CAP_SYS_PTRACE`; it holds because the init never `exec`s.
+- **A signalled command reports as `128 + n`.** An init cannot die by a signal it
+  raises at itself, so the status loses its signalled form on the way out.
+  `exit_code` gives the same number either way.
+- **The command is PID 2, its parent PID 1**, and receives signals normally.
 
 **The group kill fires on every timed run, not only on expiry.** A command may
 background work and exit inside its deadline while its descendants still hold the
@@ -48,7 +71,7 @@ confirm_supervisor(expected)    ← then check
 Ordering is what makes the pair complete. A death *before* the check is caught by
 the check; a death *after* it is caught by the signal already armed. Reverse them
 and there is a window where nothing kills stage 2 and the command runs to
-completion as PID 1 of a namespace no one is watching.
+completion in a namespace no one is watching.
 
 `getppid()` is useless here — stage 2 is PID 1 of a namespace whose parent is
 outside it, so the kernel returns 0. `/proc` is still the host's procfs (not
@@ -81,8 +104,8 @@ who is still running. `POLL_INTERVAL` is 10 ms.
 
 Stage 2 does not call `setsid`, which is what keeps it in the group sandbx kills.
 
-The relay cannot re-raise `SIGPIPE`, `SIGSEGV` or `SIGBUS`, so those surface as
-`128 + n` rather than as a real death by that signal.
+Every signal the command dies by surfaces as `128 + n`, the init exiting with
+that number rather than dying by it — see above.
 
 `unshare`, `setns` and `mount` are all in the seccomp denylist, so the command
 cannot build itself a new namespace or remount `/proc` out from under any of

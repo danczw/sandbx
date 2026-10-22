@@ -38,7 +38,7 @@ flowchart TD
 |---|---|---|
 | 0 | `sandbx` | spawns stage 1; when a timeout is set, in its own process group, polls the deadline and `killpg`s |
 | 1 | helper supervisor | the namespaces, the mappings, the capability drops — everything that has to happen in a process that still needs to spawn one |
-| 2 | helper inner | PID 1 of the new namespace. Arms `pdeathsig`, confirms its parent, applies seccomp and Landlock, becomes the command |
+| 2 | helper inner | PID 1 of the new namespace, and stays it. Arms `pdeathsig`, confirms its parent, applies seccomp and Landlock, spawns the command and reaps until it exits |
 
 **Why stage 1 exists at all:** `unshare(CLONE_NEWPID)` places a process's
 *children* in the new PID namespace, not the process itself. So the only way to
@@ -56,7 +56,7 @@ vulnerability in sandbx's own code is not contained by sandbx.
 
 The check is one grep, and it is worth running once so the picture stops being
 something you took on trust: `apply` has exactly one call site in the
-workspace, in `restrict_and_exec` — stage 2, and nowhere above it. Why it cannot
+workspace, in `restrict_and_spawn` — stage 2, and nowhere above it. Why it cannot
 move up is in `exec_sandboxed`'s own doc comment in
 [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs):
 
@@ -93,9 +93,9 @@ about the harness.
 
 Nothing sandbx starts outlives the call that started it (#28), by two
 independent paths: the group kill from process 0, and `pdeathsig` on stage 2
-plus the kernel's own teardown of a PID namespace whose PID 1 died. Two paths
-because a command may call `setsid` and leave the process group, and `pdeathsig`
-does not care about group membership.
+plus the kernel's own teardown of a PID namespace whose PID 1 died. Both end
+stage 2, never the command: a command can `setsid` out of the group and shed
+its own `pdeathsig`, so the init is sandbx's code and the command its child.
 [guide-process-lifetime.md](../guide-process-lifetime.md) has the kill chain,
 and the one ordering rule inside it.
 

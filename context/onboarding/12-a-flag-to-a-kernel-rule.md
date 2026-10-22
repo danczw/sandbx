@@ -715,8 +715,8 @@ runs *first*, so bytes that were never the pinned ones report the mismatch, and
 only an image that genuinely *is* the pinned one is refused for being a script.
 `a_swapped_script_reports_the_mismatch` in `digest.rs` holds that down.
 
-**The check sits after `apply`, in the process that becomes the command.** Not
-in the harness: `restrict_and_exec` in
+**The check sits after `apply`, in the process that starts the command.** Not
+in the harness: `restrict_and_spawn` in
 [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) is stage 2 of the
 re-exec, PID 1 of the new PID namespace, and it calls `apply` — Landlock,
 seccomp, hardening — and only then opens the program.

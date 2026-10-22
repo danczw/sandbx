@@ -64,7 +64,7 @@ still hand-written.
 What stands in for the compiler on the *behaviour* — that `spawn::command` narrows
 at all, which the lint says nothing about — is `tests/enforcement.rs`, which runs
 `/usr/bin/env` through the real helper and reads its stdout, plus the check in
-`restrict_and_exec` that refuses an environment an earlier stage should have
+`restrict_and_spawn` that refuses an environment an earlier stage should have
 narrowed. One site to delete, 24 failures when it goes. See
 `decision-environment-allowlist.md`.
 
