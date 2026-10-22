@@ -156,9 +156,8 @@ fn parse_event(lines: &[String]) -> String {
         if let Some(rest) = line.strip_prefix("data:") {
             data_lines.push(rest.trim_start());
         }
-        // `event:` only restates the payload's own type tag; `id:`/`retry:`/comments
-        // matter only to a Last-Event-ID resume, which this crate never does. A frame
-        // of only those yields an empty `data`, which `wire/accumulate.rs` skips.
+        // `event:` restates the payload's type tag; `id:`/`retry:`/comments serve only a
+        // Last-Event-ID resume, never done here. A frame of only those yields an empty `data`.
     }
     data_lines.join("\n")
 }
