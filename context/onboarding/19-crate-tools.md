@@ -339,7 +339,7 @@ meet:
         // The size comes off the handle, so the file measured is the file read (#275).
         // Over the cap, not text, or refused: one rule, the caller's move being the
         // same. An unmarked skip reads as a file with no match in it (#274).
-        let Ok(Some(content)) = crate::read_capped(&file, ctx, MAX_FILE_BYTES) else {
+        let Some(content) = crate::read_capped(&file, ctx, MAX_FILE_BYTES) else {
             stopped_early = true;
             continue;
         };

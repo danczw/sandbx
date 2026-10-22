@@ -215,33 +215,19 @@ pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, T
     slurp(file, path)
 }
 
-/// Read a file through the guard, declining one past `max` bytes.
-///
-/// `Ok(None)` is a file that was not searched and so answers nothing: past `max`, or no
-/// text came back. `Err` is the access refused, or a handle the host would not measure.
-/// The size comes off that handle, never off the path: a path `stat` is a second
-/// resolution the guard did not vet, and need not answer for the file opened (#275).
-pub(crate) fn read_capped(
-    path: &Path,
-    ctx: &ExecutionContext,
-    max: u64,
-) -> Result<Option<String>, ToolError> {
-    let file = ctx
-        .guard()
-        .open_read(path)
-        .map_err(|error| guard_error(path, error))?;
-
-    let len = file
-        .metadata()
-        .map_err(|error| failed("measure", path, error))?
-        .len();
-    if len > max {
-        return Ok(None);
+/// Read a file through the guard, or `None` when it answers nothing: refused, past
+/// `max`, not measurable, or not text. The size comes off the handle, never off the
+/// path: a path `stat` is a second resolution the guard did not vet, and need not
+/// answer for the file opened (#275).
+pub(crate) fn read_capped(path: &Path, ctx: &ExecutionContext, max: u64) -> Option<String> {
+    let file = ctx.guard().open_read(path).ok()?;
+    if file.metadata().ok()?.len() > max {
+        return None;
     }
 
     // A binary under the cap fails UTF-8 validation here, and so does a read that died
     // mid-file; neither is a file with no match in it.
-    Ok(slurp(file, path).ok())
+    slurp(file, path).ok()
 }
 
 /// Read an open handle to a `String`, the path being for the error only.
