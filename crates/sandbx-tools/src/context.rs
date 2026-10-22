@@ -45,7 +45,7 @@ impl ExecutionContext {
     }
 
     /// Spawn through a specific sandbox helper instead of re-executing the current
-    /// binary, which the default assumes calls `sandbx_core::dispatch_helper_mode`
+    /// binary, which the default assumes calls `sandbx_core::with_helper_dispatch`
     /// at startup — the shipped `sandbx` does, a test harness does not.
     #[must_use]
     pub fn with_helper(mut self, path: impl AsRef<std::path::Path>) -> Self {

@@ -12,9 +12,7 @@ use crate::{HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
 
 pub(crate) mod dispatch;
 
-pub use dispatch::{
-    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, dispatch_helper_mode, with_helper_dispatch,
-};
+pub use dispatch::{HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch};
 
 /// A command that runs under a [`SandboxPolicy`]; the only sanctioned way for sandbx to
 /// execute anything. A helper restricts itself in two stages, restricting a child directly

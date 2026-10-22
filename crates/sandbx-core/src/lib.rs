@@ -25,10 +25,7 @@ mod resolver;
 mod spawn;
 
 pub use audit::{AUDIT_TARGET, AuditEvent};
-pub use command::{
-    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch, SandboxedCommand, dispatch_helper_mode,
-    with_helper_dispatch,
-};
+pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch};
 pub use concealment::conceal_process_state;
 pub use digest::{DigestParseError, Sha256Digest};
 pub use error::{Access, HelperRefusal, SandboxError};
