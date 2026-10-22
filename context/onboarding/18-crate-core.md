@@ -571,13 +571,13 @@ parent or `FsGuard` decides, with its label. `label` and `refusal` are both
 views of it, so a relayed refusal and the variant it stands for cannot be
 called two different things. The eleven `Err` arms open with the clause that
 each is decided by the parent or `FsGuard` and never the helper, and five
-comments give six of them their own reason — `HelperRefused` is the relay's own output, so reporting it
-would be a second crossing; `ProcessConcealment` is decided past dispatch,
-which no helper runs (#192); `GrantUnpinnable` is the harness's own vetting;
-`RootReplaced` is `FsGuard`'s per-access measurement; `UnboundedResolution`
-and `GrantBoundByResolver` are decided off the policy before the spawn. Those
-comments are the closest thing the repo has to a written-out criterion, and
-they sit beside the code they govern.
+comments give six of them their own reason — `HelperRefused` is the relay's own
+output, so reporting it would be a second crossing; `ProcessConcealment` is
+decided past dispatch, which no helper runs (#192); `GrantUnpinnable` is the
+harness's own vetting; `RootReplaced` is `FsGuard`'s per-access measurement;
+`UnboundedResolution` and `GrantBoundByResolver` are decided off the policy
+before the spawn. Those comments are the closest thing the repo has to a
+written-out criterion, and they sit beside the code they govern.
 
 Five tests hold the two sets together, and the division of labour between
 compiler and test is the thing to carry away: the exhaustive match makes a new
