@@ -54,6 +54,16 @@ appears without a code change.
 out in a `name:` for that reason: renaming a job blocks every merge on a status
 that will never report.
 
+### A test-only feature gates a target, not a self dev-dependency
+
+`[dev-dependencies]` naming the crate itself with `features = ["x"]` is the
+obvious way to cover a gated item with a plain `cargo test`, and the wrong one.
+Resolver 3 unifies features per package, and that edge is active under
+`--all-targets`, so `x` is on in the one rlib every consumer links: production
+code naming the gated item passes clippy and the suite, and fails first in the
+release build. Give the test target `required-features` and name the feature in
+the CI command that runs it, as `sandbox-integration` does.
+
 ### Ordering: `cargo metadata` before any toolchain step
 
 `msrv` cannot install its toolchain until it knows which one, and `notes` cannot
@@ -85,8 +95,9 @@ Not a cargo limitation — `[lints.rustdoc]` does work, verified on cargo 1.95:
 enumerates lints by name and has to be kept current; `-D warnings` denies the
 whole class, including lints a future toolchain adds.
 
-The Doc step also passes `--all-features`, unlike Clippy: a feature-gated item's
-intra-doc links are checked there or nowhere.
+The Doc step also passes `--all-features`, unlike Clippy: a binary behind
+`required-features` — the enforcement suite's probes — is documented there or
+nowhere.
 
 ## Publication: the two questions a tag answers
 
