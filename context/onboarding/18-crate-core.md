@@ -481,11 +481,11 @@ The enum's doc states the property that makes it safe to reason about: "Every
 variant is a refusal — no 'allowed with warning' case — so a caller that
 believes it is sandboxed is never worse off than one that gets an error." No
 `Ok`-ish arm, no severity field. And no `#[non_exhaustive]`, which is what
-"closed" buys: four matches over the enum carry no wildcard arm — `Display`,
-`Error::source`, `label` and `refusal` — so a twenty-fifth variant is four
-compile errors, one per question it has to answer. How it reads to an operator,
-whether it wraps an OS error worth a `source`, what a trail calls it, and
-whether a helper stage is the only thing that can decide it.
+"closed" buys: three matches over the enum carry no wildcard arm — `Display`,
+`Error::source` and `decided_by` — so a twenty-fifth variant is three compile
+errors, one per arm it has to write. How it reads to an operator, whether it
+wraps an OS error worth a `source`, and — in one arm — whether a helper stage
+is the only thing that can decide it and what a trail calls it.
 
 Reading the list end to end is the fastest tour of the threat model in the repo:
 
@@ -506,17 +506,19 @@ operator whether they pinned the wrong bytes or the bytes changed under them.
 
 ```rust
     pub fn label(&self) -> &'static str {
-        match self {
-            Self::PathNotAllowed { .. } => "path_not_allowed",
-            Self::Unresolvable { .. } => "unresolvable",
+        match self.decided_by() {
+            Ok(refusal) => refusal.label(),
+            Err(label) => label,
+        }
+    }
 ```
 
 A stable name per variant, and the doc says what it is for: "the audit trail is
 filtered by" it. Three consequences stack up.
 
-- **The match is exhaustive, so a new variant has to decide what a trail calls
-  it.** There is no `_ => "unknown"`, which would let a new refusal land on the
-  trail under a name no filter catches.
+- **The match `label` reads is exhaustive, so a new variant has to decide what a
+  trail calls it.** There is no `_ => "unknown"`, which would let a new refusal
+  land on the trail under a name no filter catches.
 - **No two variants may share a label**, pinned by
   `no_two_variants_share_a_label` — a shared label would make two refusals
   indistinguishable to the `reason=` filter that is the trail's whole point.
@@ -557,23 +559,25 @@ stderr, strips `HELPER_FAILURE_PREFIX` back off so the CLI printing
 caps a command's output rather than an error's detail, and this detail reaches a
 model inside a `tool_result`.
 
-### `SandboxError::refusal` is the one mapping site
+### `SandboxError::decided_by` is the one mapping site
 
 ```rust
-    pub(crate) fn refusal(&self) -> Option<HelperRefusal> {
+    pub(super) fn decided_by(&self) -> Result<HelperRefusal, &'static str> {
 ```
 
-Crate-private, exhaustive, and the only place the two sets are related. The
-`None` arm is a single match arm covering eleven variants, carrying a comment
-that names six of them individually — `HelperRefused` is the relay's own output,
-so reporting it would be a second crossing; `ProcessConcealment` is decided past
-dispatch, which no helper runs (#192); `GrantUnpinnable` is the harness's own
-vetting; `RootReplaced` is `FsGuard`'s per-access measurement;
-`UnboundedResolution` and `GrantBoundByResolver` are decided off the policy
-before the spawn. The other five it leaves to the arm's opening clause, that
-each is decided by the parent or `FsGuard` and never the helper. That comment is
-the closest thing the repo has to a written-out criterion, and it sits beside
-the code it governs.
+Private to `error`, exhaustive, and the only place the two sets are related.
+`Ok` is a helper-decided variant, whose label is its refusal's; `Err` is one the
+parent or `FsGuard` decides, with its label. `label` and `refusal` are both
+views of it, so a relayed refusal and the variant it stands for cannot be
+called two different things. The eleven `Err` arms open with the clause that
+each is decided by the parent or `FsGuard` and never the helper, and six carry
+their own reason — `HelperRefused` is the relay's own output, so reporting it
+would be a second crossing; `ProcessConcealment` is decided past dispatch,
+which no helper runs (#192); `GrantUnpinnable` is the harness's own vetting;
+`RootReplaced` is `FsGuard`'s per-access measurement; `UnboundedResolution`
+and `GrantBoundByResolver` are decided off the policy before the spawn. Those
+comments are the closest thing the repo has to a written-out criterion, and
+they sit beside the code they govern.
 
 Five tests hold the two sets together, and the division of labour between
 compiler and test is the thing to carry away: the exhaustive match makes a new
@@ -583,7 +587,7 @@ variant *decide*, but it cannot make the test fixture *know*.
 |---|---|
 | `no_two_variants_share_a_label` | two refusals becoming one `reason=` value |
 | `a_refusal_is_called_what_the_variant_it_relays_is_called` | a relayed refusal being renamed on the way to the caller |
-| `every_refusal_a_variant_reports_is_one_the_channel_admits` | a refusal given arms in `label` and `refusal` but left out of `ALL`, where `from_label` would reject the label its own writer emits (#185) |
+| `every_refusal_a_variant_reports_is_one_the_channel_admits` | a refusal mapped in `decided_by` but left out of `ALL`, where `from_label` would reject the label its own writer emits (#185) |
 | `the_reasons_the_helper_does_not_decide_are_not_refusals` | a variant changing sides unnoticed — `refusal` must answer `None` for exactly the eleven listed here |
 | `the_reasons_the_helper_does_not_decide_cannot_cross_the_channel` | a label sandbx decides for itself being accepted off the wire |
 
