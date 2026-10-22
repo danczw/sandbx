@@ -13,10 +13,6 @@ use sandbx_providers::{
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 /// Scripts one canned round per call, and records what was sent.
-///
-/// Not built on `sandbx-providers`' `MockProvider`, which would cost a `mock` feature, a
-/// `required-features` target and a CI command naming both to borrow one line; see
-/// `context/guide-turn-loop.md`.
 pub(crate) struct Script {
     rounds: VecDeque<Vec<AgentEvent>>,
     pub(crate) sent: Vec<Prompt>,

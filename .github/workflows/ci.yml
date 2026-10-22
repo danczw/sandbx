@@ -41,16 +41,15 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
-      # Byte-identical to `.githooks/pre-commit`; keep them so. Default features,
-      # so production code reaching a test-only gated item fails here, not at tag time.
+      # Byte-identical to `.githooks/pre-commit`; keep them so.
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --features sandbx-providers/mock
+        run: cargo test --workspace
 
-      # `--all-features` unlike Clippy: a gated item's intra-doc links are checked
-      # here or nowhere. `--document-private-items`: most of the tree is `pub(crate)`.
+      # `--all-features` unlike Clippy: `required-features` binaries are documented here
+      # or nowhere. `--document-private-items`: most of the tree is `pub(crate)`.
       - name: Doc
         env:
           RUSTDOCFLAGS: -D warnings
@@ -146,7 +145,7 @@ jobs:
       - name: Test at the stated floor
         run: |
           cargo test --workspace --locked \
-            --features sandbox-integration,sandbx-providers/mock
+            --features sandbox-integration
 
   notes:
     runs-on: ubuntu-latest
