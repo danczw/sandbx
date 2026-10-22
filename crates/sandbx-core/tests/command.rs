@@ -485,9 +485,8 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
     );
 }
 
-/// The command leaving the group and shedding its parent death signal — an `exec` from a
-/// second thread does it with no `prctl` — must not let it outlive the call: what the kill
-/// chain ends is the namespace's init, which is sandbx's own process and not the command.
+/// An `exec` from a second thread sheds the per-thread parent death signal with no `prctl`;
+/// what the kill chain ends is the init, so the command still dies.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_that_sheds_its_lifetime_still_dies() {

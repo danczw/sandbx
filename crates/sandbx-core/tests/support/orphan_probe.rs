@@ -2,8 +2,7 @@
 //! still alive four seconds later. Test-only.
 //!
 //! The parent death signal is per thread and a new thread starts with it at 0, so the image
-//! the thread execs carries none — the shape that outlived the call while the command was its
-//! namespace's init (#272). A timed-out call returns no stdout, so it reports to a file.
+//! the thread execs carries none. A timed-out call returns no stdout, so it reports to a file.
 
 const CHILD_FLAG: &str = "--child";
 

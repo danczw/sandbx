@@ -172,8 +172,7 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 /// Exit the way the inner stage exited.
 ///
 /// The caller reads this process's status as the command's. A signalled command arrives as
-/// `128 + n` already, the inner stage being an init; what is re-raised is a signal the inner
-/// stage itself died by, the kill chain's `SIGKILL`.
+/// `128 + n` already, from an init; what is re-raised is the inner stage's own death.
 ///
 /// Re-raising rather than exiting with `128 + signal` is what keeps that status genuinely
 /// *signalled*. It cannot always work: Rust's runtime sets `SIGPIPE` to `SIG_IGN` and
@@ -322,17 +321,14 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxE
     command.arg0(&request.program);
     command.args(&request.args);
 
-    // Before the command exists: this process shares its Landlock domain, which lets a
-    // process reach another through `/proc/<pid>/mem`; non-dumpable, the command cannot.
-    // Holds because this process never `exec`s, which would reset the flag.
+    // Before the command exists, which shares this process's Landlock domain and so could reach
+    // its `/proc/<pid>/mem`. Holds because this process never `exec`s, which resets the flag.
     nix::sys::prctl::set_dumpable(false).map_err(|errno| SandboxError::ProcessHardening {
         detail: format!("could not make the namespace's init non-dumpable: {errno}"),
     })?;
 
-    // Spawned, not `exec`ed: what the kill chain ends is this process, so it must be one the
-    // command cannot change. The command can shed its own parent death signal — it is per
-    // thread, and an `exec` from a fresh thread drops it — and leave the group sandbx kills.
-    // The channel duplicate is close-on-exec, so the command never holds it.
+    // Spawned, not `exec`ed: the kill chain ends this process, and a command can leave the group
+    // and shed a parent death signal, which is per thread, by `exec`ing from a fresh one.
     command
         .spawn()
         .map(|child| child.id())
@@ -343,8 +339,7 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxE
 ///
 /// This process is the namespace's init, so orphans reparent here and are reaped as they
 /// come; exiting is what makes the kernel kill whatever is left. A signalled command comes
-/// out as `128 + n`: an init cannot die by a signal it raises at itself, the kernel
-/// discarding it, so [`relay`]'s re-raise has nothing to offer here.
+/// out as `128 + n`: the kernel discards a signal an init raises at itself.
 fn reap_until(command: u32) -> ! {
     use nix::sys::wait::{WaitStatus, wait};
     use std::os::unix::process::ExitStatusExt;

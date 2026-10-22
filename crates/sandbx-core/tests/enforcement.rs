@@ -243,8 +243,7 @@ fn unprivileged_pid_namespace_is_available() {
 /// Everything about process lifetime rests on this: a process cannot leave the PID
 /// namespace it was born into, and `unshare`/`setns` are denied, so killing PID 1 makes
 /// the kernel reap the rest unconditionally — where a process group is advisory. PID 1 is
-/// sandbx's own init and the command its child, so the command cannot shed what kills it.
-/// `$$` and `$PPID` are the shell's pid and its parent's as the kernel reports them.
+/// sandbx's own init, so the command cannot shed what kills it.
 #[test]
 fn the_command_runs_under_its_namespaces_own_init() {
     let policy = runtime_paths(SandboxPolicy::default());
@@ -262,10 +261,9 @@ fn the_command_runs_under_its_namespaces_own_init() {
     );
 }
 
-/// The init shares the command's Landlock domain, which lets one process read another's
-/// `/proc/<pid>/environ` or `mem`; the init being non-dumpable is what refuses it. The host
-/// pid comes from `/proc/self/stat` read by the shell itself, `/proc` being the host's, and
-/// the command reading its own `environ` is what shows the grant reaches `/proc` at all.
+/// One Landlock domain lets the command read the init's `/proc/<pid>/environ`; non-dumpable
+/// refuses it. Reading its own `environ` is what shows the grant reaches `/proc` at all; the
+/// shell reads the init's host pid off `/proc/self/stat` itself, `$$` not being a host pid.
 #[test]
 fn the_command_cannot_reach_into_its_init() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
