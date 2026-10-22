@@ -20,6 +20,7 @@ use accumulate::accumulate;
 use tools::{Answers, answer_calls, definition};
 
 /// What to ask the model for. Borrows the history, which [`run_turn`] never appends to.
+#[derive(Clone)]
 pub struct Turn<'a> {
     /// The model to ask. A freeform string, as [`Prompt`] takes it.
     pub model: String,
