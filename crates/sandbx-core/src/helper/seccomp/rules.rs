@@ -116,8 +116,9 @@ pub(super) const SOCK_TYPE_MASK: u64 = 0xf;
 ///
 /// Always `Dword`, because every argument the rules below examine is read by the kernel as a
 /// 32-bit value — `socket`'s three `int`s, `clone`'s flags through `lower_32_bits`,
-/// `sendmsg`'s `int flags`. A `Qword` compare would consult register bits no kernel check
-/// sees, so `socket(AF_INET, 0x1_0000_0002, 0)` would escape a rule that named `SOCK_DGRAM`.
+/// `sendmsg`'s `int flags` — or, for `prctl`'s signal, refused by `valid_signal` with any high
+/// bit set. A `Qword` compare would consult register bits no kernel check sees, so
+/// `socket(AF_INET, 0x1_0000_0002, 0)` would escape a rule that named `SOCK_DGRAM`.
 fn arg(
     index: u8,
     op: seccompiler::SeccompCmpOp,
@@ -177,6 +178,18 @@ pub(super) fn blocked_syscalls(
             vec![arg(0, MaskedEq(flag), flag)?],
         )?;
     }
+
+    // The parent death signal is what kills PID 1 once it `setsid`s out of the group sandbx
+    // kills (`context/guide-process-lifetime.md`), so the command may not disarm it. Any value
+    // but `SIGKILL` does: a namespace's init ignores a default-disposition signal.
+    deny_when(
+        &mut rules,
+        libc::SYS_prctl,
+        vec![
+            arg(0, Eq, libc::PR_SET_PDEATHSIG as u64)?,
+            arg(1, Ne, libc::SIGKILL as u64)?,
+        ],
+    )?;
 
     // Unix sockets are their own axis, not a sub-case of network: a netns isolates only
     // *abstract* unix sockets, while pathname sockets live in the filesystem and cross it

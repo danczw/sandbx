@@ -10,6 +10,7 @@ use crate::SandboxPolicy;
 
 mod arch;
 mod denylist;
+mod lifetime;
 mod namespaces;
 mod sockets;
 
