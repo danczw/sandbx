@@ -24,10 +24,8 @@ pub const HELPER_INNER_FLAG: &str = "--sandbx-core-exec-inner";
 pub(crate) const HELPER_FAILURE_PREFIX: &str = "sandbx: sandbox helper failed: ";
 
 /// Run helper mode if `argv[1]` is one of the two flags, else `ordinary_main`. Call first
-/// in `main`, before any threads start; it cannot enforce that. No helper arm reaches
-/// `ordinary_main`, as a failed run falling through runs the command unrestricted; a failure
-/// exits non-zero, and one while waiting on the inner stage may follow the command running,
-/// restricted.
+/// in `main`, before any threads start; it cannot enforce that. A failure exits non-zero;
+/// one while waiting on the inner stage may follow the command running, restricted.
 #[must_use = "a helper run that failed must exit non-zero"]
 pub fn with_helper_dispatch<I, F>(argv: I, ordinary_main: F) -> std::process::ExitCode
 where
