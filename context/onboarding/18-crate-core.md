@@ -507,28 +507,32 @@ operator whether they pinned the wrong bytes or the bytes changed under them.
 ```rust
     pub fn label(&self) -> &'static str {
         match self.decided_by() {
-            Ok(refusal) => refusal.label(),
-            Err(label) => label,
+            refusal::Decider::Helper(refusal) => refusal.label(),
+            refusal::Decider::Parent(label) => label,
         }
     }
 ```
 
 A stable name per variant, and the doc says what it is for: "the audit trail is
-filtered by" it. Three consequences stack up.
+filtered by" it. Four consequences stack up.
 
 - **The match `label` reads is exhaustive, so a new variant has to decide what a
   trail calls it.** There is no `_ => "unknown"`, which would let a new refusal
   land on the trail under a name no filter catches.
+- **Each label is spelled out in a test**,
+  `each_variant_keeps_the_label_a_trail_filters_by`, rather than read off
+  `decided_by` — read off the source, a rename would pass by agreeing with
+  itself, and a `reason=` filter would silently stop matching.
 - **No two variants may share a label**, pinned by
   `no_two_variants_share_a_label` — a shared label would make two refusals
   indistinguishable to the `reason=` filter that is the trail's whole point.
 - **`HelperRefused` borrows the label of the refusal it relays** rather than
   having one of its own: "a trail filtered by `reason=` cannot tell which side
-  of the channel decided it — the same refusal either way." Which is why the
+  of the channel decided it." Which is why the
   uniqueness test has to exclude the relay.
 
 `TimedOut`'s label is `"timeout"`, not `"timed_out"`: "the word the operator
-typed and the docs use, so it is the word a trail reader greps for."
+typed and the docs use, so a trail reader greps for it."
 
 ### `HelperRefusal` is the subset the channel admits
 
@@ -562,16 +566,16 @@ model inside a `tool_result`.
 ### `SandboxError::decided_by` is the one mapping site
 
 ```rust
-    pub(super) fn decided_by(&self) -> Result<HelperRefusal, &'static str> {
+    pub(super) fn decided_by(&self) -> Decider {
 ```
 
 Private to `error`, exhaustive, and the only place the two sets are related.
-`Ok` is a helper-decided variant, whose label is its refusal's; `Err` is one the
-parent or `FsGuard` decides, with its label. `label` and `refusal` are both
+`Decider::Helper` is a helper-decided variant, whose label is its refusal's;
+`Decider::Parent` is one the parent or `FsGuard` decides, with its label. `label` and `refusal` are both
 views of it, so a relayed refusal and the variant it stands for cannot be
-called two different things. The eleven `Err` arms open with the clause that
-each is decided by the parent or `FsGuard` and never the helper, and five
-comments give six of them their own reason — `HelperRefused` is the relay's own
+called two different things. The `Parent` variant's own doc says the clause
+that holds for all eleven of its arms — the parent or `FsGuard`, never the
+helper — and five arm comments give six of them their own reason — `HelperRefused` is the relay's own
 output, so reporting it would be a second crossing; `ProcessConcealment` is
 decided past dispatch, which no helper runs (#192); `GrantUnpinnable` is the
 harness's own vetting; `RootReplaced` is `FsGuard`'s per-access measurement;
@@ -586,7 +590,7 @@ variant *decide*, but it cannot make the test fixture *know*.
 | test | closes |
 |---|---|
 | `no_two_variants_share_a_label` | two refusals becoming one `reason=` value |
-| `a_refusal_is_called_what_the_variant_it_relays_is_called` | a relayed refusal being renamed on the way to the caller |
+| `a_refusal_is_called_what_the_variant_it_relays_is_called` | a relayed refusal being renamed on the way to the caller, or crossing the channel under a label no variant has |
 | `every_refusal_a_variant_reports_is_one_the_channel_admits` | a refusal mapped in `decided_by` but left out of `ALL`, where `from_label` would reject the label its own writer emits (#185) |
 | `the_reasons_the_helper_does_not_decide_are_not_refusals` | a variant changing sides unnoticed — `refusal` must answer `None` for exactly the eleven listed here |
 | `the_reasons_the_helper_does_not_decide_cannot_cross_the_channel` | a label sandbx decides for itself being accepted off the wire |
