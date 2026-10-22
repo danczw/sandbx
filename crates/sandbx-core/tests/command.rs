@@ -198,7 +198,7 @@ fn refuses_a_path_the_policy_omits() {
     // without the kernel having been asked.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        !stderr.contains("sandbx-helper:"),
+        !stderr.contains("sandbox helper failed"),
         "setup failed, so the denial was never tested: {stderr}"
     );
 
