@@ -85,6 +85,25 @@ async fn an_in_band_error_event_ends_the_stream() {
     }
 }
 
+/// A lone `error` frame is one `Err` item, its vendor `type` passed through unchanged.
+#[tokio::test]
+async fn an_in_band_error_alone_is_one_err_with_its_kind() {
+    for kind in [
+        "overloaded_error",
+        "api_error",
+        "authentication_error",
+        "invalid_request_error",
+    ] {
+        let frame = format!(r#"{{"type":"error","error":{{"type":"{kind}","message":"m"}}}}"#);
+        let out = events(vec![raw(&frame)]).await;
+
+        match out.as_slice() {
+            [Err(ProviderError::ApiError { kind: got, .. })] => assert_eq!(got, kind),
+            other => panic!("expected one ApiError for {kind}, got {other:?}"),
+        }
+    }
+}
+
 /// `unfold` panics if polled past `None`, and callers may over-poll.
 #[tokio::test]
 async fn the_stream_is_fused_and_survives_being_over_polled() {

@@ -608,8 +608,8 @@ a refused or malformed call goes back to the model as a `tool_result` marked
 | `TimedOut { after }` | one round outran `stream_timeout` |
 | `ToolPanicked { name }` | a tool's blocking task returned no result |
 
-`Provider` is carried rather than flattened, so `source()` reaches the
-provider's own error. `EndedMidToolUse` is a *choice*
+`Provider` is carried rather than flattened, so a caller can match the
+variant, such as a 429's `RateLimited` wait. `EndedMidToolUse` is a *choice*
 rather than a fault: returning `Ok` would hand back a transcript ending on an
 unanswered `tool_result`, breaking the request *after* the one that went wrong,
 so the turn is discarded instead. It has one raise site, the pair of checks that

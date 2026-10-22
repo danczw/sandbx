@@ -84,8 +84,8 @@ flowchart TD
 - **Worth questioning:** the neutral half of this crate is held by convention
   and review, not by a check.
   [decision-provider-seam.md](../decision-provider-seam.md) frames #59 as
-  changing "where the vendor's vocabulary stops", and the mechanisms it lists
-  are genuinely enforced by the compiler. What it does not price is that the
+  changing "where the vendor's vocabulary stops", and the three mechanisms it
+  lists are genuinely enforced by the compiler. What it does not price is that the
   *name* has no enforcement at all, while the
   claim about it is stated absolutely in two places a maintainer will reach for
   before reading the code. The repo already has the shape of the answer:

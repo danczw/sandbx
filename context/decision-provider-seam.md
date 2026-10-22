@@ -55,8 +55,8 @@ there are:
 - `ProviderError` classifies nothing as retryable. #59 settled that such a
   judgement belongs at the adapter's construction sites, not in shared code
   holding vendor strings; it did not settle that one must exist. No backoff layer
-  reads one, so #306 removed `transient`, `is_retryable` and `RETRYABLE_KINDS`,
-  and a future backoff layer adds what it needs where #59 put it.
+  reads one, so #306 removed `transient`, `is_retryable` and `RETRYABLE_KINDS`.
+  Code that classifies retries belongs at those construction sites, as #59 said.
 
 The weakness this leaves, stated rather than designed around: with one adapter the
 neutral shape is informed by one wire format, so a second backend will still move
