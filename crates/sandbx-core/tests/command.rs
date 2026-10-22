@@ -506,7 +506,7 @@ fn a_command_that_sheds_its_lifetime_still_dies() {
     .arg(report.display().to_string())
     .arg(canary.display().to_string())
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_secs(1))
+    .timeout(std::time::Duration::from_secs(2))
     .output();
 
     assert!(
@@ -514,7 +514,7 @@ fn a_command_that_sheds_its_lifetime_still_dies() {
         "expected a timeout, got: {result:?}"
     );
 
-    std::thread::sleep(std::time::Duration::from_secs(3));
+    std::thread::sleep(std::time::Duration::from_secs(5));
     assert!(
         !canary.exists(),
         "a command that left the group and execed from a thread outlived the call"

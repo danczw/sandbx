@@ -525,8 +525,10 @@ Documented behaviour; reports of these will be closed as such:
   failure to *build* for a non-Linux target. All fail-closed, as intended.
 - A command surviving its *supervisor* being killed mid-run on an untimed call,
   where no group kill fires and the init's parent death signal is the only path,
-  on a kernel that does not deliver it — reported on WSL2 in
-  [#272](https://github.com/danczw/sandbx/issues/272), not reproduced on mainline
-  Linux. A survivor is still fully confined — Landlock, seccomp and the
+  on a kernel that does not deliver it.
+  [#272](https://github.com/danczw/sandbx/issues/272) measured the signal armed
+  and undelivered on WSL2; on mainline Linux the survivor it found was the
+  command shedding its own signal, which the init closes, and an armed signal is
+  delivered. A survivor is still fully confined — Landlock, seccomp and the
   namespaces are irreversible and inherited — so it is unreaped, not
   unrestricted.

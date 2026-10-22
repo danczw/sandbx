@@ -86,7 +86,7 @@ fn start_inner_stage(
         report(&crate::degradation::encode(&degraded));
     }
 
-    // This same binary in inner mode, which restricts itself before becoming the command.
+    // This same binary in inner mode, which restricts itself before starting the command.
     // `spawn::command` narrows the environment as it builds it: ordinarily a no-op, sandbx
     // having narrowed ours, and load-bearing for a helper invoked directly with no sandbx
     // above it.
@@ -171,10 +171,11 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 
 /// Exit the way the inner stage exited.
 ///
-/// The caller reads this process's status as the command's, and `sandbx-cli` and the `bash`
-/// tool both branch on signalled-versus-exited.
+/// The caller reads this process's status as the command's. A signalled command arrives as
+/// `128 + n` already, the inner stage being an init; what is re-raised is a signal the inner
+/// stage itself died by, the kill chain's `SIGKILL`.
 ///
-/// Re-raising rather than exiting with `128 + signal` is what makes the status genuinely
+/// Re-raising rather than exiting with `128 + signal` is what keeps that status genuinely
 /// *signalled*. It cannot always work: Rust's runtime sets `SIGPIPE` to `SIG_IGN` and
 /// handles `SIGSEGV`/`SIGBUS` to report stack overflow, so raising one of those at ourselves
 /// returns instead of killing us and the caller sees the numbered form — which is how a
@@ -374,7 +375,7 @@ fn reap_until(command: u32) -> ! {
 /// comes. One half each: `the_command_cannot_write_the_audit_channel` pins the slot,
 /// `the_command_inherits_no_other_end_of_the_channel` the duplicate.
 ///
-/// Fails closed — becoming the command with the channel still on fd 0 is the worse outcome.
+/// Fails closed — starting the command with the channel still on fd 0 is the worse outcome.
 fn claim_audit_channel() -> Result<std::fs::File, SandboxError> {
     use std::os::fd::AsFd;
 
