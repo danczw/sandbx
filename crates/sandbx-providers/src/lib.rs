@@ -12,8 +12,6 @@ mod anthropic;
 mod credentials;
 mod error;
 mod event;
-#[cfg(feature = "mock")]
-mod mock;
 mod prompt;
 mod sse;
 mod text;
@@ -22,10 +20,6 @@ pub use anthropic::AnthropicClient;
 pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 pub use event::{AgentEvent, StopReason};
-/// A provider that fabricates responses, kept out of a production build by the
-/// `mock` feature; `Cargo.toml` records why no self dev-dependency enables it.
-#[cfg(feature = "mock")]
-pub use mock::MockProvider;
 pub use prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };

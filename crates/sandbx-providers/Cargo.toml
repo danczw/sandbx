@@ -25,20 +25,10 @@ bytes = "1"
 tokio = { version = "1.53.1", default-features = false, features = ["macros", "rt"] }
 wiremock = "0.6.5"
 
-# Declared as a target rather than via a self dev-dependency on `features =
-# ["mock"]`: resolver v3 unifies features per package, so that edge would turn
-# `mock` on in the one rlib every consumer links, and production code touching
-# `MockProvider` would pass clippy and the test suite before failing the release
-# build.
-[[test]]
-name = "mock_provider"
-required-features = ["mock"]
-
 [features]
 # Spends money per run against a paid `ANTHROPIC_API_KEY`. A feature rather than
 # a runtime check so running without opting in fails to compile.
 live-anthropic-tests = []
-mock = []
 
 [lints]
 workspace = true
