@@ -12,8 +12,10 @@ use sandbx_providers::{AnthropicClient, ContentBlock, Prompt, RequestMessage, Ro
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {
-    let client = AnthropicClient::from_env()
+    let key = std::env::var("ANTHROPIC_API_KEY")
         .expect("ANTHROPIC_API_KEY must be set to run live-anthropic-tests");
+    let client = AnthropicClient::new(secrecy::SecretString::from(key.trim().to_owned()))
+        .expect("a client is built without a network call");
 
     let request = Prompt {
         model: "claude-opus-5".to_string(),

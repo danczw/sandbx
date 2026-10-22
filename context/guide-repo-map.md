@@ -156,12 +156,10 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
                   to a terminal, read by both the cli's line sink and the tui's
    error.rs
    sse.rs         SSE framing
-   credentials.rs resolve_api_key, anthropic_api_key — the pair hands back a
-                  secrecy::SecretString the crate re-exports nowhere
    anthropic.rs   AnthropicClient
       body.rs     Serialize for the Messages body, built from a &Prompt
       wire/       accumulate.rs, payload.rs + unit tests
-tests/            anthropic_client, credentials, crypto_provider, error,
+tests/            anthropic_client, crypto_provider, error,
                   live_anthropic (needs `live-anthropic-tests`)
 ```
 
@@ -173,11 +171,9 @@ so the top-level types cannot be posted to any API by accident; the wire
 payloads are `pub(super)` bar the two error envelopes at `pub(crate)`;
 and `stop_reason` is a private free function, so no `StopReason` comes from a
 wire string outside `anthropic/` (#59). The vendor *name* is the one row
-nothing *contains* — no lint, no containment test, no CI grep — and two
-siblings of `anthropic.rs` carry it:
-`lib.rs` re-exports `AnthropicClient`, and `credentials.rs` holds
-`anthropic_api_key` and the `"ANTHROPIC_API_KEY"` literal, which a test pins.
-Four more files name it in doc comments only. Per-rule account in
+nothing *contains* — no lint, no containment test, no CI grep — and one
+sibling of `anthropic.rs` carries it: `lib.rs` re-exports `AnthropicClient`.
+The key and its variable's name are the CLI's, in `auth.rs`. Four more files name it in doc comments only. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-agent`

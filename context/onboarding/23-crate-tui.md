@@ -90,9 +90,8 @@ cannot, as a build error. The borrowed vocabulary is two types:
 
 - **Worth questioning:** how much of that the dependency graph carries. Four
   crates' vocabulary is ruled out by a missing edge; the rest is not.
-  `sandbx-providers` also exports `AnthropicClient` and
-  `anthropic_api_key`/`resolve_api_key`, so the renderer *can* name the client
-  and the credential resolver, which makes
+  `sandbx-providers` also exports `AnthropicClient`, so the renderer *can* name
+  the client, which makes
   [guide-repo-map.md](../guide-repo-map.md)'s "nothing here knows of a policy or
   a provider" exact about the first half and loose about the second —
   discipline, where for the policy and the gate it is the compiler.

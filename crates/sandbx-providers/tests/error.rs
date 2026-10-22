@@ -7,16 +7,6 @@ fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)
     std::error::Error::source(error)
 }
 
-#[test]
-fn missing_credential_names_the_env_var() {
-    let error = ProviderError::MissingCredential {
-        env_var: "ANTHROPIC_API_KEY",
-    };
-
-    assert!(error.to_string().contains("ANTHROPIC_API_KEY"));
-    assert!(source_of(&error).is_none());
-}
-
 /// The one variant carrying an underlying error, the request never having got far
 /// enough for a status code or vendor body.
 #[test]

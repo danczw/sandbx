@@ -154,7 +154,7 @@ second half shows up as a shape you meet early: `std::env::set_var` is an
 `unsafe fn` under edition 2024, so a test cannot vary a real environment
 variable, and both
 [`session/src/paths.rs`](../../crates/sandbx-session/src/paths.rs) and
-[`providers/src/credentials.rs`](../../crates/sandbx-providers/src/credentials.rs)
+[`cli/src/auth.rs`](../../crates/sandbx-cli/src/auth.rs)
 take an injected lookup instead of reading the process environment directly.
 
 What it does not reach is the dependency graph, and that matters because this

@@ -31,8 +31,8 @@ Over budget at one line, because the line says what the reader already had:
 
 - **A restated name.** `/// Read a file.` on `BuiltinTool::Read`; `/// Decode the
   argv.` on `HelperArgs::decode`. Names are the documentation.
-- **A type the signature names.** `/// Returns a SecretString, or a
-  ProviderError on failure.` on `anthropic_api_key`.
+- **A type the signature names.** `/// Returns a SecretString, or an
+  AuthError on failure.` on `auth::api_key`.
 - **Narration.** A `//` restating the line under it — `// Open the transcript,
   then check its mode.` above the open and the check — or the branch beside it:
   `// If no port is allowed, deny the axis.` above `if ports.is_empty()`.
