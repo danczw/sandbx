@@ -198,7 +198,7 @@ fn refuses_a_path_the_policy_omits() {
     // without the kernel having been asked.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        !stderr.contains("sandbox helper failed"),
+        !stderr.contains("sandbox helper failed") && !stderr.contains("sandbx-helper:"),
         "setup failed, so the denial was never tested: {stderr}"
     );
 
@@ -495,12 +495,13 @@ fn an_ordinary_invocation_is_not_helper_mode() {
     let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(std::ffi::OsString::from);
     let mut ran = false;
 
-    sandbx_core::with_helper_dispatch(argv, || {
+    let code = sandbx_core::with_helper_dispatch(argv, || {
         ran = true;
         std::process::ExitCode::SUCCESS
     });
 
     assert!(ran);
+    assert_eq!(code, std::process::ExitCode::SUCCESS);
 }
 
 #[test]
@@ -508,12 +509,13 @@ fn an_argv_with_no_arguments_is_not_helper_mode() {
     for argv in [vec![], vec![std::ffi::OsString::from("sandbx")]] {
         let mut ran = false;
 
-        sandbx_core::with_helper_dispatch(argv, || {
+        let code = sandbx_core::with_helper_dispatch(argv, || {
             ran = true;
             std::process::ExitCode::SUCCESS
         });
 
         assert!(ran, "a too-short argv must be reported as an ordinary run");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
     }
 }
 
