@@ -76,11 +76,6 @@ path = "tests/support/pidns_probe.rs"
 required-features = ["sandbox-integration"]
 
 [[bin]]
-name = "sandbx-pdeathsig-probe"
-path = "tests/support/pdeathsig_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
 name = "sandbx-egress-probe"
 path = "tests/support/egress_probe.rs"
 required-features = ["sandbox-integration"]

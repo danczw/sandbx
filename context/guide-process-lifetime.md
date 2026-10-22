@@ -30,14 +30,9 @@ deadline fires ──► killpg(SIGKILL) on the group
 
 Two independent paths reach stage 2 on purpose. The supervisor and stage 2 are
 both in the group sandbx kills — but the command may call `setsid` and leave it,
-which is the whole of #28. `pdeathsig` does not care about group membership.
-
-Once PID 1 itself has left the group, `pdeathsig` is the only path, so seccomp
-refuses `prctl(PR_SET_PDEATHSIG)` with any signal but `SIGKILL` (#272): 0 clears
-it, and any other signal is ignored by a namespace's init under the default
-disposition. The kernel also clears it for a secure `exec`, which `no_new_privs`
-rules out for a setuid or file-capability image; an LSM marking an `exec` secure
-would still clear it, and nothing then reaps a PID 1 that also left the group.
+which is the whole of #28. `pdeathsig` does not care about group membership. The
+kernel clears it for a secure `exec` (setuid, file capabilities), where the group
+kill is then what still reaps.
 
 **The group kill fires on every timed run, not only on expiry.** A command may
 background work and exit inside its deadline while its descendants still hold the
