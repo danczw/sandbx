@@ -41,7 +41,8 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
-      # Byte-identical to `.githooks/pre-commit`; keep them so.
+      # Byte-identical to `.githooks/pre-commit`; keep them so. Default features,
+      # so production code reaching a test-only gated item fails here, not at tag time.
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

@@ -61,8 +61,9 @@ obvious way to cover a gated item with a plain `cargo test`, and the wrong one.
 Resolver 3 unifies features per package, and that edge is active under
 `--all-targets`, so `x` is on in the one rlib every consumer links: production
 code naming the gated item passes clippy and the suite, and fails first in the
-release build. Give the test target `required-features` and name the feature in
-the CI command that runs it, as `sandbox-integration` does.
+release build. Gate the target instead — `required-features`, or a whole-file
+`#![cfg(feature = ..)]` as `sandbox-integration`'s tests are — and name the
+feature in the CI command that runs it.
 
 ### Ordering: `cargo metadata` before any toolchain step
 
