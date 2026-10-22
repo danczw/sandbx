@@ -588,9 +588,9 @@ What it buys:
   [`anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs), and `Prompt`
   has no `Serialize` at all, so the top-level types cannot be posted to any API
   by accident (#59). The *name* does appear higher up, and it is worth being
-  precise about where: `lib.rs` re-exports `AnthropicClient`, `credentials.rs`
-  holds `anthropic_api_key` and the variable it reads, and four more files name
-  the vendor in doc comments. None of them carries a byte of the protocol, which
+  precise about where: `lib.rs` re-exports `AnthropicClient`, and four more
+  files name the vendor in doc comments. The key's variable is read by the CLI,
+  not here. None of them carries a byte of the protocol, which
   is the half of the boundary the compiler holds.
 - **The protocol is testable without a network.** The body is a
   `serde_json::Value` compared against a literal; the accumulator is fed a

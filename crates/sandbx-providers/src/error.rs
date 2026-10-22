@@ -1,12 +1,6 @@
 /// Why a provider call did not produce a usable event stream.
 #[derive(Debug)]
 pub enum ProviderError {
-    /// No credential could be resolved for this provider.
-    MissingCredential {
-        /// The environment variable that was checked.
-        env_var: &'static str,
-    },
-
     /// A base URL was rejected before any request was made: the key travels in the
     /// `x-api-key` header, so a non-`https` base URL would put it on the wire in
     /// cleartext. Loopback `http://` is permitted, for a local mock server.
@@ -61,7 +55,6 @@ pub enum ProviderError {
 impl std::fmt::Display for ProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingCredential { env_var } => write!(f, "no credential found: set {env_var}"),
             Self::InvalidBaseUrl { base_url, reason } => {
                 write!(f, "invalid base URL {base_url:?}: {reason}")
             }
@@ -93,8 +86,7 @@ impl std::error::Error for ProviderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Transport { source, .. } => Some(source),
-            Self::MissingCredential { .. }
-            | Self::InvalidBaseUrl { .. }
+            Self::InvalidBaseUrl { .. }
             | Self::ApiError { .. }
             | Self::RateLimited { .. }
             | Self::MalformedEvent { .. }

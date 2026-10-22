@@ -532,9 +532,9 @@ has come up empty, which is what lets an exported key work "on a host with no
 config home for `config_file` to name". The variable's name is also the one name
 `agent-run` refuses to `--allow-env`, and `PolicyError::HarnessCredential`
 carries it as a `&'static str` so no shape of that variant can hold a key.
-`env_key` goes through `sandbx_providers::resolve_api_key`, so trimming and
-treating a blank value as absent has one implementation; a blank variable falls
-through to the file rather than failing.
+`env_key`, `read_key` and `store::stored` all go through `nonblank`, so trimming
+and treating a blank value as absent has one implementation; a blank variable
+falls through to the file rather than failing.
 
 `config_file` requires an *absolute* `$XDG_CONFIG_HOME`, falling back to an
 absolute `$HOME` plus `.config`, and otherwise raises `NoConfigHome`. The file

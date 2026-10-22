@@ -157,7 +157,7 @@ rule.
 The refusal does not check whether the variable is set, and the first reason is
 the hard one: a refusal conditioned on the live environment could not be tested
 here at all. `set_var` is `unsafe fn` under edition 2024 and `unsafe_code` is
-forbidden even in test binaries, which is why `resolve_api_key` takes an injected
+forbidden even in test binaries, which is why `auth::resolve` takes an injected
 lookup. A condition no test can reach is a condition that rots.
 
 Second, a flag is a statement of intent, and the intent is refusable whether this

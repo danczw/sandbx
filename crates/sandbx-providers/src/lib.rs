@@ -9,7 +9,6 @@
 //! API's field names, string tables and body rules lives under `anthropic`.
 
 mod anthropic;
-mod credentials;
 mod error;
 mod event;
 mod prompt;
@@ -17,7 +16,6 @@ mod sse;
 mod text;
 
 pub use anthropic::AnthropicClient;
-pub use credentials::{anthropic_api_key, resolve_api_key};
 pub use error::ProviderError;
 pub use event::{AgentEvent, StopReason};
 pub use prompt::{

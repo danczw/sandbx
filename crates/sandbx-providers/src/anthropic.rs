@@ -3,7 +3,7 @@ use secrecy::{ExposeSecret, SecretString};
 use crate::EventStream;
 use crate::error::ProviderError;
 use crate::prompt::Prompt;
-use crate::{credentials, ensure_crypto_provider_installed, sse};
+use crate::{ensure_crypto_provider_installed, sse};
 
 mod body;
 mod wire;
@@ -32,12 +32,6 @@ impl AnthropicClient {
     /// network call, so every failure is local.
     pub fn new(api_key: SecretString) -> Result<Self, ProviderError> {
         Self::configured(api_key, Self::DEFAULT_BASE_URL)
-    }
-
-    /// Builds a client from `ANTHROPIC_API_KEY`, failing with
-    /// [`ProviderError::MissingCredential`] if it is unset or empty.
-    pub fn from_env() -> Result<Self, ProviderError> {
-        Self::new(credentials::anthropic_api_key()?)
     }
 
     /// Overrides the base URL; public, not `#[cfg(test)]`-gated, because it is also

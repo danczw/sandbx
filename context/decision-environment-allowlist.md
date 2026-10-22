@@ -18,7 +18,7 @@ FAKE_SECRET=leaked-abc123
 ```
 
 Latent at the time — no shipped subcommand put a credential in the harness's
-environment — but `anthropic_api_key()` reads `ANTHROPIC_API_KEY` out of the
+environment — but `anthropic_api_key()` then read `ANTHROPIC_API_KEY` out of the
 process environment, so it was already real for a library consumer embedding
 `sandbx-core` beside its own secrets, and would have become live for the CLI the
 day the agent loop got a subcommand. It also blocked

@@ -31,7 +31,6 @@ crates/sandbx-providers/src/
   text.rs          invisible — what model text may not carry to a terminal
   error.rs         ProviderError
   sse.rs           SSE framing, knowing no API's field names
-  credentials.rs   resolve_api_key, anthropic_api_key
   ─────────────────── below here, one API's vocabulary ───────────────────
   anthropic.rs     AnthropicClient, the base-URL rules, the HTTP client
     body.rs        Serialize for the Messages body, built from a &Prompt
@@ -55,9 +54,9 @@ the answer is a compiler rule, and one row of it is not.
 The first three rows are why the boundary holds. The last is worth stating
 plainly, because the tree above is read as if it were absolute. `lib.rs` names
 the module and re-exports `AnthropicClient`, which is unavoidable — the type has
-to be reachable. `credentials.rs` sits *beside* `anthropic.rs` rather than below
-it and holds both `anthropic_api_key` and the literal `"ANTHROPIC_API_KEY"`. And
-the doc comments in `prompt.rs`, `event.rs` and `sse.rs` name Anthropic wherever
+to be reachable. The key's variable is not read here at all — the crate takes a
+key only through `AnthropicClient::new` — so the literal `"ANTHROPIC_API_KEY"`
+lives in the CLI. And the doc comments in `prompt.rs`, `event.rs` and `sse.rs` name Anthropic wherever
 a neutral type's shape was decided by one API's behaviour — `Thinking` having
 one variant, `Usage` being emitted once, the frame cap being "orders of
 magnitude above any real Anthropic frame". None of that is checked by anything.
@@ -93,7 +92,7 @@ flowchart TD
   the tree and fails when prose drifts from code, and `context_docs.rs` is
   another. A third in the same style — the vendor's name appears in no
   `src/*.rs` above `anthropic.rs`, with an explicit exemption list for the
-  re-export and the credential helper — would cost a few dozen lines and turn
+  re-export — would cost a few dozen lines and turn
   the boundary's last row from a habit into a build failure. The argument the
   record makes against inventing abstractions for a backend that does not exist
   does not reach this, because a grep is not an abstraction.
@@ -125,9 +124,8 @@ adapter actually have to produce?
   reuse and no `Serialize` to derive from.
 
 What it would *not* get for free is `ProviderError`, and the crate is honest
-about this one being informed by a single implementation. `MissingCredential`
-carries an `env_var`, assuming a key in an environment variable;
-`InvalidBaseUrl` assumes there is a base URL at all; and `Transport` carries a
+about this one being informed by a single implementation. `InvalidBaseUrl`
+assumes there is a base URL at all; and `Transport` carries a
 `reqwest::Error` in a public field, so a second adapter either uses reqwest or
 reshapes the enum. The record states the weakness rather than designing around
 it — "with one adapter the neutral shape is informed by one wire format, so a
@@ -763,17 +761,13 @@ never reached. And `client_future_stays_spawnable` is compiled but never run:
 > does not — that is inferred, so it can regress silently, and a non-`Send`
 > future cannot be `tokio::spawn`ed.
 
-## `credentials.rs` — a `SecretString` nothing re-exports
+## A `SecretString` nothing re-exports
 
-Twenty-nine lines, two functions. `resolve_api_key` takes the variable name and
-an *injected* lookup closure, trims the value, treats blank as absent, and wraps
-what is left in `secrecy::SecretString`. `anthropic_api_key` is the one-line
-application of it to `ANTHROPIC_API_KEY`.
-
-[14 — audit, sessions, credentials](14-audit-sessions-credentials.md) owns the
-policy: which source wins, why the file is located only after the environment
-comes up empty, what `SecretString` does and does not guarantee. Two
-module-level facts it does not cover.
+The crate does not find a key: `AnthropicClient::new` takes one, and where it
+comes from is the CLI's (`auth.rs`). [14 — audit, sessions,
+credentials](14-audit-sessions-credentials.md) owns that policy: which source
+wins, why the file is located only after the environment comes up empty, what
+`SecretString` does and does not guarantee. One fact it does not cover.
 
 **The crate re-exports `secrecy` nowhere.** `AnthropicClient::new` takes a
 `SecretString` in its public signature, but the type itself is not re-exported
@@ -793,18 +787,6 @@ would invite a caller to treat `sandbx_providers::SecretString` as the canonical
 one — which is the same reasoning that keeps `sandbx-agent` from re-exporting
 `StopReason` (#190): one path to one type.
 
-**Only one of the two functions has a caller.** `sandbx-cli`'s `auth.rs` calls
-`resolve_api_key` directly with its own `ENV_VAR` constant, so the
-trim-and-blank rule has one home, while `anthropic_api_key` is reached only by
-`AnthropicClient::from_env` — which in turn is used only by the live test. The
-pair is the vendor's name appearing above `anthropic.rs`, discussed at the top.
-
-Tests:
-[`tests/credentials.rs`](../../crates/sandbx-providers/tests/credentials.rs),
-seven of them, all driving the injected closure. None mutates a real
-environment, because `set_var` is an `unsafe fn` under edition 2024 and the
-workspace forbids `unsafe_code` in test binaries too.
-
 ## `live-anthropic-tests`, the crate's one feature
 
 `live-anthropic-tests` has one consumer,
@@ -816,8 +798,8 @@ tests here instead of a silently-passing no-op".
 ## `error.rs`, and the rustls detail behind the `crypto_provider` test
 
 [`error.rs`](../../crates/sandbx-providers/src/error.rs) is `ProviderError`'s
-seven variants, split by where the call failed. `MissingCredential`
-and `InvalidBaseUrl` are local, before any request; `Transport` is a failure
+six variants, split by where the call failed. `InvalidBaseUrl` is local,
+before any request; `Transport` is a failure
 with no status or vendor body to report; `ApiError` and `RateLimited` are the
 API answering; `MalformedEvent` and `StreamEndedUnexpectedly` are the stream.
 There is no retry classification: no backoff layer exists to read one, and #306
@@ -867,7 +849,6 @@ really is installed and usable.
 | every arm of the invisible-character denylist, both ends of every range | `src/text.rs`, `mod tests` |
 | the fold, by what a turn is doing | `src/anthropic/wire/tests/` — `content`, `lifecycle`, `tool_use`, `usage` |
 | the client over real HTTP, no key | `tests/anthropic_client.rs` |
-| key resolution, through an injected lookup | `tests/credentials.rs` |
 | `Display` and `source()` per variant | `tests/error.rs` |
 | the `pub` crypto install, from another crate | `tests/crypto_provider.rs` |
 | the real API | `tests/live_anthropic.rs`, needs `live-anthropic-tests` |
