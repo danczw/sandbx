@@ -61,7 +61,10 @@ directory from `canonicalize`, not `Path::parent`, which is lexical: a symlinked
 and the one holding the key never looked at. The session store does not derive a
 parent at all — it checks its own root — so a link there would leave the right
 directory vetted and the wrong file read. It opens the transcript `O_NOFOLLOW`
-instead and refuses a link outright, on both the read and the reopen for append.
+instead and refuses a link outright, on the create, the read and the reopen for
+append alike. Each of those is an `openat` on the descriptor the root was vetted
+through, never the path again, so a rename of `sessions/` or an ancestor after the
+check cannot leave one directory vetted and another read (#317).
 `O_NOFOLLOW` covers the last component only, so a symlinked state directory, which
 an operator may well have, still opens; `$XDG_STATE_HOME` is the supported way to
 put the store elsewhere.

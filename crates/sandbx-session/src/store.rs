@@ -8,16 +8,18 @@ mod record;
 mod shape;
 mod vet;
 
-use std::fs::{DirBuilder, File, OpenOptions};
+use std::fs::{DirBuilder, File};
 use std::io::{ErrorKind, Read, Write};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+
+use nix::fcntl::OFlag;
 
 use record::{Accounting, Header, Record, VERSION, fold};
 use shape::{alternating, answers_only, follows, opens, resumable};
 use vet::{
-    DIR_OWNER_ONLY, DIR_SHARED_BITS, OWNER_ONLY, READABLE_BITS, WRITABLE_BITS, open_nofollow,
-    ownership, reopen_for_append,
+    DIR_OWNER_ONLY, DIR_SHARED_BITS, READABLE_BITS, WRITABLE_BITS, open_at, open_nofollow,
+    ownership,
 };
 
 use crate::id::clock_millis;
@@ -48,7 +50,7 @@ impl SessionStore {
 
     /// Start a session, creating the root `0700` and the transcript `0600`.
     ///
-    /// `create_new` is what makes the id unique: the filesystem, not a prior check,
+    /// `O_EXCL` is what makes the id unique: the filesystem, not a prior check,
     /// decides whether the name was free.
     pub fn create(&self) -> Result<Session, SessionError> {
         DirBuilder::new()
@@ -59,18 +61,14 @@ impl SessionStore {
                 path: self.root.clone(),
                 source,
             })?;
-        self.narrow_root()?;
+        let directory = self.narrow_root()?;
+        let create = OFlag::O_WRONLY | OFlag::O_APPEND | OFlag::O_CREAT | OFlag::O_EXCL;
 
         for attempt in 0..ATTEMPTS {
             let id = SessionId::from_clock(attempt)?;
-            let path = self.path_for(&id);
+            let (name, path) = self.transcript(&id);
 
-            match OpenOptions::new()
-                .append(true)
-                .create_new(true)
-                .mode(OWNER_ONLY)
-                .open(&path)
-            {
+            match open_at(&directory, &name, &path, create) {
                 Ok(file) => {
                     let mut session = Session {
                         id,
@@ -89,8 +87,12 @@ impl SessionStore {
                     session.write(&[header])?;
                     return Ok(session);
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(source) => return Err(SessionError::Io { path, source }),
+                Err(SessionError::Io { source, .. })
+                    if source.kind() == ErrorKind::AlreadyExists =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(error),
             }
         }
 
@@ -101,9 +103,10 @@ impl SessionStore {
     ///
     /// Refuses a transcript or directory somebody else can write or owns, directory first
     /// since writing it lets a rename replace the transcript regardless of its mode. Mode
-    /// and uid come from the open descriptor, so the file vetted is the file read.
+    /// and uid come from the open descriptor, so the file vetted is the file read, and the
+    /// transcript is opened through the root's, so the directory vetted is the one read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
-        let path = self.path_for(id);
+        let (name, path) = self.transcript(id);
 
         // A missing root or transcript is no session by that id, which is what was asked.
         let absent = |error| match error {
@@ -121,7 +124,7 @@ impl SessionStore {
             });
         }
 
-        let mut file = open_nofollow(&path).map_err(absent)?;
+        let mut file = open_at(&directory, &name, &path, OFlag::O_RDONLY).map_err(absent)?;
         let mode = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::Writable { path, mode });
@@ -147,7 +150,7 @@ impl SessionStore {
             }
         }
 
-        let file = reopen_for_append(&path)?;
+        let file = open_at(&directory, &name, &path, OFlag::O_WRONLY | OFlag::O_APPEND)?;
 
         Ok(Session {
             id: id.clone(),
@@ -163,12 +166,13 @@ impl SessionStore {
     /// Bring the root down to `0700`, refusing one somebody else owns.
     ///
     /// `DirBuilderExt::mode` is ignored for a directory that already exists, so a widened
-    /// `sessions/` would stay wide. Narrowed, not refused: nothing is in it yet.
-    fn narrow_root(&self) -> Result<(), SessionError> {
+    /// `sessions/` would stay wide. Narrowed, not refused: nothing is in it yet. Returns the
+    /// vetted descriptor, for the transcript to be created through.
+    fn narrow_root(&self) -> Result<File, SessionError> {
         let directory = open_nofollow(&self.root)?;
         let mode = ownership(&directory, &self.root)?;
         if mode & DIR_SHARED_BITS == 0 {
-            return Ok(());
+            return Ok(directory);
         }
 
         // `fchmod` on the descriptor just stat'd, not `chmod` by path, so the directory
@@ -178,13 +182,16 @@ impl SessionStore {
             .map_err(|source| SessionError::Io {
                 path: self.root.clone(),
                 source,
-            })
+            })?;
+        Ok(directory)
     }
 
-    /// The transcript an id names. No check of its own: a [`SessionId`] cannot exist
-    /// without having passed its own parser.
-    fn path_for(&self, id: &SessionId) -> PathBuf {
-        self.root.join(format!("{id}.jsonl"))
+    /// The transcript an id names, in the root and as a path. No check of its own: a
+    /// [`SessionId`] cannot exist without having passed its own parser.
+    fn transcript(&self, id: &SessionId) -> (String, PathBuf) {
+        let name = format!("{id}.jsonl");
+        let path = self.root.join(&name);
+        (name, path)
     }
 }
 

@@ -389,8 +389,9 @@ Four rules apply to both, and each one closes a specific trick:
   `canonicalize` rather than `Path::parent`, which is lexical — a symlinked
   `credentials.toml` would otherwise have the directory holding the *link*
   vetted and the one holding the key never looked at. The session store checks
-  its own root instead and opens the transcript `O_NOFOLLOW`, refusing a link
-  outright on both the read and the reopen for append.
+  its own root instead and opens the transcript `O_NOFOLLOW` through the root's
+  vetted descriptor, refusing a link outright on the create, the read and the
+  reopen for append.
 
 Then the rule that differs, deliberately:
 
@@ -605,7 +606,7 @@ remit: a name, a directory, a file of lines, and the rules for reading one back.
 ### An id is an allowlist, and that is what makes it a path component
 
 `SessionId` wraps a private `String`, so one cannot exist without having passed
-`FromStr` — which is what lets `path_for` join it to a directory unchecked:
+`FromStr` — which is what lets `transcript` join it to a directory unchecked:
 
 ```rust
     /// Accepts one to 32 characters of `0-9` and `a-z`, and nothing else.

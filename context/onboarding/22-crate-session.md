@@ -70,7 +70,7 @@ What each refusal buys, because the module doc only implies it:
 | refused | what it would have reached |
 |---|---|
 | `..`, `../../etc/passwd` | `.` is outside the alphabet, so a traversal never has a character to start with |
-| `/etc/passwd`, `a/b` | `path_for` does `self.root.join(format!("{id}.jsonl"))`, and `Path::join` with an absolute component **replaces** the base — the transcript would be `/etc/passwd.jsonl` |
+| `/etc/passwd`, `a/b` | `transcript` names the file `format!("{id}.jsonl")` and `openat`s it on the root's descriptor, and `openat`, like `Path::join`, **ignores** the base for an absolute name — the transcript would be `/etc/passwd.jsonl` |
 | `""` | the path would be `<root>/.jsonl`, a hidden file in the root, and `Display` would print nothing in the line that tells you what to pass `--session` |
 | 33 characters | `MAX_LENGTH`'s doc says what the bound is for: it "bounds the path component a typo can build". Nothing about the clock needs it — `base36(u64::MAX)` is thirteen characters, pinned by a unit test |
 | `UPPER` | on a case-insensitive filesystem `A` and `a` name one file while `SessionId` compares them as two, so `resume("A")` would read the transcript `create` wrote as `a` |
@@ -219,7 +219,7 @@ flowchart TD
     B --> C["ownership of the directory descriptor"]
     C -->|"another uid"| E["ForeignOwner"]
     C -->|"WRITABLE_BITS"| D["DirWritable"]
-    C --> F["open_nofollow, the transcript"]
+    C --> F["open_at on the root's descriptor, the transcript"]
     F --> G["ownership of the file descriptor"]
     G -->|"another uid"| I["ForeignOwner"]
     G -->|"WRITABLE_BITS"| H["Writable"]
@@ -227,7 +227,7 @@ flowchart TD
     J --> K["fold, then the shape checks"]
     K -->|"a bad line"| L["Malformed"]
     K -->|"a refused order"| O["Unresumable, Disordered"]
-    K --> M["reopen_for_append, last"]
+    K --> M["open_at for append, last"]
     M --> N["a Session carrying shared_read"]
 ```
 
@@ -243,7 +243,7 @@ construct. This is [11](11-the-two-seams.md)'s shape for `FsGuard`'s handles —
 the value *is* the capability — and it sticks because `Session` holds an open
 `File` and derives no `Clone`. `SessionStore` is `{ root: PathBuf }`, `Clone`,
 and holds no descriptor: a directory you have named rather than been let into.
-`path_for` is private, so only a `SessionId` can build a path.
+`transcript` is private, so only a `SessionId` can build a path.
 
 Printing the report is `sandbx-cli`'s work, and `session::open` is the single
 place it happens — reached by both `agent.rs` and `agent/tui.rs`, so the stderr
@@ -251,11 +251,11 @@ note cannot be on one surface and missing on the other.
 
 Three more things `store.rs` decides:
 
-- **`create_new` is what makes an id unique**, not a prior existence check. The
+- **`O_EXCL` is what makes an id unique**, not a prior existence check. The
   loop tries `ATTEMPTS` ids, treating `AlreadyExists` as "try the next
   millisecond" and everything else as `Io`; exhausting it is
   `SessionError::Collision`, whose message says the clock is not advancing.
-- **`reopen_for_append` happens last**, after `fold` and the shape checks, so a
+- **The reopen for append happens last**, after `fold` and the shape checks, so a
   transcript that will be refused is never opened for writing.
 - **`write` builds one `String` and does one `write_all`**, which is why a torn
   file can only be torn at the end. There is no `fsync`: the guarantee is about
@@ -467,12 +467,13 @@ Three ways this differs from 11:
   process.** 11's seam hands a grant across an `exec` to a helper that opens it
   again, which is what makes `ObjectId` necessary. Here the vetted descriptor
   and the one read are the same value in the same function.
-- **One path is reopened, and the reopen needs the flag again.**
-  `reopen_for_append`'s doc says what that window is for:
+- **The transcript is opened by name in a directory, never by path.** Every
+  transcript open — the create, the read, the reopen for append — is `open_at`,
+  an `openat` on the root's vetted descriptor with `O_NOFOLLOW` each time, so
+  the directory vetted is the directory the name is looked up in (#317):
 
-  > Reopen a vetted transcript for appending. `O_NOFOLLOW` again, not just on
-  > the read: a link planted between the two opens would make the appended-to
-  > file a different one than the vetted descriptor.
+  > Through the descriptor, not the path: a rename of the root or an ancestor
+  > after the vet would leave one directory checked and another read (#317).
 
 - **A mode is sometimes narrowed rather than refused**, which has no counterpart
   in `fs_guard.rs`. `narrow_root` `fchmod`s the descriptor it just stat'd —
@@ -498,8 +499,10 @@ unstable `ErrorKind::FilesystemLoop`.
 
 One limit: the checks are on the root, not its ancestors — `O_NOFOLLOW` covers
 the last component only, and nothing vets `~/.local/state`. What makes that
-enough is the root's own pair: another user replacing `sessions/` can only put
-their own directory there, `ForeignOwner`, or a link, `Symlink`.
+enough is the root's own pair, and that every transcript is reached through the
+descriptor the pair was checked on: another user replacing `sessions/` can only
+put their own directory there, `ForeignOwner`, or a link, `Symlink`, and a
+replacement after the check is never the directory a transcript is opened in.
 
 - **Worth questioning:** the create path *repairs* a wide root, where
   [14](14-audit-sessions-credentials.md) makes "refused, never repaired" the

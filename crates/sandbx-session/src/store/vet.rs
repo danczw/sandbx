@@ -8,6 +8,9 @@ use std::fs::{File, OpenOptions};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
+use nix::fcntl::OFlag;
+use nix::sys::stat::Mode;
+
 use crate::SessionError;
 
 /// The mode a transcript is created with.
@@ -48,13 +51,11 @@ pub(super) fn opening(path: &Path, source: std::io::Error) -> SessionError {
     SessionError::Io { path, source }
 }
 
-/// Open a root or transcript for reading, refusing one that is a symbolic link.
+/// Open the root for reading, refusing one that is a symbolic link, since
+/// [`narrow_root`](super::SessionStore::narrow_root) `fchmod`s this descriptor.
 ///
-/// The root because [`narrow_root`](super::SessionStore::narrow_root) `fchmod`s this
-/// descriptor; a transcript because its mode and owner would come from the target, the
-/// vetted directory from where the link sits. No `O_DIRECTORY`: with `O_NOFOLLOW` the
-/// kernel reports a symlinked directory as `ENOTDIR`, as it does a root that is a plain
-/// file, and the two are worth telling apart.
+/// No `O_DIRECTORY`: with `O_NOFOLLOW` the kernel reports a symlinked directory as
+/// `ENOTDIR`, as it does a root that is a plain file, and the two are worth telling apart.
 pub(super) fn open_nofollow(path: &Path) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
@@ -63,15 +64,23 @@ pub(super) fn open_nofollow(path: &Path) -> Result<File, SessionError> {
         .map_err(|source| opening(path, source))
 }
 
-/// Reopen a vetted transcript for appending. `O_NOFOLLOW` again, not just on the read:
-/// a link planted between the two opens would make the appended-to file a different one
-/// than the vetted descriptor.
-pub(super) fn reopen_for_append(path: &Path) -> Result<File, SessionError> {
-    OpenOptions::new()
-        .append(true)
-        .custom_flags(NO_FOLLOW)
-        .open(path)
-        .map_err(|source| opening(path, source))
+/// Open transcript `name` inside the vetted root `directory`, `path` being for errors,
+/// creating it [`OWNER_ONLY`] when `flags` say to.
+///
+/// Through the descriptor, not the path: a rename of the root or an ancestor after the
+/// vet would leave one directory checked and another read (#317). `O_NOFOLLOW` on every
+/// open, since a link's mode and owner come from its target. `O_CLOEXEC` by hand, which
+/// `OpenOptions` sets and `openat` does not, or the agent's commands inherit the file.
+pub(super) fn open_at(
+    directory: &File,
+    name: &str,
+    path: &Path,
+    flags: OFlag,
+) -> Result<File, SessionError> {
+    let flags = flags | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC;
+    nix::fcntl::openat(directory, name, flags, Mode::from_bits_truncate(OWNER_ONLY))
+        .map(File::from)
+        .map_err(|errno| opening(path, errno.into()))
 }
 
 /// The permission bits of an open file, from the descriptor, refusing one another uid owns.
