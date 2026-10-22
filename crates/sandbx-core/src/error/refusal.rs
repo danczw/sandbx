@@ -128,9 +128,8 @@ impl HelperRefusal {
 }
 
 impl SandboxError {
-    /// Who decides this error, and what a trail calls it: `Ok` when only a helper stage can,
-    /// the label then being the refusal's; `Err` when the parent or `FsGuard` does. The one
-    /// place the two sets are mapped, and exhaustive, so a new variant answers both at once.
+    /// `Ok`: only a helper stage decides this error, and its label is the refusal's. `Err`: the
+    /// parent or `FsGuard` decides it, with this label. Exhaustive, so a new variant answers both.
     pub(super) fn decided_by(&self) -> Result<HelperRefusal, &'static str> {
         match self {
             Self::BadHelperArgs { .. } => Ok(HelperRefusal::BadHelperArgs),
@@ -164,12 +163,10 @@ impl SandboxError {
             // Both decided off the policy, before the spawn.
             Self::UnboundedResolution { .. } => Err("unbounded_resolution"),
             Self::GrantBoundByResolver { .. } => Err("grant_bound_by_resolver"),
-            // The word the operator typed and the docs use, so it is the word a trail
-            // reader greps for.
+            // The word the operator typed and the docs use, so a trail reader greps for it.
             Self::TimedOut { .. } => Err("timeout"),
-            // This relay's own output, so reporting it would be a second crossing. The label
-            // is borrowed, so a trail filtered by `reason=` cannot tell which side of the
-            // channel decided it — the same refusal either way.
+            // The relay's own output: reporting it would be a second crossing. Borrowed, so a
+            // trail filtered by `reason=` cannot tell which side of the channel decided it.
             Self::HelperRefused { refusal, .. } => Err(refusal.label()),
         }
     }
