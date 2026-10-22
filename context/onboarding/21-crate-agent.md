@@ -564,10 +564,10 @@ Verified in this worktree rather than inferred. The two places that build a
 `max_rounds: …, ..TurnLimits::default()`. A third literal exists and closes the
 last hop: the wrap-up round's, in
 [`cli/src/agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs), is
-`TurnLimits { max_rounds: 1, ..self.limits }`, copying the first turn's bounds
+`TurnLimits { max_rounds: 1, ..turn.limits }`, copying the first turn's bounds
 rather than defaulting again, so it can introduce no `Compaction` the first turn
 did not have. It does thread the figures across —
-`first.usage.or(self.observed)` and `first.withheld` — so a *library* caller
+`first.usage.or(turn.observed)` and `first.withheld` — so a *library* caller
 with compaction on gets a wrap-up round that compacts on its first and only
 round, the threaded-figure case above. `max_rounds` has a flag; compaction has
 none, so the feature is reachable only by a library caller.
