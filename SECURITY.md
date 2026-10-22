@@ -37,9 +37,9 @@ through `SandboxedCommand`:
 | name resolution | with `--allow-dns NAME`: the files every resolver reads — a `hosts` sandbx resolved before the command started, `nsswitch.conf` with no `dns` source, a nameserver-less `resolv.conf` — bind-mounted read-only over `/etc` in the command's own mount namespace | which names resolve, nothing about which hosts are reachable. An unlisted name does not resolve, immediately rather than by timeout, and no nameserver is left to ask instead — see *[What `--allow-dns` bounds](#what---allow-dns-bounds)* |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` and on a connectionless `socketpair(AF_UNIX)`, plus Landlock `ResolveUnix` on every granted path where the kernel handles it — ABI V9, Linux 7.1 | whether the command may open a unix socket that reaches anything outside itself: one boolean, never a chosen path. A connected `socketpair` is left alone and is not an exception — both halves are inside the sandbox, and neither can be re-aimed at a host socket. *Which* pathname socket it may dial is bounded by the filesystem policy at V9 only; below V9 nothing bounds it, and a socket whose path the command knows is reachable with no grant naming it — see *[What sandbx does not claim](#what-sandbx-does-not-claim)* |
 | environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`), then the constants `SandboxPolicy::imposed_env` sets | which variables the command *inherits*; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross. Not the whole of what it holds: `--dns-over-tcp` imposes `RES_OPTIONS=use-vc` with no `--allow-env` naming it, so the child's environment is the allowlist plus a set of compile-time constants. `permits_env` — allowlisted or imposed — is the predicate `spawn::command` builds and the helper's inherited-environment check asks |
-| syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, mounting, loading code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`, whole-host state — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
+| syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, disarming the parent death signal, mounting, loading code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`, whole-host state — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (bounding set best-effort — see below) |
-| process lifetime | PID namespace + `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` |
+| process lifetime | PID namespace + `PR_SET_PDEATHSIG`, which seccomp keeps the command from disarming | every process the command spawned is killed when the call ends, including one that called `setsid` — short of an LSM clearing the signal, see *[What sandbx does not claim](#what-sandbx-does-not-claim)* |
 | process signalling | PID namespace | a command cannot signal, or even name, a process outside its own namespace |
 
 ### What `--allow-dns` bounds
@@ -78,6 +78,8 @@ Beyond the network calls a port allowlist must shut, seccomp-bpf denies:
   side-channel surface;
 - namespace manipulation, and *creation* on every route: `clone` filtered per
   `CLONE_NEW*` flag, `clone3` answers `ENOSYS`;
+- disarming the parent death signal that ends the command with its supervisor:
+  `prctl(PR_SET_PDEATHSIG)` with any signal but `SIGKILL`;
 - reshaping the filesystem under Landlock: mounting by name (`mount`) and by
   descriptor (`open_tree`, `move_mount`, `fsopen`, `fsconfig`, `fsmount`,
   `fspick`), `mount_setattr`, which would clear `MS_RDONLY` on a mount already
@@ -329,6 +331,11 @@ architecture the filter gates on.
   ([context/guide-turn-loop.md](context/guide-turn-loop.md)) — but what those
   bound is sandbx's own work, not what a sandboxed command can reach, which is
   what every claim here is about.
+- **An LSM can clear the parent death signal sandbx relies on.** The kernel
+  clears it on an `exec` marked secure; `no_new_privs` rules that out for setuid
+  and file-capability images, but not for an AppArmor or SELinux transition on
+  the program the command becomes. Such a command that also calls `setsid` is
+  then reaped by nothing when the call ends.
 - **An unhandled signal aimed at the command itself is ignored.** The command is
   PID 1 of its namespace and the kernel discards a default-disposition signal sent
   to a namespace's init, so `kill -TERM` at the command does nothing unless it

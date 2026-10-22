@@ -77,9 +77,10 @@ pub(super) fn prepare_supervisor(
 ///
 /// Two independent paths reach us. The supervisor is in the process group sandbx kills and so
 /// are we, but the command we become may `setsid` and leave it; the parent death signal fires
-/// regardless of group membership and survives `execve` of an ordinary binary, and the kernel
-/// clears it for a *secure* `exec` (setuid target, or file capabilities), where the group kill
-/// is what still reaps us.
+/// regardless of group membership and survives `execve` of an ordinary binary. The command
+/// cannot clear it — seccomp refuses `PR_SET_PDEATHSIG` with anything but `SIGKILL` — and the
+/// kernel's own clearing on a *secure* `exec` is ruled out by `no_new_privs`, short of an LSM
+/// marking one secure.
 ///
 /// Set before anything else in this stage, so the window in which the supervisor could die
 /// unnoticed is as short as the kernel allows. [`confirm_supervisor`] is what closes it.
