@@ -159,8 +159,8 @@ fn ppid_from_stat(stat: &str) -> Option<&str> {
 ///
 /// Does NOT set `PR_SET_DUMPABLE`: the kernel resets that flag to dumpable on every `execve`
 /// of an ordinary (non-setuid, no file-capability) binary — `setup_new_exec` in `fs/exec.c` —
-/// so setting it here would cover only this process's pre-exec window, not the command.
-/// `RLIMIT_CORE` below does persist across exec.
+/// so setting it here would cover only this process's pre-exec window, not the command. The
+/// namespace's init sets it on itself, never `exec`ing. `RLIMIT_CORE` does persist across exec.
 ///
 /// The capability *bounding* set is best-effort, as `SECURITY.md` claims it. Dropping it
 /// needs `CAP_SETPCAP`, which an unprivileged process holds only inside a user namespace it

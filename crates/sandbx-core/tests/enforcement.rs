@@ -262,6 +262,26 @@ fn the_command_runs_under_its_namespaces_own_init() {
     );
 }
 
+/// The init shares the command's Landlock domain, which lets one process read another's
+/// `/proc/<pid>/environ` or `mem`; the init being non-dumpable is what refuses it. The host
+/// pid comes from `/proc/self/stat` read by the shell itself, `/proc` being the host's, and
+/// the command reading its own `environ` is what shows the grant reaches `/proc` at all.
+#[test]
+fn the_command_cannot_reach_into_its_init() {
+    let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
+    let script = r#"read -r stat < /proc/self/stat; set -- ${stat##*) }
+own=$(cat /proc/self/environ) && echo SELF-READ
+init=$(cat "/proc/$2/environ") && echo INIT-READ || echo INIT-REFUSED"#;
+    let output = run(&policy, "/bin/sh", &["-c", script]);
+
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "SELF-READ\nINIT-REFUSED",
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// Pid resolution is namespace-relative, so a host pid does not exist as far as the
 /// command is concerned (without the namespace this succeeds, since the command runs as
 /// the caller's uid). `kill -0` sends nothing — it only asks whether delivery is possible.

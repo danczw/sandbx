@@ -321,6 +321,13 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxE
     command.arg0(&request.program);
     command.args(&request.args);
 
+    // Before the command exists: this process shares its Landlock domain, which lets a
+    // process reach another through `/proc/<pid>/mem`; non-dumpable, the command cannot.
+    // Holds because this process never `exec`s, which would reset the flag.
+    nix::sys::prctl::set_dumpable(false).map_err(|errno| SandboxError::ProcessHardening {
+        detail: format!("could not make the namespace's init non-dumpable: {errno}"),
+    })?;
+
     // Spawned, not `exec`ed: what the kill chain ends is this process, so it must be one the
     // command cannot change. The command can shed its own parent death signal — it is per
     // thread, and an `exec` from a fresh thread drops it — and leave the group sandbx kills.
