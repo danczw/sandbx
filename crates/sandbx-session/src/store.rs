@@ -112,7 +112,7 @@ impl SessionStore {
             }
             other => other,
         };
-        let directory = open_nofollow(&self.root).map_err(&absent)?;
+        let directory = open_nofollow(&self.root).map_err(absent)?;
         let mode = ownership(&directory, &self.root)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::DirWritable {
@@ -121,7 +121,7 @@ impl SessionStore {
             });
         }
 
-        let mut file = open_nofollow(&path).map_err(&absent)?;
+        let mut file = open_nofollow(&path).map_err(absent)?;
         let mode = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::Writable { path, mode });
