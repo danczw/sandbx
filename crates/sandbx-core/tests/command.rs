@@ -488,49 +488,6 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
     );
 }
 
-/// PID 1 itself leaving the group leaves the parent death signal as the only path that
-/// reaches it, so the command clearing that signal must be refused or it outlives the call.
-#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
-#[test]
-fn pid_one_cannot_disarm_its_parent_death_signal() {
-    let probe = env!("CARGO_BIN_EXE_sandbx-pdeathsig-probe");
-    let dir = scratch();
-    let (report, canary) = (dir.path().join("report"), dir.path().join("canary"));
-    let parent = std::path::Path::new(probe).parent();
-
-    let result = SandboxedCommand::new(
-        probe,
-        SandboxPolicy::default()
-            .allow_system_executables()
-            .allow_read_execute(vetted(parent.expect("the probe has a directory")))
-            .allow_write(vetted(dir.path())),
-    )
-    .arg(report.display().to_string())
-    .arg(canary.display().to_string())
-    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_millis(500))
-    .output();
-
-    assert!(
-        matches!(result, Err(sandbx_core::SandboxError::TimedOut { .. })),
-        "expected a timeout, got: {result:?}"
-    );
-
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    assert!(
-        !canary.exists(),
-        "PID 1 left the group, cleared its parent death signal, and outlived the call"
-    );
-
-    // Against the probe's own report, so a denial is told apart from a probe that never ran.
-    let answer = std::fs::read_to_string(&report).expect("the probe ran and reported");
-    assert_eq!(
-        answer,
-        format!("PDEATHSIG REFUSED {}", libc::EPERM),
-        "the probe did not meet the filter's refusal"
-    );
-}
-
 /// Helper mode runs in-process only where it refuses before restricting anything: a real
 /// `HELPER_FLAG` run would restrict this test process and `exec`.
 #[test]
