@@ -502,7 +502,7 @@ Read the `Display` arms for the reasoning in their comments rather than the
 wording: `PinMismatch` prints *both* digests, because only the pair tells the
 operator whether they pinned the wrong bytes or the bytes changed under them.
 
-### `label()` is exhaustive, and that is a security property
+### `label()` reads an exhaustive match, and that is a security property
 
 ```rust
     pub fn label(&self) -> &'static str {
@@ -570,8 +570,8 @@ Private to `error`, exhaustive, and the only place the two sets are related.
 parent or `FsGuard` decides, with its label. `label` and `refusal` are both
 views of it, so a relayed refusal and the variant it stands for cannot be
 called two different things. The eleven `Err` arms open with the clause that
-each is decided by the parent or `FsGuard` and never the helper, and six carry
-their own reason — `HelperRefused` is the relay's own output, so reporting it
+each is decided by the parent or `FsGuard` and never the helper, and five
+comments give six of them their own reason — `HelperRefused` is the relay's own output, so reporting it
 would be a second crossing; `ProcessConcealment` is decided past dispatch,
 which no helper runs (#192); `GrantUnpinnable` is the harness's own vetting;
 `RootReplaced` is `FsGuard`'s per-access measurement; `UnboundedResolution`
