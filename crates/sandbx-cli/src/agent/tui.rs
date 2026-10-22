@@ -18,7 +18,7 @@ use sandbx_providers::{
 };
 use sandbx_session::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
-use sandbx_tui::{Hint, Keys, Screen, Stopped, Transcript};
+use sandbx_tui::{Keys, Screen, Stopped, Transcript};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
@@ -151,11 +151,11 @@ impl Tui {
         let audit = logging::hold();
 
         // The screen before the keys: without raw mode ctrl-c is a signal, and the reader
-        // would never see the key that is supposed to stop the turn.
-        let screen = Screen::enter().map_err(AgentError::Screen)?;
+        // would never see the key that is supposed to stop the turn. One lock because the
+        // turn hands out two writers, `observe` and the gate's `settled`, that meet at the
+        // same transcript; a `Mutex`, not a `RefCell`, so the turn's future stays `Send`.
+        let pane = Mutex::new(Screen::enter(transcript).map_err(AgentError::Screen)?);
         let mut keys = Keys::listen();
-
-        let pane = Mutex::new(Pane { transcript, screen });
         paint(&pane, |_| {});
 
         let outcome = {
@@ -207,10 +207,6 @@ impl Tui {
             }
         };
 
-        for line in &account {
-            pane.transcript.note(line);
-        }
-
         // Before the key, not after: the hold ends on an operator who may not come back,
         // and a hangup there would lose a finished turn that was already paid for.
         if let Some(outcome) = outcome
@@ -223,9 +219,13 @@ impl Tui {
         // whose last rounds nobody read was not watched. Every cell and not the changed
         // ones, because `save` writes to a stderr the screen does not redirect. What the
         // wait costs the held trail is #224.
-        pane.redraw(Hint::Done);
+        pane.finish(|transcript| {
+            for line in &account {
+                transcript.note(line);
+            }
+        });
         keys.press().await;
-        let failed = pane.screen.failure();
+        let failed = pane.failure();
         drop(pane);
 
         // Only now is there a stderr with no screen over it, which is why the trail is
@@ -330,34 +330,13 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
     (code, account)
 }
 
-/// The transcript and the screen it is drawn on.
-///
-/// One lock around both because the turn hands out two writers — `observe` and the gate's
-/// `settled` — and they have to meet at the same transcript. A `Mutex` and not a `RefCell`
-/// so the turn's future stays `Send`.
-struct Pane {
-    transcript: Transcript,
-    screen: Screen,
-}
-
-impl Pane {
-    fn repaint(&mut self, hint: Hint) {
-        self.screen.draw(&self.transcript, hint);
-    }
-
-    fn redraw(&mut self, hint: Hint) {
-        self.screen.redraw(&self.transcript, hint);
-    }
-}
-
 /// Change the transcript and redraw, or do nothing at all.
 ///
 /// A poisoned lock is a panic already unwinding, whose terminal `Screen::drop` is about to
 /// restore; panicking again here would replace that account with this one.
-fn paint(pane: &Mutex<Pane>, change: impl FnOnce(&mut Transcript)) {
+fn paint(pane: &Mutex<Screen>, change: impl FnOnce(&mut Transcript)) {
     if let Ok(mut pane) = pane.lock() {
-        change(&mut pane.transcript);
-        pane.repaint(Hint::Running);
+        pane.paint(change);
     }
 }
 
@@ -365,7 +344,7 @@ fn paint(pane: &Mutex<Pane>, change: impl FnOnce(&mut Transcript)) {
 struct Gate<'a> {
     /// `agent-run`'s gate with no terminal, which is the whole of the decision.
     argv: gate::ArgvGate<'a, Terminal>,
-    pane: &'a Mutex<Pane>,
+    pane: &'a Mutex<Screen>,
 }
 
 impl CallGate for Gate<'_> {
