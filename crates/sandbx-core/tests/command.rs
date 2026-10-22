@@ -524,6 +524,61 @@ fn a_command_that_sheds_its_lifetime_still_dies() {
     assert!(started.starts_with("STARTED"), "got: {started}");
 }
 
+/// Untimed, so no group kill fires: the init's parent death signal is the only path.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn a_killed_supervisor_takes_an_untimed_command_with_it() {
+    let probe = env!("CARGO_BIN_EXE_sandbx-orphan-probe");
+    let dir = scratch();
+    let (report, canary) = (dir.path().join("report"), dir.path().join("canary"));
+    let parent = std::path::Path::new(probe).parent();
+
+    let policy = SandboxPolicy::default()
+        .allow_system_executables()
+        .allow_read_execute(vetted(parent.expect("the probe has a directory")))
+        .allow_write(vetted(dir.path()));
+    let command = SandboxedCommand::new(probe, policy)
+        .arg(report.display().to_string())
+        .arg(canary.display().to_string())
+        .helper(env!("CARGO_BIN_EXE_sandbx-helper"));
+    let call = std::thread::spawn(move || command.output());
+
+    // The probe's report is what says the command is past its `exec` from a thread.
+    let started = std::time::Instant::now();
+    while !report.exists() && started.elapsed() < std::time::Duration::from_secs(10) {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(report.exists(), "the probe never reported");
+
+    let marker = canary.display().to_string();
+    let supervisor = std::fs::read_dir("/proc")
+        .expect("/proc is mounted")
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<i32>().ok())
+        .find(|pid| {
+            let argv = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+            let argv: Vec<_> = argv.split(|byte| *byte == 0).collect();
+            argv.get(1) == Some(&sandbx_core::HELPER_FLAG.as_bytes())
+                && argv.contains(&marker.as_bytes())
+        })
+        .expect("the supervisor is running");
+
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(supervisor),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("the supervisor can be killed");
+
+    let _ = call
+        .join()
+        .expect("the call returns once the supervisor is gone");
+
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    assert!(
+        !canary.exists(),
+        "a command that shed its own lifetime outlived a killed supervisor"
+    );
+}
+
 /// Helper mode runs in-process only where it refuses before restricting anything: a real
 /// `HELPER_FLAG` run would restrict this test process and `exec`.
 #[test]
