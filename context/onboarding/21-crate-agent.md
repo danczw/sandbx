@@ -673,9 +673,7 @@ itself.
 
 A `VecDeque` of canned rounds popped one per call, and a `Vec<Prompt>` of what
 was asked — that second field being what makes the compaction suite possible, a
-cut showing only in the *request*. Deliberately not `sandbx-providers`'
-`MockProvider`, which would cost a `mock` feature and a `required-features`
-target to borrow one line.
+cut showing only in the *request*.
 
 **The provider is fake; the tools are real.** `AllowAll` approves everything and
 reports nothing — "for the tests whose subject is not the gate: the policy in

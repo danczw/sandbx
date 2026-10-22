@@ -573,12 +573,8 @@ Assume a small change to `sandbx-cli`.
   enforces, is a subject stating what is true after the change rather than
   instructing: "the cli map names the new module", not "update the cli map".
 - **Run the suite yourself, because no hook does.** The default run is
-  `cargo test --workspace --features sandbx-providers/mock`, which is CI's
-  `test` job: the mock feature is named explicitly there because
-  `sandbx-providers`' `mock_provider` test target carries
-  `required-features = ["mock"]`, so a plain workspace run skips that target and
-  reports zero tests for it
-  ([20](20-crate-providers.md)). On a host whose kernel reaches the floor, add
+  `cargo test --workspace`, which is CI's `test` job. On a host whose kernel
+  reaches the floor, add
   `cargo test --workspace --features sandbox-integration` — that is the
   enforcement suite, gated whole-file, and the one CI runs on two
   architectures. [18](18-crate-core.md) has which target each feature gates.
