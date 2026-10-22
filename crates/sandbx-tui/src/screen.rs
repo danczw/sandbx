@@ -16,7 +16,8 @@ use ratatui::layout::{Position, Rect, Size};
 use crate::transcript::Transcript;
 use crate::view::{self, Hint};
 
-/// The alternate screen one turn is drawn on, restored when this drops.
+/// The alternate screen one turn is drawn on, and the transcript drawn there; the terminal
+/// is restored when this drops.
 pub struct Screen {
     /// `Option` only so [`Screen::drop`] can take it: `Terminal`'s own `Drop` can panic,
     /// and containing that needs the value moved rather than borrowed.
@@ -25,12 +26,14 @@ pub struct Screen {
     /// The first draw failure, `observe` having nowhere to return one. The first and not the
     /// last: a closed stdout fails once per event, and the last says only that it was gone.
     failed: Option<io::Error>,
+
+    transcript: Transcript,
 }
 
 impl Screen {
     /// Take the terminal: raw mode on, alternate screen entered. Raw mode makes ctrl-c reach
     /// [`Keys`](crate::Keys) as a key, not a `SIGINT` killing the process with the screen up.
-    pub fn enter() -> io::Result<Self> {
+    pub fn enter(transcript: Transcript) -> io::Result<Self> {
         // First, before anything fallible, so a panic in `take_terminal` is covered too.
         // `try_restore` and not `restore`: inside a hook its `eprintln!` to the descriptor
         // that just died would be a panic while panicking, which aborts (#264).
@@ -49,6 +52,7 @@ impl Screen {
         Ok(Self {
             terminal: Some(terminal),
             failed: None,
+            transcript,
         })
     }
 
@@ -59,36 +63,46 @@ impl Screen {
             .expect("a screen holds its terminal until it drops")
     }
 
-    /// Repaint the whole screen from `transcript`.
-    pub fn draw(&mut self, transcript: &Transcript, hint: Hint) {
-        if self.failed.is_some() {
-            return;
-        }
-
-        if let Err(error) = self
-            .terminal()
-            .draw(|frame| view::draw(frame, transcript, hint))
-        {
-            self.failed = Some(error);
-        }
+    /// Apply `change` to the transcript, then repaint while the turn still runs. The change
+    /// is applied even once a draw has failed, so the transcript stays whole.
+    pub fn paint(&mut self, change: impl FnOnce(&mut Transcript)) {
+        change(&mut self.transcript);
+        self.draw(Hint::Running);
     }
 
-    /// Repaint every cell, not only the ones the transcript changed. ratatui only flushes the
-    /// diff between its two buffers; a cell stderr wrote (unredirected by the alternate screen)
-    /// is never rewritten, so discarding the back buffer is the only fix. `resize`, never
-    /// `Terminal::clear`: `clear`'s cursor query takes crossterm's one reader lock, which
-    /// [`Keys`](crate::Keys) may be holding — and if it wins the lock instead, it races the
-    /// reader for the reply bytes. Resizing to the size already in force asks the terminal
-    /// nothing only on the fullscreen viewport `Terminal::new` gives: an inline one recomputes
-    /// its origin from the cursor, which is that query back again.
-    pub fn redraw(&mut self, transcript: &Transcript, hint: Hint) {
+    /// Apply `change`, then repaint every cell for the held, finished turn — not only the
+    /// ones the transcript changed. ratatui only flushes the diff between its two buffers; a
+    /// cell stderr wrote (unredirected by the alternate screen) is never rewritten, so
+    /// discarding the back buffer is the only fix. `resize`, never `Terminal::clear`:
+    /// `clear`'s cursor query takes crossterm's one reader lock, which [`Keys`](crate::Keys)
+    /// may be holding — and if it wins the lock instead, it races the reader for the reply
+    /// bytes. Resizing to the size already in force asks the terminal nothing only on the
+    /// fullscreen viewport `Terminal::new` gives: an inline one recomputes its origin from the
+    /// cursor, which is that query back again.
+    pub fn finish(&mut self, change: impl FnOnce(&mut Transcript)) {
+        change(&mut self.transcript);
         if self.failed.is_some() {
             return;
         }
 
         match cleared(self.terminal()) {
-            Ok(()) => self.draw(transcript, hint),
+            Ok(()) => self.draw(Hint::Done),
             Err(error) => self.failed = Some(error),
+        }
+    }
+
+    fn draw(&mut self, hint: Hint) {
+        if self.failed.is_some() {
+            return;
+        }
+
+        // The field, not `terminal()`, which borrows all of `self` and the transcript with it.
+        let terminal = self
+            .terminal
+            .as_mut()
+            .expect("a screen holds its terminal until it drops");
+        if let Err(error) = terminal.draw(|frame| view::draw(frame, &self.transcript, hint)) {
+            self.failed = Some(error);
         }
     }
 

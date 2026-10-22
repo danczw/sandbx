@@ -21,7 +21,7 @@ const GUTTER: &str = "│ ";
 
 /// What the status bar says the operator can do now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hint {
+pub(crate) enum Hint {
     /// The turn is streaming, and a key can still stop it.
     Running,
     /// The turn is over and the screen is held so its last rounds can be read.

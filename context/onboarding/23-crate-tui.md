@@ -20,7 +20,7 @@ overrides the gate's `settled`.
 ## The module tree
 
 ```
-src/lib.rs          re-exports five names; no policy, no gate, no session here
+src/lib.rs          re-exports four names; no policy, no gate, no session here
    transcript.rs    AgentEvent folded into entries, and the control bytes a cell
                     may not hold — no terminal behind it, so it is unit-tested
    view.rs          the layout: the transcript tail-aligned over a status bar
@@ -30,10 +30,10 @@ src/lib.rs          re-exports five names; no policy, no gate, no session here
 
 | module | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-tui/src/lib.rs) | four `mod` lines and four `pub use` lines — the whole public surface | here |
+| [`lib.rs`](../../crates/sandbx-tui/src/lib.rs) | four `mod` lines and three `pub use` lines — the whole public surface | here |
 | [`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs) | `Transcript`, `Entry`, `Kind`, `printable` — the fold, and the sanitiser | here, as the centre; [15](15-tools-and-the-screen.md) for why a renderer gets a security chapter |
-| [`view.rs`](../../crates/sandbx-tui/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
-| [`screen.rs`](../../crates/sandbx-tui/src/screen.rs) | `Screen` — raw mode, the alternate screen, the `Drop`, the latched failure | here |
+| [`view.rs`](../../crates/sandbx-tui/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar; all crate-private | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
+| [`screen.rs`](../../crates/sandbx-tui/src/screen.rs) | `Screen` — the transcript it draws, raw mode, the alternate screen, the `Drop`, the latched failure | here |
 | [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
 Tests are inline, in the file whose private items they touch, as
@@ -42,15 +42,17 @@ Tests are inline, in the file whose private items they touch, as
 `crates/sandbx-tui/tests/` directory, and `screen.rs` has none — it is the one
 file that needs a real terminal.
 
-## lib.rs is five names, and the manifest is the interesting half
+## lib.rs is four names, and the manifest is the interesting half
 
-Four `mod` lines and four `pub use` lines — one of them now binding two
-items — and no `pub mod`, so no module path is part of the API: a caller gets
-five names and their methods — `Transcript::new`/`event`/`note`,
-`Screen::enter`/`draw`/`redraw`/`failure`, `Keys::listen`/`stop`/`press`,
-`Stopped::Pressed`/`Gone`, `Hint::Running`/`Done`. Deliberately *not*
-exported is the shape of a transcript: `Entry` and `Kind` are `pub(crate)`,
-as are `Transcript::entries`, `rounds`, `tokens` and `view::draw`. The only
+Four `mod` lines and three `pub use` lines — one of them binding two items —
+and no `pub mod`, so no module path is part of the API: a caller gets four
+names and their methods — `Transcript::new`/`event`/`note`,
+`Screen::enter`/`paint`/`finish`/`failure`, `Keys::listen`/`stop`/`press`,
+`Stopped::Pressed`/`Gone`. Deliberately *not* exported is the shape of a
+transcript: `Entry` and `Kind` are `pub(crate)`, as are
+`Transcript::entries`, `rounds`, `tokens`, `view::draw` and `Hint` — `Screen`
+owns the transcript once entered and picks the hint itself, `paint` meaning
+the turn still runs and `finish` that it is over. The only
 way out of a `Transcript` is a drawn frame, so no caller can read the folded
 entries back and print them where the fold does not cover.
 
@@ -438,8 +440,9 @@ before. Each leaves the terminal as the turn left it, `reset` in the shell
 the only fix — the same shape as the held audit trail losing everything to
 a signal that runs no `Drop` (#224).
 
-Two draw methods and a latch. `draw` repaints from the transcript; `redraw`
-discards the back buffer first by resizing to the size already in force,
+Two public draws over one private `draw`, and a latch. `paint` applies a change
+to the transcript `Screen` owns and repaints with the turn still running;
+`finish` applies the last change, then discards the back buffer first by resizing to the size already in force,
 since ratatui flushes only the diff between its two buffers and a cell a
 third party wrote would never be rewritten. The comment records the trap:
 not `Terminal::clear`, whose cursor query takes crossterm's one reader lock,
@@ -455,22 +458,22 @@ own doc means by "`observe` having nowhere to return one". So the first one
 latches instead:
 
 ```rust
-    pub fn draw(&mut self, transcript: &Transcript, hint: Hint) {
+    fn draw(&mut self, hint: Hint) {
         if self.failed.is_some() {
             return;
         }
 
-        if let Err(error) = self
-            .terminal()
-            .draw(|frame| view::draw(frame, transcript, hint))
-        {
+        // The field, not `terminal()`, which borrows all of `self` and the transcript with it.
+        let terminal = self.terminal.as_mut().expect("a screen holds its terminal until it drops");
+        if let Err(error) = terminal.draw(|frame| view::draw(frame, &self.transcript, hint)) {
             self.failed = Some(error);
         }
     }
 ```
 
-`redraw` tests the same flag and latches the same way, so one failure stops
-both. The field keeps the *first* error and not the last — "a closed stdout
+`finish` tests the same flag and latches the same way, so one failure stops
+both. The change is applied to the transcript either way: a latched screen
+still holds the whole turn, only no longer draws it. The field keeps the *first* error and not the last — "a closed stdout
 fails once per event, and the last says only that it was gone" — and the caller
 takes it once:
 
@@ -569,9 +572,9 @@ flowchart TD
 ```
 
 The reader holds crossterm's one reader lock only while an event is in
-flight, not for as long as it parks — a comment `Screen::redraw` carries
+flight, not for as long as it parks — a comment `Screen::finish` carries
 used to say otherwise, and was rewritten with the hangup fix (#264). What
-`redraw` is still written around is that lock, not a permanent hold.
+`finish` is still written around is that lock, not a permanent hold.
 
 ### A hangup is caught by `poll`, not by `event::read`
 
@@ -685,7 +688,7 @@ an in-flight blocking task, and nothing waits for a `std::thread`.
 
 ## You should now be able to explain
 
-- Why `sandbx-tui` has no row in 04's table of boundaries, which five names
+- Why `sandbx-tui` has no row in 04's table of boundaries, which four names
   it exports, and why `Entry` and `Kind` are not among them.
 - What the single internal dependency rules out as a build error, and the
   two things it does not.

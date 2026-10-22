@@ -33,7 +33,8 @@ to look for what approved a call.
 ```
 Transcript   the events folded into entries          no terminal → unit-tested
 view::draw   the entries laid out as rows            TestBackend → unit-tested
-Screen       raw mode, the alternate screen, Drop    a real terminal only
+Screen       the transcript it draws, raw mode,      a real terminal only
+             the alternate screen, Drop
 Measured     the window, off the drawn descriptor    a pty pair → unit-tested
 Keys         the reader thread and the press         a pty pair → unit-tested
 ```
@@ -260,7 +261,7 @@ could `Screen::enter` on a terminal that died after `drawable` looked.
 So the screen's backend is `Measured`: crossterm's, except that `size` is its own
 `TIOCGWINSZ` on the descriptor it draws to, and a failure is returned as it came.
 ratatui asks the backend for the size before it writes anything — on every draw,
-on `redraw`'s clear, and when the `Terminal` is built — so a hung-up terminal is
+on `finish`'s clear, and when the `Terminal` is built — so a hung-up terminal is
 measured, fails, and latches the screen's failure with nothing drawn and nothing
 run. It is the descriptor drawn to and not `/dev/tty`, which crossterm reads first
 and which need not be the screen. `clippy.toml` bans `terminal::size` and

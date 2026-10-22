@@ -515,7 +515,7 @@ argument for spending the round at all.
 reported, and that a keypress or a hung-up terminal can end one — the second
 exiting 3 rather than the keypress's 2, on the reasoning that a turn nobody
 could see is one nobody watched (#264). `logging::hold()` buffers the audit
-trail while the screen owns the terminal, `Screen::enter()` precedes
+trail while the screen owns the terminal, `Screen::enter(transcript)` precedes
 `Keys::listen()` because without raw mode ctrl-c is a signal rather than a key,
 and the interrupt is a `tokio::select!` that drops the turn's future where it
 stands. Its `Gate` wraps `ArgvGate` and *delegates* the decision rather than

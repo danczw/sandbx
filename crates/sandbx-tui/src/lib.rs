@@ -12,4 +12,3 @@ mod view;
 pub use input::{Keys, Stopped};
 pub use screen::Screen;
 pub use transcript::Transcript;
-pub use view::Hint;
