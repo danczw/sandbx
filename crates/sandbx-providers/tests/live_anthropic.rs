@@ -12,9 +12,14 @@ use sandbx_providers::{AnthropicClient, ContentBlock, Prompt, RequestMessage, Ro
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {
+    // Blank counts as unset, as it does in the CLI: an empty key would only come back as
+    // an opaque 401.
     let key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY must be set to run live-anthropic-tests");
-    let client = AnthropicClient::new(secrecy::SecretString::from(key.trim().to_owned()))
+        .ok()
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
+        .expect("a non-blank, UTF-8 ANTHROPIC_API_KEY must be set to run live-anthropic-tests");
+    let client = AnthropicClient::new(secrecy::SecretString::from(key))
         .expect("a client is built without a network call");
 
     let request = Prompt {
