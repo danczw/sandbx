@@ -485,8 +485,7 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
     );
 }
 
-/// An `exec` from a second thread sheds the per-thread parent death signal with no `prctl`;
-/// what the kill chain ends is the init, so the command still dies.
+/// An `exec` from a second thread sheds the parent death signal; the init still dies, timed.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_that_sheds_its_lifetime_still_dies() {

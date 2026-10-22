@@ -1,4 +1,4 @@
-//! Applies a sandbox policy to itself, then becomes the requested command. Usage:
+//! Applies a sandbox policy to itself, then runs the requested command as its child. Usage:
 //! `sandbx-helper --sandbx-core-exec [POLICY]... -- PROGRAM [ARGS]...`, the policy flags
 //! being whatever [`sandbx_core::HelperArgs`] encodes, in a two-stage supervisor the second
 //! stage ([`sandbx_core::HELPER_INNER_FLAG`]) describes. Standalone so the enforcement path

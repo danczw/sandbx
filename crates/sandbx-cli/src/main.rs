@@ -19,10 +19,10 @@ const USAGE: u8 = 64;
 
 fn main() -> std::process::ExitCode {
     // Must precede argument parsing: `SandboxedCommand` re-execs this binary as its
-    // helper, which restricts itself and becomes the target command instead of falling through.
+    // helper, which restricts itself and runs the target command instead of falling through.
     sandbx_core::with_helper_dispatch(std::env::args_os(), || {
-        // Inside the closure, not above: in helper mode this process becomes the sandboxed
-        // command, whose stderr is forwarded verbatim, so a subscriber above would leak into
+        // Inside the closure, not above: in helper mode this process shares the sandboxed
+        // command's stderr, which is forwarded verbatim, so a subscriber above would leak into
         // it. Helper mode has none; its hardening reports degradations over a pipe instead.
         if let Err(error) = sandbx_cli::logging::init() {
             eprintln!("sandbx: audit trail unavailable: {error}");

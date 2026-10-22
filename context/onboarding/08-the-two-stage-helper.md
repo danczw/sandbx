@@ -508,9 +508,9 @@ being one function.
 
 Two properties hold the sequence together. Everything in it is **irreversible**,
 so no step can be a trial run and nothing can be relaxed later for the command's
-benefit. And everything in it is **inherited across `exec`**, which is the
-reason a process may confine itself and only then become a program it does not
-trust — the restrictions stick to the command rather than to this process.
+benefit. And everything in it is **inherited across `fork` and `exec`**, which
+is the reason a process may confine itself and only then start a program it does
+not trust — the restrictions stick to the command as well as to this process.
 
 The reason `apply` is one long function rather than four, stated in the module
 doc, is that the order *is* the security property. A sequence split across
