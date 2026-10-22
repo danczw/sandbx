@@ -538,7 +538,7 @@ answer than "bound what the call can reach".
 
 No vendor SDK. `reqwest` carries bytes and `rustls` encrypts them; above that,
 every line is in this repo — the SSE framing, the event union, the accumulator,
-the body serializer, the retry classification, the credential handling. The
+the body serializer, the error mapping, the credential handling. The
 case for it is [decision-provider-seam.md](../decision-provider-seam.md); what
 follows is what it feels like to work in.
 
@@ -596,9 +596,9 @@ What it buys:
   `serde_json::Value` compared against a literal; the accumulator is fed a
   sequence of raw events. Both of those are unit tests on a machine with no
   credential.
-- **No SDK's idea of retries, logging, or a client lifecycle.** The two
-  retryable error strings are a three-line constant that says where they came
-  from, not a policy inherited from a dependency.
+- **No SDK's idea of retries, logging, or a client lifecycle.** A failed call
+  reaches the operator as the error it was; nothing re-sends it on a policy
+  inherited from a dependency.
 - **The code that decides what to send is reviewable in an afternoon.** For a
   project whose claims rest on review rather than on reputation, that is the
   point.
