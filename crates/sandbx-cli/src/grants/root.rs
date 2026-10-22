@@ -2,8 +2,7 @@
 //! nothing here reads a flag.
 //!
 //! One order is load-bearing and it is not one function's: [`vetted_root`] refuses in the
-//! order written. The spelling the comparisons need is [`ResolvedPath`], which [`resolved`]
-//! produces, or a [`VettedPath`] already is: a vetted grant is judged as the path it pins.
+//! order written. The comparisons need a [`ResolvedPath`], from [`resolved`] or a [`VettedPath`].
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -296,9 +295,8 @@ pub(super) fn current_root(
         detail: "could not read the working directory to derive a policy from",
         source,
     })?;
-    // `getcwd` already resolves; vetting also proves the directory is still openable, which
-    // `PathFd::new` requires and `FsGuard` does not, covering nothing under an unopenable root
-    // rather than refusing it.
+    // The vet proves the cwd still openable, which `PathFd::new` requires and `FsGuard` does
+    // not, covering nothing under an unopenable root rather than refusing it.
     let cwd = VettedPath::vet(&cwd).map_err(|error| PolicyError::Unavailable {
         detail: "could not resolve the working directory to derive a policy from",
         source: match error {
