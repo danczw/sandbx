@@ -67,11 +67,11 @@ the two processes, which is the only party the seam was ever exposed to.
 
 ## The pin is taken where the check is
 
-`Grants::policy` resolves each grant and then asks `reaches_owned` whether it
-covers something sandbx owns. The stat belongs there, beside that check, so the
-pinned object is the object the operator's refusal was evaluated against. Pinning
-anywhere earlier would pin something the check had not yet applied to; anywhere
-later and the two could already disagree.
+`Grants::policy` vets each grant and then asks `reaches_owned` whether the vetted
+path covers something sandbx owns. The stat belongs there, beside that check, so the
+pinned object is the object the operator's refusal was evaluated against: the check
+is applied to what was pinned, so the two are one value and nothing compares them.
+Resolving once for the check and again for the pin is what would let them disagree.
 
 `allow_system_executables` pins at the site it already canonicalizes, which is
 inside the library rather than in the CLI. That matters because it is the one

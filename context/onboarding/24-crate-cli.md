@@ -376,8 +376,7 @@ than a type — `Axis::ReadExecute` becomes "run".
 - **Worth questioning:** that silent `continue` is the one place in the crate
   where a grant failing its own identity check produces neither a refusal nor a
   line on stderr. The same condition is a refusal a moment earlier —
-  `PolicyError::UnpinnableGrant` and `PolicyError::GrantMovedWhileVetting` both
-  exist for it — and
+  `PolicyError::UnpinnableGrant` exists for it — and
   [decision-grant-identity.md](../decision-grant-identity.md) is explicit that
   the vet-to-use window "fails closed" and that "refusing is the right
   outcome". Nothing is *unsafe* here: `FsGuard` measures the matched root per
