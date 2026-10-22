@@ -488,8 +488,8 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
     );
 }
 
-/// Only the non-helper paths are exercised in-process: passing `HELPER_FLAG` here would
-/// restrict this test process and `exec`.
+/// Helper mode runs in-process only where it refuses before restricting anything: a real
+/// `HELPER_FLAG` run would restrict this test process and `exec`.
 #[test]
 fn an_ordinary_invocation_is_not_helper_mode() {
     let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(std::ffi::OsString::from);
@@ -517,6 +517,24 @@ fn an_argv_with_no_arguments_is_not_helper_mode() {
         assert!(ran, "a too-short argv must be reported as an ordinary run");
         assert_eq!(code, std::process::ExitCode::SUCCESS);
     }
+}
+
+/// An inner stage given no supervisor pid refuses before restricting anything.
+#[test]
+fn a_failed_helper_run_never_runs_the_ordinary_main() {
+    let argv = ["sandbx", sandbx_core::HELPER_INNER_FLAG].map(std::ffi::OsString::from);
+    let mut ran = false;
+
+    let code = sandbx_core::with_helper_dispatch(argv, || {
+        ran = true;
+        std::process::ExitCode::SUCCESS
+    });
+
+    assert!(
+        !ran,
+        "a failed helper run fell through to the ordinary path"
+    );
+    assert_eq!(code, std::process::ExitCode::FAILURE);
 }
 
 /// `command_line` and not `output`: this argv is the one an embedder may spawn itself.
