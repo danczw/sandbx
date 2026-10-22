@@ -38,11 +38,9 @@ fn transport_carries_its_source() {
 #[test]
 fn api_error_with_a_status_reports_it() {
     let error = ProviderError::ApiError {
-        transient: false,
         status: Some(400),
         kind: "invalid_request_error".to_string(),
         message: "model field is required".to_string(),
-        retry_after: None,
     };
 
     let rendered = error.to_string();
@@ -57,11 +55,9 @@ fn api_error_with_a_status_reports_it() {
 #[test]
 fn api_error_without_a_status_still_reports_the_body() {
     let error = ProviderError::ApiError {
-        transient: true,
         status: None,
         kind: "overloaded_error".to_string(),
         message: "the API is temporarily overloaded".to_string(),
-        retry_after: None,
     };
 
     let rendered = error.to_string();
@@ -121,94 +117,6 @@ fn invalid_base_url_reports_the_url_and_reason() {
     assert!(rendered.contains("ftp://example.com"));
     assert!(rendered.contains("scheme must be https"));
     assert!(source_of(&error).is_none());
-}
-
-/// A retry loop classifies by the accessors, not by matching the enum.
-///
-/// `ApiError` answers from its flag alone, never from `status` or `kind`, which only its
-/// own adapter can classify. The two below are otherwise identical.
-#[test]
-fn transient_is_retryable_client_error_is_not() {
-    let overloaded = ProviderError::ApiError {
-        transient: true,
-        status: Some(529),
-        kind: "overloaded_error".to_string(),
-        message: "overloaded".to_string(),
-        retry_after: None,
-    };
-    let bad_request = ProviderError::ApiError {
-        transient: false,
-        status: Some(529),
-        kind: "overloaded_error".to_string(),
-        message: "overloaded".to_string(),
-        retry_after: None,
-    };
-
-    assert!(overloaded.is_retryable());
-    assert!(
-        !bad_request.is_retryable(),
-        "the flag is what decides, not the status or the kind beside it"
-    );
-
-    assert!(
-        ProviderError::RateLimited {
-            retry_after: None,
-            message: "slow down".to_string(),
-        }
-        .is_retryable()
-    );
-    assert!(
-        ProviderError::Transport {
-            detail: "connection reset".to_string(),
-            source: reqwest_error_for_test(),
-        }
-        .is_retryable()
-    );
-    assert!(
-        !ProviderError::MissingCredential {
-            env_var: "ANTHROPIC_API_KEY",
-        }
-        .is_retryable(),
-        "no amount of retrying conjures a credential"
-    );
-    assert!(
-        !ProviderError::MalformedEvent {
-            detail: "bad frame".to_string(),
-        }
-        .is_retryable(),
-        "a parse bug is ours, not the server's"
-    );
-}
-
-/// One accessor covers a 429's `Retry-After` and a 5xx's alike.
-#[test]
-fn retry_after_is_exposed_from_both_carrying_variants() {
-    let two_secs = std::time::Duration::from_secs(2);
-
-    assert_eq!(
-        ProviderError::RateLimited {
-            retry_after: Some(two_secs),
-            message: "slow down".to_string(),
-        }
-        .retry_after(),
-        Some(two_secs)
-    );
-    assert_eq!(
-        ProviderError::ApiError {
-            transient: true,
-            status: Some(529),
-            kind: "overloaded_error".to_string(),
-            message: "overloaded".to_string(),
-            retry_after: Some(two_secs),
-        }
-        .retry_after(),
-        Some(two_secs)
-    );
-    assert_eq!(
-        ProviderError::StreamEndedUnexpectedly.retry_after(),
-        None,
-        "a variant that cannot carry a hint must not invent one"
-    );
 }
 
 /// The only way to get a real `reqwest::Error` without a network call.

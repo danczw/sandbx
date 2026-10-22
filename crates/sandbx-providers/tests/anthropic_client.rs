@@ -240,10 +240,10 @@ async fn a_400_is_reported_with_the_vendor_envelope() {
     }
 }
 
-/// 529 is Anthropic's non-standard "overloaded", so it has no `StatusCode` constant
-/// and is classified by the numeric range alone.
+/// 529 is Anthropic's non-standard "overloaded": a `Retry-After` beside it does not make
+/// it a `RateLimited`, which only a 429 is.
 #[tokio::test]
-async fn a_529_is_retryable_and_carries_its_retry_after() {
+async fn a_529_is_reported_with_its_status_and_kind() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/messages"))
@@ -265,11 +265,6 @@ async fn a_529_is_retryable_and_carries_its_retry_after() {
         .err()
         .expect("a 529 must be reported before any stream item");
 
-    assert!(
-        error.is_retryable(),
-        "a 529 must be classified as retryable: {error:?}"
-    );
-    assert_eq!(error.retry_after(), Some(std::time::Duration::from_secs(3)));
     match error {
         ProviderError::ApiError { status, kind, .. } => {
             assert_eq!(status, Some(529));

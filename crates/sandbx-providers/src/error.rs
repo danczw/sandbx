@@ -1,7 +1,4 @@
 /// Why a provider call did not produce a usable event stream.
-///
-/// Split by what the caller can do about it, which
-/// [`is_retryable`](Self::is_retryable) decides.
 #[derive(Debug)]
 pub enum ProviderError {
     /// No credential could be resolved for this provider.
@@ -38,14 +35,6 @@ pub enum ProviderError {
         kind: String,
         /// The vendor's human-readable message.
         message: String,
-        /// From `Retry-After`, which a 529 carries as often as a 429 does — so it is
-        /// read on every status, not only the rate-limited path.
-        retry_after: Option<std::time::Duration>,
-        /// Whether the adapter judged this one worth retrying, which
-        /// [`is_retryable`](Self::is_retryable) reports unchanged. Decided where the
-        /// error is built, that being the only place the vendor's status codes and
-        /// error-type strings are known.
-        transient: bool,
     },
 
     /// The API answered 429.
@@ -69,36 +58,6 @@ pub enum ProviderError {
     StreamEndedUnexpectedly,
 }
 
-impl ProviderError {
-    /// Whether retrying the identical request could plausibly succeed.
-    ///
-    /// A transport failure and a rate limit always; an API error as its adapter
-    /// judged it. A truncated stream reports `false` because the turn was already
-    /// partly delivered, so re-sending is the caller's judgement call.
-    pub fn is_retryable(&self) -> bool {
-        match self {
-            Self::Transport { .. } | Self::RateLimited { .. } => true,
-            Self::ApiError { transient, .. } => *transient,
-            Self::MissingCredential { .. }
-            | Self::InvalidBaseUrl { .. }
-            | Self::MalformedEvent { .. }
-            | Self::StreamEndedUnexpectedly => false,
-        }
-    }
-
-    /// How long the API asked the caller to wait, if it said. Reads the same
-    /// `Retry-After` for a rate limit and an overload, so a backoff layer need not
-    /// know which variant it holds.
-    pub fn retry_after(&self) -> Option<std::time::Duration> {
-        match self {
-            Self::RateLimited { retry_after, .. } | Self::ApiError { retry_after, .. } => {
-                *retry_after
-            }
-            _ => None,
-        }
-    }
-}
-
 impl std::fmt::Display for ProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -111,7 +70,6 @@ impl std::fmt::Display for ProviderError {
                 status,
                 kind,
                 message,
-                ..
             } => match status {
                 Some(status) => write!(f, "API returned {status} ({kind}): {message}"),
                 None => write!(f, "API reported an error mid-stream ({kind}): {message}"),

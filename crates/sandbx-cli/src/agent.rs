@@ -661,11 +661,9 @@ mod tests {
         runtime().block_on(args.drive(
             |_| {
                 std::future::ready(Err(ProviderError::ApiError {
-                    transient: true,
                     status: Some(500),
                     kind: "api_error".to_owned(),
                     message: "overloaded".to_owned(),
-                    retry_after: None,
                 }))
             },
             &ctx,
