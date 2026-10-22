@@ -50,8 +50,7 @@ impl CallGate for RefuseAll {
     }
 }
 
-/// Ask `turn` once more, over its history ending in what `first` produced, and report
-/// whether an answer came back.
+/// Ask once more, over `turn`'s history plus `first`'s messages, and say whether it answered.
 ///
 /// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
 /// already on stdout, and stored (#188) — rather than costing it any of them.
@@ -98,11 +97,9 @@ pub(super) async fn run<W: Write, E: Write>(
             eprintln!("sandbx: the wrap-up request failed: {error}");
             (first, false)
         }
-        // Either leaves the batch ending on an unanswered `tool_result`, so `first`
-        // stands and prose this round already streamed is `Unfinished::Discarded`.
-        // The not-equal covers every stop but the answer, which is sound only while
-        // `RefuseAll` cannot abort — a gate that could would be misreported here as
-        // having asked for a tool.
+        // Either leaves the batch on an unanswered `tool_result`: `first` stands, and prose
+        // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
+        // asked for is sound only while `RefuseAll` cannot abort.
         Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
             eprintln!(
                 "sandbx: the wrap-up round {}",
