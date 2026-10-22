@@ -130,7 +130,9 @@ pub(crate) fn api_key() -> Result<SecretString, AuthError> {
 /// The key and the source that answered, environment first.
 ///
 /// The file is located only once the environment has come up empty, so an exported key
-/// works on a host with no config home for [`config_file`] to name.
+/// works on a host with no config home for [`config_file`] to name. The lookup is injected
+/// because `set_var` is an `unsafe fn` under edition 2024 and the workspace forbids
+/// `unsafe_code` in test binaries too, so a test cannot drive a real environment.
 fn resolve(
     lookup: &impl Fn(&str) -> Option<OsString>,
 ) -> Result<(SecretString, Source), AuthError> {
@@ -145,17 +147,22 @@ fn resolve(
     }
 }
 
-/// [`ENV_VAR`]'s value, or `None` when it is unset, blank or not UTF-8.
-///
-/// Through `resolve_api_key` so the trim-and-treat-blank-as-absent rule has one
-/// implementation. A blank value falls through to the file rather than failing.
+/// [`ENV_VAR`]'s value, or `None` when it is unset, blank or not UTF-8, so a blank value
+/// falls through to the file rather than failing.
 fn env_key(lookup: &impl Fn(&str) -> Option<OsString>) -> Option<SecretString> {
-    sandbx_providers::resolve_api_key(ENV_VAR, |name| {
-        lookup(name)
-            .and_then(|value| value.into_string().ok())
-            .ok_or(std::env::VarError::NotPresent)
-    })
-    .ok()
+    lookup(ENV_VAR)?
+        .into_string()
+        .ok()
+        .as_deref()
+        .and_then(nonblank)
+}
+
+/// `raw` trimmed, or `None` when nothing is left — every source's one rule. An unpopulated
+/// CI secret is `""`, and `$(cat key)` keeps a newline `HeaderValue` would reject much
+/// later as an opaque transport error.
+fn nonblank(raw: &str) -> Option<SecretString> {
+    let key = raw.trim();
+    (!key.is_empty()).then(|| SecretString::from(key.to_owned()))
 }
 
 /// Where the credential file is, from `$XDG_CONFIG_HOME` or `$HOME`.
@@ -175,10 +182,7 @@ pub(crate) fn config_file(
     Ok(home.join(".config").join(FILE))
 }
 
-/// The key from `input`, refusing a tty rather than prompting for it.
-///
-/// Trimmed and blank-checked like [`env_key`]: a `printf` without `%s`, or a `$(cat key)`,
-/// carries a newline `HeaderValue` would later reject as an opaque transport error.
+/// The key from `input` through [`nonblank`], refusing a tty rather than prompting for it.
 fn read_key(mut input: impl Read, tty: bool) -> Result<SecretString, AuthError> {
     if tty {
         return Err(AuthError::TtyInput);
@@ -187,12 +191,7 @@ fn read_key(mut input: impl Read, tty: bool) -> Result<SecretString, AuthError> 
     let mut raw = String::new();
     input.read_to_string(&mut raw).map_err(AuthError::Stdin)?;
 
-    let key = raw.trim();
-    if key.is_empty() {
-        return Err(AuthError::BlankKey);
-    }
-
-    Ok(SecretString::from(key.to_string()))
+    nonblank(&raw).ok_or(AuthError::BlankKey)
 }
 
 #[cfg(test)]
@@ -307,6 +306,33 @@ mod tests {
             ("XDG_CONFIG_HOME", dir.path().to_str().unwrap()),
         ]))
         .unwrap();
+
+        assert_eq!(key.expose_secret(), "from-file");
+    }
+
+    /// Trimmed rather than refused, so the worst case is a clean 401 and not a
+    /// `HeaderValue` rejection.
+    #[test]
+    fn a_padded_environment_value_is_trimmed() {
+        let (key, _) = resolve(&env(&[("ANTHROPIC_API_KEY", "  sk-ant-test\n")])).unwrap();
+
+        assert_eq!(key.expose_secret(), "sk-ant-test");
+    }
+
+    #[test]
+    fn a_non_utf8_environment_value_falls_through() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        stored_key(dir.path(), "from-file");
+        let home = dir.path().as_os_str().to_owned();
+        let lookup = move |name: &str| match name {
+            "ANTHROPIC_API_KEY" => Some(OsString::from_vec(vec![b's', b'k', 0xff])),
+            "XDG_CONFIG_HOME" => Some(home.clone()),
+            _ => None,
+        };
+
+        let (key, _) = resolve(&lookup).unwrap();
 
         assert_eq!(key.expose_secret(), "from-file");
     }
