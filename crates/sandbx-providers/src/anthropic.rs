@@ -185,9 +185,8 @@ async fn map_error_response(
     status: reqwest::StatusCode,
     response: reqwest::Response,
 ) -> ProviderError {
-    // Read before `text()` consumes the response. Only the integer-seconds form
-    // Anthropic documents parses; the HTTP-date form an intermediary might use
-    // degrades to `None`.
+    // Read before `text()` consumes the response. Only Anthropic's integer-seconds
+    // form parses; an HTTP date from an intermediary degrades to `None`.
     let retry_after = response
         .headers()
         .get(reqwest::header::RETRY_AFTER)
