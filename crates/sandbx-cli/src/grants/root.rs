@@ -229,7 +229,7 @@ impl ResolvedPath {
     }
 }
 
-/// No I/O: a vetted path is canonical, which is `resolved`'s output where the whole path exists.
+/// No I/O: a vetted path is canonical already.
 impl From<&VettedPath> for ResolvedPath {
     fn from(vetted: &VettedPath) -> Self {
         Self(vetted.path().to_path_buf())

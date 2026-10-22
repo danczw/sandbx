@@ -70,7 +70,7 @@ the two processes, which is the only party the seam was ever exposed to.
 `Grants::policy` vets each grant and then asks `reaches_owned` whether the vetted
 path covers something sandbx owns. The stat belongs there, beside that check, so the
 pinned object is the object the operator's refusal was evaluated against: the check
-is applied to what was pinned, so the two are one value and nothing compares them.
+is applied to what was pinned, so the path checked is the path pinned, one value.
 Resolving once for the check and again for the pin is what would let them disagree.
 
 `allow_system_executables` pins at the site it already canonicalizes, which is
