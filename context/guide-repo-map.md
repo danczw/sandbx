@@ -78,7 +78,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
                      the allowlist and the policy's own constants
    error.rs          SandboxError — every refusal and failure, and its label
       refusal.rs     HelperRefusal — the closed set the channel admits, and
-                     SandboxError::refusal, the one place the two are mapped
+                     SandboxError::decided_by, the one place the two are mapped
    bin/sandbx-helper.rs
    helper/
       mod.rs         the two stages — exec_sandboxed, then exec_inner as PID 1;

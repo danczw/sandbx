@@ -79,8 +79,8 @@ supervisor already gone, an environment an earlier stage did not narrow — and 
 those exits non-zero, which stage 1 relays on the command's behalf. So the record is
 `SandboxError::label` and the trail says `failed reason=<label>`; `exec_failed` is one
 member of that set rather than the only thing the channel can carry. The set lives on
-`SandboxError`, which owns it because `label` is the exhaustive match a new variant has
-to pass through. The claim on fd 0 moves to the top of `exec_inner` for this: a refusal
+`SandboxError`, which owns it because `label` reads the exhaustive match a new variant
+has to pass through. The claim on fd 0 moves to the top of `exec_inner` for this: a refusal
 is only reportable from a point where the channel is already in hand.
 
 **Stage 1 reports its own refusals too** (#160), the same gap one stage up: it exits
@@ -195,8 +195,9 @@ prevent. So a refusal written just before a deadline expires stays on the trail 
 the cause and still reaches the caller as `TimedOut`, which is the only one of the
 two that says retrying with longer might work.
 
-`SandboxError::refusal` is the one exhaustive place the two sets are mapped. It is
-half the guarantee: the match makes a new variant decide, and
+`SandboxError::decided_by` is the one exhaustive place the two sets are mapped, and
+`label` and `refusal` both read it. It is half the guarantee: the match makes a new
+variant decide, in the same arm that names its label, and
 `every_refusal_a_variant_reports_is_one_the_channel_admits` is what stops one
 deciding yes and then being left out of `ALL`, where `from_label` would reject the
 label its own writer emits and the record would be dropped on arrival.
