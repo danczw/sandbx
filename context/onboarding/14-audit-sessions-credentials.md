@@ -662,9 +662,9 @@ file's own mode irrelevant:
 | step | refuses |
 |---|---|
 | open the root | a missing root is `NotFound` for that id, which is what was asked |
-| root mode and uid | `WRITABLE_BITS`, or a `ForeignOwner` |
+| root uid and mode | a `ForeignOwner`, then `WRITABLE_BITS` |
 | open the transcript `O_NOFOLLOW` | a symlinked leaf, reported by errno rather than the unstable `ErrorKind::FilesystemLoop` |
-| transcript mode and uid | `WRITABLE_BITS`, or a `ForeignOwner`. `READABLE_BITS` sets a flag and resumes |
+| transcript uid and mode | a `ForeignOwner`, then `WRITABLE_BITS`. `READABLE_BITS` sets a flag and resumes |
 | `fold` | a torn interior line, a bad header, an unsupported version |
 | shape | an unanswered `tool_use`, a non-alternating history, one that opens on the model's reply |
 
