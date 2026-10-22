@@ -138,8 +138,7 @@ pub(super) enum Decider {
 }
 
 impl SandboxError {
-    /// Who decides this error, and what a trail calls it. Exhaustive, so a new variant answers
-    /// both in one arm.
+    /// This error's [`Decider`]: exhaustive, so a new variant picks its side and label in one arm.
     pub(super) fn decided_by(&self) -> Decider {
         match self {
             Self::BadHelperArgs { .. } => Helper(HelperRefusal::BadHelperArgs),
