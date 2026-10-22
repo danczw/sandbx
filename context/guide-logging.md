@@ -201,8 +201,9 @@ displaced; the two paths that leaves silent are in
 The stdin slot because fds 0/1/2 are the only descriptors `std` can hand a child
 without `unsafe`, which the workspace forbids — and 1/2 are the command's output.
 Stage 2 takes the channel off fd 0 into a close-on-exec duplicate and puts
-`/dev/null` in the slot before it becomes the command, so the sandboxed command
-has no handle on the channel and a successful `exec` closes the duplicate;
+`/dev/null` in the slot before it spawns the command, so the sandboxed command
+inherits no handle on the channel — the duplicate is close-on-exec, and stage 2
+drops it once the command runs;
 `decode` also accepts only a closed set of labels, so nothing can name a
 mechanism sandbx did not define. Two costs are accepted: the slot is claimed (no
 interactive stdin for a sandboxed command later), and sandbx reads after waiting,

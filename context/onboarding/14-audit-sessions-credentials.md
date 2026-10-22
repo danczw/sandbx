@@ -288,7 +288,7 @@ subscriber, and nothing crosses but encoded lines.
 flowchart TD
     subgraph helper["the helper, which installs no subscriber"]
         S1["stage 1: what degraded, or its own refusal"]
-        S2["stage 2: claims fd 0, then becomes the command"]
+        S2["stage 2: claims fd 0, then spawns the command"]
         CMD["the command, with /dev/null in the slot"]
     end
     subgraph harness["sandbx, the one process with a subscriber"]
@@ -331,10 +331,10 @@ one rather than `degraded` implying a single answer:
 
 Four details make it a boundary rather than a pipe:
 
-- **Stage 2 claims fd 0 before it becomes the command.** It moves the channel
+- **Stage 2 claims fd 0 before it spawns the command.** It moves the channel
   into a close-on-exec duplicate and puts `/dev/null` in the slot, so the
-  sandboxed command has no handle on the channel and a successful `exec` closes
-  the duplicate. This is the barrier on the path untrusted code actually takes,
+  sandboxed command inherits no handle on the channel, and stage 2 drops the
+  duplicate once the command runs. This is the barrier on the path untrusted code actually takes,
   and `the_command_cannot_write_the_audit_channel` is what holds it.
 - **The label set is closed at the reader.** `Degradation` has three variants
   and `HelperRefusal` its own set, and `decode` accepts only those labels — so

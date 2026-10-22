@@ -202,13 +202,15 @@ sequenceDiagram
     S2->>S2: claim the audit channel, before apply
     S2->>S2: decode, arm, confirm, check the environment
     S2->>S2: apply, then open the pin
-    S2->>C: execve, which replaces this image
-    C-->>S1: exit status
-    S1-->>H: relay, re-raising a signal
+    S2->>C: spawn the command, non-dumpable first
+    Note over S2: stays PID 1, reaping orphans
+    C-->>S2: exit status
+    S2-->>S1: exit as the command did, 128 + n for a signal
+    S1-->>H: relay
 ```
 
 `exec_sandboxed` is stage 1. Its job description is in the negative: it does the
-things that *cannot* be done in the process that becomes the command. It
+things that *cannot* be done in the process that starts the command. It
 installs no Landlock ruleset and no seccomp filter — it has to be able to spawn
 the stage that installs them — and `SECURITY.md` carries that as a non-claim.
 
@@ -224,19 +226,19 @@ leaves a process alive to `wait` for the command and relay its status.
 
 That asymmetry cuts the other way too, and it is the reason stage 1 being
 unsandboxed costs less than it reads. Stage 2 is PID 1 of a namespace stage 1 is
-not in, and `getppid()` there reports 0 rather than a number — so the command
-has no pid to signal its own supervisor with, and `kill` cannot name a process
+not in, and `getppid()` there reports 0 rather than a number — so nothing inside
+has a pid to signal the supervisor with, and `kill` cannot name a process
 outside its namespace. What stops stage 2 reaching stage 1 is that stage 1 is
 unaddressable from inside, not a rule forbidding it. The one route back is a
 `/proc` that is the host's, which is why host pids in `/proc` are a disclosed
 gap rather than an oversight.
 
-What does *not* follow is that killing stage 1 tears the namespace down.
-Teardown follows the death of its init, which is stage 2; a `SIGKILL`ed stage 1
-leaves the command running with its parent death signal still armed and
-undelivered (#272). The command stays fully confined either way — the ruleset,
-the filter and the empty capability sets are properties it carries, not ones
-stage 1 holds for it.
+Killing stage 1 tears the namespace down only through stage 2: teardown follows
+the death of its init, and stage 2 dies by the parent death signal stage 1's
+death fires. That is why stage 2 is never the command — a command could shed the
+signal (#272). The command stays fully confined either way — the ruleset, the
+filter and the empty capability sets are properties it carries, not ones stage 1
+holds for it.
 
 Read `start_inner_stage` and the `prepare_supervisor` it calls with the question
 "why here?" and every step answers:
@@ -252,14 +254,11 @@ Read `start_inner_stage` and the `prepare_supervisor` it calls with the question
 | `report` the degradations | **before** the spawn, so stage 1's records reach the channel ahead of anything stage 2 says |
 | spawn stage 2 | last: this is the process that becomes PID 1 |
 
-Then `wait`, then `relay`. `relay` is worth a second look because it is the
-reason an operator sees a faithful status: a command killed by a signal is
-re-raised at this process rather than translated to `128 + signal`, so the
-status the harness reads is genuinely *signalled* and `sandbx-cli` and the
-`bash` tool can branch on it. The comment names the cases where re-raising
-cannot work — Rust's runtime sets `SIGPIPE` to `SIG_IGN` and handles
-`SIGSEGV`/`SIGBUS` to report stack overflow — and falls back to the numbered
-form, which is how a shell encodes the same fact anyway.
+Then `wait`, then `relay`, which exits the way stage 2 did. Stage 2 is an init,
+which cannot die by a signal it raises at itself, so a command killed by one
+arrives here already as `128 + n` — the number a shell gives the same fact, and
+the one `exit_code` gives either way. `relay` still re-raises a signal stage 2
+itself died by, which is the kill chain's `SIGKILL`.
 
 One structural point about the whole stage: `start_inner_stage` is one region so
 that exactly one site reports a stage-1 refusal (#160). Stage 2 does not exist
@@ -267,13 +266,14 @@ anywhere inside it, so at most one refusal can reach the channel; after the
 spawn the stage deliberately reports nothing, because stage 2 may have reported
 its own more specific refusal and the last record on the channel wins.
 
-## Stage 2: PID 1, and the last process before the command
+## Stage 2: PID 1, and the command's init
 
 `exec_inner` runs in the first child of stage 1, which by construction is PID 1
-of the new PID namespace. Its own doc notes a second property that falls out of
-being a fresh `exec`: the process is single-threaded, so there is no
-`fork`/`exec` window and no async-signal-safety constraint — which is how the
-whole design stays inside `unsafe_code = "forbid"`.
+of the new PID namespace, and stays it: the command is its child. Its own doc
+notes a property that has to keep holding: the process is single-threaded,
+because the parent death signal that ends it is per thread. The command is
+started with `Command::spawn`, so the `fork`/`exec` window is std's and the
+design stays inside `unsafe_code = "forbid"`.
 
 In order:
 
@@ -284,11 +284,12 @@ In order:
   before `apply`, so no filter `apply` installs can be the thing that refuses
   the `dup` or the open of `/dev/null`. It duplicates fd 0 with
   `F_DUPFD_CLOEXEC` and puts `/dev/null` in the stdin slot, so the command
-  inherits a null stdin and the duplicate vanishes on a successful `exec`. Both
+  inherits a null stdin and never the duplicate, which stage 2 drops once the
+  command runs. Both
   halves are the point: a command holding the write end could forge records, or
   hold the channel open and leave the parent waiting on an EOF that never comes.
-- **`restrict_and_exec`**: decode, arm, confirm, check the environment, `apply`,
-  open the pin, `exec`. That decode is the policy's second and last, off the
+- **`restrict_and_spawn`**: decode, arm, confirm, check the environment, `apply`,
+  open the pin, go non-dumpable, spawn — then `reap_until` the command exits. That decode is the policy's second and last, off the
   tokens stage 1 passed on untouched, and it is the one that refuses rather than
   infers — [11 — the two seams](11-the-two-seams.md) owns why the child does not
   trust the parent.
@@ -306,9 +307,9 @@ The pin is opened *after* `apply`, which looks backwards until you read the
 reason: opening first would hash a file no grant covers and report a digest
 mismatch where the honest answer is a denied read. After `apply` the descriptor
 is provably one the policy authorizes, because the read that produced the digest
-was itself subject to the ruleset the kernel now holds. Then `exec` — through
-`/proc/self/fd/N` when there is a pin, so the kernel opens the very inode that
-was hashed. The pin itself, and what `arg0` has to do to keep it invisible to
+was itself subject to the ruleset the kernel now holds. Then the spawn, whose
+child `exec`s through `/proc/self/fd/N` when there is a pin, so the kernel opens
+the very inode that was hashed. The pin itself, and what `arg0` has to do to keep it invisible to
 the command, belong to
 [12 — one flag to a kernel rule](12-a-flag-to-a-kernel-rule.md); what this
 chapter owns is its position in the sequence.
@@ -336,7 +337,7 @@ chapter owns is its position in the sequence.
 
 ## Arm, then confirm
 
-Two calls, in `restrict_and_exec`, adjacent:
+Two calls, in `restrict_and_spawn`, adjacent:
 
 ```rust
 bind_lifetime_to_supervisor()?;
@@ -366,9 +367,9 @@ tidy-up. `SIGKILL` reaches stage 2, stage 2 is PID 1, and the kernel kills every
 process left in a namespace whose init has died — which is where the bound on
 the command's *descendants* comes from, a parent death signal not being
 inherited across `fork`. Two paths reach stage 2 on purpose: the process group
-sandbx kills, which a descendant can leave with `setsid`, and this signal, which
-ignores group membership and survives an ordinary `execve` — the kernel clears
-it for a secure one, where the group kill is what still reaps.
+sandbx kills, and this signal, which ignores group membership. A command could
+leave the group with `setsid` and shed the signal by `exec`ing from a fresh
+thread; stage 2 does neither, which is why it is the init and the command is not.
 [guide-process-lifetime.md](../guide-process-lifetime.md#the-kill-chain) draws
 both.
 
@@ -535,8 +536,8 @@ counterexamples. That is the same justification the startup order in
   drops.
 - Which of the two stages is unsandboxed, what still bounds it, and why it is
   outside the PID namespace it created.
-- What reaches stage 2 and the command when the harness dies, and which of the
-  two paths a `setsid` defeats.
+- What reaches stage 2 and the command when the harness dies, and why neither
+  path may rest on the command itself.
 - Why stage 2 claims the audit channel before `apply` and opens the pin after
   it.
 - Why arming the parent death signal before confirming the supervisor is the

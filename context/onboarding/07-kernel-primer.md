@@ -44,10 +44,10 @@ Three facts about them that the rest of the chapter leans on.
 - **A PID namespace's init is special, in two directions.** When it exits, the
   kernel `SIGKILL`s every process still in the namespace — there is no way to be
   a surviving orphan. And a signal sent to it that it has no handler for is
-  discarded rather than applying the default action, so `kill -TERM` at the
-  command does nothing unless the command installed a handler.
-  [`SECURITY.md`](../../SECURITY.md) carries that second half as a non-claim,
-  because it is a behaviour change the command can notice.
+  discarded rather than applying the default action — including one the init
+  raises at itself, so an init cannot die by a signal, only exit. That is why a
+  command that dies by one reports as `128 + n` through sandbx's init, which
+  [`SECURITY.md`](../../SECURITY.md) carries as a non-claim.
 - **A namespace is inherited across `fork` and across `exec`.** Nothing about an
   `execve` returns a process to the host's view, which is what makes a namespace
   usable as a boundary around a program you are about to become.
@@ -496,14 +496,14 @@ on `CapBnd` being empty; do rely on the other four". `RLIMIT_CORE` is in the
 same function for a related reason: `PR_SET_DUMPABLE` is reset to dumpable by
 every `execve` of an ordinary binary, so only the rlimit reaches the command.
 
-## `PR_SET_PDEATHSIG`, and the two cases that clear it
+## `PR_SET_PDEATHSIG`, and the three cases that clear it
 
 `prctl(PR_SET_PDEATHSIG, sig)` asks the kernel to send `sig` to *this* process
 when its parent dies. The kernel delivers it, so it needs no cooperation from
 the parent and no supervisor watching — which is what makes it usable for "do
 not outlive whoever started me".
 
-Two cases clear the setting, and both shape how it can be used.
+Three cases clear the setting, and all three shape how it can be used.
 
 - **The child of a `fork` does not inherit it.** The setting protects exactly
   one process and never a subtree, so it cannot be the mechanism that bounds a
@@ -511,8 +511,12 @@ Two cases clear the setting, and both shape how it can be used.
 - **A *secure* `execve` clears it** — a set-user-ID or set-group-ID target, or
   one carrying file capabilities. Keeping it would let an unprivileged parent
   arrange for an arbitrary signal to arrive at a privileged image at a moment of
-  its choosing. An ordinary `execve` preserves it, which is what lets a process
-  arm the signal and then become the command.
+  its choosing. An ordinary `execve` preserves it.
+- **A new thread starts without it.** The setting is per *thread*, and an
+  `execve` from a thread that never armed it replaces the whole process with an
+  image that has none — no `prctl` involved. So a process that runs arbitrary
+  code can always disarm itself, and the setting is only as good as the code
+  in the process holding it.
 
 And one case where arming it achieves nothing at all: if the parent is *already*
 dead when the `prctl` runs, there is no future death to report and the signal
@@ -541,14 +545,14 @@ is its init, so the kernel kills everything left in the namespace when it dies.
 [guide-process-lifetime.md](../guide-process-lifetime.md) has the kill chain the
 two mechanisms form.
 
-That split is worth holding onto, because it is why clearing `pdeathsig` buys a
-command less than the two cases above suggest. `setsid` leaves the process
-group, not the namespace, and the descendant bound was never the signal's job —
-so a command that cleared the signal and called `setsid` is still reaped when
-the namespace's init goes. What a survivor would be is unreaped and not
-unrestricted: Landlock, the filter and the empty capability sets are all
-properties of the process, and outliving the call does not return any of them
-(#272).
+The third case is why the inner stage stays the init and runs the command as its
+child rather than becoming it. While the command was the init, a command that
+called `setsid` and then `exec`ed from a second thread had left the group *and*
+shed the signal, and outlived the call (#272). The inner stage never `exec`s and
+stays single-threaded, so the signal it arms stays armed. What a survivor would
+have been is unreaped and not unrestricted: Landlock, the filter and the empty
+capability sets are all properties of the process, and outliving the call does
+not return any of them.
 
 ## You should now be able to explain
 
@@ -578,7 +582,7 @@ properties of the process, and outliving the call does not return any of them
   seccomp filter, and why Landlock asks for the same bit.
 - Which of the five capability sets answer a question about `execve`, and why
   the bounding set has to be dropped before the effective one.
-- The two cases that clear a parent death signal, the third case where arming it
+- The three cases that clear a parent death signal, the case where arming it
   does nothing, which thread the kernel means by "parent", and what covers a
   command's descendants instead.
 

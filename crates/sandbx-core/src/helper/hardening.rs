@@ -11,7 +11,7 @@ use crate::degradation::Degradation;
 /// Build the namespaces and drop what must be dropped before the `exec`.
 ///
 /// Separate from [`apply`](super::apply) because both steps have to happen in the
-/// *supervisor*, not in the stage that becomes the command:
+/// *supervisor*, not in the stage that starts the command:
 ///
 /// - the namespaces, because `CLONE_NEWPID` only places this process's children, so
 ///   unsharing here is what makes the inner stage PID 1;

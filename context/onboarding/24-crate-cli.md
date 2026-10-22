@@ -135,7 +135,7 @@ The order, and where each step's own refusal leaves:
 ```mermaid
 flowchart TD
     A["main"] --> B["with_helper_dispatch"]
-    B -->|"--sandbx-core-exec"| C["restricts itself, becomes the command"]
+    B -->|"--sandbx-core-exec"| C["restricts itself, spawns the command"]
     B --> D["logging::init"]
     D --> E["Cli::try_parse"]
     E -->|"refused"| F["usage_code, before a Command exists"]

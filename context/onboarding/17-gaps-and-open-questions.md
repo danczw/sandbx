@@ -153,7 +153,7 @@ four as the whole set is the mistake this section is otherwise shaped to invite.
   was the problem.
 - **`/proc` inside the sandbox shows host PIDs.** Not remounted for the new
   namespace, because that needs `mount(2)`, which the filter denies — so a
-  command reads `getpid() == 1` while `/proc/self/stat` reports its host pid,
+  command reads `getpid() == 2` while `/proc/self/stat` reports its host pid,
   and one building `/proc/<getpid()>` by hand reads a different process.
   Disclosed as a compatibility limitation rather than a boundary claim, and that
   is the right reading: it leaks host numbering, not access. It is also the one
