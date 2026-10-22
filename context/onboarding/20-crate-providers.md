@@ -50,10 +50,9 @@ the answer is a compiler rule, and one row of it is not.
 | the body — key names, omission rules, `stream: true` | `Body` is `pub(super)` inside a private `mod body`, and no neutral type has a `Serialize` at all, so there is no second way to turn one into JSON |
 | the frame shapes | every `Raw*` in `payload.rs` is `pub(super)`; the two error shapes are `pub(crate)` so `anthropic.rs` can parse a non-2xx body, and none of them leaves the crate |
 | the `stop_reason` string table | `stop_reason` is a private free function in `accumulate.rs`. `StopReason::Other(String)` is public, but nothing outside `anthropic/` can build one *from a wire string* |
-| which failures are worth retrying | `ProviderError::ApiError`'s `transient` is decided at its two construction sites, in `anthropic.rs` and `anthropic/wire/accumulate.rs`, and for that variant `is_retryable` reads nothing else — a transport failure and a rate limit are retryable on their own |
 | the vendor's **name** | nothing mechanical |
 
-The first four rows are why the boundary holds. The last is worth stating
+The first three rows are why the boundary holds. The last is worth stating
 plainly, because the tree above is read as if it were absolute. `lib.rs` names
 the module and re-exports `AnthropicClient`, which is unavoidable — the type has
 to be reachable. `credentials.rs` sits *beside* `anthropic.rs` rather than below
@@ -85,12 +84,9 @@ flowchart TD
 - **Worth questioning:** the neutral half of this crate is held by convention
   and review, not by a check.
   [decision-provider-seam.md](../decision-provider-seam.md) frames #59 as
-  changing "where the vendor's vocabulary stops", and three of the four
-  mechanisms it lists are genuinely enforced by the compiler. The fourth is
-  not: `ProviderError` is a plain public enum with public fields and no
-  `#[non_exhaustive]`, so `transient` is a construction-site convention and
-  `is_retryable` just reads the field it was handed. What the bullet does not
-  price is that the *name* has no enforcement at all either, while the
+  changing "where the vendor's vocabulary stops", and the mechanisms it lists
+  are genuinely enforced by the compiler. What it does not price is that the
+  *name* has no enforcement at all, while the
   claim about it is stated absolutely in two places a maintainer will reach for
   before reading the code. The repo already has the shape of the answer:
   `every_prose_copy_of_the_floor_is_current` is a Rust test that reads files in
@@ -127,8 +123,6 @@ adapter actually have to produce?
   second adapter maps its own frames onto them rather than extending them.
 - **Its own body serializer over `&Prompt`,** since there is no shared one to
   reuse and no `Serialize` to derive from.
-- **Its own `transient` judgement,** because `is_retryable` asks the adapter
-  rather than deciding.
 
 What it would *not* get for free is `ProviderError`, and the crate is honest
 about this one being informed by a single implementation. `MissingCredential`
@@ -514,8 +508,8 @@ tests rather than integration tests because `event_stream` is `pub(crate)`.
 - **`lifecycle`** — how a turn ends. One `Stop` when `message_stop` arrives,
   including when no frame ever named a reason; `StreamEndedUnexpectedly` when it
   does not; an in-band SSE `error` event ending the stream as an `Err` item,
-  with `transient` set from a two-string table rather than from an HTTP status
-  the frame does not carry. The last test in the module,
+  an `ApiError` with no status because the frame carries none. The last test in
+  the module,
   `the_stream_is_fused_and_survives_being_over_polled`, is the one that pins the
   `FusedStream` in the seam's type to an observable behaviour.
 - **`tool_use`** — the one kind whose deltas must be buffered whole, and the
@@ -753,9 +747,9 @@ if it is not a success, and wrap `response.bytes_stream()` in `sse::tokenize`
 and then `wire::event_stream`. The `Result` covers everything knowable before
 the first event; anything later arrives as an `Err` *item* in the stream, which
 is why a caller that may retry clones the prompt first. Non-2xx goes through
-`map_error_response`: 429 becomes `RateLimited`, everything else `ApiError` with
-`transient` set from whether the status is `500` or above, and `Retry-After` is
-read on every status because Anthropic sends it with a 529 too.
+`map_error_response`: 429 becomes `RateLimited` with its `Retry-After` wait,
+everything else `ApiError`. The header is read before `text()` consumes the
+response, which is why it is taken up front and used in one arm.
 
 Tests live in
 [`tests/anthropic_client.rs`](../../crates/sandbx-providers/tests/anthropic_client.rs)
@@ -821,15 +815,12 @@ tests here instead of a silently-passing no-op".
 ## `error.rs`, and the rustls detail behind the `crypto_provider` test
 
 [`error.rs`](../../crates/sandbx-providers/src/error.rs) is `ProviderError`'s
-seven variants, split by what a caller can do about them. `MissingCredential`
+seven variants, split by where the call failed. `MissingCredential`
 and `InvalidBaseUrl` are local, before any request; `Transport` is a failure
 with no status or vendor body to report; `ApiError` and `RateLimited` are the
 API answering; `MalformedEvent` and `StreamEndedUnexpectedly` are the stream.
-`is_retryable` is the summary a backoff layer reads — true for transport and
-rate limits, the adapter's `transient` bool for an API error, and `false` for a
-truncated stream, because the turn was already partly delivered and re-sending
-is the caller's judgement call. `retry_after` reads the same header out of
-either carrying variant, so a caller need not know which it holds. Tests are in
+There is no retry classification: no backoff layer exists to read one, and #306
+removed the one that was computed for it. Tests are in
 [`tests/error.rs`](../../crates/sandbx-providers/tests/error.rs): every
 variant's `Display`, and `source()` wired only on the one variant that carries
 one.

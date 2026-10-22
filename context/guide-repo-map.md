@@ -171,11 +171,10 @@ sandbx writes or matches on — the ones it carries verbatim cross as opaque dat
 is `pub(super)` in a private `mod body` and no neutral type derives `Serialize`,
 so the top-level types cannot be posted to any API by accident; the wire
 payloads are `pub(super)` bar the two error envelopes at `pub(crate)`;
-`stop_reason` is a private free function, so no `StopReason` comes from a wire
-string outside `anthropic/`; and `is_retryable` reads an `ApiError`'s
-`transient` bool rather than a vendor status code, set at its two construction
-sites (#59). The vendor *name* is the one row nothing *contains* — no lint, no
-containment test, no CI grep — and two siblings of `anthropic.rs` carry it:
+and `stop_reason` is a private free function, so no `StopReason` comes from a
+wire string outside `anthropic/` (#59). The vendor *name* is the one row
+nothing *contains* — no lint, no containment test, no CI grep — and two
+siblings of `anthropic.rs` carry it:
 `lib.rs` re-exports `AnthropicClient`, and `credentials.rs` holds
 `anthropic_api_key` and the `"ANTHROPIC_API_KEY"` literal, which a test pins.
 Four more files name it in doc comments only. Per-rule account in
