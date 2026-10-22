@@ -348,7 +348,7 @@ meet:
 `max_files_scanned` goes into `walk_readable` and comes back as
 `walk.truncated`; `max_bytes_scanned` is checked here, before each read, so one
 file can overshoot the total, and `MAX_FILE_BYTES` — 2 MiB, a `const` in this
-module and not a `ToolLimits` field, so no builder can move it — bounds that
+module and not a `ToolLimits` field, so no caller can move it — bounds that
 overshoot. `max_entries` trims the rendered hits. Nothing is sorted, because
 `walk_readable` returns files sorted and lines are visited ascending — sorting
 the rendered `path:line: text` strings would put `:10` before `:2`.
