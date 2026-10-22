@@ -603,8 +603,7 @@ mod tests {
             .collect()
     }
 
-    /// Spelled out here rather than read off `decided_by`, so a rename fails instead of
-    /// agreeing with itself: a trail is filtered by these strings.
+    /// Hard-coded, so a rename fails rather than agreeing with itself.
     #[test]
     fn each_variant_keeps_the_label_a_trail_filters_by() {
         for error in every_variant() {
@@ -678,9 +677,7 @@ mod tests {
         }
     }
 
-    /// The direction the exhaustive `decided_by` match cannot cover alone: a refusal given a
-    /// `Helper` arm but left out of `ALL` compiles, and then `from_label` rejects the label
-    /// its own writer emits and the record is dropped on arrival (#185).
+    /// A `Helper` arm whose refusal is missing from `ALL` compiles; its record is dropped (#185).
     #[test]
     fn every_refusal_a_variant_reports_is_one_the_channel_admits() {
         for error in every_variant() {

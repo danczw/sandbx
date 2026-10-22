@@ -128,11 +128,12 @@ impl HelperRefusal {
     }
 }
 
-/// Which side of the channel decides an error, carrying what a trail calls it.
+/// Whether a helper stage may report an error on the channel, carrying what a trail calls it.
 pub(super) enum Decider {
-    /// A helper stage alone; the label is the refusal's.
+    /// A helper stage alone decides it; the label is the refusal's.
     Helper(HelperRefusal),
-    /// The parent or [`FsGuard`](crate::FsGuard), never the helper.
+    /// Not a helper's to report: the parent or [`FsGuard`](crate::FsGuard) decided it, or it
+    /// is a refusal already relayed.
     Parent(&'static str),
 }
 
