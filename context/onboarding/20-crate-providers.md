@@ -402,9 +402,10 @@ The five corners worth knowing before you touch it:
 
 Three more behaviours a caller depends on. A blank line with no pending lines is
 a keep-alive and is skipped, so a heartbeat does not produce a phantom event.
-`event:`, `id:`, `retry:` and `:`-comment lines are ignored outright — this crate never
-resumes a stream via `Last-Event-ID` — which means a comment-only frame yields
-an *empty* `data`, something the layer above must tolerate rather than reject.
+`event:` lines are ignored because the payload restates their tag; `id:`,
+`retry:` and `:`-comment lines because this crate never resumes a stream via
+`Last-Event-ID`. So a comment-only frame yields an *empty* `data`, something
+the layer above must tolerate rather than reject.
 And `MAX_EVENT_BYTES`' value, with the OOM-with-no-diagnostic failure it exists
 to prevent, is quoted in [02](02-what-a-harness-is.md).
 
