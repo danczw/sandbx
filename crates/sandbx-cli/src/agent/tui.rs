@@ -379,7 +379,7 @@ impl CallGate for Gate<'_> {
     /// it on stderr, which the alternate screen neither redirects nor gives back.
     fn settled(&mut self, call: Settled<'_>) {
         let line = gate::line(call);
-        paint(self.pane, |transcript| transcript.call(&line));
+        paint(self.pane, |transcript| transcript.note(&line));
     }
 }
 

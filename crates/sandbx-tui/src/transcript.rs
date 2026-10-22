@@ -14,9 +14,7 @@ pub(crate) enum Kind {
     Answer,
     /// Present only when it was asked for.
     Reasoning,
-    /// One settled tool call, worded by the caller's gate.
-    Call,
-    /// The run's account of itself, which no event carries.
+    /// A line the harness wrote: a settled call's verdict, or the run's account of itself.
     Note,
 }
 
@@ -82,12 +80,8 @@ impl Transcript {
         }
     }
 
-    /// Show the caller's account of one settled call.
-    pub fn call(&mut self, line: &str) {
-        self.push(Kind::Call, line);
-    }
-
-    /// Show the run's own line about itself: what it refused, or what an interrupt lost.
+    /// Show a line the harness wrote: the gate's verdict on a settled call, what the run
+    /// refused, or what an interrupt lost.
     pub fn note(&mut self, line: &str) {
         self.push(Kind::Note, line);
     }
@@ -119,7 +113,7 @@ impl Transcript {
     }
 
     /// Add one line the harness wrote, its breaks spelled rather than kept: the view marks
-    /// every row of these two kinds, so a real break would mint a second marked row.
+    /// every row of this kind, so a real break would mint a second marked row.
     /// `gate::line` escapes already; a provider-error note does not, being the vendor's
     /// string verbatim.
     fn push(&mut self, kind: Kind, text: &str) {
@@ -259,7 +253,7 @@ mod tests {
     fn a_call_divides_the_text_around_it() {
         let mut transcript = Transcript::new(PROMPT, false);
         transcript.event(&text("looking"));
-        transcript.call("sandbx: ls /work — ran");
+        transcript.note("sandbx: ls /work — ran");
         transcript.event(&text("three files"));
 
         assert_eq!(
@@ -267,7 +261,7 @@ mod tests {
             [
                 entry(Kind::Prompt, PROMPT),
                 entry(Kind::Answer, "looking"),
-                entry(Kind::Call, "sandbx: ls /work — ran"),
+                entry(Kind::Note, "sandbx: ls /work — ran"),
                 entry(Kind::Answer, "three files"),
             ]
         );
