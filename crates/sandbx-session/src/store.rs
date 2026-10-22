@@ -104,7 +104,6 @@ impl SessionStore {
     /// and uid come from the open descriptor, so the file vetted is the file read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
         let path = self.path_for(id);
-        let owner = nix::unistd::getuid().as_raw();
 
         // A missing root or transcript is no session by that id, which is what was asked.
         let absent = |error| match error {
@@ -114,30 +113,18 @@ impl SessionStore {
             other => other,
         };
         let directory = open_nofollow(&self.root).map_err(&absent)?;
-        let (mode, uid) = ownership(&directory, &self.root)?;
+        let mode = ownership(&directory, &self.root)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::DirWritable {
                 path: self.root.clone(),
                 mode,
             });
         }
-        if uid != owner {
-            return Err(SessionError::ForeignOwner {
-                path: self.root.clone(),
-                uid,
-            });
-        }
 
         let mut file = open_nofollow(&path).map_err(&absent)?;
-        let (mode, uid) = ownership(&file, &path)?;
+        let mode = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::Writable { path, mode });
-        }
-        if uid != owner {
-            return Err(SessionError::ForeignOwner {
-                path: path.clone(),
-                uid,
-            });
         }
         let shared_read = mode & READABLE_BITS != 0;
 
@@ -179,14 +166,7 @@ impl SessionStore {
     /// `sessions/` would stay wide. Narrowed, not refused: nothing is in it yet.
     fn narrow_root(&self) -> Result<(), SessionError> {
         let directory = open_nofollow(&self.root)?;
-        let (mode, uid) = ownership(&directory, &self.root)?;
-
-        if uid != nix::unistd::getuid().as_raw() {
-            return Err(SessionError::ForeignOwner {
-                path: self.root.clone(),
-                uid,
-            });
-        }
+        let mode = ownership(&directory, &self.root)?;
         if mode & DIR_SHARED_BITS == 0 {
             return Ok(());
         }

@@ -192,19 +192,20 @@ without the accounting that describes them, or accounting without its messages.
 
 ## `store.rs` — which bit refuses, and which only reports
 
-`vet.rs`'s module doc draws the division: "Which bit refuses and which only
-reports stays with the sequence that applies it." `vet.rs` *names* the bits and
-never acts on them. `resume` acts:
+`vet.rs`'s module doc draws the division: "Which mode bit refuses and which
+only reports stays with the sequence that applies it." `vet.rs` *names* the mode
+bits and never acts on them; the one rule it applies itself is the owner's, which
+is the same at every site, so `ownership` refuses another uid as `ForeignOwner`
+before it hands back a mode. `resume` acts on the mode:
 
 ```rust
-        let (mode, uid) = ownership(&file, &path)?;
+        let mode = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::Writable { path, mode });
         }
 ```
 
-One mode, read once, two things done with it: the next arm refuses
-`uid != owner` as `ForeignOwner`, and the line after is
+One mode, read once, two things done with it: this arm, and the line after,
 `let shared_read = mode & READABLE_BITS != 0;`. The directory twin sits above
 it, `DirWritable` for `Writable`, going first because a writable directory makes
 the file's mode irrelevant — [14](14-audit-sessions-credentials.md) has the
@@ -216,12 +217,12 @@ Follow the sequence down, and the refusals out of the side of it:
 flowchart TD
     A["resume"] --> B["open_nofollow, the root"]
     B --> C["ownership of the directory descriptor"]
-    C -->|"WRITABLE_BITS"| D["DirWritable"]
     C -->|"another uid"| E["ForeignOwner"]
+    C -->|"WRITABLE_BITS"| D["DirWritable"]
     C --> F["open_nofollow, the transcript"]
     F --> G["ownership of the file descriptor"]
-    G -->|"WRITABLE_BITS"| H["Writable"]
     G -->|"another uid"| I["ForeignOwner"]
+    G -->|"WRITABLE_BITS"| H["Writable"]
     G --> J["shared_read: reported, not refused"]
     J --> K["fold, then the shape checks"]
     K -->|"a bad line"| L["Malformed"]
@@ -447,14 +448,15 @@ because "the `fstat` goes through the descriptor rather than the name, which is
 the one measurement a rename cannot step between." Here:
 
 ```rust
-pub(super) fn ownership(file: &File, path: &Path) -> Result<(u32, u32), SessionError> {
+pub(super) fn ownership(file: &File, path: &Path) -> Result<u32, SessionError> {
 ```
 
 `&File`, so there is no overload that takes a path: `File::metadata` is `fstat`,
 and the only way to call it is to already hold the thing you are about to read.
-The `path` argument is for the error message. The pair returned is
-`(metadata.permissions().mode() & 0o7777, metadata.uid())`, masked for the
-reason the line above it gives:
+The `path` argument is for the error message. A uid other than `getuid()`
+returns `ForeignOwner` before any mode leaves the function; otherwise it returns
+`metadata.permissions().mode() & 0o7777`, masked for the reason the line above it
+gives:
 
 > Masked to the permission bits: the raw mode carries the file type too, which
 > no message should print as part of an octal mode.
