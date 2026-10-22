@@ -1,8 +1,8 @@
 //! Who may read a file, and whether it is the file that was checked.
 //!
 //! The modes the store creates with, the flag that keeps a leaf from being a link, and
-//! the one way a mode or an owner is read. Which bit refuses and which only reports
-//! stays with the sequence that applies it.
+//! the one way a mode is read, which refuses a foreign owner on the way. Which mode bit
+//! refuses and which only reports stays with the sequence that applies it.
 
 use std::fs::{File, OpenOptions};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -74,14 +74,19 @@ pub(super) fn reopen_for_append(path: &Path) -> Result<File, SessionError> {
         .map_err(|source| opening(path, source))
 }
 
-/// The permission bits and owner of an open file, from the descriptor.
-pub(super) fn ownership(file: &File, path: &Path) -> Result<(u32, u32), SessionError> {
+/// The permission bits of an open file, from the descriptor, refusing one another uid owns.
+pub(super) fn ownership(file: &File, path: &Path) -> Result<u32, SessionError> {
     let metadata = file.metadata().map_err(|source| SessionError::Io {
         path: path.to_owned(),
         source,
     })?;
+    let uid = metadata.uid();
+    if uid != nix::unistd::getuid().as_raw() {
+        let path = path.to_owned();
+        return Err(SessionError::ForeignOwner { path, uid });
+    }
 
     // Masked to the permission bits: the raw mode carries the file type too, which no
     // message should print as part of an octal mode.
-    Ok((metadata.permissions().mode() & 0o7777, metadata.uid()))
+    Ok(metadata.permissions().mode() & 0o7777)
 }
