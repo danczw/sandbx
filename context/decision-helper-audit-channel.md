@@ -122,14 +122,15 @@ pipe gives `EBADF`. `SandboxedCommand` always passes it because it always sets t
 pipe up. Stage 1 hands the flag down to stage 2, which reports on the same
 channel.
 
-**Stage 2 claiming fd 0 is the security line.** Stage 1 becomes nothing, but
-stage 2 becomes the sandboxed command, and an inherited write end would let it
-forge records on sandbx's audit trail — or hold the pipe open and leave sandbx
+**Stage 2 claiming fd 0 is the security line.** Stage 1 starts nothing but stage
+2, but stage 2 starts the sandboxed command, and an inherited write end would let
+it forge records on sandbx's audit trail — or hold the pipe open and leave sandbx
 waiting on an EOF that never comes. So before `apply`, where no filter it is
 about to install can be what refuses the attempt, stage 2 duplicates fd 0 with
 `F_DUPFD_CLOEXEC` (`BorrowedFd::try_clone_to_owned`) and `dup2`s `/dev/null` into
-the slot. The command inherits a null stdin; the duplicate the kernel closes on a
-successful `exec` is the only live handle on the channel.
+the slot. The command inherits a null stdin and never the duplicate, which is
+close-on-exec; stage 2 holds the only live handle until the command is running,
+then drops it.
 
 Which is what makes the `exec_failed` record true rather than a guess: `exec`
 returns only on failure, so a write past it is reachable only in a world where the

@@ -172,14 +172,10 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 /// Exit the way the inner stage exited.
 ///
 /// The caller reads this process's status as the command's. A signalled command arrives as
-/// `128 + n` already, from an init; what is re-raised is the inner stage's own death.
-///
-/// Re-raising rather than exiting with `128 + signal` is what keeps that status genuinely
-/// *signalled*. It cannot always work: Rust's runtime sets `SIGPIPE` to `SIG_IGN` and
-/// handles `SIGSEGV`/`SIGBUS` to report stack overflow, so raising one of those at ourselves
-/// returns instead of killing us and the caller sees the numbered form — which is how a
-/// shell encodes the same fact. Resetting the disposition first would need `sigaction`,
-/// which is `unsafe`.
+/// `128 + n` already, from an init; what is re-raised is the inner stage's own death, mostly
+/// the kill chain's `SIGKILL`. A raise of `SIGPIPE`, `SIGSEGV` or `SIGBUS` returns instead —
+/// Rust's runtime ignores or handles them, and resetting needs `sigaction`, which is `unsafe`
+/// — so those fall back to the numbered form.
 fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, SandboxError> {
     use std::os::unix::process::ExitStatusExt;
 
@@ -215,9 +211,9 @@ pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
 ///
 /// Stage 2 of two, the first child of [`exec_sandboxed`] and therefore PID 1 of the PID
 /// namespace it created, which it stays: the command is its child and never the init. Every
-/// restriction here is irreversible and inherited across `fork` and `exec`, which is what
-/// makes it stick to the command. Single-threaded, and must stay so — the parent death signal
-/// that ends this process is per thread.
+/// restriction `apply` installs is irreversible and inherited across `fork` and `exec`, which
+/// is what makes it stick to the command; non-dumpable is this process's alone. Single-threaded,
+/// and must stay so — the parent death signal that ends this process is per thread.
 ///
 /// On success this never returns: it exits as the command did. Any return is an error, and
 /// the caller must exit non-zero rather than fall through to running the command
@@ -269,7 +265,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
 /// Restrict this process and start the command below it, or say why it could not.
 ///
 /// The channel is claimed before this is called; nothing here may claim it again.
-fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxError> {
+fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::Pid, SandboxError> {
     let request = HelperArgs::decode(argv)?;
 
     bind_lifetime_to_supervisor()?;
@@ -331,7 +327,7 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxE
     // and shed a parent death signal, which is per thread, by `exec`ing from a fresh one.
     command
         .spawn()
-        .map(|child| child.id())
+        .map(|child| nix::unistd::Pid::from_raw(child.id().cast_signed()))
         .map_err(|source| SandboxError::ExecFailed { source })
 }
 
@@ -340,16 +336,16 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxE
 /// This process is the namespace's init, so orphans reparent here and are reaped as they
 /// come; exiting is what makes the kernel kill whatever is left. A signalled command comes
 /// out as `128 + n`: the kernel discards a signal an init raises at itself.
-fn reap_until(command: u32) -> ! {
+fn reap_until(command: nix::unistd::Pid) -> ! {
     use nix::sys::wait::{WaitStatus, wait};
     use std::os::unix::process::ExitStatusExt;
 
     let status = loop {
         match wait() {
-            Ok(WaitStatus::Exited(pid, code)) if pid.as_raw().cast_unsigned() == command => {
+            Ok(WaitStatus::Exited(pid, code)) if pid == command => {
                 break std::process::ExitStatus::from_raw((code & 0xff) << 8);
             }
-            Ok(WaitStatus::Signaled(pid, signal, _)) if pid.as_raw().cast_unsigned() == command => {
+            Ok(WaitStatus::Signaled(pid, signal, _)) if pid == command => {
                 break std::process::ExitStatus::from_raw(signal as i32);
             }
             Ok(_) | Err(nix::errno::Errno::EINTR) => {}

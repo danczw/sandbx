@@ -106,21 +106,21 @@ struct only where no other subcommand could mean it.
 ```rust
 fn main() -> std::process::ExitCode {
     // Must precede argument parsing: `SandboxedCommand` re-execs this binary as its
-    // helper, which restricts itself and becomes the target command instead of falling through.
+    // helper, which restricts itself and runs the target command instead of falling through.
     sandbx_core::with_helper_dispatch(std::env::args_os(), || {
 ```
 
 **Helper dispatch is first, and that ordering is load-bearing.** This binary is
 also the helper: `SandboxedCommand` re-execs `/proc/self/exe` with
 `--sandbx-core-exec`, and a process arriving that way must take the helper path
-and become the target command rather than fall through into `Cli::parse`.
+and run the target command rather than fall through into `Cli::parse`.
 [08](08-the-two-stage-helper.md) has the two flags, the dispatch enum with no
 success variant, and why the re-exec is this binary at all.
 
 Inside that closure the order is `logging::init`, then `Cli::try_parse`, then
 `conceal_process_state`, then the dispatch — and three of those four are where
 they are for a reason of their own. Logging is initialised there because in
-helper mode this process becomes the sandboxed command, whose stderr is
+helper mode this process shares the sandboxed command's stderr, which is
 forwarded verbatim, so a subscriber installed above would write into it.
 `try_parse` stands in for `Cli::parse` so a refused command line leaves on a
 code sandbx chose rather than the 2 clap would spend on it; *The exit-code

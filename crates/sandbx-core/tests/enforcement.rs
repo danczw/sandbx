@@ -261,12 +261,12 @@ fn the_command_runs_under_its_namespaces_own_init() {
     );
 }
 
-/// One Landlock domain lets the command read the init's `/proc/<pid>/environ`; non-dumpable
-/// refuses it. Reading its own `environ` is what shows the grant reaches `/proc` at all; the
-/// shell reads the init's host pid off `/proc/self/stat` itself, `$$` not being a host pid.
+/// One Landlock domain would let the command read the init's `environ`; non-dumpable refuses.
 #[test]
 fn the_command_cannot_reach_into_its_init() {
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted("/proc"));
+    // The shell reads the init's host pid off `/proc/self/stat` itself, `$$` not being one;
+    // reading its own `environ` is what shows the grant reaches `/proc` at all.
     let script = r#"read -r stat < /proc/self/stat; set -- ${stat##*) }
 own=$(cat /proc/self/environ) && echo SELF-READ
 init=$(cat "/proc/$2/environ") && echo INIT-READ || echo INIT-REFUSED"#;

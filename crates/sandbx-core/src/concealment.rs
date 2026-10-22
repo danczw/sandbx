@@ -1,8 +1,8 @@
 //! What the harness hides about itself from everything else running as the same user.
 //!
-//! The one step sandbx takes against its *own* process rather than a sandboxed child's, so
-//! it is applied by the binary once at startup and not by the helper — see
-//! `helper::hardening`, which explains why the same flag would not survive there.
+//! A step sandbx takes against its *own* process rather than a sandboxed child's, applied by
+//! the binary once at startup — `helper::hardening` explains why the flag would not survive the
+//! command's `exec`. The helper's init clears it on itself too, for the command's sake.
 
 use crate::SandboxError;
 
