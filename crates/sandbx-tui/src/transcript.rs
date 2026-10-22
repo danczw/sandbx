@@ -82,8 +82,15 @@ impl Transcript {
 
     /// Show a line the harness wrote: the gate's verdict on a settled call, what the run
     /// refused, or what an interrupt lost.
+    ///
+    /// Its breaks are spelled rather than kept: the view marks every row of a note, so a
+    /// real break would mint a second marked row. `gate::line` escapes already; a
+    /// provider-error note does not, being the vendor's string verbatim.
     pub fn note(&mut self, line: &str) {
-        self.push(Kind::Note, line);
+        self.entries.push(Entry {
+            kind: Kind::Note,
+            text: printable(line).replace('\n', "\\n"),
+        });
     }
 
     pub(crate) fn entries(&self) -> &[Entry] {
@@ -110,17 +117,6 @@ impl Transcript {
             Some(last) if last.kind == kind => last.text.push_str(&text),
             _ => self.entries.push(Entry { kind, text }),
         }
-    }
-
-    /// Add one line the harness wrote, its breaks spelled rather than kept: the view marks
-    /// every row of this kind, so a real break would mint a second marked row.
-    /// `gate::line` escapes already; a provider-error note does not, being the vendor's
-    /// string verbatim.
-    fn push(&mut self, kind: Kind, text: &str) {
-        self.entries.push(Entry {
-            kind,
-            text: printable(text).replace('\n', "\\n"),
-        });
     }
 }
 

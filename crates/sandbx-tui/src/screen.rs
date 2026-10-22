@@ -70,15 +70,13 @@ impl Screen {
         self.draw(Hint::Running);
     }
 
-    /// Apply `change`, then repaint every cell for the held, finished turn — not only the
-    /// ones the transcript changed. ratatui only flushes the diff between its two buffers; a
-    /// cell stderr wrote (unredirected by the alternate screen) is never rewritten, so
-    /// discarding the back buffer is the only fix. `resize`, never `Terminal::clear`:
-    /// `clear`'s cursor query takes crossterm's one reader lock, which [`Keys`](crate::Keys)
-    /// may be holding — and if it wins the lock instead, it races the reader for the reply
-    /// bytes. Resizing to the size already in force asks the terminal nothing only on the
-    /// fullscreen viewport `Terminal::new` gives: an inline one recomputes its origin from the
-    /// cursor, which is that query back again.
+    /// Apply `change`, then repaint every cell for the finished turn: ratatui flushes only the
+    /// diff between its buffers, so a cell stderr wrote under the alternate screen survives
+    /// unless the back buffer is discarded. By `resize`, never `Terminal::clear`, whose cursor
+    /// query takes crossterm's one reader lock that [`Keys`](crate::Keys) may hold, or races
+    /// it for the reply. A same-size resize asks the terminal nothing only on the fullscreen
+    /// viewport `Terminal::new` gives; an inline one recomputes its origin from the cursor,
+    /// which is that query again.
     pub fn finish(&mut self, change: impl FnOnce(&mut Transcript)) {
         change(&mut self.transcript);
         if self.failed.is_some() {
@@ -315,7 +313,7 @@ mod tests {
         assert_eq!(writes.get(), 0, "the draw was attempted");
     }
 
-    /// And `redraw`'s clear, which asks for the size itself rather than through a draw.
+    /// And `finish`'s clear, which asks for the size itself rather than through a draw.
     #[test]
     fn a_hung_up_terminal_is_not_cleared() {
         let (master, mut terminal, writes) = screen();
