@@ -499,10 +499,11 @@ believe, so here is what it buys in each direction.
 One shape worth noticing on the way past, because it is the house style from 04
 again: `with_helper_dispatch` in
 [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) is the
-only entry into helper mode, its helper arms have **no success arm**, and the
-ordinary path is a closure neither of them can reach. There is no value in the
-program that can represent "helper mode ran fine, carry on", so a failed helper
-run cannot fall through into running the command unconfined.
+only entry into helper mode, each helper arm matches a `Result<Infallible, _>`
+and so has **no success case**, and the ordinary path is a closure neither arm
+can reach. There is no value in the program that can represent "helper mode ran
+fine, carry on", so a failed helper run cannot fall through into running the
+command unconfined.
 
 ## What seam 1 still leaves open
 

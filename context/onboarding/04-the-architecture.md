@@ -283,11 +283,11 @@ enforcement — this is the view that explains why the code looks the way it doe
 The recurring trick is worth naming once: **a closed enum with an exhaustive
 match is a compile-time gate.** `BuiltinTool` means a seventh tool cannot be
 added without visiting every site that decides something about tools;
-`with_helper_dispatch`'s helper arms match on `Infallible` and have no success
-arm, so there is no value representing "helper mode ran fine and we may now
-continue"; `TurnStop` is
-matched exhaustively in `AgentRun::drive`, so a fourth way for a turn to end
-cannot quietly reach the code that reports a clean one. None of those is
+`with_helper_dispatch`'s helper arms match a `Result<Infallible, _>` with no
+success case, so there is no value representing "helper mode ran fine and we may
+now continue"; `TurnStop` is matched exhaustively in `AgentRun::drive`, so a
+fourth way for a turn to end cannot quietly reach the code that reports a clean
+one. None of those is
 cleverness for its own sake — each one converts a runtime "did we remember?"
 into a build failure.
 
