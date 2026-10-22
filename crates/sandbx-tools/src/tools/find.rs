@@ -25,7 +25,7 @@ pub struct FindInput {
 pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let walk = ctx
         .guard()
-        .walk_readable(&input.path, ctx.limits().max_files_scanned())
+        .walk_readable(&input.path, ctx.limits().max_files_scanned)
         .map_err(|error| crate::guard_error(&input.path, error))?;
 
     // Matched against the name being reported, not the one it was reached by: the

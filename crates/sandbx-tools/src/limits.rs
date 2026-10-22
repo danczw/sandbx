@@ -7,8 +7,10 @@
 pub struct ToolLimits {
     max_entries: usize,
     max_bytes: usize,
-    max_files_scanned: usize,
-    max_bytes_scanned: usize,
+    /// Cap on the files a searching tool may visit before giving up.
+    pub max_files_scanned: usize,
+    /// Cap on the bytes a searching tool may read across a whole search.
+    pub max_bytes_scanned: usize,
 }
 
 impl Default for ToolLimits {
@@ -41,30 +43,6 @@ impl ToolLimits {
     #[must_use]
     pub fn with_max_bytes(mut self, bytes: usize) -> Self {
         self.max_bytes = bytes;
-        self
-    }
-
-    /// Cap on the files a searching tool may visit before giving up.
-    pub fn max_files_scanned(&self) -> usize {
-        self.max_files_scanned
-    }
-
-    /// Cap on the bytes a searching tool may read across a whole search.
-    pub fn max_bytes_scanned(&self) -> usize {
-        self.max_bytes_scanned
-    }
-
-    /// Set the scanned-file cap.
-    #[must_use]
-    pub fn with_max_files_scanned(mut self, files: usize) -> Self {
-        self.max_files_scanned = files;
-        self
-    }
-
-    /// Set the scanned-byte budget.
-    #[must_use]
-    pub fn with_max_bytes_scanned(mut self, bytes: usize) -> Self {
-        self.max_bytes_scanned = bytes;
         self
     }
 

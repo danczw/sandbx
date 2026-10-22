@@ -36,7 +36,7 @@ pub struct GrepInput {
 pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let walk = ctx
         .guard()
-        .walk_readable(&input.path, ctx.limits().max_files_scanned())
+        .walk_readable(&input.path, ctx.limits().max_files_scanned)
         .map_err(|error| crate::guard_error(&input.path, error))?;
 
     let mut hits = Vec::new();
@@ -48,7 +48,7 @@ pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, T
     for file in walk.files {
         // Before the read, so the budget bounds what is read rather than noticing
         // once it is spent. A file skipped below is not charged for.
-        if scanned >= ctx.limits().max_bytes_scanned() {
+        if scanned >= ctx.limits().max_bytes_scanned {
             stopped_early = true;
             break;
         }
