@@ -65,14 +65,18 @@ pub(super) async fn run<W: Write, E: Write>(
     let mut continued = turn.history.to_vec();
     continued.extend(first.messages.iter().cloned());
 
-    // The tools stay offered, under `ToolChoice::None` rather than as `Turn::tools`' empty
-    // slice, so one round is all the loop needs. Both set here: `..turn` carries the first's.
+    // Every field named, so a new one is decided here rather than inherited. The tools stay
+    // offered under `ToolChoice::None`, not emptied, so `max_rounds: 1` is all the loop needs.
     let wrap_up = Turn {
+        model: turn.model,
+        max_output_tokens: turn.max_output_tokens,
         system: Some(match turn.system.as_deref() {
             Some(system) => format!("{system}\n\n{NUDGE}"),
             None => NUDGE.to_owned(),
         }),
+        tools: turn.tools,
         tool_choice: Some(ToolChoice::None),
+        thinking: turn.thinking,
         history: &continued,
         limits: TurnLimits {
             max_rounds: 1,
@@ -82,7 +86,6 @@ pub(super) async fn run<W: Write, E: Write>(
         // Still the request's index space, the one `first` counted in: `history` is
         // that request with the turn's messages appended, which moves no prefix.
         withheld: first.withheld,
-        ..turn
     };
 
     render.separate();
