@@ -32,7 +32,6 @@ crates/sandbx-providers/src/
   error.rs         ProviderError
   sse.rs           SSE framing, knowing no API's field names
   credentials.rs   resolve_api_key, anthropic_api_key
-  mock.rs          MockProvider — behind the `mock` feature
   ─────────────────── below here, one API's vocabulary ───────────────────
   anthropic.rs     AnthropicClient, the base-URL rules, the HTTP client
     body.rs        Serialize for the Messages body, built from a &Prompt
@@ -121,10 +120,9 @@ worth adding at the module level is the inverse question: what would a second
 adapter actually have to produce?
 
 - **One `async fn` returning `Result<EventStream, ProviderError>`.** Not an
-  `impl` of anything. `AnthropicClient::stream_chat` and
-  `MockProvider::stream_chat` share no declared relationship — they are two
-  inherent methods that happen to return the same alias, and `run_turn` in
-  `sandbx-agent` is generic over a closure, so it never names either.
+  `impl` of anything. `AnthropicClient::stream_chat` is an inherent method, and
+  `run_turn` in `sandbx-agent` is generic over a closure, so it never names it —
+  which is why its tests' doubles are closures returning the same alias.
 - **A fold onto `AgentEvent` and `StopReason`.** Those are the vocabulary, and a
   second adapter maps its own frames onto them rather than extending them.
 - **Its own body serializer over `&Prompt`,** since there is no shared one to
@@ -812,49 +810,8 @@ seven of them, all driving the injected closure. None mutates a real
 environment, because `set_var` is an `unsafe fn` under edition 2024 and the
 workspace forbids `unsafe_code` in test binaries too.
 
-## `mock.rs`, and a `[[test]]` target that is really a resolver-3 trap
+## `live-anthropic-tests`, the crate's one feature
 
-[`mock.rs`](../../crates/sandbx-providers/src/mock.rs) is 31 lines behind the
-`mock` feature: `MockProvider::new` for a canned all-success turn,
-`with_results` for injecting an error at a chosen point, and a `stream_chat`
-that takes `self` by value — throwaway per-test data, unlike the real client's
-`&self`. It is interchangeable with `AnthropicClient` through the returned
-`EventStream` alone, which is the seam's whole claim demonstrated in one file.
-
-The interesting part is in the manifest, and [05](05-seven-crates.md) points at
-it:
-
-```toml
-# Declared as a target rather than via a self dev-dependency on `features =
-# ["mock"]`: resolver v3 unifies features per package, so that edge would turn
-# `mock` on in the one rlib every consumer links, and production code touching
-# `MockProvider` would pass clippy and the test suite before failing the release
-# build.
-[[test]]
-name = "mock_provider"
-required-features = ["mock"]
-```
-
-Worth walking once, because the obvious thing to write is the broken one. A
-crate that wants its own feature-gated item in its own tests reaches for
-`sandbx-providers = { path = ".", features = ["mock"] }` under
-`[dev-dependencies]`. Resolver v3 unifies features *per package*, not per
-dependency edge, so that turns `mock` on in the single rlib every consumer in
-the workspace links against — and then `sandbx-cli` naming `MockProvider` in
-production code compiles, passes clippy, passes `cargo test`, and fails only in
-a release build with no dev-dependencies. A `[[test]]` with `required-features`
-has no such edge: the target is skipped unless the feature is on, so a plain
-workspace-wide `cargo test` reports zero tests here and CI names the feature
-explicitly, as `--features sandbx-providers/mock`.
-
-Nothing in the workspace consumes `MockProvider`. `sandbx-agent`'s own loop
-tests roll a `Script` double instead, with a comment saying why: using this one
-"would cost a `mock` feature, a `required-features` target and a CI command
-naming both to borrow one line". So the only consumer of the feature is the
-integration test that exercises it — which is consistent with the seam's
-argument that a test double is a closure, not a published type.
-
-`live-anthropic-tests` is the crate's other feature and
 [`tests/live_anthropic.rs`](../../crates/sandbx-providers/tests/live_anthropic.rs)
 is its only consumer: one test, a real key, real money, and a feature rather
 than a runtime env-var check so that running without opting in "reports zero
@@ -920,7 +877,6 @@ really is installed and usable.
 | key resolution, through an injected lookup | `tests/credentials.rs` |
 | `Display` and `source()` per variant | `tests/error.rs` |
 | the `pub` crypto install, from another crate | `tests/crypto_provider.rs` |
-| the mock double | `tests/mock_provider.rs`, needs `mock` |
 | the real API | `tests/live_anthropic.rs`, needs `live-anthropic-tests` |
 
 The pattern is the one [guide-module-layout.md](../guide-module-layout.md)
@@ -953,8 +909,6 @@ case where *being a separate crate* is itself the thing asserted.
 - Why a flush happens at `message_stop` and not on the paths that end without
   one.
 - What a caller pays for `secrecy` not being re-exported, and what that buys.
-- Why `MockProvider` is reached through a `[[test]]` target with
-  `required-features` rather than a self dev-dependency.
 - Why `rustls` is a direct dependency of a crate that opens no TLS connection
   itself, and why the crypto test is an integration test.
 
