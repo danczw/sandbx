@@ -159,9 +159,10 @@ position and discarded — the lint is `unused_must_use`, and CI's
 ([guide-ci.md](../guide-ci.md)) turns it into a failed build. But it is about
 *using* the value, not about using it correctly: `let _ = dispatch(…);` silences
 it, and so does any expression that consumes the value and ignores what it said,
-after which the next line of `main` runs. A closure leaves no public value
-meaning "the helper failed" for a caller to mishandle; the helper arms simply
-never call it.
+after which the next line of `main` runs. With a closure the caller's ordinary
+code is not on a line after the dispatch at all, and the helper arms never call
+it. What is left to drop is the `ExitCode`, `#[must_use]` for the same reason,
+and a `main` that ends in the call — all three do — returns it.
 
 The shapes a returned value could take are weaker still:
 

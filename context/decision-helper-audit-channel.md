@@ -12,8 +12,8 @@ than being logged where it is found (#95, #96).
 
 That process installs no `tracing` subscriber. `logging::init()` is called inside
 the `with_helper_dispatch` closure, which runs only for an ordinary invocation;
-the helper routes into `exec_sandboxed` and never returns. `tracing` drops an event with no subscriber silently and at every level,
-so the record reached nobody.
+the helper routes into `exec_sandboxed` and never returns. `tracing` drops an event
+with no subscriber silently and at every level, so the record reached nobody.
 
 The placement is not an oversight — it is load-bearing. Stage 1's stdout and stderr
 are pipes sandbx captures and replays verbatim, and stage 2 inherits them before

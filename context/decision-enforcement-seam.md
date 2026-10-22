@@ -173,9 +173,10 @@ place.
 supervisor pid as a positional token, but that is a *liveness* check, not an
 authorization one — nothing in the argv is a trust boundary.
 
-`with_helper_dispatch` is the only entry; it takes the ordinary path as a closure
-the helper arms cannot reach, and those arms have **no success arm**: a failed
-helper run cannot fall through to unrestricted execution.
+`with_helper_dispatch` is the only entry. It takes the ordinary path as a closure
+the helper arms cannot reach, each arm matches a `Result<Infallible, _>` and so
+has **no success case**, and its exit code is `#[must_use]`: a failed helper run
+cannot fall through to unrestricted execution.
 
 ## The Landlock seam itself
 
