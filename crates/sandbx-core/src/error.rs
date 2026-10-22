@@ -603,6 +603,47 @@ mod tests {
             .collect()
     }
 
+    /// Spelled out here rather than read off `decided_by`, so a rename fails instead of
+    /// agreeing with itself: a trail is filtered by these strings.
+    #[test]
+    fn each_variant_keeps_the_label_a_trail_filters_by() {
+        for error in every_variant() {
+            let expected = match error {
+                SandboxError::PathNotAllowed { .. } => "path_not_allowed",
+                SandboxError::Unresolvable { .. } => "unresolvable",
+                SandboxError::NotFound { .. } => "not_found",
+                SandboxError::BadHelperArgs { .. } => "bad_helper_args",
+                SandboxError::Landlock { .. } => "landlock",
+                SandboxError::GrantRedirected { .. } => "grant_redirected",
+                SandboxError::GrantReplaced { .. } => "grant_replaced",
+                SandboxError::RootReplaced { .. } => "root_replaced",
+                SandboxError::GrantUnpinnable { .. } => "grant_unpinnable",
+                SandboxError::Seccomp { .. } => "seccomp",
+                SandboxError::NamespaceSetupFailed { .. } => "namespace_setup_failed",
+                SandboxError::ProcessHardening { .. } => "process_hardening",
+                SandboxError::ProcessConcealment { .. } => "process_concealment",
+                SandboxError::SpawnFailed { .. } => "spawn_failed",
+                SandboxError::InnerStageFailed { .. } => "inner_stage_failed",
+                SandboxError::ExecFailed { .. } => "exec_failed",
+                SandboxError::PinMismatch { .. } => "pin_mismatch",
+                SandboxError::PinUnreadable { .. } => "pin_unreadable",
+                SandboxError::PinnedScript { .. } => "pinned_script",
+                SandboxError::TimedOut { .. } => "timeout",
+                SandboxError::Unsupported { .. } => "unsupported",
+                SandboxError::UnboundedResolution { .. } => "unbounded_resolution",
+                SandboxError::GrantBoundByResolver { .. } => "grant_bound_by_resolver",
+                // Borrowed: pinned by `a_refusal_is_called_what_the_variant_it_relays_is_called`.
+                SandboxError::HelperRefused { .. } => continue,
+            };
+
+            assert_eq!(
+                error.label(),
+                expected,
+                "a label a trail filters by was renamed"
+            );
+        }
+    }
+
     #[test]
     fn no_two_variants_share_a_label() {
         let mut labels = labels_decided_here();
@@ -617,17 +658,6 @@ mod tests {
     /// it, so a `reason=` filter is written once.
     #[test]
     fn a_refusal_is_called_what_the_variant_it_relays_is_called() {
-        for error in every_variant() {
-            if let Some(refusal) = error.refusal() {
-                assert_eq!(
-                    refusal.label(),
-                    error.label(),
-                    "{} and the refusal it reports as disagree",
-                    error.label()
-                );
-            }
-        }
-
         let labels = labels_decided_here();
         for refusal in HelperRefusal::ALL {
             let relayed = SandboxError::HelperRefused {
