@@ -453,7 +453,7 @@ pub(super) fn ownership(file: &File, path: &Path) -> Result<u32, SessionError> {
 
 `&File`, so there is no overload that takes a path: `File::metadata` is `fstat`,
 and the only way to call it is to already hold the thing you are about to read.
-The `path` argument is for the error message. A uid other than `getuid()`
+The `path` argument is for the error message. A uid other than `geteuid()`
 returns `ForeignOwner` before any mode leaves the function; otherwise it returns
 `metadata.permissions().mode() & 0o7777`, masked for the reason the line above it
 gives:

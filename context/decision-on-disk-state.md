@@ -75,7 +75,7 @@ file reports `ENOTDIR` too, so the flag would merge two refusals worth keeping
 apart.
 
 Ownership is where the two diverge again: a transcript whose `st_uid` is not the
-running uid is refused, an API key file's is not read at all. Reaching a
+effective uid, the one the store creates with, is refused, an API key file's is not read at all. Reaching a
 foreign-owned `credentials.toml` means controlling `$HOME` or
 `$XDG_CONFIG_HOME`, by which point the attacker chooses the path and could as
 easily own the file; the check would not be the thing standing in the way. It is
