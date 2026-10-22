@@ -16,8 +16,7 @@ use ratatui::layout::{Position, Rect, Size};
 use crate::transcript::Transcript;
 use crate::view::{self, Hint};
 
-/// The alternate screen one turn is drawn on, and the transcript drawn there; the terminal
-/// is restored when this drops.
+/// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
 pub struct Screen {
     /// `Option` only so [`Screen::drop`] can take it: `Terminal`'s own `Drop` can panic,
     /// and containing that needs the value moved rather than borrowed.
