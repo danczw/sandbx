@@ -46,7 +46,7 @@ file that needs a real terminal.
 
 Four `mod` lines and four `pub use` lines — one of them now binding two
 items — and no `pub mod`, so no module path is part of the API: a caller gets
-five names and their methods — `Transcript::new`/`event`/`call`/`note`,
+five names and their methods — `Transcript::new`/`event`/`note`,
 `Screen::enter`/`draw`/`redraw`/`failure`, `Keys::listen`/`stop`/`press`,
 `Stopped::Pressed`/`Gone`, `Hint::Running`/`Done`. Deliberately *not*
 exported is the shape of a transcript: `Entry` and `Kind` are `pub(crate)`,
@@ -105,9 +105,10 @@ cannot, as a build error. The borrowed vocabulary is two types:
 The file to read, and the only one in the crate with a decision in it.
 `Transcript` holds the `Vec<Entry>` in arrival order, a `show_thinking` flag, a
 `rounds` counter and `tokens`, a pair of `Option<u32>`. An `Entry` is a `Kind`
-and a `String`, and `Kind`'s five variants — `Prompt`, `Answer`, `Reasoning`,
-`Call`, `Note` — are the crate's only classification, the view styling and
-guttering by them.
+and a `String`, and `Kind`'s four variants — `Prompt`, `Answer`, `Reasoning`,
+`Note` — are the crate's only classification, the view styling and guttering by
+them. `Note` is every line the harness wrote, a call's verdict and the run's own
+account alike: one stripping, one gutter, one style.
 
 Two fields exist because of the API rather than the screen. `rounds` is counted
 off `Stop` events, since "no event carries the turn's own bound" — the screen
@@ -143,11 +144,11 @@ so an eighth is a compile error here. Three arms drop, and each is a decision:
 - **`Thinking` is gated on the flag, not on the event's absence**, the API
   sending the delta regardless of what was asked for.
 - **`ToolCallRequested` draws nothing**, a requested call still being refusable.
-  Only a settled one gets a row, arriving through `Transcript::call` from the
+  Only a settled one gets a row, arriving through `Transcript::note` from the
   caller's gate; the test feeds a `bash` call carrying `rm -rf /`.
 
 Deltas coalesce: `append` extends the last entry when the kind matches and opens
-a new one otherwise, so a `Call` row splits the answer where it happened.
+a new one otherwise, so a verdict's `Note` row splits the answer where it happened.
 
 ### The bytes a cell may not hold
 
@@ -175,18 +176,18 @@ fn printable(text: &str) -> String {
 ```
 
 Every string that becomes entry text goes through it: the opening prompt in
-`new`, each delta in `append`, every `call` and `note` line in `push`. Four
+`new`, each delta in `append`, every `note` line in `push`. Four
 classes: `\n` survives because the view splits rows on it, `\t` becomes spaces
 because nothing renders a cell holding one, and `is_control` and the two
 denylists below all become U+FFFD.
 
 `push` does one thing more: after `printable` it replaces `\n` with a literal
-`\\n` for the two harness-written kinds. `Call` and `Note` are marked on *every*
+`\\n` for the harness-written kind. `Note` is marked on *every*
 row, so a kept break would mint a second marked row from whatever followed it —
 which is how a provider error, whose text is the vendor's string verbatim, would
 otherwise smuggle a row in.
 
-Four ways text becomes a cell, and one function between all of them and the
+Three ways text becomes a cell, and one function between all of them and the
 screen:
 
 ```mermaid
@@ -194,8 +195,7 @@ flowchart TD
     A["Transcript::new: the prompt"] --> P["printable"]
     B["Transcript::event: a Text or Thinking delta"] --> C["append"]
     C --> P
-    D["Transcript::call: the gate's line"] --> E["push"]
-    F["Transcript::note: the run's own line"] --> E
+    D["Transcript::note: the gate's line, or the run's own"] --> E["push"]
     E --> P
     P -->|"a model-written kind"| G["Entry text, as a cell may hold it"]
     P -->|"back in push"| H["its breaks spelled, so one line is one row"]
