@@ -229,6 +229,13 @@ impl ResolvedPath {
     }
 }
 
+/// No I/O: a vetted path is canonical, which is `resolved`'s output where the whole path exists.
+impl From<&VettedPath> for ResolvedPath {
+    fn from(vetted: &VettedPath) -> Self {
+        Self(vetted.path().to_path_buf())
+    }
+}
+
 /// `path` with its deepest resolvable ancestor replaced by what that resolves to.
 ///
 /// `canonicalize` needs the whole path to exist, and a credential nobody has stored yet

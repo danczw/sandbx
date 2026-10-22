@@ -6,14 +6,15 @@
 
 use std::path::PathBuf;
 
-use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy};
+use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy, VettedPath};
 
 use crate::PolicyError;
 
 mod root;
 
 use root::{
-    absolute, bound_by_resolver, current_root, owned_paths, pinned, reaches_owned, resolved,
+    ResolvedPath, absolute, bound_by_resolver, current_root, owned_paths, pinned, reaches_owned,
+    resolved,
 };
 
 /// The `--allow-…` flags every subcommand that runs something accepts.
@@ -247,11 +248,16 @@ impl Grants {
                 // Granted as vetted, not as spelled: left relative, the helper would resolve
                 // it itself, against its own directory and whatever links point at by then (#205).
                 let typed = absolute(path, &std::env::current_dir)?;
-                let granted = resolved(&typed);
-                if bound_file.is_none() && bound_by_resolver(&typed, granted.path()) {
+                // Judged as vetted, so what is refused or granted is what is pinned; a path
+                // naming nothing is judged too, so reaching an owned path outranks the vet.
+                let vetted = VettedPath::vet(&typed);
+                let judged = vetted
+                    .as_ref()
+                    .map_or_else(|_| resolved(&typed), ResolvedPath::from);
+                if bound_file.is_none() && bound_by_resolver(&typed, judged.path()) {
                     bound_file = Some(path.clone());
                 }
-                if let Some(found) = reaches_owned(&granted, &owned) {
+                if let Some(found) = reaches_owned(&judged, &owned) {
                     return Err(PolicyError::GrantReachesOwned {
                         granted: path.clone(), // As typed, so the operator can go change it.
                         owned: found.path.clone(),
@@ -259,7 +265,10 @@ impl Grants {
                     });
                 }
 
-                let granted = pinned(&granted, path)?;
+                let granted = vetted.map_err(|source| PolicyError::UnpinnableGrant {
+                    granted: path.clone(),
+                    source,
+                })?;
                 policy = policy.grant(axis, granted.clone());
 
                 // Beyond the flag's own axis: an unreadable rewrite target is a trap. Keyed to
