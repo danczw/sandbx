@@ -8,7 +8,7 @@ use std::fs::{File, OpenOptions};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
-use crate::{SessionError, SessionId};
+use crate::SessionError;
 
 /// The mode a transcript is created with.
 pub(super) const OWNER_ONLY: u32 = 0o600;
@@ -48,34 +48,19 @@ pub(super) fn opening(path: &Path, source: std::io::Error) -> SessionError {
     SessionError::Io { path, source }
 }
 
-/// Open the directory holding transcripts, refusing one that is a symbolic link.
+/// Open a root or transcript for reading, refusing one that is a symbolic link.
 ///
-/// [`narrow_root`](super::SessionStore::narrow_root) `fchmod`s this descriptor, so
-/// following a link would narrow a directory outside the store. No `O_DIRECTORY`: with
-/// `O_NOFOLLOW` the kernel reports a symlinked directory as `ENOTDIR`, as it does a root
-/// that is a plain file, and the two are worth telling apart.
-pub(super) fn open_root(root: &Path) -> Result<File, SessionError> {
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(NO_FOLLOW)
-        .open(root)
-        .map_err(|source| opening(root, source))
-}
-
-/// Open a transcript, refusing one that is a symbolic link: the mode and owner would
-/// come from the target, the vetted directory from where the link sits.
-pub(super) fn open_transcript(path: &Path, id: &SessionId) -> Result<File, SessionError> {
+/// The root because [`narrow_root`](super::SessionStore::narrow_root) `fchmod`s this
+/// descriptor; a transcript because its mode and owner would come from the target, the
+/// vetted directory from where the link sits. No `O_DIRECTORY`: with `O_NOFOLLOW` the
+/// kernel reports a symlinked directory as `ENOTDIR`, as it does a root that is a plain
+/// file, and the two are worth telling apart.
+pub(super) fn open_nofollow(path: &Path) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
         .custom_flags(NO_FOLLOW)
         .open(path)
-        .map_err(|source| {
-            if source.kind() == std::io::ErrorKind::NotFound {
-                return SessionError::NotFound { id: id.clone() };
-            }
-
-            opening(path, source)
-        })
+        .map_err(|source| opening(path, source))
 }
 
 /// Reopen a vetted transcript for appending. `O_NOFOLLOW` again, not just on the read:

@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 use record::{Accounting, Header, Record, VERSION, fold};
 use shape::{alternating, answers_only, follows, opens, resumable};
 use vet::{
-    DIR_OWNER_ONLY, DIR_SHARED_BITS, OWNER_ONLY, READABLE_BITS, WRITABLE_BITS, open_root,
-    open_transcript, ownership, reopen_for_append,
+    DIR_OWNER_ONLY, DIR_SHARED_BITS, OWNER_ONLY, READABLE_BITS, WRITABLE_BITS, open_nofollow,
+    ownership, reopen_for_append,
 };
 
 use crate::id::clock_millis;
@@ -106,13 +106,14 @@ impl SessionStore {
         let path = self.path_for(id);
         let owner = nix::unistd::getuid().as_raw();
 
-        // A missing root is no session by that id, which is what was asked.
-        let directory = match open_root(&self.root) {
-            Err(SessionError::Io { source, .. }) if source.kind() == ErrorKind::NotFound => {
-                return Err(SessionError::NotFound { id: id.clone() });
+        // A missing root or transcript is no session by that id, which is what was asked.
+        let absent = |error| match error {
+            SessionError::Io { source, .. } if source.kind() == ErrorKind::NotFound => {
+                SessionError::NotFound { id: id.clone() }
             }
-            other => other?,
+            other => other,
         };
+        let directory = open_nofollow(&self.root).map_err(&absent)?;
         let (mode, uid) = ownership(&directory, &self.root)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::DirWritable {
@@ -127,7 +128,7 @@ impl SessionStore {
             });
         }
 
-        let mut file = open_transcript(&path, id)?;
+        let mut file = open_nofollow(&path).map_err(&absent)?;
         let (mode, uid) = ownership(&file, &path)?;
         if mode & WRITABLE_BITS != 0 {
             return Err(SessionError::Writable { path, mode });
@@ -177,7 +178,7 @@ impl SessionStore {
     /// `DirBuilderExt::mode` is ignored for a directory that already exists, so a widened
     /// `sessions/` would stay wide. Narrowed, not refused: nothing is in it yet.
     fn narrow_root(&self) -> Result<(), SessionError> {
-        let directory = open_root(&self.root)?;
+        let directory = open_nofollow(&self.root)?;
         let (mode, uid) = ownership(&directory, &self.root)?;
 
         if uid != nix::unistd::getuid().as_raw() {
