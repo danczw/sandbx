@@ -14,10 +14,6 @@ use crate::sse::RawSseEvent;
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 
-/// The two `type` strings Anthropic documents as transient, for an in-band SSE
-/// `error` event, which carries no HTTP status to classify by.
-const RETRYABLE_KINDS: &[&str] = &["overloaded_error", "api_error"];
-
 /// Map Anthropic's `stop_reason` onto this crate's own.
 fn stop_reason(value: &str) -> StopReason {
     match value {
@@ -342,11 +338,9 @@ where
                 state.ended = true;
                 state.push_usage();
                 state.pending.push_back(Err(ProviderError::ApiError {
-                    transient: RETRYABLE_KINDS.contains(&error.kind.as_str()),
                     status: None,
                     kind: error.kind,
                     message: error.message,
-                    retry_after: None,
                 }));
             }
         }

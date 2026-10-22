@@ -9,8 +9,7 @@ use sandbx_providers::ProviderError;
 pub enum TurnError {
     /// The provider failed, either before the stream opened or partway through it.
     ///
-    /// Carried rather than flattened, so a caller can reach [`ProviderError::is_retryable`]
-    /// and [`ProviderError::retry_after`].
+    /// Carried rather than flattened, so `source()` reaches the provider's own error.
     Provider(ProviderError),
 
     /// The stream ended without ever reporting that the turn was over.

@@ -185,9 +185,9 @@ async fn map_error_response(
     status: reqwest::StatusCode,
     response: reqwest::Response,
 ) -> ProviderError {
-    // Read for every status, not just 429: Anthropic sends `Retry-After` with a 529
-    // too. Only the integer-seconds form it documents parses; the HTTP-date form an
-    // intermediary might use degrades to `None`.
+    // Read before `text()` consumes the response. Only the integer-seconds form
+    // Anthropic documents parses; the HTTP-date form an intermediary might use
+    // degrades to `None`.
     let retry_after = response
         .headers()
         .get(reqwest::header::RETRY_AFTER)
@@ -211,10 +211,6 @@ async fn map_error_response(
             status: Some(status.as_u16()),
             kind,
             message,
-            retry_after,
-            // Every 5xx, including the 529 Anthropic uses for an overload. A 4xx
-            // other than the 429 handled above is a request this client built wrong.
-            transient: status.as_u16() >= 500,
         }
     }
 }
