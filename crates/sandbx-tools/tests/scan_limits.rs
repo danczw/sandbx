@@ -35,9 +35,11 @@ fn tree(count: usize, body: &str) -> tempfile::TempDir {
 #[test]
 fn grep_stops_at_the_file_scan_cap() {
     let root = tree(50, "");
+    let mut limits = ToolLimits::default();
+    limits.max_files_scanned = 5;
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
-        ToolLimits::default().with_max_files_scanned(5),
+        limits,
     );
 
     let out = BuiltinTool::Grep
@@ -60,9 +62,11 @@ fn grep_stops_at_the_file_scan_cap() {
 #[test]
 fn grep_reports_that_it_stopped_early() {
     let root = tree(50, "");
+    let mut limits = ToolLimits::default();
+    limits.max_files_scanned = 5;
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
-        ToolLimits::default().with_max_files_scanned(5),
+        limits,
     );
 
     let out = BuiltinTool::Grep
@@ -83,9 +87,11 @@ fn grep_reports_that_it_stopped_early() {
 #[test]
 fn grep_stops_at_the_byte_scan_budget() {
     let root = tree(50, &"filler\n".repeat(500));
+    let mut limits = ToolLimits::default();
+    limits.max_bytes_scanned = 4 * 1024;
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
-        ToolLimits::default().with_max_bytes_scanned(4 * 1024),
+        limits,
     );
 
     let out = BuiltinTool::Grep
@@ -193,9 +199,11 @@ fn a_file_the_host_refuses_marks_the_search_partial() {
 #[test]
 fn find_reports_a_truncated_walk() {
     let root = tree(50, "");
+    let mut limits = ToolLimits::default();
+    limits.max_files_scanned = 5;
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
-        ToolLimits::default().with_max_files_scanned(5),
+        limits,
     );
 
     let out = BuiltinTool::Find

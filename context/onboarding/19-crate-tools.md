@@ -331,7 +331,7 @@ meet:
     for file in walk.files {
         // Before the read, so the budget bounds what is read rather than noticing
         // once it is spent. A file skipped below is not charged for.
-        if scanned >= ctx.limits().max_bytes_scanned() {
+        if scanned >= ctx.limits().max_bytes_scanned {
             stopped_early = true;
             break;
         }
@@ -520,12 +520,14 @@ per call because `spawn_blocking` needs `'static`.
 pub struct ToolLimits {
     max_entries: usize,
     max_bytes: usize,
-    max_files_scanned: usize,
-    max_bytes_scanned: usize,
+    /// Cap on the files a searching tool may visit before giving up.
+    pub max_files_scanned: usize,
+    /// Cap on the bytes a searching tool may read across a whole search.
+    pub max_bytes_scanned: usize,
 }
 ```
 
-All four private, with a `Default` whose every figure carries a comment naming
+Two private and two public, with a `Default` whose every figure carries a comment naming
 what it is calibrated against — and for `max_files_scanned` a second reason,
 that the walk holds a `PathBuf` per file, so the cap bounds memory as well as
 time. [guide-tools.md](../guide-tools.md) tabulates the same five figures beside
@@ -538,15 +540,17 @@ bound is applied where:
 |---|---|---|---|
 | `max_entries` | 200 lines | `ls`, `grep`, `find` | indirectly, via `take_entries` inside `crate::listing` |
 | `max_bytes` | 256 KiB | `read`, `bash` | indirectly, via `take_bytes` |
-| `max_files_scanned` | 10,000 files | `grep`, `find` | directly — `pub fn max_files_scanned()`, passed to `walk_readable` |
-| `max_bytes_scanned` | 64 MiB | `grep` | directly — `pub fn max_bytes_scanned()`, compared in the loop |
+| `max_files_scanned` | 10,000 files | `grep`, `find` | directly — the `pub` field, passed to `walk_readable` |
+| `max_bytes_scanned` | 64 MiB | `grep` | directly — the `pub` field, compared in the loop |
 
 The two output caps have **no** public getters: `take_entries` and `take_bytes`
 are `pub(crate)`, so a tool cannot read a cap and apply it itself. The two input
-caps do, because the tool is the only thing that can spend a budget as it goes.
-All four have a `#[must_use] with_*` builder, so the asymmetry is about
-*reading* a cap, not about tightening one — and the fifth figure, `grep`'s
-2 MiB `MAX_FILE_BYTES`, has neither, being a `const` in `grep.rs`.
+caps are public fields, because the tool is the only thing that can spend a
+budget as it goes. The output caps are set through a `#[must_use] with_*`
+builder and the input caps by assigning the field, so the asymmetry is about
+*reading* a cap, not about tightening one; a tool holds `&ToolLimits`, so it
+can set none of them. The fifth figure, `grep`'s 2 MiB `MAX_FILE_BYTES`, has
+neither a getter nor a setter, being a `const` in `grep.rs`.
 `take_bytes` backs up to a UTF-8 character boundary before cutting, a byte
 offset being able to land mid-character.
 

@@ -42,8 +42,8 @@ the same as one 200 MiB file, and only a total sees that.
 > **`MAX_FILE_BYTES` is what makes the 64 MiB figure finite.** The budget is
 > *checked before* each read, not clamped — so a single file can overshoot it.
 > What keeps the overshoot bounded is the separate per-file skip: files above
-> 2 MiB are skipped unread. Worst case is therefore 64 + 2 MiB, and a caller using
-> `with_max_bytes_scanned` cannot move the 2 MiB half.
+> 2 MiB are skipped unread. Worst case is therefore 64 + 2 MiB, and a caller
+> setting the `max_bytes_scanned` field cannot move the 2 MiB half.
 
 > **`read` and `edit` have no input cap.** `read_file` calls `read_to_string`
 > uncapped; `max_bytes` trims what is *returned*, after the whole file has been
