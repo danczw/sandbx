@@ -1,7 +1,7 @@
-//! The closed set of refusals a helper stage reports on the audit channel. A subset of
-//! what [`SandboxError::label`](crate::SandboxError::label) returns: a record outranks the
-//! exit status, so admitting one the parent or [`FsGuard`](crate::FsGuard) decides itself
-//! would let a forged line claim an outcome that never happened
+//! The closed set of refusals a helper stage reports on the audit channel, and `decided_by`,
+//! the one match giving each error its decider and label. The set is a subset of the labels:
+//! a record outranks the exit status, so admitting one the parent or [`FsGuard`](crate::FsGuard)
+//! decides itself would let a forged line claim an outcome that never happened
 //! (`context/decision-helper-audit-channel.md`).
 
 use crate::SandboxError;
@@ -128,46 +128,55 @@ impl HelperRefusal {
 }
 
 impl SandboxError {
-    /// This error as the refusal a helper stage may report, if it is one. The one place the
-    /// two sets are mapped, and exhaustive, so a new variant has to decide whether a helper
-    /// stage is the only thing that can decide it.
-    pub(crate) fn refusal(&self) -> Option<HelperRefusal> {
+    /// Who decides this error, and what a trail calls it: `Ok` when only a helper stage can,
+    /// the label then being the refusal's; `Err` when the parent or `FsGuard` does. The one
+    /// place the two sets are mapped, and exhaustive, so a new variant answers both at once.
+    pub(super) fn decided_by(&self) -> Result<HelperRefusal, &'static str> {
         match self {
-            Self::BadHelperArgs { .. } => Some(HelperRefusal::BadHelperArgs),
-            Self::Landlock { .. } => Some(HelperRefusal::Landlock),
+            Self::BadHelperArgs { .. } => Ok(HelperRefusal::BadHelperArgs),
+            Self::Landlock { .. } => Ok(HelperRefusal::Landlock),
             // Only the stage holding the descriptor can compare what it opened against what
             // it was told to open, so this is helper-decided by construction.
-            Self::GrantRedirected { .. } => Some(HelperRefusal::GrantRedirected),
+            Self::GrantRedirected { .. } => Ok(HelperRefusal::GrantRedirected),
             // Same reason: only the stage holding the descriptor can `fstat` it, and the
             // harness's own measurement is the pin it is compared against.
-            Self::GrantReplaced { .. } => Some(HelperRefusal::GrantReplaced),
-            Self::Seccomp { .. } => Some(HelperRefusal::Seccomp),
-            Self::NamespaceSetupFailed { .. } => Some(HelperRefusal::NamespaceSetupFailed),
-            Self::ProcessHardening { .. } => Some(HelperRefusal::ProcessHardening),
-            Self::InnerStageFailed { .. } => Some(HelperRefusal::InnerStageFailed),
-            Self::ExecFailed { .. } => Some(HelperRefusal::ExecFailed),
-            Self::PinMismatch { .. } => Some(HelperRefusal::PinMismatch),
-            Self::PinUnreadable { .. } => Some(HelperRefusal::PinUnreadable),
-            Self::PinnedScript { .. } => Some(HelperRefusal::PinnedScript),
-            Self::Unsupported { .. } => Some(HelperRefusal::Unsupported),
-            // Each is decided by the parent or `FsGuard`, never the helper: `HelperRefused`
-            // is this relay's own output (reporting it would be a second crossing);
-            // `ProcessConcealment` is decided past dispatch, which no helper runs (#192);
-            // `GrantUnpinnable` is the harness's own vetting; `RootReplaced` is `FsGuard`'s
-            // per-access measurement; `UnboundedResolution` and `GrantBoundByResolver` are
-            // decided off the policy, before the spawn.
-            Self::PathNotAllowed { .. }
-            | Self::Unresolvable { .. }
-            | Self::NotFound { .. }
-            | Self::RootReplaced { .. }
-            | Self::GrantUnpinnable { .. }
-            | Self::SpawnFailed { .. }
-            | Self::HelperRefused { .. }
-            | Self::ProcessConcealment { .. }
-            | Self::UnboundedResolution { .. }
-            | Self::GrantBoundByResolver { .. }
-            | Self::TimedOut { .. } => None,
+            Self::GrantReplaced { .. } => Ok(HelperRefusal::GrantReplaced),
+            Self::Seccomp { .. } => Ok(HelperRefusal::Seccomp),
+            Self::NamespaceSetupFailed { .. } => Ok(HelperRefusal::NamespaceSetupFailed),
+            Self::ProcessHardening { .. } => Ok(HelperRefusal::ProcessHardening),
+            Self::InnerStageFailed { .. } => Ok(HelperRefusal::InnerStageFailed),
+            Self::ExecFailed { .. } => Ok(HelperRefusal::ExecFailed),
+            Self::PinMismatch { .. } => Ok(HelperRefusal::PinMismatch),
+            Self::PinUnreadable { .. } => Ok(HelperRefusal::PinUnreadable),
+            Self::PinnedScript { .. } => Ok(HelperRefusal::PinnedScript),
+            Self::Unsupported { .. } => Ok(HelperRefusal::Unsupported),
+            // From here on, each is decided by the parent or `FsGuard`, never the helper.
+            Self::PathNotAllowed { .. } => Err("path_not_allowed"),
+            Self::Unresolvable { .. } => Err("unresolvable"),
+            Self::NotFound { .. } => Err("not_found"),
+            // `FsGuard`'s per-access measurement.
+            Self::RootReplaced { .. } => Err("root_replaced"),
+            // The harness's own vetting.
+            Self::GrantUnpinnable { .. } => Err("grant_unpinnable"),
+            Self::SpawnFailed { .. } => Err("spawn_failed"),
+            // Decided past dispatch, which no helper runs (#192).
+            Self::ProcessConcealment { .. } => Err("process_concealment"),
+            // Both decided off the policy, before the spawn.
+            Self::UnboundedResolution { .. } => Err("unbounded_resolution"),
+            Self::GrantBoundByResolver { .. } => Err("grant_bound_by_resolver"),
+            // The word the operator typed and the docs use, so it is the word a trail
+            // reader greps for.
+            Self::TimedOut { .. } => Err("timeout"),
+            // This relay's own output, so reporting it would be a second crossing. The label
+            // is borrowed, so a trail filtered by `reason=` cannot tell which side of the
+            // channel decided it — the same refusal either way.
+            Self::HelperRefused { refusal, .. } => Err(refusal.label()),
         }
+    }
+
+    /// This error as the refusal a helper stage may report, if it is one.
+    pub(crate) fn refusal(&self) -> Option<HelperRefusal> {
+        self.decided_by().ok()
     }
 }
 

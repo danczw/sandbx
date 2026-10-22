@@ -441,38 +441,12 @@ impl std::error::Error for SandboxError {
 }
 
 impl SandboxError {
-    /// A stable name for this refusal, which the audit trail is filtered by. Exhaustive, so
-    /// a new variant has to decide what a trail calls it.
+    /// A stable name for this refusal, which the audit trail is filtered by. Read off an
+    /// exhaustive match, so a new variant has to decide what a trail calls it.
     pub fn label(&self) -> &'static str {
-        match self {
-            Self::PathNotAllowed { .. } => "path_not_allowed",
-            Self::Unresolvable { .. } => "unresolvable",
-            Self::NotFound { .. } => "not_found",
-            Self::BadHelperArgs { .. } => "bad_helper_args",
-            Self::Landlock { .. } => "landlock",
-            Self::GrantRedirected { .. } => "grant_redirected",
-            Self::GrantReplaced { .. } => "grant_replaced",
-            Self::RootReplaced { .. } => "root_replaced",
-            Self::GrantUnpinnable { .. } => "grant_unpinnable",
-            Self::Seccomp { .. } => "seccomp",
-            Self::NamespaceSetupFailed { .. } => "namespace_setup_failed",
-            Self::ProcessHardening { .. } => "process_hardening",
-            Self::ProcessConcealment { .. } => "process_concealment",
-            Self::SpawnFailed { .. } => "spawn_failed",
-            Self::InnerStageFailed { .. } => "inner_stage_failed",
-            Self::ExecFailed { .. } => "exec_failed",
-            Self::PinMismatch { .. } => "pin_mismatch",
-            Self::PinUnreadable { .. } => "pin_unreadable",
-            Self::PinnedScript { .. } => "pinned_script",
-            // Borrowed, so a trail filtered by `reason=` cannot tell which side of the
-            // channel decided it — the same refusal either way.
-            Self::HelperRefused { refusal, .. } => refusal.label(),
-            // The word the operator typed and the docs use, so it is the word a trail
-            // reader greps for.
-            Self::TimedOut { .. } => "timeout",
-            Self::Unsupported { .. } => "unsupported",
-            Self::UnboundedResolution { .. } => "unbounded_resolution",
-            Self::GrantBoundByResolver { .. } => "grant_bound_by_resolver",
+        match self.decided_by() {
+            Ok(refusal) => refusal.label(),
+            Err(label) => label,
         }
     }
 }
