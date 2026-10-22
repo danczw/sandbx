@@ -150,7 +150,7 @@ impl SandboxError {
             Self::PinUnreadable { .. } => Ok(HelperRefusal::PinUnreadable),
             Self::PinnedScript { .. } => Ok(HelperRefusal::PinnedScript),
             Self::Unsupported { .. } => Ok(HelperRefusal::Unsupported),
-            // From here on, each is decided by the parent or `FsGuard`, never the helper.
+            // Each `Err` is decided by the parent or `FsGuard`, never the helper.
             Self::PathNotAllowed { .. } => Err("path_not_allowed"),
             Self::Unresolvable { .. } => Err("unresolvable"),
             Self::NotFound { .. } => Err("not_found"),
