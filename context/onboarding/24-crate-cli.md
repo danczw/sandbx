@@ -274,7 +274,7 @@ when an overrun is declared rather than split.
 
 `sandbx-cli` holds every `run_turn` call site in the workspace outside
 `sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and
-`wrapup::Next::run`. What follows is one `agent-run` walking its own modules in
+`wrapup::run`. What follows is one `agent-run` walking its own modules in
 order.
 
 `main.rs` reaches none of those three. It calls `AgentRun::execute`, which is a
@@ -324,7 +324,7 @@ flowchart TD
     F --> G["auth::api_key, then AnthropicClient"]
     G --> H["session::open"]
     H --> I["drive: run_turn, render observing, gate::ArgvGate deciding"]
-    I -->|"RoundLimit, by default"| J["wrapup::Next::run, gated by RefuseAll"]
+    I -->|"RoundLimit, by default"| J["wrapup::run, gated by RefuseAll"]
     I -->|"Answered or GateAborted"| K["Render::finish: the code"]
     J --> K
     K --> L["session.append"]
@@ -453,7 +453,7 @@ one more request whose only job is prose. The mechanics:
   to lose — which is what lets the stop test afterwards read anything but
   `TurnStop::Answered` as a tool having been asked for.
 - **A failed wrap-up is reported, not propagated.** On an error, on empty
-  messages, or on a stop that is not `Answered`, `Next::run` keeps the first
+  messages, or on a stop that is not `Answered`, `wrapup::run` keeps the first
   turn and returns `false`. A `?` there would turn a turn that did real work
   into exit 1 with its text already on stdout.
 

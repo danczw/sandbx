@@ -531,7 +531,7 @@ in it. So `agent-run` spends one more request, purely to turn what was gathered
 into prose. [decision-round-limit-answer.md](../decision-round-limit-answer.md)
 is the record, and
 [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) — see
-`Next::after` — is the mechanism: the first turn's model, system prompt, tools
+`run` — is the mechanism: the first turn's model, system prompt, tools
 and limits carried over, `max_rounds: 1`, and a suffix on the system prompt
 telling the model it has no tool calls left. A suffix because the history ends
 on a `tool_result` and a second user message is the consecutive-user-turn
