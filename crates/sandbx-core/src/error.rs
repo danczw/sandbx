@@ -187,7 +187,7 @@ pub enum SandboxError {
         source: std::io::Error,
     },
 
-    /// The innermost stage could not become the command, so it never ran.
+    /// The innermost stage could not start the command, so it never ran.
     ExecFailed {
         /// The underlying OS failure.
         source: std::io::Error,

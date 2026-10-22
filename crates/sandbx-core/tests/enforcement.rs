@@ -242,12 +242,13 @@ fn unprivileged_pid_namespace_is_available() {
 
 /// Everything about process lifetime rests on this: a process cannot leave the PID
 /// namespace it was born into, and `unshare`/`setns` are denied, so killing PID 1 makes
-/// the kernel reap the rest unconditionally — where a process group is advisory. `$$` is
-/// the shell's own pid as the kernel reports it.
+/// the kernel reap the rest unconditionally — where a process group is advisory. PID 1 is
+/// sandbx's own init and the command its child, so the command cannot shed what kills it.
+/// `$$` and `$PPID` are the shell's pid and its parent's as the kernel reports them.
 #[test]
-fn the_command_is_pid_one_of_its_own_namespace() {
+fn the_command_runs_under_its_namespaces_own_init() {
     let policy = runtime_paths(SandboxPolicy::default());
-    let output = run(&policy, "/bin/sh", &["-c", "echo $$"]);
+    let output = run(&policy, "/bin/sh", &["-c", "echo $$ $PPID"]);
 
     assert!(
         output.status.success(),
@@ -256,8 +257,8 @@ fn the_command_is_pid_one_of_its_own_namespace() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "1",
-        "the command must be pid 1 of a new namespace, not a process in ours"
+        "2 1",
+        "the command must be the first child of a new namespace's init, not its init"
     );
 }
 

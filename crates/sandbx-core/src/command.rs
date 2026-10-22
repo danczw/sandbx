@@ -16,10 +16,10 @@ pub use dispatch::{HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch};
 
 /// A command that runs under a [`SandboxPolicy`]; the only sanctioned way for sandbx to
 /// execute anything. A helper restricts itself in two stages, restricting a child directly
-/// needing unsafe work between `fork` and `exec`; the command ends up PID 1 of a namespace
-/// that dies with this call (`context/guide-process-lifetime.md`). The helper defaults to
-/// this executable re-run with [`HELPER_FLAG`] through `/proc/self/exe`, which a rename
-/// over the binary cannot redirect.
+/// needing unsafe work between `fork` and `exec`; the command ends up the child of the init
+/// of a namespace that dies with this call (`context/guide-process-lifetime.md`). The helper
+/// defaults to this executable re-run with [`HELPER_FLAG`] through `/proc/self/exe`, which a
+/// rename over the binary cannot redirect.
 #[derive(Debug, Clone)]
 pub struct SandboxedCommand {
     program: String,
