@@ -177,12 +177,12 @@ fn printable(text: &str) -> String {
 ```
 
 Every string that becomes entry text goes through it: the opening prompt in
-`new`, each delta in `append`, every `note` line in `push`. Four
+`new`, each delta in `append`, every line in `note`. Four
 classes: `\n` survives because the view splits rows on it, `\t` becomes spaces
 because nothing renders a cell holding one, and `is_control` and the two
 denylists below all become U+FFFD.
 
-`push` does one thing more: after `printable` it replaces `\n` with a literal
+`note` does one thing more: after `printable` it replaces `\n` with a literal
 `\\n` for the harness-written kind. `Note` is marked on *every*
 row, so a kept break would mint a second marked row from whatever followed it —
 which is how a provider error, whose text is the vendor's string verbatim, would
@@ -196,10 +196,9 @@ flowchart TD
     A["Transcript::new: the prompt"] --> P["printable"]
     B["Transcript::event: a Text or Thinking delta"] --> C["append"]
     C --> P
-    D["Transcript::note: the gate's line, or the run's own"] --> E["push"]
-    E --> P
+    D["Transcript::note: the gate's line, or the run's own"] --> P
     P -->|"a model-written kind"| G["Entry text, as a cell may hold it"]
-    P -->|"back in push"| H["its breaks spelled, so one line is one row"]
+    P -->|"back in note"| H["its breaks spelled, so one line is one row"]
     H --> G
 ```
 
@@ -463,7 +462,10 @@ latches instead:
         }
 
         // The field, not `terminal()`, which borrows all of `self` and the transcript with it.
-        let terminal = self.terminal.as_mut().expect("a screen holds its terminal until it drops");
+        let terminal = self
+            .terminal
+            .as_mut()
+            .expect("a screen holds its terminal until it drops");
         if let Err(error) = terminal.draw(|frame| view::draw(frame, &self.transcript, hint)) {
             self.failed = Some(error);
         }
@@ -702,7 +704,7 @@ an in-flight blocking task, and nothing waits for a `std::thread`.
 - What `Screen`'s `Drop` impl protects against — on a terminal that hung up
   as much as on an ordinary panic — and the ways a process can end without
   running it.
-- Why `draw` returns `()` rather than a `Result`, what the first `io::Error`
+- Why `paint` and `finish` return `()` rather than a `Result`, what the first `io::Error`
   latches, and why that latch is one more stderr line rather than the exit
   code — where `agent-run` does the opposite and is right to.
 - Why the key reader and the hangup watch are two `std::thread`s rather than
