@@ -812,8 +812,9 @@ workspace forbids `unsafe_code` in test binaries too.
 
 ## `live-anthropic-tests`, the crate's one feature
 
-[`tests/live_anthropic.rs`](../../crates/sandbx-providers/tests/live_anthropic.rs)
-is its only consumer: one test, a real key, real money, and a feature rather
+`live-anthropic-tests` has one consumer,
+[`tests/live_anthropic.rs`](../../crates/sandbx-providers/tests/live_anthropic.rs):
+one test, a real key, real money, and a feature rather
 than a runtime env-var check so that running without opting in "reports zero
 tests here instead of a silently-passing no-op".
 
