@@ -194,7 +194,7 @@ granted on another (#205). Two halves close it:
 
 ```
 harness:  every grant resolved and pinned before it enters the policy
-          Grants::policy ──► resolved(absolute(flag)) ──► VettedPath::vet
+          Grants::policy ──► VettedPath::vet(absolute(flag)) ──► checks
           allow_system_executables ──► vet per path
 helper:   open_grant ──► PathFd::new ──► read_link("/proc/self/fd/<n>")
                             opened != granted  ──►  GrantRedirected, run refused

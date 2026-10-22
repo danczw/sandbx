@@ -23,10 +23,10 @@ flowchart TD
     Flag["Grants.allow_read, one Vec per axis"]
 
     subgraph Vetting["the vetting chain, in call order"]
-        Absolute["absolute"] --> Resolved["resolved"]
-        Resolved --> Bound["bound_by_resolver"]
+        Absolute["absolute"] --> Vet["VettedPath::vet, held"]
+        Vet --> Judged["ResolvedPath::from, else resolved"]
+        Judged --> Bound["bound_by_resolver"]
         Bound --> Owned["reaches_owned"]
-        Owned --> Pinned["pinned"]
     end
 
     Policy["SandboxPolicy, built with no I/O"]
@@ -38,7 +38,7 @@ flowchart TD
 
     Typed -->|"clap"| Flag
     Flag --> Absolute
-    Pinned -->|"VettedPath"| Policy
+    Owned -->|"the held VettedPath"| Policy
     Policy -->|"HelperArgs::encode"| Wire
     Wire -->|"stage 1 passes argv verbatim"| Decode
     Decode -->|"requested, fs_rules, rights_for"| Rule
@@ -69,19 +69,20 @@ rather than a flag silently parsed and never granted.
 
 ## Stage 2 — the vetting chain, in call order
 
-Five functions turn the typed path into something a policy will accept. They all
-live in [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), all
-`pub(super)`, and the first thing to know about them is that **the order they
-appear in the file is not the order they run.** Trace the chain in
+Five steps turn the typed path into something a policy will accept. Four live in
+[`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), all
+`pub(super)`; the other is `VettedPath::vet`, in core. The first thing to know
+about them is that **the order they appear in the file is not the order they
+run.** Trace the chain in
 `Grants::policy`, not the module:
 
 | # | function | takes | gives back |
 |---|---|---|---|
 | 1 | `absolute` | the path as typed, plus a `cwd` closure | `Result<PathBuf, PolicyError>` |
-| 2 | `resolved` | that absolute path | `ResolvedPath`, total — never fails |
-| 3 | `bound_by_resolver` | both spellings | `bool`, noted for later |
-| 4 | `reaches_owned` | a `ResolvedPath`, plus the owned paths | `Option<&OwnedPath>` |
-| 5 | `pinned` | a `ResolvedPath`, plus the typed path | `Result<VettedPath, PolicyError>` |
+| 2 | `VettedPath::vet` | that absolute path | `Result<VettedPath, SandboxError>`, held past the checks |
+| 3 | `ResolvedPath::from`, else `resolved` | the vetted path, or the absolute one if it names nothing | `ResolvedPath` — no I/O, or total |
+| 4 | `bound_by_resolver` | both spellings | `bool`, noted for later |
+| 5 | `reaches_owned` | a `ResolvedPath`, plus the owned paths | `Option<&OwnedPath>` |
 
 **`absolute` joins a relative flag to the working directory** — this process's,
 while it is still the one that knows it. The grant crosses the argv seam in this
@@ -89,19 +90,19 @@ form, so what it names must not depend on where the helper happens to stand
 (#205). `resolved` cannot stand in for this step: its walk bottoms out at the
 empty path, which would leave a relative grant relative. A working directory
 that cannot be read refuses the grant rather than standing in as nothing, which
-would match no owned path at stage 4 (#203).
+would match no owned path at stage 5 (#203).
 
 **`resolved` replaces the deepest resolvable ancestor with what it resolves
 to,** then re-joins whatever was left. Not a `canonicalize`, which needs every
 component to exist: a credential nobody has stored yet does not exist, and
 comparing canonical forms alone would miss the host where `/home` is a symlink
 to `/var/home`. The function is total — a path that resolves nowhere comes back
-unchanged — which is what lets stages 3 and 4 be plain predicates.
+unchanged — which is what lets stages 4 and 5 be plain predicates.
 
-**And it is the only way to hold a `ResolvedPath`**, which is what stages 4 and
-5 take. The type is a one-field wrapper over a `PathBuf` with a `path()`
-accessor, no `Deref` and a private field, so the one producer in the module is
-the only road in. What that buys has its own section below, where the
+**And it is one of two ways to hold a `ResolvedPath`**, which is what stage 5
+takes; the other is a `VettedPath`, converted with no I/O. The type is a
+one-field wrapper over a `PathBuf` with a `path()` accessor, no `Deref` and a
+private field, so the two producers in the module are the only roads in. What that buys has its own section below, where the
 requirement it replaced is traced.
 
 **`bound_by_resolver` asks whether the flag names a file sandbx's own bounded
@@ -119,45 +120,34 @@ later section of this chapter; for now, note that it answers in `Option` and
 that `Grants::policy` turns `Some` into `PolicyError::GrantReachesOwned` naming
 the path **as typed**, so the operator can go and change the thing they wrote.
 
-**`pinned` is the step that measures an object**, and the only one. Not the only
-one that reads the filesystem: `resolved` canonicalizes, `reaches_owned` calls
-`resolved` on each owned path, and `bound_by_resolver` canonicalizes the
-resolver files it compares against. What is `pinned`'s alone is that its answer
-*outlives the function*: it returns the grant itself, both halves of it, while
-everything the other three learned is spent on one comparison and dropped — the
-resolved spelling included, since the path the policy ends up holding is the one
-`vet` canonicalized and not the one `resolved` built.
+**`VettedPath::vet` is the step that measures an object**, and the only one. Not
+the only one that reads the filesystem: `resolved` canonicalizes,
+`reaches_owned` calls `resolved` on each owned path, and `bound_by_resolver`
+canonicalizes the resolver files it compares against. What is `vet`'s alone is
+that its answer *outlives the function*: it is the grant itself, both halves of
+it, while everything the checks learn is spent on one comparison and dropped. It
+runs second, before any check, and its `Result` is held rather than `?`'d:
 
 ```rust
-pub(super) fn pinned(granted: &ResolvedPath, typed: &Path) -> Result<VettedPath, PolicyError> {
-    let granted = granted.path();
-
-    let vetted = VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
-        granted: typed.to_path_buf(),
-        source,
-    })?;
-
-    if vetted.path() != granted {
-        return Err(PolicyError::GrantMovedWhileVetting {
-            granted: typed.to_path_buf(),
-            checked: granted.to_path_buf(),
-            vetted: vetted.path().to_path_buf(),
-        });
-    }
-
-    Ok(vetted)
-}
+let typed = absolute(path, &std::env::current_dir)?;
+// Judged as vetted, so what is refused or granted is what is pinned; a path
+// naming nothing is judged too, so reaching an owned path outranks the vet.
+let vetted = VettedPath::vet(&typed);
+let judged = vetted
+    .as_ref()
+    .map_or_else(|_| resolved(&typed), ResolvedPath::from);
 ```
 
 `VettedPath::vet` canonicalizes and then `stat`s, and it is the only producer of
-a `VettedPath` that performs any I/O at all. The comparison after it is the part
-worth sitting with. `granted` arrived `resolved` — the parameter type says so,
-not a comment — and `vet` resolves again, so if a component was swapped for a
-symlink in between, the two spellings differ.
-Every refusal above ran against the first spelling, and the policy would hold
-the second: a path no check here ever saw, pinned to whatever object is at it.
-That is `GrantMovedWhileVetting`, and it is a refusal rather than a re-run of
-the checks.
+a `VettedPath` that performs any I/O at all. The checks judge the path it
+canonicalized, which is what `resolved` returns for a path that exists, so the
+path every refusal ran against and the path the policy holds are one value: a
+component swapped between a check and the pin has no second resolution to make
+them differ. `resolved(vetted.path())` would look equivalent and is not — it
+resolves again, which is the window this order closes. A path naming nothing
+cannot be vetted, so it is judged through `resolved` and refused only after the
+checks, as `UnpinnableGrant`, leaving `GrantReachesOwned` the answer for a grant
+that reaches the credential store whether or not anything is stored there.
 
 The shape the chain produces:
 
@@ -194,7 +184,7 @@ it.
 `grants.rs` was split (#250) into the flag surface and
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), which owns root
 derivation and path vetting; behaviour did not change. What changed is a
-*visibility*. The five functions above are `pub(super)` — visible to `grants.rs`
+*visibility*. The four `root.rs` functions above are `pub(super)` — visible to `grants.rs`
 and nothing else — while `vetted_root`, `named_homes`, the `Homes` type and the
 `$HOME` predicates are private to `root.rs`, with their tests inline beside
 them.
@@ -210,7 +200,10 @@ that the tests moved to the code instead.
 ## Stage 3 — into the policy
 
 ```rust
-let granted = pinned(&granted, path)?;
+let granted = vetted.map_err(|source| PolicyError::UnpinnableGrant {
+    granted: path.clone(),
+    source,
+})?;
 policy = policy.grant(axis, granted.clone());
 
 // Beyond the flag's own axis: an unreadable rewrite target is a trap. Keyed to
@@ -437,7 +430,6 @@ Now the other half of the question, because `--allow-read /tmp/x` does not only
 if !self.paths_given() {
     // Inside the branch: a run that typed its own flags never depends on `HOME`.
     let root = current_root(policy.executable_paths(), &owned)?;
-    let root = pinned(&root, root.path())?;
     policy = policy.allow_read(root.clone()).allow_write(root);
 }
 ```
@@ -459,10 +451,9 @@ lacked. The record's own summary is the line worth carrying: **narrow and loud
 beats wide and silent.** It also notes that nothing here forecloses going the
 other way, since unconditional-plus-opt-out is a strict widening of this.
 
-Note too that `pinned(&root, root.path())?` on the derived path is the same
-function the flag route calls, passing the resolved path where the flag route
-passes `path`, the spelling the operator typed and the one a refusal names — a
-derived grant has no typed spelling of its own. It is pinned exactly as a typed
+Note too that `current_root` returns a `VettedPath`: it vets the working
+directory, has `vetted_root` judge that vetted path, and hands back the pin —
+the order the flag route runs in. A derived grant is pinned exactly as a typed
 one is; there is no second, laxer road into the policy.
 
 Some working directories are refused rather than derived from — `vetted_root`
@@ -577,7 +568,9 @@ layer down: `VettedPath` is precisely a path that cannot be unpinned, because
 exists to name a path whose leaf does not exist yet. A second wrapper, then,
 built to the first one's rules: private field, exactly one producer, a `path()`
 accessor and no `Deref`, so there is no way to hand `reaches_owned` a path that
-only looks resolved.
+only looks resolved. The second producer came later, `From<&VettedPath>`, with
+no I/O: a vetted path is canonical already, and it is how a grant is judged as
+the path it pins.
 
 What that changes for a reader is where to look for the requirement. It is in
 the signature, which means a third call site inside `grants` that forgets it
@@ -788,13 +781,13 @@ what an auditor cannot recover is that it was checked.
 
 ## You should now be able to explain
 
-- The five functions a path flag passes through, in the order they run, and what
+- The five steps a path flag passes through, in the order they run, and what
   each one changes about the grant's shape.
 - Why `absolute` cannot be folded into `resolved`, and why `resolved` is not a
   `canonicalize`.
-- What `pinned` compares after vetting, and which substitution that comparison
-  catches — and why it is the only step whose answer outlives it, though three
-  of the five read the filesystem.
+- Why a grant is vetted before it is judged, and which substitution that order
+  rules out — and why `vet` is the only step whose answer outlives it, though
+  four of the five read the filesystem.
 - Why `VettedPath::vet` is the only route an embedder has to a grant, and which
   two things the type's shape makes impossible to write.
 - Why `SandboxPolicy::grant` takes a `VettedPath` rather than a path, and why it

@@ -102,12 +102,13 @@ calls and the derived route does not, over a `resolved` that is total. The cwd
 arrives as an argument rather than off the process: a direction that fails only
 on a deleted directory is one no test can pin.
 
-What `resolved` returns is a `ResolvedPath`, and `vetted_root`, `reaches_owned`
-and `pinned` take that type rather than a `PathBuf` — so each states the
-precondition in its signature, and `resolved` is the only producer. Until #248 it
-was a `debug_assert!`, absent from a release build and the workspace's only
-assertion outside a test module: what held the spellings above together was the
-two callers happening to comply.
+What `resolved` returns is a `ResolvedPath`, and `vetted_root` and `reaches_owned`
+take that type rather than a `PathBuf` — so each states the precondition in its
+signature. `resolved` is one producer; the other is a `VettedPath`, canonical
+already, converted with no I/O, which is how a grant is judged as the path it pins.
+Until #248 the precondition was a `debug_assert!`, absent from a release build and
+the workspace's only assertion outside a test module: what held the spellings above
+together was the two callers happening to comply.
 
 ## It does not ask whether anything is stored there
 

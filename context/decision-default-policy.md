@@ -267,8 +267,9 @@ anyway was by sitting under a granted system path, and such a root is now refuse
 
 ## Canonicalizing the working directory
 
-`getcwd` already returns a resolved path, so `canonicalize` is there for the other
-thing it proves: that the directory is still openable. `PathFd::new` in the helper
+`getcwd` already returns a resolved path, so the `canonicalize` inside
+`VettedPath::vet` is there for the other thing it proves: that the directory is
+still openable. `PathFd::new` in the helper
 requires that, and `FsGuard` does not: it holds the grant whole and confirms the
 root's object per access, so a root it cannot open accuses nothing and grants
 nothing. The two layers disagree, and the safe reading of the disagreement is that
