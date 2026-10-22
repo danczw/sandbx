@@ -240,8 +240,7 @@ async fn a_400_is_reported_with_the_vendor_envelope() {
     }
 }
 
-/// 529 is Anthropic's non-standard "overloaded": a `Retry-After` beside it does not make
-/// it a `RateLimited`, which only a 429 is.
+/// 529 is Anthropic's "overloaded"; a `Retry-After` beside it does not make it `RateLimited`.
 #[tokio::test]
 async fn a_529_is_reported_with_its_status_and_kind() {
     let server = MockServer::start().await;
