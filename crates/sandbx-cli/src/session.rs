@@ -9,6 +9,7 @@ use sandbx_agent::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
 use sandbx_session::{
     Content, Message, Role as StoredRole, Session, SessionError, SessionId, SessionStore, Usage,
+    sessions_directory,
 };
 
 /// What `--session` asked for.
@@ -79,7 +80,7 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
 /// `var_os` is read here and not injected, unlike in `sandbx-session` itself: this is the
 /// one place that wants the real environment, and a test drives the store directly.
 fn store() -> Result<SessionStore, SessionError> {
-    SessionStore::from_env(&|name| std::env::var_os(name))
+    sessions_directory(&|name| std::env::var_os(name)).map(SessionStore::new)
 }
 
 /// A stored conversation, in the shape a request carries it.

@@ -8,7 +8,6 @@ mod record;
 mod shape;
 mod vet;
 
-use std::ffi::OsString;
 use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
@@ -22,7 +21,7 @@ use vet::{
 };
 
 use crate::id::clock_millis;
-use crate::{CompletedTurn, Message, SessionError, SessionId, Usage, sessions_directory};
+use crate::{CompletedTurn, Message, SessionError, SessionId, Usage};
 
 /// How many ids to try before concluding the clock is stuck, two sessions starting in
 /// the same millisecond being ordinary.
@@ -39,11 +38,6 @@ impl SessionStore {
     #[must_use]
     pub fn new(root: PathBuf) -> Self {
         Self { root }
-    }
-
-    /// A store under [`sessions_directory`].
-    pub fn from_env(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<Self, SessionError> {
-        Ok(Self::new(sessions_directory(lookup)?))
     }
 
     /// Where this store keeps its transcripts.
