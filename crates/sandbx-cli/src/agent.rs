@@ -383,14 +383,12 @@ impl AgentRun {
             withheld: merged.withheld,
         };
 
-        let next = wrapup::Next::after(&turn); // Read off before `run_turn` takes it by value.
-
         let mut render = Render::with(channels.out, channels.err)
             .showing_thinking(self.show_thinking)
             .rendering(channels.renders);
         let outcome = run_turn(
             &mut open,
-            turn,
+            turn.clone(),
             ctx,
             |event| render.event(event),
             gate::ArgvGate::new(self.allow_tool.as_deref(), channels.terminal),
@@ -403,9 +401,8 @@ impl AgentRun {
         // Exhaustive on `TurnStop`, so a fourth way to end cannot reach `finish` as a clean one.
         let (outcome, ending) = match (stop, outcome) {
             (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
-                let (outcome, summarised) = next
-                    .run(&mut open, ctx, &merged.history, first, &mut render)
-                    .await;
+                let (outcome, summarised) =
+                    wrapup::run(&mut open, ctx, turn, first, &mut render).await;
                 // A round that failed after streaming prose has already put text on
                 // stdout that no transcript will account for, which `CutShort` denies.
                 let ending = match (summarised, render.wrote_after_gap()) {
