@@ -7,11 +7,11 @@
 use std::io::Write;
 
 use sandbx_agent::{
-    ApprovalDecision, CallGate, PromptUsage, Settled, ToolCall, Turn, TurnLimits, TurnOutcome,
-    TurnStop, run_turn,
+    ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits, TurnOutcome, TurnStop,
+    run_turn,
 };
-use sandbx_providers::{EventStream, Prompt, ProviderError, RequestMessage, Thinking, ToolChoice};
-use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_providers::{EventStream, Prompt, ProviderError, ToolChoice};
+use sandbx_tools::ExecutionContext;
 
 use super::{Render, gate};
 
@@ -50,119 +50,68 @@ impl CallGate for RefuseAll {
     }
 }
 
-/// What the wrap-up round reuses from the turn that ran out of rounds.
+/// Ask `turn` once more, over its history ending in what `first` produced, and report
+/// whether an answer came back.
 ///
-/// A struct rather than a borrow because `run_turn` takes its [`Turn`] by value, so these
-/// are read off before the first call rather than after it.
-pub(super) struct Next {
-    model: String,
-    max_output_tokens: u32,
-    system: Option<String>,
-    thinking: Option<Thinking>,
+/// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
+/// already on stdout, and stored (#188) — rather than costing it any of them.
+pub(super) async fn run<W: Write, E: Write>(
+    open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
+    ctx: &ExecutionContext,
+    turn: Turn<'_>,
+    first: TurnOutcome,
+    render: &mut Render<W, E>,
+) -> (TurnOutcome, bool) {
+    let mut continued = turn.history.to_vec();
+    continued.extend(first.messages.iter().cloned());
 
-    /// The same set the first turn offered, owned so the second [`Turn`] can borrow it.
-    ///
-    /// Still offered though `tool_choice` forbids calling one; see [`Turn::tools`].
-    tools: Vec<BuiltinTool>,
+    // The tools stay offered, under `ToolChoice::None` rather than as `Turn::tools`' empty
+    // slice, so one round is all the loop needs. Both set here: `..turn` carries the first's.
+    let wrap_up = Turn {
+        system: Some(match turn.system.as_deref() {
+            Some(system) => format!("{system}\n\n{NUDGE}"),
+            None => NUDGE.to_owned(),
+        }),
+        tool_choice: Some(ToolChoice::None),
+        history: &continued,
+        limits: TurnLimits {
+            max_rounds: 1,
+            ..turn.limits
+        },
+        observed: first.usage.or(turn.observed),
+        // Still the request's index space, the one `first` counted in: `history` is
+        // that request with the turn's messages appended, which moves no prefix.
+        withheld: first.withheld,
+        ..turn
+    };
 
-    limits: TurnLimits,
-    observed: Option<PromptUsage>,
-}
+    render.separate();
+    let second = run_turn(open, wrap_up, ctx, |event| render.event(event), RefuseAll).await;
 
-impl Next {
-    /// Carry `turn`'s request over, with the no-tools-left sentence added to its prompt.
-    pub(super) fn after(turn: &Turn<'_>) -> Self {
-        Self {
-            model: turn.model.clone(),
-            max_output_tokens: turn.max_output_tokens,
-            system: Some(match turn.system.as_deref() {
-                Some(system) => format!("{system}\n\n{NUDGE}"),
-                None => NUDGE.to_owned(),
-            }),
-            thinking: turn.thinking,
-            tools: turn.tools.to_vec(),
-            limits: turn.limits,
-            observed: turn.observed,
+    match second {
+        // Reported, not propagated: a `?` here would turn a turn that did real work
+        // into exit 1 with its text already written.
+        Err(error) => {
+            eprintln!("sandbx: the wrap-up request failed: {error}");
+            (first, false)
         }
-    }
-
-    /// Ask once more, and report whether an answer came back.
-    ///
-    /// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
-    /// already on stdout, and stored (#188) — rather than costing it any of them. `history`
-    /// is borrowed: the caller keeps it to translate the figure this round reports back out
-    /// of the request's index space.
-    pub(super) async fn run<W: Write, E: Write>(
-        &self,
-        open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
-        ctx: &ExecutionContext,
-        history: &[RequestMessage],
-        first: TurnOutcome,
-        render: &mut Render<W, E>,
-    ) -> (TurnOutcome, bool) {
-        let mut continued = history.to_vec();
-        continued.extend(first.messages.iter().cloned());
-
-        render.separate();
-        let second = run_turn(
-            open,
-            self.turn(&continued, &first),
-            ctx,
-            |event| render.event(event),
-            RefuseAll,
-        )
-        .await;
-
-        match second {
-            // Reported, not propagated: a `?` here would turn a turn that did real work
-            // into exit 1 with its text already written.
-            Err(error) => {
-                eprintln!("sandbx: the wrap-up request failed: {error}");
-                (first, false)
-            }
-            // Either leaves the batch ending on an unanswered `tool_result`, so `first`
-            // stands and prose this round already streamed is `Unfinished::Discarded`.
-            // The not-equal covers every stop but the answer, which is sound only while
-            // `RefuseAll` cannot abort — a gate that could would be misreported here as
-            // having asked for a tool.
-            Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
-                eprintln!(
-                    "sandbx: the wrap-up round {}",
-                    if second.messages.is_empty() {
-                        "replied with nothing"
-                    } else {
-                        "asked for a tool instead of answering"
-                    }
-                );
-                (first, false)
-            }
-            Ok(second) => (merge(first, second), true),
+        // Either leaves the batch ending on an unanswered `tool_result`, so `first`
+        // stands and prose this round already streamed is `Unfinished::Discarded`.
+        // The not-equal covers every stop but the answer, which is sound only while
+        // `RefuseAll` cannot abort — a gate that could would be misreported here as
+        // having asked for a tool.
+        Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
+            eprintln!(
+                "sandbx: the wrap-up round {}",
+                if second.messages.is_empty() {
+                    "replied with nothing"
+                } else {
+                    "asked for a tool instead of answering"
+                }
+            );
+            (first, false)
         }
-    }
-
-    /// The turn to ask, over `history` ending in what the first turn produced.
-    ///
-    /// The tools are offered under [`ToolChoice::None`] rather than withheld as the empty
-    /// slice [`Turn::tools`] documents. `max_rounds: 1` is then all the loop needs, a
-    /// prose reply ending the turn.
-    fn turn<'a>(&'a self, history: &'a [RequestMessage], first: &TurnOutcome) -> Turn<'a> {
-        Turn {
-            model: self.model.clone(),
-            max_output_tokens: self.max_output_tokens,
-            system: self.system.clone(),
-            tools: &self.tools,
-            tool_choice: Some(ToolChoice::None),
-            thinking: self.thinking,
-            history,
-            limits: TurnLimits {
-                max_rounds: 1,
-                ..self.limits
-            },
-            observed: first.usage.or(self.observed),
-            // Still the request's index space, the one `first` counted in: `history` is
-            // that request with the turn's messages appended, which moves no prefix.
-            withheld: first.withheld,
-        }
+        Ok(second) => (merge(first, second), true),
     }
 }
 
