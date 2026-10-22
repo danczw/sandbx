@@ -64,13 +64,13 @@ pub(super) fn open_nofollow(path: &Path) -> Result<File, SessionError> {
         .map_err(|source| opening(path, source))
 }
 
-/// Open transcript `name` inside the vetted root `directory`, `path` being for errors,
-/// creating it [`OWNER_ONLY`] when `flags` say to.
+/// Open transcript `name` in the vetted root `directory`, `path` being for errors, and
+/// [`OWNER_ONLY`] the mode should `flags` create it.
 ///
-/// Through the descriptor, not the path: a rename of the root or an ancestor after the
-/// vet would leave one directory checked and another read (#317). `O_NOFOLLOW` on every
-/// open, since a link's mode and owner come from its target. `O_CLOEXEC` by hand, which
-/// `OpenOptions` sets and `openat` does not, or the agent's commands inherit the file.
+/// By descriptor, so a rename of the root or an ancestor after the vet cannot swap the
+/// directory read (#317); `O_NOFOLLOW`, since a link's mode and owner are its target's.
+/// `O_CLOEXEC` by hand: `OpenOptions` sets it, `openat` does not, and without it the
+/// agent's commands inherit the transcript.
 pub(super) fn open_at(
     directory: &File,
     name: &str,
