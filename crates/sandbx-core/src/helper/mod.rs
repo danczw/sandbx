@@ -1,8 +1,8 @@
 //! The two-stage re-exec that turns a plain process into a sandboxed command.
 //!
 //! Stage 1 ([`exec_sandboxed`]) makes the namespaces and hardens the state inherited
-//! across `exec`; stage 2 ([`exec_inner`]) is PID 1 of the new PID namespace and becomes
-//! the command. [`apply`] sequences [`ruleset`], [`seccomp`] and [`hardening`] in the
+//! across `exec`; stage 2 ([`exec_inner`]) is PID 1 of the new PID namespace and starts
+//! the command beneath it. [`apply`] sequences [`ruleset`], [`seccomp`] and [`hardening`] in the
 //! order they have to happen in — one ordered syscall sequence, so one module, and over
 //! the 400-line budget on purpose (`context/guide-module-layout.md`).
 
@@ -211,15 +211,15 @@ pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
         .unwrap_or(1)
 }
 
-/// Apply a policy to *this* process, then become the requested command.
+/// Apply a policy to *this* process, then run the requested command as its child.
 ///
 /// Stage 2 of two, the first child of [`exec_sandboxed`] and therefore PID 1 of the PID
-/// namespace it created. Everything here is irreversible and inherited across `exec`,
-/// which is what makes the restrictions stick to the real command rather than to this
-/// process alone. This process is fresh and so single-threaded: no `fork`/`exec` window,
-/// hence no async-signal-safety constraint and no `unsafe`.
+/// namespace it created, which it stays: the command is its child and never the init. Every
+/// restriction here is irreversible and inherited across `fork` and `exec`, which is what
+/// makes it stick to the command. Single-threaded, and must stay so — the parent death signal
+/// that ends this process is per thread.
 ///
-/// On success this never returns: the process image is replaced. Any return is an error, and
+/// On success this never returns: it exits as the command did. Any return is an error, and
 /// the caller must exit non-zero rather than fall through to running the command
 /// unrestricted.
 pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
@@ -245,29 +245,31 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, Sa
         false => None,
     };
 
-    let refusal = restrict_and_exec(supervisor, argv);
+    let refusal = match restrict_and_spawn(supervisor, argv) {
+        Ok(command) => {
+            // The command is running, so nothing is left to report on it.
+            drop(channel);
+            reap_until(command)
+        }
+        Err(refusal) => refusal,
+    };
 
     // Without this the trail cannot tell a refusal from a command that ran and exited 1:
     // this stage exits non-zero and stage 1 relays that status on the command's behalf.
     // Swallowed — a lost record must not fail a run the parent was already told about.
-    if let (Some(channel), Err(error)) = (&mut channel, &refusal)
-        && let Some(reported) = error.refusal()
-    {
+    if let (Some(channel), Some(reported)) = (&mut channel, refusal.refusal()) {
         use std::io::Write;
 
         let _ = channel.write_all(crate::degradation::encode_refusal(reported).as_bytes());
     }
 
-    refusal
+    Err(refusal)
 }
 
-/// Restrict this process and become the command, or say why it could not.
+/// Restrict this process and start the command below it, or say why it could not.
 ///
 /// The channel is claimed before this is called; nothing here may claim it again.
-fn restrict_and_exec(
-    supervisor: &str,
-    argv: &[String],
-) -> Result<std::convert::Infallible, SandboxError> {
+fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<u32, SandboxError> {
     let request = HelperArgs::decode(argv)?;
 
     bind_lifetime_to_supervisor()?;
@@ -307,25 +309,54 @@ fn restrict_and_exec(
         .map(|expected| crate::digest::open_verified(&request.program, expected))
         .transpose()?;
 
-    let error = {
-        use std::os::unix::process::CommandExt;
-        // The descriptor that was hashed, named so the kernel opens that same inode; the
-        // handle outlives the `exec` below, which is what keeps the name valid.
-        let program = image.as_ref().map(crate::digest::fd_path);
-        let program = program.as_deref().unwrap_or(request.program.as_ref());
+    use std::os::unix::process::CommandExt;
+    // The descriptor that was hashed, named so the kernel opens that same inode; the handle
+    // outlives the spawn below, whose child resolves the name before its `exec` closes it.
+    let program = image.as_ref().map(crate::digest::fd_path);
+    let program = program.as_deref().unwrap_or(request.program.as_ref());
 
-        let mut command = crate::spawn::command(program, &request.policy);
-        // Unconditional, so a matching pin changes nothing the command can observe: without
-        // it `$0` would be the procfs path, which `ps` and a multi-call binary both read.
-        command.arg0(&request.program);
-        command.args(&request.args);
+    let mut command = crate::spawn::command(program, &request.policy);
+    // Unconditional, so a matching pin changes nothing the command can observe: without it
+    // `$0` would be the procfs path, which `ps` and a multi-call binary both read.
+    command.arg0(&request.program);
+    command.args(&request.args);
 
-        // Returns only on failure, and the channel duplicate is close-on-exec, so the
-        // caller's record can only be written where the command does not exist.
-        command.exec()
+    // Spawned, not `exec`ed: what the kill chain ends is this process, so it must be one the
+    // command cannot change. The command can shed its own parent death signal — it is per
+    // thread, and an `exec` from a fresh thread drops it — and leave the group sandbx kills.
+    // The channel duplicate is close-on-exec, so the command never holds it.
+    command
+        .spawn()
+        .map(|child| child.id())
+        .map_err(|source| SandboxError::ExecFailed { source })
+}
+
+/// Reap every child until the command exits, then exit as it did.
+///
+/// This process is the namespace's init, so orphans reparent here and are reaped as they
+/// come; exiting is what makes the kernel kill whatever is left. A signalled command comes
+/// out as `128 + n`: an init cannot die by a signal it raises at itself, the kernel
+/// discarding it, so [`relay`]'s re-raise has nothing to offer here.
+fn reap_until(command: u32) -> ! {
+    use nix::sys::wait::{WaitStatus, wait};
+    use std::os::unix::process::ExitStatusExt;
+
+    let status = loop {
+        match wait() {
+            Ok(WaitStatus::Exited(pid, code)) if pid.as_raw().cast_unsigned() == command => {
+                break std::process::ExitStatus::from_raw((code & 0xff) << 8);
+            }
+            Ok(WaitStatus::Signaled(pid, signal, _)) if pid.as_raw().cast_unsigned() == command => {
+                break std::process::ExitStatus::from_raw(signal as i32);
+            }
+            Ok(_) | Err(nix::errno::Errno::EINTR) => {}
+            // No child left to wait for is no command left to report on: exit, which takes
+            // the namespace down with it.
+            Err(_) => break std::process::ExitStatus::from_raw(1 << 8),
+        }
     };
 
-    Err(SandboxError::ExecFailed { source: error })
+    std::process::exit(exit_code(&status))
 }
 
 /// Take the audit channel out of the stdin slot, leaving the command a null one.

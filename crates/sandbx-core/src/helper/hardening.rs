@@ -75,11 +75,10 @@ pub(super) fn prepare_supervisor(
 /// timeout's kill from advisory into unconditional, whatever the command spawned and however
 /// it detached itself.
 ///
-/// Two independent paths reach us. The supervisor is in the process group sandbx kills and so
-/// are we, but the command we become may `setsid` and leave it; the parent death signal fires
-/// regardless of group membership and survives `execve` of an ordinary binary, and the kernel
-/// clears it for a *secure* `exec` (setuid target, or file capabilities), where the group kill
-/// is what still reaps us.
+/// Two independent paths reach us: the process group sandbx kills, which we never leave, and
+/// this signal, which fires regardless of group. Both hold because we never `exec` and stay
+/// single-threaded — the signal is per thread and an `exec` can clear it — which is why the
+/// command runs as our child rather than as us.
 ///
 /// Set before anything else in this stage, so the window in which the supervisor could die
 /// unnoticed is as short as the kernel allows. [`confirm_supervisor`] is what closes it.
@@ -101,7 +100,7 @@ pub(super) fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
 ///
 /// Closes the window [`bind_lifetime_to_supervisor`] cannot: if the supervisor died before
 /// the parent death signal was armed, nothing will ever kill this process and the command
-/// would run as PID 1 of a namespace no one is watching. Arm first, then check — a death
+/// would run in a namespace no one is watching. Arm first, then check — a death
 /// before the check is caught by the check, a death after it by the armed signal.
 ///
 /// `getppid` is no use: this process is PID 1 of a namespace whose parent lives outside it,

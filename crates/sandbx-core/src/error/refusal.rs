@@ -44,7 +44,7 @@ pub enum HelperRefusal {
     /// [`SandboxError::InnerStageFailed`].
     InnerStageFailed,
 
-    /// The innermost stage could not become the command — [`SandboxError::ExecFailed`].
+    /// The innermost stage could not start the command — [`SandboxError::ExecFailed`].
     ExecFailed,
 
     /// The program is not the bytes it was pinned to — [`SandboxError::PinMismatch`].

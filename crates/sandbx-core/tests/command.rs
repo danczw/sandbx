@@ -301,11 +301,8 @@ fn without_a_timeout_a_command_runs_to_completion() {
 }
 
 /// The helper supervises the command rather than becoming it, so the status the caller
-/// sees is reassembled here. A real fault rather than `kill -9 $$`: the command is PID 1
-/// of its namespace, and the kernel discards an ordinary signal sent to a namespace's init
-/// from inside it. Either encoding is accepted — the relay re-raises the signal, but Rust's
-/// runtime installs its own `SIGSEGV` handler to detect stack overflow, so raising that
-/// signal at ourselves does not kill us and the `128 + n` form comes out instead.
+/// sees is reassembled here. Either encoding is accepted; what comes out is `128 + n`,
+/// because the namespace's init cannot die by a signal it raises at itself.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
 fn a_command_killed_by_a_signal_reports_signalled() {
@@ -358,8 +355,8 @@ fn a_command_exit_code_survives_the_relay() {
 }
 
 /// Two claims: a descendant inherits the pipe write-ends, so it must not keep the call
-/// blocked, and it must not outlive the command — which holds because the command is PID 1
-/// of its own namespace and the kernel tears that down on exit. The canary cannot race:
+/// blocked, and it must not outlive the command — which holds because the init exits with
+/// the command and the kernel tears the namespace down when it does. The canary cannot race:
 /// writing it needs the descendant alive two seconds after the command returned.
 /// `/dev/null` is granted because `sh` redirects a background job's stdin from it.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
@@ -410,8 +407,8 @@ fn a_backgrounded_descendant_dies_with_the_command() {
 }
 
 /// `output()` without a timeout reads both pipes to EOF, and no deadline or kill fires on
-/// this path. The namespace is what closes them: the command is PID 1, so everything it
-/// left behind goes the moment it exits. Ten seconds rather than a minute, so a
+/// this path. The namespace is what closes them: the init exits with the command, so
+/// everything it left behind goes the moment it does. Ten seconds rather than a minute, so a
 /// regression costs a slow test instead of a hung suite.
 #[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 #[test]
@@ -486,6 +483,46 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
         !canary.exists(),
         "a setsid descendant escaped the kill and outlived the tool call"
     );
+}
+
+/// The command leaving the group and shedding its parent death signal — an `exec` from a
+/// second thread does it with no `prctl` — must not let it outlive the call: what the kill
+/// chain ends is the namespace's init, which is sandbx's own process and not the command.
+#[cfg(all(feature = "sandbox-integration", target_os = "linux"))]
+#[test]
+fn a_command_that_sheds_its_lifetime_still_dies() {
+    let probe = env!("CARGO_BIN_EXE_sandbx-orphan-probe");
+    let dir = scratch();
+    let (report, canary) = (dir.path().join("report"), dir.path().join("canary"));
+    let parent = std::path::Path::new(probe).parent();
+
+    let result = SandboxedCommand::new(
+        probe,
+        SandboxPolicy::default()
+            .allow_system_executables()
+            .allow_read_execute(vetted(parent.expect("the probe has a directory")))
+            .allow_write(vetted(dir.path())),
+    )
+    .arg(report.display().to_string())
+    .arg(canary.display().to_string())
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .timeout(std::time::Duration::from_secs(1))
+    .output();
+
+    assert!(
+        matches!(result, Err(sandbx_core::SandboxError::TimedOut { .. })),
+        "expected a timeout, got: {result:?}"
+    );
+
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert!(
+        !canary.exists(),
+        "a command that left the group and execed from a thread outlived the call"
+    );
+
+    // The re-exec'd image reporting is what tells a kill apart from a probe that never ran.
+    let started = std::fs::read_to_string(&report).expect("the probe re-exec'd and reported");
+    assert!(started.starts_with("STARTED"), "got: {started}");
 }
 
 /// Helper mode runs in-process only where it refuses before restricting anything: a real
