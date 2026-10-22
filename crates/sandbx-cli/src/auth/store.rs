@@ -43,9 +43,7 @@ pub(super) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
         .get(TABLE)
         .and_then(|provider| provider.get(ENTRY))
         .and_then(toml::Value::as_str)
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-        .map(|key| SecretString::from(key.to_string())))
+        .and_then(super::nonblank))
 }
 
 /// The file as a table, or `None` when it is absent.
