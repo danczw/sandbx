@@ -173,7 +173,8 @@ and `stop_reason` is a private free function, so no `StopReason` comes from a
 wire string outside `anthropic/` (#59). The vendor *name* is the one row
 nothing *contains* — no lint, no containment test, no CI grep — and one
 sibling of `anthropic.rs` carries it: `lib.rs` re-exports `AnthropicClient`.
-The key and its variable's name are the CLI's, in `auth.rs`. Four more files name it in doc comments only. Per-rule account in
+The key and its variable's name are the CLI's, in `auth.rs`. Four more files
+name it in doc comments only. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-agent`
