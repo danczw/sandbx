@@ -1,10 +1,11 @@
 //! The closed set of refusals a helper stage reports on the audit channel, and `decided_by`,
-//! the one match giving each error its decider and label. The set is a subset of the labels:
+//! the one match giving each error its [`Decider`] and label. The set is a subset of the labels:
 //! a record outranks the exit status, so admitting one the parent or [`FsGuard`](crate::FsGuard)
 //! decides itself would let a forged line claim an outcome that never happened
 //! (`context/decision-helper-audit-channel.md`).
 
 use crate::SandboxError;
+use Decider::{Helper, Parent};
 
 /// How much of the helper's stderr a relayed refusal carries: four `Display` lines' worth,
 /// more than any refusal the helper writes. Nothing downstream bounds it — `ToolLimits`
@@ -77,8 +78,8 @@ impl HelperRefusal {
         Self::Unsupported,
     ];
 
-    /// The name this refusal carries on the wire and in the audit trail: the same word the
-    /// variant it relays answers [`label`](crate::SandboxError::label) with, and a trail is
+    /// The name this refusal carries on the wire and in the audit trail, and the one
+    /// [`label`](crate::SandboxError::label) reads for the variant it relays. A trail is
     /// filtered by these strings, so they are a compatibility surface.
     pub const fn label(self) -> &'static str {
         match self {
@@ -127,53 +128,63 @@ impl HelperRefusal {
     }
 }
 
+/// Which side of the channel decides an error, carrying what a trail calls it.
+pub(super) enum Decider {
+    /// A helper stage alone; the label is the refusal's.
+    Helper(HelperRefusal),
+    /// The parent or [`FsGuard`](crate::FsGuard), never the helper.
+    Parent(&'static str),
+}
+
 impl SandboxError {
-    /// `Ok`: only a helper stage decides this error, and its label is the refusal's. `Err`: the
-    /// parent or `FsGuard` decides it, with this label. Exhaustive, so a new variant answers both.
-    pub(super) fn decided_by(&self) -> Result<HelperRefusal, &'static str> {
+    /// Who decides this error, and what a trail calls it. Exhaustive, so a new variant answers
+    /// both in one arm.
+    pub(super) fn decided_by(&self) -> Decider {
         match self {
-            Self::BadHelperArgs { .. } => Ok(HelperRefusal::BadHelperArgs),
-            Self::Landlock { .. } => Ok(HelperRefusal::Landlock),
+            Self::BadHelperArgs { .. } => Helper(HelperRefusal::BadHelperArgs),
+            Self::Landlock { .. } => Helper(HelperRefusal::Landlock),
             // Only the stage holding the descriptor can compare what it opened against what
             // it was told to open, so this is helper-decided by construction.
-            Self::GrantRedirected { .. } => Ok(HelperRefusal::GrantRedirected),
+            Self::GrantRedirected { .. } => Helper(HelperRefusal::GrantRedirected),
             // Same reason: only the stage holding the descriptor can `fstat` it, and the
             // harness's own measurement is the pin it is compared against.
-            Self::GrantReplaced { .. } => Ok(HelperRefusal::GrantReplaced),
-            Self::Seccomp { .. } => Ok(HelperRefusal::Seccomp),
-            Self::NamespaceSetupFailed { .. } => Ok(HelperRefusal::NamespaceSetupFailed),
-            Self::ProcessHardening { .. } => Ok(HelperRefusal::ProcessHardening),
-            Self::InnerStageFailed { .. } => Ok(HelperRefusal::InnerStageFailed),
-            Self::ExecFailed { .. } => Ok(HelperRefusal::ExecFailed),
-            Self::PinMismatch { .. } => Ok(HelperRefusal::PinMismatch),
-            Self::PinUnreadable { .. } => Ok(HelperRefusal::PinUnreadable),
-            Self::PinnedScript { .. } => Ok(HelperRefusal::PinnedScript),
-            Self::Unsupported { .. } => Ok(HelperRefusal::Unsupported),
-            // Each `Err` is decided by the parent or `FsGuard`, never the helper.
-            Self::PathNotAllowed { .. } => Err("path_not_allowed"),
-            Self::Unresolvable { .. } => Err("unresolvable"),
-            Self::NotFound { .. } => Err("not_found"),
+            Self::GrantReplaced { .. } => Helper(HelperRefusal::GrantReplaced),
+            Self::Seccomp { .. } => Helper(HelperRefusal::Seccomp),
+            Self::NamespaceSetupFailed { .. } => Helper(HelperRefusal::NamespaceSetupFailed),
+            Self::ProcessHardening { .. } => Helper(HelperRefusal::ProcessHardening),
+            Self::InnerStageFailed { .. } => Helper(HelperRefusal::InnerStageFailed),
+            Self::ExecFailed { .. } => Helper(HelperRefusal::ExecFailed),
+            Self::PinMismatch { .. } => Helper(HelperRefusal::PinMismatch),
+            Self::PinUnreadable { .. } => Helper(HelperRefusal::PinUnreadable),
+            Self::PinnedScript { .. } => Helper(HelperRefusal::PinnedScript),
+            Self::Unsupported { .. } => Helper(HelperRefusal::Unsupported),
+            Self::PathNotAllowed { .. } => Parent("path_not_allowed"),
+            Self::Unresolvable { .. } => Parent("unresolvable"),
+            Self::NotFound { .. } => Parent("not_found"),
             // `FsGuard`'s per-access measurement.
-            Self::RootReplaced { .. } => Err("root_replaced"),
+            Self::RootReplaced { .. } => Parent("root_replaced"),
             // The harness's own vetting.
-            Self::GrantUnpinnable { .. } => Err("grant_unpinnable"),
-            Self::SpawnFailed { .. } => Err("spawn_failed"),
+            Self::GrantUnpinnable { .. } => Parent("grant_unpinnable"),
+            Self::SpawnFailed { .. } => Parent("spawn_failed"),
             // Decided past dispatch, which no helper runs (#192).
-            Self::ProcessConcealment { .. } => Err("process_concealment"),
+            Self::ProcessConcealment { .. } => Parent("process_concealment"),
             // Both decided off the policy, before the spawn.
-            Self::UnboundedResolution { .. } => Err("unbounded_resolution"),
-            Self::GrantBoundByResolver { .. } => Err("grant_bound_by_resolver"),
+            Self::UnboundedResolution { .. } => Parent("unbounded_resolution"),
+            Self::GrantBoundByResolver { .. } => Parent("grant_bound_by_resolver"),
             // The word the operator typed and the docs use, so a trail reader greps for it.
-            Self::TimedOut { .. } => Err("timeout"),
+            Self::TimedOut { .. } => Parent("timeout"),
             // The relay's own output: reporting it would be a second crossing. Borrowed, so a
             // trail filtered by `reason=` cannot tell which side of the channel decided it.
-            Self::HelperRefused { refusal, .. } => Err(refusal.label()),
+            Self::HelperRefused { refusal, .. } => Parent(refusal.label()),
         }
     }
 
     /// This error as the refusal a helper stage may report, if it is one.
     pub(crate) fn refusal(&self) -> Option<HelperRefusal> {
-        self.decided_by().ok()
+        match self.decided_by() {
+            Helper(refusal) => Some(refusal),
+            Parent(_) => None,
+        }
     }
 }
 
