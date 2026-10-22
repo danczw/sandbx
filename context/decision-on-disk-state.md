@@ -78,12 +78,14 @@ file reports `ENOTDIR` too, so the flag would merge two refusals worth keeping
 apart.
 
 Ownership is where the two diverge again: a transcript whose `st_uid` is not the
-effective uid, the one the store creates with, is refused, an API key file's is not read at all. Reaching a
-foreign-owned `credentials.toml` means controlling `$HOME` or
-`$XDG_CONFIG_HOME`, by which point the attacker chooses the path and could as
-easily own the file; the check would not be the thing standing in the way. It is
-not an asymmetry to close by symmetry — the transcript check is there because it
-is free, the store's root being derived rather than configurable.
+running uid, real and effective alike, is refused, an API key file's is not read
+at all. Under a setuid launch the two differ, so the store refuses everything
+there rather than admit either one's files to the other. Reaching a foreign-owned
+`credentials.toml` means controlling `$HOME` or `$XDG_CONFIG_HOME`, by which point
+the attacker chooses the path and could as easily own the file; the check would
+not be the thing standing in the way. It is not an asymmetry to close by symmetry
+— the transcript check is there because it is free, the store's root being derived
+rather than configurable.
 
 The directory's mode is also not left to `DirBuilderExt::mode`, which is
 ignored outright for a directory that already exists — so a root somebody
