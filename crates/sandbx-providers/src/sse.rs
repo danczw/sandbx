@@ -1,18 +1,13 @@
 //! Minimal Server-Sent Events framing over a byte stream.
 //!
 //! Knows the SSE framing rules and nothing about what any particular API puts in
-//! `data:`, so a second SSE-based provider could reuse it unchanged.
+//! `data:`. A frame is its `data` alone, `event:` dropped, so a second provider can
+//! reuse it only if its payloads name their own type.
 
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
 
 use crate::ProviderError;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RawSseEvent {
-    pub event: Option<String>,
-    pub data: String,
-}
 
 /// Turn a byte stream into a stream of framed SSE events.
 ///
@@ -25,7 +20,7 @@ pub(crate) struct RawSseEvent {
 /// field added to the state below fails here, not at the coercion in `stream_chat`.
 pub(crate) fn tokenize(
     bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin + Send,
-) -> impl futures_util::stream::FusedStream<Item = Result<RawSseEvent, ProviderError>> + Send {
+) -> impl futures_util::stream::FusedStream<Item = Result<String, ProviderError>> + Send {
     // `.fuse()`: `unfold` panics if polled after it returns `None`, and callers
     // drive this stream however they like.
     futures_util::StreamExt::fuse(futures_util::stream::unfold(
@@ -58,7 +53,7 @@ struct TokenizerState<S> {
 
 async fn next_event<S>(
     mut state: TokenizerState<S>,
-) -> Option<(Result<RawSseEvent, ProviderError>, TokenizerState<S>)>
+) -> Option<(Result<String, ProviderError>, TokenizerState<S>)>
 where
     S: Stream<Item = reqwest::Result<Bytes>> + Unpin,
 {
@@ -149,29 +144,23 @@ fn ended<S>(mut state: TokenizerState<S>) -> TokenizerState<S> {
     state
 }
 
-fn oversized() -> Result<RawSseEvent, ProviderError> {
+fn oversized() -> Result<String, ProviderError> {
     Err(ProviderError::MalformedEvent {
         detail: format!("a single SSE event exceeded {MAX_EVENT_BYTES} bytes"),
     })
 }
 
-fn parse_event(lines: &[String]) -> RawSseEvent {
-    let mut event = None;
+fn parse_event(lines: &[String]) -> String {
     let mut data_lines = Vec::new();
     for line in lines {
-        if let Some(rest) = line.strip_prefix("event:") {
-            event = Some(rest.trim_start().to_string());
-        } else if let Some(rest) = line.strip_prefix("data:") {
+        if let Some(rest) = line.strip_prefix("data:") {
             data_lines.push(rest.trim_start());
         }
-        // `id:`/`retry:`/`:`-comment lines are ignored; this crate never resumes via
-        // Last-Event-ID. A frame built only from those yields an empty `data`, which
-        // `wire/accumulate.rs` skips.
+        // `event:`/`id:`/`retry:`/`:`-comment lines are ignored; this crate never
+        // resumes via Last-Event-ID. A frame built only from those yields an empty
+        // `data`, which `wire/accumulate.rs` skips.
     }
-    RawSseEvent {
-        event,
-        data: data_lines.join("\n"),
-    }
+    data_lines.join("\n")
 }
 
 #[cfg(test)]
@@ -179,7 +168,7 @@ mod tests {
     use super::*;
     use futures_util::stream;
 
-    async fn tokenize_all(chunks: Vec<&'static [u8]>) -> Vec<Result<RawSseEvent, ProviderError>> {
+    async fn tokenize_all(chunks: Vec<&'static [u8]>) -> Vec<Result<String, ProviderError>> {
         let byte_stream = stream::iter(chunks.into_iter().map(|c| Ok(Bytes::from_static(c))));
         tokenize(byte_stream).collect().await
     }
@@ -189,9 +178,7 @@ mod tests {
         let events = tokenize_all(vec![b"event: ping\ndata: {}\n\n"]).await;
 
         assert_eq!(events.len(), 1);
-        let event = events[0].as_ref().unwrap();
-        assert_eq!(event.event.as_deref(), Some("ping"));
-        assert_eq!(event.data, "{}");
+        assert_eq!(events[0].as_ref().unwrap(), "{}");
     }
 
     #[tokio::test]
@@ -199,7 +186,7 @@ mod tests {
         let events = tokenize_all(vec![b"event: ping\nda", b"ta: {}\n\n"]).await;
 
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].as_ref().unwrap().data, "{}");
+        assert_eq!(events[0].as_ref().unwrap(), "{}");
     }
 
     #[tokio::test]
@@ -217,7 +204,7 @@ mod tests {
     async fn multi_line_data_is_joined_with_newlines() {
         let events = tokenize_all(vec![b"data: line one\ndata: line two\n\n"]).await;
 
-        assert_eq!(events[0].as_ref().unwrap().data, "line one\nline two");
+        assert_eq!(events[0].as_ref().unwrap(), "line one\nline two");
     }
 
     #[tokio::test]
@@ -236,9 +223,11 @@ mod tests {
         let events = tokenize_all(vec![b"event: message_stop\ndata: {}"]).await;
 
         assert_eq!(events.len(), 1);
-        let event = events[0].as_ref().unwrap();
-        assert_eq!(event.event.as_deref(), Some("message_stop"));
-        assert_eq!(event.data, "{}", "the unterminated final line was dropped");
+        assert_eq!(
+            events[0].as_ref().unwrap(),
+            "{}",
+            "the unterminated final line was dropped"
+        );
     }
 
     /// The shape a connection reset produces: the last chunk ends mid-line.
@@ -247,17 +236,14 @@ mod tests {
         let events = tokenize_all(vec![b"data: {\"ty", b"pe\":\"message_stop\"}"]).await;
 
         assert_eq!(events.len(), 1);
-        assert_eq!(
-            events[0].as_ref().unwrap().data,
-            "{\"type\":\"message_stop\"}"
-        );
+        assert_eq!(events[0].as_ref().unwrap(), "{\"type\":\"message_stop\"}");
     }
 
     #[tokio::test]
     async fn id_and_comment_lines_are_ignored() {
         let events = tokenize_all(vec![b": keep-alive comment\nid: 5\ndata: {}\n\n"]).await;
 
-        assert_eq!(events[0].as_ref().unwrap().data, "{}");
+        assert_eq!(events[0].as_ref().unwrap(), "{}");
     }
 
     /// A CDN or proxy heartbeat: still a frame, for `wire/accumulate.rs` to skip.
@@ -266,8 +252,8 @@ mod tests {
         let events = tokenize_all(vec![b": keep-alive\n\ndata: {}\n\n"]).await;
 
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].as_ref().unwrap().data, "");
-        assert_eq!(events[1].as_ref().unwrap().data, "{}");
+        assert_eq!(events[0].as_ref().unwrap(), "");
+        assert_eq!(events[1].as_ref().unwrap(), "{}");
     }
 
     #[tokio::test]
