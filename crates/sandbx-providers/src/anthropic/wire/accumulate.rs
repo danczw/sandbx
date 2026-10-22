@@ -10,7 +10,6 @@ use futures_util::Stream;
 
 use crate::error::ProviderError;
 use crate::event::{AgentEvent, StopReason};
-use crate::sse::RawSseEvent;
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 
@@ -49,7 +48,7 @@ enum OpenBlock {
 ///
 /// `Send` is stated, and the result fused, for the reasons `sse::tokenize` gives.
 pub(crate) fn event_stream(
-    raw: impl Stream<Item = Result<RawSseEvent, ProviderError>> + Send,
+    raw: impl Stream<Item = Result<String, ProviderError>> + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send {
     futures_util::StreamExt::fuse(futures_util::stream::unfold(
         WireState {
@@ -180,7 +179,7 @@ async fn next_agent_event<S>(
     mut state: WireState<S>,
 ) -> Option<(Result<AgentEvent, ProviderError>, WireState<S>)>
 where
-    S: Stream<Item = Result<RawSseEvent, ProviderError>>,
+    S: Stream<Item = Result<String, ProviderError>>,
 {
     use futures_util::StreamExt;
 
@@ -192,8 +191,8 @@ where
             return None;
         }
 
-        let raw = match state.raw.next().await {
-            Some(Ok(raw)) => raw,
+        let data = match state.raw.next().await {
+            Some(Ok(data)) => data,
             Some(Err(error)) => {
                 state.ended = true;
                 state.push_usage();
@@ -213,11 +212,11 @@ where
         // A CDN or proxy heartbeat, which `sse.rs` reports as a frame with an empty
         // payload. Treating `""` as malformed would end a healthy turn the moment an
         // intermediary inserted one.
-        if raw.data.trim().is_empty() {
+        if data.trim().is_empty() {
             continue;
         }
 
-        let parsed: RawStreamEvent = match serde_json::from_str(&raw.data) {
+        let parsed: RawStreamEvent = match serde_json::from_str(&data) {
             Ok(parsed) => parsed,
             Err(source) => {
                 state.ended = true;
