@@ -60,8 +60,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       policy/vetted.rs  VettedPath, ObjectId — a grant and the object it names
    fs_guard.rs       in-process path and object enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, the audit pipe, the kill chain
-      dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, HelperDispatch — the entry
-                     into helper mode
+      dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch — the
+                     entry into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx each with a
                      <path> <dev>:<ino> pair, --allow-network, --allow-network-port,
                      --allow-unix-sockets, --allow-dns-name, --env,
@@ -112,12 +112,11 @@ tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pin
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
-`HELPER_INNER_FLAG`, `HelperDispatch`, `dispatch_helper_mode`,
-`with_helper_dispatch`, `SandboxError`, `Access`, `HelperRefusal`, `FsGuard`,
-`ReadableWalk`, `BLOCKED_SYSCALLS`, `exit_code`, `HelperArgs`, `Axis`, `Grants`,
-`NetworkPolicy`, `SandboxPolicy`, `VettedPath`, `ObjectId`, `DNS_NAME_LIMIT`,
-`NAMESERVER_PORT`, `RESOLVER_FILES`, `bound_by_resolver`, `Sha256Digest`,
-`DigestParseError`, `conceal_process_state`.
+`HELPER_INNER_FLAG`, `with_helper_dispatch`, `SandboxError`, `Access`,
+`HelperRefusal`, `FsGuard`, `ReadableWalk`, `BLOCKED_SYSCALLS`, `exit_code`,
+`HelperArgs`, `Axis`, `Grants`, `NetworkPolicy`, `SandboxPolicy`, `VettedPath`,
+`ObjectId`, `DNS_NAME_LIMIT`, `NAMESERVER_PORT`, `RESOLVER_FILES`,
+`bound_by_resolver`, `Sha256Digest`, `DigestParseError`, `conceal_process_state`.
 
 `Access` is the guard's two root sets, not `Axis`: `Axis::ReadExecute` has no
 in-process meaning, and a refusal carries an `Access` so it can name the grant it

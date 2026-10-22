@@ -121,7 +121,7 @@ refused, where direct stage-1 invocation is a supported one a library consumer h
 So stage 1 sanitises and stage 2 refuses.
 
 A refusal through `SandboxError` and not an `assert!`, for the reason
-`dispatch_helper_mode` is exhaustive: a helper run must end by either running the
+`with_helper_dispatch` is exhaustive: a helper run must end by either running the
 command or reporting why not, and a panic is neither — it would report a broken
 harness invariant as a crash on the command's own stderr.
 

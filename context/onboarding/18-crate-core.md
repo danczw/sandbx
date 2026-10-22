@@ -34,7 +34,7 @@ third column.
 | [`fs_guard.rs`](../../crates/sandbx-core/src/fs_guard.rs) | seam 1: the in-process check six of the seven tools stop at | [11](11-the-two-seams.md) |
 | [`helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs) | seam 2: `HelperArgs::encode`/`decode`, the argv the helper is told | [11](11-the-two-seams.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`command.rs`](../../crates/sandbx-core/src/command.rs) | `SandboxedCommand`: the builder, the audit pipe, the deadline, the kill | [08](08-the-two-stage-helper.md), [14](14-audit-sessions-credentials.md) |
-| [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) | the two flags and `HelperDispatch` — the entry into helper mode | [08](08-the-two-stage-helper.md) |
+| [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) | the two flags and `with_helper_dispatch` — the entry into helper mode | [08](08-the-two-stage-helper.md) |
 | [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) | the two stages, and `apply`'s ordered sequence | [08](08-the-two-stage-helper.md) |
 | [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) | namespaces, capability sets, `RLIMIT_CORE`, `pdeathsig` | [07](07-kernel-primer.md), [08](08-the-two-stage-helper.md) |
 | [`helper/resolver.rs`](../../crates/sandbx-core/src/helper/resolver.rs) | the ordered mount sequence that installs the rendered files | [07](07-kernel-primer.md) for bind mounts; below for what it installs |
@@ -129,14 +129,13 @@ cleanly:
   `FsGuard::walk_readable`'s, `DigestParseError` is `Sha256Digest::parse`'s.
   These are public because what they hang off is — and no consumer writes
   `ReadableWalk`, since `grep` and `find` bind the walk without spelling it.
-- **Needed by a second binary.** `HelperDispatch`, `HELPER_FLAG` and
-  `dispatch_helper_mode` are what
-  [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs)
+- **Needed by a second binary.** `with_helper_dispatch` and `HELPER_FLAG` are
+  what [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs)
   calls, and a `[[bin]]` links the library as an external crate — so "public"
-  there means "reachable from a binary". That file has no ordinary mode:
-  `NotHelperMode` is a usage error. There is a second such binary outside this
-  crate, `sandbx-tools`' `tests/support/helper.rs`, and its module doc says what
-  forces the trio public rather than `pub(crate)`: `SandboxedCommand` re-execs
+  there means "reachable from a binary". That file has no ordinary mode: its
+  closure is a usage error. There is a second such binary outside this crate,
+  `sandbx-tools`' `tests/support/helper.rs`, and its module doc says what forces
+  the pair public rather than `pub(crate)`: `SandboxedCommand` re-execs
   *the current binary* with `HELPER_FLAG`, which assumes that binary dispatches
   at startup — the shipped `sandbx` does and a test harness does not, so the
   harness ships a binary that does nothing else. `HELPER_INNER_FLAG` is public

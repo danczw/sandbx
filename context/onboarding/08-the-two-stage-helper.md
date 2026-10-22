@@ -72,7 +72,7 @@ Helper mode is argv, and only argv. Two constants in `command/dispatch.rs`:
 | `HELPER_FLAG` — `--sandbx-core-exec` | be stage 1: make the namespaces, spawn stage 2 | the harness, in `command_line()` |
 | `HELPER_INNER_FLAG` — `--sandbx-core-exec-inner` | be stage 2: confine this process, become the command | stage 1, in `start_inner_stage` |
 
-The flag must be `argv[1]`. `dispatch_helper_mode` splits argv after the
+The flag must be `argv[1]`. `with_helper_dispatch` splits argv after the
 program's own name and matches on the first element only, so a
 `--sandbx-core-exec` appearing anywhere else is an ordinary argument — including
 inside the command the sandbox is being asked to run.
@@ -102,100 +102,84 @@ policy grammar on purpose:
   and the line worth carrying away: on this seam, which side is trusted —
   neither.
 
-## `HelperDispatch` has no success variant
+## Helper mode has no success arm
 
 `main` cannot know whether it is the harness or the helper until it has looked
 at argv, and the consequence of getting that wrong is unbounded: a process
 started as the helper that falls through into ordinary argument parsing is a
-command that runs with no sandbox. So the type that reports the answer is built
-so that "carry on as normal" cannot be spelled by accident.
+command that runs with no sandbox. So the one entry into helper mode,
+`with_helper_dispatch`, is built so that "carry on as normal" cannot be spelled
+from a helper arm:
 
 ```rust
-/// What [`dispatch_helper_mode`] decided. Two outcomes, not three: becoming the command
-/// never returns, so there is no success variant to ignore by accident.
-#[derive(Debug)]
-#[must_use = "a helper run that failed must not fall through to running the command"]
-pub enum HelperDispatch {
-    /// Not a helper invocation: an ordinary run, argv too short to carry a flag included.
-    NotHelperMode,
-
-    /// Helper mode ran and failed; no unrestricted execution occurred. ...
-    Failed(SandboxError),
-}
-```
-
-Two variants for three imaginable outcomes. The missing one is success, and it
-is missing because it is unreachable: both entry points return
-`Result<Infallible, SandboxError>`, so the only way out of a helper run that
-worked is the `execve` that replaces the process image. The match that
-dispatches has no success arm to write:
-
-```rust
-match flag.as_str() {
+let error = match flag.as_str() {
     HELPER_FLAG => match crate::helper::exec_sandboxed(helper_args) {
-        Err(error) => HelperDispatch::Failed(error),
+        Err(error) => error,
     },
     HELPER_INNER_FLAG => match crate::helper::exec_inner(helper_args) {
-        Err(error) => HelperDispatch::Failed(error),
+        Err(error) => error,
     },
-    _ => HelperDispatch::NotHelperMode,
-}
+    _ => return ordinary_main(),
+};
+eprintln!("{HELPER_FAILURE_PREFIX}{error}");
+std::process::ExitCode::FAILURE
 ```
 
-Those inner `match`es have one arm each and are exhaustive, which is a thing
-`Infallible` buys and a comment cannot: the compiler agrees there is no `Ok`.
+Two exits for three imaginable outcomes. The missing one is success, and it is
+missing because it is unreachable: both stages return
+`Result<Infallible, SandboxError>`, so the only way out of a helper run that
+worked is the `execve` that replaces the process image. Those inner `match`es
+have one arm each and are exhaustive, which is a thing `Infallible` buys and a
+comment cannot: the compiler agrees there is no `Ok`. Every helper arm therefore
+reaches the `eprintln!` and `ExitCode::FAILURE`; `ordinary_main` runs only from
+the `_` arm and from an argv too short to carry a flag.
 
-The elided half of `Failed`'s doc is the half a caller has to read. *Usually*
-the command never started, the restrictions going in before the `exec` — but a
-failure while waiting on the inner stage lands in the same variant, and that one
-may have run. It ran with the restrictions applied either way, which is why one
-variant covers both: `Failed` is a claim about *unrestricted* execution, not a
-claim that nothing ran.
+The function's doc carries the half a caller has to read. *Usually* the command
+never started, the restrictions going in before the `exec` — but a failure while
+waiting on the inner stage takes the same exit, and that one may have run. It ran
+with the restrictions applied either way, which is why one exit covers both: a
+failure is a claim about *unrestricted* execution, not a claim that nothing ran.
+The doc also admits the residual: *it cannot enforce being called first*. The CLI
+pays that by initialising logging **inside** the closure — a subscriber installed
+above would write sandbx's records into the sandboxed command's stderr.
 
-`with_helper_dispatch` then owns the half a hand-written `main` gets wrong. It
-takes the ordinary main as a closure, so for any binary that uses it the
-ordinary path *cannot* run before dispatch; `Failed` prints with
-`HELPER_FAILURE_PREFIX` and returns `ExitCode::FAILURE`, because "printing the
-error but returning zero falls through to the ordinary path, which is a command
-that runs unrestricted". Its own doc admits the residual: *it cannot enforce
-being called first*. The CLI pays that by initialising logging **inside** the
-closure — a subscriber installed above would write sandbx's records into the
-sandboxed command's stderr.
+The prefix is `HELPER_FAILURE_PREFIX`, a const because the parent strips it back
+off when it lifts the helper's stderr into `SandboxError::HelperRefused`. All
+three binaries that can be a helper — `sandbx`, `bin/sandbx-helper.rs` and
+`sandbx-tools`' test helper — go through this function, so a refusal relayed
+from any of them reads the same.
 
-### A Rust aside: `#[must_use]` on a closed enum, and what it does not do
+### A Rust aside: why a closure, and not a returned value
 
-`#[must_use]` on a *type* makes the compiler warn whenever a value of that type
-is produced in statement position and dropped. The lint is `unused_must_use`, it
-is warn-by-default, and CI runs
+The ordinary path is passed in as a closure rather than chosen by the caller from
+a returned value, because a returned value can be dropped. `#[must_use]` on a
+type makes the compiler warn when a value of that type is produced in statement
+position and discarded — the lint is `unused_must_use`, and CI's
 `cargo clippy --workspace --all-targets -- -D warnings`
-([guide-ci.md](../guide-ci.md)), which turns it into a failed build. So
-`dispatch_helper_mode(args);` on a line of its own does not compile here.
+([guide-ci.md](../guide-ci.md)) turns it into a failed build. But it is about
+*using* the value, not about using it correctly: `let _ = dispatch(…);` silences
+it, and so does any expression that consumes the value and ignores what it said,
+after which the next line of `main` runs. A closure leaves no public value
+meaning "the helper failed" for a caller to mishandle; the helper arms simply
+never call it.
 
-Be precise about the limit, because it is the interesting part: `must_use` is
-about *using* the value, not about using it correctly. `let _ = dispatch(…);`
-silences it, and so does any expression that consumes the value and ignores what
-it said. The lint catches forgetting. What makes forgetting *harmless* is the
-shape of the type, and the two obvious alternatives both lose it.
+The shapes a returned value could take are weaker still:
 
-- **A `bool` would not do it.** `must_use` on the call site is available, but
-  neither state has a name, so a polarity typo — `if !is_helper` — compiles and
-  reads fine, and a reviewer has nothing to check it against. It cannot carry
-  the error either, so the failure path has to be a second return value or a
-  side channel, and the thing that must not be forgotten moves away from the
-  thing that reports it.
+- **A `bool` would not do it.** Neither state has a name, so a polarity typo —
+  `if !is_helper` — compiles and reads fine, and a reviewer has nothing to check
+  it against. It cannot carry the error either, so the failure path has to be a
+  second return value or a side channel, and the thing that must not be forgotten
+  moves away from the thing that reports it.
 - **A two-arm `Result` would not do it either**, and for a sharper reason: a
   `Result` *has* a success arm, and Rust's whole idiom for satisfying `must_use`
   on one is to discard that arm. `?`, `.ok()`, `unwrap_or_default()`,
   `if let Err(e) =` — every one of them is ordinary, reviewable code that
-  silently continues on the `Ok` path. Worse, `Ok(())` would name the state
-  this design says cannot exist. A type with a success variant invites a
-  caller to write the fall-through that the no-success-variant type makes
-  unrepresentable.
+  silently continues on the `Ok` path. Worse, `Ok(())` would name the state this
+  design says cannot exist.
 
-This is the pattern 04 calls out as the recurring trick — a closed enum plus an
-exhaustive match as a compile-time gate — with `Infallible` doing the work that
-makes the enum closed around the *dangerous* state rather than merely around a
-list of cases.
+This is the pattern 04 calls out as the recurring trick — a closed match as a
+compile-time gate — with `Infallible` doing the work that closes it around the
+*dangerous* state rather than merely around a list of cases.
 
 ## Stage 1: everything that must happen in a process that still has to spawn one
 
@@ -314,8 +298,8 @@ it is a check rather than a re-narrowing. `spawn::command` is the crate's only
 with silence. What it catches is a caller who reached the inner stage directly
 and therefore arrives with a full environment: that run is **refused**, not
 quietly narrowed. It is an error and not an `assert!`, because
-`dispatch_helper_mode` is exhaustive and a panic leaves through neither of its
-arms.
+`with_helper_dispatch` is exhaustive and a panic leaves through neither of its
+exits.
 
 The pin is opened *after* `apply`, which looks backwards until you read the
 reason: opening first would hash a file no grant covers and report a digest
@@ -345,7 +329,7 @@ chapter owns is its position in the sequence.
   record to argue with — it reasons about the argv seam on the premise that
   *neither side is trusted* and that the helper can only ever narrow, and a
   stage reachable on its own narrows less than the two stages together while
-  still succeeding, which is the one outcome `HelperDispatch`'s shape cannot
+  still succeeding, which is the one outcome helper dispatch's shape cannot
   catch. `#[doc(hidden)]`, or a test-only export, would keep the test's access
   without putting the half-stage in the public API.
 
@@ -540,10 +524,11 @@ counterexamples. That is the same justification the startup order in
   self-referential path resolves to the right image.
 - What is in helper argv, in what order, and why the supervisor pid and the
   audit flag are outside the policy grammar.
-- Why `HelperDispatch` has two variants rather than three, and what `Infallible`
-  proves that a comment could not.
-- What `#[must_use]` on a type actually enforces, how it can be silenced, and
-  why a `bool` or a `Result` in the same position would be weaker.
+- Why helper dispatch has no success arm, and what `Infallible` proves that a
+  comment could not.
+- Why the ordinary path is a closure rather than a returned value, what
+  `#[must_use]` can and cannot enforce, and why a `bool` or a `Result` in the
+  same position would be weaker.
 - Which steps have to happen in stage 1 because it still has to spawn a process,
   and which two of them are pinned between the `unshare` and the capability
   drops.
