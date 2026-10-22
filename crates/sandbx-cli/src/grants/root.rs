@@ -2,13 +2,13 @@
 //! nothing here reads a flag.
 //!
 //! One order is load-bearing and it is not one function's: [`vetted_root`] refuses in the
-//! order written. The spelling the comparisons need is [`ResolvedPath`], which only
-//! [`resolved`] produces.
+//! order written. The spelling the comparisons need is [`ResolvedPath`], which [`resolved`]
+//! produces, or a [`VettedPath`] already is: a vetted grant is judged as the path it pins.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use sandbx_core::VettedPath;
+use sandbx_core::{SandboxError, VettedPath};
 
 use crate::PolicyError;
 
@@ -214,12 +214,12 @@ pub(super) fn absolute(
         .join(granted))
 }
 
-/// A path [`resolved`] produced, which is the only way to hold one.
+/// A path [`resolved`] produced, or a [`VettedPath`]'s; those are the only ways to hold one.
 ///
 /// Every comparison below needs this form: one symlinked spelling reaches what the other is
 /// refused for, and a relative one resolves against nothing and so reaches no owned path at
-/// all (#205). Not [`VettedPath`], which canonicalizes and so cannot name a path whose leaf
-/// does not exist yet.
+/// all (#205). Not [`VettedPath`] alone, which canonicalizes and so cannot name a path whose
+/// leaf does not exist yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ResolvedPath(PathBuf);
 
@@ -259,31 +259,6 @@ pub(super) fn resolved(path: &Path) -> ResolvedPath {
     ResolvedPath(path.to_path_buf())
 }
 
-/// `granted` as a grant: the object it names now, carried beside the path so the helper can
-/// confirm it opened that one and not whatever was renamed over the name since (#212). `typed`
-/// is the spelling a refusal names. Vetting resolves again, so the two forms are compared:
-/// every path refusal above ran against the first, and a component swapped for a symlink in
-/// between would have the policy hold the second — a path no guard here saw, pinned to the
-/// object at it, so nothing downstream disagrees.
-pub(super) fn pinned(granted: &ResolvedPath, typed: &Path) -> Result<VettedPath, PolicyError> {
-    let granted = granted.path();
-
-    let vetted = VettedPath::vet(granted).map_err(|source| PolicyError::UnpinnableGrant {
-        granted: typed.to_path_buf(),
-        source,
-    })?;
-
-    if vetted.path() != granted {
-        return Err(PolicyError::GrantMovedWhileVetting {
-            granted: typed.to_path_buf(),
-            checked: granted.to_path_buf(),
-            vetted: vetted.path().to_path_buf(),
-        });
-    }
-
-    Ok(vetted)
-}
-
 /// Whether a flag names a file a bounded resolver bind-mounts sandbx's own copy over, which
 /// `SandboxPolicy::grant_bound_by_resolver` refuses the policy for.
 ///
@@ -312,33 +287,31 @@ pub(super) fn reaches_owned<'a>(
     })
 }
 
-/// [`vetted_root`] over this process's own state.
+/// [`vetted_root`] over this process's own state, and the working directory it judged, vetted.
 pub(super) fn current_root(
     granted: &[VettedPath],
     owned: &[OwnedPath],
-) -> Result<ResolvedPath, PolicyError> {
+) -> Result<VettedPath, PolicyError> {
     let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
         detail: "could not read the working directory to derive a policy from",
         source,
     })?;
-    // `getcwd` already resolves; this proves the one thing it doesn't — the directory is
-    // still openable, which `PathFd::new` requires and `FsGuard` does not, covering nothing
-    // under an unopenable root rather than refusing it.
-    let cwd = cwd
-        .canonicalize()
-        .map_err(|source| PolicyError::Unavailable {
-            detail: "could not resolve the working directory to derive a policy from",
-            source,
-        })?;
-
-    // Not redundant with the canonicalize above, which answers openability: `resolved` is the
-    // only producer of the form the comparisons need, and on an already-canonical path it
-    // returns it unchanged at the first ancestor.
-    let cwd = resolved(&cwd);
+    // `getcwd` already resolves; vetting also proves the directory is still openable, which
+    // `PathFd::new` requires and `FsGuard` does not, covering nothing under an unopenable root
+    // rather than refusing it.
+    let cwd = VettedPath::vet(&cwd).map_err(|error| PolicyError::Unavailable {
+        detail: "could not resolve the working directory to derive a policy from",
+        source: match error {
+            SandboxError::GrantUnpinnable { source, .. } => source,
+            other => std::io::Error::other(other),
+        },
+    })?;
 
     let homes = named_homes(std::env::var_os("HOME").as_deref().map(Path::new));
 
-    vetted_root(&cwd, &homes, granted, owned).cloned()
+    vetted_root(&ResolvedPath::from(&cwd), &homes, granted, owned)?;
+
+    Ok(cwd)
 }
 
 #[cfg(test)]
@@ -957,35 +930,6 @@ pub(super) mod tests {
         assert!(
             matches!(error, PolicyError::CwdReachesOwned { .. }),
             "{error} is not the owned-path refusal"
-        );
-    }
-
-    /// A symlinked spelling stands in for a component swapped between the path refusals and
-    /// the pin, that being the one way two resolutions of one name disagree.
-    #[test]
-    fn a_grant_that_moved_under_the_checks_is_refused() {
-        let directory = tempfile::tempdir().expect("a temporary directory");
-        let real = directory
-            .path()
-            .canonicalize()
-            .expect("a resolved directory");
-        let target = real.join("elsewhere");
-        std::fs::create_dir(&target).expect("the directory swapped in");
-
-        // Resolved while the name is still absent, so the walk bottoms out at `real` and
-        // leaves the leaf alone — then swapped, which is the ordering of the real race.
-        let checked = resolved(&real.join("checked"));
-        std::os::unix::fs::symlink(&target, checked.path()).expect("the swap");
-
-        let error = pinned(&checked, Path::new("--as-typed")).expect_err("a moved grant");
-
-        assert!(
-            matches!(error, PolicyError::GrantMovedWhileVetting { .. }),
-            "{error} is not the moved-grant refusal"
-        );
-        assert!(
-            error.to_string().contains("--as-typed"),
-            "{error} does not name the grant as it was typed"
         );
     }
 }
