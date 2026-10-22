@@ -51,7 +51,7 @@ third column.
 | [`resolver.rs`](../../crates/sandbx-core/src/resolver.rs) | the three files a bounded resolver replaces, and their bodies | below |
 | [`concealment.rs`](../../crates/sandbx-core/src/concealment.rs) | `conceal_process_state` — the one step aimed at sandbx itself | below |
 | [`error.rs`](../../crates/sandbx-core/src/error.rs) | `SandboxError`, `Access`, and the label the trail is filtered by | below |
-| [`error/refusal.rs`](../../crates/sandbx-core/src/error/refusal.rs) | `HelperRefusal`, and the one place the two sets are mapped | below |
+| [`error/refusal.rs`](../../crates/sandbx-core/src/error/refusal.rs) | `HelperRefusal`, and `decided_by`: the one place the two sets are mapped and every label is spelled | below |
 | [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs) | a standalone helper binary, so the enforcement path tests end to end | below |
 | `helper/seccomp/tests/` | four unit-test files, plus a `mod.rs` holding the `eval` interpreter they read the filter through and tests of its own | [10](10-seccomp.md) |
 | `helper/ruleset/tests/` | five unit-test files, all kernel-free, over a `mod.rs` that holds only their shared fixtures | [09](09-landlock.md) |
@@ -483,7 +483,8 @@ believes it is sandboxed is never worse off than one that gets an error." No
 `Ok`-ish arm, no severity field. And no `#[non_exhaustive]`, which is what
 "closed" buys: three matches over the enum carry no wildcard arm — `Display`,
 `Error::source` and `decided_by` — so a twenty-fifth variant is three compile
-errors, one per arm it has to write. How it reads to an operator, whether it
+errors, one per arm it has to write, and two more under `cargo test`, from
+`every_variant` and the label test. How it reads to an operator, whether it
 wraps an OS error worth a `source`, and — in one arm — whether a helper stage
 is the only thing that can decide it and what a trail calls it.
 
@@ -528,8 +529,8 @@ filtered by" it. Four consequences stack up.
   indistinguishable to the `reason=` filter that is the trail's whole point.
 - **`HelperRefused` borrows the label of the refusal it relays** rather than
   having one of its own: "a trail filtered by `reason=` cannot tell which side
-  of the channel decided it." Which is why the
-  uniqueness test has to exclude the relay.
+  of the channel decided it." Which is why the uniqueness test has to exclude
+  the relay.
 
 `TimedOut`'s label is `"timeout"`, not `"timed_out"`: "the word the operator
 typed and the docs use, so a trail reader greps for it."
@@ -571,12 +572,13 @@ model inside a `tool_result`.
 
 Private to `error`, exhaustive, and the only place the two sets are related.
 `Decider::Helper` is a helper-decided variant, whose label is its refusal's;
-`Decider::Parent` is one the parent or `FsGuard` decides, with its label. `label` and `refusal` are both
-views of it, so a relayed refusal and the variant it stands for cannot be
-called two different things. The `Parent` variant's own doc says the clause
-that holds for all eleven of its arms — the parent or `FsGuard`, never the
-helper — and five arm comments give six of them their own reason — `HelperRefused` is the relay's own
-output, so reporting it would be a second crossing; `ProcessConcealment` is
+`Decider::Parent` is one that is not a helper's to report, with its label.
+`label` and `refusal` are both views of it, so a relayed refusal and the
+variant it stands for cannot be called two different things. The `Parent`
+variant's own doc says the clause that holds for all eleven of its arms — the
+parent or `FsGuard` decided it, or it is a refusal already relayed — and five
+arm comments give six of them their own reason: `HelperRefused` is the relay's
+own output, so reporting it would be a second crossing; `ProcessConcealment` is
 decided past dispatch, which no helper runs (#192); `GrantUnpinnable` is the
 harness's own vetting; `RootReplaced` is `FsGuard`'s per-access measurement;
 `UnboundedResolution` and `GrantBoundByResolver` are decided off the policy
