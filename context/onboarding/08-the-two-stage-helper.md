@@ -70,7 +70,7 @@ Helper mode is argv, and only argv. Two constants in `command/dispatch.rs`:
 | flag | means | who writes it |
 |---|---|---|
 | `HELPER_FLAG` — `--sandbx-core-exec` | be stage 1: make the namespaces, spawn stage 2 | the harness, in `command_line()` |
-| `HELPER_INNER_FLAG` — `--sandbx-core-exec-inner` | be stage 2: confine this process, become the command | stage 1, in `start_inner_stage` |
+| `HELPER_INNER_FLAG` — `--sandbx-core-exec-inner` | be stage 2: confine this process, start the command and stay its init | stage 1, in `start_inner_stage` |
 
 The flag must be `argv[1]`. `with_helper_dispatch` splits argv after the
 program's own name and matches on the first element only, so a

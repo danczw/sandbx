@@ -98,7 +98,7 @@ pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
     out
 }
 
-/// Render the record a stage that refused rather than becoming the command reports. A
+/// Render the record a stage that refused rather than starting the command reports. A
 /// [`HelperRefusal`](crate::HelperRefusal) and not a string: this writes the label as
 /// given, unlike [`encode`], so a `\t` in one would forge a second record and the type
 /// makes one unrepresentable. No detail — the reason travels on the helper's stderr instead.

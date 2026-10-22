@@ -45,8 +45,9 @@ Three facts about them that the rest of the chapter leans on.
   kernel `SIGKILL`s every process still in the namespace — there is no way to be
   a surviving orphan. And a signal sent to it that it has no handler for is
   discarded rather than applying the default action — including one the init
-  raises at itself, so an init cannot die by a signal, only exit. That is why a
-  command that dies by one reports as `128 + n` through sandbx's init, which
+  raises at itself, so an init cannot kill itself by raising a signal, only exit.
+  `SIGKILL` from outside the namespace still kills it. That is why a command
+  that dies by a signal reports as `128 + n` through sandbx's init, which
   [`SECURITY.md`](../../SECURITY.md) carries as a non-claim.
 - **A namespace is inherited across `fork` and across `exec`.** Nothing about an
   `execve` returns a process to the host's view, which is what makes a namespace
@@ -458,7 +459,7 @@ inheritance: `fork` does copy all five, but `execve` recomputes permitted and
 effective from the table above, so what carries across is bounding,
 inheritable and ambient. With all three empty and no file capabilities on the
 binary, every term in that recomputation is empty — so a process that empties
-them before becoming the command has emptied them *for* the command. The
+them before starting the command has emptied them *for* the command. The
 qualifier is the one `SECURITY.md` already carries: a file capability on the
 `exec`d binary is a term the bounding set is what masks.
 

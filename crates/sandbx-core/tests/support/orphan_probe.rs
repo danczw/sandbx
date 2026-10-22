@@ -1,5 +1,5 @@
 //! Leaves the process group, then `exec`s itself from a second thread, and writes a canary if
-//! still alive two seconds later. Test-only.
+//! still alive four seconds later. Test-only.
 //!
 //! The parent death signal is per thread and a new thread starts with it at 0, so the image
 //! the thread execs carries none — the shape that outlived the call while the command was its
@@ -16,7 +16,7 @@ fn main() -> std::process::ExitCode {
         if std::fs::write(report, format!("STARTED pid={}", std::process::id())).is_err() {
             return std::process::ExitCode::FAILURE;
         }
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(4));
         let _ = std::fs::write(canary, "alive");
         return std::process::ExitCode::SUCCESS;
     }

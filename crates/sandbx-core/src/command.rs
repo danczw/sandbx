@@ -179,9 +179,8 @@ impl SandboxedCommand {
 /// One builder so the start directory cannot be set on the undeadlined path and not the
 /// timed one. Via `spawn::command`, so a secret never enters even this helper, whose
 /// `/proc/<pid>/environ` is readable. Not set in `spawn::command` itself, which the inner
-/// stage also calls to *become* the command: that would `chdir` with the ruleset already
-/// installed, though both stages and the command inherit the directory across the two
-/// `exec`s regardless.
+/// stage also calls to *start* the command: that would `chdir` with the ruleset already
+/// installed, though both stages and the command inherit the directory regardless.
 fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> std::process::Command {
     let mut command = crate::spawn::command(helper, policy);
     command.args(argv);
@@ -221,7 +220,7 @@ fn run_to_completion(
 
 /// A pipe for the helper to report degraded hardening on. The write end becomes the
 /// helper's stdin — the one descriptor std can hand a child without `unsafe`, which this
-/// crate forbids. Stage 2 takes it off fd 0 before becoming the command, so the command
+/// crate forbids. Stage 2 takes it off fd 0 before starting the command, so the command
 /// never holds it (`context/decision-helper-audit-channel.md`).
 fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), SandboxError> {
     std::io::pipe().map_err(|source| SandboxError::SpawnFailed {

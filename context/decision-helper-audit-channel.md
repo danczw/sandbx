@@ -16,8 +16,8 @@ the helper routes into `exec_sandboxed` and never returns. `tracing` drops an ev
 with no subscriber silently and at every level, so the record reached nobody.
 
 The placement is not an oversight — it is load-bearing. Stage 1's stdout and stderr
-are pipes sandbx captures and replays verbatim, and stage 2 inherits them before
-becoming the command. A subscriber in the helper would write sandbx's own audit
+are pipes sandbx captures and replays verbatim, and the command inherits them from
+stage 2. A subscriber in the helper would write sandbx's own audit
 records into the output of the command being sandboxed.
 
 So #89's level change (`debug!` → `AuditEvent` at `INFO`) bought nothing: a record
@@ -138,7 +138,7 @@ attempted, so the same holds for it by position. The alternative — a reserved 
 code — would be forgeable by any command that chose to exit with it.
 
 Fail closed: either step failing is a `ProcessHardening` refusal, not a lost
-record. Becoming the command with a writable channel on fd 0 is worse than any
+record. Starting the command with a writable channel on fd 0 is worse than any
 record it would have bought.
 
 It is pinned by `the_command_cannot_write_the_audit_channel`, and the

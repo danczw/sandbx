@@ -43,7 +43,7 @@ fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 ```
 
 A policy goes in and nothing comes back but a verdict. What `apply` restricts is
-the process that called it — the one about to become the command — so there is
+the process that called it — the one about to start the command — so there is
 nothing to hand back, and nothing left afterwards to take the restrictions off
 with.
 

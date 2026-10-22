@@ -721,7 +721,7 @@ enforcing it is that the translation does not compile when they diverge.
 - Why the helper installs no subscriber, and why that is load-bearing rather
   than an oversight.
 - Why the helper's channel is in the stdin slot specifically, and what stage 2
-  does to it before becoming the command.
+  does to it before starting the command.
 - Which three mechanisms a `degraded` record can name, and why the channel
   carries a label from a closed set rather than a string.
 - Why a too-wide `credentials.toml` makes sandbx refuse rather than `chmod` it
