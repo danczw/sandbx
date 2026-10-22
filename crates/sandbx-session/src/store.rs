@@ -103,8 +103,8 @@ impl SessionStore {
     ///
     /// Refuses a transcript or directory somebody else can write or owns, directory first
     /// since writing it lets a rename replace the transcript regardless of its mode. Mode
-    /// and uid come from the open descriptor, so the file vetted is the file read, and the
-    /// transcript is opened through the root's, so the directory vetted is the one read.
+    /// and uid come from the open descriptor, and the transcript is opened through the
+    /// root's, so the file and directory vetted are the ones read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
         let (name, path) = self.transcript(id);
 
