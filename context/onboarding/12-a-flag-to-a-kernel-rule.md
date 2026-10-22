@@ -79,8 +79,8 @@ run.** Trace the chain in
 | # | function | takes | gives back |
 |---|---|---|---|
 | 1 | `absolute` | the path as typed, plus a `cwd` closure | `Result<PathBuf, PolicyError>` |
-| 2 | `VettedPath::vet` | that absolute path | `Result<VettedPath, SandboxError>`, held past the checks |
-| 3 | `ResolvedPath::from`, else `resolved` | the vetted path, or the absolute one if it names nothing | `ResolvedPath` — no I/O, or total |
+| 2 | `VettedPath::vet` | that absolute path | `Result<VettedPath, SandboxError>`, held |
+| 3 | `ResolvedPath::from`, else `resolved` | the vetted path, else the absolute one | `ResolvedPath` |
 | 4 | `bound_by_resolver` | both spellings | `bool`, noted for later |
 | 5 | `reaches_owned` | a `ResolvedPath`, plus the owned paths | `Option<&OwnedPath>` |
 
@@ -102,8 +102,9 @@ unchanged — which is what lets stages 4 and 5 be plain predicates.
 **And it is one of two ways to hold a `ResolvedPath`**, which is what stage 5
 takes; the other is a `VettedPath`, converted with no I/O. The type is a
 one-field wrapper over a `PathBuf` with a `path()` accessor, no `Deref` and a
-private field, so the two producers in the module are the only roads in. What that buys has its own section below, where the
-requirement it replaced is traced.
+private field, so the two producers in the module are the only roads in. What
+that buys has its own section below, where the requirement it replaced is
+traced.
 
 **`bound_by_resolver` asks whether the flag names a file sandbx's own bounded
 resolver will bind-mount over.** It tests both spellings on purpose: the
@@ -184,10 +185,10 @@ it.
 `grants.rs` was split (#250) into the flag surface and
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), which owns root
 derivation and path vetting; behaviour did not change. What changed is a
-*visibility*. The four `root.rs` functions above are `pub(super)` — visible to `grants.rs`
-and nothing else — while `vetted_root`, `named_homes`, the `Homes` type and the
-`$HOME` predicates are private to `root.rs`, with their tests inline beside
-them.
+*visibility*. The `root.rs` functions above are `pub(super)` — visible to
+`grants.rs` and nothing else — while `vetted_root`, `named_homes`, the `Homes`
+type and the `$HOME` predicates are private to `root.rs`, with their tests
+inline beside them.
 
 That is this repo narrowing a surface rather than widening one, and it is the
 trade [guide-module-layout.md](../guide-module-layout.md) asks for.
