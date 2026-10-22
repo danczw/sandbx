@@ -323,12 +323,12 @@ direction.
 
 ## `sse.rs` — a byte stream becomes frames
 
-[`sse.rs`](../../crates/sandbx-providers/src/sse.rs) is 315 lines, nearly half
+[`sse.rs`](../../crates/sandbx-providers/src/sse.rs) is 297 lines, nearly half
 of them tests, and it is the only code in this crate reading bytes straight off
 the network. Its module doc draws the boundary — it "knows the SSE framing rules
-and nothing about what any particular API puts in `data:`" — and its output is a
-`RawSseEvent`, a `pub(crate)` struct of an optional `event` name and a `data`
-string.
+and nothing about what any particular API puts in `data:`" — and its output is
+each frame's joined `data` string. The `event:` line is dropped, so a second
+provider can reuse the tokenizer only if its payloads name their own type.
 
 `tokenize` is a `futures_util::stream::unfold` over a `TokenizerState` holding
 the source stream, a raw `Vec<u8>` buffer, a `scanned` cursor and a `done` flag.
@@ -402,14 +402,14 @@ The five corners worth knowing before you touch it:
 
 Three more behaviours a caller depends on. A blank line with no pending lines is
 a keep-alive and is skipped, so a heartbeat does not produce a phantom event.
-`id:`, `retry:` and `:`-comment lines are ignored outright — this crate never
+`event:`, `id:`, `retry:` and `:`-comment lines are ignored outright — this crate never
 resumes a stream via `Last-Event-ID` — which means a comment-only frame yields
 an *empty* `data`, something the layer above must tolerate rather than reject.
 And `MAX_EVENT_BYTES`' value, with the OOM-with-no-diagnostic failure it exists
 to prevent, is quoted in [02](02-what-a-harness-is.md).
 
 Tests live in the file's own `mod tests`, thirteen of them, each one chunk
-sequence in and a `Vec<Result<RawSseEvent, _>>` out. They are the cheapest thing
+sequence in and a `Vec<Result<String, _>>` out. They are the cheapest thing
 in the crate to extend and the right place to reproduce any framing bug.
 
 ## `anthropic/wire/accumulate.rs` — one round, rebuilt from deltas
