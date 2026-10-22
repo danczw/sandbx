@@ -36,7 +36,7 @@ pub(super) const DIR_SHARED_BITS: u32 = 0o077;
 
 /// `O_NOFOLLOW`, so the leaf of a path this store vets is never a symbolic link. The
 /// last component only: a symlinked `~/.local/state` is the operator's business.
-const NO_FOLLOW: i32 = nix::fcntl::OFlag::O_NOFOLLOW.bits();
+const NO_FOLLOW: OFlag = OFlag::O_NOFOLLOW;
 
 /// Translate an open failure, naming a link that [`NO_FOLLOW`] refused.
 ///
@@ -59,7 +59,7 @@ pub(super) fn opening(path: &Path, source: std::io::Error) -> SessionError {
 pub(super) fn open_nofollow(path: &Path) -> Result<File, SessionError> {
     OpenOptions::new()
         .read(true)
-        .custom_flags(NO_FOLLOW)
+        .custom_flags(NO_FOLLOW.bits())
         .open(path)
         .map_err(|source| opening(path, source))
 }
@@ -77,7 +77,7 @@ pub(super) fn open_at(
     path: &Path,
     flags: OFlag,
 ) -> Result<File, SessionError> {
-    let flags = flags | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC;
+    let flags = flags | NO_FOLLOW | OFlag::O_CLOEXEC;
     nix::fcntl::openat(directory, name, flags, Mode::from_bits_truncate(OWNER_ONLY))
         .map(File::from)
         .map_err(|errno| opening(path, errno.into()))
@@ -85,15 +85,15 @@ pub(super) fn open_at(
 
 /// The permission bits of an open file, from the descriptor, refusing one another uid owns.
 ///
-/// The effective uid, not the real one: it is what the store creates with, and under a
-/// setuid launch the real uid's files are the caller's, not the store's.
+/// Both uids must own it: the store creates as the effective one, and under a setuid
+/// launch, where they differ, either alone admits files the other owns (#318).
 pub(super) fn ownership(file: &File, path: &Path) -> Result<u32, SessionError> {
     let metadata = file.metadata().map_err(|source| SessionError::Io {
         path: path.to_owned(),
         source,
     })?;
     let uid = metadata.uid();
-    if uid != nix::unistd::geteuid().as_raw() {
+    if uid != nix::unistd::geteuid().as_raw() || uid != nix::unistd::getuid().as_raw() {
         let path = path.to_owned();
         return Err(SessionError::ForeignOwner { path, uid });
     }
