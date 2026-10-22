@@ -75,13 +75,16 @@ pub(super) fn reopen_for_append(path: &Path) -> Result<File, SessionError> {
 }
 
 /// The permission bits of an open file, from the descriptor, refusing one another uid owns.
+///
+/// The effective uid, not the real one: it is what the store creates with, and under a
+/// setuid launch the real uid's files are the caller's, not the store's.
 pub(super) fn ownership(file: &File, path: &Path) -> Result<u32, SessionError> {
     let metadata = file.metadata().map_err(|source| SessionError::Io {
         path: path.to_owned(),
         source,
     })?;
     let uid = metadata.uid();
-    if uid != nix::unistd::getuid().as_raw() {
+    if uid != nix::unistd::geteuid().as_raw() {
         let path = path.to_owned();
         return Err(SessionError::ForeignOwner { path, uid });
     }
