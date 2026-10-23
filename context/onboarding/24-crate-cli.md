@@ -375,7 +375,7 @@ than a type — `Axis::ReadExecute` becomes "run".
   where a grant failing its own identity check produces neither a refusal nor a
   line on stderr. The same condition is a refusal a moment earlier —
   `PolicyError::UnpinnableGrant` exists for it — and
-  [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) is explicit that
+  [decision-policy.md](../decision-policy.md#a-grant-names-an-object-not-a-name) is explicit that
   the vet-to-use window "fails closed" and that "refusing is the right
   outcome". Nothing is *unsafe* here: `FsGuard` measures the matched root per
   access, so the dropped root is unreachable regardless. But the record weighs

@@ -30,7 +30,7 @@ It lives in `Grants`, which both subcommands flatten, so `sandbox-run` and
 `agent-run` cannot disagree about it. It lives in the CLI and nowhere lower:
 `SandboxPolicy::default()` still grants nothing, so an embedder constructing a
 policy inherits no convenience it did not ask for. Same shape as
-`allow_standard_env` in `decision-axis-table.md` — the library ships
+`allow_standard_env` in `decision-policy.md` — the library ships
 the strict thing, the CLI opts in.
 
 ## A path flag suppresses it
@@ -80,7 +80,7 @@ The last arm is the only one reading `owned` — the sessions directory and the
 credential file. A no-flag run from inside the session directory derives write
 over the transcripts a resumed run replays
 ([#173](https://github.com/danczw/sandbx/issues/173)), so one rule covers the
-derived root and what a path flag names. `decision-axis-table.md` holds
+derived root and what a path flag names. `decision-policy.md` holds
 that rule and both of its messages.
 
 Every arm is a refusal and not a narrower default, because both fallbacks are
@@ -97,7 +97,7 @@ Not refusing direct children of `/`. Depth is not sensitivity: `/srv`, `/opt`,
 sandbx is most likely to be deployed. Meanwhile `~/.ssh` is three levels down and
 far worse. Enumerating the genuinely dangerous children (`/etc`, `/root`, `/proc`)
 starts a denylist whose first omission is silent, which is the shape
-`decision-axis-table.md` already rejected for variable names.
+`decision-policy.md` already rejected for variable names.
 
 ### No subdirectory-of-`$HOME` rule
 
@@ -315,7 +315,7 @@ would decide another's verdict.
 
 ## The mutation check
 
-The same check `decision-axis-table.md` does for a table change. Each mutation run
+The same check `decision-policy.md` does for a table change. Each mutation run
 rather than reasoned about:
 
 ```
@@ -411,7 +411,7 @@ and `allow_flags_repeat_to_grant_several_paths` both assert on the whole policy,
 suppression is pinned by tests older than it. And
 `the_default_matches_what_sandbox_run_derives` passes, because both sides of the
 comparison mutate together: that is the derived-expectation trap
-`decision-axis-table.md` names, and it is why it is a cross-subcommand
+`decision-policy.md` names, and it is why it is a cross-subcommand
 consistency test and not the one pinning what the default *is*.
 
 The gap the tests do not close, narrowed by #154 and #162: the derivation is now

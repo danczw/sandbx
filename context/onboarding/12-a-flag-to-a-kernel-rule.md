@@ -116,7 +116,7 @@ egress at all hears the more fundamental thing first.
 **`reaches_owned` is the next place the run can be refused** — `absolute`
 already can, over an unreadable working directory, where this refusal is over
 the grant itself. It is the subject
-of [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) and the
+of [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) and the
 later section of this chapter; for now, note that it answers in `Option` and
 that `Grants::policy` turns `Some` into `PolicyError::GrantReachesOwned` naming
 the path **as typed**, so the operator can go and change the thing they wrote.
@@ -246,7 +246,7 @@ rewrite a tree it cannot read back is a trap rather than a safeguard. Keyed to
 what the axis *confers* rather than to the `Write` variant, and the narrow
 write-only form stays reachable through `SandboxPolicy::allow_write` for an
 embedder who wants a drop directory (#49).
-[decision-axis-table.md](../decision-axis-table.md) records it under "The CLI
+[decision-policy.md](../decision-policy.md) records it under "The CLI
 departs from the table, once".
 
 For our trace, `Axis::Read` confers read alone, so one grant goes in and the
@@ -327,7 +327,7 @@ tokens, and the producer it uses is `VettedPath::from_wire` — crate-private,
 with **no I/O at all**. The helper does not re-resolve and does not re-`stat`;
 it carries the harness's answer forward and checks it later, once, against a
 descriptor. Two producers, one with I/O in the harness and one without in the
-helper, is the shape [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name)
+helper, is the shape [decision-policy.md](../decision-policy.md#a-grant-names-an-object-not-a-name)
 exists to explain.
 
 Stage 1 of the helper decodes the policy for its own purposes — it has to know
@@ -493,7 +493,7 @@ owned.iter().find(|owned| {
 ```
 
 Four properties of this refusal are each deliberate, and
-[decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) argues all
+[decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) argues all
 four.
 
 - **It fires in both subcommands or neither,** on every path axis, since
@@ -537,7 +537,7 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
 
 - **Worth questioning:** the departure at `axis.grants().write` is keyed so that
   "a future write-conferring axis inherits the affordance instead of silently
-  missing it", and [decision-axis-table.md](../decision-axis-table.md) presents
+  missing it", and [decision-policy.md](../decision-policy.md) presents
   that as the safe default. It is the safe default for *forgetting*; it is also
   an automatic widening. Whoever adds a fifth axis that confers write gets a
   read grant from the CLI without ever opening `grants.rs`, which is the
@@ -558,7 +558,7 @@ protects the credential file and the transcripts was held by convention. Both
 callers complied, so there was no defect to fix. What there was, was a third
 caller waiting to be written.
 
-[decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) reasons
+[decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) reasons
 carefully about *which* spelling must reach the comparison — "vetting one
 spelling and granting another is the window this closes" (#205) — and the owned
 side normalises itself inside the function. The caller's side is what

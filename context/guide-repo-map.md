@@ -305,7 +305,7 @@ pass, and reads as reference rather than as a wall once the first is done.
    what
 2. `SECURITY.md` — what is claimed
 3. `guide-sandboxing.md` — how it is enforced
-4. `decision-axis-table.md` — where policy becomes kernel state, why there is one
+4. `decision-policy.md` — where policy becomes kernel state, why there is one
    table, the one bound that is not path-keyed, why a grant is pinned to the
    object the harness vetted, and what happens when a grant covers a path sandbx
    owns

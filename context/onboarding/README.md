@@ -102,7 +102,7 @@ names the chapter that supplies what the record assumes.
 |---|---|
 | [decision-approval-gate.md](../decision-approval-gate.md) | [13](13-turn-loop-and-gate.md) |
 | [decision-audit-records-access.md](../decision-audit-records-access.md) | [14](14-audit-sessions-credentials.md) |
-| [decision-axis-table.md](../decision-axis-table.md) | [09](09-landlock.md), [11](11-the-two-seams.md), [06](06-claims-and-non-claims.md), [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
+| [decision-policy.md](../decision-policy.md) | [09](09-landlock.md), [11](11-the-two-seams.md), [06](06-claims-and-non-claims.md), [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) | [15](15-tools-and-the-screen.md), [19](19-crate-tools.md) |
 | [decision-credentials.md](../decision-credentials.md) | [14](14-audit-sessions-credentials.md) |
 | [decision-default-policy.md](../decision-default-policy.md) | [12](12-a-flag-to-a-kernel-rule.md) |

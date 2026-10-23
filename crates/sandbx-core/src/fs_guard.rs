@@ -68,7 +68,7 @@ impl FsGuard {
     /// (`reaches_plainly`): inside a confirmed root the caller could already enumerate the area,
     /// so "no such file" is honest; anywhere else `deny` answers, present and absent alike. The
     /// root is measured first, before any reason the leaf would name
-    /// (`context/decision-axis-table.md`). `failed` is the component resolution tripped
+    /// (`context/decision-policy.md`). `failed` is the component resolution tripped
     /// on — the parent for a write — and is named only on the granted path, already inside the
     /// roots.
     fn conceal_unless_granted(
@@ -396,7 +396,7 @@ struct Replacement {
 /// on. Lexical, not by nearest resolving ancestor, since a measurement after resolution is
 /// one the substitute chose. Two forms cover what one cannot: `starts_with` compares whole
 /// components, so `root/link/../..` names the root while collapsing out of it, while
-/// `other/../root` matches only once collapsed (`context/decision-axis-table.md`).
+/// `other/../root` matches only once collapsed (`context/decision-policy.md`).
 fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
     let collapsed = collapsed(requested).filter(|form| form != requested);
 
