@@ -2,7 +2,7 @@
 //! Rendering is pure, so every body is assertable without a namespace or a nameserver. The
 //! lookups run in the helper, the only place they can: the harness would have to carry the
 //! addresses across the argv the command reads. `helper::resolver` installs what this
-//! renders; `context/decision-egress-proxy.md` is why a hosts file and not a DNS responder.
+//! renders; `context/decision-port-allowlist.md` is why a hosts file and not a DNS responder.
 
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::Path;

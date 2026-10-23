@@ -67,7 +67,7 @@ through `SandboxedCommand`:
 
 Which file carries which half of that, and why each refusal is a refusal:
 [context/guide-sandboxing.md](context/guide-sandboxing.md) and
-[context/decision-egress-proxy.md](context/decision-egress-proxy.md).
+[context/decision-port-allowlist.md](context/decision-port-allowlist.md).
 
 ### The syscall denylist
 
@@ -345,7 +345,7 @@ architecture the filter gates on.
   `--allow-dns NAME` bounds which *names* resolve, not a destination either: an IP
   literal walks straight past it
   ([#145](https://github.com/danczw/sandbx/issues/145);
-  [context/decision-egress-proxy.md](context/decision-egress-proxy.md) prices each
+  [context/decision-port-allowlist.md](context/decision-port-allowlist.md) prices each
   piece). Blast-radius reduction: it stops a command reaching an SSH port or a
   database, not one exfiltrating over HTTPS.
 

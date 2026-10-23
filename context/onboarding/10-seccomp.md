@@ -653,6 +653,5 @@ because a number was added to `BLOCKED_SYSCALLS`, and
 easiest wrong conclusion to draw from this chapter and the last: the filter and
 the ruleset apply to one of the seven tools. The authorities this pair is an
 on-ramp to are [guide-sandboxing.md](../guide-sandboxing.md) for the subsystem
-as a whole, and [decision-port-allowlist.md](../decision-port-allowlist.md)
-beside [decision-egress-proxy.md](../decision-egress-proxy.md) for the two
-records that price what this filter can and cannot be asked to do.
+as a whole, and [decision-port-allowlist.md](../decision-port-allowlist.md) for
+the record that prices what this filter can and cannot be asked to do.

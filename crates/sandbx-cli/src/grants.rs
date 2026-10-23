@@ -300,7 +300,7 @@ impl Grants {
         }
 
         // Each arm is a shape in which a nameserver stays reachable, and a reachable
-        // nameserver answers for every name — `context/decision-egress-proxy.md`.
+        // nameserver answers for every name — `context/decision-port-allowlist.md`.
         if !self.allow_dns.is_empty() {
             if self.dns_over_tcp {
                 return Err(PolicyError::DnsWithResolverHint);

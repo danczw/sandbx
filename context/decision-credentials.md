@@ -108,7 +108,7 @@ used to carry that sketch; it is not a mechanism.
 Every component of it — the listener the command can reach, the interception that
 catches an uncooperative program, the TLS termination that makes the allowlist
 about names, and the resolver that answers for those names — is priced in
-`decision-egress-proxy.md`, which reaches the same verdict from the destination
+`decision-port-allowlist.md`, which reaches the same verdict from the destination
 side. Substitution leaves with the termination it needs to read a request, and
 the resolver is the one piece that stands without the rest — `--allow-dns NAME`
 (#145).
@@ -337,7 +337,7 @@ Nothing a tool could do before stops working, and no generality was bought eithe
 The refusal removes one flag from one subcommand, and that flag had no legitimate
 use there. What it does not do is answer how a sandboxed tool could be handed a
 credential: a brokered capability needs a channel that does not exist, and a
-placeholder needs a proxy `decision-egress-proxy.md` declines.
+placeholder needs a proxy `decision-port-allowlist.md` declines.
 
 The honest summary is that #41 ends in a decision rather than a mechanism, and in
 one refusal that is enforceable today.

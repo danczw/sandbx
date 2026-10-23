@@ -408,7 +408,7 @@ impl SandboxPolicy {
     /// Let `name` resolve, bounding resolution to the names granted this way; repeat for
     /// several, duplicates collapsing. The first call imposes the bound: the helper renders a
     /// hosts file holding only these names, with no nameserver, so an ungranted name stops
-    /// resolving (resolution, not connection — `context/decision-egress-proxy.md`). A name
+    /// resolving (resolution, not connection — `context/decision-port-allowlist.md`). A name
     /// that is empty, over [`DNS_NAME_LIMIT`] bytes, or carries a NUL, whitespace or `#` is
     /// skipped rather than refused, as in [`allow_env`](Self::allow_env); the last three
     /// would forge a field or a comment in the rendered hosts file.
