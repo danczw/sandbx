@@ -1,6 +1,6 @@
 //! What the sandbox refuses, and the access each refusal names.
 //!
-//! Over the 400-line budget on purpose: it is one `Display` arm per variant, and the
+//! One module on purpose: it is one `Display` arm per variant, and the
 //! list of everything that can refuse a run is only readable in one place.
 
 use std::path::PathBuf;
