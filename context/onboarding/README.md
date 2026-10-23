@@ -93,7 +93,7 @@ dropping modules rather than shortening prose.
 
 ## Every decision record, and where its vocabulary comes from
 
-[`context/`](../) holds eighteen `decision-*.md` files, and they are the hardest
+[`context/`](../) holds seventeen `decision-*.md` files, and they are the hardest
 part of the repo to arrive at cold — each is the record of one choice, written
 for someone who already knows the alternatives it was chosen over. Each row
 names the chapter that supplies what the record assumes.
@@ -111,9 +111,8 @@ names the chapter that supplies what the record assumes.
 | [decision-environment-allowlist.md](../decision-environment-allowlist.md) | [06](06-claims-and-non-claims.md), [05](05-seven-crates.md) |
 | [decision-grant-identity.md](../decision-grant-identity.md) | [09](09-landlock.md) |
 | [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) | [12](12-a-flag-to-a-kernel-rule.md) |
-| [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) | [14](14-audit-sessions-credentials.md) |
+| [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) | [14](14-audit-sessions-credentials.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-on-disk-state.md](../decision-on-disk-state.md) | [14](14-audit-sessions-credentials.md), [22](22-crate-session.md) |
-| [decision-pinned-entry-point.md](../decision-pinned-entry-point.md) | [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-port-allowlist.md](../decision-port-allowlist.md) | [10](10-seccomp.md) |
 | [decision-provider-seam.md](../decision-provider-seam.md) | [02](02-what-a-harness-is.md), [20](20-crate-providers.md) |
 | [decision-round-limit-answer.md](../decision-round-limit-answer.md) | [13](13-turn-loop-and-gate.md) |
