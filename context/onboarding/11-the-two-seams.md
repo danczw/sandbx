@@ -12,7 +12,7 @@ branch of the fork. Six of the seven built-in tools never take it. For those six
 there is no kernel ruleset, no seccomp filter and no namespace, because they
 never spawn a process for any of that to apply to — the boundary is a Rust value
 checking paths in the harness's own address space. The authority for both seams
-is [decision-enforcement-seam.md](../decision-enforcement-seam.md), whose first
+is [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam), whose first
 line is worth keeping in view: *where policy stops being data and becomes
 something the kernel holds*. Across seam 1 it never becomes something the kernel
 holds at all.
@@ -244,7 +244,7 @@ goes through the descriptor rather than the name, which is the one measurement a
 rename cannot step between. A mismatch is the refusal the constant
 `ROOT_REPLACED` names — the in-process twin of the helper's `grant_replaced`,
 decided here because there is no descriptor to hand on and no second process to
-relay it ([decision-grant-identity.md](../decision-grant-identity.md)).
+relay it ([decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name)).
 
 Three details of that measurement are each load-bearing.
 
@@ -372,7 +372,7 @@ nearest-resolving-ancestor rule on its own sees neither.
   comments say to prefer the opening forms, and nothing outside the guard calls
   either — the four opening forms call them internally, and every other call
   site is in `crates/sandbx-core/tests/`.
-  [decision-enforcement-seam.md](../decision-enforcement-seam.md) marks them "no
+  [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) marks them "no
   tool" in its own seam diagram and [`SECURITY.md`](../../SECURITY.md) carries
   them as a non-claim, so the exposure is known; what neither prices is why the
   pair stays public once the four window-closing forms exist. The repo refuses

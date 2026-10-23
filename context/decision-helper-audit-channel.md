@@ -347,7 +347,7 @@ The pin covers the one `execve` sandbx performs, so it applies to one binary —
 program after `--`, already in the argv. `--allow-exec PATH=<sha256>` would name
 that path a second time, and attaching a digest to a repeatable path grant implies
 it pins each of them. One flag taking exactly one value is the
-`--allow-network-port` shape `context/decision-enforcement-seam.md` blesses: no
+`--allow-network-port` shape `context/decision-axis-table.md` blesses: no
 lookahead in `decode`, no new `=`-splitting parse family, and `--allow-env`'s "a
 flag takes a name, never a pair" stays intact. It also removes the dead-pin case —
 with no path to mismatch, a pin cannot silently fail to fire.

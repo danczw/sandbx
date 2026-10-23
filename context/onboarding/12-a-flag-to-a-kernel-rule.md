@@ -116,7 +116,7 @@ egress at all hears the more fundamental thing first.
 **`reaches_owned` is the next place the run can be refused** — `absolute`
 already can, over an unreadable working directory, where this refusal is over
 the grant itself. It is the subject
-of [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) and the
+of [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) and the
 later section of this chapter; for now, note that it answers in `Option` and
 that `Grants::policy` turns `Some` into `PolicyError::GrantReachesOwned` naming
 the path **as typed**, so the operator can go and change the thing they wrote.
@@ -327,7 +327,7 @@ tokens, and the producer it uses is `VettedPath::from_wire` — crate-private,
 with **no I/O at all**. The helper does not re-resolve and does not re-`stat`;
 it carries the harness's answer forward and checks it later, once, against a
 descriptor. Two producers, one with I/O in the harness and one without in the
-helper, is the shape [decision-grant-identity.md](../decision-grant-identity.md)
+helper, is the shape [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name)
 exists to explain.
 
 Stage 1 of the helper decodes the policy for its own purposes — it has to know
@@ -493,7 +493,7 @@ owned.iter().find(|owned| {
 ```
 
 Four properties of this refusal are each deliberate, and
-[decision-harness-owned-paths.md](../decision-harness-owned-paths.md) argues all
+[decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) argues all
 four.
 
 - **It fires in both subcommands or neither,** on every path axis, since
@@ -558,7 +558,7 @@ protects the credential file and the transcripts was held by convention. Both
 callers complied, so there was no defect to fix. What there was, was a third
 caller waiting to be written.
 
-[decision-harness-owned-paths.md](../decision-harness-owned-paths.md) reasons
+[decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) reasons
 carefully about *which* spelling must reach the comparison — "vetting one
 spelling and granting another is the window this closes" (#205) — and the owned
 side normalises itself inside the function. The caller's side is what

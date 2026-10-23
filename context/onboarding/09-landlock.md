@@ -511,7 +511,7 @@ asks whether the name still leads where it led; the stat asks whether the thing
 at the end of it is the same thing. An operator reading `GrantRedirected` has a
 substituted *path* to go and look at. One reading `GrantReplaced` has one name
 and two objects, and no path anywhere will show them the difference.
-[decision-grant-identity.md](../decision-grant-identity.md) keeps the full
+[decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) keeps the full
 refusal table; the four shapes that reach this file are:
 
 | what happened | what notices | refusal |
@@ -580,7 +580,7 @@ existing directory cannot be holding the vetted inode number while the vetted
 object still holds it — so the pin sees that one every time.
 
 - **Worth questioning:** the remedy that needs no pin at all was rejected on a
-  lint. [decision-grant-identity.md](../decision-grant-identity.md) prices
+  lint. [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) prices
   inheriting the harness's own `O_PATH` descriptor through the `exec` — nothing
   to re-resolve helper-side, no third argv token, no comparison to get wrong —
   and declines it because receiving a descriptor needs `from_raw_fd` and passing

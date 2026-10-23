@@ -216,7 +216,7 @@ not a link — is refused as `GrantReplaced` even though it reads back as the na
 was granted. The two checks answer different questions: the readback asks whether
 the name still leads where it led, the pin asks whether the thing at the end of it
 is the same thing. Neither subsumes the other, and only the readback can name both
-paths in its refusal. `decision-grant-identity.md` records why the pin travels with
+paths in its refusal. `decision-axis-table.md` records why the pin travels with
 the grant rather than beside it, and why an unpinned grant is unconstructible rather
 than refused.
 
@@ -472,7 +472,7 @@ inconsistent, which is the reason to grant `PATH` rather than reason about it. T
 CLI calls
 `allow_standard_env()`; library callers either do the same or pass an absolute
 path, as every test in `crates/sandbx-core/tests/` does. Rationale in
-`decision-environment-allowlist.md`.
+`decision-axis-table.md`.
 
 ## What this does NOT protect against
 

@@ -404,7 +404,7 @@ Five facts the one-line body does not show.
   on the grounds that depth is not sensitivity and a list of dangerous
   directories has a silent first omission; and it would break `sandbox-run`,
   where reading `/proc/self/status` is ordinary and the operator chose the
-  command. [decision-harness-owned-paths.md](../decision-harness-owned-paths.md)
+  command. [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns)
   has the argument under "#192 is a different mechanism, not more of this".
 - **The helper does not set it, and could not usefully.**
   `harden_process_state` carries a "does NOT set `PR_SET_DUMPABLE`" paragraph:
@@ -436,7 +436,7 @@ because a pass there would be evidence of nothing.
   way to get a `Command`. Concealment is the opposite shape: a `pub fn` that
   `cli/src/main.rs` happens to call, where omitting it compiles, passes every
   test in the workspace, and silently republishes the key.
-  `decision-harness-owned-paths.md` argues carefully for the *mechanism* and for
+  `decision-axis-table.md` argues carefully for the *mechanism* and for
   *where the call sits* — just after `Cli::parse`, so a refusal exits with the
   subcommand's own code — and does not weigh making the step unskippable. Nor is
   the wiring pinned: `tests/concealment.rs` drives a purpose-built probe, which

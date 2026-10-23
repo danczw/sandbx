@@ -5,7 +5,7 @@ provider call — sandbx authenticating to Anthropic. The second is a credential
 **sandboxed tool** needs: a tool call that legitimately needs a secret — `bash`
 running `gh` — has one option, and it is `--allow-env NAME`, which hands over the
 value in full. That part is why nothing better is offered, and what is offered
-instead. The mechanism that exists is `decision-environment-allowlist.md`; what
+instead. The mechanism that exists is `decision-axis-table.md`; what
 enforces any of it is `guide-sandboxing.md`.
 
 The ordering matters: #41 could not be designed while the environment was shared
@@ -227,7 +227,7 @@ subtractable either: Landlock composes rules by union with no exclusion form, as
 `decision-default-policy.md` records in rejecting a carve-out for the enforcer
 binary. The question both leave open is the same one — what the harness does when
 a grant it was given contains something the harness itself owns — and
-`decision-harness-owned-paths.md` answers it, on both subcommands, under this
+`decision-axis-table.md` answers it, on both subcommands, under this
 rule.
 
 ### By name, and without asking the environment
@@ -246,7 +246,7 @@ is the message anybody can reproduce.
 ### One name the harness owns, not a pattern
 
 A denylist over `*_KEY`, `*_TOKEN`, `*_SECRET` is a *prediction* about naming, and
-`decision-environment-allowlist.md` rejected exactly that shape: wrong on arrival,
+`decision-axis-table.md` rejected exactly that shape: wrong on arrival,
 and silently stops covering the case the first time a non-matching name appears.
 
 This is an *identity*. The refused name is read from `auth::ENV_VAR`, the same
@@ -265,7 +265,7 @@ and `ANTHROPIC_API_KE` all still derive a policy.
 The `--allow-env` route, which is narrower than "the environment" and has to be
 said that way round. Two others reach the same key, neither is a flag this
 refusal reads, and each is closed by a mechanism of its own in
-`decision-harness-owned-paths.md`:
+`decision-axis-table.md`:
 
 - A key written by `sandbx auth login` lives under the config home, so a read
   grant covering it would hand the file to a tool — #184. What closes it is a path
@@ -309,7 +309,7 @@ naming convention identifies it as a credential.
 need not hold the secret. It moves the credential out of the harness while leaving
 it fully exposed to the child, which is the half that matters, and the value would
 cross as argv besides. The flag's shape is the decision, and
-`decision-environment-allowlist.md` is where it was made.
+`decision-axis-table.md` is where it was made.
 
 **A refusal by pattern.** Covered above: a prediction about naming, in a project
 whose allowlist exists because that prediction fails.
