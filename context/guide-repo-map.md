@@ -318,7 +318,8 @@ pass, and reads as reference rather than as a wall once the first is done.
 11. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
     that started it
 12. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
-    recorded, and how one made inside the helper gets out
+    recorded, how one made inside the helper gets out, and why a grant names a
+    path and one flag names bytes instead
 13. `decision-audit-records-access.md` — why a record names the access obtained
     and not the policy's decision
 14. `guide-tools.md`, `guide-turn-loop.md` — the layers above
