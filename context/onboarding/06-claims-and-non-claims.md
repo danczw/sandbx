@@ -427,7 +427,7 @@ sandbx itself owns — a statement about sandbx's own state, not a list.
 A port allowlist is not a destination allowlist: `--allow-network 443` bounds
 egress to port 443 on *every* routable host (#145). Per-host would need a
 userspace proxy terminating every connection, and
-[decision-egress-proxy.md](../decision-egress-proxy.md) prices five pieces of
+[decision-port-allowlist.md](../decision-port-allowlist.md) prices five pieces of
 one and declines four — interception is cooperation, not enforcement. Two
 further sentences make that row smaller than it reads, and they are the worked
 example of this whole chapter:

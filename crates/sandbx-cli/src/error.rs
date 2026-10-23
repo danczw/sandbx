@@ -156,7 +156,7 @@ pub enum PolicyError {
     ///
     /// The five `Dns…` variants are each a shape that leaves a nameserver reachable, which
     /// answers for every name — so the allowlist bounds nothing.
-    /// `context/decision-egress-proxy.md`.
+    /// `context/decision-port-allowlist.md`.
     DnsWithResolverHint,
 
     /// `--allow-dns` was given alongside bare `--allow-network`.

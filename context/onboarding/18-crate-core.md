@@ -361,7 +361,7 @@ to `127.0.0.1:53` — which a port allowlist denies at the socket, UDP included.
 Two libcs, two mechanisms, one bound. `the_resolver_body_names_no_nameserver`
 and `the_nsswitch_body_leaves_no_dns_source` keep it that way, the second by
 looping over every non-comment line rather than checking the header it wrote.
-[decision-egress-proxy.md](../decision-egress-proxy.md) is why this is a hosts
+[decision-port-allowlist.md](../decision-port-allowlist.md) is why this is a hosts
 file rather than a DNS responder of sandbx's own, and it prices the escapes — a
 statically linked binary with its own resolver among them — one at a time.
 
