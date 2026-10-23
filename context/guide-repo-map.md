@@ -308,7 +308,9 @@ pass, and reads as reference rather than as a wall once the first is done.
 4. `decision-enforcement-seam.md` — where policy becomes kernel state
 5. `decision-axis-table.md` — why there is one table
 6. `decision-environment-allowlist.md` — the one bound that is not path-keyed
-7. `decision-port-allowlist.md` — why a TCP port list costs UDP
+7. `decision-port-allowlist.md` — why a TCP port list costs UDP, what bounding
+   egress to a host rather than a port would cost, and why a name allowlist is a
+   hosts file and not a responder
 8. `decision-egress-proxy.md` — what bounding egress to a host rather than a
    port would cost, and why a name allowlist is a hosts file and not a responder
 9. `decision-default-policy.md` — what a no-flag run grants, and the directories
