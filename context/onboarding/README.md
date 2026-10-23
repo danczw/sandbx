@@ -93,7 +93,7 @@ dropping modules rather than shortening prose.
 
 ## Every decision record, and where its vocabulary comes from
 
-[`context/`](../) holds nineteen `decision-*.md` files, and they are the hardest
+[`context/`](../) holds eighteen `decision-*.md` files, and they are the hardest
 part of the repo to arrive at cold — each is the record of one choice, written
 for someone who already knows the alternatives it was chosen over. Each row
 names the chapter that supplies what the record assumes.
@@ -118,7 +118,6 @@ names the chapter that supplies what the record assumes.
 | [decision-provider-seam.md](../decision-provider-seam.md) | [02](02-what-a-harness-is.md), [20](20-crate-providers.md) |
 | [decision-round-limit-answer.md](../decision-round-limit-answer.md) | [13](13-turn-loop-and-gate.md) |
 | [decision-thinking-replay.md](../decision-thinking-replay.md) | [02](02-what-a-harness-is.md) |
-| [decision-tool-credentials.md](../decision-tool-credentials.md) | [14](14-audit-sessions-credentials.md) |
 
 ## Links into the code
 
