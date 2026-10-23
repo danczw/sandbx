@@ -15,7 +15,7 @@ use secrecy::SecretString;
 use crate::AuthError;
 
 /// Checked before the file, and the one name `agent-run` refuses to `--allow-env`
-/// — see `context/decision-tool-credentials.md`.
+/// — see `context/decision-credentials.md`.
 pub(crate) const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 
 /// The credential file, below whichever config home is in play.

@@ -467,7 +467,7 @@ A variable you pass through is passed in full: the allowlist is by *name*, so
 `--allow-env GH_TOKEN` hands over the value the harness holds, verbatim, and
 every process the command spawns inherits it. Sharing a secret without exposing
 its value has no mechanism —
-[decision-tool-credentials.md](../decision-tool-credentials.md). Exactly one
+[decision-credentials.md](../decision-credentials.md). Exactly one
 name is refused rather than passed, and the refusal is narrower than it sounds:
 an agent subcommand refuses `--allow-env ANTHROPIC_API_KEY` because sandbx makes
 the provider call in-process, by the one name it reads as a credential rather

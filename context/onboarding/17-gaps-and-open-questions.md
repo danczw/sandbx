@@ -235,7 +235,7 @@ ordinary outcome and not a rare one.
   perhaps at the direction of text it read out of a file. A read-only derived
   default for `agent-run` would keep one `Grants` and make the asymmetry
   explicit. **Answered, by a record the aside does not cite.**
-  [decision-tool-credentials.md](../decision-tool-credentials.md) sets the rule
+  [decision-credentials.md](../decision-credentials.md) sets the rule
   that the two run subcommands may differ by a *refusal* and never by a policy:
   `agent-run` may return an error where `sandbox-run` succeeds, but it may never
   return a quietly narrower success. A read-only default for one subcommand is

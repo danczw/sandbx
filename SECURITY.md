@@ -385,7 +385,7 @@ architecture the filter gates on.
   No redaction, no partial value, no per-tool scoping, and every process the
   command spawns inherits it — the environment crosses `exec` and nothing narrows
   it again. Sharing a secret without exposing its value has no mechanism — see
-  [context/decision-tool-credentials.md](context/decision-tool-credentials.md).
+  [context/decision-credentials.md](context/decision-credentials.md).
   Exactly one name is refused rather than passed, the next bullet.
 - **An agent subcommand refuses to pass the harness's own provider credential to a
   tool.** `--allow-env ANTHROPIC_API_KEY` is refused before the first request goes

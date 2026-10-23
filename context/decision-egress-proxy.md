@@ -46,7 +46,7 @@ refusal is **enforcement**, a mechanism a program can simply ignore is
 | credential substitution per destination | widening, following termination |
 | a resolver bounding which names resolve | enforcement, of resolution only |
 
-**The listener has no free spelling.** `decision-tool-credentials.md`'s channel
+**The listener has no free spelling.** `decision-credentials.md`'s channel
 table applies to this unchanged, because it is the same question asked for a
 secret instead of a destination: loopback TCP means `--allow-network <port>`,
 which drops `CLONE_NEWNET` (`helper/hardening.rs`'s `isolate`) and puts the
@@ -57,16 +57,16 @@ command's own I/O. A proxy that bounds egress by granting a network the command
 did not previously have refutes itself.
 
 **Interception is cooperation, and sandbx ships the binary that defeats it.**
-`decision-tool-credentials.md` has this in full. Whatever is built, the claim is
+`decision-credentials.md` has this in full. Whatever is built, the claim is
 scoped to cooperating clients or it overstates.
 
 **Termination widens the boundary it is meant to narrow**, the same way and for
 the same reasons as for a credential, which is where
-`decision-tool-credentials.md` settles it.
+`decision-credentials.md` settles it.
 
 Credential substitution needs termination to read the request it substitutes
 into, so it leaves with termination. #41 ends in a refusal rather than a
-mechanism and `decision-tool-credentials.md` is where that was decided; nothing
+mechanism and `decision-credentials.md` is where that was decided; nothing
 here reopens it.
 
 ## SNI without termination reads a value the client chose
@@ -210,7 +210,7 @@ The per-host sentence:
 The first writes plainly and names its own limit in the same breath. The second
 cannot be written without the conditions that empty it. That is the whole
 verdict: the resolver is a mechanism, per-host egress is not, and the test is
-the one `decision-tool-credentials.md` applied to the same proxy from the other
+the one `decision-credentials.md` applied to the same proxy from the other
 side.
 
 The first sentence is now in `SECURITY.md`'s *What sandbx claims to enforce*
@@ -224,7 +224,7 @@ re-derive it.
 name allowlist either.** The type is read as the record of what was granted
 (`policy.rs`), so a field nothing honours tells its next reader that a grant
 is respected. This is the rule that kept #42 to per-port, and it is the same rule
-`decision-tool-credentials.md` states for a credential placeholder, under the
+`decision-credentials.md` states for a credential placeholder, under the
 same heading. An intermediate step, if one is wanted, is a separate opt-in type
 the enforcement path rejects outright — not an unenforced field on the existing
 one.
