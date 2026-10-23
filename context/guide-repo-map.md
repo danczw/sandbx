@@ -328,8 +328,8 @@ pass, and reads as reference rather than as a wall once the first is done.
     vendor's vocabulary stops
 17. `decision-approval-gate.md` — what sits between the model and a tool, and how
     much it claims
-18. `decision-credentials.md` — where a key comes from, and what a sandboxed tool
-    is not given
+18. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
+    handed none, and the one name that is refused
 19. `decision-tool-credentials.md` — why a tool is handed none, and the one name
     that is refused
 20. `decision-on-disk-state.md` — what sandbx writes outside the working
