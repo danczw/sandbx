@@ -313,41 +313,39 @@ pass, and reads as reference rather than as a wall once the first is done.
    port would cost, and why a name allowlist is a hosts file and not a responder
 9. `decision-default-policy.md` — what a no-flag run grants, and the directories
    it refuses instead
-10. `decision-pinned-entry-point.md` — why a grant names a path and one flag
-    names bytes instead
-11. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
+10. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
     that started it
-12. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+11. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
     recorded, how one made inside the helper gets out, and why a grant names a
     path and one flag names bytes instead
-13. `decision-audit-records-access.md` — why a record names the access obtained
+12. `decision-audit-records-access.md` — why a record names the access obtained
     and not the policy's decision
-14. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-15. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
+13. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+14. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
     on its output are different propositions
-16. `decision-provider-seam.md` — why there is no provider trait, and where the
+15. `decision-provider-seam.md` — why there is no provider trait, and where the
     vendor's vocabulary stops
-17. `decision-approval-gate.md` — what sits between the model and a tool, and how
+16. `decision-approval-gate.md` — what sits between the model and a tool, and how
     much it claims
-18. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
+17. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
     handed none, and the one name that is refused
-19. `decision-on-disk-state.md` — what sandbx writes outside the working
+18. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-20. `decision-harness-owned-paths.md` — what happens when a grant covers one of
+19. `decision-harness-owned-paths.md` — what happens when a grant covers one of
     those paths, and how the same hazard through `/proc` is closed instead
-21. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
+20. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
     more, and what that costs
-22. `decision-grant-identity.md` — why a grant is pinned to the object the
+21. `decision-grant-identity.md` — why a grant is pinned to the object the
     harness vetted, and what an unpinned one costs
-23. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+22. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-24. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-25. `guide-naming.md` — how long a name may be, and what to cut first
-26. `guide-code-comments.md` — what a comment may say, and how long
-27. `guide-module-layout.md` — a module's budget, where its tests live, and what
+23. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+24. `guide-naming.md` — how long a name may be, and what to cut first
+25. `guide-code-comments.md` — what a comment may say, and how long
+26. `guide-module-layout.md` — a module's budget, where its tests live, and what
     one must assert
-28. `guide-ci.md` — what runs before a push, and what runs after
-29. `guide-release-notes.md` — which half of a release body is written by hand,
+27. `guide-ci.md` — what runs before a push, and what runs after
+28. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
