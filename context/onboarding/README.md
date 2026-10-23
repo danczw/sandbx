@@ -136,11 +136,9 @@ the month it was written in its first paragraph, and says where a source is
 silent instead of filling the gap.
 
 Two kinds of figure are deliberately absent for the same reason. A chapter never
-quotes a comment-length, module-size or name-length budget — it links
-[guide-code-comments.md](../guide-code-comments.md),
-[guide-module-layout.md](../guide-module-layout.md) and
-[guide-naming.md](../guide-naming.md) and describes what they constrain. And a
-chapter never restates the Landlock ABI floor or the kernel version it needs:
+quotes a style rule's number — it links
+[decision-google-style.md](../decision-google-style.md) and describes what the
+rule constrains. And a chapter never restates the Landlock ABI floor or the kernel version it needs:
 `every_prose_copy_of_the_floor_is_current` pins that figure in seven named
 files, and its own comment says that each further copy is another way for a trim
 to break the build. Both figures live in one place and are read there.

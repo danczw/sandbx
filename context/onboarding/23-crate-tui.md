@@ -36,8 +36,8 @@ src/lib.rs          re-exports four names; no policy, no gate, no session here
 | [`screen.rs`](../../crates/sandbx-tui/src/screen.rs) | `Screen` — the transcript it draws, raw mode, the alternate screen, the `Drop`, the latched failure | here |
 | [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
-Tests are inline, in the file whose private items they touch, as
-[guide-module-layout.md](../guide-module-layout.md) asks: `transcript.rs`,
+Tests sit beside the private items they touch, as
+[decision-google-style.md](../decision-google-style.md) asks — today inline: `transcript.rs`,
 `view.rs` and `input.rs` carry a `mod tests`, there is no
 `crates/sandbx-tui/tests/` directory, and `screen.rs` has none — it is the one
 file that needs a real terminal.

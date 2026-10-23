@@ -575,7 +575,7 @@ consequence of it.
 Unit tests sit in `id.rs`, `paths.rs`, `message.rs` and `store/record.rs`, the
 four modules that are pure functions over values. `store.rs`, `store/vet.rs` and
 `store/shape.rs` have none, needing a real filesystem or the store that drives
-them; [guide-module-layout.md](../guide-module-layout.md) governs the split.
+them; [decision-google-style.md](../decision-google-style.md) governs the split.
 
 | target | what it pins |
 |---|---|

@@ -628,7 +628,7 @@ wire protocol and [13](13-turn-loop-and-gate.md) the round that sends it.
 ## Where the tests are
 
 Ten integration targets and one `#[cfg(test)]` module, which is the ratio
-[guide-module-layout.md](../guide-module-layout.md) asks for: the in-crate
+[decision-google-style.md](../decision-google-style.md) asks for: the in-crate
 module is in `bash.rs` and tests `sandbox_error`, a private function with no
 behaviour observable from outside. Everything that *is* observable is tested
 from outside, through `BuiltinTool::execute`.

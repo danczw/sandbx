@@ -312,7 +312,6 @@ pass, and reads as reference rather than as a wall once the first is done.
 5. `decision-port-allowlist.md` — why a TCP port list costs UDP, what bounding
    egress to a host rather than a port would cost, and why a name allowlist is a
    hosts file and not a responder
-   port would cost, and why a name allowlist is a hosts file and not a responder
 6. `decision-default-policy.md` — what a no-flag run grants, and the directories
    it refuses instead
 7. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
@@ -338,18 +337,16 @@ pass, and reads as reference rather than as a wall once the first is done.
 17. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
 18. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-19. `guide-naming.md` — how long a name may be, and what to cut first
-20. `guide-code-comments.md` — what a comment may say, and how long
-21. `guide-module-layout.md` — a module's budget, where its tests live, and what
-    one must assert
-22. `guide-ci.md` — what runs before a push, and what runs after
-23. `guide-release-notes.md` — which half of a release body is written by hand,
+19. `decision-google-style.md` — the style guide the code follows, where it
+    departs from it, and where a test lives
+20. `guide-ci.md` — what runs before a push, and what runs after
+21. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
 
-One home per fact. `guide-code-comments.md` sends prose out of the code and into
-this directory, and nothing measures a doc's length — so the bound here is
-placement, not size: a fact lives in one doc, and a second mention is a pointer
-to it. The rule above is how a duplicate is resolved once one exists.
+One home per fact. What concerns one crate belongs in its `//!` and what spans
+crates in this directory (`decision-google-style.md`), and nothing measures a
+doc's length — so the bound here is placement, not size: a fact lives in one
+doc, and a second mention is a pointer to it. The rule above is how a duplicate is resolved once one exists.

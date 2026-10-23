@@ -12,9 +12,8 @@ Where to look, and where to put something new:
 | why a design went the way it did | `context/decision-*.md` |
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
 | what runs before a push, and what runs after | `context/guide-ci.md` |
-| what a code comment may say, and how long | `context/guide-code-comments.md` |
-| how long a name may be, and what to cut first | `context/guide-naming.md` |
-| a module's budget, where its tests live, what one must assert | `context/guide-module-layout.md` |
+| how code is written, and where this repo departs from that | `context/decision-google-style.md` |
+| what a test has to assert to assert anything | `context/guide-sandboxing.md` |
 | what is claimed, and what is not | `SECURITY.md` |
 | what was planned and is still missing | an open issue |
 | which crates a change lands in | its `crate:*` labels |
@@ -24,9 +23,18 @@ Where to look, and where to put something new:
 disagree, one of them changes — the claim is weakened, or the mechanism is
 widened to match. Neither is left to drift.
 
+Code follows the [Google Rust style guide](https://google.github.io/styleguide/rustguide.html),
+every rule but those marked *(Chrome)*, except where `decision-google-style.md`
+records otherwise. The migration is in progress (#328): existing code is exempt
+from a rule until the phase that fixes it has landed, and new or changed code
+follows the guide from the start.
+
 There is no roadmap file. Planned-but-missing work goes on an issue, where it can
-be closed; a decision that held goes in a `decision-*.md`. If you are about to
-write "planned" into a doc, file an issue instead.
+be closed. A decision's reason is written down — in the owning crate's `//!` or a
+`decision-*.md` — only when it backs a `SECURITY.md` claim or answers an
+alternative likely to be proposed again; otherwise it stays in its issue or PR,
+which the code may cite by number. If you are about to write "planned" into a
+doc, file an issue instead.
 
 Milestones are releases, one per tag: a closed issue or PR takes the one it
 shipped in, and open work being worked on now takes the next one. None is not a
@@ -64,7 +72,10 @@ diffstat to every invocation.
 
 A review over the wrong lines is not a pass.
 
-The comment pass: read every comment the branch added or touched against
-`context/guide-code-comments.md`, and trim what is over budget. A trim that
-deletes a kernel quirk, an ordering requirement or the origin of an ABI number
-has failed however much shorter it made the file.
+The comment pass: read every comment the branch added or touched against the
+guide's documentation rules — a comment says what the code does not, a public
+item has a `///`, and a function that can panic on bad input says so — and cut
+what fails them. Never cut a kernel quirk, an ordering requirement, the origin
+of an ABI number, or the condition under which a workaround can go: a trim that
+deletes one has failed however much shorter it made the file. A doc comment clap
+or schemars renders is output (`decision-google-style.md`); diff the rendering.

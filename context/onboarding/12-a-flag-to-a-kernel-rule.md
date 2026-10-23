@@ -191,7 +191,7 @@ type and the `$HOME` predicates are private to `root.rs`, with their tests
 inline beside them.
 
 That is this repo narrowing a surface rather than widening one, and it is the
-trade [guide-module-layout.md](../guide-module-layout.md) asks for.
+trade [decision-google-style.md](../decision-google-style.md) asks for.
 [decision-default-policy.md](../decision-default-policy.md) states the
 counterfactual in as many words: making that seam public so an integration test
 could drive the refusals is the trade the guide forbids. A reader coming from a

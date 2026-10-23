@@ -266,11 +266,9 @@ source already spends (#265).
 ## agent.rs and its six submodules, as one pipeline
 
 This is the crate's centre of gravity, and `agent.rs` is frank about its size:
-over the module budget on purpose, "the pieces are already in `gate`, `prompt`,
-`render`, `tui` and `wrapup`, and what is left is the argv surface and the one
-sequence that consumes it". See
-[guide-module-layout.md](../guide-module-layout.md) for what that budget is and
-when an overrun is declared rather than split.
+one module on purpose, "the pieces are already in `gate`, `prompt`, `render`,
+`tui` and `wrapup`, and what is left is the argv surface and the one sequence
+that consumes it".
 
 `sandbx-cli` holds every `run_turn` call site in the workspace outside
 `sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and
@@ -729,8 +727,8 @@ fixture for a hung-up terminal. Twelve integration files, split by surface:
 | `audit_log_held.rs` | the audit trail a held screen releases, end to end: a record on a blocking thread through the real subscriber into `Held`, onto stderr when the guard drops — re-exec'd to read fd 2, since `Held::drop` writes there directly and libtest's capture only intercepts the print macros (#266) |
 | `name.rs` | that the binary's name is not one a POSIX shell resolves before searching `$PATH` — a security test, because such a name "does not fail, it succeeds", so a hand check of the sandbox looks like a working run |
 
-[guide-module-layout.md](../guide-module-layout.md) is the authority on which of
-those a new test belongs in.
+[decision-google-style.md](../decision-google-style.md) is the authority on which
+of those a new test belongs in.
 
 ## You should now be able to explain
 

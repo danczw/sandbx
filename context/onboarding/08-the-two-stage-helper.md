@@ -14,10 +14,9 @@ is cleared by. The code is almost all in
 [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs),
 [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) and
 [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs), and
-`helper/mod.rs` says in its own module doc that it is over the module budget
-([guide-module-layout.md](../guide-module-layout.md)) deliberately, because it
-is one ordered syscall sequence and splitting an order across files is how an
-order gets broken.
+`helper/mod.rs` says in its own module doc that it is one module deliberately,
+because it is one ordered syscall sequence and splitting an order across files
+is how an order gets broken.
 
 ## Why the helper is this binary, and why it is reached by inode
 
