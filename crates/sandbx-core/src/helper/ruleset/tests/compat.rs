@@ -240,7 +240,7 @@ fn every_prose_copy_of_the_floor_is_current() {
             include_str!("../../../../tests/enforcement.rs"),
             both,
         ),
-        // The only two of 29 `context/` files stating the floor: a file that never names it
+        // The only two of 28 `context/` files stating the floor: a file that never names it
         // cannot drift from it, and each one added is another way for a trim to break this build.
         (
             "context/guide-sandboxing.md",
