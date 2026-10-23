@@ -43,7 +43,8 @@ Two things fall out of that pattern that are easy to trip over:
 | `sandbox (x86_64)`, `sandbox (aarch64)` | the enforcement suite on a real kernel, gnu then the published musl triple |
 | `msrv` | the suite still builds at the floor the manifest states |
 | `notes` | the manifest's version has a notes file, and every `v*.md` is within budget |
-| `audit` | cargo-deny, both release-channel tables, and zizmor over the workflows |
+| `api` | nothing — pull requests only, it reports what each library's public API gains or loses against the base |
+| `audit` | cargo-deny, including which workspace crate may depend on which; that every depended-on crate has such a rule; both release-channel tables; and zizmor over the workflows |
 
 `permissions: contents: read` replaces the repo default and
 `persist-credentials: false` drops the clone's token, so a compromised action
@@ -53,6 +54,36 @@ appears without a code change.
 **Branch protection pins job names.** `sandbox (${{ matrix.arch }})` is spelled
 out in a `name:` for that reason: renaming a job blocks every merge on a status
 that will never report.
+
+### Which workspace crate may depend on which
+
+`deny.toml`'s `[[bans.deny]]` entries hold it: each crate another one depends on
+is banned except as a dependency of the crates its `wrappers` lists, and a
+dev-dependency counts. Two traps, both measured with cargo-deny 0.20.2:
+
+- **No entry means no rule.** cargo-deny enforces what it is given and says
+  nothing about a crate it has no entry for, so a new crate would be open to
+  every dependent. `check-crate-bans.sh` fails on any depended-on crate without
+  one; it runs before cargo-deny so an advisory cannot mask it.
+- **An empty `wrappers` is not "nothing may depend on this".** It bans the crate
+  outright, a workspace member included, so a crate nothing may depend on —
+  `sandbx-cli` — takes no entry at all. Adding a dependent to it makes it a
+  depended-on crate, which the script then refuses until it has a rule.
+
+### The public-API report, and the one nightly
+
+`api` exists for #328's rule that every widening of a crate's public API is
+justified in its PR. `cargo-semver-checks` was tried first, because it runs on
+stable, and reports nothing for a widening: an addition is not a breaking
+change. `cargo-public-api` lists the API from rustdoc JSON, which only a nightly
+rustdoc writes, so CI pins one: `nightly-2026-10-20`, with `cargo-public-api`
+0.52.0, which reads that nightly's JSON format. Bump the two together and by
+hand — dependabot tracks neither, and a newer format is refused rather than
+misread. Nothing else in CI uses the nightly; builds and tests stay on stable.
+
+The job never fails on what it finds. It fails when it cannot compare: a base
+revision it cannot check out, a library it cannot document, or no library at
+all.
 
 ### A test-only feature gates a target, not a self dev-dependency
 
@@ -170,6 +201,14 @@ third tag pushed while one is publishing and one is queued cancels the queued ru
 which then has to be re-run by hand. That is the trade taken deliberately: a
 cancelled run is visible and repeatable, and a tag that took the "latest" link
 wrongly cannot be un-pushed.
+
+## Commits blame skips
+
+`.git-blame-ignore-revs` lists commits that only reformat, which GitHub's blame
+view skips by reading the file by name. Locally it takes
+`git config blame.ignoreRevsFile .git-blame-ignore-revs`. Landing on `main`
+rewrites a branch's SHAs, so a sweep is added as it landed, in a follow-up
+commit.
 
 ## Pinned actions, and what updates them
 

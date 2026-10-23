@@ -1,0 +1,5 @@
+# Commits that only reformat, which `git blame` skips. GitHub's blame view reads this
+# file by name; locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# One full SHA per line, each under a comment naming the sweep. Landing on main
+# rewrites a branch's SHAs, so add a sweep as it landed there, in a follow-up commit.

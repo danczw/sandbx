@@ -32,6 +32,37 @@ multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
 
+# Which workspace crate may depend on which: each crate another one depends on is
+# banned except as a dependency of its `wrappers`, dev-dependencies included. A crate
+# with no entry may be depended on by anything, so .github/scripts/check-crate-bans.sh
+# fails on one. A crate nothing may depend on (`sandbx-cli`) takes no entry: an empty
+# `wrappers` bans the crate outright, itself included.
+
+# The only crate allowed to spawn; a new dependent reaches the sandbox's internals.
+[[bans.deny]]
+crate = "sandbx-core"
+wrappers = ["sandbx-tools", "sandbx-agent", "sandbx-cli"]
+
+[[bans.deny]]
+crate = "sandbx-providers"
+wrappers = ["sandbx-agent", "sandbx-tui", "sandbx-cli"]
+
+[[bans.deny]]
+crate = "sandbx-tools"
+wrappers = ["sandbx-agent", "sandbx-cli"]
+
+[[bans.deny]]
+crate = "sandbx-agent"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
+crate = "sandbx-session"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
+crate = "sandbx-tui"
+wrappers = ["sandbx-cli"]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

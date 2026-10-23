@@ -179,6 +179,39 @@ jobs:
           echo "checked $found"
           [ "$found" -gt 0 ] || { echo "::error::no docs/release-notes/v*.md"; exit 1; }
 
+  # Report only: every widening has to be justified in the PR (#328), so it has to
+  # be visible. Not in pre-commit, which has no base to diff against.
+  api:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The base commit has to be in the clone for the script's worktree.
+          fetch-depth: 0
+
+      # The one nightly in CI, for rustdoc JSON only; pinned with cargo-public-api's
+      # version in .github/scripts/public-api-diff.sh, and bumped with it.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly-2026-10-20
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install cargo-public-api
+        run: cargo install --locked cargo-public-api@0.52.0
+
+      # A file, not a pipe into the summary: without `pipefail` a pipeline reports
+      # the last command's status, and a failed diff would read as an empty one.
+      - name: Diff the public API against the base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          .github/scripts/public-api-diff.sh "$BASE_SHA" > public-api.md
+          cat public-api.md
+          cat public-api.md >> "$GITHUB_STEP_SUMMARY"
+
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -188,6 +221,11 @@ jobs:
       # Before cargo-deny, which fails on any new advisory and would mask this.
       - name: Check the release channel table
         run: .github/scripts/release-channel.sh --self-test
+
+      # cargo-deny enforces the `[[bans.deny]]` entries it has and is silent about a
+      # workspace crate it has none for; this fails on that crate.
+      - name: Check every depended-on crate has a dependency rule
+        run: .github/scripts/check-crate-bans.sh
 
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:

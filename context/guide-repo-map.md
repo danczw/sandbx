@@ -43,6 +43,8 @@ sandbx-tui ───────────────────────
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers |
 
+`deny.toml` enforces the last column, `guide-ci.md` says how.
+
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
