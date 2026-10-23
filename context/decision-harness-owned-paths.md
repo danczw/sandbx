@@ -9,7 +9,7 @@ operator granted a tree, and the tree held something that is sandbx's rather tha
 the project's.
 
 The question is not which paths are sensitive. It is what a harness may do about
-a grant it was handed. `decision-tool-credentials.md` left it open on purpose,
+a grant it was handed. `decision-credentials.md` left it open on purpose,
 having established the rule it has to be answered under; this is where it is
 answered, and the answer is two mechanisms rather than one. The two on-disk roots
 are refused. The procfs route is closed by sandbx hiding its own process instead,
@@ -36,7 +36,7 @@ other than the policy. Both are used here, one each.
 
 ## Both subcommands, because a refusal is all it may be
 
-`decision-tool-credentials.md` fixes the rule: **the two subcommands may differ
+`decision-credentials.md` fixes the rule: **the two subcommands may differ
 by a refusal, never by a policy**, and the test of a refusal is that it is
 decidable from argv. `agent-run` can refuse `--allow-env ANTHROPIC_API_KEY`
 one-sidedly because the name is matched against a constant.
@@ -121,7 +121,7 @@ transcript during the run the policy was derived for, so a check against the
 filesystem would answer "nothing there" and then put something there. The same
 run would be refused on its second invocation and not its first.
 
-The second is testability, the reason `decision-tool-credentials.md` gives for
+The second is testability, the reason `decision-credentials.md` gives for
 the by-name refusal: a verdict keyed on what is on disk this minute is a verdict
 no test can pin without building the state it is testing for. The third is that
 the same argv then gets the same answer on every host, so an operator reporting a
@@ -212,8 +212,8 @@ policy difference.
 ## What was rejected
 
 **A warning instead of a refusal.** Printing "this hands over your key" and
-continuing is the fail-open shape `decision-credentials.md` and
-`decision-tool-credentials.md` both reject. The operator who granted the tree by
+continuing is the fail-open shape `decision-credentials.md` rejects twice, for
+the keyring and for a tool's credential. The operator who granted the tree by
 mistake is the one who will not read the line.
 
 **Stripping the owned path out of the grant.** Silently narrowing derives a

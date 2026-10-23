@@ -548,12 +548,12 @@ because it is a compile-time constant. One name is refused outright:
 
 ```rust
 /// Checked before the file, and the one name `agent-run` refuses to `--allow-env`
-/// — see `context/decision-tool-credentials.md`.
+/// — see `context/decision-credentials.md`.
 pub(crate) const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 ```
 
 That refusal is decidable from argv alone, which is why it can exist at all —
-[decision-tool-credentials.md](../decision-tool-credentials.md) establishes the
+[decision-credentials.md](../decision-credentials.md) establishes the
 rule that the two run subcommands may differ by a *refusal*, never by a policy.
 `AgentRun::policy` is the whole of it, and its shape is that rule:
 

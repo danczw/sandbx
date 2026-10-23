@@ -49,7 +49,7 @@ the `exec` overwrites. A value on the wire would therefore be handed to exactly 
 process the allowlist exists to keep it from. (This is also why the CLI flag is
 `--allow-env NAME` and not `NAME=VALUE` — the latter is #41's problem, and solving
 it this way would solve it wrongly. The one name `agent-run` refuses outright is
-in `decision-tool-credentials.md`.)
+in `decision-credentials.md`.)
 
 Second, a name is a stable thing to audit; a value is not. The audit record counts
 the allowlist (`env=7`) rather than listing it, on the same basis: a name is not a
