@@ -157,7 +157,7 @@ sandbx ──argv──► helper stage 1 (supervisor) ──argv verbatim──
 
 | | |
 |---|---|
-| Shape | `HelperArgs { policy, program, args, pin }`, `encode` / `decode`. `pin` rides beside the policy and not inside it, for the reason `context/decision-pinned-entry-point.md` gives |
+| Shape | `HelperArgs { policy, program, args, pin }`, `encode` / `decode`. `pin` rides beside the policy and not inside it, for the reason `context/decision-helper-audit-channel.md` gives |
 | Path flags | `--ro` / `--rw` / `--rx`, from the single `path_flag(axis)` match |
 | Other flags | `--allow-network`, `--allow-network-port N` (repeatable), `--allow-unix-sockets`, `--env NAME` (repeatable), `--dns-over-tcp`, `--pin-sha256 HEX` (at most once), `--` separator |
 | Wire ≠ CLI | the two spellings diverge where they must. `--allow-network-port` takes exactly one value, where the CLI's `--allow-network` takes an optional one: `decode` walks argv a token at a time and must refuse anything unrecognised, so an optional value would put a "does this look like a port?" lookahead in the decoder that gates enforcement. Same reason `--env NAME` is not spelled `--allow-env` here. `--dns-over-tcp` *is* the CLI spelling, and may be: it takes no value, so there is no lookahead to get wrong — and so is `--pin-sha256`, whose one value is mandatory on both sides |

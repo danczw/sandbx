@@ -67,7 +67,7 @@ impl Sha256Digest {
 /// handle and not the path is what gets exec'd, so nothing resolves a second time for a
 /// swap to land in. Keep it alive until after the `exec` — closing it un-names [`fd_path`].
 /// Follows symlinks, unlike `fs_guard`'s `open`, since `execve` follows them too
-/// (`context/decision-pinned-entry-point.md`).
+/// (`context/decision-helper-audit-channel.md`).
 pub(crate) fn open_verified(
     program: &str,
     expected: Sha256Digest,

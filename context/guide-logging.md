@@ -43,7 +43,7 @@ through an exhaustive `match` on `Axis::ALL`, so a new axis fails to compile
 rather than going silently uncounted (#51).
 
 `Spawned.pinned` is the one field not derived from the policy, a digest not being
-policy (`decision-pinned-entry-point.md`), so `spawned` takes it as a parameter.
+policy (`decision-helper-audit-channel.md`), so `spawned` takes it as a parameter.
 It is there because a matching pin is otherwise invisible: the run proceeds as any
 unpinned run does, and a trail that omitted the boolean could not tell an
 `--pin-sha256` run from one that named no digest at all. The boolean and not the
@@ -118,7 +118,7 @@ a reason the error type does not define.
 - `pinned_script` — a `#!` script cannot be pinned. The kernel hands the
   interpreter the path of the descriptor sandbx hashed and exec'd, and the
   interpreter opens it again, by then closed
-  (`decision-pinned-entry-point.md`).
+  (`decision-helper-audit-channel.md`).
 - `process_hardening` — this process is not in the state a sandboxed command may
   be born into: capabilities not dropped, core dumps not disabled, or an
   environment an earlier stage should have narrowed. One label and not three,

@@ -590,7 +590,7 @@ One flag on `sandbox-run` goes through none of the five stages above.
 and then it stops: no `Axis`, no `VettedPath`, no `PathBeneath`, nothing the
 kernel is ever told. The ruleset a pinned run installs is byte-for-byte the one
 an unpinned run installs.
-[decision-pinned-entry-point.md](../decision-pinned-entry-point.md) is the
+[decision-helper-audit-channel.md](../decision-helper-audit-channel.md#the-pinned-entry-point) is the
 authority, and its opening move is the one to carry away: `SandboxPolicy` says
 what a confined process may *do*, and both enforcement layers derive from
 `Axis::grants`, so a digest made into an axis row would have to answer what it
@@ -768,7 +768,7 @@ what an auditor cannot recover is that it was checked.
 
 - **Worth questioning:** the script refusal is two bytes wide and the hazard is
   not. `starts_with_shebang` tests for `#!` because that is the format
-  [decision-pinned-entry-point.md](../decision-pinned-entry-point.md) reasons
+  [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) reasons
   about, and the refusal's own message states the correct general rule — pin an
   ELF binary — but only a `#!` image ever reaches it. Any other format the
   kernel routes to an interpreter has the same shape of problem: `binfmt_misc`
