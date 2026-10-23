@@ -239,7 +239,7 @@ cannot follow a pointer, and Landlock is about paths. So the only way to
 withhold a variable from a child is to never put it there, which means the
 narrowing has to happen at construction time, in whatever builds the `Command`.
 One builder can be made to narrow. Five hand-written clears cannot be made to,
-and [decision-environment-allowlist.md](../decision-environment-allowlist.md)
+and [decision-axis-table.md](../decision-axis-table.md#the-environment-allowlist)
 records what happened when there were four: each of the four was individually
 unfalsifiable, because the sites masked one another — delete any single clear
 and a later one covered for it, leaving the command's `environ` byte-identical
@@ -252,7 +252,7 @@ That is the invariant. The method list that holds it is the whole of
 ```toml
 # A direct spawn bypasses every Landlock/seccomp restriction sandbx applies, and
 # the one exempt factory, `sandbx-core::spawn::command`, narrows the environment as
-# it builds the `Command`; see `context/decision-environment-allowlist.md`.
+# it builds the `Command`; see `context/decision-axis-table.md`.
 disallowed-methods = [
     { path = "std::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
     # Inert until something enables tokio's "process" feature: the path resolves
@@ -300,7 +300,7 @@ Three mechanisms hold the invariant, and they are different in kind.
 
 - **The lint, so a new spawn site does not survive a commit.** `deny` plus the
   list above means the only way to build a `Command` anywhere in the workspace
-  is the way that narrows. `decision-environment-allowlist.md` records that this
+  is the way that narrows. `decision-axis-table.md` records that this
   was checked rather than assumed — a bare `Command::new` was added elsewhere
   and the lint refused it.
 
@@ -318,7 +318,7 @@ Three mechanisms hold the invariant, and they are different in kind.
   that every `Command` came from the factory. It cannot prove the factory
   narrows anything. That half is pinned by `sandbx-core`'s enforcement suite,
   which runs a real command and reads its environment back.
-  `decision-environment-allowlist.md` records the gain in those terms: where
+  `decision-axis-table.md` records the gain in those terms: where
   there were four hand-written obligations none of which could be falsified,
   there is now one line to delete, and deleting it fails 24 enforcement tests.
 

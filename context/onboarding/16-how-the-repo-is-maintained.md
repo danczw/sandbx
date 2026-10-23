@@ -391,7 +391,7 @@ That last line is a whole lesson. `the_default_matches_what_sandbox_run_derives`
 survives the mutation because both sides of its comparison mutate together — it
 reads its expectation off the thing under test. `decision-default-policy.md`
 identifies it as the derived-expectation trap that
-`decision-enforcement-seam.md` names, and draws the right conclusion rather
+`decision-axis-table.md` names, and draws the right conclusion rather
 than deleting the test: it is a cross-subcommand *consistency* test, and not the
 one pinning what the default is. The same table shows the opposite result too —
 dropping the guard breaks tests in two suites that never mention the default,

@@ -102,14 +102,10 @@ names the chapter that supplies what the record assumes.
 |---|---|
 | [decision-approval-gate.md](../decision-approval-gate.md) | [13](13-turn-loop-and-gate.md) |
 | [decision-audit-records-access.md](../decision-audit-records-access.md) | [14](14-audit-sessions-credentials.md) |
-| [decision-axis-table.md](../decision-axis-table.md) | [09](09-landlock.md) |
+| [decision-axis-table.md](../decision-axis-table.md) | [09](09-landlock.md), [11](11-the-two-seams.md), [06](06-claims-and-non-claims.md), [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) | [15](15-tools-and-the-screen.md), [19](19-crate-tools.md) |
 | [decision-credentials.md](../decision-credentials.md) | [14](14-audit-sessions-credentials.md) |
 | [decision-default-policy.md](../decision-default-policy.md) | [12](12-a-flag-to-a-kernel-rule.md) |
-| [decision-enforcement-seam.md](../decision-enforcement-seam.md) | [11](11-the-two-seams.md) |
-| [decision-environment-allowlist.md](../decision-environment-allowlist.md) | [06](06-claims-and-non-claims.md), [05](05-seven-crates.md) |
-| [decision-grant-identity.md](../decision-grant-identity.md) | [09](09-landlock.md) |
-| [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) | [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) | [14](14-audit-sessions-credentials.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-on-disk-state.md](../decision-on-disk-state.md) | [14](14-audit-sessions-credentials.md), [22](22-crate-session.md) |
 | [decision-port-allowlist.md](../decision-port-allowlist.md) | [10](10-seccomp.md) |

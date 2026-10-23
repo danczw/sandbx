@@ -98,7 +98,7 @@ policy grammar on purpose:
   decodes it for its own use and then passes the original tokens **verbatim** to
   stage 2 — "a re-encode would be a second chance for the policy to drift on its
   way to the stage that enforces it".
-  [decision-enforcement-seam.md](../decision-enforcement-seam.md) has the table,
+  [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) has the table,
   and the line worth carrying away: on this seam, which side is trusted —
   neither.
 
@@ -327,7 +327,7 @@ chapter owns is its position in the sequence.
   this is a privilege escalation, and it contradicts no claim: `SECURITY.md`
   scopes every claim to a command run through `SandboxedCommand`, and anyone
   able to choose sandbx's argv could run the command directly instead. The
-  objection is about the public surface. `decision-enforcement-seam.md` is the
+  objection is about the public surface. `decision-axis-table.md` is the
   record to argue with — it reasons about the argv seam on the premise that
   *neither side is trusted* and that the helper can only ever narrow, and a
   stage reachable on its own narrows less than the two stages together while

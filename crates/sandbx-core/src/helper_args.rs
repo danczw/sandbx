@@ -10,7 +10,7 @@ const FLAG_NET: &str = "--allow-network";
 /// Introduces one allowlisted TCP port, and takes exactly one value. Its own flag rather
 /// than an optional value on [`FLAG_NET`] the way the CLI spells it, which would make
 /// `decode`'s refusal of an unrecognised token a guess at whether the token looks like a
-/// port (`context/decision-enforcement-seam.md`).
+/// port (`context/decision-axis-table.md`).
 const FLAG_NET_PORT: &str = "--allow-network-port";
 const FLAG_UNIX: &str = "--allow-unix-sockets";
 /// Introduces the name of a variable the command may inherit. Never a value.
@@ -28,7 +28,7 @@ const SEPARATOR: &str = "--";
 
 /// The flag that introduces a path granted on `axis`. Takes two values, the path and then
 /// the `<dev>:<ino>` the harness vetted it as. Mandatory and not optional: "is this token a
-/// pin or the next flag?" is the lookahead `context/decision-enforcement-seam.md` rejects,
+/// pin or the next flag?" is the lookahead `context/decision-axis-table.md` rejects,
 /// and an unpinned grant is a case the helper has no answer for. It discloses nothing — a
 /// confined command can `stat` any path it can name, Landlock having no right that covers
 /// metadata. Here rather than on [`Axis`], the policy type having no business knowing how
@@ -202,7 +202,7 @@ impl HelperArgs {
                     let path = next_arg(&mut rest, "path flag with no path after it")?;
                     // Refused and not inferred: a grant the helper cannot confirm against the
                     // object the harness vetted is one this decoder has no answer for
-                    // (`context/decision-grant-identity.md`).
+                    // (`context/decision-axis-table.md`).
                     let pin = next_arg(&mut rest, "granted path with no object pin after it")?;
                     let object = ObjectId::parse(pin).ok_or(SandboxError::BadHelperArgs {
                         detail: "object pin that is not a device and an inode parted by `:`",
