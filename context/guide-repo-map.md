@@ -330,25 +330,23 @@ pass, and reads as reference rather than as a wall once the first is done.
     much it claims
 18. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
     handed none, and the one name that is refused
-19. `decision-tool-credentials.md` — why a tool is handed none, and the one name
-    that is refused
-20. `decision-on-disk-state.md` — what sandbx writes outside the working
+19. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-21. `decision-harness-owned-paths.md` — what happens when a grant covers one of
+20. `decision-harness-owned-paths.md` — what happens when a grant covers one of
     those paths, and how the same hazard through `/proc` is closed instead
-22. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
+21. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
     more, and what that costs
-23. `decision-grant-identity.md` — why a grant is pinned to the object the
+22. `decision-grant-identity.md` — why a grant is pinned to the object the
     harness vetted, and what an unpinned one costs
-24. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+23. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-25. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-26. `guide-naming.md` — how long a name may be, and what to cut first
-27. `guide-code-comments.md` — what a comment may say, and how long
-28. `guide-module-layout.md` — a module's budget, where its tests live, and what
+24. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+25. `guide-naming.md` — how long a name may be, and what to cut first
+26. `guide-code-comments.md` — what a comment may say, and how long
+27. `guide-module-layout.md` — a module's budget, where its tests live, and what
     one must assert
-29. `guide-ci.md` — what runs before a push, and what runs after
-30. `guide-release-notes.md` — which half of a release body is written by hand,
+28. `guide-ci.md` — what runs before a push, and what runs after
+29. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
