@@ -93,7 +93,7 @@ dropping modules rather than shortening prose.
 
 ## Every decision record, and where its vocabulary comes from
 
-[`context/`](../) holds seventeen `decision-*.md` files, and they are the hardest
+[`context/`](../) holds sixteen `decision-*.md` files, and they are the hardest
 part of the repo to arrive at cold — each is the record of one choice, written
 for someone who already knows the alternatives it was chosen over. Each row
 names the chapter that supplies what the record assumes.
@@ -106,7 +106,6 @@ names the chapter that supplies what the record assumes.
 | [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) | [15](15-tools-and-the-screen.md), [19](19-crate-tools.md) |
 | [decision-credentials.md](../decision-credentials.md) | [14](14-audit-sessions-credentials.md) |
 | [decision-default-policy.md](../decision-default-policy.md) | [12](12-a-flag-to-a-kernel-rule.md) |
-| [decision-egress-proxy.md](../decision-egress-proxy.md) | [10](10-seccomp.md) |
 | [decision-enforcement-seam.md](../decision-enforcement-seam.md) | [11](11-the-two-seams.md) |
 | [decision-environment-allowlist.md](../decision-environment-allowlist.md) | [06](06-claims-and-non-claims.md), [05](05-seven-crates.md) |
 | [decision-grant-identity.md](../decision-grant-identity.md) | [09](09-landlock.md) |

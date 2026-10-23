@@ -311,43 +311,42 @@ pass, and reads as reference rather than as a wall once the first is done.
 7. `decision-port-allowlist.md` — why a TCP port list costs UDP, what bounding
    egress to a host rather than a port would cost, and why a name allowlist is a
    hosts file and not a responder
-8. `decision-egress-proxy.md` — what bounding egress to a host rather than a
    port would cost, and why a name allowlist is a hosts file and not a responder
-9. `decision-default-policy.md` — what a no-flag run grants, and the directories
+8. `decision-default-policy.md` — what a no-flag run grants, and the directories
    it refuses instead
-10. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
-    that started it
-11. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+9. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
+   that started it
+10. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
     recorded, how one made inside the helper gets out, and why a grant names a
     path and one flag names bytes instead
-12. `decision-audit-records-access.md` — why a record names the access obtained
+11. `decision-audit-records-access.md` — why a record names the access obtained
     and not the policy's decision
-13. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-14. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
+12. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+13. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
     on its output are different propositions
-15. `decision-provider-seam.md` — why there is no provider trait, and where the
+14. `decision-provider-seam.md` — why there is no provider trait, and where the
     vendor's vocabulary stops
-16. `decision-approval-gate.md` — what sits between the model and a tool, and how
+15. `decision-approval-gate.md` — what sits between the model and a tool, and how
     much it claims
-17. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
+16. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
     handed none, and the one name that is refused
-18. `decision-on-disk-state.md` — what sandbx writes outside the working
+17. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-19. `decision-harness-owned-paths.md` — what happens when a grant covers one of
+18. `decision-harness-owned-paths.md` — what happens when a grant covers one of
     those paths, and how the same hazard through `/proc` is closed instead
-20. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
+19. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
     more, and what that costs
-21. `decision-grant-identity.md` — why a grant is pinned to the object the
+20. `decision-grant-identity.md` — why a grant is pinned to the object the
     harness vetted, and what an unpinned one costs
-22. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+21. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-23. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-24. `guide-naming.md` — how long a name may be, and what to cut first
-25. `guide-code-comments.md` — what a comment may say, and how long
-26. `guide-module-layout.md` — a module's budget, where its tests live, and what
+22. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+23. `guide-naming.md` — how long a name may be, and what to cut first
+24. `guide-code-comments.md` — what a comment may say, and how long
+25. `guide-module-layout.md` — a module's budget, where its tests live, and what
     one must assert
-27. `guide-ci.md` — what runs before a push, and what runs after
-28. `guide-release-notes.md` — which half of a release body is written by hand,
+26. `guide-ci.md` — what runs before a push, and what runs after
+27. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
