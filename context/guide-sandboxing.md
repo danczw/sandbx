@@ -31,7 +31,7 @@ write confers neither.
 `--pin-sha256` is deliberately not a row. It grants nothing and neither layer
 derives anything from it — it narrows which bytes one `execve` may run, checked in
 `digest.rs` against a descriptor rather than by the kernel. Why, in
-`context/decision-pinned-entry-point.md`.
+`context/decision-helper-audit-channel.md`.
 
 **Which layer sees which tool:**
 

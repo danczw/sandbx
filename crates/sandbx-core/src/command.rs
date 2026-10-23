@@ -90,7 +90,7 @@ impl SandboxedCommand {
     /// Refuse to run `program` unless its bytes hash to `digest`; unpinned by default. Covers
     /// the one `execve` sandbx performs and nothing the command then spawns itself, and
     /// requires an absolute `program`: the helper opens the file to hash it, so it resolves
-    /// the name instead of libc (`context/decision-pinned-entry-point.md`).
+    /// the name instead of libc (`context/decision-helper-audit-channel.md`).
     #[must_use]
     pub fn pin_sha256(mut self, digest: Sha256Digest) -> Self {
         self.pin = Some(digest);

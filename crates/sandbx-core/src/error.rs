@@ -215,7 +215,7 @@ pub enum SandboxError {
 
     /// A pinned program is a `#!` script, which the pin cannot cover. The kernel hands the
     /// interpreter the path sandbx exec'd — the hashed descriptor — and the interpreter
-    /// opens it again, by then closed. See `context/decision-pinned-entry-point.md`.
+    /// opens it again, by then closed. See `context/decision-helper-audit-channel.md`.
     PinnedScript {
         /// The program as the caller named it.
         program: String,

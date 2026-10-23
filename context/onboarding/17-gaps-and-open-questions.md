@@ -28,7 +28,7 @@ has to show the record it read.
 |---|---|---|
 | `FsGuard` measures a root and then performs the access beneath it | #230 — the window, and the `openat2(dirfd, …, RESOLVE_BENEATH)` shape that closes it | [`SECURITY.md`](../../SECURITY.md) |
 | approval is per tool per run, not per call, by default | #165 — the scope of an approval, and the twenty-prompt turn a per-call default would cost | [`SECURITY.md`](../../SECURITY.md), [decision-approval-gate.md](../decision-approval-gate.md) |
-| a pin covers the entry point, not what it goes on to run | #146 — what a digest over one image does and does not fix | [`SECURITY.md`](../../SECURITY.md), [decision-pinned-entry-point.md](../decision-pinned-entry-point.md) |
+| a pin covers the entry point, not what it goes on to run | #146 — what a digest over one image does and does not fix | [`SECURITY.md`](../../SECURITY.md), [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) |
 | a stored credential is protected from other users, not from the agent | #184 — the config-directory route to the key, and the refusal that closes it | [`SECURITY.md`](../../SECURITY.md), [decision-harness-owned-paths.md](../decision-harness-owned-paths.md) |
 | a turn stopped under `tui` persists no session record | #271 — what a stopped turn loses by either road, and what a resume would do with a partial one | [`SECURITY.md`](../../SECURITY.md) |
 | a running tool call cannot be interrupted | #26 — cancellation, against a blocking task that runs to completion once spawned | [`SECURITY.md`](../../SECURITY.md), [guide-turn-loop.md](../guide-turn-loop.md), [guide-tools.md](../guide-tools.md), [guide-tui.md](../guide-tui.md) |
@@ -421,7 +421,7 @@ ordinary outcome and not a rare one.
   the kernel routes to an interpreter reaches the exec and gets the bare
   `cannot open /proc/self/fd/N` that the refusal exists to replace. **Partly
   answered.**
-  [decision-pinned-entry-point.md](../decision-pinned-entry-point.md)
+  [decision-helper-audit-channel.md](../decision-helper-audit-channel.md)
   reasons about the `#!` case, and the refusal's own message already states the
   correct general rule — pin an ELF binary — so the rule is right and only its
   test is narrow. Testing for the ELF magic instead would refuse the whole
