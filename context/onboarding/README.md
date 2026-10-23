@@ -93,7 +93,7 @@ dropping modules rather than shortening prose.
 
 ## Every decision record, and where its vocabulary comes from
 
-[`context/`](../) holds sixteen `decision-*.md` files, and they are the hardest
+[`context/`](../) holds twelve `decision-*.md` files, and they are the hardest
 part of the repo to arrive at cold — each is the record of one choice, written
 for someone who already knows the alternatives it was chosen over. Each row
 names the chapter that supplies what the record assumes.

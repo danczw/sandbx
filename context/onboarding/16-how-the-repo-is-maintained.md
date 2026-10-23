@@ -367,9 +367,9 @@ dropped before the assertion read it, a comparison that fell through — every o
 of those denies everything, and a suite of denial tests stays green through all
 of them.
 
-So five `decision-*.md` files carry a `## The mutation check` section, of which
-[decision-axis-table.md](../decision-axis-table.md) and
-[decision-default-policy.md](../decision-default-policy.md) are the clearest: a
+So three `decision-*.md` files carry five `The mutation check` sections between
+them, of which the axis table's in [decision-axis-table.md](../decision-axis-table.md)
+and [decision-default-policy.md](../decision-default-policy.md)'s are the clearest: a
 list of single-line mutations to the code,
 each one applied and the suite run, with the tests that failed recorded
 underneath. The axis table's framing is the clearest statement of the point —
