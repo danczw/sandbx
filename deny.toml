@@ -32,6 +32,40 @@ multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
 
+# Which workspace crate may depend on which (#329). `wrappers` reads the whole
+# dependency graph, so a path dependency counts: adding an edge that is not listed
+# here fails `bans` with the unmatched parent named. Dev-dependencies are edges too.
+#
+# `sandbx-cli` is deliberately absent. Nothing depends on it, and an entry with an
+# empty `wrappers` bans a crate outright rather than permitting nothing — so the rule
+# "nothing may depend on `sandbx-cli`" is unexpressed, and a first dependency on it
+# would pass. Every other crate is listed, including the leaves, or omission reads as
+# permission.
+[[bans.deny]]
+name = "sandbx-core"
+# `sandbx-agent`'s edge is a dev-dependency: `sandbx-core` is not in its build.
+wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-tools"]
+
+[[bans.deny]]
+name = "sandbx-providers"
+wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-tui"]
+
+[[bans.deny]]
+name = "sandbx-tools"
+wrappers = ["sandbx-agent", "sandbx-cli"]
+
+[[bans.deny]]
+name = "sandbx-agent"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
+name = "sandbx-session"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
+name = "sandbx-tui"
+wrappers = ["sandbx-cli"]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
