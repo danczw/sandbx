@@ -102,6 +102,14 @@ gh release edit <tag> --notes-file notes.md
 Within the same budget still. A verification note that pushes the prose over it
 is a sign it belongs on an issue.
 
+**It belongs to the cut in progress, not to a backlog.** The note closes the gap
+between `publish` and the first download, so it is written while that tag is the
+one `SECURITY.md` supports — the latest pre-release. A superseded tag is not swept
+later: the reader who lands there has nothing to act on but the upgrade, and a
+note dated long after the tag reads as a release-time check that never happened.
+One written late anyway carries its date and says it was after the fact, as
+`v0.1.0-alpha.15`'s does.
+
 ## Two things that are not release notes
 
 - **A migration guide.** If upgrading needs more than a sentence or two, the
