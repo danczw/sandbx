@@ -52,7 +52,8 @@ Two things fall out of that pattern that are easy to trip over:
 | `sandbox (x86_64)`, `sandbox (aarch64)` | the enforcement suite on a real kernel, gnu then the published musl triple |
 | `msrv` | the suite still builds at the floor the manifest states |
 | `notes` | the manifest's version has a notes file, and every `v*.md` is within budget |
-| `audit` | cargo-deny, both release-channel tables, and zizmor over the workflows |
+| `api-diff` | every widening of a crate's public surface has a line in its committed baseline |
+| `audit` | cargo-deny — advisories, licences, and which workspace crate may depend on which — both release-channel tables, and zizmor over the workflows |
 
 `permissions: contents: read` replaces the repo default and
 `persist-credentials: false` drops the clone's token, so a compromised action
@@ -96,6 +97,29 @@ versions, so an unlocked run resolves around a broken lockfile and passes.
 `docs/release-notes/v*.md` that found no file would otherwise exit 0, and a
 green gate that checked nothing is worse than a red one. Any check that iterates
 needs the same guard.
+
+### The baseline is the diff, not the log
+
+`pub(crate)` is invisible to `cargo-public-api`, so widening one to `pub` reads as
+an *added* item. That is the whole mechanism. The added line lands in
+`crates/<crate>/public-api.txt`, inside the PR's own diff where a reviewer is
+already looking, rather than in a job log somebody has to open on purpose. So the
+job does not judge the widening and is not a required check — what it forbids is a
+widening with no line recording it.
+
+Two things to get right:
+
+- **Regenerate with the pinned nightly, never plain `nightly`.** rustdoc JSON is
+  nightly-only and its format version changes without notice, so a different
+  nightly rewrites all seven files for no change in API.
+  `.github/scripts/public-api.sh` sets `RUSTUP_TOOLCHAIN` itself for that reason.
+  The date is written twice — in the script's default and in `ci.yml`'s toolchain
+  step — because `dtolnay/rust-toolchain` cannot read it out of the script. A
+  mismatch is loud rather than silent: the script checks the toolchain is installed
+  and says which one is missing.
+- **The nightly is for rustdoc JSON and nothing else.** Every other job stays on
+  stable, as does every build and test, and the manifest's `rust-version` is
+  untouched. Phase 5's rustfmt is the only other thing that will use it (#328).
 
 ### `RUSTDOCFLAGS`, not a `[lints.rustdoc]` table
 

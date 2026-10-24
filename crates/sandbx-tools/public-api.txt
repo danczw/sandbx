@@ -1,0 +1,146 @@
+pub mod sandbx_tools
+pub enum sandbx_tools::BuiltinTool
+pub sandbx_tools::BuiltinTool::Bash
+pub sandbx_tools::BuiltinTool::Edit
+pub sandbx_tools::BuiltinTool::Find
+pub sandbx_tools::BuiltinTool::Grep
+pub sandbx_tools::BuiltinTool::Ls
+pub sandbx_tools::BuiltinTool::Read
+pub sandbx_tools::BuiltinTool::Write
+impl sandbx_tools::BuiltinTool
+pub const sandbx_tools::BuiltinTool::ALL: [Self; 7]
+pub fn sandbx_tools::BuiltinTool::description(&self) -> &'static str
+pub fn sandbx_tools::BuiltinTool::execute(&self, serde_json::value::Value, &sandbx_tools::ExecutionContext) -> core::result::Result<sandbx_tools::ToolOutput, sandbx_tools::ToolError>
+pub fn sandbx_tools::BuiltinTool::from_name(&str) -> core::option::Option<Self>
+pub fn sandbx_tools::BuiltinTool::input_schema(&self) -> serde_json::value::Value
+pub fn sandbx_tools::BuiltinTool::name(&self) -> &'static str
+pub fn sandbx_tools::BuiltinTool::risk(&self) -> sandbx_tools::RiskLevel
+impl core::clone::Clone for sandbx_tools::BuiltinTool
+pub fn sandbx_tools::BuiltinTool::clone(&self) -> sandbx_tools::BuiltinTool
+impl core::cmp::Eq for sandbx_tools::BuiltinTool
+impl core::cmp::PartialEq for sandbx_tools::BuiltinTool
+pub fn sandbx_tools::BuiltinTool::eq(&self, &sandbx_tools::BuiltinTool) -> bool
+impl core::fmt::Debug for sandbx_tools::BuiltinTool
+pub fn sandbx_tools::BuiltinTool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_tools::BuiltinTool
+impl core::marker::StructuralPartialEq for sandbx_tools::BuiltinTool
+impl core::marker::Freeze for sandbx_tools::BuiltinTool
+impl core::marker::Send for sandbx_tools::BuiltinTool
+impl core::marker::Sync for sandbx_tools::BuiltinTool
+impl core::marker::Unpin for sandbx_tools::BuiltinTool
+impl core::marker::UnsafeUnpin for sandbx_tools::BuiltinTool
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::BuiltinTool
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::BuiltinTool
+pub enum sandbx_tools::RiskLevel
+pub sandbx_tools::RiskLevel::Executes
+pub sandbx_tools::RiskLevel::ReadOnly
+pub sandbx_tools::RiskLevel::Writes
+impl core::clone::Clone for sandbx_tools::RiskLevel
+pub fn sandbx_tools::RiskLevel::clone(&self) -> sandbx_tools::RiskLevel
+impl core::cmp::Eq for sandbx_tools::RiskLevel
+impl core::cmp::Ord for sandbx_tools::RiskLevel
+pub fn sandbx_tools::RiskLevel::cmp(&self, &sandbx_tools::RiskLevel) -> core::cmp::Ordering
+impl core::cmp::PartialEq for sandbx_tools::RiskLevel
+pub fn sandbx_tools::RiskLevel::eq(&self, &sandbx_tools::RiskLevel) -> bool
+impl core::cmp::PartialOrd for sandbx_tools::RiskLevel
+pub fn sandbx_tools::RiskLevel::partial_cmp(&self, &sandbx_tools::RiskLevel) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for sandbx_tools::RiskLevel
+pub fn sandbx_tools::RiskLevel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_tools::RiskLevel
+impl core::marker::StructuralPartialEq for sandbx_tools::RiskLevel
+impl core::marker::Freeze for sandbx_tools::RiskLevel
+impl core::marker::Send for sandbx_tools::RiskLevel
+impl core::marker::Sync for sandbx_tools::RiskLevel
+impl core::marker::Unpin for sandbx_tools::RiskLevel
+impl core::marker::UnsafeUnpin for sandbx_tools::RiskLevel
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::RiskLevel
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::RiskLevel
+pub enum sandbx_tools::ToolError
+pub sandbx_tools::ToolError::BadInput
+pub sandbx_tools::ToolError::BadInput::detail: alloc::string::String
+pub sandbx_tools::ToolError::Denied
+pub sandbx_tools::ToolError::Denied::reason: alloc::string::String
+pub sandbx_tools::ToolError::Denied::subject: alloc::string::String
+pub sandbx_tools::ToolError::Failed
+pub sandbx_tools::ToolError::Failed::detail: alloc::string::String
+pub sandbx_tools::ToolError::Failed::subject: alloc::string::String
+pub sandbx_tools::ToolError::TimedOut
+pub sandbx_tools::ToolError::TimedOut::after: core::time::Duration
+pub sandbx_tools::ToolError::TimedOut::subject: alloc::string::String
+impl core::error::Error for sandbx_tools::ToolError
+impl core::fmt::Debug for sandbx_tools::ToolError
+pub fn sandbx_tools::ToolError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_tools::ToolError
+pub fn sandbx_tools::ToolError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_tools::ToolError
+impl core::marker::Send for sandbx_tools::ToolError
+impl core::marker::Sync for sandbx_tools::ToolError
+impl core::marker::Unpin for sandbx_tools::ToolError
+impl core::marker::UnsafeUnpin for sandbx_tools::ToolError
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::ToolError
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::ToolError
+pub struct sandbx_tools::ExecutionContext
+impl sandbx_tools::ExecutionContext
+pub fn sandbx_tools::ExecutionContext::guard(&self) -> &sandbx_core::fs_guard::FsGuard
+pub fn sandbx_tools::ExecutionContext::limits(&self) -> &sandbx_tools::ToolLimits
+pub fn sandbx_tools::ExecutionContext::new(sandbx_core::policy::SandboxPolicy) -> Self
+pub fn sandbx_tools::ExecutionContext::sandboxed_command(&self, impl core::convert::Into<alloc::string::String>) -> sandbx_core::command::SandboxedCommand
+pub fn sandbx_tools::ExecutionContext::with_helper(self, impl core::convert::AsRef<std::path::Path>) -> Self
+pub fn sandbx_tools::ExecutionContext::with_limits(self, sandbx_tools::ToolLimits) -> Self
+pub fn sandbx_tools::ExecutionContext::with_timeout(self, core::time::Duration) -> Self
+impl core::clone::Clone for sandbx_tools::ExecutionContext
+pub fn sandbx_tools::ExecutionContext::clone(&self) -> sandbx_tools::ExecutionContext
+impl core::fmt::Debug for sandbx_tools::ExecutionContext
+pub fn sandbx_tools::ExecutionContext::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_tools::ExecutionContext
+impl core::marker::Send for sandbx_tools::ExecutionContext
+impl core::marker::Sync for sandbx_tools::ExecutionContext
+impl core::marker::Unpin for sandbx_tools::ExecutionContext
+impl core::marker::UnsafeUnpin for sandbx_tools::ExecutionContext
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::ExecutionContext
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::ExecutionContext
+pub struct sandbx_tools::ToolLimits
+pub sandbx_tools::ToolLimits::max_bytes_scanned: usize
+pub sandbx_tools::ToolLimits::max_files_scanned: usize
+impl sandbx_tools::ToolLimits
+pub fn sandbx_tools::ToolLimits::with_max_bytes(self, usize) -> Self
+pub fn sandbx_tools::ToolLimits::with_max_entries(self, usize) -> Self
+impl core::clone::Clone for sandbx_tools::ToolLimits
+pub fn sandbx_tools::ToolLimits::clone(&self) -> sandbx_tools::ToolLimits
+impl core::cmp::Eq for sandbx_tools::ToolLimits
+impl core::cmp::PartialEq for sandbx_tools::ToolLimits
+pub fn sandbx_tools::ToolLimits::eq(&self, &sandbx_tools::ToolLimits) -> bool
+impl core::default::Default for sandbx_tools::ToolLimits
+pub fn sandbx_tools::ToolLimits::default() -> Self
+impl core::fmt::Debug for sandbx_tools::ToolLimits
+pub fn sandbx_tools::ToolLimits::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_tools::ToolLimits
+impl core::marker::StructuralPartialEq for sandbx_tools::ToolLimits
+impl core::marker::Freeze for sandbx_tools::ToolLimits
+impl core::marker::Send for sandbx_tools::ToolLimits
+impl core::marker::Sync for sandbx_tools::ToolLimits
+impl core::marker::Unpin for sandbx_tools::ToolLimits
+impl core::marker::UnsafeUnpin for sandbx_tools::ToolLimits
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::ToolLimits
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::ToolLimits
+pub struct sandbx_tools::ToolOutput
+impl sandbx_tools::ToolOutput
+pub fn sandbx_tools::ToolOutput::content(&self) -> &str
+pub fn sandbx_tools::ToolOutput::into_content(self) -> alloc::string::String
+pub fn sandbx_tools::ToolOutput::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for sandbx_tools::ToolOutput
+pub fn sandbx_tools::ToolOutput::clone(&self) -> sandbx_tools::ToolOutput
+impl core::cmp::Eq for sandbx_tools::ToolOutput
+impl core::cmp::PartialEq for sandbx_tools::ToolOutput
+pub fn sandbx_tools::ToolOutput::eq(&self, &sandbx_tools::ToolOutput) -> bool
+impl core::fmt::Debug for sandbx_tools::ToolOutput
+pub fn sandbx_tools::ToolOutput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_tools::ToolOutput
+impl core::marker::Freeze for sandbx_tools::ToolOutput
+impl core::marker::Send for sandbx_tools::ToolOutput
+impl core::marker::Sync for sandbx_tools::ToolOutput
+impl core::marker::Unpin for sandbx_tools::ToolOutput
+impl core::marker::UnsafeUnpin for sandbx_tools::ToolOutput
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::ToolOutput
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::ToolOutput
+pub const sandbx_tools::DEFAULT_TIMEOUT: core::time::Duration
