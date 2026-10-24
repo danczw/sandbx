@@ -345,6 +345,8 @@ pass, and reads as reference rather than as a wall once the first is done.
 22. `guide-ci.md` — what runs before a push, and what runs after
 23. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
+24. `decision-google-style.md` — which style guide the code follows, and where it
+    departs from it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
