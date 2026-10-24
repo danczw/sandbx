@@ -111,7 +111,7 @@ A tool running inside your own `agent-run`, granted write over the session root,
 rewrites the transcript with your uid and leaves the mode at `0600`. Nothing the
 read path can see distinguishes that from you editing it, so the defence is not
 here: the CLI refuses the grant instead, for a path reaching the sessions
-directory on either run subcommand (#173, `decision-axis-table.md`).
+directory on either run subcommand (#173, `decision-policy.md`).
 That leaves the mode check what it can actually answer — a transcript another
 user owns or can write — and it stays, because a grant is not the only way one
 gets there.

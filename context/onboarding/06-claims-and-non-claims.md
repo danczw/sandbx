@@ -48,7 +48,7 @@ and name `FsGuard` in their own text. The claim table does not.
 - **Worth questioning:** the table is where a security reader starts, and read
   on its own it says "Landlock" over a product in which six of seven tools never
   reach Landlock. The project knows this precisely —
-  [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) opens with
+  [decision-policy.md](../decision-policy.md#the-enforcement-seam) opens with
   "there are **two** seams, not one, and most tools only cross the first" — so
   the objection is not to the design but to where the fact is kept. One clause
   in the scope sentence, naming the in-process layer beside `SandboxedCommand`,
@@ -158,7 +158,7 @@ command.envs(policy.imposed_env().iter().copied());
 here holds the single exemption, so narrowing is a property of *construction*
 rather than a call each spawn site must remember. Covers which variables cross.
 Says nothing about the value of one that does.
-[decision-axis-table.md](../decision-axis-table.md#the-environment-allowlist)
+[decision-policy.md](../decision-policy.md#the-environment-allowlist)
 records why there is one builder and not a clear at each spawn site: with four,
 each of the four was unfalsifiable, because deleting any one left a later one
 covering for it and the command's environment byte-identical.
@@ -277,7 +277,7 @@ deliberately makes two grants for `--allow-write`, and
   harness's own dumpable flag at startup, so `/proc/<harness-pid>/environ` is
   refused even to a reader running as you (#192) — which is what keeps an
   exported provider key out of a tool granted `/proc`.
-  [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) is where
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) is where
   the choice between refusing and hiding is made, and why subtraction — grant
   the tree, carve out the file — was never available: Landlock composes rules by
   union and has no exclusion form.
@@ -369,7 +369,7 @@ no-flag run from a user-level install prefix grants write there.
   running `sandbx` again tomorrow, reached entirely by name. The existing
   derived-default guard already refuses six shapes by location and is decidable
   from argv plus `/proc/self/exe`, which is exactly the test
-  [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) sets for
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) sets for
   a refusal. Its own framing — the two on-disk roots are the harness's, not the
   project's — seems to reach the installed binary as readily as it reaches the
   session store, and the record does not weigh it in those terms. The cost is

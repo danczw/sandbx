@@ -121,7 +121,7 @@ architecture the filter gates on.
   grants both, a program needing execute on the binary *and* read on the libraries
   its loader pulls in; the asymmetry runs one way, and no grant implies execute.
   Encoded once
-  ([context/decision-axis-table.md](context/decision-axis-table.md)), and the
+  ([context/decision-policy.md](context/decision-policy.md)), and the
   mapping onto each mechanism is pinned by a suite CI runs on x86_64, aarch64 and
   the static-musl target the published binary *is*
   ([context/guide-ci.md](context/guide-ci.md)).
@@ -134,7 +134,7 @@ architecture the filter gates on.
   through procfs is closed differently: sandbx clears its own dumpable flag at
   startup, so `/proc/<harness-pid>/environ` is refused even to a reader running as
   you
-  ([context/decision-axis-table.md](context/decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns)).
+  ([context/decision-policy.md](context/decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns)).
   The non-claims below say what each of the two leaves open.
 - **The path a grant was vetted as is the path the kernel is told about.** Policy
   is judged in the harness; the helper opens its rules from the path the harness
@@ -151,7 +151,7 @@ architecture the filter gates on.
   has become a *symlink* is a root to neither layer, though both follow it. Which
   refusal each shape earns, and why a reason drawn from a resolution would leak
   whether an outside path exists, is in
-  [context/decision-axis-table.md](context/decision-axis-table.md). An
+  [context/decision-policy.md](context/decision-policy.md). An
   inode number is reused, which a non-claim below scopes; a symlink *inside* a
   grant is under *Not vulnerabilities*.
 
@@ -215,7 +215,7 @@ architecture the filter gates on.
   generation number beside the pair. It takes the same write access to the granted
   root's parent a `rename(2)` substitution does. Figures, and the host they were
   measured on:
-  [context/decision-axis-table.md](context/decision-axis-table.md#a-grant-names-an-object-not-a-name).
+  [context/decision-policy.md](context/decision-policy.md#a-grant-names-an-object-not-a-name).
 - **Write access to a project tree is write access to what you run in it next.** A
   granted tree — typed, or derived from the working directory — almost always
   holds files that execute outside the sandbox later, under your own account:
@@ -397,7 +397,7 @@ architecture the filter gates on.
   harness's own environment, which a shared procfs would publish to any process
   running as you, so sandbx conceals its own `/proc` entry
   ([#192](https://github.com/danczw/sandbx/issues/192);
-  [context/decision-axis-table.md](context/decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns)).
+  [context/decision-policy.md](context/decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns)).
   Every *other* same-uid process's `environ` stays reachable through a `/proc`
   grant, as does the audit channel the bullet below names, so "do not grant
   `/proc`" stands. And the flags are the operator's: what this removes is a

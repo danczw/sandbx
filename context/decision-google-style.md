@@ -22,7 +22,7 @@ The reason is `VettedPath::from_wire` and the constructors beside it. Policy,
 vetting, `fs_guard` and the helper live in one crate so those stay `pub(crate)`.
 Split along the obvious seams and each becomes `pub`, and the type system stops being
 what guards the vetting: a caller could mint a `VettedPath` for a path nothing
-checked. `decision-axis-table.md` is why that guarantee is load-bearing.
+checked. `decision-policy.md` is why that guarantee is load-bearing.
 
 Read the allowance and you will conclude the crate may be split as soon as someone
 finds a tidier boundary. Read this and you will not — the boundary *is* the
@@ -80,7 +80,7 @@ What this does *not* buy is `#[non_exhaustive]`. The guide scopes it to enums ot
 teams consume; there are no other teams, and `policy.rs` depends on its matches being
 exhaustive. Adding an axis has to break every match over axes — that compile error is
 the check that a new axis cannot arrive without a row. `#[non_exhaustive]` would turn
-it into a silently-taken wildcard arm, which is the defect `decision-axis-table.md`
+it into a silently-taken wildcard arm, which is the defect `decision-policy.md`
 records as *A new axis without a row fails the test*. It is refused in `core` too,
 library rules notwithstanding.
 

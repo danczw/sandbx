@@ -28,7 +28,7 @@ fn first_directory(paths: &[VettedPath]) -> Option<&Path> {
 }
 
 /// A kind of access a policy can grant on a path; [`Axis::grants`] is the one
-/// statement of what each kind means. See `context/decision-axis-table.md`.
+/// statement of what each kind means. See `context/decision-policy.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     /// See the path, and nothing more.
@@ -142,7 +142,7 @@ impl SandboxPolicy {
     /// does. The pin cannot hold here: the harness vets the host's file, `helper::resolver` binds
     /// sandbx's own over it, and `open_grant` would measure the grant against an object sandbx
     /// itself replaced — refused rather than waived in the substituting process itself (see
-    /// `context/decision-axis-table.md`). An exact name, not a prefix — which names
+    /// `context/decision-policy.md`). An exact name, not a prefix — which names
     /// count is [`bound_by_resolver`]'s — since the pin is on the granted path's own inode,
     /// so a bind over a file inside `/etc` leaves `/etc` alone and `--allow-read /etc`
     /// collides with nothing. `HelperArgs::decode` does not re-run this check — it stays
@@ -305,7 +305,7 @@ impl SandboxPolicy {
     /// Let the process inherit the variables a command needs in order to start. With no
     /// `PATH`, glibc's `execvp` falls back to `confstr(_CS_PATH)`, so `cat` starts
     /// and `~/.cargo/bin/x` does not — a shell falls back to its own wider default instead
-    /// (see `context/decision-axis-table.md`). Nothing here carries a
+    /// (see `context/decision-policy.md`). Nothing here carries a
     /// credential; anything else needs [`allow_env`](Self::allow_env).
     #[must_use]
     pub fn allow_standard_env(self) -> Self {

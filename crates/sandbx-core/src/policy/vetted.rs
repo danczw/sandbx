@@ -69,7 +69,7 @@ impl std::fmt::Display for ObjectId {
 /// [`SandboxPolicy::grant`] accepts, so no construction path reaches a policy holding a
 /// grant with no pin and the helper has no unpinned case to have a policy about. An
 /// embedder meets that as a signature change rather than as a refused run
-/// (`context/decision-axis-table.md`).
+/// (`context/decision-policy.md`).
 ///
 /// [`SandboxPolicy::grant`]: crate::SandboxPolicy::grant
 #[derive(Debug, Clone, PartialEq, Eq)]

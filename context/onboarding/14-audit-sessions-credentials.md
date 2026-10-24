@@ -580,7 +580,7 @@ By name and not by pattern, which the record is explicit about: a denylist over
 claim is the one constant the harness itself dereferences.
 
 The path routes are closed separately, by
-[decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns), and this
+[decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns), and this
 is the piece most readers do not expect. `--allow-read ~/.config` would hand a
 tool the credential file (#184); `--allow-write` over the session root would let
 one turn choose what the next turn is told it said (#173). Subtraction was never

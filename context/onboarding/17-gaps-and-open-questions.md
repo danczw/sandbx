@@ -29,13 +29,13 @@ has to show the record it read.
 | `FsGuard` measures a root and then performs the access beneath it | #230 — the window, and the `openat2(dirfd, …, RESOLVE_BENEATH)` shape that closes it | [`SECURITY.md`](../../SECURITY.md) |
 | approval is per tool per run, not per call, by default | #165 — the scope of an approval, and the twenty-prompt turn a per-call default would cost | [`SECURITY.md`](../../SECURITY.md), [decision-approval-gate.md](../decision-approval-gate.md) |
 | a pin covers the entry point, not what it goes on to run | #146 — what a digest over one image does and does not fix | [`SECURITY.md`](../../SECURITY.md), [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) |
-| a stored credential is protected from other users, not from the agent | #184 — the config-directory route to the key, and the refusal that closes it | [`SECURITY.md`](../../SECURITY.md), [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) |
+| a stored credential is protected from other users, not from the agent | #184 — the config-directory route to the key, and the refusal that closes it | [`SECURITY.md`](../../SECURITY.md), [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) |
 | a turn stopped under `tui` persists no session record | #271 — what a stopped turn loses by either road, and what a resume would do with a partial one | [`SECURITY.md`](../../SECURITY.md) |
 | a running tool call cannot be interrupted | #26 — cancellation, against a blocking task that runs to completion once spawned | [`SECURITY.md`](../../SECURITY.md), [guide-turn-loop.md](../guide-turn-loop.md), [guide-tools.md](../guide-tools.md), [guide-tui.md](../guide-tui.md) |
 | a port allowlist bounds the port and not the host | #145 — destinations, and the resolver grant that bounds names instead | [`SECURITY.md`](../../SECURITY.md), [decision-port-allowlist.md](../decision-port-allowlist.md) |
 | x32 is killed as an ABI rather than enumerated per call | #117 — the mask over the syscall number, and the four calls that sit at different x32 numbers | [guide-sandboxing.md](../guide-sandboxing.md) |
 | tool calls run one at a time, and two sharing one `ExecutionContext` have no ordering semantics | #242 — sequential execution as a constraint rather than a choice, which the per-call gate's no-racing argument rests on | [guide-turn-loop.md](../guide-turn-loop.md), [decision-approval-gate.md](../decision-approval-gate.md) |
-| `--allow-unix-sockets` bounds whether a unix socket reaches outside the sandbox, never which one | #259 — the path condition a V9 `ResolveUnix` makes available, and the two routes to an `AF_UNIX` descriptor | [guide-sandboxing.md](../guide-sandboxing.md), [decision-axis-table.md](../decision-axis-table.md) |
+| `--allow-unix-sockets` bounds whether a unix socket reaches outside the sandbox, never which one | #259 — the path condition a V9 `ResolveUnix` makes available, and the two routes to an `AF_UNIX` descriptor | [guide-sandboxing.md](../guide-sandboxing.md), [decision-policy.md](../decision-policy.md) |
 
 Three of those rows deserve a note, because reading the table without them
 misleads in opposite directions.
@@ -240,7 +240,7 @@ ordinary outcome and not a rare one.
   `agent-run` may return an error where `sandbox-run` succeeds, but it may never
   return a quietly narrower success. A read-only default for one subcommand is
   exactly that forbidden shape, and
-  [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) applies
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) applies
   the same rule when it puts its own guard on both subcommands "because a
   refusal is all it may be". The objection survives only if reframed as a
   refusal — an `agent-run` with no path flag erroring and naming the two flags
@@ -277,7 +277,7 @@ ordinary outcome and not a rare one.
   are known: its session directory, its credential file, egress to the provider,
   the granted roots, and execute on its own image. **Open.** No record asks it;
   every one of them reasons about confining *the command*.
-  [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) is the
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) is the
   nearest neighbour and answers a different question — how to keep a *grant* off
   the harness's files, not how to keep the harness off anything. The aside
   states the hard part with the idea, which is the form that makes it worth
@@ -301,7 +301,7 @@ ordinary outcome and not a rare one.
 - **The scope sentence does not name the in-process layer.** Read on its own the
   claim table says "Landlock" over a product in which six of seven tools never
   reach Landlock. **Partly answered.**
-  [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) opens by
+  [decision-policy.md](../decision-policy.md#the-enforcement-seam) opens by
   insisting there are two seams and that most tools cross only the first, so the
   fact is recorded; what no record weighs is whether the normative document's
   own scope sentence should carry it, which is where a reader starts.
@@ -313,7 +313,7 @@ ordinary outcome and not a rare one.
   ground that the old check compared a name nothing is reached by and fired in
   ordinary use; that reasoning is about the spawn *inside* this run, which the
   inode closes.
-  [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) frames
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) frames
   on-disk state the harness owns as refusable from argv, and does not weigh the
   binary in those terms.
 
@@ -341,7 +341,7 @@ ordinary outcome and not a rare one.
   contradicts no claim, because every claim is scoped to a command run through
   `SandboxedCommand`, and anyone who can choose sandbx's argv could run the
   command directly. The objection is about the public surface.
-  [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) is the record
+  [decision-policy.md](../decision-policy.md#the-enforcement-seam) is the record
   to argue with — it reasons about the argv seam on the premise that neither
   side is trusted and that the helper can only ever narrow — and a stage that
   narrows less while still succeeding is the one outcome the dispatch enum's
@@ -353,7 +353,7 @@ ordinary outcome and not a rare one.
   to protect.** `--allow-write` grants read alongside write, so the asymmetry
   the longest comment in the rights module defends is invisible to every
   operator. **Partly answered.**
-  [decision-axis-table.md](../decision-axis-table.md) settles the CLI's one
+  [decision-policy.md](../decision-policy.md) settles the CLI's one
   departure from the axis table by noting the narrow form stays reachable
   through the library (#49) — a real property about the flags not drifting — and
   does not weigh whether an operator who wants a drop directory has any way to
@@ -361,7 +361,7 @@ ordinary outcome and not a rare one.
 - **The remedy that needs no pin was rejected on a lint.** Inheriting the
   harness's own `O_PATH` descriptor through the `exec` would leave nothing to
   re-resolve helper-side. **Answered, and the record says what it answered on.**
-  [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) declines it
+  [decision-policy.md](../decision-policy.md#a-grant-names-an-object-not-a-name) declines it
   because receiving and passing a descriptor both need `unsafe` against a
   workspace-wide `forbid`, and states in as many words that this is rejected on
   the lint and not on the design. What it does not do is price the lint against
@@ -390,7 +390,7 @@ ordinary outcome and not a rare one.
 - **`check_read` and `check_write` stay public although nothing in production
   calls them.** They bound nothing after the measurement, their own docs say to
   prefer the opening forms, and every call site is a test. **Open.**
-  [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) marks them "no
+  [decision-policy.md](../decision-policy.md#the-enforcement-seam) marks them "no
   tool" and [`SECURITY.md`](../../SECURITY.md) carries them as a non-claim, so
   the exposure is known; neither prices why the pair stays public once the
   window-closing forms exist, and
@@ -411,7 +411,7 @@ ordinary outcome and not a rare one.
   A fifth axis that confers write would inherit the CLI's read grant without
   anybody opening the flag module. **Partly answered, and the sibling of 09's
   drop-directory objection above — same departure, opposite direction.**
-  [decision-axis-table.md](../decision-axis-table.md) presents the keying as the
+  [decision-policy.md](../decision-policy.md) presents the keying as the
   safe default, which it is for *forgetting*; every other new-axis story in that
   record turns on a new axis having to visit each site that decides something
   about it, with the suite failing until it does. The two goals conflict here
@@ -527,7 +527,7 @@ ordinary outcome and not a rare one.
   compiler or the kernel holds; concealment is a `pub fn` that `main.rs` happens
   to call, and omitting it compiles, passes every test in the workspace and
   silently republishes the key. **Partly answered.**
-  [decision-axis-table.md](../decision-axis-table.md#what-the-harness-does-when-a-grant-covers-something-it-owns) argues
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) argues
   for the mechanism and for where the call sits, and does not weigh making the
   step unskippable. Nor is the wiring pinned — the test drives a purpose-built
   probe, which is evidence the `prctl` works rather than that `sandbx` calls it.
@@ -643,7 +643,7 @@ ordinary outcome and not a rare one.
   only place in the crate where that condition produces neither a refusal nor a
   line on stderr, and two policy errors exist for the same condition a moment
   earlier. **Partly answered.**
-  [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) is explicit that
+  [decision-policy.md](../decision-policy.md#a-grant-names-an-object-not-a-name) is explicit that
   the window fails closed and that refusing is the right outcome, and weighs the
   window's security rather than its diagnosis. Nothing is unsafe — the guard
   measures the matched root per access — but the operator's answer is a model

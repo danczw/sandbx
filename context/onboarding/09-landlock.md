@@ -336,7 +336,7 @@ Reading the arithmetic back, `read_rights | AccessFs::Execute` is exactly
 `from_read(abi)` — the `Execute` bit subtracted on the way in comes back for the
 one axis entitled to it, which is why execute is "the single bit, hence addable
 on top of read without widening anything else".
-[decision-axis-table.md](../decision-axis-table.md) states the three identities
+[decision-policy.md](../decision-policy.md) states the three identities
 together and records what happened when a row was flipped to see which tests
 noticed.
 
@@ -386,7 +386,7 @@ something ambient.
   `--allow-write` grants `Read` alongside the write axis — keyed to
   `axis.grants().write` so a future write-conferring axis inherits the
   affordance — and
-  [decision-axis-table.md](../decision-axis-table.md#the-cli-departs-from-the-table-once)
+  [decision-policy.md](../decision-policy.md#the-cli-departs-from-the-table-once)
   settles that departure by noting the narrow form stays reachable through
   `SandboxPolicy::allow_write` (#49). True, and it leaves the asymmetry the
   longest comment in `rights.rs` defends invisible to every operator: the shape
@@ -511,7 +511,7 @@ asks whether the name still leads where it led; the stat asks whether the thing
 at the end of it is the same thing. An operator reading `GrantRedirected` has a
 substituted *path* to go and look at. One reading `GrantReplaced` has one name
 and two objects, and no path anywhere will show them the difference.
-[decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) keeps the full
+[decision-policy.md](../decision-policy.md#a-grant-names-an-object-not-a-name) keeps the full
 refusal table; the four shapes that reach this file are:
 
 | what happened | what notices | refusal |
@@ -580,7 +580,7 @@ existing directory cannot be holding the vetted inode number while the vetted
 object still holds it — so the pin sees that one every time.
 
 - **Worth questioning:** the remedy that needs no pin at all was rejected on a
-  lint. [decision-axis-table.md](../decision-axis-table.md#a-grant-names-an-object-not-a-name) prices
+  lint. [decision-policy.md](../decision-policy.md#a-grant-names-an-object-not-a-name) prices
   inheriting the harness's own `O_PATH` descriptor through the `exec` — nothing
   to re-resolve helper-side, no third argv token, no comparison to get wrong —
   and declines it because receiving a descriptor needs `from_raw_fd` and passing
