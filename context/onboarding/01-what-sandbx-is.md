@@ -20,7 +20,7 @@ with the sentence worth memorising:
 
 > Where policy stops being data and becomes something the kernel holds.
 >
-> — [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam)
+> — [decision-policy.md](../decision-policy.md#the-enforcement-seam)
 
 "Data" is a `SandboxPolicy` — a Rust value, a set of granted paths and axes,
 which anything in the process could in principle ignore. "Something the kernel

@@ -1,6 +1,6 @@
 # A direct spawn bypasses every Landlock/seccomp restriction sandbx applies, and
 # the one exempt factory, `sandbx-core::spawn::command`, narrows the environment as
-# it builds the `Command`; see `context/decision-axis-table.md`.
+# it builds the `Command`; see `context/decision-policy.md`.
 disallowed-methods = [
     { path = "std::process::Command::new", reason = "spawn via sandbx_core::SandboxedCommand so Landlock/seccomp restrictions are applied" },
     # Inert until something enables tokio's "process" feature: the path resolves

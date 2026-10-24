@@ -360,7 +360,7 @@ of those denies everything, and a suite of denial tests stays green through all
 of them.
 
 So three `decision-*.md` files carry five `The mutation check` sections between
-them, of which the axis table's in [decision-axis-table.md](../decision-axis-table.md)
+them, of which the axis table's in [decision-policy.md](../decision-policy.md)
 and [decision-default-policy.md](../decision-default-policy.md)'s are the clearest: a
 list of single-line mutations to the code,
 each one applied and the suite run, with the tests that failed recorded
@@ -383,7 +383,7 @@ That last line is a whole lesson. `the_default_matches_what_sandbox_run_derives`
 survives the mutation because both sides of its comparison mutate together — it
 reads its expectation off the thing under test. `decision-default-policy.md`
 identifies it as the derived-expectation trap that
-`decision-axis-table.md` names, and draws the right conclusion rather
+`decision-policy.md` names, and draws the right conclusion rather
 than deleting the test: it is a cross-subcommand *consistency* test, and not the
 one pinning what the default is. The same table shows the opposite result too —
 dropping the guard breaks tests in two suites that never mention the default,

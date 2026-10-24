@@ -83,8 +83,8 @@ fn every_doc_a_citation_names_exists() {
     // A made-up name here would be a citation like any other — this file is under `crates/`
     // and the walk below reads it — so the fixture names docs that exist.
     assert_eq!(
-        doc_names("see `context/guide-sandboxing.md`, and decision-axis-table.md."),
-        BTreeSet::from(["guide-sandboxing.md", "decision-axis-table.md"]),
+        doc_names("see `context/guide-sandboxing.md`, and decision-policy.md."),
+        BTreeSet::from(["guide-sandboxing.md", "decision-policy.md"]),
         "the scanner missed a citation in a line that plainly holds two"
     );
 

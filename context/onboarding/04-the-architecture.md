@@ -278,7 +278,7 @@ enforcement — this is the view that explains why the code looks the way it doe
 | the tool boundary | [`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs) | `BuiltinTool`, a closed enum with `ALL: [Self; 7]`; `ToolSpec` crate-private | a new tool is a compile error everywhere it must be handled, not a registration that can be forgotten |
 | the gate | [`agent/src/approval.rs`](../../crates/sandbx-agent/src/approval.rs) | `CallGate`, two methods, `run_turn`'s mandatory fifth parameter | there is no `run_turn_unchecked` — a caller cannot acquire a gate-less loop by omitting an argument |
 | the policy's ownership | [`tools/src/context.rs`](../../crates/sandbx-tools/src/context.rs) | `ExecutionContext` holds the `SandboxPolicy` in a **private** field (#56) | a tool spends the policy through the context rather than being lent it to re-interpret |
-| the two enforcement seams | [`core/src/fs_guard.rs`](../../crates/sandbx-core/src/fs_guard.rs) and [`core/src/helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs) | handles rather than paths; an argv encoding where neither side trusts the other | the point where policy stops being data — [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) |
+| the two enforcement seams | [`core/src/fs_guard.rs`](../../crates/sandbx-core/src/fs_guard.rs) and [`core/src/helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs) | handles rather than paths; an argv encoding where neither side trusts the other | the point where policy stops being data — [decision-policy.md](../decision-policy.md#the-enforcement-seam) |
 
 The recurring trick is worth naming once: **a closed enum with an exhaustive
 match is a compile-time gate.** `BuiltinTool` means a seventh tool cannot be
@@ -333,8 +333,8 @@ before it.
 |---|---|---|
 | the three processes, the kill chain | [07](07-kernel-primer.md), [08](08-the-two-stage-helper.md) | [guide-process-lifetime.md](../guide-process-lifetime.md) |
 | `apply`, Landlock, seccomp, the mount sequence | [08](08-the-two-stage-helper.md), [09](09-landlock.md), [10](10-seccomp.md) | [guide-sandboxing.md](../guide-sandboxing.md) |
-| the two enforcement seams | [11](11-the-two-seams.md) | [decision-axis-table.md](../decision-axis-table.md#the-enforcement-seam) |
-| what a grant confers on which axis | [12](12-a-flag-to-a-kernel-rule.md) | [decision-axis-table.md](../decision-axis-table.md) |
+| the two enforcement seams | [11](11-the-two-seams.md) | [decision-policy.md](../decision-policy.md#the-enforcement-seam) |
+| what a grant confers on which axis | [12](12-a-flag-to-a-kernel-rule.md) | [decision-policy.md](../decision-policy.md) |
 | what a no-flag run derives, and what it refuses | [12](12-a-flag-to-a-kernel-rule.md) | [decision-default-policy.md](../decision-default-policy.md) |
 | the round loop, compaction, the three traps | [02](02-what-a-harness-is.md), [13](13-turn-loop-and-gate.md) | [guide-turn-loop.md](../guide-turn-loop.md) |
 | the gate, and how much it claims | [13](13-turn-loop-and-gate.md) | [decision-approval-gate.md](../decision-approval-gate.md) |

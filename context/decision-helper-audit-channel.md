@@ -276,7 +276,7 @@ reproduced it — `/tmp/demo/tool` was `/bin/true` when the policy was written a
 ### Not an `Axis` row
 
 `SandboxPolicy` is what a sandboxed process may do, and both enforcement layers
-derive from `Axis::grants` (`context/decision-axis-table.md`). A digest derives
+derive from `Axis::grants` (`context/decision-policy.md`). A digest derives
 nothing there: it adds no Landlock right, no seccomp rule and no `FsGuard` root,
 and a pin grants nothing — a pinned program with no `--allow-exec` still cannot
 run. Made a row, it would have to answer what it confers, and the answer is
@@ -347,7 +347,7 @@ The pin covers the one `execve` sandbx performs, so it applies to one binary —
 program after `--`, already in the argv. `--allow-exec PATH=<sha256>` would name
 that path a second time, and attaching a digest to a repeatable path grant implies
 it pins each of them. One flag taking exactly one value is the
-`--allow-network-port` shape `context/decision-axis-table.md` blesses: no
+`--allow-network-port` shape `context/decision-policy.md` blesses: no
 lookahead in `decode`, no new `=`-splitting parse family, and `--allow-env`'s "a
 flag takes a name, never a pair" stays intact. It also removes the dead-pin case —
 with no path to mismatch, a pin cannot silently fail to fire.
