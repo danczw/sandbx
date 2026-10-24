@@ -14,6 +14,15 @@ Wired by one line, which is why there is no hook-manager dependency:
 git config core.hooksPath .githooks
 ```
 
+One more line is worth setting in the same breath, so `git blame` skips the
+mechanical sweeps listed in `.git-blame-ignore-revs` and names the commit that
+last changed the code. GitHub applies that file on its own; locally it is opt-in,
+once per clone:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 `pre-commit` is `cargo fmt --all -- --check`, then
 `cargo clippy --workspace --all-targets -- -D warnings`, then the `Doc` step
 under `RUSTDOCFLAGS: -D warnings`. Not the test suite: a hook that takes minutes
