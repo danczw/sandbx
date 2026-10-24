@@ -104,8 +104,12 @@ needs the same guard.
 an *added* item. That is the whole mechanism. The added line lands in
 `crates/<crate>/public-api.txt`, inside the PR's own diff where a reviewer is
 already looking, rather than in a job log somebody has to open on purpose. So the
-job does not judge the widening and is not a required check — what it forbids is a
-widening with no line recording it.
+job does not judge the widening, even though it is a required check: it goes red only
+when the baseline no longer matches the surface. What it forbids is a widening with
+no line recording it, and the fix is always to commit that line.
+
+Being required, its name is pinned like the others above — renaming the job silently
+drops the gate until the ruleset is updated to match.
 
 Two things to get right:
 
