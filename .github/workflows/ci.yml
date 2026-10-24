@@ -179,8 +179,8 @@ jobs:
           echo "checked $found"
           [ "$found" -gt 0 ] || { echo "::error::no docs/release-notes/v*.md"; exit 1; }
 
-  # Not a required check: it reports a widening rather than forbidding one. What it
-  # forbids is a widening with no line in the baseline recording it.
+  # Required, but it does not judge a widening: it fails only when the baseline no
+  # longer matches the surface. What it forbids is a widening with no line recording it.
   api-diff:
     runs-on: ubuntu-latest
     steps:
