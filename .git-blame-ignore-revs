@@ -1,0 +1,12 @@
+# Commits that changed formatting and nothing else, so `git blame` skips them and
+# shows the commit that last changed the code.
+#
+# GitHub honours this file automatically. Locally it is opt-in, once per clone:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# One full 40-character SHA per line, with the commit's subject above it. Only a
+# commit that provably changed no code belongs here — a mechanical sweep
+# (rustfmt, import order, assert messages added with no logic touched), never a
+# commit that also fixed something. A SHA listed here is a SHA whose authorship
+# nobody will find again by blame.
