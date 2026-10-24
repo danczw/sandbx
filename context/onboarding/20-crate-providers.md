@@ -853,7 +853,7 @@ really is installed and usable.
 | the `pub` crypto install, from another crate | `tests/crypto_provider.rs` |
 | the real API | `tests/live_anthropic.rs`, needs `live-anthropic-tests` |
 
-The pattern is the one [guide-module-layout.md](../guide-module-layout.md)
+The pattern is the one [guide-testing.md](../guide-testing.md)
 prescribes: a unit test where the thing under test is private, an integration
 test where the point is the public contract — and `crypto_provider.rs` is the
 case where *being a separate crate* is itself the thing asserted.

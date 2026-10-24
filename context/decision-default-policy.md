@@ -307,7 +307,7 @@ is called twice.
 
 All three are private, and the tests for them are inline. Making the seam public so
 `tests/sandbox_run.rs` could drive the refusals is the trade
-`guide-module-layout.md` forbids — widening the API to suit a test. What the
+`guide-testing.md` forbids — widening the API to suit a test. What the
 integration suite gets instead is the end-to-end refusals in `tests/cwd_policy.rs`,
 which spawn the built binary: the guard reads `getcwd` and `HOME` off the real
 process, and `set_current_dir` is process-global, so under parallel tests one case

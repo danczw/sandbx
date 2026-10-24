@@ -1,7 +1,7 @@
 //! The in-process filesystem gate: the policy check, and the accesses it guards. A root
 //! is confirmed against its grant's pin per access: the window is confirmation to open.
 //!
-//! Over the 400-line budget on purpose: check, access and record are one sequence, and a
+//! One module on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
 
 use std::path::{Path, PathBuf};

@@ -266,11 +266,10 @@ source already spends (#265).
 ## agent.rs and its six submodules, as one pipeline
 
 This is the crate's centre of gravity, and `agent.rs` is frank about its size:
-over the module budget on purpose, "the pieces are already in `gate`, `prompt`,
-`render`, `tui` and `wrapup`, and what is left is the argv surface and the one
-sequence that consumes it". See
-[guide-module-layout.md](../guide-module-layout.md) for what that budget is and
-when an overrun is declared rather than split.
+one module on purpose, "the pieces are already in `gate`, `prompt`, `render`,
+`tui` and `wrapup`, and what is left is the argv surface and the one sequence
+that consumes it" — a module with one reason to change stays whole however long
+it grows.
 
 `sandbx-cli` holds every `run_turn` call site in the workspace outside
 `sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and
@@ -676,8 +675,8 @@ type-level statement that both subcommands derive their policy the same way. And
 `SandboxRunError::Sandbox` wraps `sandbx_core::SandboxError` rather than the CLI
 reusing it, because deriving a policy is the CLI's own step and `sandbx-core`
 must not grow a variant it never produces. `PolicyError` is also why `error.rs`
-declares itself over budget: one `Display` arm per variant, and "the list of
-everything that can refuse a run is only readable in one place". Its
+declares itself one module on purpose: one `Display` arm per variant, and "the
+list of everything that can refuse a run is only readable in one place". Its
 derived-default refusals share one `ADVICE` constant so two of them cannot
 advise differently; a refusal of a *flag* says what to change about the flag.
 
@@ -729,7 +728,7 @@ fixture for a hung-up terminal. Twelve integration files, split by surface:
 | `audit_log_held.rs` | the audit trail a held screen releases, end to end: a record on a blocking thread through the real subscriber into `Held`, onto stderr when the guard drops — re-exec'd to read fd 2, since `Held::drop` writes there directly and libtest's capture only intercepts the print macros (#266) |
 | `name.rs` | that the binary's name is not one a POSIX shell resolves before searching `$PATH` — a security test, because such a name "does not fail, it succeeds", so a hand check of the sandbox looks like a working run |
 
-[guide-module-layout.md](../guide-module-layout.md) is the authority on which of
+[guide-testing.md](../guide-testing.md) is the authority on which of
 those a new test belongs in.
 
 ## You should now be able to explain

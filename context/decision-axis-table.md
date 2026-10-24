@@ -394,7 +394,7 @@ Four shapes were rejected, and the first is the one someone will re-propose:
   for a test reason: `each_axis_confers_exactly_the_documented_set` spells its
   rights out *because* the code derives them. Have the code enumerate too and the
   test reads the same list, proving only that the code agrees with itself — which
-  `guide-module-layout.md` forbids. The teeth that keeps over the other twelve
+  `guide-testing.md` forbids. The teeth that keeps over the other twelve
   bits are worth more than the symmetry.
 - **A fourth `Axis` row, or a second rule pair on an existing axis.** *What is
   deliberately not a row*, below, rules out a variant whose `Grants` fields are

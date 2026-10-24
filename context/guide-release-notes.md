@@ -84,7 +84,7 @@ surprised later, which gets harder with every sentence added.
   `SIGTERM` is ignored, and `/proc/self/stat` disagrees with `getpid()`. Neither
   follows from "process lifetime is now enforced".
 - **An issue number per substantive item**, `(#50)`. The one place issue
-  archaeology belongs — `guide-code-comments.md` cuts it from code.
+  archaeology belongs — `CLAUDE.md`'s comment pass cuts it from code.
 
 Not: a per-PR summary, a theme-by-theme tour, a verification checklist, or
 anything the generated list carries.
