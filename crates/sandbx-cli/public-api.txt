@@ -1,0 +1,403 @@
+pub mod sandbx_cli
+pub mod sandbx_cli::logging
+pub struct sandbx_cli::logging::Audit
+impl core::clone::Clone for sandbx_cli::logging::Audit
+pub fn sandbx_cli::logging::Audit::clone(&self) -> sandbx_cli::logging::Audit
+impl core::io::write::Write for sandbx_cli::logging::Audit
+pub fn sandbx_cli::logging::Audit::flush(&mut self) -> core::io::error::Result<()>
+pub fn sandbx_cli::logging::Audit::write(&mut self, &[u8]) -> core::io::error::Result<usize>
+impl core::marker::Copy for sandbx_cli::logging::Audit
+impl tracing_subscriber::fmt::writer::MakeWriter<'_> for sandbx_cli::logging::Audit
+pub type sandbx_cli::logging::Audit::Writer = sandbx_cli::logging::Audit
+pub fn sandbx_cli::logging::Audit::make_writer(&self) -> Self::Writer
+impl core::marker::Freeze for sandbx_cli::logging::Audit
+impl core::marker::Send for sandbx_cli::logging::Audit
+impl core::marker::Sync for sandbx_cli::logging::Audit
+impl core::marker::Unpin for sandbx_cli::logging::Audit
+impl core::marker::UnsafeUnpin for sandbx_cli::logging::Audit
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::logging::Audit
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::logging::Audit
+pub struct sandbx_cli::logging::Held(_)
+impl core::ops::drop::Drop for sandbx_cli::logging::Held
+pub fn sandbx_cli::logging::Held::drop(&mut self)
+impl core::marker::Freeze for sandbx_cli::logging::Held
+impl core::marker::Send for sandbx_cli::logging::Held
+impl core::marker::Sync for sandbx_cli::logging::Held
+impl core::marker::Unpin for sandbx_cli::logging::Held
+impl core::marker::UnsafeUnpin for sandbx_cli::logging::Held
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::logging::Held
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::logging::Held
+pub fn sandbx_cli::logging::hold() -> sandbx_cli::logging::Held
+pub fn sandbx_cli::logging::init() -> core::result::Result<(), tracing_subscriber::util::TryInitError>
+pub fn sandbx_cli::logging::subscriber<W>(W) -> impl tracing_subscriber::util::SubscriberInitExt where W: for<'writer> tracing_subscriber::fmt::writer::MakeWriter<'writer> + core::marker::Send + core::marker::Sync + 'static
+pub enum sandbx_cli::AgentError
+pub sandbx_cli::AgentError::ApproveUnderTui
+pub sandbx_cli::AgentError::Credential(sandbx_cli::AuthError)
+pub sandbx_cli::AgentError::EmptyPrompt
+pub sandbx_cli::AgentError::NoTerminal
+pub sandbx_cli::AgentError::NoTerminal::source: core::io::error::Error
+pub sandbx_cli::AgentError::NotATerminal
+pub sandbx_cli::AgentError::Output(core::io::error::Error)
+pub sandbx_cli::AgentError::Policy(sandbx_cli::PolicyError)
+pub sandbx_cli::AgentError::Provider(sandbx_providers::error::ProviderError)
+pub sandbx_cli::AgentError::Runtime(core::io::error::Error)
+pub sandbx_cli::AgentError::Screen(core::io::error::Error)
+pub sandbx_cli::AgentError::Session(sandbx_session::error::SessionError)
+pub sandbx_cli::AgentError::Turn(sandbx_agent::error::TurnError)
+impl core::convert::From<sandbx_agent::error::TurnError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_agent::error::TurnError) -> Self
+impl core::convert::From<sandbx_cli::AuthError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_cli::AuthError) -> Self
+impl core::convert::From<sandbx_cli::PolicyError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_cli::PolicyError) -> Self
+impl core::convert::From<sandbx_providers::error::ProviderError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_providers::error::ProviderError) -> Self
+impl core::convert::From<sandbx_session::error::SessionError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_session::error::SessionError) -> Self
+impl core::error::Error for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::AgentError
+impl core::marker::Send for sandbx_cli::AgentError
+impl core::marker::Sync for sandbx_cli::AgentError
+impl core::marker::Unpin for sandbx_cli::AgentError
+impl core::marker::UnsafeUnpin for sandbx_cli::AgentError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::AgentError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::AgentError
+pub enum sandbx_cli::AuthError
+pub sandbx_cli::AuthError::BlankKey
+pub sandbx_cli::AuthError::DirPermissions
+pub sandbx_cli::AuthError::DirPermissions::mode: u32
+pub sandbx_cli::AuthError::DirPermissions::path: std::path::PathBuf
+pub sandbx_cli::AuthError::Encode(toml::ser::error::Error)
+pub sandbx_cli::AuthError::Io
+pub sandbx_cli::AuthError::Io::path: std::path::PathBuf
+pub sandbx_cli::AuthError::Io::source: core::io::error::Error
+pub sandbx_cli::AuthError::Malformed
+pub sandbx_cli::AuthError::Malformed::line: usize
+pub sandbx_cli::AuthError::Malformed::path: std::path::PathBuf
+pub sandbx_cli::AuthError::NoConfigHome
+pub sandbx_cli::AuthError::NoCredential
+pub sandbx_cli::AuthError::NoCredential::path: std::path::PathBuf
+pub sandbx_cli::AuthError::NotATable
+pub sandbx_cli::AuthError::NotATable::path: std::path::PathBuf
+pub sandbx_cli::AuthError::Permissions
+pub sandbx_cli::AuthError::Permissions::mode: u32
+pub sandbx_cli::AuthError::Permissions::path: std::path::PathBuf
+pub sandbx_cli::AuthError::Stdin(core::io::error::Error)
+pub sandbx_cli::AuthError::TtyInput
+impl core::convert::From<sandbx_cli::AuthError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_cli::AuthError) -> Self
+impl core::error::Error for sandbx_cli::AuthError
+pub fn sandbx_cli::AuthError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_cli::AuthError
+pub fn sandbx_cli::AuthError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_cli::AuthError
+pub fn sandbx_cli::AuthError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::AuthError
+impl core::marker::Send for sandbx_cli::AuthError
+impl core::marker::Sync for sandbx_cli::AuthError
+impl core::marker::Unpin for sandbx_cli::AuthError
+impl core::marker::UnsafeUnpin for sandbx_cli::AuthError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::AuthError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::AuthError
+pub enum sandbx_cli::Command
+pub sandbx_cli::Command::AgentRun(sandbx_cli::AgentRun)
+pub sandbx_cli::Command::Auth(sandbx_cli::Auth)
+pub sandbx_cli::Command::Hash(sandbx_cli::Hash)
+pub sandbx_cli::Command::SandboxRun(sandbx_cli::SandboxRun)
+pub sandbx_cli::Command::Tui(sandbx_cli::Tui)
+impl clap_builder::derive::FromArgMatches for sandbx_cli::Command
+pub fn sandbx_cli::Command::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Command::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Command::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::Command::update_from_arg_matches_mut<'b>(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Subcommand for sandbx_cli::Command
+pub fn sandbx_cli::Command::augment_subcommands<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Command::augment_subcommands_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Command::has_subcommand(&str) -> bool
+impl core::fmt::Debug for sandbx_cli::Command
+pub fn sandbx_cli::Command::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::Command
+impl core::marker::Send for sandbx_cli::Command
+impl core::marker::Sync for sandbx_cli::Command
+impl core::marker::Unpin for sandbx_cli::Command
+impl core::marker::UnsafeUnpin for sandbx_cli::Command
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Command
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Command
+pub enum sandbx_cli::PolicyError
+pub sandbx_cli::PolicyError::CwdReachesOwned
+pub sandbx_cli::PolicyError::CwdReachesOwned::cwd: std::path::PathBuf
+pub sandbx_cli::PolicyError::CwdReachesOwned::holds: &'static str
+pub sandbx_cli::PolicyError::CwdReachesOwned::owned: std::path::PathBuf
+pub sandbx_cli::PolicyError::DnsGrantsBoundFile
+pub sandbx_cli::PolicyError::DnsGrantsBoundFile::granted: std::path::PathBuf
+pub sandbx_cli::PolicyError::DnsWithEveryPort
+pub sandbx_cli::PolicyError::DnsWithNameserverPort
+pub sandbx_cli::PolicyError::DnsWithResolverHint
+pub sandbx_cli::PolicyError::DnsWithUnixSockets
+pub sandbx_cli::PolicyError::DnsWithoutEgress
+pub sandbx_cli::PolicyError::FilesystemRoot
+pub sandbx_cli::PolicyError::GrantReachesOwned
+pub sandbx_cli::PolicyError::GrantReachesOwned::granted: std::path::PathBuf
+pub sandbx_cli::PolicyError::GrantReachesOwned::holds: &'static str
+pub sandbx_cli::PolicyError::GrantReachesOwned::owned: std::path::PathBuf
+pub sandbx_cli::PolicyError::HarnessCredential
+pub sandbx_cli::PolicyError::HarnessCredential::name: &'static str
+pub sandbx_cli::PolicyError::HomeDirectory
+pub sandbx_cli::PolicyError::HomeDirectory::cwd: std::path::PathBuf
+pub sandbx_cli::PolicyError::HomeDirectory::home: std::path::PathBuf
+pub sandbx_cli::PolicyError::HomeParent
+pub sandbx_cli::PolicyError::HomeParent::cwd: std::path::PathBuf
+pub sandbx_cli::PolicyError::ImposedVariable
+pub sandbx_cli::PolicyError::ImposedVariable::name: alloc::string::String
+pub sandbx_cli::PolicyError::PinNeedsAbsoluteProgram
+pub sandbx_cli::PolicyError::PinNeedsAbsoluteProgram::program: alloc::string::String
+pub sandbx_cli::PolicyError::RepeatedPin
+pub sandbx_cli::PolicyError::SystemExecutables
+pub sandbx_cli::PolicyError::SystemExecutables::cwd: std::path::PathBuf
+pub sandbx_cli::PolicyError::SystemExecutables::path: std::path::PathBuf
+pub sandbx_cli::PolicyError::Unavailable
+pub sandbx_cli::PolicyError::Unavailable::detail: &'static str
+pub sandbx_cli::PolicyError::Unavailable::source: core::io::error::Error
+pub sandbx_cli::PolicyError::UnnamedHome
+pub sandbx_cli::PolicyError::UnnamedHome::cwd: std::path::PathBuf
+pub sandbx_cli::PolicyError::UnnamedHome::home: core::option::Option<std::path::PathBuf>
+pub sandbx_cli::PolicyError::UnpinnableGrant
+pub sandbx_cli::PolicyError::UnpinnableGrant::granted: std::path::PathBuf
+pub sandbx_cli::PolicyError::UnpinnableGrant::source: sandbx_core::error::SandboxError
+pub sandbx_cli::PolicyError::UnresolvableGrant
+pub sandbx_cli::PolicyError::UnresolvableGrant::granted: std::path::PathBuf
+pub sandbx_cli::PolicyError::UnresolvableGrant::source: core::io::error::Error
+impl core::convert::From<sandbx_cli::PolicyError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_cli::PolicyError) -> Self
+impl core::convert::From<sandbx_cli::PolicyError> for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::from(sandbx_cli::PolicyError) -> Self
+impl core::error::Error for sandbx_cli::PolicyError
+pub fn sandbx_cli::PolicyError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_cli::PolicyError
+pub fn sandbx_cli::PolicyError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_cli::PolicyError
+pub fn sandbx_cli::PolicyError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::PolicyError
+impl core::marker::Send for sandbx_cli::PolicyError
+impl core::marker::Sync for sandbx_cli::PolicyError
+impl core::marker::Unpin for sandbx_cli::PolicyError
+impl core::marker::UnsafeUnpin for sandbx_cli::PolicyError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::PolicyError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::PolicyError
+pub enum sandbx_cli::SandboxRunError
+pub sandbx_cli::SandboxRunError::Policy(sandbx_cli::PolicyError)
+pub sandbx_cli::SandboxRunError::Sandbox(sandbx_core::error::SandboxError)
+impl core::convert::From<sandbx_cli::PolicyError> for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::from(sandbx_cli::PolicyError) -> Self
+impl core::convert::From<sandbx_core::error::SandboxError> for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::from(sandbx_core::error::SandboxError) -> Self
+impl core::error::Error for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::SandboxRunError
+impl core::marker::Send for sandbx_cli::SandboxRunError
+impl core::marker::Sync for sandbx_cli::SandboxRunError
+impl core::marker::Unpin for sandbx_cli::SandboxRunError
+impl core::marker::UnsafeUnpin for sandbx_cli::SandboxRunError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::SandboxRunError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::SandboxRunError
+pub enum sandbx_cli::SessionChoice<'a>
+pub sandbx_cli::SessionChoice::New
+pub sandbx_cli::SessionChoice::Off
+pub sandbx_cli::SessionChoice::Resume(&'a sandbx_session::id::SessionId)
+impl<'a> core::clone::Clone for sandbx_cli::SessionChoice<'a>
+pub fn sandbx_cli::SessionChoice<'a>::clone(&self) -> sandbx_cli::SessionChoice<'a>
+impl<'a> core::fmt::Debug for sandbx_cli::SessionChoice<'a>
+pub fn sandbx_cli::SessionChoice<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_cli::SessionChoice<'a>
+impl<'a> core::marker::Freeze for sandbx_cli::SessionChoice<'a>
+impl<'a> core::marker::Send for sandbx_cli::SessionChoice<'a>
+impl<'a> core::marker::Sync for sandbx_cli::SessionChoice<'a>
+impl<'a> core::marker::Unpin for sandbx_cli::SessionChoice<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_cli::SessionChoice<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::SessionChoice<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_cli::SessionChoice<'a>
+pub struct sandbx_cli::AgentRun
+impl sandbx_cli::AgentRun
+pub async fn sandbx_cli::AgentRun::execute(&self) -> core::result::Result<i32, sandbx_cli::AgentError>
+pub fn sandbx_cli::AgentRun::max_rounds(&self) -> usize
+pub fn sandbx_cli::AgentRun::max_tokens(&self) -> u32
+pub fn sandbx_cli::AgentRun::model(&self) -> &str
+pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::SandboxPolicy, sandbx_cli::PolicyError>
+pub fn sandbx_cli::AgentRun::prompt(&self) -> alloc::string::String
+pub fn sandbx_cli::AgentRun::session(&self) -> sandbx_cli::SessionChoice<'_>
+pub fn sandbx_cli::AgentRun::system(&self) -> core::option::Option<&str>
+impl clap_builder::derive::Args for sandbx_cli::AgentRun
+pub fn sandbx_cli::AgentRun::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::AgentRun::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::AgentRun::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_cli::AgentRun
+pub fn sandbx_cli::AgentRun::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::AgentRun::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::AgentRun::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::AgentRun::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_cli::AgentRun
+pub fn sandbx_cli::AgentRun::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::AgentRun
+impl core::marker::Send for sandbx_cli::AgentRun
+impl core::marker::Sync for sandbx_cli::AgentRun
+impl core::marker::Unpin for sandbx_cli::AgentRun
+impl core::marker::UnsafeUnpin for sandbx_cli::AgentRun
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::AgentRun
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::AgentRun
+pub struct sandbx_cli::Auth
+impl sandbx_cli::Auth
+pub fn sandbx_cli::Auth::execute(&self) -> core::result::Result<i32, sandbx_cli::AuthError>
+impl clap_builder::derive::Args for sandbx_cli::Auth
+pub fn sandbx_cli::Auth::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Auth::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Auth::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_cli::Auth
+pub fn sandbx_cli::Auth::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Auth::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Auth::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::Auth::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_cli::Auth
+pub fn sandbx_cli::Auth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::Auth
+impl core::marker::Send for sandbx_cli::Auth
+impl core::marker::Sync for sandbx_cli::Auth
+impl core::marker::Unpin for sandbx_cli::Auth
+impl core::marker::UnsafeUnpin for sandbx_cli::Auth
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Auth
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Auth
+pub struct sandbx_cli::Cli
+pub sandbx_cli::Cli::command: sandbx_cli::Command
+impl clap_builder::derive::Args for sandbx_cli::Cli
+pub fn sandbx_cli::Cli::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Cli::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Cli::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::CommandFactory for sandbx_cli::Cli
+pub fn sandbx_cli::Cli::command<'b>() -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Cli::command_for_update<'b>() -> clap_builder::builder::command::Command
+impl clap_builder::derive::FromArgMatches for sandbx_cli::Cli
+pub fn sandbx_cli::Cli::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Cli::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Cli::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::Cli::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl clap_builder::derive::Parser for sandbx_cli::Cli
+impl core::fmt::Debug for sandbx_cli::Cli
+pub fn sandbx_cli::Cli::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::Cli
+impl core::marker::Send for sandbx_cli::Cli
+impl core::marker::Sync for sandbx_cli::Cli
+impl core::marker::Unpin for sandbx_cli::Cli
+impl core::marker::UnsafeUnpin for sandbx_cli::Cli
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Cli
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Cli
+pub struct sandbx_cli::Grants
+impl sandbx_cli::Grants
+pub fn sandbx_cli::Grants::policy(&self) -> core::result::Result<sandbx_core::policy::SandboxPolicy, sandbx_cli::PolicyError>
+impl clap_builder::derive::Args for sandbx_cli::Grants
+pub fn sandbx_cli::Grants::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Grants::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Grants::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_cli::Grants
+pub fn sandbx_cli::Grants::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Grants::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Grants::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::Grants::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_cli::Grants
+pub fn sandbx_cli::Grants::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::Grants
+impl core::marker::Send for sandbx_cli::Grants
+impl core::marker::Sync for sandbx_cli::Grants
+impl core::marker::Unpin for sandbx_cli::Grants
+impl core::marker::UnsafeUnpin for sandbx_cli::Grants
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Grants
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Grants
+pub struct sandbx_cli::Hash
+impl sandbx_cli::Hash
+pub fn sandbx_cli::Hash::execute(&self) -> core::result::Result<i32, sandbx_cli::HashError>
+impl clap_builder::derive::Args for sandbx_cli::Hash
+pub fn sandbx_cli::Hash::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Hash::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Hash::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_cli::Hash
+pub fn sandbx_cli::Hash::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Hash::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Hash::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::Hash::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_cli::Hash
+pub fn sandbx_cli::Hash::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::Hash
+impl core::marker::Send for sandbx_cli::Hash
+impl core::marker::Sync for sandbx_cli::Hash
+impl core::marker::Unpin for sandbx_cli::Hash
+impl core::marker::UnsafeUnpin for sandbx_cli::Hash
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Hash
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Hash
+pub struct sandbx_cli::HashError
+impl core::error::Error for sandbx_cli::HashError
+pub fn sandbx_cli::HashError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_cli::HashError
+pub fn sandbx_cli::HashError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_cli::HashError
+pub fn sandbx_cli::HashError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::HashError
+impl core::marker::Send for sandbx_cli::HashError
+impl core::marker::Sync for sandbx_cli::HashError
+impl core::marker::Unpin for sandbx_cli::HashError
+impl core::marker::UnsafeUnpin for sandbx_cli::HashError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::HashError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::HashError
+pub struct sandbx_cli::SandboxRun
+impl sandbx_cli::SandboxRun
+pub fn sandbx_cli::SandboxRun::arguments(&self) -> &[alloc::string::String]
+pub fn sandbx_cli::SandboxRun::execute(&self) -> core::result::Result<i32, sandbx_cli::SandboxRunError>
+pub fn sandbx_cli::SandboxRun::pin(&self) -> core::result::Result<core::option::Option<sandbx_core::digest::Sha256Digest>, sandbx_cli::PolicyError>
+pub fn sandbx_cli::SandboxRun::policy(&self) -> core::result::Result<sandbx_core::policy::SandboxPolicy, sandbx_cli::PolicyError>
+pub fn sandbx_cli::SandboxRun::program(&self) -> &str
+pub fn sandbx_cli::SandboxRun::timeout(&self) -> core::option::Option<core::time::Duration>
+impl clap_builder::derive::Args for sandbx_cli::SandboxRun
+pub fn sandbx_cli::SandboxRun::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::SandboxRun::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::SandboxRun::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_cli::SandboxRun
+pub fn sandbx_cli::SandboxRun::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::SandboxRun::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::SandboxRun::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::SandboxRun::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_cli::SandboxRun
+pub fn sandbx_cli::SandboxRun::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::SandboxRun
+impl core::marker::Send for sandbx_cli::SandboxRun
+impl core::marker::Sync for sandbx_cli::SandboxRun
+impl core::marker::Unpin for sandbx_cli::SandboxRun
+impl core::marker::UnsafeUnpin for sandbx_cli::SandboxRun
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::SandboxRun
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::SandboxRun
+pub struct sandbx_cli::Tui
+impl sandbx_cli::Tui
+pub async fn sandbx_cli::Tui::execute(&self) -> core::result::Result<i32, sandbx_cli::AgentError>
+impl clap_builder::derive::Args for sandbx_cli::Tui
+pub fn sandbx_cli::Tui::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Tui::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_cli::Tui::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_cli::Tui
+pub fn sandbx_cli::Tui::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Tui::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_cli::Tui::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_cli::Tui::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_cli::Tui
+pub fn sandbx_cli::Tui::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_cli::Tui
+impl core::marker::Send for sandbx_cli::Tui
+impl core::marker::Sync for sandbx_cli::Tui
+impl core::marker::Unpin for sandbx_cli::Tui
+impl core::marker::UnsafeUnpin for sandbx_cli::Tui
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Tui
+impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Tui

@@ -179,6 +179,41 @@ jobs:
           echo "checked $found"
           [ "$found" -gt 0 ] || { echo "::error::no docs/release-notes/v*.md"; exit 1; }
 
+  # Not a required check: it reports a widening rather than forbidding one. What it
+  # forbids is a widening with no line in the baseline recording it.
+  api-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The nightly is for rustdoc JSON only, which stable rustdoc refuses; the
+      # build and every other job stay on stable. Pinned to the same date the
+      # script defaults to — an unpinned `nightly` emits a new JSON format version
+      # the day it lands and rewrites every baseline for no API change.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly-2026-09-11
+
+      # `cache-bin` keeps `cargo-public-api` itself, so only the first run builds it.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install cargo-public-api
+        run: cargo install cargo-public-api --locked --version 0.52.0
+
+      - name: Regenerate the public-API baseline
+        run: .github/scripts/public-api.sh
+
+      # A stale baseline is the failure: the diff is printed so the fix is a copy
+      # of what is already on screen, not a second run to find out what changed.
+      - name: Check it against what is committed
+        run: |
+          git diff --exit-code -- 'crates/*/public-api.txt' && exit 0
+          echo "::error::the public API moved and crates/*/public-api.txt is stale."
+          echo "::error::Run .github/scripts/public-api.sh, commit the result, and justify each widening in the PR."
+          exit 1
+
   audit:
     runs-on: ubuntu-latest
     steps:

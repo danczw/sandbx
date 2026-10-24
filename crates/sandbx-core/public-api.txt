@@ -1,0 +1,483 @@
+pub mod sandbx_core
+pub enum sandbx_core::Access
+pub sandbx_core::Access::Read
+pub sandbx_core::Access::Write
+impl sandbx_core::Access
+pub fn sandbx_core::Access::operation(self) -> &'static str
+pub fn sandbx_core::Access::outside(self) -> &'static str
+impl core::clone::Clone for sandbx_core::Access
+pub fn sandbx_core::Access::clone(&self) -> sandbx_core::Access
+impl core::cmp::Eq for sandbx_core::Access
+impl core::cmp::PartialEq for sandbx_core::Access
+pub fn sandbx_core::Access::eq(&self, &sandbx_core::Access) -> bool
+impl core::fmt::Debug for sandbx_core::Access
+pub fn sandbx_core::Access::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::Access
+impl core::marker::StructuralPartialEq for sandbx_core::Access
+impl core::marker::Freeze for sandbx_core::Access
+impl core::marker::Send for sandbx_core::Access
+impl core::marker::Sync for sandbx_core::Access
+impl core::marker::Unpin for sandbx_core::Access
+impl core::marker::UnsafeUnpin for sandbx_core::Access
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Access
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Access
+pub enum sandbx_core::AuditEvent<'a>
+pub sandbx_core::AuditEvent::Absent
+pub sandbx_core::AuditEvent::Absent::subject: &'a str
+pub sandbx_core::AuditEvent::Absent::tool: &'a str
+pub sandbx_core::AuditEvent::Allowed
+pub sandbx_core::AuditEvent::Allowed::subject: &'a str
+pub sandbx_core::AuditEvent::Allowed::tool: &'a str
+pub sandbx_core::AuditEvent::Degraded
+pub sandbx_core::AuditEvent::Degraded::detail: &'a str
+pub sandbx_core::AuditEvent::Degraded::mechanism: &'a str
+pub sandbx_core::AuditEvent::Denied
+pub sandbx_core::AuditEvent::Denied::reason: &'a str
+pub sandbx_core::AuditEvent::Denied::subject: &'a str
+pub sandbx_core::AuditEvent::Denied::tool: &'a str
+pub sandbx_core::AuditEvent::Exited
+pub sandbx_core::AuditEvent::Exited::code: i32
+pub sandbx_core::AuditEvent::Exited::program: &'a str
+pub sandbx_core::AuditEvent::Failed
+pub sandbx_core::AuditEvent::Failed::program: &'a str
+pub sandbx_core::AuditEvent::Failed::reason: &'static str
+pub sandbx_core::AuditEvent::Spawned
+pub sandbx_core::AuditEvent::Spawned::dns_names: usize
+pub sandbx_core::AuditEvent::Spawned::dns_over_tcp: bool
+pub sandbx_core::AuditEvent::Spawned::env: usize
+pub sandbx_core::AuditEvent::Spawned::executable: usize
+pub sandbx_core::AuditEvent::Spawned::network: &'static str
+pub sandbx_core::AuditEvent::Spawned::network_ports: usize
+pub sandbx_core::AuditEvent::Spawned::pinned: bool
+pub sandbx_core::AuditEvent::Spawned::program: &'a str
+pub sandbx_core::AuditEvent::Spawned::readable: usize
+pub sandbx_core::AuditEvent::Spawned::unix_sockets: bool
+pub sandbx_core::AuditEvent::Spawned::writable: usize
+impl<'a> sandbx_core::AuditEvent<'a>
+pub fn sandbx_core::AuditEvent<'a>::absent(&'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::allowed(&'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::degraded(&'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::denied(&'a str, &'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::emit(&self)
+pub fn sandbx_core::AuditEvent<'a>::exited(&'a str, &std::process::ExitStatus) -> Self
+pub fn sandbx_core::AuditEvent<'a>::failed(&'a str, &'static str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::spawned(&'a str, &sandbx_core::SandboxPolicy, bool) -> Self
+impl<'a> core::clone::Clone for sandbx_core::AuditEvent<'a>
+pub fn sandbx_core::AuditEvent<'a>::clone(&self) -> sandbx_core::AuditEvent<'a>
+impl<'a> core::cmp::Eq for sandbx_core::AuditEvent<'a>
+impl<'a> core::cmp::PartialEq for sandbx_core::AuditEvent<'a>
+pub fn sandbx_core::AuditEvent<'a>::eq(&self, &sandbx_core::AuditEvent<'a>) -> bool
+impl<'a> core::fmt::Debug for sandbx_core::AuditEvent<'a>
+pub fn sandbx_core::AuditEvent<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for sandbx_core::AuditEvent<'a>
+impl<'a> core::marker::Freeze for sandbx_core::AuditEvent<'a>
+impl<'a> core::marker::Send for sandbx_core::AuditEvent<'a>
+impl<'a> core::marker::Sync for sandbx_core::AuditEvent<'a>
+impl<'a> core::marker::Unpin for sandbx_core::AuditEvent<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_core::AuditEvent<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_core::AuditEvent<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_core::AuditEvent<'a>
+pub enum sandbx_core::Axis
+pub sandbx_core::Axis::Read
+pub sandbx_core::Axis::ReadExecute
+pub sandbx_core::Axis::Write
+impl sandbx_core::Axis
+pub const sandbx_core::Axis::ALL: [sandbx_core::Axis; 3]
+pub const fn sandbx_core::Axis::grants(self) -> sandbx_core::Grants
+impl core::clone::Clone for sandbx_core::Axis
+pub fn sandbx_core::Axis::clone(&self) -> sandbx_core::Axis
+impl core::cmp::Eq for sandbx_core::Axis
+impl core::cmp::PartialEq for sandbx_core::Axis
+pub fn sandbx_core::Axis::eq(&self, &sandbx_core::Axis) -> bool
+impl core::fmt::Debug for sandbx_core::Axis
+pub fn sandbx_core::Axis::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::Axis
+impl core::marker::StructuralPartialEq for sandbx_core::Axis
+impl core::marker::Freeze for sandbx_core::Axis
+impl core::marker::Send for sandbx_core::Axis
+impl core::marker::Sync for sandbx_core::Axis
+impl core::marker::Unpin for sandbx_core::Axis
+impl core::marker::UnsafeUnpin for sandbx_core::Axis
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Axis
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Axis
+pub enum sandbx_core::DigestParseError
+pub sandbx_core::DigestParseError::Character
+pub sandbx_core::DigestParseError::Character::found: u8
+pub sandbx_core::DigestParseError::Length
+pub sandbx_core::DigestParseError::Length::found: usize
+impl core::clone::Clone for sandbx_core::DigestParseError
+pub fn sandbx_core::DigestParseError::clone(&self) -> sandbx_core::DigestParseError
+impl core::cmp::Eq for sandbx_core::DigestParseError
+impl core::cmp::PartialEq for sandbx_core::DigestParseError
+pub fn sandbx_core::DigestParseError::eq(&self, &sandbx_core::DigestParseError) -> bool
+impl core::error::Error for sandbx_core::DigestParseError
+impl core::fmt::Debug for sandbx_core::DigestParseError
+pub fn sandbx_core::DigestParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_core::DigestParseError
+pub fn sandbx_core::DigestParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::DigestParseError
+impl core::marker::StructuralPartialEq for sandbx_core::DigestParseError
+impl core::marker::Freeze for sandbx_core::DigestParseError
+impl core::marker::Send for sandbx_core::DigestParseError
+impl core::marker::Sync for sandbx_core::DigestParseError
+impl core::marker::Unpin for sandbx_core::DigestParseError
+impl core::marker::UnsafeUnpin for sandbx_core::DigestParseError
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::DigestParseError
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::DigestParseError
+pub enum sandbx_core::HelperRefusal
+pub sandbx_core::HelperRefusal::BadHelperArgs
+pub sandbx_core::HelperRefusal::ExecFailed
+pub sandbx_core::HelperRefusal::GrantRedirected
+pub sandbx_core::HelperRefusal::GrantReplaced
+pub sandbx_core::HelperRefusal::InnerStageFailed
+pub sandbx_core::HelperRefusal::Landlock
+pub sandbx_core::HelperRefusal::NamespaceSetupFailed
+pub sandbx_core::HelperRefusal::PinMismatch
+pub sandbx_core::HelperRefusal::PinUnreadable
+pub sandbx_core::HelperRefusal::PinnedScript
+pub sandbx_core::HelperRefusal::ProcessHardening
+pub sandbx_core::HelperRefusal::Seccomp
+pub sandbx_core::HelperRefusal::Unsupported
+impl sandbx_core::HelperRefusal
+pub const sandbx_core::HelperRefusal::ALL: [Self; 13]
+pub const fn sandbx_core::HelperRefusal::label(self) -> &'static str
+impl core::clone::Clone for sandbx_core::HelperRefusal
+pub fn sandbx_core::HelperRefusal::clone(&self) -> sandbx_core::HelperRefusal
+impl core::cmp::Eq for sandbx_core::HelperRefusal
+impl core::cmp::PartialEq for sandbx_core::HelperRefusal
+pub fn sandbx_core::HelperRefusal::eq(&self, &sandbx_core::HelperRefusal) -> bool
+impl core::fmt::Debug for sandbx_core::HelperRefusal
+pub fn sandbx_core::HelperRefusal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::HelperRefusal
+impl core::marker::StructuralPartialEq for sandbx_core::HelperRefusal
+impl core::marker::Freeze for sandbx_core::HelperRefusal
+impl core::marker::Send for sandbx_core::HelperRefusal
+impl core::marker::Sync for sandbx_core::HelperRefusal
+impl core::marker::Unpin for sandbx_core::HelperRefusal
+impl core::marker::UnsafeUnpin for sandbx_core::HelperRefusal
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::HelperRefusal
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::HelperRefusal
+pub enum sandbx_core::NetworkPolicy
+pub sandbx_core::NetworkPolicy::AnyPort
+pub sandbx_core::NetworkPolicy::Denied
+pub sandbx_core::NetworkPolicy::Ports(alloc::vec::Vec<u16>)
+impl core::clone::Clone for sandbx_core::NetworkPolicy
+pub fn sandbx_core::NetworkPolicy::clone(&self) -> sandbx_core::NetworkPolicy
+impl core::cmp::Eq for sandbx_core::NetworkPolicy
+impl core::cmp::PartialEq for sandbx_core::NetworkPolicy
+pub fn sandbx_core::NetworkPolicy::eq(&self, &sandbx_core::NetworkPolicy) -> bool
+impl core::default::Default for sandbx_core::NetworkPolicy
+pub fn sandbx_core::NetworkPolicy::default() -> sandbx_core::NetworkPolicy
+impl core::fmt::Debug for sandbx_core::NetworkPolicy
+pub fn sandbx_core::NetworkPolicy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::NetworkPolicy
+impl core::marker::Freeze for sandbx_core::NetworkPolicy
+impl core::marker::Send for sandbx_core::NetworkPolicy
+impl core::marker::Sync for sandbx_core::NetworkPolicy
+impl core::marker::Unpin for sandbx_core::NetworkPolicy
+impl core::marker::UnsafeUnpin for sandbx_core::NetworkPolicy
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::NetworkPolicy
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::NetworkPolicy
+pub enum sandbx_core::SandboxError
+pub sandbx_core::SandboxError::BadHelperArgs
+pub sandbx_core::SandboxError::BadHelperArgs::detail: &'static str
+pub sandbx_core::SandboxError::ExecFailed
+pub sandbx_core::SandboxError::ExecFailed::source: core::io::error::Error
+pub sandbx_core::SandboxError::GrantBoundByResolver
+pub sandbx_core::SandboxError::GrantBoundByResolver::granted: std::path::PathBuf
+pub sandbx_core::SandboxError::GrantRedirected
+pub sandbx_core::SandboxError::GrantRedirected::granted: std::path::PathBuf
+pub sandbx_core::SandboxError::GrantRedirected::opened: std::path::PathBuf
+pub sandbx_core::SandboxError::GrantReplaced
+pub sandbx_core::SandboxError::GrantReplaced::granted: std::path::PathBuf
+pub sandbx_core::SandboxError::GrantReplaced::opened: sandbx_core::ObjectId
+pub sandbx_core::SandboxError::GrantReplaced::vetted: sandbx_core::ObjectId
+pub sandbx_core::SandboxError::GrantUnpinnable
+pub sandbx_core::SandboxError::GrantUnpinnable::granted: std::path::PathBuf
+pub sandbx_core::SandboxError::GrantUnpinnable::source: core::io::error::Error
+pub sandbx_core::SandboxError::HelperRefused
+pub sandbx_core::SandboxError::HelperRefused::detail: alloc::string::String
+pub sandbx_core::SandboxError::HelperRefused::refusal: sandbx_core::HelperRefusal
+pub sandbx_core::SandboxError::InnerStageFailed
+pub sandbx_core::SandboxError::InnerStageFailed::detail: &'static str
+pub sandbx_core::SandboxError::InnerStageFailed::source: core::io::error::Error
+pub sandbx_core::SandboxError::Landlock
+pub sandbx_core::SandboxError::Landlock::detail: alloc::string::String
+pub sandbx_core::SandboxError::NamespaceSetupFailed
+pub sandbx_core::SandboxError::NamespaceSetupFailed::detail: &'static str
+pub sandbx_core::SandboxError::NotFound
+pub sandbx_core::SandboxError::NotFound::requested: std::path::PathBuf
+pub sandbx_core::SandboxError::NotFound::source: core::io::error::Error
+pub sandbx_core::SandboxError::PathNotAllowed
+pub sandbx_core::SandboxError::PathNotAllowed::access: sandbx_core::Access
+pub sandbx_core::SandboxError::PathNotAllowed::requested: std::path::PathBuf
+pub sandbx_core::SandboxError::PinMismatch
+pub sandbx_core::SandboxError::PinMismatch::actual: sandbx_core::Sha256Digest
+pub sandbx_core::SandboxError::PinMismatch::expected: sandbx_core::Sha256Digest
+pub sandbx_core::SandboxError::PinMismatch::program: alloc::string::String
+pub sandbx_core::SandboxError::PinUnreadable
+pub sandbx_core::SandboxError::PinUnreadable::program: alloc::string::String
+pub sandbx_core::SandboxError::PinUnreadable::source: core::io::error::Error
+pub sandbx_core::SandboxError::PinnedScript
+pub sandbx_core::SandboxError::PinnedScript::program: alloc::string::String
+pub sandbx_core::SandboxError::ProcessConcealment
+pub sandbx_core::SandboxError::ProcessConcealment::detail: alloc::string::String
+pub sandbx_core::SandboxError::ProcessHardening
+pub sandbx_core::SandboxError::ProcessHardening::detail: alloc::string::String
+pub sandbx_core::SandboxError::RootReplaced
+pub sandbx_core::SandboxError::RootReplaced::granted: std::path::PathBuf
+pub sandbx_core::SandboxError::RootReplaced::opened: sandbx_core::ObjectId
+pub sandbx_core::SandboxError::RootReplaced::vetted: sandbx_core::ObjectId
+pub sandbx_core::SandboxError::Seccomp
+pub sandbx_core::SandboxError::Seccomp::detail: alloc::string::String
+pub sandbx_core::SandboxError::SpawnFailed
+pub sandbx_core::SandboxError::SpawnFailed::detail: &'static str
+pub sandbx_core::SandboxError::SpawnFailed::source: core::io::error::Error
+pub sandbx_core::SandboxError::TimedOut
+pub sandbx_core::SandboxError::TimedOut::after: core::time::Duration
+pub sandbx_core::SandboxError::UnboundedResolution
+pub sandbx_core::SandboxError::UnboundedResolution::detail: &'static str
+pub sandbx_core::SandboxError::Unresolvable
+pub sandbx_core::SandboxError::Unresolvable::requested: std::path::PathBuf
+pub sandbx_core::SandboxError::Unresolvable::source: core::io::error::Error
+pub sandbx_core::SandboxError::Unsupported
+pub sandbx_core::SandboxError::Unsupported::detail: &'static str
+impl sandbx_core::SandboxError
+pub fn sandbx_core::SandboxError::label(&self) -> &'static str
+impl core::error::Error for sandbx_core::SandboxError
+pub fn sandbx_core::SandboxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_core::SandboxError
+pub fn sandbx_core::SandboxError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_core::SandboxError
+pub fn sandbx_core::SandboxError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_core::SandboxError
+impl core::marker::Send for sandbx_core::SandboxError
+impl core::marker::Sync for sandbx_core::SandboxError
+impl core::marker::Unpin for sandbx_core::SandboxError
+impl core::marker::UnsafeUnpin for sandbx_core::SandboxError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SandboxError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_core::SandboxError
+pub struct sandbx_core::FsGuard
+impl sandbx_core::FsGuard
+pub fn sandbx_core::FsGuard::check_read(&self, &std::path::Path) -> core::result::Result<std::path::PathBuf, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::check_write(&self, &std::path::Path) -> core::result::Result<std::path::PathBuf, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::new(&sandbx_core::SandboxPolicy) -> Self
+pub fn sandbx_core::FsGuard::open_read(&self, &std::path::Path) -> core::result::Result<std::fs::File, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::open_write(&self, &std::path::Path) -> core::result::Result<std::fs::File, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::read_dir(&self, &std::path::Path) -> core::result::Result<core::io::error::Result<std::fs::ReadDir>, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::walk_readable(&self, &std::path::Path, usize) -> core::result::Result<sandbx_core::ReadableWalk, sandbx_core::SandboxError>
+impl core::clone::Clone for sandbx_core::FsGuard
+pub fn sandbx_core::FsGuard::clone(&self) -> sandbx_core::FsGuard
+impl core::fmt::Debug for sandbx_core::FsGuard
+pub fn sandbx_core::FsGuard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_core::FsGuard
+impl core::marker::Send for sandbx_core::FsGuard
+impl core::marker::Sync for sandbx_core::FsGuard
+impl core::marker::Unpin for sandbx_core::FsGuard
+impl core::marker::UnsafeUnpin for sandbx_core::FsGuard
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::FsGuard
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::FsGuard
+pub struct sandbx_core::Grants
+pub sandbx_core::Grants::execute: bool
+pub sandbx_core::Grants::read: bool
+pub sandbx_core::Grants::write: bool
+impl core::clone::Clone for sandbx_core::Grants
+pub fn sandbx_core::Grants::clone(&self) -> sandbx_core::Grants
+impl core::cmp::Eq for sandbx_core::Grants
+impl core::cmp::PartialEq for sandbx_core::Grants
+pub fn sandbx_core::Grants::eq(&self, &sandbx_core::Grants) -> bool
+impl core::fmt::Debug for sandbx_core::Grants
+pub fn sandbx_core::Grants::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::Grants
+impl core::marker::StructuralPartialEq for sandbx_core::Grants
+impl core::marker::Freeze for sandbx_core::Grants
+impl core::marker::Send for sandbx_core::Grants
+impl core::marker::Sync for sandbx_core::Grants
+impl core::marker::Unpin for sandbx_core::Grants
+impl core::marker::UnsafeUnpin for sandbx_core::Grants
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Grants
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Grants
+pub struct sandbx_core::HelperArgs
+pub sandbx_core::HelperArgs::args: alloc::vec::Vec<alloc::string::String>
+pub sandbx_core::HelperArgs::pin: core::option::Option<sandbx_core::Sha256Digest>
+pub sandbx_core::HelperArgs::policy: sandbx_core::SandboxPolicy
+pub sandbx_core::HelperArgs::program: alloc::string::String
+impl sandbx_core::HelperArgs
+pub fn sandbx_core::HelperArgs::decode(&[alloc::string::String]) -> core::result::Result<Self, sandbx_core::SandboxError>
+pub fn sandbx_core::HelperArgs::encode(&sandbx_core::SandboxPolicy, &str, &[alloc::string::String], core::option::Option<sandbx_core::Sha256Digest>) -> alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for sandbx_core::HelperArgs
+pub fn sandbx_core::HelperArgs::clone(&self) -> sandbx_core::HelperArgs
+impl core::cmp::Eq for sandbx_core::HelperArgs
+impl core::cmp::PartialEq for sandbx_core::HelperArgs
+pub fn sandbx_core::HelperArgs::eq(&self, &sandbx_core::HelperArgs) -> bool
+impl core::fmt::Debug for sandbx_core::HelperArgs
+pub fn sandbx_core::HelperArgs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::HelperArgs
+impl core::marker::Freeze for sandbx_core::HelperArgs
+impl core::marker::Send for sandbx_core::HelperArgs
+impl core::marker::Sync for sandbx_core::HelperArgs
+impl core::marker::Unpin for sandbx_core::HelperArgs
+impl core::marker::UnsafeUnpin for sandbx_core::HelperArgs
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::HelperArgs
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::HelperArgs
+pub struct sandbx_core::ObjectId
+impl core::clone::Clone for sandbx_core::ObjectId
+pub fn sandbx_core::ObjectId::clone(&self) -> sandbx_core::ObjectId
+impl core::cmp::Eq for sandbx_core::ObjectId
+impl core::cmp::PartialEq for sandbx_core::ObjectId
+pub fn sandbx_core::ObjectId::eq(&self, &sandbx_core::ObjectId) -> bool
+impl core::fmt::Debug for sandbx_core::ObjectId
+pub fn sandbx_core::ObjectId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_core::ObjectId
+pub fn sandbx_core::ObjectId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::ObjectId
+impl core::marker::StructuralPartialEq for sandbx_core::ObjectId
+impl core::marker::Freeze for sandbx_core::ObjectId
+impl core::marker::Send for sandbx_core::ObjectId
+impl core::marker::Sync for sandbx_core::ObjectId
+impl core::marker::Unpin for sandbx_core::ObjectId
+impl core::marker::UnsafeUnpin for sandbx_core::ObjectId
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::ObjectId
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::ObjectId
+pub struct sandbx_core::ReadableWalk
+pub sandbx_core::ReadableWalk::files: alloc::vec::Vec<std::path::PathBuf>
+pub sandbx_core::ReadableWalk::truncated: bool
+impl core::clone::Clone for sandbx_core::ReadableWalk
+pub fn sandbx_core::ReadableWalk::clone(&self) -> sandbx_core::ReadableWalk
+impl core::cmp::Eq for sandbx_core::ReadableWalk
+impl core::cmp::PartialEq for sandbx_core::ReadableWalk
+pub fn sandbx_core::ReadableWalk::eq(&self, &sandbx_core::ReadableWalk) -> bool
+impl core::fmt::Debug for sandbx_core::ReadableWalk
+pub fn sandbx_core::ReadableWalk::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::ReadableWalk
+impl core::marker::Freeze for sandbx_core::ReadableWalk
+impl core::marker::Send for sandbx_core::ReadableWalk
+impl core::marker::Sync for sandbx_core::ReadableWalk
+impl core::marker::Unpin for sandbx_core::ReadableWalk
+impl core::marker::UnsafeUnpin for sandbx_core::ReadableWalk
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::ReadableWalk
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::ReadableWalk
+pub struct sandbx_core::SandboxPolicy
+impl sandbx_core::SandboxPolicy
+pub fn sandbx_core::SandboxPolicy::allow_dns(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_env(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_network(self) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_network_port(self, u16) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_read(self, sandbx_core::VettedPath) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_read_execute(self, sandbx_core::VettedPath) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_standard_env(self) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_system_executables(self) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_unix_sockets(self) -> Self
+pub fn sandbx_core::SandboxPolicy::allow_write(self, sandbx_core::VettedPath) -> Self
+pub fn sandbx_core::SandboxPolicy::allowed_dns_names(&self) -> &[alloc::string::String]
+pub fn sandbx_core::SandboxPolicy::allowed_env(&self) -> &[alloc::string::String]
+pub fn sandbx_core::SandboxPolicy::allows_network(&self) -> bool
+pub fn sandbx_core::SandboxPolicy::allows_unix_sockets(&self) -> bool
+pub fn sandbx_core::SandboxPolicy::bounds_resolution(&self) -> bool
+pub fn sandbx_core::SandboxPolicy::executable_paths(&self) -> &[sandbx_core::VettedPath]
+pub fn sandbx_core::SandboxPolicy::grant(self, sandbx_core::Axis, sandbx_core::VettedPath) -> Self
+pub fn sandbx_core::SandboxPolicy::grant_bound_by_resolver(&self) -> core::option::Option<&std::path::Path>
+pub fn sandbx_core::SandboxPolicy::granted_paths(&self) -> impl core::iter::traits::iterator::Iterator<Item = (sandbx_core::Axis, &sandbx_core::VettedPath)>
+pub fn sandbx_core::SandboxPolicy::hint_dns_over_tcp(self) -> Self
+pub fn sandbx_core::SandboxPolicy::hints_dns_over_tcp(&self) -> bool
+pub fn sandbx_core::SandboxPolicy::imposed_env(&self) -> &'static [(&'static str, &'static str)]
+pub fn sandbx_core::SandboxPolicy::network(&self) -> &sandbx_core::NetworkPolicy
+pub fn sandbx_core::SandboxPolicy::paths(&self, sandbx_core::Axis) -> &[sandbx_core::VettedPath]
+pub fn sandbx_core::SandboxPolicy::permits_env(&self, &std::ffi::os_str::OsStr) -> bool
+pub fn sandbx_core::SandboxPolicy::readable_paths(&self) -> &[sandbx_core::VettedPath]
+pub fn sandbx_core::SandboxPolicy::unbounded_resolution(&self) -> core::option::Option<&'static str>
+pub fn sandbx_core::SandboxPolicy::working_root(&self) -> core::option::Option<&std::path::Path>
+pub fn sandbx_core::SandboxPolicy::writable_paths(&self) -> &[sandbx_core::VettedPath]
+impl core::clone::Clone for sandbx_core::SandboxPolicy
+pub fn sandbx_core::SandboxPolicy::clone(&self) -> sandbx_core::SandboxPolicy
+impl core::cmp::Eq for sandbx_core::SandboxPolicy
+impl core::cmp::PartialEq for sandbx_core::SandboxPolicy
+pub fn sandbx_core::SandboxPolicy::eq(&self, &sandbx_core::SandboxPolicy) -> bool
+impl core::default::Default for sandbx_core::SandboxPolicy
+pub fn sandbx_core::SandboxPolicy::default() -> sandbx_core::SandboxPolicy
+impl core::fmt::Debug for sandbx_core::SandboxPolicy
+pub fn sandbx_core::SandboxPolicy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::SandboxPolicy
+impl core::marker::Freeze for sandbx_core::SandboxPolicy
+impl core::marker::Send for sandbx_core::SandboxPolicy
+impl core::marker::Sync for sandbx_core::SandboxPolicy
+impl core::marker::Unpin for sandbx_core::SandboxPolicy
+impl core::marker::UnsafeUnpin for sandbx_core::SandboxPolicy
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SandboxPolicy
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::SandboxPolicy
+pub struct sandbx_core::SandboxedCommand
+impl sandbx_core::SandboxedCommand
+pub fn sandbx_core::SandboxedCommand::arg(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn sandbx_core::SandboxedCommand::args<I, S>(self, I) -> Self where I: core::iter::traits::collect::IntoIterator<Item = S>, S: core::convert::Into<alloc::string::String>
+pub fn sandbx_core::SandboxedCommand::command_line(&self) -> core::result::Result<(std::path::PathBuf, alloc::vec::Vec<alloc::string::String>), sandbx_core::SandboxError>
+pub fn sandbx_core::SandboxedCommand::helper(self, impl core::convert::AsRef<std::path::Path>) -> Self
+pub fn sandbx_core::SandboxedCommand::new(impl core::convert::Into<alloc::string::String>, sandbx_core::SandboxPolicy) -> Self
+pub fn sandbx_core::SandboxedCommand::output(&self) -> core::result::Result<std::process::Output, sandbx_core::SandboxError>
+pub fn sandbx_core::SandboxedCommand::pin_sha256(self, sandbx_core::Sha256Digest) -> Self
+pub fn sandbx_core::SandboxedCommand::timeout(self, core::time::Duration) -> Self
+impl core::clone::Clone for sandbx_core::SandboxedCommand
+pub fn sandbx_core::SandboxedCommand::clone(&self) -> sandbx_core::SandboxedCommand
+impl core::fmt::Debug for sandbx_core::SandboxedCommand
+pub fn sandbx_core::SandboxedCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_core::SandboxedCommand
+impl core::marker::Send for sandbx_core::SandboxedCommand
+impl core::marker::Sync for sandbx_core::SandboxedCommand
+impl core::marker::Unpin for sandbx_core::SandboxedCommand
+impl core::marker::UnsafeUnpin for sandbx_core::SandboxedCommand
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SandboxedCommand
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::SandboxedCommand
+pub struct sandbx_core::Sha256Digest(_)
+impl sandbx_core::Sha256Digest
+pub fn sandbx_core::Sha256Digest::of_file(&mut std::fs::File) -> core::io::error::Result<Self>
+pub fn sandbx_core::Sha256Digest::parse(&str) -> core::result::Result<Self, sandbx_core::DigestParseError>
+impl core::clone::Clone for sandbx_core::Sha256Digest
+pub fn sandbx_core::Sha256Digest::clone(&self) -> sandbx_core::Sha256Digest
+impl core::cmp::Eq for sandbx_core::Sha256Digest
+impl core::cmp::PartialEq for sandbx_core::Sha256Digest
+pub fn sandbx_core::Sha256Digest::eq(&self, &sandbx_core::Sha256Digest) -> bool
+impl core::fmt::Debug for sandbx_core::Sha256Digest
+pub fn sandbx_core::Sha256Digest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_core::Sha256Digest
+pub fn sandbx_core::Sha256Digest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::Sha256Digest
+impl core::marker::StructuralPartialEq for sandbx_core::Sha256Digest
+impl core::marker::Freeze for sandbx_core::Sha256Digest
+impl core::marker::Send for sandbx_core::Sha256Digest
+impl core::marker::Sync for sandbx_core::Sha256Digest
+impl core::marker::Unpin for sandbx_core::Sha256Digest
+impl core::marker::UnsafeUnpin for sandbx_core::Sha256Digest
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Sha256Digest
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Sha256Digest
+pub struct sandbx_core::VettedPath
+impl sandbx_core::VettedPath
+pub fn sandbx_core::VettedPath::object(&self) -> sandbx_core::ObjectId
+pub fn sandbx_core::VettedPath::path(&self) -> &std::path::Path
+pub fn sandbx_core::VettedPath::vet(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, sandbx_core::SandboxError>
+impl core::clone::Clone for sandbx_core::VettedPath
+pub fn sandbx_core::VettedPath::clone(&self) -> sandbx_core::VettedPath
+impl core::cmp::Eq for sandbx_core::VettedPath
+impl core::cmp::PartialEq for sandbx_core::VettedPath
+pub fn sandbx_core::VettedPath::eq(&self, &sandbx_core::VettedPath) -> bool
+impl core::convert::AsRef<std::path::Path> for sandbx_core::VettedPath
+pub fn sandbx_core::VettedPath::as_ref(&self) -> &std::path::Path
+impl core::fmt::Debug for sandbx_core::VettedPath
+pub fn sandbx_core::VettedPath::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::VettedPath
+impl core::marker::Freeze for sandbx_core::VettedPath
+impl core::marker::Send for sandbx_core::VettedPath
+impl core::marker::Sync for sandbx_core::VettedPath
+impl core::marker::Unpin for sandbx_core::VettedPath
+impl core::marker::UnsafeUnpin for sandbx_core::VettedPath
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::VettedPath
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::VettedPath
+pub const sandbx_core::AUDIT_TARGET: &str
+pub const sandbx_core::BLOCKED_SYSCALLS: &[core::ffi::primitives::c_long]
+pub const sandbx_core::DNS_NAME_LIMIT: usize
+pub const sandbx_core::HELPER_FLAG: &str
+pub const sandbx_core::HELPER_INNER_FLAG: &str
+pub const sandbx_core::NAMESERVER_PORT: u16
+pub const sandbx_core::RESOLVER_FILES: [&str; 3]
+pub fn sandbx_core::bound_by_resolver(&std::path::Path) -> bool
+pub fn sandbx_core::conceal_process_state() -> core::result::Result<(), sandbx_core::SandboxError>
+pub fn sandbx_core::exit_code(&std::process::ExitStatus) -> i32
+pub fn sandbx_core::with_helper_dispatch<I, F>(I, F) -> std::process::ExitCode where I: core::iter::traits::collect::IntoIterator<Item = std::ffi::os_str::OsString>, F: core::ops::function::FnOnce() -> std::process::ExitCode

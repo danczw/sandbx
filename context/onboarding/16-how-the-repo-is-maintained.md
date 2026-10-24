@@ -595,9 +595,9 @@ Assume a small change to `sandbx-cli`.
 - **Label and milestone it.** A `crate:*` label per crate materially touched and
   none if the change is workspace-wide or outside `crates/`; the next release's
   milestone if the work is in flight, and none if it is not scheduled.
-- **Watch all six checks**, not one: `test`, `sandbox (x86_64)`,
-  `sandbox (aarch64)`, `msrv`, `notes` and `audit` — five jobs, the sandbox one
-  being a two-architecture matrix. If `test`'s fmt, clippy or doc step is what
+- **Watch all seven checks**, not one: `test`, `sandbox (x86_64)`,
+  `sandbox (aarch64)`, `msrv`, `notes`, `api-diff` and `audit` — six jobs, the
+  sandbox one being a two-architecture matrix. If `test`'s fmt, clippy or doc step is what
   went red, a hook was skipped.
 
 One closing note that ties back to the tests above. `guide-testing.md` warns that
