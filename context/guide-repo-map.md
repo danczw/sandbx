@@ -337,20 +337,19 @@ pass, and reads as reference rather than as a wall once the first is done.
 17. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
 18. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-19. `guide-naming.md` — how long a name may be, and what to cut first
-20. `guide-code-comments.md` — what a comment may say, and how long
-21. `guide-module-layout.md` — a module's budget, where its tests live, and what
-    one must assert
-22. `guide-ci.md` — what runs before a push, and what runs after
-23. `guide-release-notes.md` — which half of a release body is written by hand,
+19. `guide-testing.md` — what a test has to assert, where it lives, and how long
+    its name may be
+20. `guide-ci.md` — what runs before a push, and what runs after
+21. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
-24. `decision-google-style.md` — which style guide the code follows, and where it
+22. `decision-google-style.md` — which style guide the code follows, and where it
     departs from it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.
 
-One home per fact. `guide-code-comments.md` sends prose out of the code and into
-this directory, and nothing measures a doc's length — so the bound here is
-placement, not size: a fact lives in one doc, and a second mention is a pointer
-to it. The rule above is how a duplicate is resolved once one exists.
+One home per fact. A comment that has grown into an essay means this directory
+needs a paragraph and the code needs a one-line pointer, and nothing measures a
+doc's length — so the bound here is placement, not size: a fact lives in one doc,
+and a second mention is a pointer to it. The rule above is how a duplicate is
+resolved once one exists.

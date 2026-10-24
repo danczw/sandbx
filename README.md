@@ -376,7 +376,7 @@ git config core.hooksPath .githooks                    # fmt + clippy on commit
   is to why the order of `apply` is load-bearing, then a chapter per crate.
 - `context/guide-repo-map.md` — which crate owns what, and what depends on what.
 - `context/guide-ci.md` — what the hooks run before a commit, and CI after a push.
-- `context/guide-module-layout.md` — a module's budget, and where its tests live.
+- `context/guide-testing.md` — what a test must assert, and where it lives.
 - the `context/guide-*.md` beside them, how each subsystem works; the
   `context/decision-*.md`, why it has that shape.
 

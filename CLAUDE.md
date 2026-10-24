@@ -13,9 +13,7 @@ Where to look, and where to put something new:
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
 | what runs before a push, and what runs after | `context/guide-ci.md` |
 | how the code is written, and where it departs | `context/decision-google-style.md` |
-| what a code comment may say, and how long | `context/guide-code-comments.md` |
-| how long a name may be, and what to cut first | `context/guide-naming.md` |
-| a module's budget, where its tests live, what one must assert | `context/guide-module-layout.md` |
+| what a test must assert, where it lives, how long its name may be | `context/guide-testing.md` |
 | what is claimed, and what is not | `SECURITY.md` |
 | what was planned and is still missing | an open issue |
 | which crates a change lands in | its `crate:*` labels |
@@ -73,7 +71,30 @@ diffstat to every invocation.
 
 A review over the wrong lines is not a pass.
 
-The comment pass: read every comment the branch added or touched against
-`context/guide-code-comments.md`, and trim what is over budget. A trim that
-deletes a kernel quirk, an ordering requirement or the origin of an ABI number
-has failed however much shorter it made the file.
+The comment pass: read every comment the branch added or touched against the Google
+guide's documentation rules, and cut what does not earn its line — a restated name, a
+type the signature already names, narration, a banner, history that `git log` and the
+issue tracker already hold.
+
+Five things are never trimmed, however much shorter it would make the file:
+
+- Why a sequence cannot be reordered.
+- Why a syscall, flag or apparent redundancy is required.
+- Where a magic constant or ABI number comes from.
+- An asymmetry the type system does not enforce (`ReadExecute` confers read;
+  nothing confers execute).
+- A workaround, and the condition that would let it go.
+
+Compress those to the load-bearing clause; do not delete them to hit a number. Over
+budget is a rewrite, not a deletion — find the sentence doing the work and keep that
+one. Three traps in the pass itself:
+
+- **clap's `--help` text and schemars' `description` docs are not commentary.** They
+  are rendered output, and the exemption follows the item, not the file. Capture
+  `--help` before and after, or a trim silently edits the CLI.
+- **rustfmt does not wrap comments.** Merging four comment lines into one 216-column
+  line reads as three lines cut and passes `cargo fmt --check` silently, so check
+  widths in the same pass.
+- **A comment-only change leaves the code byte-identical.** `git diff -U0` with the
+  comment lines stripped must print nothing. If it prints anything, the branch is not
+  comment-only and needs the reviews above.

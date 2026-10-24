@@ -47,7 +47,7 @@ filesystem path that skips the parse is unwritable.
 Five tests in `tests/registry.rs` pin what co-location cannot. Each hard-codes
 its expected value rather than reading it off the registry, which is the general
 rule in
-[guide-module-layout.md](guide-module-layout.md#what-a-test-has-to-assert-to-assert-anything):
+[guide-testing.md](guide-testing.md#what-a-test-has-to-assert-to-assert-anything):
 
 - `every_tool_is_named_after_its_variant` — `name()` is `{variant:?}` lowercased.
   A symmetric swap of two names stays unique and still round-trips through

@@ -441,7 +441,7 @@ because a pass there would be evidence of nothing.
   subcommand's own code — and does not weigh making the step unskippable. Nor is
   the wiring pinned: `tests/concealment.rs` drives a purpose-built probe, which
   is evidence that the `prctl` works rather than that `sandbx` calls it, and
-  [guide-module-layout.md](../guide-module-layout.md) asks for exactly that
+  [guide-testing.md](../guide-testing.md) asks for exactly that
   distinction when it says to pair a negative with evidence the mechanism ran. A
   test that spawns the real binary, holds it at a prompt and reads its `environ`
   would be the same shape as the probe test and would cover `main`. The single
@@ -629,7 +629,7 @@ deriving from this skips in silence".
 
 Two of the twenty-nine public names made sense only once you knew which test
 target needed them, so this is the last piece of the map.
-[guide-module-layout.md](../guide-module-layout.md) is the authority and states
+[guide-testing.md](../guide-testing.md) is the authority and states
 the rule rather than the arrangement; what follows is the on-ramp. Three homes,
 chosen by what a test needs to *reach*:
 

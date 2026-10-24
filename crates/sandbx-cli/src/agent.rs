@@ -5,7 +5,7 @@
 //! than widening it. `--session` carries a conversation between runs as a transcript on
 //! disk, not a live session.
 //!
-//! Over the 400-line budget on purpose: the pieces are already in `gate`, `prompt`,
+//! One module on purpose: the pieces are already in `gate`, `prompt`,
 //! `render`, `tui` and `wrapup`, and what is left is the argv surface and the one
 //! sequence that consumes it.
 

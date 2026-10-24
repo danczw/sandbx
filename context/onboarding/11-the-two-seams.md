@@ -380,7 +380,7 @@ nearest-resolving-ancestor rule on its own sees neither.
   [decision-default-policy.md](../decision-default-policy.md) keeps
   `vetted_root` and its helpers private with inline tests rather than making a
   seam public so an integration test could drive it, calling that the trade
-  [guide-module-layout.md](../guide-module-layout.md) forbids. Here the same
+  [guide-testing.md](../guide-testing.md) forbids. Here the same
   trade appears to have gone the other way, on the mechanism where losing the
   race is the actual hazard.
 

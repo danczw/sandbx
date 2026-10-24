@@ -39,10 +39,10 @@ Two rules govern the whole directory.
 
 - **One home per fact.** `guide-repo-map.md` is explicit that nothing measures a
   doc's length, so the bound is *placement*, not size: a fact lives in one doc,
-  and a second mention is a pointer to it. This is the other end of
-  [guide-code-comments.md](../guide-code-comments.md), which sends prose out of
-  the code and into `context/` — so a comment that has grown into an essay
-  usually means a guide needs a paragraph and the code needs a one-line pointer.
+  and a second mention is a pointer to it. The comment pass is the other end of
+  the same rule, sending prose out of the code and into `context/` — so a comment
+  that has grown into an essay usually means a guide needs a paragraph and the
+  code needs a one-line pointer.
 - **There is no roadmap file.** [`CLAUDE.md`](../../CLAUDE.md) says it directly:
   planned-but-missing work goes on an issue, where it can be closed, and "if you
   are about to write 'planned' into a doc, file an issue instead."
@@ -59,62 +59,54 @@ Cite it as a bare `#NNN`, usually parenthesised, and say nothing about whether
 it is open, done, fixed or planned. Status lives on GitHub, which is current; a
 doc that answered the question starts being wrong the day it merges.
 
-## The three convention guides
+## The convention docs
 
-Three guides constrain how code is written rather than what it does. Each one is
-a budget table plus a shell command that measures it, and none of the three
-treats a hit as a failure: `guide-module-layout.md` says so outright, the
-comment ratio is "a smell test, not a quota", and a long name is "a rewrite,
-not an abbreviation". The numbers are
-deliberately not repeated here — how they are measured has already changed
-once (#245), and a figure copied
-into a second file is a figure that goes stale in one of them.
+Two docs constrain how code is written rather than what it does, and neither is a
+budget table. The [Google Rust style
+guide](https://google.github.io/styleguide/rustguide.html) is the authority on
+everything mechanical — naming, imports, module shape, where documentation lives —
+and the project's job is to record where it departs from it rather than to restate
+it. The numbers that used to sit here are deliberately gone: how they were measured
+had already changed once (#245), and a figure copied into a second file is a figure
+that goes stale in one of them.
 
-| guide | what it constrains |
+| doc | what it constrains |
 |---|---|
-| [guide-naming.md](../guide-naming.md) | how long an identifier may be, per kind of item, with a longer allowance for test functions because the name is what a failure prints |
-| [guide-code-comments.md](../guide-code-comments.md) | what a comment may say and how much of it, per kind of item, plus a per-crate ratio of comment lines to all lines |
-| [guide-module-layout.md](../guide-module-layout.md) | how long a module may be counted as non-test lines, where its tests live, and what a test has to assert to assert anything |
+| [decision-google-style.md](../decision-google-style.md) | which style guide applies, which of its rules are skipped, and the departures that are deliberate rather than oversights |
+| [guide-testing.md](../guide-testing.md) | what a test has to assert to assert anything, which of three homes it belongs in, the message every assert carries, and a fifty-character ceiling on its name |
+| [`CLAUDE.md`](../../CLAUDE.md) | the comment pass: what a comment must carry to earn its line, and the five kinds that are never trimmed |
 
-Four things about them that the tables themselves do not say.
+Three things about them that the table does not say.
 
-- **Each guide is a budget plus a measurement.** Each of the three carries its
-  measurement as a `sh` snippet — `## Measuring` in `guide-naming.md` and
-  `guide-module-layout.md`, `## Verifying a pass` in
-  `guide-code-comments.md`. Run the snippet, read the
-  worst offenders, then read the file. `guide-module-layout.md` adds the rule
-  for disagreements: a count that contradicts the module in front of you is the
-  command being wrong about that module's shape, not the module being over —
-  there is no second method to break the tie, only the file.
-- **A hit is a rewrite, not an abbreviation or a deletion.** Over budget on a
-  name means a name describing two things; over budget on a comment means
-  finding the sentence doing the work and keeping that one. `guide-code-comments.md`
-  says that a pass which deletes a quirk, an ordering requirement or a "this
-  does not imply that" has failed however much shorter it made the file;
-  `CLAUDE.md` states it again for the comment pass, as a kernel quirk, an
-  ordering requirement or the origin of an ABI number — which tells you how
-  often it goes wrong.
-- **The comment ratio states its denominator in the same sentence as its
-  threshold,** and the denominator is every line of every `.rs` file in the
-  crate, test code included. That is not an accident of drafting.
-  `guide-code-comments.md` works through the alternative: "non-test" would mean
-  three incompatible things, and excluding test code makes every crate's ratio
-  *worse*, a test block being mostly code carrying one doc line per test. A
-  ratio whose denominator is undefined cannot be read against a threshold at
-  all.
-- **The ratio needs a width check in the same pass, or it is not a
-  measurement.** There is no `rustfmt.toml`, so `max_width` is whatever rustfmt
-  defaults to — and rustfmt does not wrap comments. Merging four comment lines
-  into one very long line therefore reads as three lines cut, lowers the
-  percentage, and passes `cargo fmt --check` silently. The guide ships the width
-  loop next to the ratio loop for exactly that reason.
+- **A file can be out of conformance without that being a finding.** The grace rule
+  exempts existing code from a rule until the migration phase that fixes it has
+  landed; new and changed code follows the guide. So reading a file tells you what it
+  does, not whether it conforms — the diff answers whether a line is new and only the
+  tracking issue (#328) answers which phase has landed. That is the cost of not
+  rewriting the tree in one unreviewable commit, and it is paid on every review until
+  the migration closes.
+- **A hit is a rewrite, not an abbreviation or a deletion.** Over budget on a test
+  name means a name describing two things; over budget on a comment means finding the
+  sentence doing the work and keeping that one. Splitting a module follows the same
+  shape — split it when it has two reasons to change, not when it crosses a number,
+  and a module doing one thing stays whole however long it grows. `helper/mod.rs` is
+  the worked case: one ordered syscall sequence, so one module, because splitting an
+  order across files is how an order gets broken.
+- **`CLAUDE.md` names five kinds of comment that are never trimmed** — why a sequence
+  cannot be reordered, why a syscall or flag is required, where an ABI number came
+  from, an asymmetry the type system does not enforce, and a workaround with the
+  condition that would retire it — and says a trim deleting one has failed however
+  much shorter it made the file. That this has to be said tells you how often it goes
+  wrong.
 
-The module budget has one more property worth knowing before you split
-something: it is a ceiling for headroom, not a target, and the guide says to
-split when a module has two reasons to change rather than when it crosses a
-number. A module that reaches the ceiling doing one thing stays whole. Do not
-turn the number into a lint — and if yours is over, say so in the PR rather than
-carving the code up to satisfy it.
+Two kinds of comment are not commentary at all, and a pass that trims them edits the
+product. clap's `--help` text and schemars' JSON-schema `description` strings are
+rendered output; the exemption follows the item rather than the file, so a module
+holding both has to be read item by item, and the check is to capture `--help` before
+and after. Separately, there is no `rustfmt.toml` and rustfmt does not wrap comments,
+so merging four comment lines into one very long line reads as three lines cut and
+passes `cargo fmt --check` silently — check widths in the same pass or the pass is
+not a measurement.
 
 ## The hooks and CI run the same commands, on purpose
 
@@ -217,7 +209,7 @@ catches is stated in one line above the test: a rename takes the file and leaves
 the citations behind, and no build step reads them.
 
 What makes it worth reading as a model is the three things it does so that it
-cannot pass vacuously, which is `guide-module-layout.md`'s "what a test has to
+cannot pass vacuously, which is `guide-testing.md`'s "what a test has to
 assert to assert anything" applied to the test itself:
 
 ```rust
@@ -360,7 +352,7 @@ attacker, is [10](10-seccomp.md)'s subject.
 ### The mutation check: a table of tests that were actually run
 
 The fifth mechanism is not a test. It is prose that records tests having been
-run, and it is the answer to a problem `guide-module-layout.md` spends a whole
+run, and it is the answer to a problem `guide-testing.md` spends a whole
 section on: **most of this repo's mechanisms fail by refusing.** A ruleset the
 kernel would not take, a filter that did not install, a fixture whose directory
 dropped before the assertion read it, a comparison that fell through — every one
@@ -465,26 +457,26 @@ a review hunting for an escape will happily report one caused by a plain bug.
 comments; done first, it would be redone.
 
 The comment pass itself is: read every comment the branch added or touched
-against `guide-code-comments.md`, and trim what is over budget — subject to the
-rule above that a trim deleting a kernel quirk, an ordering requirement or the
-origin of an ABI number has failed.
+against the Google guide's documentation rules, and cut what does not earn its
+line — subject to the rule above that a trim deleting a kernel quirk, an ordering
+requirement or the origin of an ABI number has failed.
 
-Which means the pass is not really about length. The guide's two lists sort
+Which means the pass is not really about length. `CLAUDE.md`'s two lists sort
 comments **by kind**, and that is the part to have in your head before you open
 it. A comment is kept when it carries why a sequence cannot be reordered; why a
 syscall, a flag or an apparent redundancy is required; where a magic constant or
 an ABI number came from; an asymmetry the type system does not enforce; or a
-workaround and the condition that would retire it. A comment is over budget *at
-one line* — the guide's "zero is the budget" — when it restates the name, names
-a type the signature already names, narrates the line beneath it, banners a
-section, echoes the module doc three lines above, or documents a getter. History
+workaround and the condition that would retire it. A comment fails to earn even
+one line when it restates the name, names a type the signature already names,
+narrates the line beneath it, banners a section, echoes the module doc three
+lines above, or documents a getter. History
 and rejected alternatives go too: `git log` and the tracker hold those and stay
 accurate, where a comment does not.
 
 One trap in that pass, because it reaches outside the code. The doc comments
 clap renders into `--help`, and the ones schemars turns into a tool's
-JSON-schema `description`, are not commentary — they are output, and the guide
-puts them out of scope. The exemption follows the *item*, not the file, so in
+JSON-schema `description`, are not commentary — they are output, and the comment
+pass puts them out of scope. The exemption follows the *item*, not the file, so in
 `sandbx-cli` they sit interleaved with ordinary comments that no exemption
 reaches. Trimming one of those rewrites `--help`, so capture the rendering
 before and after rather than trusting the source diff.
@@ -608,7 +600,7 @@ Assume a small change to `sandbx-cli`.
   being a two-architecture matrix. If `test`'s fmt, clippy or doc step is what
   went red, a hook was skipped.
 
-One closing note that ties back to the tests above. `guide-naming.md` warns that
+One closing note that ties back to the tests above. `guide-testing.md` warns that
 renaming a test can break a prose reference, because `context/*.md` cites test
 names as the evidence for a claim — `decision-default-policy.md`'s mutation
 table is a claim-to-test-name map outright. Nothing automated catches that one.
@@ -629,10 +621,10 @@ Reading a `guide-` against the code it describes is still a person's job.
   is expected to go stale.
 - Why there is no roadmap file, what that costs a reader, and what a doc may say
   about an issue's status.
-- Which three guides constrain how code is written, what each one bounds, and
-  why this chapter cites none of their numbers.
-- Why the comment ratio's denominator includes test code, and why reading the
-  ratio without a line-width check does not measure anything.
+- Which docs constrain how code is written, what each one bounds, and why this
+  chapter cites none of their numbers.
+- Why the grace rule means a file can break a rule without that being a finding,
+  and why a comment pass without a line-width check does not measure anything.
 - What "byte-identical" buys between `.githooks/pre-commit` and `ci.yml`, and
   what a red CI run therefore tells you.
 - What class of rot each of `every_doc_a_citation_names_exists`,
@@ -643,8 +635,8 @@ Reading a `guide-` against the code it describes is still a person's job.
   why it asserts in both directions, and what its mirror still cannot check.
 - Why a mutation check lists the tests that *passed*, and what the
   derived-expectation trap is.
-- Which kinds of comment the comment pass keeps and which are over budget at one
-  line, and why a clap doc comment is not commentary at all.
+- Which kinds of comment the comment pass keeps and which fail to earn a line,
+  and why a clap doc comment is not commentary at all.
 - Why code review runs before security review, and the comment pass after both.
 - What `git diff origin/main..HEAD` shows that `origin/main...HEAD` does not,
   and the two other ways a review reports a clean branch without having read it.
