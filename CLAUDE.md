@@ -12,6 +12,7 @@ Where to look, and where to put something new:
 | why a design went the way it did | `context/decision-*.md` |
 | which crate owns what, and what depends on what | `context/guide-repo-map.md` |
 | what runs before a push, and what runs after | `context/guide-ci.md` |
+| how the code is written, and where it departs | `context/decision-google-style.md` |
 | what a code comment may say, and how long | `context/guide-code-comments.md` |
 | how long a name may be, and what to cut first | `context/guide-naming.md` |
 | a module's budget, where its tests live, what one must assert | `context/guide-module-layout.md` |
@@ -20,13 +21,21 @@ Where to look, and where to put something new:
 | which crates a change lands in | its `crate:*` labels |
 | what shipped in which release | GitHub releases, and that release's milestone |
 
+The code follows the [Google Rust style
+guide](https://google.github.io/styleguide/rustguide.html) — every rule except
+those marked *(Chrome)* — except where `context/decision-google-style.md` records
+otherwise. While #328's migration runs, existing code is exempt from a rule until
+the phase that fixes it has landed; new and changed code follows the guide.
+
 `SECURITY.md` may never overstate the sandbox. Where the mechanism and the claim
 disagree, one of them changes — the claim is weakened, or the mechanism is
 widened to match. Neither is left to drift.
 
 There is no roadmap file. Planned-but-missing work goes on an issue, where it can
-be closed; a decision that held goes in a `decision-*.md`. If you are about to
-write "planned" into a doc, file an issue instead.
+be closed. A *why* earns a place in a crate's `//!` or a `decision-*.md` only if it
+backs a `SECURITY.md` claim or warns off an alternative likely to be re-proposed;
+otherwise it lives in its issue or PR, cited by number. If you are about to write
+"planned" into a doc, file an issue instead.
 
 Milestones are releases, one per tag: a closed issue or PR takes the one it
 shipped in, and open work being worked on now takes the next one. None is not a
