@@ -6,7 +6,8 @@
 //! not be resolved.
 //!
 //! Only [`run`] and [`agent`] carry `From` impls. The other three wrap errors too, but
-//! their variants need a `detail` a conversion has no way to supply.
+//! their wrapping variants mostly need a path or `detail` a conversion cannot know; the two
+//! newtype variants in [`auth`] that would not are constructed explicitly anyway.
 
 mod agent;
 mod auth;
