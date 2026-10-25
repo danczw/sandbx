@@ -1703,6 +1703,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-pty-fixture"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "nix",
+]
+
+[[package]]
 name = "sandbx-session"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1733,6 +1740,7 @@ dependencies = [
  "ratatui",
  "rustix",
  "sandbx-providers",
+ "sandbx-pty-fixture",
  "serde_json",
  "tokio",
 ]

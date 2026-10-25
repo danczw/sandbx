@@ -74,12 +74,13 @@ sandbx-providers = { path = "../sandbx-providers" }
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 ```
 
-One internal crate. `nix`'s `poll` feature is the production edge the hangup
-fix added (#264) — the key reader's whole mechanism for seeing a terminal
-that stopped answering, below and in
-[guide-tui.md](../guide-tui.md). The dev profile repeats `nix` with `term`
-added, for opening a pty pair and reading its termios in a test, and keeps
-`serde_json` beside it. Read the one internal edge as a negative fact stated
+One internal crate in the build, and a second only for tests. `nix`'s `poll`
+feature is the production edge the hangup fix added (#264) — the key reader's
+whole mechanism for seeing a terminal that stopped answering, below and in
+[guide-tui.md](../guide-tui.md). The dev profile takes
+`sandbx-pty-fixture` for the pty pair a hangup test opens and the window it
+opens with, and keeps `serde_json` beside it. Read the production edge as a
+negative fact stated
 at the type level: **a renderer cannot leak what it cannot name.** With no
 edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or `sandbx-session`,
 nothing here can mention a `SandboxPolicy`, an `ExecutionContext`, a

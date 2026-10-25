@@ -288,40 +288,15 @@ fn interrupts(key: KeyEvent) -> bool {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+mod tests {
     use std::io::Write;
+
+    use sandbx_pty_fixture::pty;
 
     use super::*;
 
     fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
-    }
-
-    /// The window every [`pty`] opens with, `(columns, rows)`: no terminal's default, so a
-    /// size read off anything but the pty under test does not match it.
-    pub(crate) const WINDOW: (u16, u16) = (33, 7);
-
-    /// A pty pair, and no controlling terminal: closing the master is then a hangup on the
-    /// slave rather than a `SIGHUP` that kills the test binary.
-    ///
-    /// Echo off, so what the slave reads is only what the master wrote.
-    pub(crate) fn pty() -> (File, File) {
-        use nix::pty::Winsize;
-        use nix::sys::termios;
-
-        let window = Winsize {
-            ws_col: WINDOW.0,
-            ws_row: WINDOW.1,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        };
-        let pair = nix::pty::openpty(Some(&window), None).expect("a pty pair");
-
-        let mut attrs = termios::tcgetattr(&pair.slave).expect("the pty's termios");
-        attrs.local_flags.remove(termios::LocalFlags::ECHO);
-        termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
-
-        (File::from(pair.master), File::from(pair.slave))
     }
 
     /// Whether `future` finishes without ever being woken. No runtime, because what is under
