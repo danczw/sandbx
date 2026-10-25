@@ -83,7 +83,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
                      and every variant's label spelled
    bin/sandbx-helper.rs
    helper/
-      mod.rs         re-exports exit_code, BLOCKED_SYSCALLS and both stages
+      mod.rs         re-exports exit_code, BLOCKED_SYSCALLS, both stages and
+                     AUDIT_STDIN_FLAG
       exec.rs        the two stages — exec_sandboxed, then exec_inner as the init;
                      apply() sequences all three mechanisms; exit_code
       hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
