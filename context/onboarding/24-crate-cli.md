@@ -15,10 +15,12 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 Twenty-two source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
-than a decoration: it says what each file holds and, where another chapter
-explains the mechanism, which one. The paths carry the nesting:
-`grants/root.rs` is `grants.rs`'s only child, `agent.rs` has six, and `auth.rs`
-and `error.rs` have one each.
+than a decoration: it says what each module holds and, where another chapter
+explains the mechanism, which one. The two `_tests.rs` siblings have no row of
+their own; they sit with the module whose tests they are.
+
+The paths carry the nesting: `grants/root.rs` is `grants.rs`'s only child,
+`agent.rs` has six, and `auth.rs` and `error.rs` have one each.
 
 | file | holds | covered in |
 |---|---|---|
@@ -46,8 +48,8 @@ and `error.rs` have one each.
 ## invocation.rs is the clap surface, and lib.rs the list of names
 
 The library root declares nine modules and re-exports fourteen types. That is
-the whole file — the clap surface it used to hold moved to `invocation.rs`, a
-module with submodules being allowed only `mod` lines and re-exports (#331).
+the whole file: `lib.rs` has submodules, so it may hold only `mod` lines and
+re-exports (#331), and the clap surface it used to hold is now `invocation.rs`.
 No work happens in either, which is the point: `Cli::parse` is reachable from a
 unit test, so "what does this argv grant" is a question answered without a
 sandbox-capable kernel.
