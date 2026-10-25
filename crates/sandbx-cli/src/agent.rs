@@ -18,8 +18,8 @@ pub use tui::Tui;
 
 pub(crate) use prompt::APPROVE_CALL;
 
-// Reached as `super::…` from the sibling modules rather than used here: `tui` takes all
-// five, `render` the two exit codes, `wrapup` the renderer.
+// Reached as `super::…` from the sibling modules rather than used here: `tui` takes the
+// two prompt types and the two exit codes, `render` the exit codes, `wrapup` the renderer.
 use prompt::{Approve, Terminal};
 use render::Render;
 use run::{INCOMPLETE, NO_CONSENT};

@@ -248,8 +248,8 @@ and holds no descriptor: a directory you have named rather than been let into.
 `transcript` is private, so only a `SessionId` can build a path.
 
 Printing the report is `sandbx-cli`'s work, and `session::open` is the single
-place it happens — reached by both `agent.rs` and `agent/tui.rs`, so the stderr
-note cannot be on one surface and missing on the other.
+place it happens — reached by both `agent/run.rs` and `agent/tui.rs`, so the
+stderr note cannot be on one surface and missing on the other.
 
 Three more things `store/session.rs` decides:
 
@@ -549,9 +549,10 @@ a file and nothing else, and an operator with several sessions needs to be told
 which one to open. `a_transcript_ending_on_a_user_turn_is_refused` asserts the
 path and not just the variant, for that reason. The cost of sharing one variant
 instead is worth seeing, because `sandbx-cli` reads these from the other side:
-`agent.rs` special-cases `IncompleteTurn` on the append path as not an error at
-all, printing "the turn produced nothing to store" and returning `Ok`. That is
-right for an append and would be wrong for a resume, and under one variant the
+`agent/run.rs` special-cases `IncompleteTurn` on the append path as not an
+error at all, printing "the turn produced nothing to store" and returning `Ok`.
+That is right for an append and would be wrong for a resume, and under one
+variant the
 two were told apart only by which call site the match sat on.
 
 And **`source` returns `Some` for two variants only**, `Malformed` and `Io`, the
