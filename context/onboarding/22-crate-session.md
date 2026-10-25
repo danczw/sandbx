@@ -24,19 +24,19 @@ carries what that costs as a non-claim.
 | [`id.rs`](../../crates/sandbx-session/src/id.rs) | `SessionId`, `from_clock`, the allowlist | [14](14-audit-sessions-credentials.md), then below |
 | [`paths.rs`](../../crates/sandbx-session/src/paths.rs) | `sessions_directory` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`message.rs`](../../crates/sandbx-session/src/message.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` | [05](05-seven-crates.md), [24](24-crate-cli.md) |
-| [`store.rs`](../../crates/sandbx-session/src/store.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
+| [`store/session.rs`](../../crates/sandbx-session/src/store/session.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
 | [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
 | [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, two opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
 | [`error.rs`](../../crates/sandbx-session/src/error.rs) | `SessionError`, seventeen variants | below |
 | `tests/` | `identifier`, `permissions`, `recovery`, `transcript` | below |
 
-Two shapes to notice first. **`store/` is the only subdirectory**, and its three
-files are `pub(super)` throughout — `Record`, `fold`, the mode constants and
-every predicate are invisible outside `store.rs`; the crate's public surface is
-the ten names `lib.rs` re-exports. And **the crate has no output channel**: no
-`tracing` dependency, no `println!` or `eprintln!` under `src/`. That is not an
-omission, it is what forces the design in the `store.rs` section.
+Two shapes to notice first. **`store/` is the only subdirectory**, and the three
+siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`, the
+mode constants and every predicate are invisible outside `store/`; the crate's
+public surface is the ten names `lib.rs` re-exports. And **the crate has no output
+channel**: no `tracing` dependency, no `println!` or `eprintln!` under `src/`. That
+is not an omission, it is what forces the design in the `store/session.rs` section.
 
 ## `id.rs` — an allowlist is three lines, and this is why
 
@@ -190,7 +190,7 @@ last an index into the history its doc calls "exact only because a transcript is
 appended to". `append` takes one by value, so a caller cannot write messages
 without the accounting that describes them, or accounting without its messages.
 
-## `store.rs` — which bit refuses, and which only reports
+## `store/session.rs` — which bit refuses, and which only reports
 
 `vet.rs`'s module doc draws the division: "Which mode bit refuses and which
 only reports stays with the sequence that applies it." `vet.rs` *names* the mode
@@ -249,7 +249,7 @@ Printing the report is `sandbx-cli`'s work, and `session::open` is the single
 place it happens — reached by both `agent.rs` and `agent/tui.rs`, so the stderr
 note cannot be on one surface and missing on the other.
 
-Three more things `store.rs` decides:
+Three more things `store/session.rs` decides:
 
 - **`O_EXCL` is what makes an id unique**, not a prior existence check. The
   loop tries `ATTEMPTS` ids, treating `AlreadyExists` as "try the next
@@ -385,7 +385,7 @@ to be internally consistent just because its first line was well-formed.
 ## `store/shape.rs` — eight predicates and no I/O
 
 Its module doc draws the boundary: "these answer to the Messages API's rules
-about a request, `store.rs` to the filesystem's about a file. Every one is a
+about a request, `session.rs` to the filesystem's about a file. Every one is a
 predicate over messages alone — no path, no mode, no descriptor." Why a stored
 file needs an API rule checked against it at all: a transcript is replayed as
 the history of the next request, so an order the API rejects is not a corrupt
@@ -573,7 +573,7 @@ consequence of it.
 ## Where the tests are
 
 Unit tests sit in `id.rs`, `paths.rs`, `message.rs` and `store/record.rs`, the
-four modules that are pure functions over values. `store.rs`, `store/vet.rs` and
+four modules that are pure functions over values. `store/session.rs`, `store/vet.rs` and
 `store/shape.rs` have none, needing a real filesystem or the store that drives
 them; [guide-testing.md](../guide-testing.md) governs the split.
 

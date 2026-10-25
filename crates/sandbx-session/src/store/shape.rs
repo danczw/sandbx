@@ -1,7 +1,7 @@
 //! Which orders of messages a transcript may hold, and which the API refuses.
 //!
 //! Apart from the sequence that applies them: these answer to the Messages API's rules
-//! about a request, `store.rs` to the filesystem's about a file. Every one is a predicate
+//! about a request, `session.rs` to the filesystem's about a file. Every one is a predicate
 //! over messages alone — no path, no mode, no descriptor.
 
 use crate::{Content, Message, Role};
