@@ -125,7 +125,7 @@ pub(super) struct RawMessageDelta {
 /// The vendor's error body: `{"type": ..., "message": ...}`.
 ///
 /// An HTTP error response and an in-band SSE `error` event carry the same shape, so
-/// one type serves `anthropic.rs`'s non-2xx mapping too.
+/// one type serves `anthropic/client.rs`'s non-2xx mapping too.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawApiErrorBody {
     #[serde(rename = "type")]
