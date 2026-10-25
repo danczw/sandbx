@@ -685,14 +685,17 @@ type-level statement that both subcommands derive their policy the same way. And
 reusing it, because deriving a policy is the CLI's own step and `sandbx-core`
 must not grow a variant it never produces.
 
-`error.rs` used to declare itself one module on purpose — "the list of
-everything that can refuse a run is only readable in one place" — and the
-guide's rule against code in a module with submodules took that co-location
-(#331). What the claim was protecting survives it: `error.rs`'s module doc is
-now that list, and `ADVICE` still has exactly one home, in `policy.rs` beside
-its only readers, so two derived-default refusals cannot advise differently. A
-refusal of a *flag* says what to change about the flag. The co-location was
-ending either way — #350 takes `PolicyError` out of this crate entirely.
+`error.rs` used to declare itself one module on purpose — "one `Display` arm per
+variant, and the list of everything that can refuse a run is only readable in one
+place" — and the guide's rule against code in a module with submodules took that
+co-location (#331). Be precise about what did and did not survive. The forty-odd
+`Display` arms now span four files, so per-variant readability in one place is
+gone. What remains is narrower and was the load-bearing half: `error.rs`'s module
+doc lists the five error *types*, so the set of things that can refuse a run is
+still readable in one place, and `ADVICE` still has exactly one home, in
+`policy.rs` beside its only readers, so two derived-default refusals cannot advise
+differently. A refusal of a *flag* says what to change about the flag. The
+co-location was ending either way — #350 takes `PolicyError` out of this crate.
 
 One absence is a design statement. A failing tool is not an `AgentError`: it
 comes back to the model as an error result for it to try something else, which
