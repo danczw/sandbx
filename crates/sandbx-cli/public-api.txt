@@ -231,7 +231,7 @@ pub async fn sandbx_cli::AgentRun::execute(&self) -> core::result::Result<i32, s
 pub fn sandbx_cli::AgentRun::max_rounds(&self) -> usize
 pub fn sandbx_cli::AgentRun::max_tokens(&self) -> u32
 pub fn sandbx_cli::AgentRun::model(&self) -> &str
-pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::SandboxPolicy, sandbx_cli::PolicyError>
+pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_cli::PolicyError>
 pub fn sandbx_cli::AgentRun::prompt(&self) -> alloc::string::String
 pub fn sandbx_cli::AgentRun::session(&self) -> sandbx_cli::SessionChoice<'_>
 pub fn sandbx_cli::AgentRun::system(&self) -> core::option::Option<&str>
@@ -300,7 +300,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Cli
 impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Cli
 pub struct sandbx_cli::Grants
 impl sandbx_cli::Grants
-pub fn sandbx_cli::Grants::policy(&self) -> core::result::Result<sandbx_core::policy::SandboxPolicy, sandbx_cli::PolicyError>
+pub fn sandbx_cli::Grants::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_cli::PolicyError>
 impl clap_builder::derive::Args for sandbx_cli::Grants
 pub fn sandbx_cli::Grants::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
 pub fn sandbx_cli::Grants::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
@@ -359,7 +359,7 @@ impl sandbx_cli::SandboxRun
 pub fn sandbx_cli::SandboxRun::arguments(&self) -> &[alloc::string::String]
 pub fn sandbx_cli::SandboxRun::execute(&self) -> core::result::Result<i32, sandbx_cli::SandboxRunError>
 pub fn sandbx_cli::SandboxRun::pin(&self) -> core::result::Result<core::option::Option<sandbx_core::digest::Sha256Digest>, sandbx_cli::PolicyError>
-pub fn sandbx_cli::SandboxRun::policy(&self) -> core::result::Result<sandbx_core::policy::SandboxPolicy, sandbx_cli::PolicyError>
+pub fn sandbx_cli::SandboxRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_cli::PolicyError>
 pub fn sandbx_cli::SandboxRun::program(&self) -> &str
 pub fn sandbx_cli::SandboxRun::timeout(&self) -> core::option::Option<core::time::Duration>
 impl clap_builder::derive::Args for sandbx_cli::SandboxRun
