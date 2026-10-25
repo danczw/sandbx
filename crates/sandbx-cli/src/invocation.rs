@@ -1,7 +1,7 @@
 //! What an argv parses to: the one `clap::Parser` and the subcommand it chose.
 //!
-//! The doc comments below are rendered `--help` text, not commentary — each
-//! subcommand's long help is the paragraph above its variant.
+//! The `///` block above each `Command` variant is rendered `--help` text, not
+//! commentary — it is that subcommand's long help.
 
 use crate::{AgentRun, Auth, Hash, SandboxRun, Tui};
 
