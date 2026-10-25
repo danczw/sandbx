@@ -12,22 +12,22 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-three source files under [`src/`](../../crates/sandbx-cli/src/), twelve
+Twenty-four source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each module holds and, where another chapter
 explains the mechanism, which one. The two `_tests.rs` siblings have no row of
 their own; they sit with the module whose tests they are.
 
-The paths carry the nesting: `grants/root.rs` is `grants.rs`'s only child,
-`agent.rs` has six, `auth.rs` two, and `error.rs` one.
+The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
+`agent.rs` six, and `error.rs` one.
 
 | file | holds | covered in |
 |---|---|---|
 | [`lib.rs`](../../crates/sandbx-cli/src/lib.rs) | the `mod` lines and the `pub use` list, and no code at all | here |
 | [`invocation.rs`](../../crates/sandbx-cli/src/invocation.rs) | `Cli` and `Command` — the clap surface; each variant's `///` block is its long `--help` | here |
 | [`main.rs`](../../crates/sandbx-cli/src/main.rs) | helper dispatch, the tokio runtime, the exit-code mapping | here, and [08](08-the-two-stage-helper.md) for the dispatch |
-| [`grants.rs`](../../crates/sandbx-cli/src/grants.rs) | every `--allow-…` flag, the axis loop, and the one widening it applies | [12](12-a-flag-to-a-kernel-rule.md) |
+| [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs) | every `--allow-…` flag, the axis loop, and the one widening it applies | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) | where a no-flag run may root a default, and what a path flag is vetted against | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`sandbox.rs`](../../crates/sandbx-cli/src/sandbox.rs) | `sandbox-run`: one of the two `SandboxedCommand` build sites in the workspace | [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) | the one subcommand that confines nothing | [12](12-a-flag-to-a-kernel-rule.md) |
@@ -694,7 +694,7 @@ is the loop's own contract rather than a way for a run to end.
 ## The five files this chapter only names
 
 One sentence each, because each has a chapter of its own.
-[`grants.rs`](../../crates/sandbx-cli/src/grants.rs) holds every `--allow-…`
+[`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs) holds every `--allow-…`
 flag and the axis loop that turns them into a policy, so the one widening and
 the working-directory default exist once rather than once per subcommand.
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) holds no flag at
