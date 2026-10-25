@@ -40,7 +40,7 @@ third column.
 | [`helper/resolver.rs`](../../crates/sandbx-core/src/helper/resolver.rs) | the ordered mount sequence that installs the rendered files | [07](07-kernel-primer.md) for bind mounts; below for what it installs |
 | [`helper/seccomp.rs`](../../crates/sandbx-core/src/helper/seccomp.rs) | how the filter reaches the kernel: stacked filters, the x32 gate | [10](10-seccomp.md) |
 | [`helper/seccomp/rules.rs`](../../crates/sandbx-core/src/helper/seccomp/rules.rs) | `BLOCKED_SYSCALLS` and the conditional rules — the data half | [10](10-seccomp.md) |
-| [`helper/ruleset/mod.rs`](../../crates/sandbx-core/src/helper/ruleset/mod.rs) | `requested` — where the ABI and the policy meet | [09](09-landlock.md) |
+| [`helper/ruleset/requested.rs`](../../crates/sandbx-core/src/helper/ruleset/requested.rs) | `requested` — where the ABI and the policy meet | [09](09-landlock.md) |
 | [`helper/ruleset/compat.rs`](../../crates/sandbx-core/src/helper/ruleset/compat.rs) | the ABI floor, ceiling, ladder, and `enforcement_verdict` | [09](09-landlock.md) |
 | [`helper/ruleset/rights.rs`](../../crates/sandbx-core/src/helper/ruleset/rights.rs) | `rights_for` — the bit arithmetic from an axis to Landlock rights | [09](09-landlock.md) |
 | [`helper/ruleset/opened.rs`](../../crates/sandbx-core/src/helper/ruleset/opened.rs) | `open_grant` — the path opened is the path that was granted | [09](09-landlock.md) |

@@ -200,7 +200,7 @@ Requested { handled: BitFlags<AccessFs>, rules: [(Axis, RuleTarget, BitFlags<Acc
 RequestedNet::Unhandled | ::Ports { handled, granted: BitFlags<AccessNet>, ports: &[u16] }
 requested_at(policy: &SandboxPolicy, abi: landlock::ABI) -> Requested<'_>
 requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
-                                                                      helper/ruleset/mod.rs
+                                                                 helper/ruleset/requested.rs
 ```
 
 The syscall list is in `helper/seccomp/rules.rs`; `apply` in `helper/mod.rs`.

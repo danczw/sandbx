@@ -216,8 +216,8 @@ Two things make that verdict possible rather than theatrical.
   exhaustive match is a compile-time gate.
 
 The asymmetry behind all of this is on `Requested` in
-[`requested.rs`](../../crates/sandbx-core/src/helper/ruleset/requested.rs), and it is worth
-reading once. A rule carrying rights *above* the handled set is caught:
+[`requested.rs`](../../crates/sandbx-core/src/helper/ruleset/requested.rs), and it
+is worth reading once. A rule carrying rights *above* the handled set is caught:
 `PathBeneath` narrows it, the ruleset comes back `PartiallyEnforced`, and the
 verdict refuses. A rule *below* it is not caught by anything — every right the
 newer ABI added is simply not granted, the policy promises more than the kernel

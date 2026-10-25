@@ -65,8 +65,10 @@ pub(in crate::helper) enum RequestedNet<'policy> {
 /// What `policy` asks for at `abi`, with no kernel involved.
 ///
 /// The pure half of [`requested`], so the agreement between the fields is assertable at both
-/// ends of the negotiable range without a Landlock-capable host. Private because a caller that
-/// can name an ABI here could pass a second one, which [`Requested`] prevents.
+/// ends of the negotiable range without a Landlock-capable host. `pub(super)`, and deliberately
+/// not `pub(in crate::helper)` like its three neighbours here: a caller that can name an ABI
+/// could pass a second one, which [`Requested`] prevents. Widening it would hand `apply` that
+/// caller's job.
 pub(super) fn requested_at(policy: &crate::SandboxPolicy, abi: landlock::ABI) -> Requested<'_> {
     Requested {
         handled: compat::handled_access(abi),
@@ -77,10 +79,10 @@ pub(super) fn requested_at(policy: &crate::SandboxPolicy, abi: landlock::ABI) ->
 
 /// Negotiate an ABI with this kernel and build everything `policy` asks for at it.
 ///
-/// Negotiates rather than taking an ABI, so [`apply`](super::super::apply) never holds one and loses
-/// `Access`/`AccessFs` from its imports — reintroducing the divergence shows up in the diff,
-/// which nothing can test without a kernel. Fails closed: a kernel below the baseline is
-/// refused here, before a ruleset is built.
+/// Negotiates rather than taking an ABI, so [`apply`](super::super::apply) never holds one
+/// and loses `Access`/`AccessFs` from its imports — reintroducing the divergence shows up in
+/// the diff, which nothing can test without a kernel. Fails closed: a kernel below the
+/// baseline is refused here, before a ruleset is built.
 pub(in crate::helper) fn requested(
     policy: &crate::SandboxPolicy,
 ) -> Result<Requested<'_>, SandboxError> {
