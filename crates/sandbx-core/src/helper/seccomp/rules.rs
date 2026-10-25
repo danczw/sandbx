@@ -6,7 +6,7 @@
 
 use crate::SandboxError;
 
-use super::seccomp_failed;
+use super::filter::seccomp_failed;
 
 /// Syscalls blocked for every sandboxed command, regardless of policy.
 ///

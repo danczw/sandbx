@@ -232,8 +232,8 @@ namespace creation. There is no narrow rule available: the call has to be
 refused outright.
 
 **In sandbx:** `deny_dangerous_syscalls` in
-[`seccomp.rs`](../../crates/sandbx-core/src/helper/seccomp.rs) installs a
-denylist, plus conditional rules for `socket`, `setsockopt` and the send
+[`seccomp/filter.rs`](../../crates/sandbx-core/src/helper/seccomp/filter.rs)
+installs a denylist, plus conditional rules for `socket`, `setsockopt` and the send
 syscalls, as a stack of filters — three on x86\_64, two elsewhere — because a
 seccompiler filter carries a single match action and some rules need a different
 one. Each goes in through seccompiler's `apply_filter` — the calling-thread

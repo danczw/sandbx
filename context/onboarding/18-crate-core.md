@@ -38,7 +38,7 @@ third column.
 | [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) | the two stages, and `apply`'s ordered sequence | [08](08-the-two-stage-helper.md) |
 | [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) | namespaces, capability sets, `RLIMIT_CORE`, `pdeathsig` | [07](07-kernel-primer.md), [08](08-the-two-stage-helper.md) |
 | [`helper/resolver.rs`](../../crates/sandbx-core/src/helper/resolver.rs) | the ordered mount sequence that installs the rendered files | [07](07-kernel-primer.md) for bind mounts; below for what it installs |
-| [`helper/seccomp.rs`](../../crates/sandbx-core/src/helper/seccomp.rs) | how the filter reaches the kernel: stacked filters, the x32 gate | [10](10-seccomp.md) |
+| [`helper/seccomp/filter.rs`](../../crates/sandbx-core/src/helper/seccomp/filter.rs) | how the filter reaches the kernel: stacked filters, the x32 gate | [10](10-seccomp.md) |
 | [`helper/seccomp/rules.rs`](../../crates/sandbx-core/src/helper/seccomp/rules.rs) | `BLOCKED_SYSCALLS` and the conditional rules — the data half | [10](10-seccomp.md) |
 | [`helper/ruleset/requested.rs`](../../crates/sandbx-core/src/helper/ruleset/requested.rs) | `requested` — where the ABI and the policy meet | [09](09-landlock.md) |
 | [`helper/ruleset/compat.rs`](../../crates/sandbx-core/src/helper/ruleset/compat.rs) | the ABI floor, ceiling, ladder, and `enforcement_verdict` | [09](09-landlock.md) |
