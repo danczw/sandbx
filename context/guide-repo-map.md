@@ -134,9 +134,12 @@ and CI's Clippy step.
 ## `sandbx-tools`
 
 ```
-src/lib.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput,
+src/lib.rs        re-exports, and the crate-private ones the tool modules reach
+   builtin.rs     BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput,
                   RiskLevel; ToolSpec, crate-private so a tool's declaration is
                   not a public shape
+   shared.rs      parse, read_file, read_capped, listing, guard_error, failed —
+                  what more than one tool needs
    context.rs     ExecutionContext, DEFAULT_TIMEOUT — policy is PRIVATE (#56)
    limits.rs      ToolLimits
    error.rs       ToolError: Denied | BadInput | Failed | TimedOut
