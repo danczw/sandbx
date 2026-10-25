@@ -58,9 +58,9 @@ allow_read: Vec<PathBuf>,
 That is in [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs), on
 the `Grants` struct — the one flattened into every subcommand that confines
 something, so `sandbox-run` and `agent-run` cannot disagree about what a flag
-means. The field
-is a `Vec`, because the flag repeats; the doc comment above it *is* the `--help`
-text, and it is where the replacement rule is told to the operator.
+means. The field is a `Vec`, because the flag repeats; the doc comment above it
+*is* the `--help` text, and it is where the replacement rule is told to the
+operator.
 
 Three path axes mean three such fields, and the code never touches them by name.
 `Grants::paths(axis)` is an exhaustive match from `Axis` to the matching `Vec`,
