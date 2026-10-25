@@ -91,7 +91,7 @@ Two things to notice about that table.
 ## The default policy, and why it is the interesting part
 
 Everything is denied unless a flag grants it. What a no-flag `sandbox-run` gets
-anyway, from [`core/src/policy.rs`](../../crates/sandbx-core/src/policy.rs):
+anyway, from [`core/src/policy.rs`](../../crates/sandbx-core/src/policy/sandbox.rs):
 
 ```rust
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];

@@ -14,7 +14,7 @@ this file is the bug.
 
 ## Two layers, one table
 
-Both enforcement layers derive from `Axis::grants()` in `policy.rs` — **the
+Both enforcement layers derive from `Axis::grants()` in `policy/sandbox.rs` — **the
 table**. Adding an axis is adding a row; the compiler then names every site
 that cannot derive its answer from one.
 

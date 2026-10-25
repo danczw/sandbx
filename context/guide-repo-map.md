@@ -56,7 +56,8 @@ the events the loop hands back, and strips its own operator lines with
 
 ```
 src/lib.rs           re-exports; Linux-only, refused at compile time
-   policy.rs         Axis, Grants, SandboxPolicy        ◄── the table
+   policy.rs         re-exports
+      policy/sandbox.rs Axis, Grants, SandboxPolicy     ◄── the table
       policy/vetted.rs  VettedPath, ObjectId — a grant and the object it names
    fs_guard.rs       in-process path and object enforcement (6 of 7 tools)
    command.rs        SandboxedCommand, the audit pipe, the kill chain
