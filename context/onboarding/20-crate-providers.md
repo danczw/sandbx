@@ -765,7 +765,7 @@ never reached. And `client_future_stays_spawnable` is compiled but never run:
 ## A `SecretString` nothing re-exports
 
 The crate does not find a key: `AnthropicClient::new` takes one, and where it
-comes from is the CLI's (`auth.rs`). [14 — audit, sessions,
+comes from is the CLI's (`auth/key.rs`). [14 — audit, sessions,
 credentials](14-audit-sessions-credentials.md) owns that policy: which source
 wins, why the file is located only after the environment comes up empty, what
 `SecretString` does and does not guarantee. One fact it does not cover.
