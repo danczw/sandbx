@@ -275,7 +275,7 @@ source already spends (#265).
 ## agent/ and its seven modules, as one pipeline
 
 This is the crate's centre of gravity. `agent.rs` itself is the index — `mod`
-lines, two re-exports, and the three names its siblings reach through it (#331)
+lines, two re-exports, and the five names its siblings reach through it (#331)
 — and `agent/run.rs` is frank about its size: one module on purpose, "the
 pieces are already in `gate`, `prompt`, `render`, `tui` and `wrapup`, and what
 is left is the argv surface and the one sequence that consumes it" — a module
