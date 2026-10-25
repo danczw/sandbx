@@ -1,8 +1,5 @@
 //! The `eval` interpreter every test in this directory reads its filter through, the
 //! `seccomp_data` word model it evaluates against, and its own tests.
-//!
-//! Kernel-free — the program is evaluated here rather than installed, so these run anywhere.
-//! `tests/enforcement_syscalls.rs` is where a live kernel refuses a call.
 
 // The verdicts this filter can produce, taken from `libc` and not from
 // `u32::from(SeccompAction::…)`, which would leave expected and actual sharing a source.
