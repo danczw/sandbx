@@ -2,11 +2,15 @@
 //!
 //! A dev-dependency only: nothing links this into a build that ships. It is a crate
 //! rather than a `#[cfg(test)]` module because two crates drive the same fixture and a
-//! `#[cfg(test)]` item is invisible across a crate boundary (#344). A
-//! `#[cfg(feature = ..)]` export from one of them would be worse: resolver 3 unifies
-//! features per package, so the other's dev-dependency edge would turn the feature on in
-//! the one rlib every consumer links, and a pty would open in a production build
-//! (`context/guide-ci.md`).
+//! `#[cfg(test)]` item is invisible across a crate boundary (#344).
+//!
+//! A `#[cfg(feature = ..)]` export from one of them instead would hit what
+//! `context/guide-ci.md` records for a self dev-dependency, feature unification making
+//! the two cases one: the other crate's dev edge turns the feature on in the single rlib
+//! `--all-targets` builds, so production code naming the fixture passes clippy and the
+//! whole suite and fails first in the release build, where no dev edge enables it. The
+//! gated item also sits in that crate's public surface, which its `public-api.txt` —
+//! generated without `--all-features` — does not record.
 
 use std::fs::File;
 
