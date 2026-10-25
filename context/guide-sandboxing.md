@@ -301,7 +301,7 @@ of evidence, strongest first:
 | Rung | Where | Covers |
 |---|---|---|
 | a real kernel refuses the call | `tests/enforcement_syscalls.rs` | 4 of them — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` and `socketpair(AF_UNIX)` rules, which are not list entries |
-| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp/tests/mod.rs` | every entry, plus what the two `AF_UNIX`, `clone`-flag and x32 rules compare against |
+| the compiled program returns `EPERM` for it | `eval` in `helper/seccomp/tests/bpf.rs` | every entry, plus what the two `AF_UNIX`, `clone`-flag and x32 rules compare against |
 | the documented set matches the list | `tests/denylist.rs` | every entry |
 
 The middle rung is a test-only classic-BPF interpreter run over a synthetic

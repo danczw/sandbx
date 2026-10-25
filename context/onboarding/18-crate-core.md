@@ -53,7 +53,7 @@ third column.
 | [`error.rs`](../../crates/sandbx-core/src/error.rs) | `SandboxError`, `Access`, and the label the trail is filtered by | below |
 | [`error/refusal.rs`](../../crates/sandbx-core/src/error/refusal.rs) | `HelperRefusal`, and `decided_by`: the one place the two sets are mapped and every label is spelled | below |
 | [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs) | a standalone helper binary, so the enforcement path tests end to end | below |
-| `helper/seccomp/tests/` | four unit-test files, plus a `mod.rs` holding the `eval` interpreter they read the filter through and tests of its own | [10](10-seccomp.md) |
+| `helper/seccomp/tests/` | four unit-test files, over a `bpf.rs` holding the `eval` interpreter they read the filter through and tests of its own | [10](10-seccomp.md) |
 | `helper/ruleset/tests/` | five unit-test files, all kernel-free, over a `mod.rs` that holds only their shared fixtures | [09](09-landlock.md) |
 
 Two naming traps. `resolver.rs` *renders* three files and is pure apart from the
@@ -682,7 +682,7 @@ own right: `io-uring` is `optional = true` rather than a dev-dependency because
 the probe that reaches `io_uring_setup` is a `[[bin]]` and "a `[[bin]]` cannot
 see dev-dependencies", and `seccompiler` is pinned to a caret range with a note
 that widening past it needs the `eval` interpreter in
-`helper/seccomp/tests/mod.rs` to learn any new opcode first, because it panics
+`helper/seccomp/tests/bpf.rs` to learn any new opcode first, because it panics
 by name — failing loudly rather than evaluating an instruction it does not
 understand.
 

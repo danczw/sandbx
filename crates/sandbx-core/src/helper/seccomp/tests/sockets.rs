@@ -3,7 +3,9 @@
 //! `type`, and a port allowlist adds rules on `socket`'s `domain`, `type` and `protocol` —
 //! plus the `MSG_FASTOPEN` rules on the send syscalls, which belong to the same claim.
 
-use super::*;
+use super::super::*;
+use super::bpf::*;
+use crate::SandboxPolicy;
 
 /// A policy whose egress is confined to one TCP port, the only state that denies datagrams.
 /// The port itself is irrelevant — Landlock holds the ports, seccomp sees only which *shape*
@@ -141,7 +143,7 @@ fn every_connectionless_socketpair_type_is_refused() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();
     let flags = (libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK) as u64;
 
-    for socket_type in 0..=super::rules::SOCK_TYPE_MASK {
+    for socket_type in 0..=super::super::rules::SOCK_TYPE_MASK {
         let connection_oriented =
             socket_type == libc::SOCK_STREAM as u64 || socket_type == libc::SOCK_SEQPACKET as u64;
         let expected = if connection_oriented { ALLOW } else { EPERM };
@@ -601,7 +603,7 @@ fn a_conditional_rule_cannot_weaken_an_unconditional_denial() {
     let mut rules = std::collections::BTreeMap::from([(libc::SYS_socket, Vec::new())]);
     let condition = SeccompCondition::new(0, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, 1).unwrap();
 
-    super::rules::deny_when(&mut rules, libc::SYS_socket, vec![condition]).unwrap();
+    super::super::rules::deny_when(&mut rules, libc::SYS_socket, vec![condition]).unwrap();
 
     assert!(
         rules[&libc::SYS_socket].is_empty(),

@@ -163,7 +163,7 @@ inside the sandbox:
 ## A pointer argument is invisible, which is why `clone3` differs
 
 Everything a seccomp filter can see is in one struct, and
-`seccomp/tests/mod.rs` models it as sixteen 32-bit words: the syscall number,
+`seccomp/tests/bpf.rs` models it as sixteen 32-bit words: the syscall number,
 the audit architecture, the instruction pointer, and the six argument
 *registers*. Registers — not memory. A classic-BPF program can compare a
 register against a constant and mask it; there is no instruction that
@@ -281,7 +281,7 @@ same answer.
 Hand-assembled, because `seccompiler`'s conditions address syscall *arguments*;
 `nr` is reachable only as a filter key, one number at a time, and this rule is a
 mask over it. `x32_gate` writes the six instructions directly, using the opcode
-names `seccomp/tests/mod.rs` composes from `libc`'s field constants:
+names `seccomp/tests/bpf.rs` composes from `libc`'s field constants:
 
 ```rust
     let insn = |code: u16, jt: u8, jf: u8, k: u32| seccompiler::sock_filter { code, jt, jf, k };
@@ -353,7 +353,7 @@ syscall number to a clone flag by merging the two.
 ## The tests evaluate the program rather than installing it
 
 Everything named above is asserted on a host with no Landlock, no privileges and
-no kernel cooperation, because `seccomp/tests/mod.rs` carries a small
+no kernel cooperation, because `seccomp/tests/bpf.rs` carries a small
 classic-BPF interpreter — `eval` — and runs the compiled program over a
 hand-built `seccomp_data`. It is worth understanding before trusting any test in
 those modules.
