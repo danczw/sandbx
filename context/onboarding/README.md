@@ -78,7 +78,7 @@ that crate.
 
 | chapter | covers |
 |---|---|
-| [18 — sandbx-core](18-crate-core.md) | the largest crate, and the one most thoroughly covered elsewhere: the module map as a routing table, the `compile_error!` that makes it Linux-only, twelve private modules behind one public list, and `policy.rs`, `resolver.rs`, `concealment.rs` and the closed error set in full |
+| [18 — sandbx-core](18-crate-core.md) | the largest crate, and the one most thoroughly covered elsewhere: the module map as a routing table, the `compile_error!` that makes it Linux-only, twelve private modules behind one public list, and `policy/sandbox.rs`, `resolver.rs`, `concealment.rs` and the closed error set in full |
 | [19 — sandbx-tools](19-crate-tools.md) | seven modules and one match: the closed enum, the five shared helpers, a tool-by-tool pass over what each one's input is and which guard call it makes, and the policy as a private field that is spent rather than lent |
 | [20 — sandbx-providers](20-crate-providers.md) | a tree with the vendor boundary in the middle: the neutral half above `anthropic.rs`, the four parts of that boundary the compiler holds, SSE framing, the delta fold, the two halves of the wire, and the one text denylist two other crates read |
 | [21 — sandbx-agent](21-crate-agent.md) | a small crate holding the control flow: thirteen public names, `run_turn`'s signature read before its body, the offered tool set, the gate's one blocking site, and compaction as a cut-point algebra |
