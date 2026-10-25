@@ -225,7 +225,7 @@ constant so that two refusals cannot advise differently.
 ## Exit codes mean something
 
 `agent-run` and `tui` use the status to say how a turn ended, which a script can
-branch on. From [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs):
+branch on. From [`cli/src/agent/run.rs`](../../crates/sandbx-cli/src/agent/run.rs):
 
 | code | meaning |
 |---|---|

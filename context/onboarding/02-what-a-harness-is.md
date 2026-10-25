@@ -478,7 +478,7 @@ fn drop_thinking(messages: &mut Vec<RequestMessage>) {
 - **Worth questioning:** nothing in the shipped binary can switch compaction on.
   `TurnLimits::default()` sets `compaction: None`, and the two places that
   build one — `AgentRun::execute` in
-  [`agent.rs`](../../crates/sandbx-cli/src/agent.rs) and the TUI's in
+  [`agent/run.rs`](../../crates/sandbx-cli/src/agent/run.rs) and the TUI's in
   [`agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) — override
   `max_rounds` and take the rest of the default; the wrap-up round in
   [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) copies

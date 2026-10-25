@@ -61,7 +61,7 @@ pub enum TurnStop {
 
 `RoundLimit { rounds }` and `GateAborted` are the other two. `agent-run` matches
 `TurnStop` exhaustively where it turns one into an exit code — on the pair
-`(stop, outcome)` in [`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs),
+`(stop, outcome)` in [`cli/src/agent/run.rs`](../../crates/sandbx-cli/src/agent/run.rs),
 with no `_` arm — so a fourth way for a turn to end cannot reach the code that
 reports a clean one. `tui`'s own mapping is deliberately *not* exhaustive, for a
 reason it states rather than leaves to be inferred: a stop it does not know
