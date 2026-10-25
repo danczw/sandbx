@@ -15,9 +15,10 @@ mod rules;
 use crate::{SandboxError, SandboxPolicy};
 use landlock::AccessFs;
 
+use super::RequestedNet;
 use super::compat::{
     BASELINE_ABI, LATEST_ABI, NEGOTIABLE_ABI, enforcement_verdict, negotiated_abi_from,
 };
 use super::opened::open_grant;
+use super::requested::requested_at;
 use super::rights::rights_for;
-use super::{RequestedNet, requested_at};

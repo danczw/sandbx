@@ -94,7 +94,9 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          tests/      unit tests: denylist, sockets, namespaces, arch; plus the
                      eval interpreter they are all read through
       ruleset/
-         mod.rs      Requested { handled, rules, net }, RequestedNet —
+         mod.rs      re-exports what `apply` and the tests reach
+         requested.rs
+                     Requested { handled, rules, net }, RequestedNet —
                      requested, requested_at
          compat.rs   handled_access, handled_net_access, kernel_probe,
                      negotiated_abi_from, negotiated_abi, enforcement_verdict
