@@ -32,6 +32,7 @@ The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
 | [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) | where a no-flag run may root a default, and what a path flag is vetted against | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`sandbox.rs`](../../crates/sandbx-cli/src/sandbox.rs) | `sandbox-run`: one of the two `SandboxedCommand` build sites in the workspace | [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) | the one subcommand that confines nothing | [12](12-a-flag-to-a-kernel-rule.md) |
+| [`agent.rs`](../../crates/sandbx-cli/src/agent.rs) | re-exports `AgentRun` and `Tui`, the one name the rest of the crate reaches, and what the siblings reach through it | here |
 | [`agent/run.rs`](../../crates/sandbx-cli/src/agent/run.rs) | `agent-run`'s flags and the one sequence that consumes them | here |
 | [`agent/gate.rs`](../../crates/sandbx-cli/src/agent/gate.rs) | which tools `--allow-tool` approved, `ArgvGate`, and the one line per call — bidi-stripped and capped | [13](13-turn-loop-and-gate.md) |
 | [`agent/prompt.rs`](../../crates/sandbx-cli/src/agent/prompt.rs) | the terminal question and the typeahead drain | [13](13-turn-loop-and-gate.md) |
@@ -275,11 +276,12 @@ source already spends (#265).
 ## agent/ and its seven modules, as one pipeline
 
 This is the crate's centre of gravity. `agent.rs` itself is the index — `mod`
-lines, two re-exports, and the five names its siblings reach through it (#331)
-— and `agent/run.rs` is frank about its size: one module on purpose, "the
-pieces are already in `gate`, `prompt`, `render`, `tui` and `wrapup`, and what
-is left is the argv surface and the one sequence that consumes it" — a module
-with one reason to change stays whole however long it grows.
+lines, three re-exports, and the five further names its siblings reach
+through it (#331) — and `agent/run.rs` is frank about its size: one module on
+purpose, "the pieces are already in `gate`, `prompt`, `render`, `tui` and
+`wrapup`, and what is left is the argv surface and the one sequence that
+consumes it" — a module with one reason to change stays whole however long it
+grows.
 
 `sandbx-cli` holds every `run_turn` call site in the workspace outside
 `sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and
