@@ -498,7 +498,7 @@ which two are live.
 | 3 | `credentials.toml` under the config home, `0600` in a `0700` directory | live |
 
 "The two live tiers are tried in that order, and the order is the point."
-[`cli/src/auth.rs`](../../crates/sandbx-cli/src/auth.rs) — see `resolve` —
+[`cli/src/auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs) — see `resolve` —
 states it as a property of *when the file is located*: "The file is located only
 once the environment has come up empty, so an exported key works on a host with
 no config home for `config_file` to name."
@@ -521,7 +521,7 @@ Two small rules that save a long debugging session each:
   unpopulated CI secret yields `Ok("")`, and a `$(cat key)` keeps a trailing
   newline that `HeaderValue` rejects much later as an opaque transport error.
   Both are handled once, in `nonblank` in
-  [`auth.rs`](../../crates/sandbx-cli/src/auth.rs), for the environment, the
+  [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs), for the environment, the
   file and `auth login`'s stdin alike.
 - **The lookup is injected** rather than calling `std::env::var` directly,
   because `set_var` is an `unsafe fn` under edition 2024 and the workspace

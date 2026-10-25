@@ -12,7 +12,7 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-two source files under [`src/`](../../crates/sandbx-cli/src/), twelve
+Twenty-three source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each module holds and, where another chapter
@@ -20,7 +20,7 @@ explains the mechanism, which one. The two `_tests.rs` siblings have no row of
 their own; they sit with the module whose tests they are.
 
 The paths carry the nesting: `grants/root.rs` is `grants.rs`'s only child,
-`agent.rs` has six, and `auth.rs` and `error.rs` have one each.
+`agent.rs` has six, `auth.rs` two, and `error.rs` one.
 
 | file | holds | covered in |
 |---|---|---|
@@ -38,7 +38,7 @@ The paths carry the nesting: `grants/root.rs` is `grants.rs`'s only child,
 | [`agent/render.rs`](../../crates/sandbx-cli/src/agent/render.rs) | the stdout/stderr split, and `finish`'s code | here, and [13](13-turn-loop-and-gate.md) for `finish`'s ordering |
 | [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) | the wrap-up round's mechanics | here; [13](13-turn-loop-and-gate.md) for why it is spent |
 | [`agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) | the `tui` subcommand, the interrupt, the drawing gate | [15](15-tools-and-the-screen.md), [23](23-crate-tui.md) |
-| [`auth.rs`](../../crates/sandbx-cli/src/auth.rs) | the two key sources and `login`/`logout`/`status` | here |
+| [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs) | the two key sources and `login`/`logout`/`status` | here |
 | [`auth/store.rs`](../../crates/sandbx-cli/src/auth/store.rs) | the credential file: read, store, discard, and the modes | here; [14](14-audit-sessions-credentials.md) for the tiers |
 | [`session.rs`](../../crates/sandbx-cli/src/session.rs) | `--session`, and the translation to and from the stored shapes | here, and [22](22-crate-session.md) |
 | [`logging.rs`](../../crates/sandbx-cli/src/logging.rs) | the one `tracing` subscriber, and the hold the screen takes | [14](14-audit-sessions-credentials.md) |
@@ -225,7 +225,7 @@ Read the whole thing as one mapping, in the order it is actually decided:
 | a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent.rs` |
 | a keypress ended a turn on the screen | 2 | the same `INCOMPLETE`, from `tui`'s `select!` |
 | the operator could no longer be asked, or `tui`'s terminal hung up | 3 | `NO_CONSENT` in `agent.rs` |
-| `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `auth.rs` |
+| `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `auth/key.rs` |
 | any `Err` under `sandbox-run`, `agent-run`, `tui`, `hash` | 1 | `failure_code` |
 | any `Err` under `auth` | 2 | `failure_code` |
 | an `Ok(code)` that does not fit a `u8` | the subcommand's failure code | `report` |
@@ -529,7 +529,7 @@ because the alternate screen does not redirect stderr (#224).
 [15](15-tools-and-the-screen.md) covers the behaviour and what interrupting
 costs, and [23](23-crate-tui.md) covers the widgets underneath.
 
-## auth.rs and auth/store.rs
+## auth/key.rs and auth/store.rs
 
 Two sources for one key, and `resolve` fixes the order: `ANTHROPIC_API_KEY`
 wins, and the file is only *located* — not merely read — once the environment
