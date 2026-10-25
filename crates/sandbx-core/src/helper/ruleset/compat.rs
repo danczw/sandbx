@@ -39,7 +39,8 @@ pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
 /// Every right the kernel is asked to *handle* at `abi`, in one spelling.
 ///
 /// [`kernel_probe`] asks whether the kernel will hard-require this set and
-/// [`requested_at`](super::requested::requested_at) hands it to [`apply`](crate::helper::exec::apply) to
+/// [`requested_at`](super::requested::requested_at) hands it to
+/// [`apply`](crate::helper::exec::apply) to
 /// install, so two spellings could drift and have the probe settle on an ABI by answering a
 /// question `apply` never asks.
 ///
