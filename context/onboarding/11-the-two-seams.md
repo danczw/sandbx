@@ -40,7 +40,7 @@ flowchart TD
 ## Seam 1 — `FsGuard`, in-process
 
 The seven built-ins are a closed enum, `BuiltinTool` in
-[`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs) — see `ALL`. Which
+[`tools/src/builtin.rs`](../../crates/sandbx-tools/src/builtin.rs) — see `ALL`. Which
 side of the fork each takes:
 
 | tool | how it reaches the filesystem |
@@ -172,7 +172,7 @@ alone — `read_file` calls `read_to_string` on the `File` and never names the
 path again.
 
 The discipline is centralised rather than repeated. `read_file` in
-[`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs) holds the only
+[`tools/src/shared.rs`](../../crates/sandbx-tools/src/shared.rs) holds the only
 `open_read` call in the tools crate, and its comment says why: so no in-process
 tool can read a file by forgetting it. `read` and `grep` both go through it;
 `edit` goes through it for its read half and `open_write` for its write half,

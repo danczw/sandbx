@@ -2,7 +2,7 @@
 
 Two boxes from [04 — the architecture](04-the-architecture.md)'s View 3, and one
 more that is not a boundary at all. **The tool boundary** is
-[`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs) — "`BuiltinTool`, a
+[`tools/src/builtin.rs`](../../crates/sandbx-tools/src/builtin.rs) — "`BuiltinTool`, a
 closed enum with `ALL: [Self; 7]`; `ToolSpec` crate-private". **The policy's
 ownership** is
 [`tools/src/context.rs`](../../crates/sandbx-tools/src/context.rs) —
