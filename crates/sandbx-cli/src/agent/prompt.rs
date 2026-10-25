@@ -300,4 +300,5 @@ impl<F: Write> Operator for Terminal<F> {
 }
 
 #[cfg(test)]
+#[path = "prompt_tests.rs"]
 pub(super) mod tests;
