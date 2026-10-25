@@ -216,7 +216,8 @@ if axis.grants().write {
 }
 ```
 
-`SandboxPolicy::grant` in [`policy/sandbox.rs`](../../crates/sandbx-core/src/policy/sandbox.rs)
+`SandboxPolicy::grant` in
+[`policy/sandbox.rs`](../../crates/sandbx-core/src/policy/sandbox.rs)
 is the one place a path enters a policy, and its signature is the one a caller
 writes against:
 

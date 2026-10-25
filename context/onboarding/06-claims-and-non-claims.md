@@ -110,8 +110,8 @@ promise covers and does not. The third is the part a reader skips.
   The four shapes that would leave a reachable nameserver answering for every
   name are refusals, and they are decided on `SandboxPolicy` itself —
   `unbounded_resolution` in
-  [`policy/sandbox.rs`](../../crates/sandbx-core/src/policy/sandbox.rs) — rather than in the
-  CLI, so an embedder building a policy by hand meets them too.
+  [`policy/sandbox.rs`](../../crates/sandbx-core/src/policy/sandbox.rs) — rather
+  than in the CLI, so an embedder building a policy by hand meets them too.
 
 ### Unix sockets, and the environment
 
