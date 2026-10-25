@@ -1,7 +1,7 @@
 //! The architecture gates: a foreign ABI, and on x86_64 the x32 one that shares this
 //! architecture's audit value.
 
-use super::super::*;
+use super::super::filter::*;
 use super::bpf::*;
 use crate::SandboxPolicy;
 

@@ -16,8 +16,8 @@ module names no path. Every awkward decision below follows from that split.
 
 [guide-sandboxing.md](../guide-sandboxing.md) is the authority and
 [`SECURITY.md`](../../SECURITY.md) is the claim. Two files hold the mechanism:
-[`seccomp.rs`](../../crates/sandbx-core/src/helper/seccomp.rs) is how a filter
-reaches the kernel, and
+[`seccomp/filter.rs`](../../crates/sandbx-core/src/helper/seccomp/filter.rs) is
+how a filter reaches the kernel, and
 [`seccomp/rules.rs`](../../crates/sandbx-core/src/helper/seccomp/rules.rs) is
 what it denies. Nothing in either touches the kernel until
 `deny_dangerous_syscalls` runs.

@@ -1,7 +1,9 @@
 //! The unconditional denylist, the filter's polarity, and whether the program is one the
 //! kernel would load at all.
 
-use super::super::*;
+use super::super::BLOCKED_SYSCALLS;
+use super::super::filter::*;
+use super::super::rules::blocked_syscalls;
 use super::bpf::*;
 use crate::SandboxPolicy;
 

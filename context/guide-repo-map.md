@@ -88,7 +88,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       resolver.rs    bound_resolution — the ordered mount sequence that installs
                      what src/resolver.rs rendered, in stage 1 because stage 2
                      has no namespace to put it in
-      seccomp.rs     compiled_filter, clone3_filter, x32_gate,
+      seccomp.rs     re-exports BLOCKED_SYSCALLS and deny_dangerous_syscalls
+         filter.rs   compiled_filter, clone3_filter, x32_gate,
                      deny_dangerous_syscalls — how it reaches the kernel
          rules.rs    BLOCKED_SYSCALLS, blocked_syscalls — what is denied
          tests/      unit tests: denylist, sockets, namespaces, arch; plus the
