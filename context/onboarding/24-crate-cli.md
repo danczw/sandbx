@@ -38,6 +38,7 @@ The paths carry the nesting: `grants/root.rs` is `grants.rs`'s only child,
 | [`agent/render.rs`](../../crates/sandbx-cli/src/agent/render.rs) | the stdout/stderr split, and `finish`'s code | here, and [13](13-turn-loop-and-gate.md) for `finish`'s ordering |
 | [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) | the wrap-up round's mechanics | here; [13](13-turn-loop-and-gate.md) for why it is spent |
 | [`agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) | the `tui` subcommand, the interrupt, the drawing gate | [15](15-tools-and-the-screen.md), [23](23-crate-tui.md) |
+| [`auth.rs`](../../crates/sandbx-cli/src/auth.rs) | re-exports `Auth` and the three names the rest of the crate reaches | here |
 | [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs) | the two key sources and `login`/`logout`/`status` | here |
 | [`auth/store.rs`](../../crates/sandbx-cli/src/auth/store.rs) | the credential file: read, store, discard, and the modes | here; [14](14-audit-sessions-credentials.md) for the tiers |
 | [`session.rs`](../../crates/sandbx-cli/src/session.rs) | `--session`, and the translation to and from the stored shapes | here, and [22](22-crate-session.md) |
