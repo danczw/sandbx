@@ -688,14 +688,15 @@ must not grow a variant it never produces.
 `error.rs` used to declare itself one module on purpose — "one `Display` arm per
 variant, and the list of everything that can refuse a run is only readable in one
 place" — and the guide's rule against code in a module with submodules took that
-co-location (#331). Be precise about what did and did not survive. The forty-odd
-`Display` arms now span four files, so per-variant readability in one place is
-gone. What remains is narrower and was the load-bearing half: `error.rs` is five
-`mod` lines and five re-exports, one per error type, so the set of things that can
-refuse a run is still readable in one place, and `ADVICE` still has exactly one home, in
-`policy.rs` beside its only readers, so two derived-default refusals cannot advise
-differently. A refusal of a *flag* says what to change about the flag. The
-co-location was ending either way — #350 takes `PolicyError` out of this crate.
+co-location (#331). The thirty-eight `Display` arms `error.rs` held now span
+three files — `hash.rs` is a struct and has none — so per-variant readability in
+one place is gone. What remains is narrower and was the load-bearing half:
+`error.rs` is five `mod` lines and five re-exports, one per error type, so the
+set of things that can refuse a run is still readable in one place, and `ADVICE`
+still has exactly one home, in `policy.rs` beside its only readers, so two
+derived-default refusals cannot advise differently. A refusal of a *flag* says
+what to change about the flag. The co-location was ending either way — #350
+takes `PolicyError` out of this crate.
 
 One absence is a design statement. A failing tool is not an `AgentError`: it
 comes back to the model as an error result for it to try something else, which
