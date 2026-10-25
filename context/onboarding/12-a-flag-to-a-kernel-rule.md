@@ -341,7 +341,7 @@ chance for the policy to drift on its way to the stage that enforces it.
 ## Stage 5 — out as a rule the kernel holds
 
 Stage 2 of the helper calls `apply` in
-[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs). The order there
+[`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs). The order there
 is load-bearing from the first line, and
 [guide-sandboxing.md](../guide-sandboxing.md) is its authority; what concerns
 our grant is `requested`, then one loop.
@@ -720,7 +720,7 @@ only an image that genuinely *is* the pinned one is refused for being a script.
 
 **The check sits after `apply`, in the process that starts the command.** Not
 in the harness: `restrict_and_spawn` in
-[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) is stage 2 of the
+[`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs) is stage 2 of the
 re-exec, PID 1 of the new PID namespace, and it calls `apply` — Landlock,
 seccomp, hardening — and only then opens the program.
 

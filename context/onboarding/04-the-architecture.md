@@ -58,7 +58,7 @@ The check is one grep, and it is worth running once so the picture stops being
 something you took on trust: `apply` has exactly one call site in the
 workspace, in `restrict_and_spawn` — stage 2, and nowhere above it. Why it cannot
 move up is in `exec_sandboxed`'s own doc comment in
-[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs):
+[`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs):
 
 > Must run in a freshly executed helper process, never inside sandbx: the
 > namespaces and the capability drops are irreversible for this process, so

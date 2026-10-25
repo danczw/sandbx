@@ -203,7 +203,7 @@ requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
                                                                  helper/ruleset/requested.rs
 ```
 
-The syscall list is in `helper/seccomp/rules.rs`; `apply` in `helper/mod.rs`.
+The syscall list is in `helper/seccomp/rules.rs`; `apply` in `helper/exec.rs`.
 
 A rule names a `RuleTarget`, not a path: `Granted` carries the object the harness
 vetted and `Installed` is a resolver file bind-mounted in this process, so

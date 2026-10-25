@@ -1,7 +1,7 @@
 # Onboarding
 
 A read-through that takes a new engineer from "what is this" to being able to
-open `helper/mod.rs` and say why the order of `apply` is load-bearing. One
+open `helper/exec.rs` and say why the order of `apply` is load-bearing. One
 sitting per chapter, general to specific.
 
 Security is the centre of gravity throughout. sandbx is a sandbox; a chapter

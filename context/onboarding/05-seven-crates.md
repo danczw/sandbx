@@ -206,7 +206,7 @@ and stable only from the toolchain version the manifest names. The helper uses
 them, and the root manifest's comment on `rust-version` records that the
 let-chain in `helper/` is one of the two things holding the floor where it is.
 When you read a condition in
-[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) whose lines begin
+[`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs) whose lines begin
 `&& let`, that is the feature, not a typo.
 
 **`publish = false`.** No crate here goes to crates.io; the shipped artifact is

@@ -89,7 +89,7 @@ Three things about them that the table does not say.
   name means a name describing two things; over budget on a comment means finding the
   sentence doing the work and keeping that one. Splitting a module follows the same
   shape — split it when it has two reasons to change, not when it crosses a number,
-  and a module doing one thing stays whole however long it grows. `helper/mod.rs` is
+  and a module doing one thing stays whole however long it grows. `helper/exec.rs` is
   the worked case: one ordered syscall sequence, so one module, because splitting an
   order across files is how an order gets broken.
 - **`CLAUDE.md` names five kinds of comment that are never trimmed** — why a sequence
