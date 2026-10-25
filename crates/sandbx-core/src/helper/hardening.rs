@@ -10,7 +10,7 @@ use crate::degradation::Degradation;
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
 ///
-/// Separate from [`apply`](super::apply) because both steps have to happen in the
+/// Separate from [`apply`](crate::helper::exec::apply) because both steps have to happen in the
 /// *supervisor*, not in the stage that starts the command:
 ///
 /// - the namespaces, because `CLONE_NEWPID` only places this process's children, so

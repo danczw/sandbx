@@ -36,7 +36,7 @@ enforcement —
 [`core/src/lib.rs`](../../crates/sandbx-core/src/lib.rs) names both layers in
 its opening lines, and [11 — the two seams](11-the-two-seams.md) walks each. The
 conversion the thesis names is one function, `apply` in
-[`core/src/helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs):
+[`core/src/helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs):
 
 ```rust
 fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {

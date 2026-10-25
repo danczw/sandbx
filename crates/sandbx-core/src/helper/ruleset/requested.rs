@@ -9,7 +9,7 @@ use crate::SandboxError;
 
 use super::{compat, rights};
 
-/// Everything [`apply`](super::super::apply) asks the kernel for, derived from one ABI.
+/// Everything [`apply`](crate::helper::exec::apply) asks the kernel for, derived from one ABI.
 ///
 /// Every field must have been built at the same ABI; computing them together makes a
 /// disagreement unexpressible. The two directions are not symmetric:
@@ -38,7 +38,7 @@ pub(in crate::helper) struct Requested<'policy> {
     pub(in crate::helper) net: RequestedNet<'policy>,
 }
 
-/// What [`apply`](super::super::apply) asks Landlock for on the network axis.
+/// What [`apply`](crate::helper::exec::apply) asks Landlock for on the network axis.
 ///
 /// A sibling of `handled` and not a widening of it: `BitFlags<AccessFs>` and
 /// `BitFlags<AccessNet>` are distinct types, and an *empty* `BitFlags<AccessNet>` would be the
@@ -79,7 +79,7 @@ pub(super) fn requested_at(policy: &crate::SandboxPolicy, abi: landlock::ABI) ->
 
 /// Negotiate an ABI with this kernel and build everything `policy` asks for at it.
 ///
-/// Negotiates rather than taking an ABI, so [`apply`](super::super::apply) never holds one
+/// Negotiates rather than taking an ABI, so [`apply`](crate::helper::exec::apply) never holds one
 /// and loses `Access`/`AccessFs` from its imports — reintroducing the divergence shows up in
 /// the diff, which nothing can test without a kernel. Fails closed: a kernel below the
 /// baseline is refused here, before a ruleset is built.

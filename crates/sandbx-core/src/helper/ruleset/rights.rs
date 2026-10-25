@@ -1,5 +1,5 @@
 //! The policy-to-Landlock mapping: which rights each grant confers, and the one rule per
-//! grant that [`apply`](crate::helper::apply) installs.
+//! grant that [`apply`](crate::helper::exec::apply) installs.
 //!
 //! Kernel-independent — the ABI arrives as a parameter, negotiated by [`super::compat`] — and
 //! so assertable without root, a network namespace or a Landlock-capable kernel.
@@ -26,7 +26,7 @@
 /// substituted — a file can never end up with more than the directory case. Dropping the
 /// intersection would not degrade quietly: `PathBeneath` stats the fd, strips the dir-only
 /// bits and reports `CompatResult::Partial`, which under the `HardRequirement`
-/// [`apply`](crate::helper::apply) sets fails `add_rule`, so it would refuse any policy
+/// [`apply`](crate::helper::exec::apply) sets fails `add_rule`, so it would refuse any policy
 /// naming a regular file — `--allow-read ./config.toml` does.
 ///
 /// [`Axis::grants`]: crate::Axis::grants
@@ -93,7 +93,7 @@ impl RuleTarget<'_> {
     }
 }
 
-/// The Landlock rules [`apply`](crate::helper::apply) will install, as `(axis, path, rights)`,
+/// The Landlock rules [`apply`](crate::helper::exec::apply) will install, as `(axis, path, rights)`,
 /// one per grant, ordered after [`SandboxPolicy::granted_paths`].
 ///
 /// Adds just the one probe [`rights_for`] needs, whether the target is a directory.
@@ -202,7 +202,7 @@ fn opens_as_itself(path: &std::path::Path) -> bool {
     path.symlink_metadata().is_ok_and(|at| !at.is_symlink())
 }
 
-/// Whether [`apply`](crate::helper::apply) hands the network axis to Landlock at all, and on
+/// Whether [`apply`](crate::helper::exec::apply) hands the network axis to Landlock at all, and on
 /// which ports.
 ///
 /// The only place that chooses, because "no port rules" is not "an empty port list": handling

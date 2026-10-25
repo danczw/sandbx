@@ -166,7 +166,7 @@ covering for it and the command's environment byte-identical.
 
 The other half of *at every spawn stage* is a check, not a clear. Before
 applying anything, `restrict_and_spawn` in
-[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) refuses outright
+[`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs) refuses outright
 if the environment stage 2 *inherited* holds a name the policy does not permit —
 `permits_env`, the one predicate the factory and the check share, being the
 allowlist plus the single compile-time pair `imposed_env` carries under

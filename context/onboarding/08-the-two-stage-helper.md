@@ -11,10 +11,10 @@ lines cannot be reordered.
 below assumes you know what `unshare(CLONE_NEWPID)` places, why a capability
 bounding set is dropped before the effective set, and what a parent death signal
 is cleared by. The code is almost all in
-[`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs),
+[`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs),
 [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) and
 [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs), and
-`helper/mod.rs` says in its own module doc that it stays one module however long
+`helper/exec.rs` says in its own module doc that it stays one module however long
 it grows, because it is one ordered syscall sequence and splitting an order
 across files is how an order gets broken.
 

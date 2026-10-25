@@ -35,7 +35,7 @@ third column.
 | [`helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs) | seam 2: `HelperArgs::encode`/`decode`, the argv the helper is told | [11](11-the-two-seams.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`command.rs`](../../crates/sandbx-core/src/command.rs) | `SandboxedCommand`: the builder, the audit pipe, the deadline, the kill | [08](08-the-two-stage-helper.md), [14](14-audit-sessions-credentials.md) |
 | [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) | the two flags and `with_helper_dispatch` — the entry into helper mode | [08](08-the-two-stage-helper.md) |
-| [`helper/mod.rs`](../../crates/sandbx-core/src/helper/mod.rs) | the two stages, and `apply`'s ordered sequence | [08](08-the-two-stage-helper.md) |
+|  [`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs) | the two stages, and `apply`'s ordered sequence | [08](08-the-two-stage-helper.md) |
 | [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) | namespaces, capability sets, `RLIMIT_CORE`, `pdeathsig` | [07](07-kernel-primer.md), [08](08-the-two-stage-helper.md) |
 | [`helper/resolver.rs`](../../crates/sandbx-core/src/helper/resolver.rs) | the ordered mount sequence that installs the rendered files | [07](07-kernel-primer.md) for bind mounts; below for what it installs |
 | [`helper/seccomp/filter.rs`](../../crates/sandbx-core/src/helper/seccomp/filter.rs) | how the filter reaches the kernel: stacked filters, the x32 gate | [10](10-seccomp.md) |

@@ -7,7 +7,7 @@
 
 use crate::SandboxError;
 
-/// The Landlock ABI floor [`apply`](crate::helper::apply) refuses to run below, and the
+/// The Landlock ABI floor [`apply`](crate::helper::exec::apply) refuses to run below, and the
 /// ceiling it negotiates up to.
 ///
 /// This pair is the only place the floor `SECURITY.md` claims — ABI 5, Linux 6.10 — is
@@ -19,7 +19,7 @@ use crate::SandboxError;
 /// `CompatLevel::HardRequirement`, making an older kernel a refusal instead of a silent hole.
 pub(super) const BASELINE_ABI: landlock::ABI = landlock::ABI::V5; // Linux 6.10: IoctlDev
 
-/// Newest ABI [`apply`](crate::helper::apply) negotiates for. See [`BASELINE_ABI`].
+/// Newest ABI [`apply`](crate::helper::exec::apply) negotiates for. See [`BASELINE_ABI`].
 pub(super) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 7.1: ResolveUnix
 
 /// Every ABI [`negotiated_abi`] will settle for, newest first.
@@ -39,7 +39,7 @@ pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
 /// Every right the kernel is asked to *handle* at `abi`, in one spelling.
 ///
 /// [`kernel_probe`] asks whether the kernel will hard-require this set and
-/// [`requested_at`](super::requested::requested_at) hands it to [`apply`](crate::helper::apply) to
+/// [`requested_at`](super::requested::requested_at) hands it to [`apply`](crate::helper::exec::apply) to
 /// install, so two spellings could drift and have the probe settle on an ABI by answering a
 /// question `apply` never asks.
 ///
@@ -67,7 +67,7 @@ pub(super) fn handled_net_access(abi: landlock::ABI) -> landlock::BitFlags<landl
 ///
 /// The rung test behind [`negotiated_abi`]. `create()` builds a ruleset without applying it,
 /// so the ladder walks in one process and nothing is restricted until
-/// [`apply`](crate::helper::apply) calls `restrict_self`. The kernel's version syscall would
+/// [`apply`](crate::helper::exec::apply) calls `restrict_self`. The kernel's version syscall would
 /// be cheaper but is `unsafe` with a private `landlock` wrapper, and a probe asking the
 /// question the real call will ask cannot disagree with it — which [`handled_access`] keeps
 /// true by construction.

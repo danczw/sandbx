@@ -265,7 +265,7 @@ Nothing here bounds where a command connects.
 
 ### No kernel mechanism sees a destination
 
-Landlock's network rule is `NetPort::new(port, rights)` (`helper/mod.rs`'s `apply`)
+Landlock's network rule is `NetPort::new(port, rights)` (`helper/exec.rs`'s `apply`)
 and there is no address in that shape. seccomp compares register values, and the
 `sockaddr` carrying the destination is behind a pointer the filter cannot follow
 — at `connect`, at `sendto`, and at every syscall further down the chain, which
