@@ -186,7 +186,8 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
                           TurnStop, PromptUsage, Compaction, CallGate,
                           ToolCall, ApprovalDecision, Settled, Outcome,
                           run_turn
-   turn.rs    run_turn — generic over a stream-opening closure
+   turn.rs    re-exports run_turn and the five types that drive it
+      run.rs         run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
    approval.rs  what a gate is asked, the three answers it may give — one of

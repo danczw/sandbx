@@ -163,7 +163,7 @@ sequenceDiagram
     end
 ```
 
-`run_turn` in [`turn.rs`](../../crates/sandbx-agent/src/turn.rs) is that loop.
+`run_turn` in [`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) is that loop.
 Per round:
 
 - the request is the surviving history plus everything this turn has produced so

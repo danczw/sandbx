@@ -21,7 +21,8 @@ map, the signature a caller meets, and `compact.rs`.
 
 ```
 src/lib.rs          13 re-exports and four private modules; nothing else
-   turn.rs          run_turn, and the public types it is driven by
+   turn.rs          re-exports run_turn and the types it is driven by
+      run.rs        run_turn, and the public types it is driven by
       accumulate.rs one round's assistant message, rebuilt from deltas
       tools.rs      the offered set, the gate call, one spawn_blocking
    approval.rs      what a gate is asked and what it is told; no policy
@@ -36,8 +37,8 @@ tests/
 ```
 
 Three things to read off that shape. **The deepest path is two levels**, and
-`turn.rs`'s two children are the two halves of a round: rebuilding what arrived,
-running what it asked for. **`turn.rs` is the longest file in the crate and stays
+`run.rs`'s two siblings are the two halves of a round: rebuilding what arrived,
+running what it asked for. **`run.rs` is the longest file in the crate and stays
 one module**, which its own doc says outright, because a new way for a turn to
 stop is one edit to `TurnStop`, one to the loop that chooses it and one to the
 outcome that carries it. **The test tree is larger than `src/`**, about 2,500 lines against
@@ -87,10 +88,10 @@ Two types a caller also needs are *not* here, and their absence is the seam:
 `Prompt`, `AgentEvent` and `StopReason` are `sandbx-providers`'. Neither set is
 re-exported, so a caller imports from all three.
 
-## `turn.rs` — the signature before the body
+## `turn/run.rs` — the signature before the body
 
-[`turn.rs`](../../crates/sandbx-agent/src/turn.rs) exports one async function
-and the five types that drive it. Read the signature before the loop:
+[`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) exports one async
+function and the five types that drive it. Read the signature before the loop:
 
 ```rust
 pub async fn run_turn<F, O, G>(
