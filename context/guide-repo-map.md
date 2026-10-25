@@ -60,7 +60,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       policy/sandbox.rs Axis, Grants, SandboxPolicy     ◄── the table
       policy/vetted.rs  VettedPath, ObjectId — a grant and the object it names
    fs_guard.rs       in-process path and object enforcement (6 of 7 tools)
-   command.rs        SandboxedCommand, the audit pipe, the kill chain
+   command.rs        re-exports; dispatch is the host-side helper entry
+      command/run.rs SandboxedCommand, the audit pipe, the kill chain
       dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch — the
                      entry into helper mode
    helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx each with a

@@ -262,7 +262,7 @@ SandboxPolicy { readable: vec![VettedPath { path: "/tmp/x", object }], … }
 ## Stage 4 — across the argv seam
 
 `SandboxedCommand::command_line` in
-[`command.rs`](../../crates/sandbx-core/src/command.rs) is where the policy
+[`command/run.rs`](../../crates/sandbx-core/src/command/run.rs) is where the policy
 becomes argv, and only the last of the three things it does is rendering. First
 it asks two questions of the policy as a whole — `unbounded_resolution` and
 `grant_bound_by_resolver` — and refuses before a single token is written.
