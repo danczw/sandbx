@@ -12,7 +12,7 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-one source files under [`src/`](../../crates/sandbx-cli/src/), twelve
+Twenty-two source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each file holds and, where another chapter
@@ -22,7 +22,8 @@ and `error.rs` have one each.
 
 | file | holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-cli/src/lib.rs) | `Cli`, `Command`, and the `pub use` list that is the library's whole API | here |
+| [`lib.rs`](../../crates/sandbx-cli/src/lib.rs) | the `pub use` list that is the library's whole API, and nothing else | here |
+| [`invocation.rs`](../../crates/sandbx-cli/src/invocation.rs) | `Cli` and `Command` — the clap surface, whose doc comments are the long `--help` | here |
 | [`main.rs`](../../crates/sandbx-cli/src/main.rs) | helper dispatch, the tokio runtime, the exit-code mapping | here, and [08](08-the-two-stage-helper.md) for the dispatch |
 | [`grants.rs`](../../crates/sandbx-cli/src/grants.rs) | every `--allow-…` flag, the axis loop, and the one widening it applies | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) | where a no-flag run may root a default, and what a path flag is vetted against | [12](12-a-flag-to-a-kernel-rule.md) |

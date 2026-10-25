@@ -243,7 +243,9 @@ src/lib.rs          re-exports; nothing here knows of a policy or a provider
 ## `sandbx-cli`
 
 ```
-src/lib.rs      Cli, Command — the clap surface and nothing else
+src/lib.rs      re-exports; the pub use list is the library's whole API
+   invocation.rs
+                Cli, Command — the clap surface and nothing else
    grants.rs    Grants — the --allow-… flags, flattened into every subcommand
                 that confines something, and the policy they derive
    grants/root.rs
