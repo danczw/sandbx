@@ -246,7 +246,9 @@ src/lib.rs          re-exports; nothing here knows of a policy or a provider
 src/lib.rs      mod lines and re-exports; no code
    invocation.rs
                 Cli, Command — the clap surface and nothing else
-   grants.rs    Grants — the --allow-… flags, flattened into every subcommand
+   grants.rs    re-exports Grants
+   grants/flags.rs
+                Grants — the --allow-… flags, flattened into every subcommand
                 that confines something, and the policy they derive
    grants/root.rs
                 where a no-flag run may root its default policy, and what a

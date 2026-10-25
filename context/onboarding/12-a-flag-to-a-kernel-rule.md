@@ -55,7 +55,7 @@ flowchart TD
 allow_read: Vec<PathBuf>,
 ```
 
-That is in [`grants.rs`](../../crates/sandbx-cli/src/grants.rs), on the `Grants`
+That is in [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs), on the `Grants`
 struct — the one flattened into every subcommand that confines something, so
 `sandbox-run` and `agent-run` cannot disagree about what a flag means. The field
 is a `Vec`, because the flag repeats; the doc comment above it *is* the `--help`
@@ -182,11 +182,12 @@ it.
 
 ### The module boundary is itself worth a look
 
-`grants.rs` was split (#250) into the flag surface and
+`grants.rs` was split (#250) into the flag surface, now
+[`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs), and
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), which owns root
 derivation and path vetting; behaviour did not change. What changed is a
-*visibility*. The `root.rs` functions above are `pub(super)` — visible to
-`grants.rs` and nothing else — while `vetted_root`, `named_homes`, the `Homes`
+*visibility*. The `root.rs` functions above are `pub(super)` — visible inside
+`grants/` and nowhere else — while `vetted_root`, `named_homes`, the `Homes`
 type and the `$HOME` predicates are private to `root.rs`, with their tests
 inline beside them.
 
@@ -540,7 +541,7 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
   missing it", and [decision-policy.md](../decision-policy.md) presents
   that as the safe default. It is the safe default for *forgetting*; it is also
   an automatic widening. Whoever adds a fifth axis that confers write gets a
-  read grant from the CLI without ever opening `grants.rs`, which is the
+  read grant from the CLI without ever opening `grants/flags.rs`, which is the
   opposite of every other new-axis story in that record — where the point is
   that a new axis must visit each site that decides something about it, and the
   test suite fails until it does. The two goals conflict here and only one is

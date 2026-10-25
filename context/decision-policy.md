@@ -334,7 +334,7 @@ Axis::ReadExecute => (true,  false, true )
 | `fs_guard.rs` | two hand-built path lists | destructure `grants()` into readable/writable |
 | `helper_args.rs` | three flag spellings, twice (encode + decode) | one `path_flag` match, `axis_for` as reverse lookup |
 | `audit.rs` | three counted fields, hand-maintained | loop + exhaustive `match` |
-| `sandbx-cli/src/grants.rs` | three flag blocks | loop + exhaustive `match` |
+| `sandbx-cli/src/grants/flags.rs` | three flag blocks | loop + exhaustive `match` |
 
 Two sites cannot derive their answer and are **forced** instead — `tracing` needs
 static field names, and clap needs per-flag `--help` text. Both pair the loop
