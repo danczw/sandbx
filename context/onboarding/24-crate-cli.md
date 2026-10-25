@@ -730,8 +730,8 @@ it, which is [14](14-audit-sessions-credentials.md)'s material.
 
 Unit tests sit in the module they test, except where a file has enough of them
 to warrant its own: `agent/gate.rs` and `agent/prompt.rs` both have `_tests.rs`
-siblings, and `prompt`'s is `pub(super) mod tests` so `agent.rs`'s own tests —
-not `gate`'s, which builds its own fake `Operator` — can reach its `pty`
+siblings, and `prompt`'s is `pub(super) mod tests` so `agent/run.rs`'s own
+tests — not `gate`'s, which builds its own fake `Operator` — can reach its `pty`
 fixture for a hung-up terminal. Twelve integration files, split by surface:
 
 | file | asserts |
