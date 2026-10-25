@@ -472,7 +472,7 @@ re-derive it.
 
 **No host field may enter `SandboxPolicy` before something enforces it, and no
 name allowlist either.** The type is read as the record of what was granted
-(`policy.rs`), so a field nothing honours tells its next reader that a grant
+(`policy/sandbox.rs`), so a field nothing honours tells its next reader that a grant
 is respected. This is the rule that kept #42 to per-port, and it is the same rule
 `decision-credentials.md` states for a credential placeholder, under the
 same heading. An intermediate step, if one is wanted, is a separate opt-in type

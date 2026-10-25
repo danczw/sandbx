@@ -7,7 +7,8 @@
 use std::ffi::OsStr;
 use std::path::Path;
 
-use super::vetted::VettedPath;
+use crate::VettedPath;
+
 const SYSTEM_EXECUTABLE_PATHS: [&str; 4] = ["/usr", "/bin", "/lib", "/lib64"];
 
 const STANDARD_ENV_NAMES: [&str; 7] = ["PATH", "HOME", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ"];
