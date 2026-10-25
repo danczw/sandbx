@@ -32,9 +32,8 @@ sandbx-providers = { path = "../sandbx-providers" }
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
-# A hangup is tested by opening a pty pair and closing the master. The pair comes from
-# this crate rather than from a `#[cfg(test)]` module, because `screen` and `input` both
-# open one and a `#[cfg(test)]` item does not cross a crate boundary (#344).
+# A hangup is tested by opening a pty pair and closing the master; this is where the pair
+# comes from, and its own docs say why it is a crate (#344).
 sandbx-pty-fixture = { path = "../sandbx-pty-fixture" }
 serde_json = "1.0.145"
 
