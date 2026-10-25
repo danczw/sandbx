@@ -26,7 +26,7 @@ src/lib.rs          13 re-exports and four private modules; nothing else
       tools.rs      the offered set, the gate call, one spawn_blocking
    approval.rs      what a gate is asked and what it is told; no policy
    compact.rs       which prefix of a history may be withheld
-      tests.rs      the cut-point algebra, as unit tests
+   compact_tests.rs the cut-point algebra, as unit tests
    error.rs         TurnError — only what ends a turn in failure
 tests/
    turn_loop.rs       what one streamed turn becomes
@@ -527,9 +527,9 @@ CLI performs — merging a run of user messages into one (#188) — means the pr
 resuming a round-limited turn carries a `ToolResult` and is not a boundary, so a
 session that caps on every turn can run out of cut points.
 
-### `compact/tests.rs` — why the algebra has its own test module
+### `compact_tests.rs` — why the algebra has its own test module
 
-[`compact/tests.rs`](../../crates/sandbx-agent/src/compact/tests.rs) is 484
+[`compact_tests.rs`](../../crates/sandbx-agent/src/compact_tests.rs) is 484
 lines against the module's 117, the largest test-to-code ratio in the crate, and
 a unit module rather than an integration target because `plan_cut` and
 `opens_a_request` are `pub(crate)` and private. Its shape is worth copying: five
