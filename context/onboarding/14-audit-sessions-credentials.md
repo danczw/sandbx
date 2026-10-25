@@ -521,8 +521,8 @@ Two small rules that save a long debugging session each:
   unpopulated CI secret yields `Ok("")`, and a `$(cat key)` keeps a trailing
   newline that `HeaderValue` rejects much later as an opaque transport error.
   Both are handled once, in `nonblank` in
-  [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs), for the environment, the
-  file and `auth login`'s stdin alike.
+  [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs), for the environment,
+  the file and `auth login`'s stdin alike.
 - **The lookup is injected** rather than calling `std::env::var` directly,
   because `set_var` is an `unsafe fn` under edition 2024 and the workspace
   forbids `unsafe_code` in test binaries too. The same trick appears in

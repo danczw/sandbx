@@ -302,8 +302,8 @@ accord.
 as values, and `named_homes(home) -> Homes` takes the one variable the same way;
 `current_root()` is the thin wrapper that reads the cwd and `$HOME` off the
 process. Same split as `resolve(lookup)` / `api_key()` in
-`crates/sandbx-cli/src/auth/key.rs`, with values rather than a closure since nothing
-is called twice.
+`crates/sandbx-cli/src/auth/key.rs`, with values rather than a closure since
+nothing is called twice.
 
 All three are private, and the tests for them are inline. Making the seam public so
 `tests/sandbox_run.rs` could drive the refusals is the trade
