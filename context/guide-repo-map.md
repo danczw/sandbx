@@ -281,7 +281,12 @@ src/lib.rs      mod lines and re-exports; no code
                 modes it is refused and written under
    session.rs   --session: which session to open, and the translation to and from
                 the stored shapes
-   error.rs     AgentError, SandboxRunError, PolicyError, HashError
+   error.rs     re-exports the five, and is the list of them
+   error/agent.rs  AgentError — twelve ways a turn does not finish
+   error/run.rs    SandboxRunError — Policy, Sandbox
+   error/policy.rs PolicyError, and the one ADVICE every derived-default
+                   refusal appends
+   error/hash.rs   HashError — a path and an io::Error, no variants
    error/auth.rs
                 AuthError — what stops `auth`, or a key resolution under `agent-run`
    logging.rs   the one subscriber

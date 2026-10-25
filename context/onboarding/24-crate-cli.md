@@ -12,7 +12,7 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-four source files under [`src/`](../../crates/sandbx-cli/src/), twelve
+Twenty-eight source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each module holds and, where another chapter
@@ -20,7 +20,7 @@ explains the mechanism, which one. The two `_tests.rs` siblings have no row of
 their own; they sit with the module whose tests they are.
 
 The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
-`agent.rs` six, and `error.rs` one.
+`agent.rs` six, and `error.rs` five — one per error type.
 
 | file | holds | covered in |
 |---|---|---|
@@ -44,7 +44,8 @@ The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
 | [`auth/store.rs`](../../crates/sandbx-cli/src/auth/store.rs) | the credential file: read, store, discard, and the modes | here; [14](14-audit-sessions-credentials.md) for the tiers |
 | [`session.rs`](../../crates/sandbx-cli/src/session.rs) | `--session`, and the translation to and from the stored shapes | here, and [22](22-crate-session.md) |
 | [`logging.rs`](../../crates/sandbx-cli/src/logging.rs) | the one `tracing` subscriber, and the hold the screen takes | [14](14-audit-sessions-credentials.md) |
-| [`error.rs`](../../crates/sandbx-cli/src/error.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` | here |
+| [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the five re-exports, and the list of what can refuse a run | here |
+| [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`policy.rs`](../../crates/sandbx-cli/src/error/policy.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` — one each | here |
 | [`error/auth.rs`](../../crates/sandbx-cli/src/error/auth.rs) | `AuthError` | here |
 
 ## invocation.rs is the clap surface, and lib.rs the list of names
@@ -659,14 +660,14 @@ whose content all translated away, since an empty content array is something no
 provider accepts, and storing one would fail the *next* resumed turn rather than
 this one.
 
-## error.rs — five error types for five surfaces
+## error/ — five error types for five surfaces
 
 | type | raised by | shape |
 |---|---|---|
 | `SandboxRunError` | `sandbox-run` | two variants: `Policy`, `Sandbox` |
 | `AgentError` | `agent-run` and `tui` | twelve variants, from `EmptyPrompt` to `Turn` |
 | `HashError` | `hash` | a struct, no variants: a path and an `io::Error` |
-| `AuthError` | `auth`, and `agent-run` reading a key | eleven variants, in `error/auth.rs` |
+| `AuthError` | `auth`, and `agent-run` reading a key | eleven variants |
 | `PolicyError` | `Grants::policy`, a leaf inside the first two | one variant per way a policy can be refused |
 
 What five buys over one enum is a per-subcommand `Display` surface and a
@@ -682,11 +683,16 @@ leaf, wrapped by both `SandboxRunError::Policy` and `AgentError::Policy` — the
 type-level statement that both subcommands derive their policy the same way. And
 `SandboxRunError::Sandbox` wraps `sandbx_core::SandboxError` rather than the CLI
 reusing it, because deriving a policy is the CLI's own step and `sandbx-core`
-must not grow a variant it never produces. `PolicyError` is also why `error.rs`
-declares itself one module on purpose: one `Display` arm per variant, and "the
-list of everything that can refuse a run is only readable in one place". Its
-derived-default refusals share one `ADVICE` constant so two of them cannot
-advise differently; a refusal of a *flag* says what to change about the flag.
+must not grow a variant it never produces.
+
+`error.rs` used to declare itself one module on purpose — "the list of
+everything that can refuse a run is only readable in one place" — and the
+guide's rule against code in a module with submodules took that co-location
+(#331). What the claim was protecting survives it: `error.rs`'s module doc is
+now that list, and `ADVICE` still has exactly one home, in `policy.rs` beside
+its only readers, so two derived-default refusals cannot advise differently. A
+refusal of a *flag* says what to change about the flag. The co-location was
+ending either way — #350 takes `PolicyError` out of this crate entirely.
 
 One absence is a design statement. A failing tool is not an `AgentError`: it
 comes back to the model as an error result for it to try something else, which
