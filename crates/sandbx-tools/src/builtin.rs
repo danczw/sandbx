@@ -45,11 +45,12 @@ const EMPTY_OUTPUT: &str = "(no output)";
 /// allocates and so cannot be a `const`.
 ///
 /// The fields are `pub(crate)` because the seven `SPEC` literals that set them live in
-/// `tools/`, no longer sharing this module. That is the same set they had as private fields
-/// of the crate root, but it is load-bearing only while the struct itself is `pub(crate)`:
-/// making `ToolSpec` `pub` would now also expose `run`, a direct handle to each tool's
-/// executor that bypasses [`BuiltinTool`]'s match. Widen the struct and the fields have to
-/// be closed behind a constructor first.
+/// `tools/`, no longer sharing this module — private here would reach only `builtin` and
+/// below, and every literal would stop compiling. That is the same set they had as private
+/// fields of the crate root, and it survives a later widening of the struct: a `pub(crate)`
+/// field is invisible outside the crate even on a `pub` struct, so `run` — a direct handle
+/// to each tool's executor, bypassing [`BuiltinTool`]'s match — stays crate-private either
+/// way.
 pub(crate) struct ToolSpec {
     pub(crate) name: &'static str,
     pub(crate) description: &'static str,
