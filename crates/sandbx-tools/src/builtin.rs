@@ -1,5 +1,5 @@
-//! The closed enum of tools, what the model is told about one — its name, its risk,
-//! its schema — and the non-empty text it gets back.
+//! The closed enum of tools, what one carries — the name and description the model
+//! is told, its schema, the risk the gate reads — and the non-empty text it gets back.
 
 use crate::tools;
 use crate::{ExecutionContext, ToolError};
@@ -45,7 +45,7 @@ const EMPTY_OUTPUT: &str = "(no output)";
 /// allocates and so cannot be a `const`.
 ///
 /// The fields are `pub(crate)` because the seven `SPEC` literals that set them live in
-/// `tools/`, no longer sharing this module — private here would reach only `builtin` and
+/// `tools/`, no longer below this module — private here would reach only `builtin` and
 /// below, and every literal would stop compiling. That is the same set they had as private
 /// fields of the crate root, and it survives a later widening of the struct: a `pub(crate)`
 /// field is invisible outside the crate even on a `pub` struct, so `run` — a direct handle
