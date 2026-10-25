@@ -43,6 +43,13 @@ const EMPTY_OUTPUT: &str = "(no output)";
 /// Everything [`BuiltinTool`] knows about one tool, written once in that tool's own
 /// module. The schema is a function rather than a value because `schema_for!`
 /// allocates and so cannot be a `const`.
+///
+/// The fields are `pub(crate)` because the seven `SPEC` literals that set them live in
+/// `tools/`, no longer sharing this module. That is the same set they had as private fields
+/// of the crate root, but it is load-bearing only while the struct itself is `pub(crate)`:
+/// making `ToolSpec` `pub` would now also expose `run`, a direct handle to each tool's
+/// executor that bypasses [`BuiltinTool`]'s match. Widen the struct and the fields have to
+/// be closed behind a constructor first.
 pub(crate) struct ToolSpec {
     pub(crate) name: &'static str,
     pub(crate) description: &'static str,
