@@ -22,7 +22,7 @@ across files is how an order gets broken.
 
 There is no separate helper executable to install, find or keep in step. The
 command sandbx builds re-runs **itself**:
-[`command.rs`](../../crates/sandbx-core/src/command.rs) has a `self_exe` that
+[`command/run.rs`](../../crates/sandbx-core/src/command/run.rs) has a `self_exe` that
 returns the literal path `/proc/self/exe`, having first `read_link`ed it only to
 check that procfs answers at all. The path handed to `execve` is the magic link,
 not what it resolved to.

@@ -33,7 +33,7 @@ third column.
 | [`policy/vetted.rs`](../../crates/sandbx-core/src/policy/vetted.rs) | `VettedPath`, `ObjectId` — a granted path and the object it named | [09](09-landlock.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`fs_guard.rs`](../../crates/sandbx-core/src/fs_guard.rs) | seam 1: the in-process check six of the seven tools stop at | [11](11-the-two-seams.md) |
 | [`helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs) | seam 2: `HelperArgs::encode`/`decode`, the argv the helper is told | [11](11-the-two-seams.md), [12](12-a-flag-to-a-kernel-rule.md) |
-| [`command.rs`](../../crates/sandbx-core/src/command.rs) | `SandboxedCommand`: the builder, the audit pipe, the deadline, the kill | [08](08-the-two-stage-helper.md), [14](14-audit-sessions-credentials.md) |
+| [`command/run.rs`](../../crates/sandbx-core/src/command/run.rs) | `SandboxedCommand`: the builder, the audit pipe, the deadline, the kill | [08](08-the-two-stage-helper.md), [14](14-audit-sessions-credentials.md) |
 | [`command/dispatch.rs`](../../crates/sandbx-core/src/command/dispatch.rs) | the two flags and `with_helper_dispatch` — the entry into helper mode | [08](08-the-two-stage-helper.md) |
 | [`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs) | the two stages, and `apply`'s ordered sequence | [08](08-the-two-stage-helper.md) |
 | [`helper/hardening.rs`](../../crates/sandbx-core/src/helper/hardening.rs) | namespaces, capability sets, `RLIMIT_CORE`, `pdeathsig` | [07](07-kernel-primer.md), [08](08-the-two-stage-helper.md) |
@@ -396,7 +396,7 @@ Five facts the one-line body does not show.
   [`digest.rs`](../../crates/sandbx-core/src/digest.rs), which is the
   `/proc/self/fd/N` a pinned `execve` is handed instead of a path that could
   resolve twice, and `self_exe` in
-  [`command.rs`](../../crates/sandbx-core/src/command.rs), which `read_link`s
+  [`command/run.rs`](../../crates/sandbx-core/src/command/run.rs), which `read_link`s
   `/proc/self/exe` before the helper re-exec. [07](07-kernel-primer.md) has the
   kernel rule and the comment that names the function.
 - **Refusing `/proc` as a path was available and declined twice over.**
@@ -656,7 +656,7 @@ interpreter rather than installing it, and the ruleset set takes the ABI as a
 parameter. Neither needs root, a network namespace or a Landlock-capable host,
 so both run in the ordinary `cargo test`. `crates/sandbx-core/tests/` holds
 fifteen targets in three groups, by what gates them: the **ungated** public
-contracts (`command.rs`, `fs_guard.rs`, `helper_args.rs`, `policy.rs`,
+contracts (`command/run.rs`, `fs_guard.rs`, `helper_args.rs`, `policy.rs`,
 `audit.rs`, `concealment.rs`) plus `context_docs.rs`, a documentation test this
 crate hosts for the whole repo because it already reaches the repo root;
 `denylist.rs` and `capability_coverage.rs` under

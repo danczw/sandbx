@@ -139,7 +139,7 @@ would vary its own field set and a filter could not rely on it.
 once the argv is built, so it is emitted *before* the exec and stands for an
 attempt rather than a start — a command that does not exist still leaves a
 `spawned` line. Exactly one `exited` or `failed` closes it, from `output` in
-[`core/src/command.rs`](../../crates/sandbx-core/src/command.rs) and nowhere
+[`core/src/command/run.rs`](../../crates/sandbx-core/src/command/run.rs) and nowhere
 else:
 
 ```rust
@@ -273,7 +273,7 @@ Four hops, none of them implied:
    write otherwise splitting a record in two. It writes *before* spawning
    stage 2, so stage 1's records precede anything the stage below reports. A
    stage that refused writes `encode_refusal` instead.
-3. **The harness reads after waiting.** `record_reports` in `command.rs` reads
+3. **The harness reads after waiting.** `record_reports` in `command/run.rs` reads
    the read end to EOF and gives the text to `decode`, which yields what the
    stage said it was.
 4. **The harness emits.** A `Degraded` becomes
