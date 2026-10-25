@@ -696,9 +696,9 @@ is the loop's own contract rather than a way for a run to end.
 
 One sentence each, because each has a chapter of its own.
 [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs) holds every
-`--allow-…`
-flag and the axis loop that turns them into a policy, so the one widening and
-the working-directory default exist once rather than once per subcommand.
+`--allow-…` flag and the axis loop that turns them into a policy, so the one
+widening and the working-directory default exist once rather than once per
+subcommand.
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) holds no flag at
 all: it decides where a no-flag run may root a default and what a path flag is
 vetted against, and its module doc warns that one order is load-bearing and is
