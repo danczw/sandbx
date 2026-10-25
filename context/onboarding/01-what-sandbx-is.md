@@ -58,7 +58,8 @@ with.
 ## Five subcommands
 
 The binary is `sandbx`; the library half is `sandbx_cli`. The clap surface is
-one enum in [`cli/src/invocation.rs`](../../crates/sandbx-cli/src/invocation.rs) — see
+one enum in
+[`cli/src/invocation.rs`](../../crates/sandbx-cli/src/invocation.rs) — see
 `Command` — and its doc comments are the long `--help` text, which makes them
 worth reading before the code.
 

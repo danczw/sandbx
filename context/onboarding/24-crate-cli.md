@@ -43,12 +43,14 @@ and `error.rs` have one each.
 | [`error.rs`](../../crates/sandbx-cli/src/error.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` | here |
 | [`error/auth.rs`](../../crates/sandbx-cli/src/error/auth.rs) | `AuthError` | here |
 
-## lib.rs is the clap surface and nothing else
+## invocation.rs is the clap surface, and lib.rs the list of names
 
-The library root declares eight modules, re-exports twelve types, and holds two
-clap derives. That is the file. No work happens in it, which is the point:
-`Cli::parse` is reachable from a unit test, so "what does this argv grant" is a
-question answered without a sandbox-capable kernel.
+The library root declares nine modules and re-exports fourteen types. That is
+the whole file — the clap surface it used to hold moved to `invocation.rs`, a
+module with submodules being allowed only `mod` lines and re-exports (#331).
+No work happens in either, which is the point: `Cli::parse` is reachable from a
+unit test, so "what does this argv grant" is a question answered without a
+sandbox-capable kernel.
 
 ```rust
 #[derive(Debug, clap::Parser)]
@@ -72,7 +74,8 @@ carrying the `Args` struct that owns its flags: `SandboxRun`, `AgentRun`, `Tui`,
 the `--help` text — which is why `long_about = None` is set above, and why the
 `Hash` variant's doc explains the circularity ("the digest has to exist before
 there is a policy to pin anything under") rather than a comment doing it.
-Reading `lib.rs` top to bottom is the fastest way to learn the CLI's behaviour.
+Reading `invocation.rs` top to bottom is the fastest way to learn the CLI's
+behaviour.
 
 The structural fact is what `Command`'s variants do *not* each declare. The
 `--allow-…` flags live once, in `Grants`, and every subcommand that confines
