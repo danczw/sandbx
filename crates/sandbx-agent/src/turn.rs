@@ -1,4 +1,4 @@
-//! One turn: [`run`] is the round loop and the public types it is driven by,
+//! One turn: [`run`] holds the round loop and the public types it is driven by,
 //! [`accumulate`] rebuilds a round's message from deltas, [`tools`] runs what it
 //! asked for.
 
