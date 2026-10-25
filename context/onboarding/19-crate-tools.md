@@ -51,12 +51,12 @@ no more: `sandbx-core`, `schemars`, `serde`, `serde_json`. No async runtime, no
 ## `builtin.rs` and `shared.rs`: a closed enum, and six shared helpers
 
 The crate's entire public surface is seven items, all re-exported by `lib.rs`,
-which holds nothing else: `DEFAULT_TIMEOUT` and `ExecutionContext` from
+which declares nothing of its own: `DEFAULT_TIMEOUT` and `ExecutionContext` from
 `context`, `ToolError` from `error`, `ToolLimits` from `limits`, and
 `ToolOutput`, `RiskLevel` and `BuiltinTool` from `builtin`. `ToolSpec` is
 `pub(crate)`, so a tool's *declaration* is not a public shape — its fields are
-too, which they have to be now that the seven `SPEC` literals that set them no
-longer sit in the same module.
+too, which they have to be now that `ToolSpec` no longer sits in the crate root,
+above every tool module.
 
 What catches people is `mod tools;`, which is private. Each tool module declares
 a `pub struct <Variant>Input` and a `pub fn execute` taking it by value, and the

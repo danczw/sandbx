@@ -1,4 +1,4 @@
-//! What more than one tool needs: the guard-checked reads, the two shapes a refusal
+//! What the tool modules reach for: the guard-checked reads, the two shapes an error
 //! takes, and the bounded rendering of a result list.
 
 use std::path::Path;
