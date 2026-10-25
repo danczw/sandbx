@@ -21,7 +21,7 @@ map, the signature a caller meets, and `compact.rs`.
 
 ```
 src/lib.rs          13 re-exports and four private modules; nothing else
-   turn.rs          re-exports run_turn and the types it is driven by
+   turn.rs          six re-exports and three private modules; nothing else
       run.rs        run_turn, and the public types it is driven by
       accumulate.rs one round's assistant message, rebuilt from deltas
       tools.rs      the offered set, the gate call, one spawn_blocking
@@ -38,11 +38,11 @@ tests/
 
 Three things to read off that shape. **The deepest path is two levels**, and
 `run.rs`'s two siblings are the two halves of a round: rebuilding what arrived,
-running what it asked for. **`run.rs` is the longest file in the crate and stays
-one module**, which its own doc says outright, because a new way for a turn to
-stop is one edit to `TurnStop`, one to the loop that chooses it and one to the
-outcome that carries it. **The test tree is larger than `src/`**, about 2,500 lines against
-1,500 — the last section is why.
+running what it asked for. **`run.rs` is the longest non-test file in the crate
+and stays one module**, which its own doc says outright, because a new way for a
+turn to stop is one edit to `TurnStop`, one to the loop that chooses it and one
+to the outcome that carries it. **The test tree is larger than `src/`**, about
+2,500 lines against 1,500 — the last section is why.
 
 Of five runtime dependencies, one carries its constraint in a comment:
 

@@ -1,6 +1,5 @@
 //! One turn: the round loop, the public types it is driven by, and the compaction
-//! threading those types carry. Rebuilding a round's message is [`super::accumulate`];
-//! running what it asked for is [`super::tools`].
+//! threading those types carry.
 //!
 //! One module on purpose: a new way for a turn to stop is one edit to
 //! `TurnStop`, to the loop that chooses it and to the outcome that carries it.
