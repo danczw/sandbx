@@ -158,7 +158,7 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    sse.rs         SSE framing
    anthropic.rs   the vendor boundary: re-exports AnthropicClient
       client.rs   AnthropicClient — the request, and the base-URL and
-                  transport rules that keep the key off a cleartext hop
+                  transport rules that keep the key off the network in cleartext
       body.rs     Serialize for the Messages body, built from a &Prompt
       wire/       accumulate.rs, payload.rs + unit tests
 tests/            anthropic_client, crypto_provider, error,

@@ -1,5 +1,5 @@
 //! The streaming client: one `POST /v1/messages`, and the base-URL and transport
-//! rules that keep the API key off a cleartext hop.
+//! rules that keep the API key off the network in cleartext.
 
 use secrecy::{ExposeSecret, SecretString};
 
