@@ -35,6 +35,14 @@ backs a `SECURITY.md` claim or warns off an alternative likely to be re-proposed
 otherwise it lives in its issue or PR, cited by number. If you are about to write
 "planned" into a doc, file an issue instead.
 
+Issue bodies, PR bodies and comments are **never hard-wrapped**: one sentence is
+one line, however long. GitHub reflows them to the reader's width, so a linebreak
+inserted mid-sentence shows up as a ragged break nobody chose, and it makes a
+later edit re-wrap half the paragraph. The files under `context/`, `SECURITY.md`
+and `README.md` are the exception — they are hard-wrapped at ~80 columns
+throughout, and an edit there matches the paragraph it lands in rather than
+starting a second convention.
+
 Milestones are releases, one per tag: a closed issue or PR takes the one it
 shipped in, and open work being worked on now takes the next one. None is not a
 defect — it means unscheduled. A `crate:*` label per crate it materially touches
