@@ -1,0 +1,17 @@
+[package]
+name = "sandbx-pty-fixture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# `term` alone: it is what gates both `pty::openpty` and `sys::termios`. A real
+# dependency and not a dev-dependency, because this crate *is* the dev-dependency —
+# its only item is the fixture, and a dev-dependency of its own would not reach it.
+nix = { version = "0.31.3", default-features = false, features = ["term"] }
+
+[lints]
+workspace = true

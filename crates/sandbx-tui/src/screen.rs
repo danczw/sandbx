@@ -250,9 +250,9 @@ mod tests {
     use std::rc::Rc;
 
     use nix::errno::Errno;
+    use sandbx_pty_fixture::{WINDOW, pty};
 
     use super::*;
-    use crate::input::tests::{WINDOW, pty};
 
     /// A pty slave, counting the writes that reach it: a draw that was attempted wrote.
     struct Counted {

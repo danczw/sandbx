@@ -66,6 +66,12 @@ wrappers = ["sandbx-cli"]
 name = "sandbx-tui"
 wrappers = ["sandbx-cli"]
 
+[[bans.deny]]
+name = "sandbx-pty-fixture"
+# A dev-dependency edge, so this crate is in nobody's build; listing it is still what
+# keeps a production one from being added without a line here.
+wrappers = ["sandbx-tui"]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

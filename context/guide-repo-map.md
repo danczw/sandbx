@@ -42,9 +42,15 @@ sandbx-tui ───────────────────────
 | `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, session, tools, tui |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers |
+| `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
+
+`sandbx-pty-fixture` is in no crate's build — a dev-dependency of `sandbx-tui`
+alone, which is why it is absent from the diagram above. It is a crate rather
+than a `#[cfg(test)]` module because `screen` and `input` both open the pair and
+a `#[cfg(test)]` item does not cross a crate boundary (#344).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
 `sandbx-providers` directly rather than through `sandbx-agent`, which re-exports
