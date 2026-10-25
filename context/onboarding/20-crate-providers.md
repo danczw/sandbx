@@ -698,7 +698,7 @@ summary text comes back, so the signature arrives either way.
 
 ## `anthropic/client.rs` — one client, and four settings that are not defaults
 
-`AnthropicClient` holds a `reqwest::Client`, a `SecretString` and a
+210 lines. `AnthropicClient` holds a `reqwest::Client`, a `SecretString` and a
 `String` base URL, and `Debug` is derived rather than hand-written so that the
 derive picks up any field added later while `SecretString`'s own `Debug` prints
 a redaction. `new` makes no network call, so every construction failure is
