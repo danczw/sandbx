@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use crate::{HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
 
 use super::dispatch::HELPER_FLAG;
+
 /// A command that runs under a [`SandboxPolicy`]; the only sanctioned way for sandbx to
 /// execute anything. A helper restricts itself in two stages, restricting a child directly
 /// needing unsafe work between `fork` and `exec`; the command ends up the child of the init

@@ -656,7 +656,7 @@ interpreter rather than installing it, and the ruleset set takes the ABI as a
 parameter. Neither needs root, a network namespace or a Landlock-capable host,
 so both run in the ordinary `cargo test`. `crates/sandbx-core/tests/` holds
 fifteen targets in three groups, by what gates them: the **ungated** public
-contracts (`command/run.rs`, `fs_guard.rs`, `helper_args.rs`, `policy.rs`,
+contracts (`command.rs`, `fs_guard.rs`, `helper_args.rs`, `policy.rs`,
 `audit.rs`, `concealment.rs`) plus `context_docs.rs`, a documentation test this
 crate hosts for the whole repo because it already reaches the repo root;
 `denylist.rs` and `capability_coverage.rs` under
