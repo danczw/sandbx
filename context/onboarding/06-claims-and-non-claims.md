@@ -110,7 +110,7 @@ promise covers and does not. The third is the part a reader skips.
   The four shapes that would leave a reachable nameserver answering for every
   name are refusals, and they are decided on `SandboxPolicy` itself —
   `unbounded_resolution` in
-  [`policy.rs`](../../crates/sandbx-core/src/policy.rs) — rather than in the
+  [`policy.rs`](../../crates/sandbx-core/src/policy/sandbox.rs) — rather than in the
   CLI, so an embedder building a policy by hand meets them too.
 
 ### Unix sockets, and the environment
@@ -247,7 +247,7 @@ goes wrong, which is usually the question a reviewer actually has.
   embedder constructs inherits a CLI default. This is why "what does sandbx
   grant by default" has two answers and the honest one is "which sandbx?".
 - **Grants do not widen each other, with one named exception.** `Axis::grants`
-  in `policy.rs` is the single statement of what each axis confers, in booleans
+  in `policy/sandbox.rs` is the single statement of what each axis confers, in booleans
   that no enforcement layer owns:
 
 ```rust

@@ -29,7 +29,7 @@ third column.
 | module | owns | covered in |
 |---|---|---|
 | [`lib.rs`](../../crates/sandbx-core/src/lib.rs) | the Linux-only gate and the whole public surface | below |
-| [`policy.rs`](../../crates/sandbx-core/src/policy.rs) | `Axis`, `Grants`, `NetworkPolicy`, `SandboxPolicy` — what a run may reach | below, and [12](12-a-flag-to-a-kernel-rule.md) for the trace |
+| [`policy/sandbox.rs`](../../crates/sandbx-core/src/policy/sandbox.rs) | `Axis`, `Grants`, `NetworkPolicy`, `SandboxPolicy` — what a run may reach | below, and [12](12-a-flag-to-a-kernel-rule.md) for the trace |
 | [`policy/vetted.rs`](../../crates/sandbx-core/src/policy/vetted.rs) | `VettedPath`, `ObjectId` — a granted path and the object it named | [09](09-landlock.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`fs_guard.rs`](../../crates/sandbx-core/src/fs_guard.rs) | seam 1: the in-process check six of the seven tools stop at | [11](11-the-two-seams.md) |
 | [`helper_args.rs`](../../crates/sandbx-core/src/helper_args.rs) | seam 2: `HelperArgs::encode`/`decode`, the argv the helper is told | [11](11-the-two-seams.md), [12](12-a-flag-to-a-kernel-rule.md) |
@@ -151,7 +151,7 @@ place either in the six entry types above or in what the crate's own
 out-of-crate test targets need, rather than in a surface shaped for a caller
 to read.
 
-## `policy.rs` — the types, not the trace
+## `policy/sandbox.rs` — the types, not the trace
 
 [12 — a flag to a kernel rule](12-a-flag-to-a-kernel-rule.md) follows
 `--allow-read /tmp/x` *through* these types and is the chapter for `grant`, the

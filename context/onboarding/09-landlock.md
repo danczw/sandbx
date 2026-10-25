@@ -289,7 +289,7 @@ correctness:
   to get this wrong.
 - **It rides on the grants and not on `RuleTarget::Installed`.** A resolver file
   is a bind mount of sandbx's own file that no grant names, and
-  [`SECURITY.md`](../../SECURITY.md) and `policy.rs` both say "the paths it
+  [`SECURITY.md`](../../SECURITY.md) and `policy/sandbox.rs` both say "the paths it
   granted". Inert either way — `opens_as_itself` admits only existing
   non-symlink regular files, which hold no socket — so this is the claim and the
   mechanism agreeing rather than a hole being closed.
