@@ -13,11 +13,12 @@ subsystem and [`SECURITY.md`](../../SECURITY.md) is the normative claim; both
 carry the figures this chapter deliberately does not.
 
 [`helper/ruleset/`](../../crates/sandbx-core/src/helper/ruleset/) is four files
-with one job each, and its module doc states the division: `compat` is what
-*this kernel* will enforce, `rights` is what the *policy* maps to at a given
-ABI, `opened` is which directory a grant turns out to name, and `mod.rs` is
-where the first two meet — because the rights a grant confers depend on which
-ABI was negotiated. Nothing in any of the four restricts the calling process.
+with one job each plus an index, and `mod.rs`'s doc states the division:
+`compat` is what *this kernel* will enforce, `rights` is what the *policy* maps
+to at a given ABI, `opened` is which directory a grant turns out to name, and
+`requested` is where the first two meet — because the rights a grant confers
+depend on which ABI was negotiated. Nothing in any of the four restricts the
+calling process.
 
 Those four files add up to one path, and it is the spine of this chapter.
 Nothing is restricted until `restrict_self`, so everything above it is a
@@ -215,7 +216,7 @@ Two things make that verdict possible rather than theatrical.
   exhaustive match is a compile-time gate.
 
 The asymmetry behind all of this is on `Requested` in
-[`mod.rs`](../../crates/sandbx-core/src/helper/ruleset/mod.rs), and it is worth
+[`requested.rs`](../../crates/sandbx-core/src/helper/ruleset/requested.rs), and it is worth
 reading once. A rule carrying rights *above* the handled set is caught:
 `PathBeneath` narrows it, the ruleset comes back `PartiallyEnforced`, and the
 verdict refuses. A rule *below* it is not caught by anything — every right the
