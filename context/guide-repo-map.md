@@ -191,7 +191,7 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
                 which ends the turn — and the five outcomes it is told a call
                 reached
    compact.rs   which prefix of a history may be withheld
-      tests.rs       the cut-point algebra
+   compact_tests.rs  the cut-point algebra
    error.rs   TurnError
 tests/       turn_loop, turn_compaction, audit_trail,
              support/mod.rs — the Script double and the request builders

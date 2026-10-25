@@ -113,4 +113,5 @@ fn opens_a_request(history: &[RequestMessage], cut: usize) -> bool {
 }
 
 #[cfg(test)]
+#[path = "compact_tests.rs"]
 mod tests;
