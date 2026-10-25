@@ -2,7 +2,7 @@
 
 This crate is two boxes of
 [04 — the architecture](04-the-architecture.md)'s View 3: **the tool boundary**,
-[`tools/src/lib.rs`](../../crates/sandbx-tools/src/lib.rs), and **the policy's
+[`tools/src/builtin.rs`](../../crates/sandbx-tools/src/builtin.rs), and **the policy's
 ownership**, [`tools/src/context.rs`](../../crates/sandbx-tools/src/context.rs).
 It is also where View 2's fork in the road is written down — six built-ins turn
 left into `FsGuard` and never leave the harness process, one turns right.
@@ -22,8 +22,9 @@ authority.
 ```
 crates/sandbx-tools/
 ├── src/
-│   ├── lib.rs        BuiltinTool, ALL, ToolSpec, ToolOutput, RiskLevel,
-│   │                 and the five helpers the tool modules share
+│   ├── lib.rs        re-exports, and the crate-private ones tools/ reaches
+│   ├── builtin.rs    BuiltinTool, ALL, ToolSpec, ToolOutput, RiskLevel
+│   ├── shared.rs     the five helpers the tool modules share
 │   ├── context.rs    ExecutionContext — the guard, the private policy,
 │   │                 the limits, the timeout
 │   ├── limits.rs     ToolLimits: two output caps, two input caps
@@ -47,13 +48,15 @@ no more: `sandbx-core`, `schemars`, `serde`, `serde_json`. No async runtime, no
 `regex`, no `walkdir`. Tools are synchronous, and `sandbx-agent` owns the one
 `spawn_blocking` site that calls them.
 
-## `lib.rs`: a closed enum, and five shared helpers
+## `builtin.rs` and `shared.rs`: a closed enum, and five shared helpers
 
-The crate's entire public surface is seven items: `DEFAULT_TIMEOUT` and
-`ExecutionContext` re-exported from `context`, `ToolError` from `error`,
-`ToolLimits` from `limits`, and `ToolOutput`, `RiskLevel` and `BuiltinTool`
-declared here. `ToolSpec` is `pub(crate)`, so a tool's *declaration* is not a
-public shape.
+The crate's entire public surface is seven items, all re-exported by `lib.rs`,
+which holds nothing else: `DEFAULT_TIMEOUT` and `ExecutionContext` from
+`context`, `ToolError` from `error`, `ToolLimits` from `limits`, and
+`ToolOutput`, `RiskLevel` and `BuiltinTool` from `builtin`. `ToolSpec` is
+`pub(crate)`, so a tool's *declaration* is not a public shape — its fields are
+too, which they have to be now that the seven `SPEC` literals that set them no
+longer sit in the same module.
 
 What catches people is `mod tools;`, which is private. Each tool module declares
 a `pub struct <Variant>Input` and a `pub fn execute` taking it by value, and the
@@ -113,11 +116,11 @@ The five facts about a tool live in one crate-private struct:
 
 ```rust
 pub(crate) struct ToolSpec {
-    name: &'static str,
-    description: &'static str,
-    risk: RiskLevel,
-    schema: fn() -> serde_json::Value,
-    run: fn(serde_json::Value, &ExecutionContext) -> Result<ToolOutput, ToolError>,
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) risk: RiskLevel,
+    pub(crate) schema: fn() -> serde_json::Value,
+    pub(crate) run: fn(serde_json::Value, &ExecutionContext) -> Result<ToolOutput, ToolError>,
 }
 ```
 
@@ -161,8 +164,8 @@ flowchart TD
     C --> K["the second seam, the kernel"]
 ```
 
-The rest of the file is the helpers the seven modules share, and reading them
-first makes every tool module shorter than it looks:
+`shared.rs` is the helpers the seven modules share, and reading them first makes
+every tool module shorter than it looks:
 
 | helper | what it does, and why it is here |
 |---|---|
@@ -172,7 +175,7 @@ first makes every tool module shorter than it looks:
 | `guard_error` | one `SandboxError` → `ToolError` mapping for all six guard-using tools, with two arms of its own: `NotFound` becomes `Failed`, absence being the one verdict that is not a refusal (#180), and `RootReplaced` becomes `Denied` under a *rewritten* reason, its own `Display` naming the two `(dev, ino)` pairs the trail wants and the model cannot act on |
 | `failed` | a host failure → `Failed`, with `verb` naming the attempt (`read /etc/hosts`) rather than the syscall |
 
-`ToolOutput` is declared here too, wrapping the text the model will see behind a
+`ToolOutput` is declared in `builtin.rs` too, wrapping the text the model will see behind a
 private field so `new` is the only way in and an empty result is
 unrepresentable; `guide-tools.md` has that invariant.
 

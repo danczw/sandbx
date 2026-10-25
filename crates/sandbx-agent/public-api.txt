@@ -123,7 +123,7 @@ pub sandbx_agent::Settled::id: &'a str
 pub sandbx_agent::Settled::input: &'a serde_json::value::Value
 pub sandbx_agent::Settled::name: &'a str
 pub sandbx_agent::Settled::outcome: sandbx_agent::Outcome<'a>
-pub sandbx_agent::Settled::tool: core::option::Option<sandbx_tools::BuiltinTool>
+pub sandbx_agent::Settled::tool: core::option::Option<sandbx_tools::builtin::BuiltinTool>
 impl<'a> core::clone::Clone for sandbx_agent::Settled<'a>
 pub fn sandbx_agent::Settled<'a>::clone(&self) -> sandbx_agent::Settled<'a>
 impl<'a> core::fmt::Debug for sandbx_agent::Settled<'a>
@@ -139,7 +139,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_agent::Settled<'a>
 pub struct sandbx_agent::ToolCall<'a>
 pub sandbx_agent::ToolCall::id: &'a str
 pub sandbx_agent::ToolCall::input: &'a serde_json::value::Value
-pub sandbx_agent::ToolCall::tool: sandbx_tools::BuiltinTool
+pub sandbx_agent::ToolCall::tool: sandbx_tools::builtin::BuiltinTool
 impl<'a> core::clone::Clone for sandbx_agent::ToolCall<'a>
 pub fn sandbx_agent::ToolCall<'a>::clone(&self) -> sandbx_agent::ToolCall<'a>
 impl<'a> core::fmt::Debug for sandbx_agent::ToolCall<'a>
@@ -161,7 +161,7 @@ pub sandbx_agent::Turn::observed: core::option::Option<sandbx_agent::PromptUsage
 pub sandbx_agent::Turn::system: core::option::Option<alloc::string::String>
 pub sandbx_agent::Turn::thinking: core::option::Option<sandbx_providers::prompt::Thinking>
 pub sandbx_agent::Turn::tool_choice: core::option::Option<sandbx_providers::prompt::ToolChoice>
-pub sandbx_agent::Turn::tools: &'a [sandbx_tools::BuiltinTool]
+pub sandbx_agent::Turn::tools: &'a [sandbx_tools::builtin::BuiltinTool]
 pub sandbx_agent::Turn::withheld: usize
 impl<'a> core::clone::Clone for sandbx_agent::Turn<'a>
 pub fn sandbx_agent::Turn<'a>::clone(&self) -> sandbx_agent::Turn<'a>
