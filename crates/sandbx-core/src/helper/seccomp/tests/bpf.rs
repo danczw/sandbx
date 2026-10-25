@@ -26,7 +26,7 @@ pub(super) const JGT_K: u16 = (libc::BPF_JMP | libc::BPF_JGT | libc::BPF_K) as u
 pub(super) const JGE_K: u16 = (libc::BPF_JMP | libc::BPF_JGE | libc::BPF_K) as u16;
 pub(super) const RET_K: u16 = (libc::BPF_RET | libc::BPF_K) as u16;
 
-/// Every opcode [`eval`] implements, for the structural check in [`denylist`].
+/// Every opcode [`eval`] implements, for the structural check in `denylist`.
 pub(super) const KNOWN_OPCODES: &[u16] = &[LD_W_ABS, ALU_AND_K, JA, JEQ_K, JGT_K, JGE_K, RET_K];
 
 // `AUDIT_ARCH_*` for the architecture the test runs on: the `EM_*` machine number from
