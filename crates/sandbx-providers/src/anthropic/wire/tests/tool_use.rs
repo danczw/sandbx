@@ -1,7 +1,10 @@
 //! Tool-call accumulation: the one block kind whose deltas must be buffered whole,
 //! and the ways a stream can leave that buffer in an odd state.
 
-use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
+use crate::error::ProviderError;
+use crate::event::{AgentEvent, StopReason};
+
+use super::fixture::{events, ok_events, raw, stop};
 
 #[tokio::test]
 async fn a_call_split_across_fragments_becomes_one_event() {

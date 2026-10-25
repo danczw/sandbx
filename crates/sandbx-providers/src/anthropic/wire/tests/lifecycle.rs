@@ -1,7 +1,11 @@
 //! How a turn ends: one `Stop` when `message_stop` arrives, an error when it does
 //! not, and the fusedness the returned stream promises.
 
-use super::{AgentEvent, ProviderError, StopReason, event_stream, events, ok_events, raw, stop};
+use crate::error::ProviderError;
+use crate::event::{AgentEvent, StopReason};
+
+use super::super::event_stream;
+use super::fixture::{events, ok_events, raw, stop};
 
 #[tokio::test]
 async fn message_stop_ends_the_stream_with_a_stop_event() {

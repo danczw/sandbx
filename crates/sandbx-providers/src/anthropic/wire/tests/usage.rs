@@ -1,7 +1,10 @@
 //! Token accounting: one `Usage` per turn, carrying the last cumulative figure the
 //! API reported for each counter.
 
-use super::{AgentEvent, ProviderError, StopReason, events, ok_events, raw, stop};
+use crate::error::ProviderError;
+use crate::event::{AgentEvent, StopReason};
+
+use super::fixture::{events, ok_events, raw, stop};
 
 #[tokio::test]
 async fn start_and_delta_combine_into_one_usage_event() {
