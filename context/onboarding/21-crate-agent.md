@@ -561,7 +561,7 @@ enumerate. The other thirty-odd tests are named after single facts —
 
 Verified in this worktree rather than inferred. The two places that build a
 `TurnLimits` — `AgentRun::drive` in
-[`cli/src/agent.rs`](../../crates/sandbx-cli/src/agent.rs) and the TUI's in
+[`cli/src/agent/run.rs`](../../crates/sandbx-cli/src/agent/run.rs) and the TUI's in
 [`cli/src/agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) — both write
 `max_rounds: …, ..TurnLimits::default()`. A third literal exists and closes the
 last hop: the wrap-up round's, in

@@ -12,7 +12,7 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-eight source files under [`src/`](../../crates/sandbx-cli/src/), twelve
+Twenty-nine source files under [`src/`](../../crates/sandbx-cli/src/), twelve
 integration files under `tests/`, and six thematic chapters already owning
 parts of them. So this table is the navigational centre of the chapter rather
 than a decoration: it says what each module holds and, where another chapter
@@ -20,7 +20,7 @@ explains the mechanism, which one. The two `_tests.rs` siblings have no row of
 their own; they sit with the module whose tests they are.
 
 The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
-`agent.rs` six, and `error.rs` five — one per error type.
+`agent.rs` seven, and `error.rs` five — one per error type.
 
 | file | holds | covered in |
 |---|---|---|
@@ -32,7 +32,7 @@ The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
 | [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) | where a no-flag run may root a default, and what a path flag is vetted against | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`sandbox.rs`](../../crates/sandbx-cli/src/sandbox.rs) | `sandbox-run`: one of the two `SandboxedCommand` build sites in the workspace | [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) | the one subcommand that confines nothing | [12](12-a-flag-to-a-kernel-rule.md) |
-| [`agent.rs`](../../crates/sandbx-cli/src/agent.rs) | `agent-run`'s flags and the one sequence that consumes them | here |
+| [`agent/run.rs`](../../crates/sandbx-cli/src/agent/run.rs) | `agent-run`'s flags and the one sequence that consumes them | here |
 | [`agent/gate.rs`](../../crates/sandbx-cli/src/agent/gate.rs) | which tools `--allow-tool` approved, `ArgvGate`, and the one line per call — bidi-stripped and capped | [13](13-turn-loop-and-gate.md) |
 | [`agent/prompt.rs`](../../crates/sandbx-cli/src/agent/prompt.rs) | the terminal question and the typeahead drain | [13](13-turn-loop-and-gate.md) |
 | [`agent/orientation.rs`](../../crates/sandbx-cli/src/agent/orientation.rs) | the system prompt naming the approved tools and the granted roots | here |
@@ -225,9 +225,9 @@ Read the whole thing as one mapping, in the order it is actually decided:
 | the command under `sandbox-run` exited | its own code | `sandbx_core::exit_code`, passed through |
 | stdout failed mid-turn | 1 | `AgentError::Output`, latched in `render.rs` and decided ahead of 0, 2 and 3 |
 | a turn ended on an answer | 0 | `Render::finish` |
-| a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent.rs` |
+| a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent/run.rs` |
 | a keypress ended a turn on the screen | 2 | the same `INCOMPLETE`, from `tui`'s `select!` |
-| the operator could no longer be asked, or `tui`'s terminal hung up | 3 | `NO_CONSENT` in `agent.rs` |
+| the operator could no longer be asked, or `tui`'s terminal hung up | 3 | `NO_CONSENT` in `agent/run.rs` |
 | `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `auth/key.rs` |
 | any `Err` under `sandbox-run`, `agent-run`, `tui`, `hash` | 1 | `failure_code` |
 | any `Err` under `auth` | 2 | `failure_code` |
@@ -240,7 +240,7 @@ code for, so nothing later in this table can override it. `failure_code`'s
 own doc states the consequence directly: a usage error never reaches it, which
 is why `USAGE` is one number and not one per command.
 
-Both the `2` and the `3` live in `agent.rs` as constants, but under `tui` the code
+Both the `2` and the `3` live in `agent/run.rs` as constants, but under `tui` the code
 comes from `ending` rather than from `Render::finish` — and `ending` is the one
 mapping in the crate that reads `TurnStop` *non*-exhaustively, closing on
 `_ => 0` with a comment saying it is deliberate: a stop it has no account of
@@ -252,7 +252,7 @@ that a round limit's `2` does not.
 `tui` reaches `NO_CONSENT` a second way that never calls `ending` at all: a
 hung-up screen or keyboard ends the turn on the same reasoning as a lost
 consent prompt — a turn nobody could see is one nobody watched — decided
-directly in `tui.rs`'s own match rather than through `agent.rs`'s mapping.
+directly in `tui.rs`'s own match rather than through `run.rs`'s mapping.
 [15](15-tools-and-the-screen.md) and [23](23-crate-tui.md) have the mechanism.
 
 Nothing downstream of `ending` may take the code back. A screen that stopped
@@ -272,13 +272,14 @@ flag: before it, a refused command line fell to clap's own 2, indistinguishable
 from the 2 a cut round earns and, under `auth`, from the 2 a refused credential
 source already spends (#265).
 
-## agent.rs and its six submodules, as one pipeline
+## agent/ and its seven modules, as one pipeline
 
-This is the crate's centre of gravity, and `agent.rs` is frank about its size:
-one module on purpose, "the pieces are already in `gate`, `prompt`, `render`,
-`tui` and `wrapup`, and what is left is the argv surface and the one sequence
-that consumes it" — a module with one reason to change stays whole however long
-it grows.
+This is the crate's centre of gravity. `agent.rs` itself is the index — `mod`
+lines, two re-exports, and the three names its siblings reach through it (#331)
+— and `agent/run.rs` is frank about its size: one module on purpose, "the
+pieces are already in `gate`, `prompt`, `render`, `tui` and `wrapup`, and what
+is left is the argv surface and the one sequence that consumes it" — a module
+with one reason to change stays whole however long it grows.
 
 `sandbx-cli` holds every `run_turn` call site in the workspace outside
 `sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and

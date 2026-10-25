@@ -140,7 +140,7 @@ subcommand's code, with nothing spawned yet either way. A same-thread-group read
 of `fd/` and `exe` stays exempt, which is why `digest` and the helper re-exec
 still work.
 
-Then [`AgentRun::execute`](../../crates/sandbx-cli/src/agent.rs) runs a sequence
+Then [`AgentRun::execute`](../../crates/sandbx-cli/src/agent/run.rs) runs a sequence
 where every step's position is justified in a comment. Read it once as a list:
 
 | step | before what, and why |
