@@ -156,7 +156,9 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
                   to a terminal, read by both the cli's line sink and the tui's
    error.rs
    sse.rs         SSE framing
-   anthropic.rs   AnthropicClient
+   anthropic.rs   the vendor boundary: re-exports AnthropicClient
+      client.rs   AnthropicClient — the request, and the base-URL and
+                  transport rules that keep the key off a cleartext hop
       body.rs     Serialize for the Messages body, built from a &Prompt
       wire/       accumulate.rs, payload.rs + unit tests
 tests/            anthropic_client, crypto_provider, error,

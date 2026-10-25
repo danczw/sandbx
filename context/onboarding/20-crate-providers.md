@@ -32,7 +32,8 @@ crates/sandbx-providers/src/
   error.rs         ProviderError
   sse.rs           SSE framing, knowing no API's field names
   ─────────────────── below here, one API's vocabulary ───────────────────
-  anthropic.rs     AnthropicClient, the base-URL rules, the HTTP client
+  anthropic.rs     the vendor boundary: re-exports AnthropicClient
+    client.rs      AnthropicClient, the base-URL rules, the HTTP client
     body.rs        Serialize for the Messages body, built from a &Prompt
     wire/mod.rs    pub(crate): event_stream, RawApiErrorEnvelope
       payload.rs      the Raw* frame shapes — Deserialize and nothing else
@@ -47,7 +48,7 @@ the answer is a compiler rule, and one row of it is not.
 | what stays at or below `anthropic.rs` | what keeps it there |
 |---|---|
 | the body — key names, omission rules, `stream: true` | `Body` is `pub(super)` inside a private `mod body`, and no neutral type has a `Serialize` at all, so there is no second way to turn one into JSON |
-| the frame shapes | every `Raw*` in `payload.rs` is `pub(super)`; the two error shapes are `pub(crate)` so `anthropic.rs` can parse a non-2xx body, and none of them leaves the crate |
+| the frame shapes | every `Raw*` in `payload.rs` is `pub(super)`; the two error shapes are `pub(crate)` so `anthropic/client.rs` can parse a non-2xx body, and none of them leaves the crate |
 | the `stop_reason` string table | `stop_reason` is a private free function in `accumulate.rs`. `StopReason::Other(String)` is public, but nothing outside `anthropic/` can build one *from a wire string* |
 | the vendor's **name** | nothing mechanical |
 
@@ -655,7 +656,7 @@ field an `Option` so that a frame omitting a counter cannot end the turn and
 `RawApiErrorBody` and the `RawApiErrorEnvelope` that wraps it, are the only
 types here reaching past `pub(super)` to `pub(crate)`, because an HTTP error
 response and an in-band SSE `error` event carry the same shape and it is
-`anthropic.rs` that parses the former. Neither leaves the crate.
+`anthropic/client.rs` that parses the former. Neither leaves the crate.
 
 **Why two sets and not one round-trippable one.** `Serialize` appears in exactly
 one file under `src/` — `body.rs` — and `Deserialize` in exactly one other,
@@ -695,9 +696,9 @@ out, so this trip happens between rounds and nowhere else. The request side's
 own `thinking` object does not gate it: `display` governs only whether the
 summary text comes back, so the signature arrives either way.
 
-## `anthropic.rs` — one client, and four settings that are not defaults
+## `anthropic/client.rs` — one client, and four settings that are not defaults
 
-221 lines. `AnthropicClient` holds a `reqwest::Client`, a `SecretString` and a
+`AnthropicClient` holds a `reqwest::Client`, a `SecretString` and a
 `String` base URL, and `Debug` is derived rather than hand-written so that the
 derive picks up any field added later while `SecretString`'s own `Debug` prints
 a redaction. `new` makes no network call, so every construction failure is
