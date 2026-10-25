@@ -21,7 +21,7 @@ is restated; both are the authority for anything this chapter leaves out.
 
 ## The loop, one level down
 
-[`turn.rs`](../../crates/sandbx-agent/src/turn.rs) exports one async function.
+[`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) exports one async function.
 Its signature is the first security property in the file, and it is a property
 of the *shape* rather than of any code:
 
