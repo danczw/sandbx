@@ -490,11 +490,12 @@ is a key, and *ordered* rather than hashed because the flush at the end of a
 turn iterates it and the order is observable.
 
 The four test modules under
-[`wire/tests/`](../../crates/sandbx-providers/src/anthropic/wire/tests/mod.rs)
+[`wire/tests/`](../../crates/sandbx-providers/src/anthropic/wire/tests/)
 are the best available map of what can go wrong, and they are the right
 structure for reading the fold. All four drive `event_stream` over canned frames
 rather than poking a `Raw*` type, so they pin what a caller sees; they are unit
-tests rather than integration tests because `event_stream` is `pub(crate)`.
+tests rather than integration tests because `event_stream` is `pub(crate)`. The
+frame builders and event shorthands they share sit alongside them in `fixture`.
 
 - **`content`** — text and thinking, plus the frames that must produce *no*
   event rather than ending the turn. `ping`, an unknown event type, an unknown
