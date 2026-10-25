@@ -168,7 +168,7 @@ pub sandbx_cli::PolicyError::UnnamedHome::cwd: std::path::PathBuf
 pub sandbx_cli::PolicyError::UnnamedHome::home: core::option::Option<std::path::PathBuf>
 pub sandbx_cli::PolicyError::UnpinnableGrant
 pub sandbx_cli::PolicyError::UnpinnableGrant::granted: std::path::PathBuf
-pub sandbx_cli::PolicyError::UnpinnableGrant::source: sandbx_core::error::SandboxError
+pub sandbx_cli::PolicyError::UnpinnableGrant::source: sandbx_core::error::sandbox::SandboxError
 pub sandbx_cli::PolicyError::UnresolvableGrant
 pub sandbx_cli::PolicyError::UnresolvableGrant::granted: std::path::PathBuf
 pub sandbx_cli::PolicyError::UnresolvableGrant::source: core::io::error::Error
@@ -191,11 +191,11 @@ impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::PolicyError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::PolicyError
 pub enum sandbx_cli::SandboxRunError
 pub sandbx_cli::SandboxRunError::Policy(sandbx_cli::PolicyError)
-pub sandbx_cli::SandboxRunError::Sandbox(sandbx_core::error::SandboxError)
+pub sandbx_cli::SandboxRunError::Sandbox(sandbx_core::error::sandbox::SandboxError)
 impl core::convert::From<sandbx_cli::PolicyError> for sandbx_cli::SandboxRunError
 pub fn sandbx_cli::SandboxRunError::from(sandbx_cli::PolicyError) -> Self
-impl core::convert::From<sandbx_core::error::SandboxError> for sandbx_cli::SandboxRunError
-pub fn sandbx_cli::SandboxRunError::from(sandbx_core::error::SandboxError) -> Self
+impl core::convert::From<sandbx_core::error::sandbox::SandboxError> for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::from(sandbx_core::error::sandbox::SandboxError) -> Self
 impl core::error::Error for sandbx_cli::SandboxRunError
 pub fn sandbx_cli::SandboxRunError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for sandbx_cli::SandboxRunError

@@ -16,7 +16,7 @@ job, and which chapter explains it. Where a mechanism already has a chapter you
 get one sentence and a link, because a worse copy of [09](09-landlock.md) two
 directories away is a liability rather than a convenience. Genuinely only here:
 the crate's shape as a public surface, the policy types as types, `resolver.rs`,
-`concealment.rs`, the refusal sets in `error.rs`, and where the tests live.
+`concealment.rs`, the refusal sets in `error/sandbox.rs`, and where the tests live.
 
 ## Where to start: the module map
 
@@ -50,7 +50,7 @@ third column.
 | [`spawn.rs`](../../crates/sandbx-core/src/spawn.rs) | the one `Command::new` in any crate's `src/` | [05](05-seven-crates.md) |
 | [`resolver.rs`](../../crates/sandbx-core/src/resolver.rs) | the three files a bounded resolver replaces, and their bodies | below |
 | [`concealment.rs`](../../crates/sandbx-core/src/concealment.rs) | `conceal_process_state` — the one step aimed at sandbx itself | below |
-| [`error.rs`](../../crates/sandbx-core/src/error.rs) | `SandboxError`, `Access`, and the label the trail is filtered by | below |
+| [`error/sandbox.rs`](../../crates/sandbx-core/src/error/sandbox.rs) | `SandboxError`, `Access`, and the label the trail is filtered by | below |
 | [`error/refusal.rs`](../../crates/sandbx-core/src/error/refusal.rs) | `HelperRefusal`, and `decided_by`: the one place the two sets are mapped and every label is spelled | below |
 | [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs) | a standalone helper binary, so the enforcement path tests end to end | below |
 | `helper/seccomp/tests/` | four unit-test files, over a `bpf.rs` holding the `eval` interpreter they read the filter through and tests of its own | [10](10-seccomp.md) |
@@ -448,7 +448,7 @@ because a pass there would be evidence of nothing.
   call site covers both agent subcommands today, which is what makes now the
   cheap moment to ask.
 
-## `error.rs` and `error/refusal.rs` — a closed set and a subset of it
+## `error/sandbox.rs` and `error/refusal.rs` — a closed set and a subset of it
 
 Barely covered anywhere else, and one of the most useful files in the crate to
 have read, because every refusal in the system is listed in one place.
