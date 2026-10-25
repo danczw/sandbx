@@ -552,8 +552,7 @@ instead is worth seeing, because `sandbx-cli` reads these from the other side:
 `agent/run.rs` special-cases `IncompleteTurn` on the append path as not an
 error at all, printing "the turn produced nothing to store" and returning `Ok`.
 That is right for an append and would be wrong for a resume, and under one
-variant the
-two were told apart only by which call site the match sat on.
+variant the two were told apart only by which call site the match sat on.
 
 And **`source` returns `Some` for two variants only**, `Malformed` and `Io`, the
 two that wrap a foreign error, with the remaining fifteen listed by name in one

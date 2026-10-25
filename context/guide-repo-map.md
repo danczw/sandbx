@@ -258,7 +258,7 @@ src/lib.rs      mod lines and re-exports; no code
    sandbox.rs
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     re-exports AgentRun and Tui, and what the siblings reach
-   agent/run.rs AgentRun — the turn loop's caller
+      run.rs    AgentRun — the turn loop's caller
       gate.rs   which tools --allow-tool approved, the refusal the rest get,
                 and the one line per call the operator reads
       prompt.rs --approve call: the question put on /dev/tty, the three answers
