@@ -1,6 +1,9 @@
 //! `clone`'s namespace flags and `clone3`, the routes to a namespace that are not `unshare`.
 
-use super::*;
+use super::super::rules::NAMESPACE_CLONE_FLAGS;
+use super::super::*;
+use super::bpf::*;
+use crate::SandboxPolicy;
 
 /// The verdict for `clone(flags, …)`.
 fn clone_verdict(program: seccompiler::BpfProgramRef<'_>, flags: u64) -> u32 {

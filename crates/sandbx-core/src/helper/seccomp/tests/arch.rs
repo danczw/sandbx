@@ -1,7 +1,9 @@
 //! The architecture gates: a foreign ABI, and on x86_64 the x32 one that shares this
 //! architecture's audit value.
 
-use super::*;
+use super::super::*;
+use super::bpf::*;
+use crate::SandboxPolicy;
 
 /// x32 syscalls reach the kernel with [`X32_SYSCALL_BIT`] set in `nr`, under the same
 /// `AUDIT_ARCH_X86_64` the filter gates on, so the denylist's native numbers never match them

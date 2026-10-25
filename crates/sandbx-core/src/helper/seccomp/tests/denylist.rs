@@ -1,7 +1,9 @@
 //! The unconditional denylist, the filter's polarity, and whether the program is one the
 //! kernel would load at all.
 
-use super::*;
+use super::super::*;
+use super::bpf::*;
+use crate::SandboxPolicy;
 
 #[test]
 fn blocked_syscalls_covers_the_whole_denylist() {
