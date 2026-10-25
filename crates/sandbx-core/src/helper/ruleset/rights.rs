@@ -93,7 +93,8 @@ impl RuleTarget<'_> {
     }
 }
 
-/// The Landlock rules [`apply`](crate::helper::exec::apply) will install, as `(axis, path, rights)`,
+/// The Landlock rules [`apply`](crate::helper::exec::apply) will install, as
+/// `(axis, path, rights)`,
 /// one per grant, ordered after [`SandboxPolicy::granted_paths`].
 ///
 /// Adds just the one probe [`rights_for`] needs, whether the target is a directory.

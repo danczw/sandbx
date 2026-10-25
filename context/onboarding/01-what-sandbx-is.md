@@ -39,7 +39,7 @@ conversion the thesis names is one function, `apply` in
 [`core/src/helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs):
 
 ```rust
-fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
+pub(super) fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 ```
 
 A policy goes in and nothing comes back but a verdict. What `apply` restricts is
