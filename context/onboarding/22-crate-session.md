@@ -24,6 +24,7 @@ carries what that costs as a non-claim.
 | [`id.rs`](../../crates/sandbx-session/src/id.rs) | `SessionId`, `from_clock`, the allowlist | [14](14-audit-sessions-credentials.md), then below |
 | [`paths.rs`](../../crates/sandbx-session/src/paths.rs) | `sessions_directory` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`message.rs`](../../crates/sandbx-session/src/message.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` | [05](05-seven-crates.md), [24](24-crate-cli.md) |
+| [`store.rs`](../../crates/sandbx-session/src/store.rs) | re-exports `SessionStore` and `Session` | below |
 | [`store/session.rs`](../../crates/sandbx-session/src/store/session.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
 | [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
@@ -32,11 +33,12 @@ carries what that costs as a non-claim.
 | `tests/` | `identifier`, `permissions`, `recovery`, `transcript` | below |
 
 Two shapes to notice first. **`store/` is the only subdirectory**, and the three
-siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`, the
-mode constants and every predicate are invisible outside `store/`; the crate's
-public surface is the ten names `lib.rs` re-exports. And **the crate has no output
-channel**: no `tracing` dependency, no `println!` or `eprintln!` under `src/`. That
-is not an omission, it is what forces the design in the `store/session.rs` section.
+siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
+the mode constants and every predicate are invisible outside `store/`; the
+crate's public surface is the ten names `lib.rs` re-exports. And **the crate has
+no output channel**: no `tracing` dependency, no `println!` or `eprintln!` under
+`src/`. That is not an omission, it is what forces the design in the
+`store/session.rs` section.
 
 ## `id.rs` — an allowlist is three lines, and this is why
 
@@ -573,7 +575,8 @@ consequence of it.
 ## Where the tests are
 
 Unit tests sit in `id.rs`, `paths.rs`, `message.rs` and `store/record.rs`, the
-four modules that are pure functions over values. `store/session.rs`, `store/vet.rs` and
+four modules that are pure functions over values. `store/session.rs`,
+`store/vet.rs` and
 `store/shape.rs` have none, needing a real filesystem or the store that drives
 them; [guide-testing.md](../guide-testing.md) governs the split.
 
