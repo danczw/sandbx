@@ -186,10 +186,10 @@ it.
 [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs), and
 [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), which owns root
 derivation and path vetting; behaviour did not change. What changed is a
-*visibility*. The `root.rs` functions above are `pub(super)` — visible inside
-`grants/` and nowhere else — while `vetted_root`, `named_homes`, the `Homes`
-type and the `$HOME` predicates are private to `root.rs`, with their tests
-inline beside them.
+*visibility*. The `root.rs` functions above are `pub(super)` — visible in the
+`grants` module and everything under it, and nowhere else — while `vetted_root`,
+`named_homes`, the `Homes` type and the `$HOME` predicates are private to
+`root.rs`, with their tests inline beside them.
 
 That is this repo narrowing a surface rather than widening one, and it is the
 trade [guide-testing.md](../guide-testing.md) asks for.

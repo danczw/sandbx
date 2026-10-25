@@ -97,7 +97,7 @@ fn sandbox_run_still_passes_the_harness_credential() {
     );
 }
 
-/// A write grant the operator did not type, which is what `grants.rs` guards.
+/// A write grant the operator did not type, which is what `grants/flags.rs` guards.
 #[test]
 fn the_working_directory_is_readable_and_writable() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
