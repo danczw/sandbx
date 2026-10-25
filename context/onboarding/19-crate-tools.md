@@ -24,7 +24,7 @@ crates/sandbx-tools/
 ├── src/
 │   ├── lib.rs        re-exports, and the crate-private ones tools/ reaches
 │   ├── builtin.rs    BuiltinTool, ALL, ToolSpec, ToolOutput, RiskLevel
-│   ├── shared.rs     the five helpers the tool modules share
+│   ├── shared.rs     the six helpers the tool modules share
 │   ├── context.rs    ExecutionContext — the guard, the private policy,
 │   │                 the limits, the timeout
 │   ├── limits.rs     ToolLimits: two output caps, two input caps
@@ -48,7 +48,7 @@ no more: `sandbx-core`, `schemars`, `serde`, `serde_json`. No async runtime, no
 `regex`, no `walkdir`. Tools are synchronous, and `sandbx-agent` owns the one
 `spawn_blocking` site that calls them.
 
-## `builtin.rs` and `shared.rs`: a closed enum, and five shared helpers
+## `builtin.rs` and `shared.rs`: a closed enum, and six shared helpers
 
 The crate's entire public surface is seven items, all re-exported by `lib.rs`,
 which holds nothing else: `DEFAULT_TIMEOUT` and `ExecutionContext` from
@@ -164,19 +164,20 @@ flowchart TD
     C --> K["the second seam, the kernel"]
 ```
 
-`shared.rs` is the helpers the seven modules share, and reading them first makes
-every tool module shorter than it looks:
+`shared.rs` is the six helpers the seven tool modules share, and reading them
+first makes every tool module shorter than it looks:
 
 | helper | what it does, and why it is here |
 |---|---|
 | `parse::<T>` | `serde_json::from_value`, mapping a mismatch to `BadInput` rather than panicking |
 | `read_file` | `guard().open_read(path)`, then `read_to_string` on the **handle** — so no in-process tool can read a file by forgetting the check |
+| `read_capped` | the same open, plus a size check taken off the **handle** and never off the path — a path `stat` is a second resolution the guard did not vet (#275). `None` for every reason a scan must skip a file: refused, oversized, unmeasurable, not text |
 | `listing` | applies `take_entries`, *then* appends the partial-scan marker — inside the list it would be a line the cap could trim away; returns `"no matches"` only for a result both empty and complete |
 | `guard_error` | one `SandboxError` → `ToolError` mapping for all six guard-using tools, with two arms of its own: `NotFound` becomes `Failed`, absence being the one verdict that is not a refusal (#180), and `RootReplaced` becomes `Denied` under a *rewritten* reason, its own `Display` naming the two `(dev, ino)` pairs the trail wants and the model cannot act on |
 | `failed` | a host failure → `Failed`, with `verb` naming the attempt (`read /etc/hosts`) rather than the syscall |
 
-`ToolOutput` is declared in `builtin.rs` too, wrapping the text the model will see behind a
-private field so `new` is the only way in and an empty result is
+`builtin.rs` also declares `ToolOutput`, wrapping the text the model will see
+behind a private field so `new` is the only way in and an empty result is
 unrepresentable; `guide-tools.md` has that invariant.
 
 ## The seven at a glance
