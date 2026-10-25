@@ -16,7 +16,7 @@ job, and which chapter explains it. Where a mechanism already has a chapter you
 get one sentence and a link, because a worse copy of [09](09-landlock.md) two
 directories away is a liability rather than a convenience. Genuinely only here:
 the crate's shape as a public surface, the policy types as types, `resolver.rs`,
-`concealment.rs`, the refusal sets in `error/sandbox.rs`, and where the tests live.
+`concealment.rs`, the refusal sets in `error/`, and where the tests live.
 
 ## Where to start: the module map
 

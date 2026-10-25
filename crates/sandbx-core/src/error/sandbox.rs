@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crate::ObjectId;
 
 use super::refusal::{self, HelperRefusal};
+
 /// Which grant a path was checked against; carried by a refusal so it names the grant
 /// that was missing. The guard keeps its root sets apart, so a path can be inside one
 /// and outside the other.

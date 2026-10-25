@@ -79,7 +79,7 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    spawn.rs          spawn::command — the one Command::new; env_clear, then
                      the allowlist and the policy's own constants
    error.rs          re-exports
-      error/sandbox.rs SandboxError — every refusal and failure, and its label
+      sandbox.rs     SandboxError — every refusal and failure, and its label
       refusal.rs     HelperRefusal — the closed set the channel admits, and
                      SandboxError::decided_by, the one place the two are mapped
                      and every variant's label spelled
