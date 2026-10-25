@@ -9,6 +9,7 @@
 use crate::SandboxError;
 
 use super::rules::blocked_syscalls;
+
 /// `__X32_SYSCALL_BIT` from `asm/unistd.h`: the bit an x32 syscall number carries.
 ///
 /// x32 reports `AUDIT_ARCH_X86_64`, so it passes the filter's architecture gate, but its
@@ -153,6 +154,10 @@ pub(super) fn installed_filters(
 /// Per-thread (`apply_filter`, not `apply_filter_all_threads`), which is sound only because
 /// stage 2 is a fresh `exec` and therefore single-threaded — see
 /// [`exec_inner`](super::super::exec_inner).
+///
+/// `pub(in crate::helper)` and not `pub(super)` like everything else here: `seccomp.rs`
+/// re-exports this one `pub(super)`, and a re-export cannot widen an item visible only in
+/// `seccomp`. The private `mod filter` is what keeps the reach to `helper` either way.
 pub(in crate::helper) fn deny_dangerous_syscalls(
     policy: &crate::SandboxPolicy,
 ) -> Result<(), SandboxError> {
