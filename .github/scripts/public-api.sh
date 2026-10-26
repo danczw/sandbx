@@ -36,22 +36,19 @@ command -v jq >/dev/null 2>&1 || {
     exit 1
 }
 
-# A crate with no lib target has nothing importable and so no surface to diff, and
-# `cargo public-api` errors rather than printing an empty list. With `set -e` and the
-# redirect below, that error arrives *after* the redirect has truncated the baseline to
-# zero bytes, so the failure names this script and not the crate. `sandbx-helper` is
-# bin-only by design (#328 decision 5), hence the skip.
+# A crate with no lib target has no surface to diff, and `cargo public-api` errors
+# rather than printing an empty list — arriving *after* the redirect below has truncated
+# the baseline to zero bytes, so the failure names this script and not the crate.
+# `sandbx-helper` is bin-only by design (#328 decision 5), hence the skip.
 #
 # Two statements and not one pipeline, for the reason `guide-ci.md` gives for the `msrv`
-# job: `/bin/sh` has no `pipefail`, so a failed `cargo metadata` piped into `jq` would
-# take jq's exit status, leave `$libs` empty, and send every crate down the no-lib branch
-# — aborting on the first committed baseline with an error about a lost lib target.
+# job: `/bin/sh` has no `pipefail`, so a failed `cargo metadata` would take jq's exit
+# status and leave the lists below empty, reading as every crate having lost its lib.
 metadata=$(cargo metadata --format-version 1 --no-deps)
-# Two lists, because "cargo does not know this name" and "this crate has no lib" are
-# different faults and only one of them is a legitimate skip. The loop below keys on the
-# *directory* name, since that is what gives the baseline its path, and `cargo public-api
-# -p` keys on the *package* name — so a directory whose name is not its package's is a
-# crate this script cannot address, and saying "no lib target" about it would be a lie.
+# Two lists, because the loop keys on the *directory* name — that is what gives the
+# baseline its path — while `cargo public-api -p` keys on the *package* name. A directory
+# whose name is not its package's is a crate this script cannot address, which is a
+# different fault from having no lib and is not a legitimate skip.
 packages=$(printf '%s' "$metadata" | jq -r '.packages[].name' | sort -u)
 # Every library kind, not `lib` alone: a `crate-type` of `rlib` or `cdylib` is still a
 # surface, and keying on `lib` would skip it with no baseline and no complaint.
