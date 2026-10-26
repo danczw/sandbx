@@ -668,8 +668,11 @@ suite cannot".
 Everything behind
 **`#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`** is
 `sandbx-helper`'s now — `enforcement.rs` with its three siblings,
-`audit_channel.rs`, `audit_outcome.rs`, `concealment.rs`, the half of
-`command.rs` that spawns the binary, and the whole of `tests/support/`. They
+`audit_channel.rs`, `audit_outcome.rs` and the half of `command.rs` that spawns
+the binary. `concealment.rs` went with them but stays **ungated**: it drives a
+probe rather than the helper, and its probe is the one `[[bin]]` outside the
+feature, so it still runs under a plain `cargo test`. So does the whole of
+`tests/support/`. They
 moved because `CARGO_BIN_EXE_sandbx-helper` is set only for a bin of the same
 package, so a suite that drives the binary has to live beside it. The gate is
 still whole-file rather than per test, for the reason it always was: with the

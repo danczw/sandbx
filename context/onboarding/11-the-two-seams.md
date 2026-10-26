@@ -371,7 +371,8 @@ nearest-resolving-ancestor rule on its own sees neither.
   `sandbx-core` exports, they bound nothing after the measurement, their own doc
   comments say to prefer the opening forms, and nothing outside the guard calls
   either — the four opening forms call them internally, and every other call
-  site is in `crates/sandbx-core/tests/`.
+  site is a test, in `crates/sandbx-core/tests/` or, since #347, in
+  `crates/sandbx-helper/tests/enforcement.rs`.
   [decision-policy.md](../decision-policy.md#the-enforcement-seam) marks them "no
   tool" in its own seam diagram and [`SECURITY.md`](../../SECURITY.md) carries
   them as a non-claim, so the exposure is known; what neither prices is why the

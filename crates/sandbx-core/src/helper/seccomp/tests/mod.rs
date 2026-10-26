@@ -2,7 +2,7 @@
 //! interpreter they are all read through.
 //!
 //! Kernel-free — the program is evaluated here rather than installed, so these run anywhere.
-//! `tests/enforcement_syscalls.rs` is where a live kernel refuses a call.
+//! `sandbx-helper`'s `tests/enforcement_syscalls.rs` is where a live kernel refuses one.
 
 mod arch;
 mod bpf;

@@ -15,10 +15,12 @@ sandbox-integration = ["dep:io-uring", "sandbx-core/sandbox-integration"]
 
 [dependencies]
 sandbx-core = { path = "../sandbx-core" }
-# `sched` for the namespace probe, `fs` for `memfd` and `truncate`, `signal` and
-# `process` for the orphan and pid-namespace probes. A real dependency and not a
-# dev-dependency for the same reason `io-uring` is one: these are reached from
-# `[[bin]]` probes, and a `[[bin]]` cannot see dev-dependencies.
+# A real dependency and not a dev-dependency for the same reason `io-uring` is one:
+# three of these features are reached from `[[bin]]` probes, and a `[[bin]]` cannot see
+# dev-dependencies. `sched` for the pid-namespace probe, `fs` for `memfd` and
+# `truncate`, `process` for the orphan probe's `setsid`. `signal` is the exception —
+# only `tests/command.rs` reaches it, which could have seen a dev-dependency, but a
+# second nix entry differing by one feature is worse than one covering both.
 nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "process"] }
 # Optional rather than a dev-dependency because the probe that reaches
 # `io_uring_setup` is a `[[bin]]`, and a `[[bin]]` cannot see dev-dependencies.

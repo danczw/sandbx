@@ -1,4 +1,7 @@
-//! Public contract of [`SandboxedCommand`].
+//! Public contract of [`SandboxedCommand`]: what an argv encodes, and what it parses.
+//!
+//! The half that spawns the real helper is `sandbx-helper`'s `tests/command.rs`, where
+//! `CARGO_BIN_EXE_sandbx-helper` resolves (#347).
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 

@@ -144,7 +144,7 @@ above would write sandbx's records into the sandboxed command's stderr.
 
 The prefix is `HELPER_FAILURE_PREFIX`, a const because the parent strips it back
 off when it lifts the helper's stderr into `SandboxError::HelperRefused`. All
-three binaries that can be a helper — `sandbx`, `bin/sandbx-helper.rs` and
+three binaries that can be a helper — `sandbx`, `sandbx-helper/src/main.rs` and
 `sandbx-tools`' test helper — go through this function, so a refusal relayed
 from any of them reads the same.
 

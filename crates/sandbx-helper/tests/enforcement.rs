@@ -1,8 +1,9 @@
 //! Does the kernel actually block an escape?
 //!
-//! Everything else in this crate tests our own logic; these spawn real processes and
-//! assert the *kernel* refuses them. Gated behind `--features sandbox-integration`: they
-//! need Landlock available (ABI 5, Linux 6.10+, enabled at boot).
+//! `sandbx-core`'s tests cover our own logic; every target in this crate spawns a real
+//! process instead and asserts the *kernel* refuses it. Gated behind
+//! `--features sandbox-integration`: they need Landlock available (ABI 5, Linux 6.10+,
+//! enabled at boot).
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 // Every `Command::new` below spawns the sandbox helper itself; the workspace ban exists
 // to stop code executing *around* the sandbox.

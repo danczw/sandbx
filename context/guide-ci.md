@@ -111,11 +111,11 @@ no line recording it, and the fix is always to commit that line.
 Being required, its name is pinned like the others above — renaming the job silently
 drops the gate until the ruleset is updated to match.
 
-Two things to get right:
+Three things to get right:
 
 - **Regenerate with the pinned nightly, never plain `nightly`.** rustdoc JSON is
   nightly-only and its format version changes without notice, so a different
-  nightly rewrites all seven files for no change in API.
+  nightly rewrites every baseline for no change in API.
   `.github/scripts/public-api.sh` sets `RUSTUP_TOOLCHAIN` itself for that reason.
   The date is written twice — in the script's default and in `ci.yml`'s toolchain
   step — because `dtolnay/rust-toolchain` cannot read it out of the script. A
@@ -124,6 +124,16 @@ Two things to get right:
 - **The nightly is for rustdoc JSON and nothing else.** Every other job stays on
   stable, as does every build and test, and the manifest's `rust-version` is
   untouched. Phase 5's rustfmt is the only other thing that will use it (#328).
+- **A crate with no lib target is skipped, and the skip is guarded.** There is
+  no importable surface to diff, and `cargo public-api` errors rather than
+  printing an empty list — which, with the output redirected into the baseline,
+  would truncate it to zero bytes before the script aborted. The lib-target list
+  comes from `cargo metadata`, read into a variable first because `/bin/sh` has no
+  `pipefail`, and a crate with no lib target that still has a committed baseline
+  is an **error**: otherwise one that lost its lib target would lose its gate
+  while `git diff --exit-code` stayed clean. `sandbx-helper` is the only crate
+  skipped today (#347). The script therefore needs `jq`, which it checks for
+  alongside the toolchain.
 
 ### `RUSTDOCFLAGS`, not a `[lints.rustdoc]` table
 
