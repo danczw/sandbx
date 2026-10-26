@@ -9,8 +9,12 @@ publish.workspace = true
 
 [dependencies]
 # No default features, and no widget ever drawn here: `crossterm` is only for the
-# `event` re-export the key reader reads through, which is also why there is no
-# second crossterm version to diverge from.
+# `event` re-export the key reader reads through.
+#
+# This pin and `sandbx-screen`'s must move together, and nothing enforces it: the
+# reader lock `Keys` takes is crossterm's one global, and it only excludes the
+# screen's cursor queries while both crates resolve to the same `crossterm`.
+# `sandbx-screen`'s manifest has the full argument (#352).
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
 ] }

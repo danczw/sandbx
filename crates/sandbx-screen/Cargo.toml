@@ -9,8 +9,16 @@ publish.workspace = true
 
 [dependencies]
 # No default features: `all-widgets`, `macros` and `underline-color` buy nothing
-# here. `crossterm` is the backend `Measured` wraps, so there is no second
-# crossterm version to diverge from.
+# here. `crossterm` is the backend `Measured` wraps.
+#
+# This pin and `sandbx-tui`'s must move together, and nothing enforces it.
+# `Screen::finish` avoids `Terminal::clear` because its cursor query would take
+# crossterm's *one* global reader lock that `Keys` may hold — a single lock only
+# while both crates resolve to the same `crossterm`. Bump one exact pin and not
+# the other and cargo links two, giving two reader mutexes and two copies of
+# `TERMINAL_MODE_PRIOR_RAW_MODE`: `Keys` and `Screen` would stop excluding each
+# other and `try_restore`'s raw-mode bookkeeping would split. `deny.toml` has
+# `multiple-versions = "warn"`, so that divergence does not fail the build (#352).
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
 ] }

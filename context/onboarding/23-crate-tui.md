@@ -4,8 +4,8 @@ Three crates, and #353 and #352 split them:
 [`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/) is what the
 screen shows, [`sandbx-screen`](../../crates/sandbx-screen/) is the screen one
 turn is drawn on, and [`sandbx-tui`](../../crates/sandbx-tui/) is the keys that
-stop it. The module tables below are the
-enumeration; no count here, which would go stale on the next extraction. In
+stop it. The module tables below are the enumeration; no count here, which
+would go stale on the next extraction. In
 [04 — the architecture](04-the-architecture.md) they are the box a turn is
 *reported* in, and the one place with no row in View 3's table of boundaries —
 no policy, no gate, no session, no client. 04 also sets the frame: `tui` is
@@ -60,9 +60,10 @@ they need a pty pair rather than a terminal; what no test reaches at all is
 No crate here has a `pub mod`, so no module path is part of the API: a caller
 gets four names and their methods — `Transcript::new`/`event`/`note`,
 `Screen::enter`/`paint`/`finish`/`failure`, `Keys::listen`/`stop`/`press`,
-`Stopped::Pressed`/`Gone`. Three of the four come from `sandbx-screen`, which
-re-exports `Transcript` rather than leave the caller a second edge: every entry
-point it has takes or hands back one (#352).
+`Stopped::Pressed`/`Gone`. Two come from `sandbx-screen` and two from
+`sandbx-tui`, and `Transcript` is the one `sandbx-screen` does not own: it
+re-exports the type rather than leave the caller a second edge, every entry
+point it has taking or handing back one (#352).
 
 Deliberately *not* exported, by any of the three, is the shape of a transcript:
 `Entry` and `Kind` are `pub(crate)`, as are `Transcript::entries`, `rounds`,
@@ -77,13 +78,12 @@ six private — the layout is the only reader of any of them, and it is inside
 (#353).
 
 The screen split cost none, for the same reason read the other way round.
-`Measured` is the window measurement #269 exists for, and the whole of its
-seven references sat in `screen.rs`: the private field, the two private
-constructors, both `impl` blocks and a test helper. So the file took every
-caller of it with it, and `Measured` plus its `ratatui::Backend` impl stayed
-`pub(crate)` where a reading of the checklist alone had predicted a widening
-(#352). A predicted widening is a prediction about a *boundary*, and moving a
-file moves the boundary with it.
+`Measured` is the window measurement #269 exists for, and not one reference to
+it sat outside `screen.rs` — `Screen`'s field holding it is private and no
+public signature names it. So the file took every caller with it, and `Measured`
+plus its `Backend` impl stayed `pub(crate)` where a reading of the checklist
+alone had predicted a widening (#352). A predicted widening is a prediction
+about a *boundary*, and moving a file moves the boundary with it.
 
 The dependency edges are the second half of each manifest.
 [`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/Cargo.toml) has

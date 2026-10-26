@@ -51,7 +51,7 @@ alternative — keeping tests inline in order to stay literal.
 
 ## `catch_unwind` in the TUI: a deviation, not yet an exception
 
-`crates/sandbx-screen/src/lib.rs:243` calls `catch_unwind`. The guide allows it as
+`crates/sandbx-screen/src/lib.rs:246` calls `catch_unwind`. The guide allows it as
 defense in depth at an entry point and never as something a property relies on, and
 this call is neither. It sits inside `Screen::drop`, and it stops a panic from
 `Terminal::drop` — an `eprintln!` to a stderr that has hung up — from aborting while

@@ -8,7 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# No backend: the terminal is `sandbx-tui`'s and a frame is all this crate is
+# No backend: the terminal is `sandbx-screen`'s and a frame is all this crate is
 # handed, so `crossterm` belongs there and not here.
 # `unstable-rendered-line-info` is `Paragraph::line_count`, which measures text
 # after wrapping — the alternative is a second word-wrapper that has to agree
