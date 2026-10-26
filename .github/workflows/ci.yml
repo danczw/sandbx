@@ -212,9 +212,10 @@ jobs:
       # commit, and after `actions/checkout` the index is HEAD anyway. No
       # `--exclude-standard` — an ignored baseline is as ungated as an untracked one.
       #
-      # Both checks must stay after the regenerate step above: until the script has
-      # run, a baseline nobody committed does not exist on disk and they pass on an
-      # empty set. The tracked list is also the zero-guard this repo asks of anything
+      # The `--others` check must stay after the regenerate step above: until the
+      # script has run, a baseline nobody committed does not exist on disk at all and
+      # it passes on an empty set. The two below read the index, so they hold wherever
+      # they sit. The tracked list is also the zero-guard this repo asks of anything
       # that iterates — a pathspec matching nothing would otherwise pass silently,
       # which is how a mistyped pathspec or a run from the wrong directory reads.
       #
