@@ -21,12 +21,13 @@ map, the signature a caller meets, and `compact.rs`.
 
 ```
 src/lib.rs          13 re-exports and four private modules; nothing else
-   turn.rs          six re-exports and three private modules; nothing else
+   turn.rs          five re-exports and three private modules; nothing else
       run.rs        run_turn, and the public types it is driven by
       accumulate.rs one round's assistant message, rebuilt from deltas
       tools.rs      the offered set, the gate call, one spawn_blocking
    approval.rs      what a gate is asked and what it is told; no policy
-   compact.rs       which prefix of a history may be withheld
+   compact.rs       which prefix of a history may be withheld, and PromptUsage —
+                    the measurement that decides it (#345)
    compact_tests.rs the cut-point algebra, as unit tests
    error.rs         TurnError — only what ends a turn in failure
 tests/
@@ -91,7 +92,7 @@ re-exported, so a caller imports from all three.
 ## `turn/run.rs` — the signature before the body
 
 [`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) exports one async
-function and the five types that drive it. Read the signature before the loop:
+function and the four types that drive it. Read the signature before the loop:
 
 ```rust
 pub async fn run_turn<F, O, G>(

@@ -6,8 +6,7 @@
 use futures_util::StreamExt;
 use sandbx_providers::{AgentEvent, ContentBlock, EventStream, StopReason};
 
-use super::PromptUsage;
-use crate::TurnError;
+use crate::{PromptUsage, TurnError};
 
 /// What one round of streaming came to.
 pub(super) struct Round {

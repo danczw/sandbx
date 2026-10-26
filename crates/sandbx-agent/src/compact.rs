@@ -5,10 +5,12 @@
 //! opener — two user turns running, an orphaned `tool_result`, or empty content — so only a
 //! *prefix* drops, onto the new first message, which [`opens_a_request`] decides; that makes
 //! the legal cut points exactly the human prose turns. See `context/guide-turn-loop.md`.
+//!
+//! [`PromptUsage`] is declared here and not beside `Turn::observed`, which is where it reads
+//! as belonging: it is the measurement compaction asks about, and the turn depends on
+//! compaction rather than the reverse, so this is the side of the edge it can sit on (#345).
 
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
-
-use crate::PromptUsage;
 
 /// When to withhold history, and how much to keep.
 ///
@@ -29,6 +31,35 @@ pub struct Compaction {
     /// and this turn's own messages are never withheld, so a small value can't force them
     /// out. Counted over the whole request.
     pub keep_recent: usize,
+}
+
+/// The prompt-side token counters of the last `AgentEvent::Usage` a turn reported.
+///
+/// `None` means "not reported", distinguishable from a reported zero. `output_tokens` is
+/// absent: compaction asks how large the *request* was, and `observe` sees the whole event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PromptUsage {
+    /// Tokens in the request, excluding anything served from cache.
+    pub input_tokens: Option<u32>,
+    /// Tokens read from the prompt cache.
+    pub cache_read_tokens: Option<u32>,
+    /// Tokens written to the prompt cache.
+    pub cache_write_tokens: Option<u32>,
+}
+
+impl PromptUsage {
+    /// The whole prompt, as the provider counted it.
+    ///
+    /// All three counters summed: a cache read is a real prompt token charged against the
+    /// context window. `u64` because three saturated counters overflow a `u32`. An unreported
+    /// counter sums as zero rather than unknown — the API omits cache fields when unused, and
+    /// reading that as unknown would disable compaction for every uncached request.
+    #[must_use]
+    pub fn prompt_tokens(&self) -> u64 {
+        u64::from(self.input_tokens.unwrap_or(0))
+            + u64::from(self.cache_read_tokens.unwrap_or(0))
+            + u64::from(self.cache_write_tokens.unwrap_or(0))
+    }
 }
 
 /// Whether the last measured prompt was over budget.

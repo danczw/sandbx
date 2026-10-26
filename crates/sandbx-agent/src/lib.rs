@@ -10,6 +10,6 @@ mod error;
 mod turn;
 
 pub use approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
-pub use compact::Compaction;
+pub use compact::{Compaction, PromptUsage};
 pub use error::TurnError;
-pub use turn::{PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+pub use turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};

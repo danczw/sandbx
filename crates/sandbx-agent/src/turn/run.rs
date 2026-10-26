@@ -10,7 +10,7 @@ use sandbx_providers::{
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::{CallGate, Compaction, TurnError, compact};
+use crate::{CallGate, Compaction, PromptUsage, TurnError, compact};
 
 use super::accumulate::accumulate;
 use super::tools::{Answers, answer_calls, definition};
@@ -70,35 +70,6 @@ pub struct Turn<'a> {
     /// `context/guide-turn-loop.md`. Exact only because appending to history does not move
     /// its prefix's indices.
     pub withheld: usize,
-}
-
-/// The prompt-side token counters of the last `AgentEvent::Usage` a turn reported.
-///
-/// `None` means "not reported", distinguishable from a reported zero. `output_tokens` is
-/// absent: compaction asks how large the *request* was, and `observe` sees the whole event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PromptUsage {
-    /// Tokens in the request, excluding anything served from cache.
-    pub input_tokens: Option<u32>,
-    /// Tokens read from the prompt cache.
-    pub cache_read_tokens: Option<u32>,
-    /// Tokens written to the prompt cache.
-    pub cache_write_tokens: Option<u32>,
-}
-
-impl PromptUsage {
-    /// The whole prompt, as the provider counted it.
-    ///
-    /// All three counters summed: a cache read is a real prompt token charged against the
-    /// context window. `u64` because three saturated counters overflow a `u32`. An unreported
-    /// counter sums as zero rather than unknown — the API omits cache fields when unused, and
-    /// reading that as unknown would disable compaction for every uncached request.
-    #[must_use]
-    pub fn prompt_tokens(&self) -> u64 {
-        u64::from(self.input_tokens.unwrap_or(0))
-            + u64::from(self.cache_read_tokens.unwrap_or(0))
-            + u64::from(self.cache_write_tokens.unwrap_or(0))
-    }
 }
 
 /// What one turn came to, and what the next one has to be told about it.
