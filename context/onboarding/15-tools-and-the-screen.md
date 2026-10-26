@@ -320,8 +320,9 @@ the pane and then vanish with it.
 
 The audit trail has the same problem and a different answer. It is the
 higher-volume writer by far, and it is **held** rather than displaced:
-`logging::hold` diverts the subscriber's writer into a buffer for as long as the
-screen owns the terminal, and the guard releases on `Drop`, so a panic unwinding
+`sandbx_logging::hold` diverts the subscriber's writer into a buffer for as long
+as the screen owns the terminal, and the guard releases on `Drop`, so a panic
+unwinding
 past the screen still leaves the record of what the turn was allowed to touch.
 What that costs is on the record: the release waits on the keypress that holds
 the finished screen, so a signal arriving there runs no `Drop` and loses all of

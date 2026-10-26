@@ -402,8 +402,9 @@ decision is argv's, and `settled` takes a lock no async task holds.
 
 ## The audit trail is held, not displaced
 
-The gate's verdict is not the only thing stderr carries. `logging::init` installs
-one subscriber for the whole process, admitting `sandbx::audit` at `INFO`, and
+The gate's verdict is not the only thing stderr carries.
+`sandbx_logging::init` installs one subscriber for the whole process, admitting
+`sandbx::audit` at `INFO`, and
 `sandbx-core` emits a record for every guarded file access and every command
 spawn. Those are the higher-volume writer by far, and the alternate screen
 neither redirects stderr nor hands back what was written to it: each record
@@ -420,13 +421,13 @@ enough on its own:
   on stderr. Written into a screen that is about to be torn down, it is recorded
   nowhere.
 
-So `tui` holds the trail: `logging::hold` diverts the subscriber's writer into a
-buffer for as long as the screen owns the terminal, and releasing it writes every
-record to stderr once the screen is given back. The guard releases on `Drop`, so
-a panic unwinding past the screen still leaves behind the record of what the turn
-was allowed to touch. The ordering an operator sees is the trail, then the run's
-own account — both after the turn rather than during it, which is the one thing
-`tui` changes about the trail.
+So `tui` holds the trail: `sandbx_logging::hold` diverts the subscriber's writer
+into a buffer for as long as the screen owns the terminal, and releasing it
+writes every record to stderr once the screen is given back. The guard releases
+on `Drop`, so a panic unwinding past the screen still leaves behind the record
+of what the turn was allowed to touch. The ordering an operator sees is the
+trail, then the run's own account — both after the turn rather than during it,
+which is the one thing `tui` changes about the trail.
 
 What the hold costs: the release waits on the keypress that holds the finished
 screen, so the trail sits in memory for as long as the operator is away, and a

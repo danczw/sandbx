@@ -21,7 +21,7 @@ rules differ from the credential's.
 ## Two streams, one pipeline, split by target
 
 There is one `tracing` subscriber in the whole process tree, built in
-[`cli/src/logging.rs`](../../crates/sandbx-cli/src/logging.rs) — see
+[`sandbx-logging/src/lib.rs`](../../crates/sandbx-logging/src/lib.rs) — see
 `subscriber` and `init`. Two kinds of event go through it:
 
 ```mermaid
@@ -80,9 +80,9 @@ Three more properties of the sink, each with a counterexample attached:
 A screen owns the terminal for the length of a `tui` turn, and the alternate
 screen it draws into neither redirects stderr nor hands back what was written
 there when it drops — so a record emitted mid-turn would land in the pane and
-die with the screen. `logging::hold` in
-[`cli/src/logging.rs`](../../crates/sandbx-cli/src/logging.rs) diverts the
-sink's writer into a buffer for as long as the screen owns the terminal, and
+die with the screen. `sandbx_logging::hold` in
+[`sandbx-logging/src/lib.rs`](../../crates/sandbx-logging/src/lib.rs) diverts
+the sink's writer into a buffer for as long as the screen owns the terminal, and
 the `Held` guard it returns writes that buffer to stderr on `Drop`, so a panic
 unwinding past the screen still releases what the turn was allowed to touch.
 `Held`'s own field is private — nothing but `hold` can build one, so no second
@@ -94,7 +94,7 @@ A `tui` turn that runs tools therefore does write its audit records; it
 defers them. That composition — a record emitted on a blocking thread, into
 the global subscriber, through `Audit` into the held buffer, and onto stderr
 once the guard drops — is what
-[`cli/tests/audit_log_held.rs`](../../crates/sandbx-cli/tests/audit_log_held.rs)
+[`audit_log_held.rs`](../../crates/sandbx-logging/tests/audit_log_held.rs)
 drives end to end, re-execing itself to read fd 2 from outside the test
 binary, because libtest's own capture intercepts only the print macros and
 `Held::drop` writes straight to the descriptor. Each half of the chain was

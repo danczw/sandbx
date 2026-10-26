@@ -12,8 +12,9 @@ than being logged where it is found (#95, #96).
 `PR_CAPBSET_DROP` refused, and the uid/gid map unwritten. Both run in helper
 **stage 1**, a re-exec'd child of sandbx.
 
-That process installs no `tracing` subscriber. `logging::init()` is called inside
-the `with_helper_dispatch` closure, which runs only for an ordinary invocation;
+That process installs no `tracing` subscriber. `sandbx_logging::init()` is
+called inside the `with_helper_dispatch` closure, which runs only for an
+ordinary invocation;
 the helper routes into `exec_sandboxed` and never returns. `tracing` drops an event
 with no subscriber silently and at every level, so the record reached nobody.
 
