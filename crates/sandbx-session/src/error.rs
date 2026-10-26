@@ -2,10 +2,14 @@
 //!
 //! No `From` impls, and do not add one: every wrapped failure is paired with the path
 //! and operation it came from, which a blanket conversion would discard.
+//!
+//! Nothing here names a `SessionId`, deliberately: this is the type the rest of the
+//! session tree depends on, and `id.rs` returns it from all three of its fallible paths,
+//! so holding one would be a cycle (#346). `NotFound` carries the spelling instead,
+//! which costs the message nothing — `SessionId`'s `Display` writes the inner string and
+//! no more.
 
 use std::path::PathBuf;
-
-use crate::SessionId;
 
 /// Why a session could not be named, read, or written.
 #[derive(Debug)]
@@ -26,8 +30,8 @@ pub enum SessionError {
 
     /// There is no transcript under that id.
     NotFound {
-        /// The id that was asked for.
-        id: SessionId,
+        /// The id that was asked for, as it was spelled.
+        id: String,
     },
 
     /// Every id the clock offered was taken, so it is not advancing.

@@ -438,7 +438,7 @@ fn an_unknown_id_is_refused_not_started() {
     let err = store.resume(&absent).unwrap_err();
 
     assert!(
-        matches!(&err, SessionError::NotFound { id } if id == &absent),
+        matches!(&err, SessionError::NotFound { id } if id == &absent.to_string()),
         "got {err:?}"
     );
     assert!(!store.root().join("zzzzzzzz.jsonl").exists());
