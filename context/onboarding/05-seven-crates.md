@@ -30,7 +30,6 @@ flowchart TD
         message["sandbx-session-message: the file format"]
     end
     cli["sandbx-cli"] --> agent["sandbx-agent"]
-    cli --> screen["sandbx-screen"]
     cli --> tui["sandbx-tui"]
     cli --> session["sandbx-session: the disk"]
     cli --> message
@@ -66,9 +65,10 @@ Four things about that shape are worth more than the picture.
   section covers the lib-plus-bin split.
 - **The screen reaches `sandbx-providers` for the vocabulary, not the
   transport.** The only names it borrows are `AgentEvent` and `StopReason`, and
-  since #353 the edge is `sandbx-tui-transcript`'s rather than the screen's;
-  the terminal-safety predicate `invisible` comes from `sandbx-text` instead
-  since #363. See
+  since #353 the edge is `sandbx-tui-transcript`'s rather than `sandbx-tui`'s,
+  which #352 then split again into `sandbx-screen` and the keys; the
+  terminal-safety predicate `invisible` comes from `sandbx-text` instead since
+  #363. See
   [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs). No
   client, no credential, no policy. The screen folds events it is handed; it
   never opens a stream.
@@ -88,8 +88,7 @@ Four things about that shape are worth more than the picture.
 | `sandbx-agent` | the turn loop, and the gate a caller must supply — whose shapes are `sandbx-approval`'s since #355 | `run_turn`, `CallGate` |
 | `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
 | `sandbx-session` | the on-disk transcript: an id, a root, append-only JSONL | `SessionStore` |
-| `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | `Screen`, `Transcript` |
-| `sandbx-tui` | the keys that stop a turn, and what a hangup means | `Keys`, `Stopped` |
+| `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |
 | `sandbx-cli` | parsing, policy derivation, the five subcommand bodies | `Cli`, `Command`, `Grants` |
 
 The crate set is also the label set. GitHub carries exactly one `crate:*` label
