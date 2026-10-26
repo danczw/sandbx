@@ -2,7 +2,7 @@
 
 You are standing in **the gate** — the box
 [04 — the architecture](04-the-architecture.md) names in View 3 as
-[`agent/src/approval.rs`](../../crates/sandbx-agent/src/approval.rs),
+[`approval/src/lib.rs`](../../crates/sandbx-approval/src/lib.rs),
 "`CallGate`, two methods, `run_turn`'s mandatory fifth parameter". 04's View 2
 draws the round in seven lines and marks one of them `approve`. This chapter is
 that line, plus the two checks standing in front of it and the one verdict that

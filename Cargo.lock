@@ -1639,6 +1639,7 @@ name = "sandbx-agent"
 version = "0.1.0-alpha.18"
 dependencies = [
  "futures-util",
+ "sandbx-approval",
  "sandbx-core",
  "sandbx-providers",
  "sandbx-tools",
@@ -1650,6 +1651,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-approval"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "sandbx-tools",
+ "serde_json",
+]
+
+[[package]]
 name = "sandbx-cli"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1657,6 +1666,7 @@ dependencies = [
  "futures-util",
  "nix",
  "sandbx-agent",
+ "sandbx-approval",
  "sandbx-core",
  "sandbx-logging",
  "sandbx-providers",

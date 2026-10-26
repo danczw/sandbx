@@ -1,0 +1,81 @@
+pub mod sandbx_approval
+pub enum sandbx_approval::ApprovalDecision
+pub sandbx_approval::ApprovalDecision::Abort
+pub sandbx_approval::ApprovalDecision::Abort::reason: alloc::string::String
+pub sandbx_approval::ApprovalDecision::Allow
+pub sandbx_approval::ApprovalDecision::Deny
+pub sandbx_approval::ApprovalDecision::Deny::reason: alloc::string::String
+impl core::clone::Clone for sandbx_approval::ApprovalDecision
+pub fn sandbx_approval::ApprovalDecision::clone(&self) -> sandbx_approval::ApprovalDecision
+impl core::cmp::Eq for sandbx_approval::ApprovalDecision
+impl core::cmp::PartialEq for sandbx_approval::ApprovalDecision
+pub fn sandbx_approval::ApprovalDecision::eq(&self, &sandbx_approval::ApprovalDecision) -> bool
+impl core::fmt::Debug for sandbx_approval::ApprovalDecision
+pub fn sandbx_approval::ApprovalDecision::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_approval::ApprovalDecision
+impl core::marker::Freeze for sandbx_approval::ApprovalDecision
+impl core::marker::Send for sandbx_approval::ApprovalDecision
+impl core::marker::Sync for sandbx_approval::ApprovalDecision
+impl core::marker::Unpin for sandbx_approval::ApprovalDecision
+impl core::marker::UnsafeUnpin for sandbx_approval::ApprovalDecision
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_approval::ApprovalDecision
+impl core::panic::unwind_safe::UnwindSafe for sandbx_approval::ApprovalDecision
+pub enum sandbx_approval::Outcome<'a>
+pub sandbx_approval::Outcome::Denied
+pub sandbx_approval::Outcome::Denied::reason: &'a str
+pub sandbx_approval::Outcome::Errored(&'a sandbx_tools::error::ToolError)
+pub sandbx_approval::Outcome::NotOffered
+pub sandbx_approval::Outcome::Ran
+pub sandbx_approval::Outcome::Unknown
+impl<'a> core::clone::Clone for sandbx_approval::Outcome<'a>
+pub fn sandbx_approval::Outcome<'a>::clone(&self) -> sandbx_approval::Outcome<'a>
+impl<'a> core::fmt::Debug for sandbx_approval::Outcome<'a>
+pub fn sandbx_approval::Outcome<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_approval::Outcome<'a>
+impl<'a> core::marker::Freeze for sandbx_approval::Outcome<'a>
+impl<'a> core::marker::Send for sandbx_approval::Outcome<'a>
+impl<'a> core::marker::Sync for sandbx_approval::Outcome<'a>
+impl<'a> core::marker::Unpin for sandbx_approval::Outcome<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_approval::Outcome<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_approval::Outcome<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_approval::Outcome<'a>
+pub struct sandbx_approval::Settled<'a>
+pub sandbx_approval::Settled::id: &'a str
+pub sandbx_approval::Settled::input: &'a serde_json::value::Value
+pub sandbx_approval::Settled::name: &'a str
+pub sandbx_approval::Settled::outcome: sandbx_approval::Outcome<'a>
+pub sandbx_approval::Settled::tool: core::option::Option<sandbx_tools::builtin::BuiltinTool>
+impl<'a> core::clone::Clone for sandbx_approval::Settled<'a>
+pub fn sandbx_approval::Settled<'a>::clone(&self) -> sandbx_approval::Settled<'a>
+impl<'a> core::fmt::Debug for sandbx_approval::Settled<'a>
+pub fn sandbx_approval::Settled<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_approval::Settled<'a>
+impl<'a> core::marker::Freeze for sandbx_approval::Settled<'a>
+impl<'a> core::marker::Send for sandbx_approval::Settled<'a>
+impl<'a> core::marker::Sync for sandbx_approval::Settled<'a>
+impl<'a> core::marker::Unpin for sandbx_approval::Settled<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_approval::Settled<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_approval::Settled<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_approval::Settled<'a>
+pub struct sandbx_approval::ToolCall<'a>
+pub sandbx_approval::ToolCall::id: &'a str
+pub sandbx_approval::ToolCall::input: &'a serde_json::value::Value
+pub sandbx_approval::ToolCall::tool: sandbx_tools::builtin::BuiltinTool
+impl<'a> core::clone::Clone for sandbx_approval::ToolCall<'a>
+pub fn sandbx_approval::ToolCall<'a>::clone(&self) -> sandbx_approval::ToolCall<'a>
+impl<'a> core::fmt::Debug for sandbx_approval::ToolCall<'a>
+pub fn sandbx_approval::ToolCall<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_approval::ToolCall<'a>
+impl<'a> core::marker::Freeze for sandbx_approval::ToolCall<'a>
+impl<'a> core::marker::Send for sandbx_approval::ToolCall<'a>
+impl<'a> core::marker::Sync for sandbx_approval::ToolCall<'a>
+impl<'a> core::marker::Unpin for sandbx_approval::ToolCall<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_approval::ToolCall<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_approval::ToolCall<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_approval::ToolCall<'a>
+pub trait sandbx_approval::CallGate
+pub fn sandbx_approval::CallGate::approve(&mut self, sandbx_approval::ToolCall<'_>) -> sandbx_approval::ApprovalDecision
+pub fn sandbx_approval::CallGate::settled(&mut self, sandbx_approval::Settled<'_>)
+impl<G: sandbx_approval::CallGate + ?core::marker::Sized> sandbx_approval::CallGate for &mut G
+pub fn &mut G::approve(&mut self, sandbx_approval::ToolCall<'_>) -> sandbx_approval::ApprovalDecision
+pub fn &mut G::settled(&mut self, sandbx_approval::Settled<'_>)

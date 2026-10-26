@@ -5,7 +5,8 @@
 
 use std::collections::VecDeque;
 
-use sandbx_agent::{ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits};
+use sandbx_agent::{Turn, TurnLimits};
+use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, StopReason,

@@ -4,12 +4,10 @@
 //! [`run_turn`] is generic over a closure that opens a stream, so the whole loop runs against
 //! canned events with no network and no API key. See `context/guide-turn-loop.md`.
 
-mod approval;
 mod compact;
 mod error;
 mod turn;
 
-pub use approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 pub use compact::{Compaction, PromptUsage};
 pub use error::TurnError;
 pub use turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};

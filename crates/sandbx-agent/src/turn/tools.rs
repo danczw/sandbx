@@ -3,10 +3,11 @@
 //! The crate's only `spawn_blocking` site. Tools are synchronous, so the sync/async
 //! boundary lives here rather than spread through seven tool bodies.
 
+use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_providers::{ContentBlock, ToolDefinition};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall, TurnError};
+use crate::TurnError;
 
 /// Ask `gate`, then run and answer every tool call in `blocks`, in the order the model asked.
 ///

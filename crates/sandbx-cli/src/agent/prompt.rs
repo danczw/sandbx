@@ -7,7 +7,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind, IsTerminal, Write};
 
-use sandbx_agent::{ApprovalDecision, ToolCall};
+use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel};
 
 use super::gate;

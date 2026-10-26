@@ -1,4 +1,4 @@
-//! What [`run_turn`](crate::run_turn) asks before it runs a tool call, and what it reports
+//! What `sandbx-agent`'s `run_turn` asks before it runs a tool call, and what it reports
 //! once the call is done with.
 //!
 //! Two methods, both required: the loop knows what became of every call and a caller is the
@@ -32,7 +32,7 @@ pub enum ApprovalDecision {
     ///
     /// For a gate that can no longer be *asked* — a consent channel that went away — not one
     /// that decided no: the rest of the round is refused unasked, and
-    /// [`TurnStop::GateAborted`](crate::TurnStop::GateAborted) ends the turn.
+    /// `sandbx-agent`'s `TurnStop::GateAborted` ends the turn.
     Abort {
         /// The text of a `tool_result` marked `is_error`, as in [`Deny`](Self::Deny).
         reason: String,
