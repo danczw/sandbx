@@ -67,12 +67,13 @@ constant, not a mechanism.
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
-`sandbx-session` depends on `sandbx-session-message` and on
-`sandbx-session-error` — the two internal edges the diagram above does not draw,
-all three crates having a direct edge to `sandbx-cli` of their own. Neither of
-the CLI's is inherited: it translates between the stored shapes and the
-provider's, and it is where a `SessionError` becomes something else. That is why
-`deny.toml` names two parents in each of those blocks.
+`sandbx-session` depends on both `sandbx-session-message` and
+`sandbx-session-error` — the two internal edges the diagram above does not
+draw. `sandbx-cli` has an edge to each of those two as well, and neither is
+inherited through `sandbx-session`: the CLI translates between the stored
+shapes and the provider's, and it is where a `SessionError` becomes something
+else. That is why `deny.toml` names both parents in each of those two blocks,
+while `sandbx-session`'s own names `sandbx-cli` alone.
 
 `sandbx-tui` depends on `sandbx-tui-transcript` and on nothing else of sandbx's:
 the provider and text edges the diagram used to draw to it now land one step

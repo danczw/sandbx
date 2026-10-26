@@ -7,17 +7,16 @@ round loop has finished and the gate has gone quiet; in **View 1** it is not a
 box, because nothing here spawns, forks or `exec`s — it opens files in the
 harness process, and that is the whole of it.
 
-A handful of source files, with nearly as much again in `tests/`
-([guide-repo-map.md](../guide-repo-map.md) keeps the current list). Two internal
-dependencies, both of them crates that depend on nothing — the shapes it stores
-are `sandbx-session-message`'s, itself a leaf of
+A handful of source files under `src/`, with nearly as much test code again
+under `tests/`; [guide-repo-map.md](../guide-repo-map.md) keeps the current file
+list. Two internal dependencies, neither of which names a sandbx crate of its
+own — the shapes it stores are `sandbx-session-message`'s, itself a leaf of
 [05 — seven crates](05-seven-crates.md)'s graph, and why an operation did not
 happen is `sandbx-session-error`'s — and three external ones: `nix` with only
 `fs` and `user`, `serde`, `serde_json`, plus `tempfile` for the tests. The
-reason to read it anyway is proportion. A transcript is the only
-plaintext copy of a conversation sandbx keeps, it is replayed to a model that
-calls tools, and [`SECURITY.md`](../../SECURITY.md) carries what that costs as
-a non-claim.
+reason to read it anyway is proportion. A transcript is the only plaintext copy
+of a conversation sandbx keeps, it is replayed to a model that calls tools, and
+[`SECURITY.md`](../../SECURITY.md) carries what that costs as a non-claim.
 
 ## The module tree
 
@@ -42,10 +41,9 @@ crate's public surface is the four names `lib.rs` re-exports, plus the three
 `sandbx-session-message` types that `append`, `messages` and `observed` name in
 their signatures and the `SessionError` that every fallible one of them returns
 — none of which the crate re-exports, so a consumer takes its own dependency to
-spell them, as `sandbx-cli` does. And **the crate has no
-output channel**: no `tracing` dependency, no `println!` or `eprintln!` under
-`src/`. That is not an omission, it is what forces the design in the
-`store/session.rs` section.
+spell them, as `sandbx-cli` does. And **the crate has no output channel**: no
+`tracing` dependency, no `println!` or `eprintln!` under `src/`. That is not an
+omission, it is what forces the design in the `store/session.rs` section.
 
 ## `id.rs` — an allowlist is three lines, and this is why
 
@@ -534,10 +532,11 @@ replacement after the check is never the directory a transcript is opened in.
 
 ## `sandbx-session-error` — seventeen variants, and the two kinds
 
-A crate of its own since #358, and the bottom of the session tree: everything
-else here returns it, and it returns to nothing. The crate doc opens with a
-rule: "No `From` impls, and do not add one: every wrapped failure is paired with
-the path and operation it came from, which a blanket conversion would discard."
+A crate of its own since #358, and the bottom of the session tree: every
+fallible path in this chapter returns it, and it names no sandbx crate itself,
+so nothing above it can be reached from here. The crate doc opens with a rule:
+"No `From` impls, and do not add one: every wrapped failure is paired with the
+path and operation it came from, which a blanket conversion would discard."
 Ten of the seventeen carry a `PathBuf`, which is what that rule protects. The
 split worth holding is between a **refusal** — sandbx decided not to — and a
 **host failure**, where the machine could not:
