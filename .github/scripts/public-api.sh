@@ -71,6 +71,12 @@ for manifest in crates/*/Cargo.toml; do
         # Skipping a bin-only crate is right. Skipping one that *lost* its lib target is
         # how this gate would go quiet while `git diff --exit-code` stayed clean, the
         # stale baseline still sitting in the tree — so that case is an error.
+        #
+        # The mirror — a lib target whose baseline was never added — is `ci.yml`'s,
+        # not this script's. This guard asserts a property of the tree the script just
+        # wrote; that one asserts what the author committed, which exists only against
+        # a ref this script does not have. Erroring on it here would also fire on the
+        # run that creates the file, which is why someone adding a crate runs it (#402).
         if [ -f "crates/$crate/public-api.txt" ]; then
             echo "::error::$crate has no lib target, but crates/$crate/public-api.txt exists."
             echo "::error::Either it lost its lib target, or that baseline should be deleted."
