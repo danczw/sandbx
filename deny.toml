@@ -65,6 +65,12 @@ name = "sandbx-logging"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
+name = "sandbx-session-message"
+# `sandbx-cli`'s edge is direct and not inherited through `sandbx-session`: it translates
+# between these shapes and the provider's, so both names are required here (#359).
+wrappers = ["sandbx-cli", "sandbx-session"]
+
+[[bans.deny]]
 name = "sandbx-session"
 wrappers = ["sandbx-cli"]
 

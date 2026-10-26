@@ -2,9 +2,10 @@
 
 use std::path::Path;
 
+use sandbx_session_message::{Message, Usage};
 use serde::{Deserialize, Serialize};
 
-use crate::{Message, SessionError, Usage};
+use crate::SessionError;
 
 /// The format this build writes, and the only one it reads.
 pub(super) const VERSION: u32 = 1;
@@ -111,8 +112,9 @@ pub(super) fn fold(
 
 #[cfg(test)]
 mod tests {
+    use sandbx_session_message::{Content, Role};
+
     use super::*;
-    use crate::{Content, Role};
 
     #[test]
     fn a_turn_line_carries_its_own_type() {

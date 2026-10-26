@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 nix = { version = "0.31.3", default-features = false, features = ["fs", "user"] }
+sandbx-session-message = { path = "../sandbx-session-message" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 

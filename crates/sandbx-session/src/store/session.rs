@@ -10,9 +10,10 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use nix::fcntl::OFlag;
+use sandbx_session_message::{CompletedTurn, Message, Usage};
 
 use crate::id::clock_millis;
-use crate::{CompletedTurn, Message, SessionError, SessionId, Usage};
+use crate::{SessionError, SessionId};
 
 use super::record::{Accounting, Header, Record, VERSION, fold};
 use super::shape::{alternating, answers_only, follows, opens, resumable};
