@@ -11,13 +11,10 @@ publish.workspace = true
 # No default features: `all-widgets`, `macros` and `underline-color` buy nothing
 # here. `crossterm` is the backend `Measured` wraps.
 #
-# This pin and `sandbx-tui`'s must move together, and nothing enforces it.
-# `Screen::finish` avoids `Terminal::clear` because its cursor query would take
-# crossterm's *one* global reader lock that `Keys` may hold — a single lock only
-# while both crates resolve to the same `crossterm`. Bump one exact pin and not
-# the other and cargo links two, giving two reader mutexes and two copies of
-# `TERMINAL_MODE_PRIOR_RAW_MODE`: `Keys` and `Screen` would stop excluding each
-# other and `try_restore`'s raw-mode bookkeeping would split. `deny.toml` has
+# This pin and `sandbx-tui`'s must move together, and nothing enforces it: the
+# reader lock `Keys` holds and the raw-mode flag `try_restore` reads are crossterm
+# *globals*, so two resolved crossterms give two of each and the exclusion
+# `Screen::finish` relies on stops holding. `deny.toml` has
 # `multiple-versions = "warn"`, so that divergence does not fail the build (#352).
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
@@ -30,7 +27,7 @@ sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 
 [dev-dependencies]
 # `Errno` alone, to assert the pty's own `EIO` and not a size from elsewhere; no
-# feature gates it. Narrower than `sandbx-tui`'s `poll`, which nothing here calls.
+# feature gates it, hence none here where `sandbx-tui` takes `poll`.
 nix = { version = "0.31.3", default-features = false }
 # A hangup is tested by opening a pty pair and closing the master; the fixture's own
 # `//!` says why it is a crate and not a module (#344).

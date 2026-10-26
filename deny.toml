@@ -90,9 +90,8 @@ wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-tui-transcript"
-# One parent, not three: `sandbx-screen` re-exports `Transcript` because every one of its
-# entry points takes or returns one, so `sandbx-cli` reaches the type through that and
-# `sandbx-tui` dropped the edge with the screen it served (#352).
+# One parent, not three: `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
+# re-export, and `sandbx-tui` dropped the edge with the screen it served (#352).
 wrappers = ["sandbx-screen"]
 
 [[bans.deny]]
