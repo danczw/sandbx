@@ -3,11 +3,11 @@
 //! No `From` impls, and do not add one: every wrapped failure is paired with the path
 //! and operation it came from, which a blanket conversion would discard.
 //!
-//! Nothing here names a `SessionId`, deliberately: this is the type the rest of the
-//! session tree depends on, and `id.rs` returns it from all three of its fallible paths,
-//! so holding one would be a cycle (#346). `NotFound` carries the spelling instead,
-//! which costs the message nothing — `SessionId`'s `Display` writes the inner string and
-//! no more.
+//! Nothing here names a `SessionId`, deliberately: `id.rs` returns a `SessionError` from
+//! all three of its fallible paths, and this is the type the rest of the session tree
+//! depends on. The mutual reference compiles while both are modules of one crate and
+//! will not once they are two (#346, #358). `NotFound` carries the spelling instead, at
+//! no cost to the message: `SessionId`'s `Display` writes the inner string and no more.
 
 use std::path::PathBuf;
 
@@ -30,9 +30,9 @@ pub enum SessionError {
 
     /// There is no transcript under that id.
     NotFound {
-        /// The id that was asked for, which only a validated `SessionId` supplies —
-        /// which is why the message renders it unquoted where `InvalidIdentifier`,
-        /// carrying whatever was offered, quotes.
+        /// The id that was asked for. Only a validated `SessionId` supplies it, which is
+        /// why the message renders it unquoted where `InvalidIdentifier` — carrying
+        /// whatever was offered — quotes.
         id: String,
     },
 
