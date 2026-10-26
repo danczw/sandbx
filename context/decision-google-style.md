@@ -6,9 +6,16 @@ of its own, which of its rules are skipped, and the departures that are delibera
 The guide is the mechanism; this is what the choices were between, and what guards
 each departure against being re-proposed as an oversight.
 
-The rules marked *(Chromium)* are adopted — small crates, a flat layout. The ones
-marked *(Chrome)* are skipped: no async, no `std::thread`, `chromium::import!` and
-gtest each assume Chrome's runtime and build system, and sandbx has neither.
+The guide carries one tag, `[chrome]`, on five rules. Two are adopted here on their
+merits: small crates, and the flat file layout for a crate's sources. Three are
+skipped — no async, no `std::thread`, and the import mechanism — as is the Chrome
+bullet of "use the right per-codebase test framework". Those four assume Chrome's
+runtime or build system and sandbx has neither; the two adopted ones assume nothing
+beyond Cargo.
+
+Read the tag alone and you will conclude all five are out of scope, and that phases
+3 and 4 of the migration are building on rules the repo skips. They are not: the tag
+records which codebase asked for a rule, not whether it travels.
 [#328](https://github.com/danczw/sandbx/issues/328) tracks the migration, and its
 phase sub-issues hold the status — not this file.
 
@@ -30,9 +37,11 @@ visibility, and there is no tidier one.
 
 ## `use super::*` in a test module that moved to a file
 
-The guide permits `use super::*` only in an *inline* module. Every test module here
-is a sibling file instead — `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;` — so
-on a literal reading each one owes an explicit import list.
+The guide permits `use super::*` only in an *inline* module, and inline is what it
+assumes elsewhere too: its leaf-module rule names `mod test` as a submodule a leaf
+may have, so a file holding code and its tests breaks nothing. Every test module
+here is a sibling file instead — `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`
+— so on a literal reading each one owes an explicit import list.
 
 A test module in a file is the inline module with the braces replaced by a path
 attribute; nothing about what it may reach changed. Naming every private item it
@@ -49,10 +58,14 @@ this call is neither. It sits inside `Screen::drop`, and it stops a panic from
 the process is already unwinding, which loses the turn's earned exit code and the
 audit trail it still held (#264).
 
-So the mechanism *is* relied on, which is the part the guide refuses. This note does
-not settle it. Phase 6 (#335) either removes the need or records it here as an
-exception stating the condition that would retire it. Until then it is a known
-deviation with an issue against it, not a silence.
+So the mechanism *is* relied on, which is the part the guide refuses. It will not
+become an exception: phase 6 (#335) removes the need, and this section goes with the
+call. The backend ratatui fails to write through is `Measured`, which is sandbx's own
+type — so `Measured::show_cursor` can report success where the write failed, which
+clears the flag `Terminal::drop` reads and leaves it with nothing to report. #335
+holds the mechanism and the two alternatives that look right and are not.
+
+Until that lands it is a known deviation with an issue against it, not a silence.
 
 ## What the grace rule costs
 
