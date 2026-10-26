@@ -1,7 +1,7 @@
 # sandbx
 
-A security-first AI coding agent harness. Seven crates; the version is in the
-workspace `Cargo.toml`.
+A security-first AI coding agent harness. `context/guide-repo-map.md` holds the
+crate list; the version is in the workspace `Cargo.toml`.
 
 Where to look, and where to put something new:
 
