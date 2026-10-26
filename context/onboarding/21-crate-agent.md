@@ -64,9 +64,10 @@ and the crate deciding which tool calls happen cannot form an opinion about a
 ## `lib.rs` is thirteen names, and that is the whole API
 
 [`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is fifteen lines: four private
-`mod` declarations and four `pub use` lines, two of them braced, over five names
-and six — which is why the count is read off the items and not off the lines. The
-re-export list *is* the public surface, so group it by what each name is for:
+`mod` declarations and four `pub use` lines, three of them braced, over five
+names, two and five — which is why the count is read off the items and not off
+the lines. The re-export list *is* the public surface, so group it by what each
+name is for:
 
 | group | names |
 |---|---|
