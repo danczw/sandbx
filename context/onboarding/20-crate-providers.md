@@ -226,7 +226,7 @@ serializes to.
 ## `event.rs` — the vocabulary everything above speaks
 
 Ninety-six lines, no logic, and it is the file to read before any of
-`sandbx-agent`, `sandbx-tui` or the CLI's renderer. Seven events:
+`sandbx-agent`, `sandbx-tui-transcript` or the CLI's renderer. Seven events:
 
 | event | emitted | carries |
 |---|---|---|
@@ -282,7 +282,8 @@ operator reads before consenting to a tool call
 
 That crate's `//!` is where the reasoning lives now: why one table and not two,
 why what the sinks share is the hazard and not the replacement, and why neither
-`sandbx-core` nor `sandbx-tui` is the home. This chapter keeps only the fact
+`sandbx-core` nor the drawing crate is the home. This chapter keeps only the
+fact
 that the predicate is not this crate's: a hazard of model-chosen text is not a
 wire format, and nothing here imports it.
 

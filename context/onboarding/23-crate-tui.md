@@ -45,10 +45,11 @@ src/lib.rs          re-exports four names; no policy, no gate, no session here
 | [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
 Tests are inline, in the file whose private items they touch, as
-[guide-testing.md](../guide-testing.md) asks: `transcript.rs`,
-`view.rs` and `input.rs` carry a `mod tests`, neither crate has a `tests/`
-directory, and `screen.rs` has none — it is the one file that needs a real
-terminal.
+[guide-testing.md](../guide-testing.md) asks: all four of `transcript.rs`,
+`view.rs`, `input.rs` and `screen.rs` carry a `mod tests`, and neither crate has
+a `tests/` directory. `screen.rs`'s three are the #269 hangup trio, and they
+need a pty pair rather than a terminal; what no test reaches at all is
+`Screen::enter` and crossterm's reader, below.
 
 ## Four names out, and the manifests are the interesting half
 
@@ -100,12 +101,13 @@ sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 ```
 
-One internal crate in each build, and one more only for tests. `nix`'s `poll`
-feature is the production edge the hangup fix added (#264) — the key reader's
-whole mechanism for seeing a terminal that stopped answering, below and in
-[guide-tui.md](../guide-tui.md). The dev profile takes `sandbx-pty-fixture` for
-the pty pair a hangup test opens and the window it opens with; `serde_json` went
-with the fold it builds one call's input for. Read the production edges as a
+Two internal crates in the fold's build and one in the screen's, plus one more
+only for tests. `nix`'s `poll` feature is the production edge the hangup fix
+added (#264) — the key reader's whole mechanism for seeing a terminal that
+stopped answering, below and in [guide-tui.md](../guide-tui.md). The dev profile
+takes `sandbx-pty-fixture` for the pty pair a hangup test opens and the window
+it opens with; `serde_json` went with the fold it builds one call's input for.
+Read the production edges as a
 negative fact stated at the type level: **a renderer cannot leak what it cannot
 name.** With no edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or
 `sandbx-session` from either crate, nothing here can mention a `SandboxPolicy`,
@@ -733,8 +735,8 @@ an in-flight blocking task, and nothing waits for a `std::thread`.
   `sandbx-tui` exports, and why `Entry` and `Kind` are not among them.
 - Why `transcript.rs` and `view.rs` are one crate, which two of their items the
   split had to widen, and why the other six stayed `pub(crate)`.
-- What each crate's single internal dependency rules out as a build error, and
-  the two things neither rules out.
+- What each crate's internal dependencies rule out as a build error, and the
+  two things neither set rules out.
 - Why a terminal renderer is a sanitisation boundary, in terms of where the
   text in a cell came from, and why that file is also the one with real
   coverage.
