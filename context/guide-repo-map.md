@@ -273,11 +273,13 @@ src/lib.rs        CallGate, ToolCall, ApprovalDecision, Settled, Outcome — wha
 ```
 
 The shapes only: no policy, no channel to ask on, and nothing that decides.
-`sandbx-agent` asks through them and the three production implementors live in
-`sandbx-cli`, which is why both crates name it in `deny.toml` (#355). The trait
-is foreign in `sandbx-cli` and the gate types are local there, so the
-implementors need no edge back. Depends on `sandbx-tools` for the `BuiltinTool`
-a call names and the `ToolError` an outcome carries.
+`sandbx-agent` asks through them, the three production implementors are
+`sandbx-cli`'s, and both of those edges are why `deny.toml` names two wrappers
+(#355). Neither runs the other way: `CallGate` is foreign in `sandbx-cli` and
+the gate types local there, which the orphan rule permits, so this crate needs
+no edge to either of its parents and a later phase can move the asking without
+moving the asked. Depends on `sandbx-tools` for the `BuiltinTool` a call names
+and the `ToolError` an outcome carries.
 
 ## `sandbx-agent`
 
