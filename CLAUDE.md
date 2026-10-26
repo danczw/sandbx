@@ -20,10 +20,13 @@ Where to look, and where to put something new:
 | what shipped in which release | GitHub releases, and that release's milestone |
 
 The code follows the [Google Rust style
-guide](https://google.github.io/styleguide/rustguide.html) — every rule except
-those marked *(Chrome)* — except where `context/decision-google-style.md` records
-otherwise. While #328's migration runs, existing code is exempt from a rule until
-the phase that fixes it has landed; new and changed code follows the guide.
+guide](https://google.github.io/styleguide/rustguide.html), except where
+`context/decision-google-style.md` records otherwise. The guide tags five rules
+`[chrome]`: two of them, small crates and the flat file layout, are adopted here on
+their merits, and the other three are skipped. That file says which and why — read
+the tag alone and phases 3 and 4 look like they build on rules the repo skips.
+While #328's migration runs, existing code is exempt from a rule until the phase
+that fixes it has landed; new and changed code follows the guide.
 
 `SECURITY.md` may never overstate the sandbox. Where the mechanism and the claim
 disagree, one of them changes — the claim is weakened, or the mechanism is
@@ -76,8 +79,22 @@ diffstat to every invocation.
   branch, not only a diffstat mismatch.
 - **A stale diff**, a tree some commits behind the head, where the diffstat is
   the only tell. `git diff | wc -l` is not the diffstat.
+- **A diff that is not the one you asked for.** `/code-review` honours an
+  explicit base; `/security-review` computes its own against `origin/main`
+  whatever it is handed. On a stacked branch that is a superset, so nothing
+  escapes — but it is a poor guide to what the top commit changed, and the
+  mismatch is not an error. Re-measure both ranges and state them in the PR body.
 
 A review over the wrong lines is not a pass.
+
+The gate commands are `.githooks/pre-commit`'s, and the doc one is the trap: CI
+(`ci.yml:57`) and the hook (`.githooks/pre-commit:15`) both run
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+--document-private-items --all-features`. Without `--document-private-items`
+rustdoc does not check links inside private items, so the shorter form exits 0 on
+a broken link that fails CI — and a moved file's `crate::` links are exactly that
+class. Run the hook's line, after touching every `src/lib.rs` or the answer comes
+from cache.
 
 The comment pass: read every comment the branch added or touched against the Google
 guide's documentation rules, and cut what does not earn its line — a restated name, a
