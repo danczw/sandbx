@@ -262,9 +262,10 @@ the same".
 [`sandbx-approval`](../../crates/sandbx-approval/src/lib.rs) — 110 lines holding
 four types and the trait, and no policy at all: no risk table, no allowlist, no
 default verdict. `sandbx-agent` kept the asking, so `run_turn`'s fifth parameter
-is unchanged and the two sites that call it are still `turn/tools.rs`'s; what
-moved is where the vocabulary is declared, and the three production
-implementors were never here to begin with — they are `sandbx-cli`'s.
+is unchanged and both the trait's methods are still called from
+`turn/tools.rs`; what moved is where the vocabulary is declared, and the three
+production implementors were never here to begin with — they are
+`sandbx-cli`'s.
 
 Every judgement is the caller's gate's, which for the shipped binary is
 `ArgvGate` in `sandbx-cli`; [13](13-turn-loop-and-gate.md) is the chapter for
