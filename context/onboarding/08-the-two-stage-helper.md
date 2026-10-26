@@ -58,7 +58,7 @@ the next two sections are about.
   the helper at a path instead. It is for tests, whose harness `main` has no
   dispatch of its own and so cannot be its own helper; they point it at the
   standalone
-  [`sandbx-helper`](../../crates/sandbx-core/src/bin/sandbx-helper.rs) binary. A
+  [`sandbx-helper`](../../crates/sandbx-helper/src/main.rs) binary. A
   path is not an inode, and [`SECURITY.md`](../../SECURITY.md) names that as a
   limit rather than leaving it implied.
 

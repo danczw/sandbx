@@ -275,7 +275,7 @@ floor, with the expected strings built from the constants rather than
 hard-coded. The seven are [`SECURITY.md`](../../SECURITY.md) and
 [`README.md`](../../README.md); [`ci.yml`](../../.github/workflows/ci.yml);
 `sandbx-core`'s [`Cargo.toml`](../../crates/sandbx-core/Cargo.toml) and its
-[`enforcement.rs`](../../crates/sandbx-core/tests/enforcement.rs); and two
+[`enforcement.rs`](../../crates/sandbx-helper/tests/enforcement.rs); and two
 `context/` files, [guide-sandboxing.md](../guide-sandboxing.md) and
 [decision-port-allowlist.md](../decision-port-allowlist.md).
 

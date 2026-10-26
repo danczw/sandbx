@@ -32,7 +32,7 @@ the crate is what lets it stay that way.
 |---|---|
 | touches a private or `pub(crate)` item | `foo_tests.rs`, beside `foo.rs` |
 | drives the crate's public API | `crates/<crate>/tests/<topic>.rs` |
-| needs a sandbox-capable kernel | `crates/sandbx-core/tests/`, behind `sandbox-integration` |
+| needs a sandbox-capable kernel | `crates/sandbx-helper/tests/`, behind `sandbox-integration` |
 
 `use super::*` in that sibling module is a recorded departure from the guide, not an
 oversight; `decision-google-style.md` says why.

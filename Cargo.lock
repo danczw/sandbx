@@ -1676,12 +1676,25 @@ name = "sandbx-core"
 version = "0.1.0-alpha.18"
 dependencies = [
  "caps",
- "io-uring",
  "landlock",
  "libc",
  "nix",
  "seccompiler",
  "sha2",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sandbx-helper"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "caps",
+ "io-uring",
+ "libc",
+ "nix",
+ "sandbx-core",
  "tempfile",
  "tracing",
  "tracing-subscriber",

@@ -52,7 +52,7 @@ third column.
 | [`concealment.rs`](../../crates/sandbx-core/src/concealment.rs) | `conceal_process_state` — the one step aimed at sandbx itself | below |
 | [`error/sandbox.rs`](../../crates/sandbx-core/src/error/sandbox.rs) | `SandboxError`, `Access`, and the label the trail is filtered by | below |
 | [`error/refusal.rs`](../../crates/sandbx-core/src/error/refusal.rs) | `HelperRefusal`, and `decided_by`: the one place the two sets are mapped and every label is spelled | below |
-| [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs) | a standalone helper binary, so the enforcement path tests end to end | below |
+| [`sandbx-helper/src/main.rs`](../../crates/sandbx-helper/src/main.rs) | a standalone helper binary, so the enforcement path tests end to end — its own crate since #347 | below |
 | `helper/seccomp/tests/` | four unit-test files, over a `bpf.rs` holding the `eval` interpreter they read the filter through and tests of its own | [10](10-seccomp.md) |
 | `helper/ruleset/tests/` | five unit-test files, all kernel-free, over a `mod.rs` that holds only their shared fixtures | [09](09-landlock.md) |
 
@@ -104,7 +104,7 @@ flowchart LR
         M["twelve private modules"] --> L["lib.rs, the only public surface"]
     end
     L --> O["another crate's src/"]
-    L --> H["bin/sandbx-helper.rs"]
+    L --> H["sandbx-helper/src/main.rs"]
     L --> T["crates/sandbx-core/tests/"]
 ```
 
@@ -130,7 +130,7 @@ cleanly:
   These are public because what they hang off is — and no consumer writes
   `ReadableWalk`, since `grep` and `find` bind the walk without spelling it.
 - **Needed by a second binary.** `with_helper_dispatch` and `HELPER_FLAG` are
-  what [`bin/sandbx-helper.rs`](../../crates/sandbx-core/src/bin/sandbx-helper.rs)
+  what [`sandbx-helper/src/main.rs`](../../crates/sandbx-helper/src/main.rs)
   calls, and a `[[bin]]` links the library as an external crate — so "public"
   there means "reachable from a binary". That file has no ordinary mode: its
   closure is a usage error. There is a second such binary outside this crate,
@@ -141,7 +141,7 @@ cleanly:
   harness ships a binary that does nothing else. `HELPER_INNER_FLAG` is public
   for the same kind of reason as the next bullet's pair: its own doc comment
   says it is public only so a test can invoke the inner stage directly, in
-  `crates/sandbx-core/tests/enforcement.rs` and `tests/audit_channel.rs`.
+  `crates/sandbx-helper/tests/enforcement.rs` and its `tests/audit_channel.rs`.
 - **Needed by an integration test.** `HelperArgs` and `BLOCKED_SYSCALLS` are
   read by targets under `crates/sandbx-core/tests/`, a separate crate that sees
   only the public surface — the last section of this chapter is that trade.
@@ -419,7 +419,7 @@ Five facts the one-line body does not show.
   no same-uid debugger attach, so `gdb -p` and `strace -p` against a running
   sandbx are refused.
 
-The test is `crates/sandbx-core/tests/concealment.rs`, and it is cross-process
+The test is `crates/sandbx-helper/tests/concealment.rs`, and it is cross-process
 because the claim is that what the flag stops is a same-uid reader, and only a
 second process can be one. It spawns `sandbx-concealment-probe`, reads the
 probe's `environ` before concealment, asserts a marker variable is actually in
@@ -654,34 +654,43 @@ then one file per topic — and both `mod.rs` files open by saying they are
 kernel-free: the seccomp set evaluates the filter program through an `eval`
 interpreter rather than installing it, and the ruleset set takes the ABI as a
 parameter. Neither needs root, a network namespace or a Landlock-capable host,
-so both run in the ordinary `cargo test`. `crates/sandbx-core/tests/` holds
-fifteen targets in three groups, by what gates them: the **ungated** public
-contracts (`command.rs`, `fs_guard.rs`, `helper_args.rs`, `policy.rs`,
-`audit.rs`, `concealment.rs`) plus `context_docs.rs`, a documentation test this
-crate hosts for the whole repo because it already reaches the repo root;
-`denylist.rs` and `capability_coverage.rs` under
-**`#![cfg(target_os = "linux")]`** only, which spawn nothing and so, as their
-module docs put it, "run where the enforcement suite cannot"; and
-`enforcement.rs` with its three siblings, `audit_channel.rs` and
-`audit_outcome.rs` under
-**`#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`** — gated
-whole-file rather than per test, because with the feature off `-D warnings`
-would reject the capture harness as dead code.
+so both run in the ordinary `cargo test`. Since #347 split the suite along the
+one line that matters — whether a test spawns the helper binary —
+`crates/sandbx-core/tests/` holds eight targets and **not one of them is
+gated**: the public contracts (`command.rs`, which is what an argv encodes and
+parses, `fs_guard.rs`, `helper_args.rs`, `policy.rs`, `audit.rs`) plus
+`context_docs.rs`, a documentation test this crate hosts for the whole repo
+because it already reaches the repo root, and `denylist.rs` and
+`capability_coverage.rs` under **`#![cfg(target_os = "linux")]`** only, which
+spawn nothing and so, as their module docs put it, "run where the enforcement
+suite cannot".
 
-`tests/support/` is two things in one directory. `mod.rs` is an ordinary module
-the enforcement targets include — `vetted`, `runtime_paths`, `allow_probe`,
-`run`, `run_pinned` — and its doc states a convention worth knowing: it holds
-**the intersection only**, because `dead_code` is per test crate, so a helper
-one target does not use warns there and belongs in the file that uses it.
-Everything else beside it is a `[[bin]]` probe declared in
-[`Cargo.toml`](../../crates/sandbx-core/Cargo.toml) — nine of them, every one
+Everything behind
+**`#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`** is
+`sandbx-helper`'s now — `enforcement.rs` with its three siblings,
+`audit_channel.rs`, `audit_outcome.rs`, `concealment.rs`, the half of
+`command.rs` that spawns the binary, and the whole of `tests/support/`. They
+moved because `CARGO_BIN_EXE_sandbx-helper` is set only for a bin of the same
+package, so a suite that drives the binary has to live beside it. The gate is
+still whole-file rather than per test, for the reason it always was: with the
+feature off, `-D warnings` would reject the capture harness as dead code.
+
+`tests/support/`, over in `sandbx-helper`, is two things in one directory.
+`mod.rs` is an ordinary module the enforcement targets include — `vetted`,
+`runtime_paths`, `allow_probe`, `run`, `run_pinned` — and its doc states a
+convention worth knowing: it holds **the intersection only**, because
+`dead_code` is per test crate, so a helper one target does not use warns there
+and belongs in the file that uses it. Everything else beside it is a `[[bin]]`
+probe declared in
+[`Cargo.toml`](../../crates/sandbx-helper/Cargo.toml) — ten of them, every one
 behind `required-features = ["sandbox-integration"]` except
 `sandbx-concealment-probe`, which needs no Landlock ABI, "only a second process
 to be concealed from". Two manifest comments there are small lessons in their
 own right: `io-uring` is `optional = true` rather than a dev-dependency because
 the probe that reaches `io_uring_setup` is a `[[bin]]` and "a `[[bin]]` cannot
-see dev-dependencies", and `seccompiler` is pinned to a caret range with a note
-that widening past it needs the `eval` interpreter in
+see dev-dependencies" — which is also why `nix` is a real dependency of that
+crate — and back in this one `seccompiler` is pinned to a caret range with a
+note that widening past it needs the `eval` interpreter in
 `helper/seccomp/tests/bpf.rs` to learn any new opcode first, because it panics
 by name — failing loudly rather than evaluating an instruction it does not
 understand.
