@@ -47,6 +47,12 @@ command -v jq >/dev/null 2>&1 || {
 # take jq's exit status, leave `$libs` empty, and send every crate down the no-lib branch
 # — aborting on the first committed baseline with an error about a lost lib target.
 metadata=$(cargo metadata --format-version 1 --no-deps)
+# Two lists, because "cargo does not know this name" and "this crate has no lib" are
+# different faults and only one of them is a legitimate skip. The loop below keys on the
+# *directory* name, since that is what gives the baseline its path, and `cargo public-api
+# -p` keys on the *package* name — so a directory whose name is not its package's is a
+# crate this script cannot address, and saying "no lib target" about it would be a lie.
+packages=$(printf '%s' "$metadata" | jq -r '.packages[].name' | sort -u)
 # Every library kind, not `lib` alone: a `crate-type` of `rlib` or `cdylib` is still a
 # surface, and keying on `lib` would skip it with no baseline and no complaint.
 libs=$(printf '%s' "$metadata" | jq -r '
@@ -57,6 +63,12 @@ libs=$(printf '%s' "$metadata" | jq -r '
 
 for manifest in crates/*/Cargo.toml; do
     crate=$(basename "$(dirname "$manifest")")
+
+    if ! printf '%s\n' "$packages" | grep -qx "$crate"; then
+        echo "::error::crates/$crate is not a package name cargo knows."
+        echo "::error::This script addresses crates by directory name, so the two must match."
+        exit 1
+    fi
 
     if ! printf '%s\n' "$libs" | grep -qx "$crate"; then
         # Skipping a bin-only crate is right. Skipping one that *lost* its lib target is
