@@ -9,14 +9,14 @@ read as a graph, plus the manifest machinery that makes the graph binding rather
 than advisory.
 
 [guide-repo-map.md](../guide-repo-map.md) is the authority for the module trees
-inside each crate. This chapter is about the seven boxes and the arrows between
-them.
+inside each crate, and for the current crate list. This chapter is about the
+boxes and the arrows between them.
 
 ## The graph
 
-Seven crates under `members = ["crates/*"]`, and every internal edge is a path
-dependency. Read an arrow as "may name the types of", and look for the three
-crates no arrow leaves:
+Every crate is a member of `members = ["crates/*"]`, and every internal edge is
+a path dependency. Read an arrow as "may name the types of", and look for the
+three crates no arrow leaves:
 
 ```mermaid
 flowchart TD
@@ -78,6 +78,7 @@ Four things about that shape are worth more than the picture.
 | `sandbx-tools` | the seven built-ins, each confined by core | `BuiltinTool`, `ExecutionContext` |
 | `sandbx-providers` | hand-rolled streaming clients against an LLM API | `EventStream`, `Prompt` |
 | `sandbx-agent` | the turn loop, and the gate a caller must supply | `run_turn`, `CallGate` |
+| `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
 | `sandbx-session` | the on-disk transcript: an id, a root, append-only JSONL | `SessionStore` |
 | `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |
 | `sandbx-cli` | parsing, policy derivation, the five subcommand bodies | `Cli`, `Command`, `Grants` |
@@ -179,9 +180,9 @@ reach for `unsafe` — a `fork` between the namespaces and the `exec` — and
 against a mechanism it ruled out.
 
 - **Worth questioning:** the opt-in is per crate and cargo offers no way to
-  require it. An eighth crate that omits `[lints] workspace = true` gets none of
+  require it. A crate added without `[lints] workspace = true` gets none of
   the three — no forbidden `unsafe`, no mandatory docs, no `Command::new` ban —
-  and nothing in the build or in CI would say so. All seven opt in today, so
+  and nothing in the build or in CI would say so. Every crate opts in today, so
   `SECURITY.md`'s "`unsafe` is forbidden workspace-wide" is true as written; no
   `decision-*.md` records the choice, because there is nothing to choose between
   — the gap is cargo's. What makes it worth raising anyway is that the repo
