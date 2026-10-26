@@ -6,9 +6,10 @@ names twice in View 3: **the provider seam** at
 boundary** at [`anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs)
 and below. In View 2 it is one line — `open(request)` at the top of every round.
 In View 1 it is nowhere, because nothing in here spawns a process or installs a
-kernel rule. It has no internal dependency — one of the three that could be
-lifted out of the workspace and still compile, beside `sandbx-core` and
-`sandbx-session-message`.
+kernel rule. It has no internal dependency, so it could be lifted out of the
+workspace and still compile. `guide-repo-map.md`'s table has the others, and is
+the place to count them: #332 is still adding crates, so a number written here
+would be wrong by the next extraction.
 
 [02 — what a harness is](02-what-a-harness-is.md) is the on-ramp, and it owns
 the protocol: the stateless `POST /v1/messages`, `tool_use`/`tool_result`

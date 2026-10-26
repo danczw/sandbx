@@ -46,11 +46,12 @@ flowchart TD
 
 Four things about that shape are worth more than the picture.
 
-- **Three crates have no internal dependency at all,** and each of the three
-  owns exactly one thing that outlives the call: `sandbx-core` owns the kernel,
-  `sandbx-providers` owns the wire, `sandbx-session-message` owns the file
-  format that `sandbx-session` writes to the disk. None of the three can name
-  another's types, which is why a stored transcript is not a `Prompt` and a
+- **Three crates own something that outlives the call, and none of them has an
+  internal dependency:** `sandbx-core` owns the kernel, `sandbx-providers` owns
+  the wire, `sandbx-session-message` owns the file format that `sandbx-session`
+  writes to the disk. Other crates have no internal dependency either — that is
+  not what picks these three out. None of the three can name another's types,
+  which is why a stored transcript is not a `Prompt` and a
   `SandboxPolicy` is not a request body. The crate doc on
   [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs)
   says the consequence out loud — the stored shapes are declared there rather

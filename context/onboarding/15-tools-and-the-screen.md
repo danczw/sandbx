@@ -370,16 +370,16 @@ may *draw* one — which is what `forgeable` is:
 
 ```rust
 /// Whether `c` draws the cell [`GUTTER_MARK`] draws, and so could claim a row as sandbx's.
-/// Three sets, bounded per arm below: box drawing's verticals, the extensions drawn to tile
-/// vertically, and single-cell vertical strokes outside both. A denylist, for
-/// [`invisible`]'s reason. ASCII `|` is excluded, having to survive a shell pipeline in
-/// prose — why the gutter is box-drawing at all. A vertical joining across rows where `|`
-/// doesn't is font-dependent, too weak to rely on instead.
+/// Four sets, each bounded in its arm below. A denylist, for [`invisible`]'s reason.
+/// ASCII `|` is excluded, having to survive a shell pipeline in prose — which is why the
+/// gutter is box-drawing instead, a `|` joining across rows being font-dependent.
 ```
 
-Only the first of the three is a *scope*: it is the Box Drawing block swept
-against Unicode's names, so an addition there is checkable. The other two are
-enumerations, and that is the part of #276 the fix does not close — Unicode's
+Only the first of the four is a *scope*: it is the Box Drawing block swept
+against Unicode's names, so an addition there is checkable. The other three —
+the extensions drawn to tile vertically, the single-cell strokes outside both
+blocks, and the combining marks that draw a vertical on their base (#280) — are
+enumerations, and that is the part of #276 the fix does not close: Unicode's
 confusables data is not in the tree to derive a scope from.
 
 This is the paragraph that answers "why does a rendering crate get a security
