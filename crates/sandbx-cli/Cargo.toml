@@ -22,6 +22,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 nix = { version = "0.31.3", default-features = false, features = ["term"] }
 sandbx-agent = { path = "../sandbx-agent" }
 sandbx-core = { path = "../sandbx-core" }
+sandbx-logging = { path = "../sandbx-logging" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-session = { path = "../sandbx-session" }
 sandbx-tools = { path = "../sandbx-tools" }
@@ -35,11 +36,6 @@ tokio = { version = "1.53.1", default-features = false, features = [
   "net",
   "rt",
   "time",
-] }
-# `tracing` discards every event when no subscriber is installed, and a library
-# cannot install one; this crate owns the workspace's only subscriber.
-tracing-subscriber = { version = "0.3.23", default-features = false, features = [
-  "fmt",
 ] }
 # `sandbx-providers` does not re-export `secrecy`; keep this at the version it
 # resolves, or `AnthropicClient::new` takes a different `SecretString`.
@@ -58,7 +54,6 @@ serde_json = "1.0.151"
 # `poll` on top of the production `term`: the typeahead drain is tested over a real pty,
 # and the pair has to be known readable before the drain runs or the test asserts nothing.
 nix = { version = "0.31.3", default-features = false, features = ["term", "poll"] }
-tracing = "0.1.44"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 
 [lints]

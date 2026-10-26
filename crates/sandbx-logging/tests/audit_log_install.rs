@@ -7,11 +7,11 @@
 #[test]
 fn a_second_install_is_reported_rather_than_panicking() {
     assert!(
-        sandbx_cli::logging::init().is_ok(),
+        sandbx_logging::init().is_ok(),
         "the first install in a process must succeed"
     );
     assert!(
-        sandbx_cli::logging::init().is_err(),
+        sandbx_logging::init().is_err(),
         "a second install must report, not panic or silently replace the first"
     );
 }

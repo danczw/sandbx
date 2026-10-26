@@ -2,11 +2,11 @@
 //!
 //! The composition is what was untested, and it is why #266 stood undiagnosable. The
 //! other two files each cover half of it: `audit_log.rs` drives `subscriber(…)` over a
-//! closure writer, never `Audit`; `logging.rs`'s own tests drive `Audit` and `HELD` with
+//! closure writer, never `Audit`; `lib.rs`'s own tests drive `Audit` and `HELD` with
 //! no subscriber installed. Neither reaches `emit` → the global layer → `Audit::write` →
 //! `HELD` → `Held::drop` → stderr, which is the path `tui` actually runs.
 //!
-//! Its own binary, because `logging::init` installs a process-global subscriber — the same
+//! Its own binary, because `init` installs a process-global subscriber — the same
 //! reason `audit_log_install.rs` holds exactly one test.
 //!
 //! Stderr has to be the real descriptor for the ordering to mean anything: `Held::drop`
@@ -71,9 +71,9 @@ fn a_record_emitted_under_a_hold_reaches_stderr_when_the_hold_ends() {
 
 /// The other half, run in the re-exec: install, hold, emit, release.
 fn held_run() {
-    sandbx_cli::logging::init().expect("the first install in a process should succeed");
+    sandbx_logging::init().expect("the first install in a process should succeed");
 
-    let held = sandbx_cli::logging::hold();
+    let held = sandbx_logging::hold();
 
     // From a blocking task, not from here: a tool emits on whichever thread
     // `spawn_blocking` gave it, and a subscriber scoped to the asking thread would see

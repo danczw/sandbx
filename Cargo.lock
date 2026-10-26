@@ -1658,6 +1658,7 @@ dependencies = [
  "nix",
  "sandbx-agent",
  "sandbx-core",
+ "sandbx-logging",
  "sandbx-providers",
  "sandbx-session",
  "sandbx-tools",
@@ -1667,8 +1668,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -1696,6 +1695,17 @@ dependencies = [
  "nix",
  "sandbx-core",
  "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sandbx-logging"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "sandbx-core",
+ "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

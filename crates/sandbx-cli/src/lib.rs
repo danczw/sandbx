@@ -9,7 +9,6 @@ mod error;
 mod grants;
 mod hash;
 mod invocation;
-pub mod logging;
 mod sandbox;
 mod session;
 

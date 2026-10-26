@@ -1,35 +1,4 @@
 pub mod sandbx_cli
-pub mod sandbx_cli::logging
-pub struct sandbx_cli::logging::Audit
-impl core::clone::Clone for sandbx_cli::logging::Audit
-pub fn sandbx_cli::logging::Audit::clone(&self) -> sandbx_cli::logging::Audit
-impl core::io::write::Write for sandbx_cli::logging::Audit
-pub fn sandbx_cli::logging::Audit::flush(&mut self) -> core::io::error::Result<()>
-pub fn sandbx_cli::logging::Audit::write(&mut self, &[u8]) -> core::io::error::Result<usize>
-impl core::marker::Copy for sandbx_cli::logging::Audit
-impl tracing_subscriber::fmt::writer::MakeWriter<'_> for sandbx_cli::logging::Audit
-pub type sandbx_cli::logging::Audit::Writer = sandbx_cli::logging::Audit
-pub fn sandbx_cli::logging::Audit::make_writer(&self) -> Self::Writer
-impl core::marker::Freeze for sandbx_cli::logging::Audit
-impl core::marker::Send for sandbx_cli::logging::Audit
-impl core::marker::Sync for sandbx_cli::logging::Audit
-impl core::marker::Unpin for sandbx_cli::logging::Audit
-impl core::marker::UnsafeUnpin for sandbx_cli::logging::Audit
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::logging::Audit
-impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::logging::Audit
-pub struct sandbx_cli::logging::Held(_)
-impl core::ops::drop::Drop for sandbx_cli::logging::Held
-pub fn sandbx_cli::logging::Held::drop(&mut self)
-impl core::marker::Freeze for sandbx_cli::logging::Held
-impl core::marker::Send for sandbx_cli::logging::Held
-impl core::marker::Sync for sandbx_cli::logging::Held
-impl core::marker::Unpin for sandbx_cli::logging::Held
-impl core::marker::UnsafeUnpin for sandbx_cli::logging::Held
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::logging::Held
-impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::logging::Held
-pub fn sandbx_cli::logging::hold() -> sandbx_cli::logging::Held
-pub fn sandbx_cli::logging::init() -> core::result::Result<(), tracing_subscriber::util::TryInitError>
-pub fn sandbx_cli::logging::subscriber<W>(W) -> impl tracing_subscriber::util::SubscriberInitExt where W: for<'writer> tracing_subscriber::fmt::writer::MakeWriter<'writer> + core::marker::Send + core::marker::Sync + 'static
 pub enum sandbx_cli::AgentError
 pub sandbx_cli::AgentError::ApproveUnderTui
 pub sandbx_cli::AgentError::Credential(sandbx_cli::AuthError)

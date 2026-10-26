@@ -1,0 +1,31 @@
+pub mod sandbx_logging
+pub struct sandbx_logging::Audit
+impl core::clone::Clone for sandbx_logging::Audit
+pub fn sandbx_logging::Audit::clone(&self) -> sandbx_logging::Audit
+impl core::io::write::Write for sandbx_logging::Audit
+pub fn sandbx_logging::Audit::flush(&mut self) -> core::io::error::Result<()>
+pub fn sandbx_logging::Audit::write(&mut self, &[u8]) -> core::io::error::Result<usize>
+impl core::marker::Copy for sandbx_logging::Audit
+impl tracing_subscriber::fmt::writer::MakeWriter<'_> for sandbx_logging::Audit
+pub type sandbx_logging::Audit::Writer = sandbx_logging::Audit
+pub fn sandbx_logging::Audit::make_writer(&self) -> Self::Writer
+impl core::marker::Freeze for sandbx_logging::Audit
+impl core::marker::Send for sandbx_logging::Audit
+impl core::marker::Sync for sandbx_logging::Audit
+impl core::marker::Unpin for sandbx_logging::Audit
+impl core::marker::UnsafeUnpin for sandbx_logging::Audit
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_logging::Audit
+impl core::panic::unwind_safe::UnwindSafe for sandbx_logging::Audit
+pub struct sandbx_logging::Held(_)
+impl core::ops::drop::Drop for sandbx_logging::Held
+pub fn sandbx_logging::Held::drop(&mut self)
+impl core::marker::Freeze for sandbx_logging::Held
+impl core::marker::Send for sandbx_logging::Held
+impl core::marker::Sync for sandbx_logging::Held
+impl core::marker::Unpin for sandbx_logging::Held
+impl core::marker::UnsafeUnpin for sandbx_logging::Held
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_logging::Held
+impl core::panic::unwind_safe::UnwindSafe for sandbx_logging::Held
+pub fn sandbx_logging::hold() -> sandbx_logging::Held
+pub fn sandbx_logging::init() -> core::result::Result<(), tracing_subscriber::util::TryInitError>
+pub fn sandbx_logging::subscriber<W>(W) -> impl tracing_subscriber::util::SubscriberInitExt where W: for<'writer> tracing_subscriber::fmt::writer::MakeWriter<'writer> + core::marker::Send + core::marker::Sync + 'static
