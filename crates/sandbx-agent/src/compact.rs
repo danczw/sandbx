@@ -6,9 +6,9 @@
 //! *prefix* drops, onto the new first message, which [`opens_a_request`] decides; that makes
 //! the legal cut points exactly the human prose turns. See `context/guide-turn-loop.md`.
 //!
-//! [`PromptUsage`] is declared here and not beside `Turn::observed`, which is where it reads
-//! as belonging: it is the measurement compaction asks about, and the turn depends on
-//! compaction rather than the reverse, so this is the side of the edge it can sit on (#345).
+//! [`PromptUsage`] is declared here and not beside `Turn::observed`, where it reads as
+//! belonging: the turn depends on compaction and not the reverse, so this is the side of
+//! the edge it can sit on (#345).
 
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
 
