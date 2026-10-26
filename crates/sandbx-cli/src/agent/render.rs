@@ -6,7 +6,8 @@
 
 use std::io::Write;
 
-use sandbx_providers::{AgentEvent, invisible};
+use sandbx_providers::AgentEvent;
+use sandbx_text::invisible;
 
 use super::prompt::{APPROVE_CALL, account};
 use super::{INCOMPLETE, NO_CONSENT};

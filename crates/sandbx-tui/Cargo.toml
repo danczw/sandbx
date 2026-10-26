@@ -27,6 +27,7 @@ nix = { version = "0.31.3", default-features = false, features = ["poll"] }
 # `TIOCGWINSZ`, and this is the rustix crossterm already builds.
 rustix = { version = "1.1.4", default-features = false, features = ["std", "termios"] }
 sandbx-providers = { path = "../sandbx-providers" }
+sandbx-text = { path = "../sandbx-text" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }

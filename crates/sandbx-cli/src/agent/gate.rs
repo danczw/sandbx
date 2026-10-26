@@ -5,7 +5,7 @@
 //! call.
 
 use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
-use sandbx_providers::invisible;
+use sandbx_text::invisible;
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
 use super::prompt::{Operator, to_stderr};
