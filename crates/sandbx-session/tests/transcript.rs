@@ -446,6 +446,23 @@ fn an_unknown_id_is_refused_not_started() {
     assert!(!store.root().join("zzzzzzzz.jsonl").exists());
 }
 
+/// The rendering, not just the variant: #346 changed what `NotFound` carries from a
+/// `SessionId` to its spelling, and the message was the one thing that could have
+/// changed with it. Nothing else pins this string — it exists only in the `Display` arm.
+#[test]
+fn an_unknown_id_is_named_in_the_refusal() {
+    let (_root, store) = store();
+    let absent = SessionId::from_str("zzzzzzzz").unwrap();
+
+    let err = store.resume(&absent).unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "there is no session zzzzzzzz",
+        "the refusal no longer names the id that was asked for"
+    );
+}
+
 #[test]
 fn a_future_version_is_refused_not_guessed() {
     let (_root, store) = store();
