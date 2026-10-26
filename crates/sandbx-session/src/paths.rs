@@ -7,7 +7,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::SessionError;
+use sandbx_session_error::SessionError;
 
 /// The session directory, below whichever state home is in play.
 const DIRECTORY: &str = "sandbx/sessions";

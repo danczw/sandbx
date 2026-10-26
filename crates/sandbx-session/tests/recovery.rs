@@ -3,7 +3,8 @@
 //! Apart from `transcript.rs`, which pins the format's own rules: here the file is
 //! already damaged or the turn already odd.
 
-use sandbx_session::{SessionError, SessionStore};
+use sandbx_session::SessionStore;
+use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 
 fn store() -> (tempfile::TempDir, SessionStore) {
