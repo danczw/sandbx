@@ -41,20 +41,14 @@ tokio = { version = "1.53.1", default-features = false, features = [
   "rt",
   "time",
 ] }
-# `sandbx-providers` does not re-export `secrecy`; keep this at the version it
-# resolves, or `AnthropicClient::new` takes a different `SecretString`.
-secrecy = "0.10.3"
-toml = { version = "1.1.6", default-features = false, features = [
-  "parse",
-  "display",
-  "serde",
-] }
-tempfile = "3.27.0"
 # A tool call's arguments arrive as `serde_json::Value`, and the gate reads a subject out
 # of them to report; the version must match whatever `sandbx-agent` resolves.
 serde_json = "1.0.151"
 
 [dev-dependencies]
+# Test-only since #349 took the credential file's `NamedTempFile` with it; every use
+# left here is a fixture.
+tempfile = "3.27.0"
 # `poll` on top of the production `term`: the typeahead drain is tested over a real pty,
 # and the pair has to be known readable before the drain runs or the test asserts nothing.
 nix = { version = "0.31.3", default-features = false, features = ["term", "poll"] }

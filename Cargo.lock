@@ -1686,11 +1686,9 @@ dependencies = [
  "sandbx-text",
  "sandbx-tools",
  "sandbx-tui",
- "secrecy",
  "serde_json",
  "tempfile",
  "tokio",
- "toml",
 ]
 
 [[package]]
