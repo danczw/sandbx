@@ -85,16 +85,22 @@ name = "sandbx-tui"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
+name = "sandbx-screen"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
 name = "sandbx-tui-transcript"
-# `sandbx-cli` is absent: it reaches `Transcript` through `sandbx-tui`'s re-export, not an
-# edge of its own. Nor is `sandbx-screen`, which does not exist until #352 adds itself here.
-wrappers = ["sandbx-tui"]
+# One parent, not three: `sandbx-screen` re-exports `Transcript` because every one of its
+# entry points takes or returns one, so `sandbx-cli` reaches the type through that and
+# `sandbx-tui` dropped the edge with the screen it served (#352).
+wrappers = ["sandbx-screen"]
 
 [[bans.deny]]
 name = "sandbx-pty-fixture"
 # A dev-dependency edge, so this crate is in nobody's build; the entry is what keeps a
-# production edge from being added without a line here.
-wrappers = ["sandbx-tui"]
+# production edge from being added without a line here. Two parents: both halves of the
+# old `sandbx-tui` drive a pty, the screen for a hangup and the keys for a reader.
+wrappers = ["sandbx-screen", "sandbx-tui"]
 
 [[bans.deny]]
 name = "sandbx-text"

@@ -1681,6 +1681,7 @@ dependencies = [
  "sandbx-core",
  "sandbx-logging",
  "sandbx-providers",
+ "sandbx-screen",
  "sandbx-session",
  "sandbx-session-error",
  "sandbx-session-message",
@@ -1755,6 +1756,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-screen"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "nix",
+ "ratatui",
+ "rustix",
+ "sandbx-pty-fixture",
+ "sandbx-tui-transcript",
+]
+
+[[package]]
 name = "sandbx-session"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1804,9 +1816,7 @@ version = "0.1.0-alpha.18"
 dependencies = [
  "nix",
  "ratatui",
- "rustix",
  "sandbx-pty-fixture",
- "sandbx-tui-transcript",
  "tokio",
 ]
 

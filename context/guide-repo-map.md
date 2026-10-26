@@ -38,7 +38,8 @@ sandbx-session-error ───────────────────�
 sandbx-session-message ─────────────────────┤
 sandbx-text ──────┬─────────────────────────┤
 sandbx-providers ─┴─► sandbx-tui-transcript │
-                          └──► sandbx-tui ──┘
+                       └──► sandbx-screen ──┤
+sandbx-tui ─────────────────────────────────┘
 ```
 
 `sandbx-logging` depends on `sandbx-core` for `AUDIT_TARGET` alone — the target
@@ -51,10 +52,11 @@ constant, not a mechanism.
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | approval, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, session, session-error, session-message, text, tools, tui |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, screen, session, session-error, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-error, session-message |
-| `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | tui-transcript (pty-fixture is *dev*-only) |
+| `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
+| `sandbx-tui` | the keys that stop a turn, and what a hangup means | — (pty-fixture is *dev*-only) |
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
@@ -75,11 +77,13 @@ shapes and the provider's, and it is where a `SessionError` becomes something
 else. That is why `deny.toml` names both parents in each of those two blocks,
 while `sandbx-session`'s own names `sandbx-cli` alone.
 
-`sandbx-tui` depends on `sandbx-tui-transcript` and on nothing else of sandbx's:
-the provider and text edges the diagram used to draw to it now land one step
-earlier, on the crate that folds the events. `sandbx-cli` reaches `Transcript`
-through `sandbx-tui`'s re-export and not an edge of its own, which is why
-`deny.toml` names one parent there and not two (#353).
+`sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
+sandbx's, and `sandbx-tui` on nothing at all: the provider and text edges the
+diagram used to draw to the drawing side land one step earlier, on the crate
+that folds the events. `sandbx-cli` reaches `Transcript` through
+`sandbx-screen`'s re-export and not an edge of its own — every entry point
+`sandbx-screen` has takes or returns one — which is why `deny.toml` names one
+parent there and not two (#352, #353).
 
 `sandbx-pty-fixture` is in no crate's build, which is why it is absent from the
 diagram above; its own `//!` says why it is a crate and not a module (#344).
@@ -383,12 +387,25 @@ confusables in entry text. Two crates would make that a cycle on one constant.
 `Kind`, `Entry` and `Transcript`'s three readers stay crate-private for the same
 reason: the layout is the only caller, and it is inside (#353).
 
+## `sandbx-screen`
+
+```
+src/lib.rs          Screen — raw mode and the alternate screen, put back on
+                    drop; Measured, the window read off the drawn descriptor;
+                    and Transcript re-exported, every entry point taking one
+```
+
+One file, because `Measured` has no reader outside it: `Screen`'s field is
+private and nothing public names the type, so the whole of #269's measurement
+stays `pub(crate)` (#352). `clippy.toml` bans ratatui's `restore`, `run` and all
+four `init` forms, and `terminal::size` and `CrosstermBackend::new` with them —
+which is what leaves `Screen::enter` and `Measured::new` the only ways in.
+
 ## `sandbx-tui`
 
 ```
-src/lib.rs          re-exports, Transcript among them; nothing here knows of a
-                    policy or a provider
-   screen.rs        Screen — raw mode and the alternate screen, put back on drop
+src/lib.rs          re-exports Keys and Stopped; nothing here draws, and nothing
+                    here knows of a policy or a provider
    input.rs         Keys — the reader thread, and the press a turn awaits
 ```
 

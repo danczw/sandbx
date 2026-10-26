@@ -8,9 +8,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# No default features: `all-widgets`, `macros` and `underline-color` buy nothing
-# here. `crossterm` is the backend and brings the re-export this crate drives the
-# terminal through, so there is no second crossterm version to diverge from.
+# No default features, and no widget ever drawn here: `crossterm` is only for the
+# `event` re-export the key reader reads through, which is also why there is no
+# second crossterm version to diverge from.
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
 ] }
@@ -18,11 +18,6 @@ ratatui = { version = "=0.30.2", default-features = false, features = [
 # the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
 # spins on the zero-byte read behind it (#264).
 nix = { version = "0.31.3", default-features = false, features = ["poll"] }
-# `termios` alone, for `tcgetwinsize`: the screen measures its own window, crossterm's
-# `terminal::size` forking `tput` when the measurement fails (#269). nix has no safe
-# `TIOCGWINSZ`, and this is the rustix crossterm already builds.
-rustix = { version = "1.1.4", default-features = false, features = ["std", "termios"] }
-sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }

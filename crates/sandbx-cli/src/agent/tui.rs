@@ -14,9 +14,10 @@ use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
     StopReason, Thinking,
 };
+use sandbx_screen::{Screen, Transcript};
 use sandbx_session::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
-use sandbx_tui::{Keys, Screen, Stopped, Transcript};
+use sandbx_tui::{Keys, Stopped};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;

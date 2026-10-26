@@ -1,0 +1,32 @@
+[package]
+name = "sandbx-screen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# No default features: `all-widgets`, `macros` and `underline-color` buy nothing
+# here. `crossterm` is the backend `Measured` wraps, so there is no second
+# crossterm version to diverge from.
+ratatui = { version = "=0.30.2", default-features = false, features = [
+  "crossterm",
+] }
+# `termios` alone, for `tcgetwinsize`: the screen measures its own window, crossterm's
+# `terminal::size` forking `tput` when the measurement fails (#269). nix has no safe
+# `TIOCGWINSZ`, and this is the rustix crossterm already builds.
+rustix = { version = "1.1.4", default-features = false, features = ["std", "termios"] }
+sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
+
+[dev-dependencies]
+# `Errno` alone, to assert the pty's own `EIO` and not a size from elsewhere; no
+# feature gates it. Narrower than `sandbx-tui`'s `poll`, which nothing here calls.
+nix = { version = "0.31.3", default-features = false }
+# A hangup is tested by opening a pty pair and closing the master; the fixture's own
+# `//!` says why it is a crate and not a module (#344).
+sandbx-pty-fixture = { path = "../sandbx-pty-fixture" }
+
+[lints]
+workspace = true
