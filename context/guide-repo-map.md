@@ -27,6 +27,7 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
     └──► sandbx-tools ──┬──► sandbx-approval ──┐
                         ├──────────────────────┘
                         ├──► sandbx-agent ──┐  turn loop
+sandbx-compact ─────────┤                   │
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-approval ────────────────────────────┤                 derivation, the
@@ -51,7 +52,7 @@ constant, not a mechanism.
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
-| `sandbx-agent` | the turn loop | approval, tools, providers (core is *dev*-only) |
+| `sandbx-agent` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
 | `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, screen, session, session-error, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-error, session-message |
@@ -65,6 +66,7 @@ constant, not a mechanism.
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
+| `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -302,6 +304,25 @@ no edge to either of its parents and a later phase can move the asking without
 moving the asked. Depends on `sandbx-tools` for the `BuiltinTool` a call names
 and the `ToolError` an outcome carries.
 
+## `sandbx-compact`
+
+```
+src/lib.rs    over_budget, plan_cut, Compaction, PromptUsage — which prefix of
+              a history may be withheld from a request, and the measurement it
+              is decided on
+   compact_tests.rs  the cut-point algebra
+```
+
+Pure and total over `RequestMessage`, reaching nothing in the loop that calls
+it. `PromptUsage` is declared here and not beside `Turn::observed`, where it
+reads as belonging: the turn depends on compaction and not the reverse, so this
+is the side of the edge it can sit on (#345). `sandbx-agent` re-exports both
+types, which is how `sandbx-cli` still names `PromptUsage` without an edge of
+its own — `deny.toml` names one parent here for that reason, and #351 and #357
+each add one when they move a caller (#356). Depends on `sandbx-providers` for
+`RequestMessage`, `Role` and `ContentBlock`; #364 narrows that to the prompt
+crate alone.
+
 ## `sandbx-agent`
 
 ```
@@ -311,14 +332,13 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
       run.rs         run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
-   compact.rs   which prefix of a history may be withheld, and PromptUsage —
-                the measurement it is decided on, declared on this side of the
-                edge because the turn depends on compaction and not the reverse
-   compact_tests.rs  the cut-point algebra
    error.rs   TurnError
 tests/       turn_loop, turn_compaction, audit_trail,
              support/mod.rs — the Script double and the request builders
 ```
+
+`Compaction` and `PromptUsage` are `sandbx-compact`'s, re-exported here: the
+loop is what asks for a cut, not what plans one (#356).
 
 ## `sandbx-session-message`
 

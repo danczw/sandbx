@@ -3,12 +3,16 @@
 //!
 //! No summarisation model, just a bounded window. The API rejects anything but a user-turn
 //! opener — two user turns running, an orphaned `tool_result`, or empty content — so only a
-//! *prefix* drops, onto the new first message, which [`opens_a_request`] decides; that makes
+//! *prefix* drops, onto the new first message, which `opens_a_request` decides; that makes
 //! the legal cut points exactly the human prose turns. See `context/guide-turn-loop.md`.
 //!
 //! [`PromptUsage`] is declared here and not beside `Turn::observed`, where it reads as
 //! belonging: the turn depends on compaction and not the reverse, so this is the side of
 //! the edge it can sit on (#345).
+//!
+//! A crate and not a module in `sandbx-agent`, which is the only thing that asks: the
+//! planner is pure and total over `RequestMessage` and reaches nothing in the loop, so the
+//! edge above is one the manifest enforces rather than a convention (#356).
 
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
 
@@ -66,7 +70,7 @@ impl PromptUsage {
 ///
 /// A `None` measurement never fires: guessing would compact a conversation that may be two
 /// messages long.
-pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> bool {
+pub fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> bool {
     observed.is_some_and(|usage| usage.prompt_tokens() > u64::from(budget_tokens))
 }
 
@@ -76,7 +80,7 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// panic, diverge, or return an invalid or empty cut. `produced` is a *count*, not a slice,
 /// so no cut can reach the current turn's own messages — keeping the cached prefix a prefix,
 /// and never making a turn re-ask for a tool whose result it withheld from itself. Two
-/// postconditions `run_turn` leans on: every `Some` satisfies [`opens_a_request`], and the
+/// postconditions `run_turn` leans on: every `Some` satisfies `opens_a_request`, and the
 /// cut is never shallower than a `floor` that is itself a legal boundary — met as closely as
 /// the law allows otherwise, dropped past the end of the history (see the clamp below).
 ///
@@ -86,7 +90,7 @@ pub(crate) fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> 
 /// less beats nothing and the next turn re-measures; failing that, `None` — erroring would
 /// turn an opt-in optimisation into a turn-killer, and cutting anyway is certain to be
 /// rejected. Why the floor exists is `context/guide-turn-loop.md`.
-pub(crate) fn plan_cut(
+pub fn plan_cut(
     history: &[RequestMessage],
     produced: usize,
     keep_recent: Option<usize>,

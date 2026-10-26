@@ -1,0 +1,40 @@
+pub mod sandbx_compact
+pub struct sandbx_compact::Compaction
+pub sandbx_compact::Compaction::budget_tokens: u32
+pub sandbx_compact::Compaction::keep_recent: usize
+impl core::clone::Clone for sandbx_compact::Compaction
+pub fn sandbx_compact::Compaction::clone(&self) -> sandbx_compact::Compaction
+impl core::fmt::Debug for sandbx_compact::Compaction
+pub fn sandbx_compact::Compaction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_compact::Compaction
+impl core::marker::Freeze for sandbx_compact::Compaction
+impl core::marker::Send for sandbx_compact::Compaction
+impl core::marker::Sync for sandbx_compact::Compaction
+impl core::marker::Unpin for sandbx_compact::Compaction
+impl core::marker::UnsafeUnpin for sandbx_compact::Compaction
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_compact::Compaction
+impl core::panic::unwind_safe::UnwindSafe for sandbx_compact::Compaction
+pub struct sandbx_compact::PromptUsage
+pub sandbx_compact::PromptUsage::cache_read_tokens: core::option::Option<u32>
+pub sandbx_compact::PromptUsage::cache_write_tokens: core::option::Option<u32>
+pub sandbx_compact::PromptUsage::input_tokens: core::option::Option<u32>
+impl sandbx_compact::PromptUsage
+pub fn sandbx_compact::PromptUsage::prompt_tokens(&self) -> u64
+impl core::clone::Clone for sandbx_compact::PromptUsage
+pub fn sandbx_compact::PromptUsage::clone(&self) -> sandbx_compact::PromptUsage
+impl core::cmp::Eq for sandbx_compact::PromptUsage
+impl core::cmp::PartialEq for sandbx_compact::PromptUsage
+pub fn sandbx_compact::PromptUsage::eq(&self, &sandbx_compact::PromptUsage) -> bool
+impl core::fmt::Debug for sandbx_compact::PromptUsage
+pub fn sandbx_compact::PromptUsage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_compact::PromptUsage
+impl core::marker::StructuralPartialEq for sandbx_compact::PromptUsage
+impl core::marker::Freeze for sandbx_compact::PromptUsage
+impl core::marker::Send for sandbx_compact::PromptUsage
+impl core::marker::Sync for sandbx_compact::PromptUsage
+impl core::marker::Unpin for sandbx_compact::PromptUsage
+impl core::marker::UnsafeUnpin for sandbx_compact::PromptUsage
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_compact::PromptUsage
+impl core::panic::unwind_safe::UnwindSafe for sandbx_compact::PromptUsage
+pub fn sandbx_compact::over_budget(core::option::Option<sandbx_compact::PromptUsage>, u32) -> bool
+pub fn sandbx_compact::plan_cut(&[sandbx_providers::prompt::RequestMessage], usize, core::option::Option<usize>, usize) -> core::option::Option<usize>
