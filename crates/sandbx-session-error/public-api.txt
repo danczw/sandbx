@@ -1,0 +1,53 @@
+pub mod sandbx_session_error
+pub enum sandbx_session_error::SessionError
+pub sandbx_session_error::SessionError::Clock
+pub sandbx_session_error::SessionError::Collision
+pub sandbx_session_error::SessionError::Collision::attempts: u64
+pub sandbx_session_error::SessionError::DirWritable
+pub sandbx_session_error::SessionError::DirWritable::mode: u32
+pub sandbx_session_error::SessionError::DirWritable::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::Disordered
+pub sandbx_session_error::SessionError::Disordered::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::DisorderedTurn
+pub sandbx_session_error::SessionError::ForeignOwner
+pub sandbx_session_error::SessionError::ForeignOwner::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::ForeignOwner::uid: u32
+pub sandbx_session_error::SessionError::IncompleteTurn
+pub sandbx_session_error::SessionError::InvalidIdentifier
+pub sandbx_session_error::SessionError::InvalidIdentifier::reason: &'static str
+pub sandbx_session_error::SessionError::InvalidIdentifier::value: alloc::string::String
+pub sandbx_session_error::SessionError::Io
+pub sandbx_session_error::SessionError::Io::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::Io::source: core::io::error::Error
+pub sandbx_session_error::SessionError::Malformed
+pub sandbx_session_error::SessionError::Malformed::line: usize
+pub sandbx_session_error::SessionError::Malformed::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::Malformed::source: serde_json::error::Error
+pub sandbx_session_error::SessionError::MissingHeader
+pub sandbx_session_error::SessionError::MissingHeader::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::NoStateHome
+pub sandbx_session_error::SessionError::NotFound
+pub sandbx_session_error::SessionError::NotFound::id: alloc::string::String
+pub sandbx_session_error::SessionError::Symlink
+pub sandbx_session_error::SessionError::Symlink::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::Unresumable
+pub sandbx_session_error::SessionError::Unresumable::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::UnsupportedVersion
+pub sandbx_session_error::SessionError::UnsupportedVersion::path: std::path::PathBuf
+pub sandbx_session_error::SessionError::UnsupportedVersion::version: u32
+pub sandbx_session_error::SessionError::Writable
+pub sandbx_session_error::SessionError::Writable::mode: u32
+pub sandbx_session_error::SessionError::Writable::path: std::path::PathBuf
+impl core::error::Error for sandbx_session_error::SessionError
+pub fn sandbx_session_error::SessionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_session_error::SessionError
+pub fn sandbx_session_error::SessionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_session_error::SessionError
+pub fn sandbx_session_error::SessionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_session_error::SessionError
+impl core::marker::Send for sandbx_session_error::SessionError
+impl core::marker::Sync for sandbx_session_error::SessionError
+impl core::marker::Unpin for sandbx_session_error::SessionError
+impl core::marker::UnsafeUnpin for sandbx_session_error::SessionError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_session_error::SessionError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_session_error::SessionError

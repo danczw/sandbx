@@ -34,6 +34,7 @@ sandbx-auth ──────────────────────�
 sandbx-core ────────────────────────────────┤
 sandbx-logging ─────────────────────────────┤
 sandbx-session ─────────────────────────────┤
+sandbx-session-error ───────────────────────┤
 sandbx-session-message ─────────────────────┤
 sandbx-text ──────┬─────────────────────────┤
 sandbx-providers ─┴─► sandbx-tui-transcript │
@@ -50,14 +51,15 @@ constant, not a mechanism.
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | approval, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, session, session-message, text, tools, tui |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, session, session-error, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
-| `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-message |
+| `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-error, session-message |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | tui-transcript (pty-fixture is *dev*-only) |
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
+| `sandbx-session-error` | why a session operation did not happen | — |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
@@ -65,10 +67,12 @@ constant, not a mechanism.
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
-`sandbx-session` depends on `sandbx-session-message` — the one internal edge the
-diagram above does not draw, both crates having a direct edge to `sandbx-cli` of
-their own. The CLI's is not inherited: it translates between those shapes and
-the provider's, which is why `deny.toml` names both parents.
+`sandbx-session` depends on `sandbx-session-message` and on
+`sandbx-session-error` — the two internal edges the diagram above does not draw,
+all three crates having a direct edge to `sandbx-cli` of their own. Neither of
+the CLI's is inherited: it translates between the stored shapes and the
+provider's, and it is where a `SessionError` becomes something else. That is why
+`deny.toml` names two parents in each of those blocks.
 
 `sandbx-tui` depends on `sandbx-tui-transcript` and on nothing else of sandbx's:
 the provider and text edges the diagram used to draw to it now land one step
@@ -339,14 +343,28 @@ src/lib.rs        re-exports
       record.rs   the three line kinds, and the fold that replays them
       shape.rs    which orders of messages a request may carry, as predicates
       vet.rs      the modes, O_NOFOLLOW, and reading one off a descriptor
-   error.rs       SessionError
 tests/            identifier, permissions, recovery, transcript
 ```
 
-One internal dependency, `sandbx-session-message`, whose section above says why
-those shapes are its own and not the provider's. See
+Two internal dependencies, `sandbx-session-message` and
+`sandbx-session-error`, whose sections say why the stored shapes are their own
+and not the provider's, and why the error names no `SessionId`. See
 [decision-on-disk-state.md](decision-on-disk-state.md) for the roots, the mode
 rule and the line format.
+
+## `sandbx-session-error`
+
+```
+src/lib.rs        SessionError — seventeen variants, Display, and a source that
+                  answers for the two that wrap a foreign error
+```
+
+No `From` impls, by design: every wrapped failure is paired with the path and
+operation it came from, which a blanket conversion would discard, and
+`sandbx-cli` is what decides per call site what a session failure becomes.
+`NotFound` carries an id's spelling and not a `SessionId`, because every
+fallible path in the session tree returns this type — the id's own included — so
+an edge to the crate declaring `SessionId` would be a cycle (#346, #358).
 
 ## `sandbx-tui-transcript`
 
