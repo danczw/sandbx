@@ -683,24 +683,28 @@ editing it — so the CLI refuses the grant instead (#173), which is the
 `reaches_owned` mechanism above. The mode check keeps what it can actually
 answer: a transcript another user owns or can write.
 
-### The stored types are this crate's own
+### The stored types are a crate of their own
 
 `Message`, `Role`, `Content` and `Usage` in
-[`session/src/message.rs`](../../crates/sandbx-session/src/message.rs) look like
-duplicates of the provider crate's types, and the module doc explains that they
-are deliberate:
+[`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs) look
+like duplicates of the provider crate's types, and the crate doc explains that
+they are deliberate:
 
 > Mirrors `sandbx_providers`'s `RequestMessage`, `Role` and `ContentBlock`, and
-> `sandbx_agent`'s `PromptUsage`, declared again so this crate depends on no
-> other; `sandbx-cli` translates, and fails to compile on a new block kind.
+> `sandbx_agent`'s `PromptUsage`, declared here rather than imported because a
+> transcript is a file format, and one that moved whenever a provider type moved
+> would not be. `sandbx-cli` translates, and fails to compile on a new block
+> kind.
 
 Two things are bought by that duplication, and both are about a file that
 outlives the build that wrote it. First, the on-disk format stops being a
 hostage to a vendor type: a provider adding a content block cannot silently
 change what a transcript means, and the translation in `sandbx-cli` is where a
-new block kind has to be decided about — as a compile error. Second,
-`sandbx-session` depends on no other workspace crate, so the crate that owns the
-file format cannot be changed by changing something else.
+new block kind has to be decided about — as a compile error. Second, the crate
+holding those four types depends on no other workspace crate, so the format
+cannot be changed by changing something else — which is why #359 gave them a
+crate instead of leaving them inside `sandbx-session`, whose own dependencies
+would otherwise have reached the format.
 
 The cost is real and is the thing to look for when you touch either side: the
 two type sets have to be kept in correspondence by hand, and the only thing
@@ -737,8 +741,8 @@ enforcing it is that the translation does not compile when they diverge.
   a path.
 - Why a transcript is a file of lines, and which single line a parse is allowed
   to forgive.
-- Why `sandbx-session` declares its own message types instead of using the
-  provider crate's.
+- Why the stored message types are declared in a crate of their own instead of
+  taken from the provider crate's.
 
 ## Next
 

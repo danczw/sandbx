@@ -1,0 +1,114 @@
+pub mod sandbx_session_message
+pub enum sandbx_session_message::Content
+pub sandbx_session_message::Content::Text
+pub sandbx_session_message::Content::Text::text: alloc::string::String
+pub sandbx_session_message::Content::ToolResult
+pub sandbx_session_message::Content::ToolResult::content: alloc::string::String
+pub sandbx_session_message::Content::ToolResult::is_error: core::option::Option<bool>
+pub sandbx_session_message::Content::ToolResult::tool_use_id: alloc::string::String
+pub sandbx_session_message::Content::ToolUse
+pub sandbx_session_message::Content::ToolUse::id: alloc::string::String
+pub sandbx_session_message::Content::ToolUse::input: serde_json::value::Value
+pub sandbx_session_message::Content::ToolUse::name: alloc::string::String
+impl core::clone::Clone for sandbx_session_message::Content
+pub fn sandbx_session_message::Content::clone(&self) -> sandbx_session_message::Content
+impl core::cmp::PartialEq for sandbx_session_message::Content
+pub fn sandbx_session_message::Content::eq(&self, &sandbx_session_message::Content) -> bool
+impl core::fmt::Debug for sandbx_session_message::Content
+pub fn sandbx_session_message::Content::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_session_message::Content
+impl serde_core::ser::Serialize for sandbx_session_message::Content
+pub fn sandbx_session_message::Content::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for sandbx_session_message::Content
+pub fn sandbx_session_message::Content::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for sandbx_session_message::Content
+impl core::marker::Send for sandbx_session_message::Content
+impl core::marker::Sync for sandbx_session_message::Content
+impl core::marker::Unpin for sandbx_session_message::Content
+impl core::marker::UnsafeUnpin for sandbx_session_message::Content
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_message::Content
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_message::Content
+pub enum sandbx_session_message::Role
+pub sandbx_session_message::Role::Assistant
+pub sandbx_session_message::Role::User
+impl core::clone::Clone for sandbx_session_message::Role
+pub fn sandbx_session_message::Role::clone(&self) -> sandbx_session_message::Role
+impl core::cmp::Eq for sandbx_session_message::Role
+impl core::cmp::PartialEq for sandbx_session_message::Role
+pub fn sandbx_session_message::Role::eq(&self, &sandbx_session_message::Role) -> bool
+impl core::fmt::Debug for sandbx_session_message::Role
+pub fn sandbx_session_message::Role::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_session_message::Role
+impl core::marker::StructuralPartialEq for sandbx_session_message::Role
+impl serde_core::ser::Serialize for sandbx_session_message::Role
+pub fn sandbx_session_message::Role::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for sandbx_session_message::Role
+pub fn sandbx_session_message::Role::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for sandbx_session_message::Role
+impl core::marker::Send for sandbx_session_message::Role
+impl core::marker::Sync for sandbx_session_message::Role
+impl core::marker::Unpin for sandbx_session_message::Role
+impl core::marker::UnsafeUnpin for sandbx_session_message::Role
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_message::Role
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_message::Role
+pub struct sandbx_session_message::CompletedTurn<'a>
+pub sandbx_session_message::CompletedTurn::messages: &'a [sandbx_session_message::Message]
+pub sandbx_session_message::CompletedTurn::observed: core::option::Option<sandbx_session_message::Usage>
+pub sandbx_session_message::CompletedTurn::withheld: usize
+impl<'a> core::clone::Clone for sandbx_session_message::CompletedTurn<'a>
+pub fn sandbx_session_message::CompletedTurn<'a>::clone(&self) -> sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::fmt::Debug for sandbx_session_message::CompletedTurn<'a>
+pub fn sandbx_session_message::CompletedTurn<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::marker::Freeze for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::marker::Send for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::marker::Sync for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::marker::Unpin for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_session_message::CompletedTurn<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_session_message::CompletedTurn<'a>
+pub struct sandbx_session_message::Message
+pub sandbx_session_message::Message::content: alloc::vec::Vec<sandbx_session_message::Content>
+pub sandbx_session_message::Message::role: sandbx_session_message::Role
+impl core::clone::Clone for sandbx_session_message::Message
+pub fn sandbx_session_message::Message::clone(&self) -> sandbx_session_message::Message
+impl core::cmp::PartialEq for sandbx_session_message::Message
+pub fn sandbx_session_message::Message::eq(&self, &sandbx_session_message::Message) -> bool
+impl core::fmt::Debug for sandbx_session_message::Message
+pub fn sandbx_session_message::Message::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_session_message::Message
+impl serde_core::ser::Serialize for sandbx_session_message::Message
+pub fn sandbx_session_message::Message::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for sandbx_session_message::Message
+pub fn sandbx_session_message::Message::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for sandbx_session_message::Message
+impl core::marker::Send for sandbx_session_message::Message
+impl core::marker::Sync for sandbx_session_message::Message
+impl core::marker::Unpin for sandbx_session_message::Message
+impl core::marker::UnsafeUnpin for sandbx_session_message::Message
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_message::Message
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_message::Message
+pub struct sandbx_session_message::Usage
+pub sandbx_session_message::Usage::cache_creation_input_tokens: core::option::Option<u32>
+pub sandbx_session_message::Usage::cache_read_input_tokens: core::option::Option<u32>
+pub sandbx_session_message::Usage::input_tokens: core::option::Option<u32>
+impl core::clone::Clone for sandbx_session_message::Usage
+pub fn sandbx_session_message::Usage::clone(&self) -> sandbx_session_message::Usage
+impl core::cmp::Eq for sandbx_session_message::Usage
+impl core::cmp::PartialEq for sandbx_session_message::Usage
+pub fn sandbx_session_message::Usage::eq(&self, &sandbx_session_message::Usage) -> bool
+impl core::fmt::Debug for sandbx_session_message::Usage
+pub fn sandbx_session_message::Usage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_session_message::Usage
+impl core::marker::StructuralPartialEq for sandbx_session_message::Usage
+impl serde_core::ser::Serialize for sandbx_session_message::Usage
+pub fn sandbx_session_message::Usage::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for sandbx_session_message::Usage
+pub fn sandbx_session_message::Usage::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for sandbx_session_message::Usage
+impl core::marker::Send for sandbx_session_message::Usage
+impl core::marker::Sync for sandbx_session_message::Usage
+impl core::marker::Unpin for sandbx_session_message::Usage
+impl core::marker::UnsafeUnpin for sandbx_session_message::Usage
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_message::Usage
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_message::Usage

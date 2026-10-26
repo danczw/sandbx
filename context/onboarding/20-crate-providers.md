@@ -8,7 +8,7 @@ and below. In View 2 it is one line — `open(request)` at the top of every roun
 In View 1 it is nowhere, because nothing in here spawns a process or installs a
 kernel rule. It has no internal dependency — one of the three that could be
 lifted out of the workspace and still compile, beside `sandbx-core` and
-`sandbx-session`.
+`sandbx-session-message`.
 
 [02 — what a harness is](02-what-a-harness-is.md) is the on-ramp, and it owns
 the protocol: the stateless `POST /v1/messages`, `tool_use`/`tool_result`

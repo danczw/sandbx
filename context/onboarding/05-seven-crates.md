@@ -23,11 +23,13 @@ flowchart TD
     subgraph leaves["no internal dependency"]
         core["sandbx-core: the kernel"]
         providers["sandbx-providers: the wire"]
-        session["sandbx-session: the disk"]
+        message["sandbx-session-message: the file format"]
     end
     cli["sandbx-cli"] --> agent["sandbx-agent"]
     cli --> tui["sandbx-tui"]
-    cli --> session
+    cli --> session["sandbx-session: the disk"]
+    cli --> message
+    session --> message
     cli --> providers
     cli --> tools["sandbx-tools"]
     cli --> core
@@ -41,12 +43,13 @@ flowchart TD
 Four things about that shape are worth more than the picture.
 
 - **Three crates have no internal dependency at all,** and each of the three
-  owns exactly one thing that lives outside the process: `sandbx-core` owns the
-  kernel, `sandbx-providers` owns the wire, `sandbx-session` owns the disk. None
-  of the three can name another's types, which is why a stored transcript is not
-  a `Prompt` and a `SandboxPolicy` is not a request body. The module doc on
-  [`session/src/message.rs`](../../crates/sandbx-session/src/message.rs) says
-  the consequence out loud — the stored shapes are declared again there rather
+  owns exactly one thing that outlives the call: `sandbx-core` owns the kernel,
+  `sandbx-providers` owns the wire, `sandbx-session-message` owns the file
+  format that `sandbx-session` writes to the disk. None of the three can name
+  another's types, which is why a stored transcript is not a `Prompt` and a
+  `SandboxPolicy` is not a request body. The crate doc on
+  [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs)
+  says the consequence out loud — the stored shapes are declared there rather
   than imported, because a file format that moved whenever a provider type moved
   would not be a file format.
 - **`sandbx-cli` is the only crate that depends on all the others, and the only
