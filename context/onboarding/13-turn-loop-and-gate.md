@@ -469,8 +469,9 @@ handles it, and the two interesting arms are about *not* dropping things:
   silent — an operator who cannot see the whole argument can still refuse.
 
 `invisible` is not the gate's own, and the import is worth following:
-`sandbx_text::invisible`, one table read here and by `sandbx-tui` for the
-cells it draws, because the hazard is a property of model-chosen text rather
+`sandbx_text::invisible`, one table read here and by `sandbx-tui-transcript`
+for the cells it draws, because the hazard is a property of model-chosen text
+rather
 than of either sink. What the gate does *with* a flagged character is still the
 gate's — `\n` and `\t` spelled out, U+FFFD for the rest — and the screen makes
 different choices with the same table, adding a third predicate of its own,
