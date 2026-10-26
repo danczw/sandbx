@@ -1,44 +1,4 @@
 pub mod sandbx_agent
-pub enum sandbx_agent::ApprovalDecision
-pub sandbx_agent::ApprovalDecision::Abort
-pub sandbx_agent::ApprovalDecision::Abort::reason: alloc::string::String
-pub sandbx_agent::ApprovalDecision::Allow
-pub sandbx_agent::ApprovalDecision::Deny
-pub sandbx_agent::ApprovalDecision::Deny::reason: alloc::string::String
-impl core::clone::Clone for sandbx_agent::ApprovalDecision
-pub fn sandbx_agent::ApprovalDecision::clone(&self) -> sandbx_agent::ApprovalDecision
-impl core::cmp::Eq for sandbx_agent::ApprovalDecision
-impl core::cmp::PartialEq for sandbx_agent::ApprovalDecision
-pub fn sandbx_agent::ApprovalDecision::eq(&self, &sandbx_agent::ApprovalDecision) -> bool
-impl core::fmt::Debug for sandbx_agent::ApprovalDecision
-pub fn sandbx_agent::ApprovalDecision::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for sandbx_agent::ApprovalDecision
-impl core::marker::Freeze for sandbx_agent::ApprovalDecision
-impl core::marker::Send for sandbx_agent::ApprovalDecision
-impl core::marker::Sync for sandbx_agent::ApprovalDecision
-impl core::marker::Unpin for sandbx_agent::ApprovalDecision
-impl core::marker::UnsafeUnpin for sandbx_agent::ApprovalDecision
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::ApprovalDecision
-impl core::panic::unwind_safe::UnwindSafe for sandbx_agent::ApprovalDecision
-pub enum sandbx_agent::Outcome<'a>
-pub sandbx_agent::Outcome::Denied
-pub sandbx_agent::Outcome::Denied::reason: &'a str
-pub sandbx_agent::Outcome::Errored(&'a sandbx_tools::error::ToolError)
-pub sandbx_agent::Outcome::NotOffered
-pub sandbx_agent::Outcome::Ran
-pub sandbx_agent::Outcome::Unknown
-impl<'a> core::clone::Clone for sandbx_agent::Outcome<'a>
-pub fn sandbx_agent::Outcome<'a>::clone(&self) -> sandbx_agent::Outcome<'a>
-impl<'a> core::fmt::Debug for sandbx_agent::Outcome<'a>
-pub fn sandbx_agent::Outcome<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a> core::marker::Copy for sandbx_agent::Outcome<'a>
-impl<'a> core::marker::Freeze for sandbx_agent::Outcome<'a>
-impl<'a> core::marker::Send for sandbx_agent::Outcome<'a>
-impl<'a> core::marker::Sync for sandbx_agent::Outcome<'a>
-impl<'a> core::marker::Unpin for sandbx_agent::Outcome<'a>
-impl<'a> core::marker::UnsafeUnpin for sandbx_agent::Outcome<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::Outcome<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_agent::Outcome<'a>
 pub enum sandbx_agent::TurnError
 pub sandbx_agent::TurnError::EndedMidToolUse
 pub sandbx_agent::TurnError::Provider(sandbx_providers::error::ProviderError)
@@ -118,40 +78,6 @@ impl core::marker::Unpin for sandbx_agent::PromptUsage
 impl core::marker::UnsafeUnpin for sandbx_agent::PromptUsage
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::PromptUsage
 impl core::panic::unwind_safe::UnwindSafe for sandbx_agent::PromptUsage
-pub struct sandbx_agent::Settled<'a>
-pub sandbx_agent::Settled::id: &'a str
-pub sandbx_agent::Settled::input: &'a serde_json::value::Value
-pub sandbx_agent::Settled::name: &'a str
-pub sandbx_agent::Settled::outcome: sandbx_agent::Outcome<'a>
-pub sandbx_agent::Settled::tool: core::option::Option<sandbx_tools::builtin::BuiltinTool>
-impl<'a> core::clone::Clone for sandbx_agent::Settled<'a>
-pub fn sandbx_agent::Settled<'a>::clone(&self) -> sandbx_agent::Settled<'a>
-impl<'a> core::fmt::Debug for sandbx_agent::Settled<'a>
-pub fn sandbx_agent::Settled<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a> core::marker::Copy for sandbx_agent::Settled<'a>
-impl<'a> core::marker::Freeze for sandbx_agent::Settled<'a>
-impl<'a> core::marker::Send for sandbx_agent::Settled<'a>
-impl<'a> core::marker::Sync for sandbx_agent::Settled<'a>
-impl<'a> core::marker::Unpin for sandbx_agent::Settled<'a>
-impl<'a> core::marker::UnsafeUnpin for sandbx_agent::Settled<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::Settled<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_agent::Settled<'a>
-pub struct sandbx_agent::ToolCall<'a>
-pub sandbx_agent::ToolCall::id: &'a str
-pub sandbx_agent::ToolCall::input: &'a serde_json::value::Value
-pub sandbx_agent::ToolCall::tool: sandbx_tools::builtin::BuiltinTool
-impl<'a> core::clone::Clone for sandbx_agent::ToolCall<'a>
-pub fn sandbx_agent::ToolCall<'a>::clone(&self) -> sandbx_agent::ToolCall<'a>
-impl<'a> core::fmt::Debug for sandbx_agent::ToolCall<'a>
-pub fn sandbx_agent::ToolCall<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a> core::marker::Copy for sandbx_agent::ToolCall<'a>
-impl<'a> core::marker::Freeze for sandbx_agent::ToolCall<'a>
-impl<'a> core::marker::Send for sandbx_agent::ToolCall<'a>
-impl<'a> core::marker::Sync for sandbx_agent::ToolCall<'a>
-impl<'a> core::marker::Unpin for sandbx_agent::ToolCall<'a>
-impl<'a> core::marker::UnsafeUnpin for sandbx_agent::ToolCall<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::ToolCall<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_agent::ToolCall<'a>
 pub struct sandbx_agent::Turn<'a>
 pub sandbx_agent::Turn::history: &'a [sandbx_providers::prompt::RequestMessage]
 pub sandbx_agent::Turn::limits: sandbx_agent::TurnLimits
@@ -205,10 +131,4 @@ impl core::marker::Unpin for sandbx_agent::TurnOutcome
 impl core::marker::UnsafeUnpin for sandbx_agent::TurnOutcome
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::TurnOutcome
 impl core::panic::unwind_safe::UnwindSafe for sandbx_agent::TurnOutcome
-pub trait sandbx_agent::CallGate
-pub fn sandbx_agent::CallGate::approve(&mut self, sandbx_agent::ToolCall<'_>) -> sandbx_agent::ApprovalDecision
-pub fn sandbx_agent::CallGate::settled(&mut self, sandbx_agent::Settled<'_>)
-impl<G: sandbx_agent::CallGate + ?core::marker::Sized> sandbx_agent::CallGate for &mut G
-pub fn &mut G::approve(&mut self, sandbx_agent::ToolCall<'_>) -> sandbx_agent::ApprovalDecision
-pub fn &mut G::settled(&mut self, sandbx_agent::Settled<'_>)
-pub async fn sandbx_agent::run_turn<F, O, G>(F, sandbx_agent::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_agent::TurnOutcome, sandbx_agent::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_providers::prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::error::ProviderError>, O: core::ops::function::FnMut(&sandbx_providers::event::AgentEvent), G: sandbx_agent::CallGate
+pub async fn sandbx_agent::run_turn<F, O, G>(F, sandbx_agent::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_agent::TurnOutcome, sandbx_agent::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_providers::prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::error::ProviderError>, O: core::ops::function::FnMut(&sandbx_providers::event::AgentEvent), G: sandbx_approval::CallGate

@@ -4,13 +4,14 @@
 //! One module on purpose: a new way for a turn to stop is one edit to
 //! `TurnStop`, to the loop that chooses it and to the outcome that carries it.
 
+use sandbx_approval::CallGate;
 use sandbx_providers::{
     AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, StopReason, Thinking,
     ToolChoice, ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::{CallGate, Compaction, PromptUsage, TurnError, compact};
+use crate::{Compaction, PromptUsage, TurnError, compact};
 
 use super::accumulate::accumulate;
 use super::tools::{Answers, answer_calls, definition};
@@ -34,8 +35,8 @@ pub struct Turn<'a> {
     /// it. Dropped from the request when `tools` is empty, the API refusing a choice over
     /// tools nothing defined.
     ///
-    /// Bounds nothing on its own: [`ApprovalDecision`](crate::ApprovalDecision) is still
-    /// all that stands between a requested call and `sandbx-tools` running it.
+    /// Bounds nothing on its own: [`ApprovalDecision`](sandbx_approval::ApprovalDecision)
+    /// is still all that stands between a requested call and `sandbx-tools` running it.
     pub tool_choice: Option<ToolChoice>,
 
     /// Whether to ask for the model's reasoning text, which only a renderer sees.
@@ -183,9 +184,9 @@ impl Default for TurnLimits {
 ///
 /// `gate` is the only thing between the model asking for a tool and `sandbx-tools` executing
 /// it: [`CallGate::approve`] decides before each call runs, and an
-/// [`ApprovalDecision::Deny`](crate::ApprovalDecision::Deny) is recoverable within
+/// [`ApprovalDecision::Deny`](sandbx_approval::ApprovalDecision::Deny) is recoverable within
 /// [`TurnLimits::max_rounds`], unlike an
-/// [`ApprovalDecision::Abort`](crate::ApprovalDecision::Abort), which ends the turn as
+/// [`ApprovalDecision::Abort`](sandbx_approval::ApprovalDecision::Abort), which ends the turn as
 /// [`TurnStop::GateAborted`]. `context/decision-approval-gate.md` has the rest.
 ///
 /// Tools run on `spawn_blocking`, uncancellable: dropping this future still lets the

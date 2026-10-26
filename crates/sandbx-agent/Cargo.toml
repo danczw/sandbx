@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+sandbx-approval = { path = "../sandbx-approval" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-tools = { path = "../sandbx-tools" }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }

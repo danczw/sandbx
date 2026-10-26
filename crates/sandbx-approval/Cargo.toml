@@ -1,0 +1,15 @@
+[package]
+name = "sandbx-approval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sandbx-tools = { path = "../sandbx-tools" }
+serde_json = "1.0.151"
+
+[lints]
+workspace = true

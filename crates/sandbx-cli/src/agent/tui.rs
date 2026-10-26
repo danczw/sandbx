@@ -8,10 +8,8 @@
 use std::io::{self, IsTerminal, Write};
 use std::sync::{Mutex, PoisonError};
 
-use sandbx_agent::{
-    ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits, TurnOutcome, TurnStop,
-    run_turn,
-};
+use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
     StopReason, Thinking,

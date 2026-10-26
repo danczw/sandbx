@@ -54,7 +54,7 @@ wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-tui"]
 
 [[bans.deny]]
 name = "sandbx-tools"
-wrappers = ["sandbx-agent", "sandbx-cli"]
+wrappers = ["sandbx-agent", "sandbx-approval", "sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-agent"
@@ -88,6 +88,11 @@ wrappers = ["sandbx-tui"]
 name = "sandbx-text"
 # Not `sandbx-tui-transcript`, which does not exist until #353 re-points this line.
 wrappers = ["sandbx-cli", "sandbx-tui"]
+
+[[bans.deny]]
+name = "sandbx-approval"
+# Not `sandbx-turn`, which does not exist until #357 takes over `sandbx-agent`'s place here.
+wrappers = ["sandbx-agent", "sandbx-cli"]
 
 [sources]
 unknown-registry = "deny"

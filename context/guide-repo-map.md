@@ -24,12 +24,14 @@ SECURITY.md         the promise to users — the one doc that must never lag
 
 ```
 sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed to spawn
-    └──► sandbx-tools ──┐
+    └──► sandbx-tools ──┬──► sandbx-approval ──┐
+                        ├──────────────────────┘
                         ├──► sandbx-agent ──┐  turn loop
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
-sandbx-core ────────────────────────────────┤                 derivation, the
-sandbx-logging ─────────────────────────────┤                 turn loop's caller
+sandbx-approval ────────────────────────────┤                 derivation, the
+sandbx-core ────────────────────────────────┤                 turn loop's caller
+sandbx-logging ─────────────────────────────┤
 sandbx-session ─────────────────────────────┤
 sandbx-session-message ─────────────────────┤
 sandbx-text ────┬───────────────────────────┤
@@ -45,8 +47,8 @@ constant, not a mechanism.
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
-| `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, logging, providers, session, session-message, text, tools, tui |
+| `sandbx-agent` | the turn loop | approval, tools, providers (core is *dev*-only) |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | approval, core, agent, logging, providers, session, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-message |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers, text (pty-fixture is *dev*-only) |
@@ -54,6 +56,7 @@ constant, not a mechanism.
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
+| `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -261,20 +264,30 @@ its own replacement, there being no one answer to what belongs in a cell versus
 a line. The crate's `//!` has why neither `sandbx-core` nor `sandbx-tui` is the
 home (#363).
 
+## `sandbx-approval`
+
+```
+src/lib.rs        CallGate, ToolCall, ApprovalDecision, Settled, Outcome — what
+                  a gate is asked, the three answers it may give, one of which
+                  ends the turn, and the five outcomes it is told a call reached
+```
+
+The shapes only: no policy, no channel to ask on, and nothing that decides.
+`sandbx-agent` asks through them and the three production implementors live in
+`sandbx-cli`, which is why both crates name it in `deny.toml` (#355). The trait
+is foreign in `sandbx-cli` and the gate types are local there, so the
+implementors need no edge back. Depends on `sandbx-tools` for the `BuiltinTool`
+a call names and the `ToolError` an outcome carries.
+
 ## `sandbx-agent`
 
 ```
 src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
-                          TurnStop, PromptUsage, Compaction, CallGate,
-                          ToolCall, ApprovalDecision, Settled, Outcome,
-                          run_turn
+                          TurnStop, PromptUsage, Compaction, run_turn
    turn.rs    re-exports run_turn and the four types that drive it
       run.rs         run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
-   approval.rs  what a gate is asked, the three answers it may give — one of
-                which ends the turn — and the five outcomes it is told a call
-                reached
    compact.rs   which prefix of a history may be withheld, and PromptUsage —
                 the measurement it is decided on, declared on this side of the
                 edge because the turn depends on compaction and not the reverse

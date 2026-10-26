@@ -83,7 +83,7 @@ Four things about that shape are worth more than the picture.
 | `sandbx-core` | sandboxing: the policy type, the in-process guard, the helper, the one spawn site | `SandboxPolicy`, `SandboxedCommand`, `FsGuard` |
 | `sandbx-tools` | the seven built-ins, each confined by core | `BuiltinTool`, `ExecutionContext` |
 | `sandbx-providers` | hand-rolled streaming clients against an LLM API | `EventStream`, `Prompt` |
-| `sandbx-agent` | the turn loop, and the gate a caller must supply | `run_turn`, `CallGate` |
+| `sandbx-agent` | the turn loop, and the gate a caller must supply — whose shapes are `sandbx-approval`'s since #355 | `run_turn`, `CallGate` |
 | `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
 | `sandbx-session` | the on-disk transcript: an id, a root, append-only JSONL | `SessionStore` |
 | `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |

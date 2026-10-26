@@ -1,10 +1,11 @@
 # A small crate holds the control flow
 
-`sandbx-agent` is eight source files and about fifteen hundred lines, and it is
-the box [04 — the architecture](04-the-architecture.md) draws twice: in View 2
-the round that opens a stream, consumes it and answers what the model asked for,
-in View 3 **the gate** — "`CallGate`, two methods, `run_turn`'s mandatory fifth
-parameter".
+`sandbx-agent` is seven source files and about thirteen hundred lines, and it is
+the box [04 — the architecture](04-the-architecture.md) draws in View 2: the
+round that opens a stream, consumes it and answers what the model asked for.
+View 3's **gate** — "`CallGate`, two methods, `run_turn`'s mandatory fifth
+parameter" — is `sandbx-approval`'s since #355; the section on it below is what
+left and what the loop still does with it.
 
 [13 — nothing runs until the gate has answered](13-turn-loop-and-gate.md) is
 this crate's chapter in the read-through, and the longest in the set. Read it
@@ -20,12 +21,11 @@ map, the signature a caller meets, and `compact.rs`.
 ## The module map
 
 ```
-src/lib.rs          13 re-exports and four private modules; nothing else
+src/lib.rs          eight re-exports and three private modules; nothing else
    turn.rs          five re-exports and three private modules; nothing else
       run.rs        run_turn, and the public types it is driven by
       accumulate.rs one round's assistant message, rebuilt from deltas
       tools.rs      the offered set, the gate call, one spawn_blocking
-   approval.rs      what a gate is asked and what it is told; no policy
    compact.rs       which prefix of a history may be withheld, and PromptUsage —
                     the measurement that decides it (#345)
    compact_tests.rs the cut-point algebra, as unit tests
@@ -43,9 +43,9 @@ running what it asked for. **`run.rs` is the longest non-test file in the crate
 and stays one module**, which its own doc says outright, because a new way for a
 turn to stop is one edit to `TurnStop`, one to the loop that chooses it and one
 to the outcome that carries it. **The test tree is larger than `src/`**, about
-2,500 lines against 1,500 — the last section is why.
+2,500 lines against 1,350 — the last section is why.
 
-Of five runtime dependencies, one carries its constraint in a comment:
+Of the runtime dependencies, one carries its constraint in a comment:
 
 ```toml
 # Not `rt-multi-thread`: the runtime flavour is the binary's call. `time` is not
@@ -53,42 +53,45 @@ Of five runtime dependencies, one carries its constraint in a comment:
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 ```
 
-The other four are `sandbx-providers`, `sandbx-tools`, `serde_json` and
-`futures-util` — the last for `StreamExt` alone, which is what makes
-`stream.next()` in `accumulate` the only place this crate touches a stream.
+The others are `sandbx-approval`, `sandbx-providers`, `sandbx-tools`,
+`serde_json` and `futures-util` — the last for `StreamExt` alone, which is what
+makes `stream.next()` in `accumulate` the only place this crate touches a
+stream.
 `sandbx-core` is missing on purpose: it is a **dev**-dependency, the only one of
 its kind in the workspace, so `sandbx_core` cannot be named anywhere in `src/`
 and the crate deciding which tool calls happen cannot form an opinion about a
 `SandboxPolicy`. [05](05-seven-crates.md) spends a section on the argument.
 
-## `lib.rs` is thirteen names, and that is the whole API
+## `lib.rs` is eight names, and that is the whole API
 
-[`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is fifteen lines: four private
-`mod` declarations and four `pub use` lines, three of them braced, over five
-names, two and five — which is why the count is read off the items and not off
-the lines. The re-export list *is* the public surface, so group it by what each
-name is for:
+[`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is thirteen lines: three
+private `mod` declarations and three `pub use` lines, two of them braced, over
+two, one and five names — which is why the count is read off the items and not
+off the lines. The re-export list *is* the public surface, so group it by what
+each name is for:
 
 | group | names |
 |---|---|
 | what you call | `run_turn` |
 | what you pass in | `Turn`, `TurnLimits`, `Compaction` |
-| what you must implement | `CallGate` |
-| what your implementation is handed | `ToolCall`, `Settled`, `Outcome` |
-| what it answers with | `ApprovalDecision` |
 | what you get back | `TurnOutcome`, `TurnStop`, `PromptUsage`, `TurnError` |
 
-The minimum set to call `run_turn` once is smaller than thirteen: a `Turn`
-(needing `TurnLimits`, which has a `Default`), a `CallGate` impl (dragging in
-`ToolCall`, `Settled` and `ApprovalDecision` to write the two bodies), and
-`TurnOutcome` or `TurnError` to handle. `Compaction` and `PromptUsage` are for a
-caller threading token counts between turns, `TurnStop` for one distinguishing
-how a turn ended — which `agent-run` does, its exit code depending on it.
+The gate rows that used to sit between those two are gone: `CallGate` and the
+four shapes it is asked and told with are `sandbx-approval`'s, the section on it
+below.
 
-Two types a caller also needs are *not* here, and their absence is the seam:
-`ExecutionContext` and `BuiltinTool` are `sandbx-tools`', `RequestMessage`,
-`Prompt`, `AgentEvent` and `StopReason` are `sandbx-providers`'. Neither set is
-re-exported, so a caller imports from all three.
+The minimum set to call `run_turn` once is smaller than eight: a `Turn` (needing
+`TurnLimits`, which has a `Default`) and `TurnOutcome` or `TurnError` to handle,
+plus the gate, which is no longer a name from this crate at all. `Compaction`
+and `PromptUsage` are for a caller threading token counts between turns,
+`TurnStop` for one distinguishing how a turn ended — which `agent-run` does, its
+exit code depending on it.
+
+What a caller also needs and will not find here is the seam: `ExecutionContext`
+and `BuiltinTool` are `sandbx-tools`', `RequestMessage`, `Prompt`, `AgentEvent`
+and `StopReason` are `sandbx-providers`', and `CallGate`, `ToolCall`,
+`ApprovalDecision`, `Settled` and `Outcome` are `sandbx-approval`'s. No set is
+re-exported, so a caller imports from all four.
 
 ## `turn/run.rs` — the signature before the body
 
@@ -253,13 +256,19 @@ says `tui` can stop a turn but not a tool. A `JoinError` becomes
 "almost always a panic in the tool, though a runtime shut down mid-flight looks
 the same".
 
-## `approval.rs` — the shapes, not the policy
+## The gate's shapes left this crate, and the asking stayed
 
-[`approval.rs`](../../crates/sandbx-agent/src/approval.rs) is 110 lines holding
+`approval.rs` was here until #355 gave it a crate of its own,
+[`sandbx-approval`](../../crates/sandbx-approval/src/lib.rs) — 110 lines holding
 four types and the trait, and no policy at all: no risk table, no allowlist, no
-default verdict. Every judgement is the caller's gate's, which for the shipped
-binary is `ArgvGate` in `sandbx-cli`; [13](13-turn-loop-and-gate.md) is the
-chapter for what that one decides and in which order. Here are the shapes.
+default verdict. `sandbx-agent` kept the asking, so `run_turn`'s fifth parameter
+is unchanged and the two sites that call it are still `turn/tools.rs`'s; what
+moved is where the vocabulary is declared, and the three production
+implementors were never here to begin with — they are `sandbx-cli`'s.
+
+Every judgement is the caller's gate's, which for the shipped binary is
+`ArgvGate` in `sandbx-cli`; [13](13-turn-loop-and-gate.md) is the chapter for
+what that one decides and in which order. Here are the shapes.
 
 **What a gate is asked.** `ToolCall` is three fields: the resolved `tool`, the
 `id` the answer must carry back, and `input` as the model sent it, unparsed,
@@ -320,7 +329,7 @@ pub trait CallGate {
 }
 ```
 
-That is the whole of what the crate knows about consent: two `&mut self`
+That is the whole of what `sandbx-approval` knows about consent: two `&mut self`
 methods, both synchronous, nothing about a terminal or a flag. **`approve` has
 exactly one call site** — the `let verdict = …` in `answer_calls`, behind the
 abort latch, which [13](13-turn-loop-and-gate.md) takes apart line by line — so
@@ -713,10 +722,10 @@ And what it therefore cannot test:
 
 ## You should now be able to explain
 
-- Which box of 04's request path this crate is, and which chapter owns the gate
-  it contains.
+- Which box of 04's request path this crate is, which chapter owns the gate it
+  asks, and which crate declares that gate's shapes.
 - The minimum set of re-exported types needed to call `run_turn` once, and which
-  of the thirteen a caller threading no token counts never touches.
+  of the eight a caller threading no token counts never touches.
 - What being generic over a stream-opening closure buys, and what `AsyncFnMut`
   costs a generic wrapper.
 - Which two of `run_turn`'s five parameters are not generic, and why the crate

@@ -3,10 +3,8 @@
 //! Driven through the closure seam with `support::Script`, so the suite needs no network
 //! and no API key.
 
-use sandbx_agent::{
-    ApprovalDecision, CallGate, Outcome, Settled, ToolCall, TurnError, TurnLimits, TurnStop,
-    run_turn,
-};
+use sandbx_agent::{TurnError, TurnLimits, TurnStop, run_turn};
+use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{AgentEvent, ContentBlock, EventStream, RequestMessage, Role, StopReason};
 use sandbx_tools::{BuiltinTool, ExecutionContext};

@@ -6,10 +6,8 @@
 
 use std::io::Write;
 
-use sandbx_agent::{
-    ApprovalDecision, CallGate, Settled, ToolCall, Turn, TurnLimits, TurnOutcome, TurnStop,
-    run_turn,
-};
+use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_providers::{EventStream, Prompt, ProviderError, ToolChoice};
 use sandbx_tools::ExecutionContext;
 

@@ -4,7 +4,7 @@
 //! The report is here and not in `render.rs` because only the gate knows what became of a
 //! call.
 
-use sandbx_agent::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
+use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_text::invisible;
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
