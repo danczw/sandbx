@@ -12,9 +12,7 @@ use ratatui::buffer::Cell;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::{Position, Rect, Size};
-
-use crate::transcript::Transcript;
-use crate::view::{self, Hint};
+use sandbx_tui_transcript::{Hint, Transcript, draw};
 
 /// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
 pub struct Screen {
@@ -98,7 +96,7 @@ impl Screen {
             .terminal
             .as_mut()
             .expect("a screen holds its terminal until it drops");
-        if let Err(error) = terminal.draw(|frame| view::draw(frame, &self.transcript, hint)) {
+        if let Err(error) = terminal.draw(|frame| draw(frame, &self.transcript, hint)) {
             self.failed = Some(error);
         }
     }
@@ -306,7 +304,7 @@ mod tests {
         let transcript = Transcript::new("a prompt", false);
         drop(master);
 
-        let drawn = terminal.draw(|frame| view::draw(frame, &transcript, Hint::Running));
+        let drawn = terminal.draw(|frame| draw(frame, &transcript, Hint::Running));
 
         assert_unmeasured(drawn.map(drop));
         assert_eq!(writes.get(), 0, "the draw was attempted");
@@ -334,7 +332,7 @@ mod tests {
 
         cleared(&mut terminal).expect("a live pty is cleared");
         terminal
-            .draw(|frame| view::draw(frame, &transcript, Hint::Running))
+            .draw(|frame| draw(frame, &transcript, Hint::Running))
             .expect("a live pty is drawn on");
         assert!(writes.get() > 0, "nothing reached a live pty");
     }

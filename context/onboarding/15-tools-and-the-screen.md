@@ -295,13 +295,17 @@ stdout, and it refuses `--approve call` (#225).
 ### It draws and nothing else
 
 [`sandbx-tui`](../../crates/sandbx-tui/) takes `&AgentEvent` and gives back a
-keypress. It holds no policy, no provider, no session and no gate.
+keypress, with [what it shows](../../crates/sandbx-tui-transcript/) carved off
+into a crate of its own (#353). Neither holds a policy, a provider, a session or
+a gate.
 
 ```
-Transcript   the events folded into entries          no terminal → unit-tested
-view::draw   the entries laid out as rows            TestBackend → unit-tested
-Screen       raw mode, the alternate screen, Drop    a real terminal only
-Keys         the reader thread and the press         the predicate → unit-tested
+sandbx-tui-transcript
+  Transcript  the events folded into entries        no terminal → unit-tested
+  view::draw  the entries laid out as rows          TestBackend → unit-tested
+sandbx-tui
+  Screen      raw mode, the alternate screen, Drop  a real terminal only
+  Keys        the reader thread and the press       the predicate → unit-tested
 ```
 
 Read that table as a security property with a testing justification, not the

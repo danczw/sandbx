@@ -2,13 +2,13 @@
 //!
 //! A crate rather than a module in either sink, because a character added to one copy and
 //! not another re-opens the hole in whichever was missed: `sandbx-cli`'s line sink and
-//! `sandbx-tui`'s cell read the same [`invisible`], and a drift between them would be a
-//! terminal-injection difference between two surfaces users read as the same. Each sink
-//! keeps its own replacement: only the hazard is shared.
+//! `sandbx-tui-transcript`'s cell read the same [`invisible`], and a drift between them
+//! would be a terminal-injection difference between two surfaces users read as the same.
+//! Each sink keeps its own replacement: only the hazard is shared.
 //!
 //! Not `sandbx-core`, which is Linux-only, so a pure-Unicode predicate would be too — and
-//! it would add a `tui` → `core` edge. Not `sandbx-tui`, which would put a `char`
-//! predicate in a terminal-UI crate's public API and have the gate read the drawing crate
+//! it would add a terminal-UI → `core` edge. Not `sandbx-tui-transcript`, which would put
+//! a `char` predicate in a drawing crate's public API and have the gate read that crate
 //! for text bound for stderr and `/dev/tty` (#363).
 
 /// Whether `c` renders as nothing, or reorders what follows it.

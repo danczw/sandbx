@@ -276,8 +276,8 @@ it — was `text.rs` here until #363 gave it a crate of its own,
 what model-chosen text may not carry to a terminal, and the two places that text
 reaches a human both read it: `sandbx-cli`'s `gate::stripped`, deciding what an
 operator reads before consenting to a tool call
-([13](13-turn-loop-and-gate.md)), and `sandbx-tui`'s `transcript::printable`,
-deciding what reaches a cell
+([13](13-turn-loop-and-gate.md)), and `sandbx-tui-transcript`'s
+`transcript::printable`, deciding what reaches a cell
 ([23](23-crate-tui.md)).
 
 That crate's `//!` is where the reasoning lives now: why one table and not two,

@@ -63,13 +63,14 @@ Four things about that shape are worth more than the picture.
   converges in the CLI because that is where
   argv becomes a policy and a policy becomes a run. 04's *The CLI architecture*
   section covers the lib-plus-bin split.
-- **`sandbx-tui` reaches `sandbx-providers` for the vocabulary, not the
-  transport.** The only names it borrows are `AgentEvent` and `StopReason`,
-  with the terminal-safety predicate `invisible` coming from `sandbx-text`
-  instead since #363 — see
-  [`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs). No client, no
-  credential, no policy. The screen folds events it is handed; it never opens a
-  stream.
+- **The screen reaches `sandbx-providers` for the vocabulary, not the
+  transport.** The only names it borrows are `AgentEvent` and `StopReason`, and
+  since #353 the edge is `sandbx-tui-transcript`'s rather than `sandbx-tui`'s;
+  the terminal-safety predicate `invisible` comes from `sandbx-text` instead
+  since #363. See
+  [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs). No
+  client, no credential, no policy. The screen folds events it is handed; it
+  never opens a stream.
 - **Nothing points up.** There is no cycle, and no crate reaches sideways into a
   peer at its own level. `sandbx-tools` cannot see `sandbx-agent`, so a tool
   cannot ask the loop for another round; `sandbx-agent` cannot see

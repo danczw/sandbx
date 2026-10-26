@@ -50,7 +50,7 @@ wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-helper", "sandbx-logging", "sa
 
 [[bans.deny]]
 name = "sandbx-providers"
-wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-tui"]
+wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-tui-transcript"]
 
 [[bans.deny]]
 name = "sandbx-tools"
@@ -85,6 +85,12 @@ name = "sandbx-tui"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
+name = "sandbx-tui-transcript"
+# `sandbx-cli` is absent: it reaches `Transcript` through `sandbx-tui`'s re-export, not an
+# edge of its own. Nor is `sandbx-screen`, which does not exist until #352 adds itself here.
+wrappers = ["sandbx-tui"]
+
+[[bans.deny]]
 name = "sandbx-pty-fixture"
 # A dev-dependency edge, so this crate is in nobody's build; the entry is what keeps a
 # production edge from being added without a line here.
@@ -92,8 +98,7 @@ wrappers = ["sandbx-tui"]
 
 [[bans.deny]]
 name = "sandbx-text"
-# Not `sandbx-tui-transcript`, which does not exist until #353 re-points this line.
-wrappers = ["sandbx-cli", "sandbx-tui"]
+wrappers = ["sandbx-cli", "sandbx-tui-transcript"]
 
 [[bans.deny]]
 name = "sandbx-approval"

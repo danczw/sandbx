@@ -1,0 +1,33 @@
+pub mod sandbx_tui_transcript
+pub enum sandbx_tui_transcript::Hint
+pub sandbx_tui_transcript::Hint::Done
+pub sandbx_tui_transcript::Hint::Running
+impl core::clone::Clone for sandbx_tui_transcript::Hint
+pub fn sandbx_tui_transcript::Hint::clone(&self) -> sandbx_tui_transcript::Hint
+impl core::cmp::Eq for sandbx_tui_transcript::Hint
+impl core::cmp::PartialEq for sandbx_tui_transcript::Hint
+pub fn sandbx_tui_transcript::Hint::eq(&self, &sandbx_tui_transcript::Hint) -> bool
+impl core::fmt::Debug for sandbx_tui_transcript::Hint
+pub fn sandbx_tui_transcript::Hint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_tui_transcript::Hint
+impl core::marker::StructuralPartialEq for sandbx_tui_transcript::Hint
+impl core::marker::Freeze for sandbx_tui_transcript::Hint
+impl core::marker::Send for sandbx_tui_transcript::Hint
+impl core::marker::Sync for sandbx_tui_transcript::Hint
+impl core::marker::Unpin for sandbx_tui_transcript::Hint
+impl core::marker::UnsafeUnpin for sandbx_tui_transcript::Hint
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Hint
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Hint
+pub struct sandbx_tui_transcript::Transcript
+impl sandbx_tui_transcript::Transcript
+pub fn sandbx_tui_transcript::Transcript::event(&mut self, &sandbx_providers::event::AgentEvent)
+pub fn sandbx_tui_transcript::Transcript::new(&str, bool) -> Self
+pub fn sandbx_tui_transcript::Transcript::note(&mut self, &str)
+impl core::marker::Freeze for sandbx_tui_transcript::Transcript
+impl core::marker::Send for sandbx_tui_transcript::Transcript
+impl core::marker::Sync for sandbx_tui_transcript::Transcript
+impl core::marker::Unpin for sandbx_tui_transcript::Transcript
+impl core::marker::UnsafeUnpin for sandbx_tui_transcript::Transcript
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Transcript
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Transcript
+pub fn sandbx_tui_transcript::draw(&mut ratatui_core::terminal::frame::Frame<'_>, &sandbx_tui_transcript::Transcript, sandbx_tui_transcript::Hint)

@@ -23,20 +23,23 @@ Three things differ:
 Everything else that differs is a refusal, not a variation: `tui` needs a
 terminal on stdout, and it refuses `--approve call` (#225).
 
-## The crate draws and nothing else
+## The drawing crates decide nothing
 
-`sandbx-tui` takes `&AgentEvent` and gives back a keypress. It holds no policy,
-no provider, no session and no gate, which is what keeps the security-bearing
-code in one place: a renderer that could decide anything would be a second place
-to look for what approved a call.
+`sandbx-tui` takes `&AgentEvent` — through the `Transcript` it re-exports from
+`sandbx-tui-transcript` — and gives back a keypress. Neither crate holds a
+policy, a provider, a session or a gate, which is what keeps the
+security-bearing code in one place: a renderer that could decide anything would
+be a second place to look for what approved a call.
 
 ```
-Transcript   the events folded into entries          no terminal → unit-tested
-view::draw   the entries laid out as rows            TestBackend → unit-tested
-Screen       the transcript it draws, raw mode,      a real terminal only
-             the alternate screen, Drop
-Measured     the window, off the drawn descriptor    a pty pair → unit-tested
-Keys         the reader thread and the press         a pty pair → unit-tested
+sandbx-tui-transcript
+  Transcript  the events folded into entries         no terminal → unit-tested
+  view::draw  the entries laid out as rows           TestBackend → unit-tested
+sandbx-tui
+  Screen      the transcript it draws, raw mode,     a real terminal only
+              the alternate screen, Drop
+  Measured    the window, off the drawn descriptor   a pty pair → unit-tested
+  Keys        the reader thread and the press        a pty pair → unit-tested
 ```
 
 The split is for testability. `Transcript` is a fold with no screen behind it, so
@@ -67,7 +70,7 @@ the directional isolates render *nothing* and reorder what follows them, so a
 line can display as a different line — in the same pane, and the same `sandbx: `
 grammar, as the gate's account of what a tool did. The same denylist therefore
 applies at the cell too: `sandbx_text::invisible`, one table, which
-`gate.rs` reads for the line sink and this crate reads for the cell. It is a
+`gate.rs` reads for the line sink and the transcript reads for the cell. It is a
 denylist because `char` has no predicate for the category, so a new Unicode
 version can outgrow it silently — and it has one owner, so a character added to
 it reaches both sinks. What is shared is the hazard; each sink keeps its own
