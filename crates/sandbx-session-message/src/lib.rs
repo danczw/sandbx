@@ -4,8 +4,8 @@
 //! Mirrors `sandbx_providers`'s `RequestMessage`, `Role` and `ContentBlock`, and
 //! `sandbx_agent`'s `PromptUsage`, declared here rather than imported because a transcript
 //! is a file format, and one that moved whenever a provider type moved would not be.
-//! `sandbx-cli` translates, and fails to compile on a new block kind. The line format is
-//! `context/decision-on-disk-state.md`.
+//! `sandbx-cli` translates, and fails to compile on a new block kind.
+//! `context/decision-on-disk-state.md` has the line format these sit in.
 
 use serde::{Deserialize, Serialize};
 
