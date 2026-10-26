@@ -749,13 +749,15 @@ fixture for a hung-up terminal. The integration files, split by surface:
 | `auth_store.rs` | the credential file end to end — spawned, because the chain reads real environment variables and `set_var` is `unsafe` under edition 2024 |
 | `hash.rs` | `hash` and `--pin-sha256` asserted together, over the real binary's stdout |
 | `usage.rs` | the code a shell actually sees for a refused command line, and the channel it arrived on — spawned, since nothing a unit test can reach returns an `ExitStatus` |
-| `audit_log.rs` | the real subscriber, driven over an in-memory sink |
-| `audit_log_install.rs` | one test, and it must stay one: installing a `tracing` dispatcher is process-global |
-| `audit_log_held.rs` | the audit trail a held screen releases, end to end: a record on a blocking thread through the real subscriber into `Held`, onto stderr when the guard drops — re-exec'd to read fd 2, since `Held::drop` writes there directly and libtest's capture only intercepts the print macros (#266) |
 | `name.rs` | that the binary's name is not one a POSIX shell resolves before searching `$PATH` — a security test, because such a name "does not fail, it succeeds", so a hand check of the sandbox looks like a working run |
 
 [guide-testing.md](../guide-testing.md) is the authority on which of
 those a new test belongs in.
+
+The three `audit_log*.rs` files that were in that table went to
+[`sandbx-logging`](../../crates/sandbx-logging/src/lib.rs) with #348, along with
+the subscriber they drive. What they assert is that crate's chapter to make, not
+this one's.
 
 ## You should now be able to explain
 
