@@ -1,13 +1,9 @@
-//! Terminal UI: the screen a turn is drawn on, the keys that interrupt it, and the state
-//! in between.
+//! The keys that interrupt a turn, and what a hangup means.
 //!
-//! Takes `&AgentEvent` and hands back a keypress. Model-chosen text is stripped in
-//! [`sandbx_tui_transcript`], not at the caller, because the screen is what an escape
-//! sequence inside it would rewrite.
+//! Reads them off the terminal `sandbx-screen` took, on threads of its own because neither
+//! `poll` nor crossterm's `event::read` can be cancelled. Nothing here draws, and nothing
+//! here holds a policy, a provider, a session or a gate.
 
 mod input;
-mod screen;
 
 pub use input::{Keys, Stopped};
-pub use sandbx_tui_transcript::Transcript;
-pub use screen::Screen;

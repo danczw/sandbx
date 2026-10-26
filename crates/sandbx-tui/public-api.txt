@@ -1,5 +1,4 @@
 pub mod sandbx_tui
-pub use sandbx_tui::Transcript
 pub enum sandbx_tui::Stopped
 pub sandbx_tui::Stopped::Gone
 pub sandbx_tui::Stopped::Pressed
@@ -31,18 +30,3 @@ impl core::marker::Unpin for sandbx_tui::Keys
 impl core::marker::UnsafeUnpin for sandbx_tui::Keys
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui::Keys
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tui::Keys
-pub struct sandbx_tui::Screen
-impl sandbx_tui::Screen
-pub fn sandbx_tui::Screen::enter(sandbx_tui_transcript::transcript::Transcript) -> core::io::error::Result<Self>
-pub fn sandbx_tui::Screen::failure(&mut self) -> core::option::Option<core::io::error::Error>
-pub fn sandbx_tui::Screen::finish(&mut self, impl core::ops::function::FnOnce(&mut sandbx_tui_transcript::transcript::Transcript))
-pub fn sandbx_tui::Screen::paint(&mut self, impl core::ops::function::FnOnce(&mut sandbx_tui_transcript::transcript::Transcript))
-impl core::ops::drop::Drop for sandbx_tui::Screen
-pub fn sandbx_tui::Screen::drop(&mut self)
-impl core::marker::Freeze for sandbx_tui::Screen
-impl core::marker::Send for sandbx_tui::Screen
-impl core::marker::Sync for sandbx_tui::Screen
-impl core::marker::Unpin for sandbx_tui::Screen
-impl core::marker::UnsafeUnpin for sandbx_tui::Screen
-impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_tui::Screen
-impl !core::panic::unwind_safe::UnwindSafe for sandbx_tui::Screen

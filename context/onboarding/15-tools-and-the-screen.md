@@ -7,9 +7,9 @@ closed enum with `ALL: [Self; 7]`; `ToolSpec` crate-private". **The policy's
 ownership** is
 [`tools/src/context.rs`](../../crates/sandbx-tools/src/context.rs) —
 "`ExecutionContext` holds the `SandboxPolicy` in a **private** field (#56)". The
-third is [`sandbx-tui`](../../crates/sandbx-tui/), which 04 does not draw as a
-boundary because it is not one: it holds no policy, no gate and no session, and
-that absence is the design.
+third is [`sandbx-screen`](../../crates/sandbx-screen/), which 04 does not draw
+as a boundary because it is not one: it holds no policy, no gate and no session,
+and that absence is the design.
 
 [guide-tools.md](../guide-tools.md) owns the set,
 [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) owns what
@@ -294,17 +294,19 @@ stdout, and it refuses `--approve call` (#225).
 
 ### It draws and nothing else
 
-[`sandbx-tui`](../../crates/sandbx-tui/) takes `&AgentEvent` and gives back a
-keypress, with [what it shows](../../crates/sandbx-tui-transcript/) carved off
-into a crate of its own (#353). Neither holds a policy, a provider, a session or
-a gate.
+[`sandbx-screen`](../../crates/sandbx-screen/) takes `&AgentEvent` and
+[`sandbx-tui`](../../crates/sandbx-tui/) gives back a keypress, with
+[what it shows](../../crates/sandbx-tui-transcript/) carved off into a crate of
+its own (#353) and the screen itself into another (#352). None of the three
+holds a policy, a provider, a session or a gate.
 
 ```
 sandbx-tui-transcript
   Transcript  the events folded into entries        no terminal → unit-tested
   view::draw  the entries laid out as rows          TestBackend → unit-tested
-sandbx-tui
+sandbx-screen
   Screen      raw mode, the alternate screen, Drop  a real terminal only
+sandbx-tui
   Keys        the reader thread and the press       the predicate → unit-tested
 ```
 
@@ -517,7 +519,7 @@ gap chapter 14 reaches from the trail's side.
   no fourth.
 - Every place an eighth tool would be a compile error, and the one place it
   would not be.
-- Why `sandbx-tui` holds no policy and no gate, and how that lines up with what
+- Why no tui crate holds a policy or a gate, and how that lines up with what
   can be unit-tested.
 - Why a single-pane transcript needs a gutter that the view draws, and why ASCII
   `|` is deliberately allowed through.

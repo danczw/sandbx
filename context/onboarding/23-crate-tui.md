@@ -1,9 +1,10 @@
 # The tui crates decide nothing, and sanitise everything they draw
 
-Two crates, and #353 split them:
+Three crates, and #353 and #352 split them:
 [`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/) is what the
-screen shows, and [`sandbx-tui`](../../crates/sandbx-tui/) is the screen one
-turn is drawn on and the keys that stop it. The module tables below are the
+screen shows, [`sandbx-screen`](../../crates/sandbx-screen/) is the screen one
+turn is drawn on, and [`sandbx-tui`](../../crates/sandbx-tui/) is the keys that
+stop it. The module tables below are the
 enumeration; no count here, which would go stale on the next extraction. In
 [04 — the architecture](04-the-architecture.md) they are the box a turn is
 *reported* in, and the one place with no row in View 3's table of boundaries —
@@ -29,9 +30,12 @@ src/lib.rs          re-exports three names; no terminal behind either file
                     may not hold — unit-tested over &str
    view.rs          the layout: the transcript tail-aligned over a status bar
 
+sandbx-screen
+src/lib.rs          Screen and Measured, and Transcript re-exported; one file,
+                    the window measurement having no reader outside it
+
 sandbx-tui
-src/lib.rs          re-exports four names; no policy, no gate, no session here
-   screen.rs        Screen — raw mode and the alternate screen, put back on drop
+src/lib.rs          re-exports two names; no policy, no gate, no session here
    input.rs         Keys — the reader thread, and the press a turn awaits
 ```
 
@@ -40,37 +44,46 @@ src/lib.rs          re-exports four names; no policy, no gate, no session here
 | [transcript's `lib.rs`](../../crates/sandbx-tui-transcript/src/lib.rs) | two `mod` lines and two `pub use` lines — `Transcript`, `draw`, `Hint` | here |
 | [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs) | `Transcript`, `Entry`, `Kind`, `printable` — the fold, and the sanitiser | here, as the centre; [15](15-tools-and-the-screen.md) for why a renderer gets a security chapter |
 | [`view.rs`](../../crates/sandbx-tui-transcript/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar; only the first two leave the crate | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
-| [tui's `lib.rs`](../../crates/sandbx-tui/src/lib.rs) | two `mod` lines and three `pub use` lines — one of them re-exporting `Transcript` from the crate above | here |
-| [`screen.rs`](../../crates/sandbx-tui/src/screen.rs) | `Screen` — the transcript it draws, raw mode, the alternate screen, the `Drop`, the latched failure | here |
+| [screen's `lib.rs`](../../crates/sandbx-screen/src/lib.rs) | `Screen` — the transcript it draws, raw mode, the alternate screen, the `Drop`, the latched failure — and `Measured`, which does not leave the crate | here |
+| [tui's `lib.rs`](../../crates/sandbx-tui/src/lib.rs) | one `mod` line and one `pub use` line | here |
 | [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
 Tests are inline, in the file whose private items they touch, as
 [guide-testing.md](../guide-testing.md) asks: all four of `transcript.rs`,
-`view.rs`, `input.rs` and `screen.rs` carry a `mod tests`, and neither crate has
-a `tests/` directory. `screen.rs`'s three are the #269 hangup trio, and they
-need a pty pair rather than a terminal; what no test reaches at all is
+`view.rs`, `input.rs` and screen's `lib.rs` carry a `mod tests`, and no crate
+here has a `tests/` directory. The screen's three are the #269 hangup trio, and
+they need a pty pair rather than a terminal; what no test reaches at all is
 `Screen::enter` and crossterm's reader, below.
 
 ## Four names out, and the manifests are the interesting half
 
-`sandbx-tui` is two `mod` lines and three `pub use` lines, and no `pub mod`, so
-no module path is part of the API: a caller gets four names and their methods —
-`Transcript::new`/`event`/`note`, `Screen::enter`/`paint`/`finish`/`failure`,
-`Keys::listen`/`stop`/`press`, `Stopped::Pressed`/`Gone`. `Transcript` is the
-one of the four it does not own: it re-exports the type, which is what keeps
-`sandbx-cli` on one edge instead of two.
+No crate here has a `pub mod`, so no module path is part of the API: a caller
+gets four names and their methods — `Transcript::new`/`event`/`note`,
+`Screen::enter`/`paint`/`finish`/`failure`, `Keys::listen`/`stop`/`press`,
+`Stopped::Pressed`/`Gone`. Three of the four come from `sandbx-screen`, which
+re-exports `Transcript` rather than leave the caller a second edge: every entry
+point it has takes or hands back one (#352).
 
-Deliberately *not* exported, by either crate, is the shape of a transcript:
+Deliberately *not* exported, by any of the three, is the shape of a transcript:
 `Entry` and `Kind` are `pub(crate)`, as are `Transcript::entries`, `rounds`,
 `tokens` and `view::GUTTER_MARK` — `Screen` owns the transcript once entered
 and picks the hint itself, `paint` meaning the turn still runs and `finish`
 that it is over. The only way out of a `Transcript` is a drawn frame, so no
 caller can read the folded entries back and print them where the fold does not
-cover. The split cost exactly two of those: `view::draw` and `Hint` went `pub`
-because `Screen` is now a different crate's type, and a frame needs nothing
-else. Keeping `view.rs` beside `transcript.rs` is what kept the other six
-private — the layout is the only reader of any of them, and it is inside
+cover. The transcript split cost exactly two of those: `view::draw` and `Hint`
+went `pub` because `Screen` is now a different crate's type, and a frame needs
+nothing else. Keeping `view.rs` beside `transcript.rs` is what kept the other
+six private — the layout is the only reader of any of them, and it is inside
 (#353).
+
+The screen split cost none, for the same reason read the other way round.
+`Measured` is the window measurement #269 exists for, and the whole of its
+seven references sat in `screen.rs`: the private field, the two private
+constructors, both `impl` blocks and a test helper. So the file took every
+caller of it with it, and `Measured` plus its `ratatui::Backend` impl stayed
+`pub(crate)` where a reading of the checklist alone had predicted a widening
+(#352). A predicted widening is a prediction about a *boundary*, and moving a
+file moves the boundary with it.
 
 The dependency edges are the second half of each manifest.
 [`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/Cargo.toml) has
@@ -84,8 +97,21 @@ sandbx-providers = { path = "../sandbx-providers" }
 sandbx-text = { path = "../sandbx-text" }
 ```
 
-[`sandbx-tui`](../../crates/sandbx-tui/Cargo.toml) takes the backend and the
-threads instead:
+[`sandbx-screen`](../../crates/sandbx-screen/Cargo.toml) takes the backend:
+
+```toml
+ratatui = { version = "=0.30.2", default-features = false, features = [
+  "crossterm",
+] }
+# `termios` alone, for `tcgetwinsize`: the screen measures its own window, crossterm's
+# `terminal::size` forking `tput` when the measurement fails (#269). nix has no safe
+# `TIOCGWINSZ`, and this is the rustix crossterm already builds.
+rustix = { version = "1.1.4", default-features = false, features = ["std", "termios"] }
+sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
+```
+
+[`sandbx-tui`](../../crates/sandbx-tui/Cargo.toml) takes the threads, and no
+crate of sandbx's at all:
 
 ```toml
 ratatui = { version = "=0.30.2", default-features = false, features = [
@@ -95,27 +121,27 @@ ratatui = { version = "=0.30.2", default-features = false, features = [
 # the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
 # spins on the zero-byte read behind it (#264).
 nix = { version = "0.31.3", default-features = false, features = ["poll"] }
-sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 ```
 
-Two internal crates in the fold's build and one in the screen's, plus one more
-only for tests. `nix`'s `poll` feature is the production edge the hangup fix
-added (#264) — the key reader's whole mechanism for seeing a terminal that
-stopped answering, below and in [guide-tui.md](../guide-tui.md). The dev profile
-takes `sandbx-pty-fixture` for the pty pair a hangup test opens and the window
-it opens with; `serde_json` went with the fold it builds one call's input for.
-Read the production edges as a
-negative fact stated at the type level: **a renderer cannot leak what it cannot
-name.** With no edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or
-`sandbx-session` from either crate, nothing here can mention a `SandboxPolicy`,
-an `ExecutionContext`, a `BuiltinTool`, a `CallGate` or a session transcript —
-not "does not" but cannot, as a build error. The borrowed vocabulary is two
-types, and after #353 it is borrowed one crate lower down:
-`transcript.rs` names `sandbx_providers::AgentEvent`, and its tests name
-`StopReason`.
+Two internal crates in the fold's build, one in the screen's and none in the
+keys', plus one more only for tests. `rustix`'s `termios` is what the screen
+measures its own window with rather than ask crossterm (#269), and `nix`'s
+`poll` is the production edge the hangup fix added (#264) — the key reader's
+whole mechanism for seeing a terminal that stopped answering, below and in
+[guide-tui.md](../guide-tui.md). The dev profile takes `sandbx-pty-fixture` in
+both the screen and the keys, for the pty pair a hangup test opens and the
+window it opens with; `serde_json` went with the fold it builds one call's
+input for. Read the production edges as a negative fact stated at the type
+level: **a renderer cannot leak what it cannot name.** With no edge to
+`sandbx-core`, `sandbx-tools`, `sandbx-agent` or `sandbx-session` from any of
+the three, nothing here can mention a `SandboxPolicy`, an `ExecutionContext`, a
+`BuiltinTool`, a `CallGate` or a session transcript — not "does not" but cannot,
+as a build error. The borrowed vocabulary is two types, and after #353 it is
+borrowed one crate lower down: `transcript.rs` names
+`sandbx_providers::AgentEvent`, and its tests name `StopReason`.
 
 - **Worth questioning:** how much of that the dependency graph carries. Four
   crates' vocabulary is ruled out by a missing edge; the rest is not.
@@ -135,7 +161,7 @@ types, and after #353 it is borrowed one crate lower down:
 
 ## transcript.rs is the fold, and the fold is a sanitiser
 
-The file to read, and the only one in either crate with a decision in it.
+The file to read, and the only one of the four with a decision in it.
 `Transcript` holds the `Vec<Entry>` in arrival order, a `show_thinking` flag, a
 `rounds` counter and `tokens`, a pair of `Option<u32>`. An `Entry` is a `Kind`
 and a `String`, and `Kind`'s four variants — `Prompt`, `Answer`, `Reasoning`,
@@ -190,7 +216,7 @@ attacker-influenced text: a prompt injection in a file the agent read comes back
 through the model and into the pane, and ratatui writes a cell's content to the
 terminal as it was given. A surviving escape sequence could reposition the
 cursor, rewrite the rows above itself — the account of what a tool just did
-included — or set the terminal's title. `sandbx-tui`'s module doc draws the
+included — or set the terminal's title. `sandbx-screen`'s crate doc draws the
 conclusion: model-chosen text "is stripped in `sandbx_tui_transcript`, not at
 the caller, because the screen is what an escape sequence inside it would
 rewrite". `printable` is the stripper:
@@ -396,7 +422,7 @@ that drives a terminal.
 The status bar is `rounds N`, the token figures if any arrived, and one `Hint`,
 joined with ` · ` and drawn `REVERSED`.
 
-## screen.rs takes the terminal, and `Drop` gives it back
+## `sandbx-screen` takes the terminal, and `Drop` gives it back
 
 `Screen::enter` installs a panic hook and then takes the terminal, in that
 order. The hook first because of what it replaces: `ratatui::try_init` restores
@@ -731,8 +757,9 @@ an in-flight blocking task, and nothing waits for a `std::thread`.
 
 ## You should now be able to explain
 
-- Why neither tui crate has a row in 04's table of boundaries, which four names
-  `sandbx-tui` exports, and why `Entry` and `Kind` are not among them.
+- Why no tui crate has a row in 04's table of boundaries, which four names the
+  three of them export between them, and why `Entry`, `Kind` and `Measured` are
+  not among them.
 - Why `transcript.rs` and `view.rs` are one crate, which two of their items the
   split had to widen, and why the other six stayed `pub(crate)`.
 - What each crate's internal dependencies rule out as a build error, and the

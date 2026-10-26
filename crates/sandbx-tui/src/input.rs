@@ -37,7 +37,7 @@ pub enum Stopped {
 }
 
 /// The keys the operator presses, as the turn awaits them. Start only after
-/// [`Screen::enter`](crate::Screen::enter): without raw mode ctrl-c is a signal, not a key.
+/// `sandbx_screen::Screen::enter`: without raw mode ctrl-c is a signal, not a key.
 pub struct Keys {
     seen: watch::Receiver<Seen>,
 }

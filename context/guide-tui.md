@@ -25,20 +25,21 @@ terminal on stdout, and it refuses `--approve call` (#225).
 
 ## The drawing crates decide nothing
 
-`sandbx-tui` takes `&AgentEvent` — through the `Transcript` it re-exports from
-`sandbx-tui-transcript` — and gives back a keypress. Neither crate holds a
-policy, a provider, a session or a gate, which is what keeps the
-security-bearing code in one place: a renderer that could decide anything would
-be a second place to look for what approved a call.
+`sandbx-screen` takes `&AgentEvent` — through the `Transcript` it re-exports
+from `sandbx-tui-transcript` — and `sandbx-tui` gives back a keypress. None of
+the three holds a policy, a provider, a session or a gate, which is what keeps
+the security-bearing code in one place: a renderer that could decide anything
+would be a second place to look for what approved a call.
 
 ```
 sandbx-tui-transcript
   Transcript  the events folded into entries         no terminal → unit-tested
   view::draw  the entries laid out as rows           TestBackend → unit-tested
-sandbx-tui
+sandbx-screen
   Screen      the transcript it draws, raw mode,     a real terminal only
               the alternate screen, Drop
   Measured    the window, off the drawn descriptor   a pty pair → unit-tested
+sandbx-tui
   Keys        the reader thread and the press        a pty pair → unit-tested
 ```
 

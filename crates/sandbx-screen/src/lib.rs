@@ -1,6 +1,9 @@
 //! The terminal the turn is drawn on, and putting it back.
 //!
-//! Measured by [`Measured`], never by crossterm's `terminal::size`, which can fork `tput` (#269).
+//! Measured by `Measured`, never by crossterm's `terminal::size`, which can fork `tput` (#269).
+//!
+//! Model-chosen text is stripped in [`sandbx_tui_transcript`], not at the caller, because
+//! the screen is what an escape sequence inside it would rewrite.
 
 use std::io::{self, Stdout, Write};
 use std::os::fd::{AsFd, OwnedFd};
@@ -12,7 +15,11 @@ use ratatui::buffer::Cell;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::{Position, Rect, Size};
-use sandbx_tui_transcript::{Hint, Transcript, draw};
+use sandbx_tui_transcript::{Hint, draw};
+
+/// Re-exported here and not left to the caller: every entry point below takes or hands
+/// back one, so a consumer that has `Screen` has the type it is drawn from (#352).
+pub use sandbx_tui_transcript::Transcript;
 
 /// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
 pub struct Screen {
@@ -29,7 +36,7 @@ pub struct Screen {
 
 impl Screen {
     /// Take the terminal: raw mode on, alternate screen entered. Raw mode makes ctrl-c reach
-    /// [`Keys`](crate::Keys) as a key, not a `SIGINT` killing the process with the screen up.
+    /// `sandbx_tui::Keys` as a key, not a `SIGINT` killing the process with the screen up.
     pub fn enter(transcript: Transcript) -> io::Result<Self> {
         // First, before anything fallible, so a panic in `take_terminal` is covered too.
         // `try_restore` and not `restore`: inside a hook its `eprintln!` to the descriptor
@@ -70,7 +77,7 @@ impl Screen {
     /// Apply `change`, then repaint every cell for the finished turn: ratatui flushes only the
     /// diff between its buffers, so a cell stderr wrote under the alternate screen survives
     /// unless the back buffer is discarded. By `resize`, never `Terminal::clear`, whose cursor
-    /// query takes crossterm's one reader lock that [`Keys`](crate::Keys) may hold, or races
+    /// query takes crossterm's one reader lock that `sandbx_tui::Keys` may hold, or races
     /// it for the reply. A same-size resize asks the terminal nothing only on the fullscreen
     /// viewport `Terminal::new` gives; an inline one recomputes its origin from the cursor,
     /// which is that query again.
