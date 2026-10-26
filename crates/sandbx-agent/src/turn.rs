@@ -6,4 +6,4 @@ mod accumulate;
 mod run;
 mod tools;
 
-pub use run::{PromptUsage, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+pub use run::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};

@@ -201,14 +201,16 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
                           TurnStop, PromptUsage, Compaction, CallGate,
                           ToolCall, ApprovalDecision, Settled, Outcome,
                           run_turn
-   turn.rs    re-exports run_turn and the five types that drive it
+   turn.rs    re-exports run_turn and the four types that drive it
       run.rs         run_turn — generic over a stream-opening closure
       accumulate.rs  one round's message, rebuilt from deltas
       tools.rs       what is offered, the gate, and the one spawn_blocking site
    approval.rs  what a gate is asked, the three answers it may give — one of
                 which ends the turn — and the five outcomes it is told a call
                 reached
-   compact.rs   which prefix of a history may be withheld
+   compact.rs   which prefix of a history may be withheld, and PromptUsage —
+                the measurement it is decided on, declared on this side of the
+                edge because the turn depends on compaction and not the reverse
    compact_tests.rs  the cut-point algebra
    error.rs   TurnError
 tests/       turn_loop, turn_compaction, audit_trail,
