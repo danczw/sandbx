@@ -30,7 +30,8 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-approval ────────────────────────────┤                 derivation, the
-sandbx-core ────────────────────────────────┤                 turn loop's caller
+sandbx-auth ────────────────────────────────┤                 turn loop's caller
+sandbx-core ────────────────────────────────┤
 sandbx-logging ─────────────────────────────┤
 sandbx-session ─────────────────────────────┤
 sandbx-session-message ─────────────────────┤
@@ -48,7 +49,7 @@ constant, not a mechanism.
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | approval, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | approval, core, agent, logging, providers, session, session-message, text, tools, tui |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, session, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-message |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers, text (pty-fixture is *dev*-only) |
@@ -57,6 +58,7 @@ constant, not a mechanism.
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
+| `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -244,8 +246,8 @@ and `stop_reason` is a private free function, so no `StopReason` comes from a
 wire string outside `anthropic/` (#59). The vendor *name* is the one row
 nothing *contains* — no lint, no containment test, no CI grep — and one
 sibling of `anthropic.rs` carries it: `lib.rs` re-exports `AnthropicClient`.
-The key and its variable's name are the CLI's, in `auth/key.rs`. Four more files
-name it in doc comments only. Per-rule account in
+The key and its variable's name are `sandbx-auth`'s, in its `key.rs`. Four
+more files name it in doc comments only. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-text`
@@ -347,6 +349,28 @@ src/lib.rs          re-exports; nothing here knows of a policy or a provider
    input.rs         Keys — the reader thread, and the press a turn awaits
 ```
 
+## `sandbx-auth`
+
+```
+src/lib.rs        re-exports Auth, AuthError, and the three names a caller
+                  reaches: ENV_VAR, api_key, config_file
+   key.rs         Auth — which source the provider key comes from: the
+                  environment, then a file, and the login/logout/status over it
+   store.rs       the credential file itself — its TOML shape, and the 0600/0700
+                  modes it is refused and written under
+   error.rs       AuthError — what stops `auth`, or a key resolution under
+                  `agent-run`
+```
+
+No workspace dependency, so the crate that owns the credential file reaches
+nothing that could widen what it writes. `sandbx-cli` holds the `Command::Auth`
+variant, the `sandbx` binary the end-to-end tests spawn, and `AgentError`'s
+`From<AuthError>`; `ENV_VAR` is also what `agent-run` refuses to `--allow-env`
+and `config_file` what a path grant is refused for. See
+[decision-credentials.md](decision-credentials.md) for the source order and that
+refusal, and [decision-on-disk-state.md](decision-on-disk-state.md) for the mode
+rule this crate shares with `sandbx-session`.
+
 ## `sandbx-cli`
 
 ```
@@ -381,15 +405,9 @@ src/lib.rs      mod lines and re-exports; no code
       tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
                 one, and the gate that draws its verdicts instead of printing
                 them                                 ◄── guide-tui.md
-   auth.rs      re-exports Auth and the three names the crate reaches
-   auth/key.rs  Auth — which source the provider key comes from: the
-                environment, then a file, and the login/logout/status over it
-   auth/store.rs
-                the credential file itself — its TOML shape, and the 0600/0700
-                modes it is refused and written under
    session.rs   --session: which session to open, and the translation to and from
                 the stored shapes
-   error.rs     re-exports the five, and is the list of them
+   error.rs     re-exports the four, and is the list of them
    error/agent.rs
                 AgentError — twelve ways a turn does not finish
    error/run.rs
@@ -399,8 +417,6 @@ src/lib.rs      mod lines and re-exports; no code
                 appends
    error/hash.rs
                 HashError — a path and an io::Error, no variants
-   error/auth.rs
-                AuthError — what stops `auth`, or a key resolution under `agent-run`
 src/main.rs     helper dispatch, the tokio runtime, exit codes
 tests/          agent_run, agent_session, auth, auth_store, cwd_policy, hash,
                 name, sandbox_run, usage
@@ -412,7 +428,8 @@ drawn on a screen rather than streamed to stdout, so the two share `gate.rs`,
 `orientation.rs` and `session.rs` and differ only in where a turn is reported.
 `hash` and `auth` run no sandbox — `hash` reads one file, so a
 digest can be taken before there is a policy to take it under, and `auth` touches
-only the credential file.
+only the credential file. `auth` is the one subcommand whose body is not here:
+`invocation.rs` holds the variant and `sandbx-auth` everything under it.
 
 `Grants` exists so the axis loop, the one widening it applies — a write grant
 confers read — and the working-directory default are written once. Two copies

@@ -415,7 +415,7 @@ not to merge them:
 ```rust
 /// The bits that let somebody else write, which refuse a resume.
 ///
-/// Split from [`READABLE_BITS`], not shared with `auth/store.rs`'s `SHARED_BITS`: a leaked
+/// Split from [`READABLE_BITS`], not shared with `sandbx-auth`'s `SHARED_BITS`: a leaked
 /// credential rotates and a conversation does not; see `context/decision-on-disk-state.md`.
 pub(super) const WRITABLE_BITS: u32 = 0o022;
 ```
@@ -498,7 +498,7 @@ which two are live.
 | 3 | `credentials.toml` under the config home, `0600` in a `0700` directory | live |
 
 "The two live tiers are tried in that order, and the order is the point."
-[`cli/src/auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs) — see `resolve` —
+[`auth/src/key.rs`](../../crates/sandbx-auth/src/key.rs) — see `resolve` —
 states it as a property of *when the file is located*: "The file is located only
 once the environment has come up empty, so an exported key works on a host with
 no config home for `config_file` to name."
@@ -521,8 +521,8 @@ Two small rules that save a long debugging session each:
   unpopulated CI secret yields `Ok("")`, and a `$(cat key)` keeps a trailing
   newline that `HeaderValue` rejects much later as an opaque transport error.
   Both are handled once, in `nonblank` in
-  [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs), for the environment,
-  the file and `auth login`'s stdin alike.
+  [`auth/src/key.rs`](../../crates/sandbx-auth/src/key.rs), for the
+  environment, the file and `auth login`'s stdin alike.
 - **The lookup is injected** rather than calling `std::env::var` directly,
   because `set_var` is an `unsafe fn` under edition 2024 and the workspace
   forbids `unsafe_code` in test binaries too. The same trick appears in
@@ -559,9 +559,9 @@ rule that the two run subcommands may differ by a *refusal*, never by a policy.
 
 ```rust
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
-        if self.grants.names_env(crate::auth::ENV_VAR) {
+        if self.grants.names_env(sandbx_auth::ENV_VAR) {
             return Err(PolicyError::HarnessCredential {
-                name: crate::auth::ENV_VAR,
+                name: sandbx_auth::ENV_VAR,
             });
         }
 

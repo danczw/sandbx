@@ -4,7 +4,6 @@
 //! what a flag grants on a machine with no sandbox-capable kernel.
 
 mod agent;
-mod auth;
 mod error;
 mod grants;
 mod hash;
@@ -13,8 +12,7 @@ mod sandbox;
 mod session;
 
 pub use agent::{AgentRun, Tui};
-pub use auth::Auth;
-pub use error::{AgentError, AuthError, HashError, PolicyError, SandboxRunError};
+pub use error::{AgentError, HashError, PolicyError, SandboxRunError};
 pub use grants::Grants;
 pub use hash::Hash;
 pub use invocation::{Cli, Command};

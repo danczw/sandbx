@@ -1,0 +1,60 @@
+pub mod sandbx_auth
+pub enum sandbx_auth::AuthError
+pub sandbx_auth::AuthError::BlankKey
+pub sandbx_auth::AuthError::DirPermissions
+pub sandbx_auth::AuthError::DirPermissions::mode: u32
+pub sandbx_auth::AuthError::DirPermissions::path: std::path::PathBuf
+pub sandbx_auth::AuthError::Encode(toml::ser::error::Error)
+pub sandbx_auth::AuthError::Io
+pub sandbx_auth::AuthError::Io::path: std::path::PathBuf
+pub sandbx_auth::AuthError::Io::source: core::io::error::Error
+pub sandbx_auth::AuthError::Malformed
+pub sandbx_auth::AuthError::Malformed::line: usize
+pub sandbx_auth::AuthError::Malformed::path: std::path::PathBuf
+pub sandbx_auth::AuthError::NoConfigHome
+pub sandbx_auth::AuthError::NoCredential
+pub sandbx_auth::AuthError::NoCredential::path: std::path::PathBuf
+pub sandbx_auth::AuthError::NotATable
+pub sandbx_auth::AuthError::NotATable::path: std::path::PathBuf
+pub sandbx_auth::AuthError::Permissions
+pub sandbx_auth::AuthError::Permissions::mode: u32
+pub sandbx_auth::AuthError::Permissions::path: std::path::PathBuf
+pub sandbx_auth::AuthError::Stdin(core::io::error::Error)
+pub sandbx_auth::AuthError::TtyInput
+impl core::error::Error for sandbx_auth::AuthError
+pub fn sandbx_auth::AuthError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_auth::AuthError
+pub fn sandbx_auth::AuthError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_auth::AuthError
+pub fn sandbx_auth::AuthError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_auth::AuthError
+impl core::marker::Send for sandbx_auth::AuthError
+impl core::marker::Sync for sandbx_auth::AuthError
+impl core::marker::Unpin for sandbx_auth::AuthError
+impl core::marker::UnsafeUnpin for sandbx_auth::AuthError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_auth::AuthError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_auth::AuthError
+pub struct sandbx_auth::Auth
+impl sandbx_auth::Auth
+pub fn sandbx_auth::Auth::execute(&self) -> core::result::Result<i32, sandbx_auth::AuthError>
+impl clap_builder::derive::Args for sandbx_auth::Auth
+pub fn sandbx_auth::Auth::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_auth::Auth::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_auth::Auth::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_auth::Auth
+pub fn sandbx_auth::Auth::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_auth::Auth::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_auth::Auth::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_auth::Auth::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_auth::Auth
+pub fn sandbx_auth::Auth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_auth::Auth
+impl core::marker::Send for sandbx_auth::Auth
+impl core::marker::Sync for sandbx_auth::Auth
+impl core::marker::Unpin for sandbx_auth::Auth
+impl core::marker::UnsafeUnpin for sandbx_auth::Auth
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_auth::Auth
+impl core::panic::unwind_safe::UnwindSafe for sandbx_auth::Auth
+pub const sandbx_auth::ENV_VAR: &str
+pub fn sandbx_auth::api_key() -> core::result::Result<secrecy::SecretString, sandbx_auth::AuthError>
+pub fn sandbx_auth::config_file(&impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<std::path::PathBuf, sandbx_auth::AuthError>

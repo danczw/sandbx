@@ -1,7 +1,7 @@
 //! The credential file: its TOML shape, and the modes it is read and written under.
 //!
-//! `auth/key.rs` owns which source answers; this owns what is on disk, and the ordering the
-//! `0600` guarantee depends on.
+//! [`super::key`] owns which source answers; this owns what is on disk, and the ordering
+//! the `0600` guarantee depends on.
 
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};

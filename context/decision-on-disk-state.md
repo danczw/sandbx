@@ -4,7 +4,7 @@ Two roots, each owned by one crate, each created `0700` with its files `0600`.
 
 | Root | Holds | Owner |
 |---|---|---|
-| `$XDG_CONFIG_HOME/sandbx/`, else `~/.config/sandbx/` | `credentials.toml` | `sandbx-cli/src/auth/store.rs` |
+| `$XDG_CONFIG_HOME/sandbx/`, else `~/.config/sandbx/` | `credentials.toml` | `sandbx-auth/src/store.rs` |
 | `$XDG_STATE_HOME/sandbx/sessions/`, else `~/.local/state/sandbx/sessions/` | `<id>.jsonl`, one per session | `sandbx-session/src/paths.rs` |
 
 Config and state are split because XDG splits them, and the split earns its
@@ -39,8 +39,8 @@ What a resume *can* still prevent is substitution. A transcript another user can
 write is a history another user chose, and it is replayed to a model that calls
 tools; that is the one novel hazard in session persistence and the read path is
 the only place it can be caught. So `sandbx-session` names `WRITABLE_BITS` and
-`READABLE_BITS` separately where `auth/store.rs` has a single `SHARED_BITS`. Do not
-unify them.
+`READABLE_BITS` separately where `sandbx-auth`'s `store.rs` has a single
+`SHARED_BITS`. Do not unify them.
 
 That single `SHARED_BITS` is the whole of `0o077`, read off `credentials.toml` and
 off its canonicalised parent, so group/other execute alone refuses a load. The two

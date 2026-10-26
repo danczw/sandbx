@@ -12,15 +12,15 @@ the lib-plus-bin split, the five subcommands, and what `tui` shares with
 
 ## The module tree, and who covers what
 
-Twenty-nine source files under [`src/`](../../crates/sandbx-cli/src/), twelve
-integration files under `tests/`, and six thematic chapters already owning
-parts of them. So this table is the navigational centre of the chapter rather
-than a decoration: it says what each module holds and, where another chapter
-explains the mechanism, which one. The two `_tests.rs` siblings have no row of
-their own; they sit with the module whose tests they are.
+The source files under [`src/`](../../crates/sandbx-cli/src/), the integration
+files under `tests/`, and six thematic chapters already owning parts of them. So
+this table is the navigational centre of the chapter rather than a decoration:
+it says what each module holds and, where another chapter explains the
+mechanism, which one. The two `_tests.rs` siblings have no row of their own;
+they sit with the module whose tests they are.
 
-The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
-`agent.rs` seven, and `error.rs` five — one per error type.
+The paths carry the nesting: `grants.rs` has two children, `agent.rs` seven, and
+`error.rs` one per error type.
 
 | file | holds | covered in |
 |---|---|---|
@@ -40,18 +40,22 @@ The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
 | [`agent/render.rs`](../../crates/sandbx-cli/src/agent/render.rs) | the stdout/stderr split, and `finish`'s code | here, and [13](13-turn-loop-and-gate.md) for `finish`'s ordering |
 | [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) | the wrap-up round's mechanics | here; [13](13-turn-loop-and-gate.md) for why it is spent |
 | [`agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) | the `tui` subcommand, the interrupt, the drawing gate | [15](15-tools-and-the-screen.md), [23](23-crate-tui.md) |
-| [`auth.rs`](../../crates/sandbx-cli/src/auth.rs) | re-exports `Auth` and the three names the rest of the crate reaches | here |
-| [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs) | the two key sources and `login`/`logout`/`status` | here |
-| [`auth/store.rs`](../../crates/sandbx-cli/src/auth/store.rs) | the credential file: read, store, discard, and the modes | here; [14](14-audit-sessions-credentials.md) for the tiers |
 | [`session.rs`](../../crates/sandbx-cli/src/session.rs) | `--session`, and the translation to and from the stored shapes | here, and [22](22-crate-session.md) |
-| [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the five re-exports, and the list of what can refuse a run | here |
+| [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the re-exports, and the list of what can refuse a run | here |
 | [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`policy.rs`](../../crates/sandbx-cli/src/error/policy.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` — one each | here |
-| [`error/auth.rs`](../../crates/sandbx-cli/src/error/auth.rs) | `AuthError` | here |
+
+
+`auth`'s body is not in this crate.
+[`sandbx-auth`](../../crates/sandbx-auth/src/lib.rs) holds `key.rs`, `store.rs`
+and `AuthError`; `invocation.rs` keeps the `Command::Auth` variant and its
+`--help`, and `error/agent.rs` the `From<AuthError>` that folds a credential
+failure into a turn's (#349). The section below reads the same, against those
+paths.
 
 ## invocation.rs is the clap surface, and lib.rs the list of names
 
-The library root declares nine modules and re-exports fourteen types. That is
-the whole file: `lib.rs` has submodules, so it may hold only `mod` lines and
+The library root declares the crate's modules and re-exports their types. That
+is the whole file: `lib.rs` has submodules, so it may hold only `mod` lines and
 re-exports (#331), and the clap surface it used to hold is now `invocation.rs`.
 No work happens in either, which is the point: `Cli::parse` is reachable from a
 unit test, so "what does this argv grant" is a question answered without a
@@ -228,7 +232,7 @@ Read the whole thing as one mapping, in the order it is actually decided:
 | a bound the operator chose cut the turn short | 2 | `INCOMPLETE` in `agent/run.rs` |
 | a keypress ended a turn on the screen | 2 | the same `INCOMPLETE`, from `tui`'s `select!` |
 | the operator could no longer be asked, or `tui`'s terminal hung up | 3 | `NO_CONSENT` in `agent/run.rs` |
-| `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `auth/key.rs` |
+| `auth status` found no key in either source | 1 | `UNAUTHENTICATED` in `sandbx-auth`'s `key.rs` |
 | any `Err` under `sandbox-run`, `agent-run`, `tui`, `hash` | 1 | `failure_code` |
 | any `Err` under `auth` | 2 | `failure_code` |
 | an `Ok(code)` that does not fit a `u8` | the subcommand's failure code | `report` |
@@ -331,7 +335,7 @@ flowchart TD
     B -->|"no"| D["policy"]
     D --> E["orientation::system_prompt, off that one policy"]
     E --> F["terminal, under --approve call: prompt.rs"]
-    F --> G["auth::api_key, then AnthropicClient"]
+    F --> G["sandbx_auth::api_key, then AnthropicClient"]
     G --> H["session::open"]
     H --> I["drive: run_turn, render observing, gate::ArgvGate deciding"]
     I -->|"RoundLimit, by default"| J["wrapup::run, gated by RefuseAll"]
@@ -535,7 +539,7 @@ because the alternate screen does not redirect stderr (#224).
 [15](15-tools-and-the-screen.md) covers the behaviour and what interrupting
 costs, and [23](23-crate-tui.md) covers the widgets underneath.
 
-## auth/key.rs and auth/store.rs
+## sandbx-auth: key.rs and store.rs
 
 Two sources for one key, and `resolve` fixes the order: `ANTHROPIC_API_KEY`
 wins, and the file is only *located* — not merely read — once the environment
@@ -663,14 +667,14 @@ whose content all translated away, since an empty content array is something no
 provider accepts, and storing one would fail the *next* resumed turn rather than
 this one.
 
-## error/ — five error types for five surfaces
+## five error types for five surfaces, four of them in error/
 
 | type | raised by | shape |
 |---|---|---|
 | `SandboxRunError` | `sandbox-run` | two variants: `Policy`, `Sandbox` |
 | `AgentError` | `agent-run` and `tui` | twelve variants, from `EmptyPrompt` to `Turn` |
 | `HashError` | `hash` | a struct, no variants: a path and an `io::Error` |
-| `AuthError` | `auth`, and `agent-run` reading a key | eleven variants |
+| `AuthError` | `auth`, and `agent-run` reading a key | eleven variants; `sandbx-auth`'s, not `error/`'s (#349) |
 | `PolicyError` | `Grants::policy`, a leaf inside the first two | one variant per way a policy can be refused |
 
 What five buys over one enum is a per-subcommand `Display` surface and a
@@ -736,7 +740,7 @@ Unit tests sit in the module they test, except where a file has enough of them
 to warrant its own: `agent/gate.rs` and `agent/prompt.rs` both have `_tests.rs`
 siblings, and `prompt`'s is `pub(super) mod tests` so `agent/run.rs`'s own
 tests — not `gate`'s, which builds its own fake `Operator` — can reach its `pty`
-fixture for a hung-up terminal. Twelve integration files, split by surface:
+fixture for a hung-up terminal. The integration files, split by surface:
 
 | file | asserts |
 |---|---|

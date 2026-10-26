@@ -180,7 +180,7 @@ pub(super) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<Own
             holds: "the session transcripts a resumed run replays to the model",
         });
     }
-    if let Ok(path) = crate::auth::config_file(lookup) {
+    if let Ok(path) = sandbx_auth::config_file(lookup) {
         owned.push(OwnedPath {
             path,
             holds: "the provider key it spends",

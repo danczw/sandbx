@@ -190,9 +190,9 @@ impl AgentRun {
     /// working-directory refusal landing ahead of it would mask it. It may refuse where
     /// `sandbox-run` grants, never derive a narrower policy.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
-        if self.grants.names_env(crate::auth::ENV_VAR) {
+        if self.grants.names_env(sandbx_auth::ENV_VAR) {
             return Err(PolicyError::HarnessCredential {
-                name: crate::auth::ENV_VAR,
+                name: sandbx_auth::ENV_VAR,
             });
         }
 
@@ -274,7 +274,7 @@ impl AgentRun {
 
         // Before the session: the credential chain can fail for want of a key, and a
         // session opened first would leave a header-only transcript nothing deletes.
-        let client = AnthropicClient::new(crate::auth::api_key()?)?;
+        let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
 
         let session = session::open(self.session())?;
 

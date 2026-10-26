@@ -22,6 +22,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 nix = { version = "0.31.3", default-features = false, features = ["term"] }
 sandbx-agent = { path = "../sandbx-agent" }
 sandbx-approval = { path = "../sandbx-approval" }
+sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
 sandbx-logging = { path = "../sandbx-logging" }
 sandbx-providers = { path = "../sandbx-providers" }

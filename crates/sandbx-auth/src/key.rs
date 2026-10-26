@@ -15,7 +15,7 @@ use super::store;
 
 /// Checked before the file, and the one name `agent-run` refuses to `--allow-env`
 /// — see `context/decision-credentials.md`.
-pub(crate) const ENV_VAR: &str = "ANTHROPIC_API_KEY";
+pub const ENV_VAR: &str = "ANTHROPIC_API_KEY";
 
 /// The credential file, below whichever config home is in play.
 const FILE: &str = "sandbx/credentials.toml";
@@ -122,7 +122,7 @@ enum Source {
 }
 
 /// The key `agent-run` authenticates with, from whichever source has one.
-pub(crate) fn api_key() -> Result<SecretString, AuthError> {
+pub fn api_key() -> Result<SecretString, AuthError> {
     resolve(&|name| std::env::var_os(name)).map(|(key, _)| key)
 }
 
@@ -168,9 +168,7 @@ pub(super) fn nonblank(raw: &str) -> Option<SecretString> {
 ///
 /// Both must be absolute. XDG says a relative `$XDG_CONFIG_HOME` is to be ignored, and
 /// joining one to the cwd would put a credential in whatever tree the agent was pointed at.
-pub(crate) fn config_file(
-    lookup: &impl Fn(&str) -> Option<OsString>,
-) -> Result<PathBuf, AuthError> {
+pub fn config_file(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, AuthError> {
     let absolute = |name| lookup(name).map(PathBuf::from).filter(|d| d.is_absolute());
     if let Some(dir) = absolute("XDG_CONFIG_HOME") {
         return Ok(dir.join(FILE));

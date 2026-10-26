@@ -3,7 +3,9 @@
 //! The `///` block above each `Command` variant is rendered `--help` text, not
 //! commentary — it is that subcommand's long help.
 
-use crate::{AgentRun, Auth, Hash, SandboxRun, Tui};
+use sandbx_auth::Auth;
+
+use crate::{AgentRun, Hash, SandboxRun, Tui};
 
 #[derive(Debug, clap::Parser)]
 #[command(

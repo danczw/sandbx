@@ -61,6 +61,12 @@ name = "sandbx-agent"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
+name = "sandbx-auth"
+# Not `sandbx-grants`, which does not exist until #350 adds itself here — it reaches
+# `config_file` to refuse a grant covering the credential file.
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
 name = "sandbx-logging"
 wrappers = ["sandbx-cli"]
 
