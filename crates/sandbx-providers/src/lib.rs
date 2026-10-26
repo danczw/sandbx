@@ -4,8 +4,8 @@
 //! [`EventStream`], so there is no trait or enum over the backends. No vendor SDK
 //! sits between sandbx and the wire format; see `context/decision-provider-seam.md`.
 //!
-//! [`Prompt`], [`AgentEvent`] and [`ProviderError`] are this crate's own vocabulary, with
-//! [`invisible`] for what that text may not carry to a terminal. Everything that knows one
+//! [`Prompt`], [`AgentEvent`] and [`ProviderError`] are this crate's own vocabulary; what
+//! that text may not carry to a terminal is `sandbx-text`'s. Everything that knows one
 //! API's field names, string tables and body rules lives under `anthropic`.
 
 mod anthropic;
@@ -13,7 +13,6 @@ mod error;
 mod event;
 mod prompt;
 mod sse;
-mod text;
 
 pub use anthropic::AnthropicClient;
 pub use error::ProviderError;
@@ -21,7 +20,6 @@ pub use event::{AgentEvent, StopReason};
 pub use prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
-pub use text::invisible;
 
 /// The event stream every provider client returns: owned, boxed, and fused.
 ///

@@ -1662,6 +1662,7 @@ dependencies = [
  "sandbx-providers",
  "sandbx-session",
  "sandbx-session-message",
+ "sandbx-text",
  "sandbx-tools",
  "sandbx-tui",
  "secrecy",
@@ -1753,6 +1754,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-text"
+version = "0.1.0-alpha.18"
+
+[[package]]
 name = "sandbx-tools"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1774,6 +1779,7 @@ dependencies = [
  "rustix",
  "sandbx-providers",
  "sandbx-pty-fixture",
+ "sandbx-text",
  "serde_json",
  "tokio",
 ]

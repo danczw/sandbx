@@ -3,7 +3,8 @@
 //! No terminal behind it, so the fold is a unit test rather than a screenshot. Nothing
 //! here renders a *requested* call: only a settled one has an outcome.
 
-use sandbx_providers::{AgentEvent, invisible};
+use sandbx_providers::AgentEvent;
+use sandbx_text::invisible;
 
 use crate::view::GUTTER_MARK;
 

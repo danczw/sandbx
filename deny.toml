@@ -84,6 +84,11 @@ name = "sandbx-pty-fixture"
 # production edge from being added without a line here.
 wrappers = ["sandbx-tui"]
 
+[[bans.deny]]
+name = "sandbx-text"
+# Not `sandbx-tui-transcript`, which does not exist until #353 re-points this line.
+wrappers = ["sandbx-cli", "sandbx-tui"]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

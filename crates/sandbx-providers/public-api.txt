@@ -248,5 +248,4 @@ impl core::marker::UnsafeUnpin for sandbx_providers::ToolDefinition
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::ToolDefinition
 impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::ToolDefinition
 pub fn sandbx_providers::ensure_crypto_provider_installed()
-pub fn sandbx_providers::invisible(char) -> bool
 pub type sandbx_providers::EventStream = core::pin::Pin<alloc::boxed::Box<(dyn futures_core::stream::FusedStream<Item = core::result::Result<sandbx_providers::AgentEvent, sandbx_providers::ProviderError>> + core::marker::Send)>>
