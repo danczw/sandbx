@@ -4,7 +4,7 @@
 //! turns out to name.
 //!
 //! All kernel-free — no root, no network namespace, no Landlock-capable host. A live kernel
-//! is `tests/enforcement.rs` and `tests/enforcement_syscalls.rs`.
+//! is `sandbx-helper`'s `tests/enforcement.rs` and `tests/enforcement_syscalls.rs`.
 
 mod compat;
 mod grants;

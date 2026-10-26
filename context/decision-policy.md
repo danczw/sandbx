@@ -300,11 +300,11 @@ are written down.
 
 ### All of them run, or none of the files compiles
 
-64 real-kernel enforcement tests, split by what enforces them: 40 in
-`sandbx-helper/tests/enforcement.rs` for paths and grants, 10 in
-`tests/enforcement_syscalls.rs` for the calls Landlock cannot express, 6 in
-`tests/enforcement_network.rs` for the ports it does, and 8 in
-`tests/enforcement_resolver.rs` for the names that resolve. All four files are
+65 real-kernel enforcement tests, all four files `sandbx-helper`'s since #347,
+split by what enforces them: 41 in `enforcement.rs` for paths and grants, 10 in
+`enforcement_syscalls.rs` for the calls Landlock cannot express, 6 in
+`enforcement_network.rs` for the ports it does, and 8 in
+`enforcement_resolver.rs` for the names that resolve. All four files are
 `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
 count is unconditional — all 64 run or none of the files compiles, and
 `cargo test` reports `0 ignored`. Nothing checks this number against the files.

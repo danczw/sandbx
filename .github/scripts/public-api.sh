@@ -41,8 +41,19 @@ command -v jq >/dev/null 2>&1 || {
 # redirect below, that error arrives *after* the redirect has truncated the baseline to
 # zero bytes, so the failure names this script and not the crate. `sandbx-helper` is
 # bin-only by design (#328 decision 5), hence the skip.
-libs=$(cargo metadata --format-version 1 --no-deps \
-    | jq -r '.packages[] | select(.targets[]?.kind[]? == "lib") | .name' | sort -u)
+#
+# Two statements and not one pipeline, for the reason `guide-ci.md` gives for the `msrv`
+# job: `/bin/sh` has no `pipefail`, so a failed `cargo metadata` piped into `jq` would
+# take jq's exit status, leave `$libs` empty, and send every crate down the no-lib branch
+# — aborting on the first committed baseline with an error about a lost lib target.
+metadata=$(cargo metadata --format-version 1 --no-deps)
+# Every library kind, not `lib` alone: a `crate-type` of `rlib` or `cdylib` is still a
+# surface, and keying on `lib` would skip it with no baseline and no complaint.
+libs=$(printf '%s' "$metadata" | jq -r '
+    .packages[]
+    | select(any(.targets[].kind[]; . == "lib" or . == "rlib" or . == "dylib"
+        or . == "cdylib" or . == "staticlib" or . == "proc-macro"))
+    | .name' | sort -u)
 
 for manifest in crates/*/Cargo.toml; do
     crate=$(basename "$(dirname "$manifest")")

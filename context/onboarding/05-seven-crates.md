@@ -50,8 +50,8 @@ Four things about that shape are worth more than the picture.
   than imported, because a file format that moved whenever a provider type moved
   would not be a file format.
 - **`sandbx-cli` is the only crate that depends on all the others, and the only
-  one whose binary is the shipped artifact.** `sandbx-core` builds a standalone
-  `sandbx-helper` and a row of probes beside it, all test support. Everything
+  one whose binary is the shipped artifact.** `sandbx-helper` builds a standalone
+  helper and a row of probes beside it, all test support. Everything
   converges in the CLI because that is where
   argv becomes a policy and a policy becomes a run. 04's *The CLI architecture*
   section covers the lib-plus-bin split.

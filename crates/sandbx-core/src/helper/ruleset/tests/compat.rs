@@ -237,9 +237,21 @@ fn every_prose_copy_of_the_floor_is_current() {
         ),
         (
             // In `sandbx-helper` since #347, so one `..` further out than its siblings:
-            // the suite that spawns the binary moved to the crate that owns it.
+            // the suite that spawns the binary moved to the crate that owns it. A textual
+            // dependency on a sibling package, which `cargo deny` cannot see and which
+            // runs opposite to the edge it does enforce — harmless while `publish = false`,
+            // and the reason a packaged `sandbx-core` would not build (#347).
             "sandbx-helper/tests/enforcement.rs",
             include_str!("../../../../../sandbx-helper/tests/enforcement.rs"),
+            both,
+        ),
+        // `sandbx-helper`'s manifest states the floor too, its `sandbox-integration`
+        // forwarding to the feature above (#347). Reached by path like the two below
+        // rather than relative to this crate, so the dependency runs the way `deny.toml`
+        // has it and not backwards.
+        (
+            "sandbx-helper/Cargo.toml",
+            include_str!("../../../../../sandbx-helper/Cargo.toml"),
             both,
         ),
         // The only two of 24 `context/` files stating the floor: a file that never names it

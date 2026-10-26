@@ -3,9 +3,9 @@
 [`sandbx-cli`](../../crates/sandbx-cli/) is process 0 in
 [04](04-the-architecture.md)'s View 1 — the unconfined one that "parses argv,
 derives the policy, asks the model, decides, records". It is the only crate that
-depends on all six others and the only one whose binary ships — `sandbx-core`
-builds a standalone `sandbx-helper` and a row of probes beside it, all test
-support — so every box in that drawing is reached from here. Read
+depends on all six others and the only one whose binary ships — `sandbx-helper`
+builds a standalone helper and a row of probes beside it, all test support — so
+every box in that drawing is reached from here. Read
 [04](04-the-architecture.md)'s *The CLI architecture* section first: it states
 the lib-plus-bin split, the five subcommands, and what `tui` shares with
 `agent-run`. This chapter zooms into that section, file by file.

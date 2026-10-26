@@ -41,8 +41,8 @@ fn an_unrestricted_grant_does_not_handle_the_network_axis() {
 }
 
 /// The direction that would fail *open*: taking `Unhandled` for a port list leaves TCP
-/// unrestricted while the CLI reports an allowlist. `tests/enforcement_network.rs` is where
-/// a real kernel says so.
+/// unrestricted while the CLI reports an allowlist. `sandbx-helper`'s
+/// `tests/enforcement_network.rs` is where a real kernel says so.
 #[test]
 fn a_port_list_handles_the_axis_and_carries_every_port() {
     let policy = SandboxPolicy::default()
