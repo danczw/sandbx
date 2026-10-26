@@ -16,8 +16,9 @@ boxes and the arrows between them.
 
 Every crate is a member of `members = ["crates/*"]`, and every internal edge is
 a path dependency. Read an arrow as "may name the types of", and look for the
-crates no arrow leaves. The graph and the table below predate #332's extractions
-and name neither `sandbx-helper`, `sandbx-pty-fixture` nor `sandbx-text`;
+crates no arrow leaves. The graph and the table below name only the seven crates
+that existed before #332 began splitting them, so every crate that phase adds is
+missing from both — enumerating them here would go stale on the next extraction.
 [guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
 is #332's own closing item:
 
