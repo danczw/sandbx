@@ -44,7 +44,6 @@ The paths carry the nesting: `grants.rs` has two children, `agent.rs` seven, and
 | [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the re-exports, and the list of what can refuse a run | here |
 | [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`policy.rs`](../../crates/sandbx-cli/src/error/policy.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` — one each | here |
 
-
 `auth`'s body is not in this crate.
 [`sandbx-auth`](../../crates/sandbx-auth/src/lib.rs) holds `key.rs`, `store.rs`
 and `AuthError`; `invocation.rs` keeps the `Command::Auth` variant and its

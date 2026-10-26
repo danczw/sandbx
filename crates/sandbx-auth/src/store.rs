@@ -1,6 +1,6 @@
 //! The credential file: its TOML shape, and the modes it is read and written under.
 //!
-//! [`super::key`] owns which source answers; this owns what is on disk, and the ordering
+//! [`crate::key`] owns which source answers; this owns what is on disk, and the ordering
 //! the `0600` guarantee depends on.
 
 use std::io::{Read, Write};
@@ -43,7 +43,7 @@ pub(super) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
         .get(TABLE)
         .and_then(|provider| provider.get(ENTRY))
         .and_then(toml::Value::as_str)
-        .and_then(super::key::nonblank))
+        .and_then(crate::key::nonblank))
 }
 
 /// The file as a table, or `None` when it is absent.
