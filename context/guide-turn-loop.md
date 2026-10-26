@@ -328,9 +328,10 @@ that arrived late would not stop the call it refused.
 
 ## Test suite
 
-Split by visibility, as the workspace splits everywhere: `compact.rs`'s planner is
-private, so its cut-point algebra lives in `src/compact_tests.rs` beside it, while
-`tests/` covers the public surface. That half splits again by subject —
+Split by visibility, as the workspace splits everywhere: `sandbx-compact`'s
+`opens_a_request` is private, so the cut-point algebra lives in that crate's
+`src/compact_tests.rs` beside it, while `sandbx-agent`'s `tests/` covers the
+public surface. That half splits again by subject —
 `turn_loop.rs` for what one streamed turn becomes, `turn_compaction.rs` for
 compaction's wiring, including that what reaches the API after a cut is still a
 conversation it would accept, which is asserted on `Script::sent` rather than on

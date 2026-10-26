@@ -1,11 +1,13 @@
 # A small crate holds the control flow
 
-`sandbx-agent` is seven source files and about thirteen hundred lines, and it is
-the box [04 — the architecture](04-the-architecture.md) draws in View 2: the
-round that opens a stream, consumes it and answers what the model asked for.
+`sandbx-agent` is a small crate, and it is the box
+[04 — the architecture](04-the-architecture.md) draws in View 2: the round that
+opens a stream, consumes it and answers what the model asked for.
 View 3's **gate** — "`CallGate`, two methods, `run_turn`'s mandatory fifth
-parameter" — is `sandbx-approval`'s since #355; the section on it below is what
-left and what the loop still does with it.
+parameter" — is `sandbx-approval`'s since #355, and the cut planner is
+`sandbx-compact`'s since #356. Both sections below are what left and what the
+loop still does with it; [guide-repo-map.md](../guide-repo-map.md)'s crate table
+is the maintained list of which crate holds what.
 
 [13 — nothing runs until the gate has answered](13-turn-loop-and-gate.md) is
 this crate's chapter in the read-through, and the longest in the set. Read it
@@ -16,19 +18,17 @@ exit code an abort earns. The round loop from first principles — why re-entry
 keys on the *presence* of `ToolUse` blocks and never on a `StopReason` — is
 [02](02-what-a-harness-is.md), and [guide-turn-loop.md](../guide-turn-loop.md)
 is the authority for both the loop and compaction. What is left is the module
-map, the signature a caller meets, and `compact.rs`.
+map, the signature a caller meets, and the cut planner the loop asks.
 
 ## The module map
 
 ```
-src/lib.rs          eight re-exports and three private modules; nothing else
+src/lib.rs          re-exports, two of them `sandbx-compact`'s, and two private
+                    modules; nothing else
    turn.rs          five re-exports and three private modules; nothing else
       run.rs        run_turn, and the public types it is driven by
       accumulate.rs one round's assistant message, rebuilt from deltas
       tools.rs      the offered set, the gate call, one spawn_blocking
-   compact.rs       which prefix of a history may be withheld, and PromptUsage —
-                    the measurement that decides it (#345)
-   compact_tests.rs the cut-point algebra, as unit tests
    error.rs         TurnError — only what ends a turn in failure
 tests/
    turn_loop.rs       what one streamed turn becomes
@@ -39,11 +39,11 @@ tests/
 
 Three things to read off that shape. **The deepest path is two levels**, and
 `run.rs`'s two siblings are the two halves of a round: rebuilding what arrived,
-running what it asked for. **`run.rs` is the longest non-test file in the crate
-and stays one module**, which its own doc says outright, because a new way for a
-turn to stop is one edit to `TurnStop`, one to the loop that chooses it and one
-to the outcome that carries it. **The test tree is larger than `src/`**, about
-2,500 lines against 1,350 — the last section is why.
+running what it asked for. **`run.rs` is the longest file under `src/` and stays
+one module**, which its own doc says outright, because a new way for a turn to
+stop is one edit to `TurnStop`, one to the loop that chooses it and one to the
+outcome that carries it. **The test tree is larger than `src/`** — the last
+section is why, and the cut planner's own unit module left with it (#356).
 
 Of the runtime dependencies, one carries its constraint in a comment:
 
@@ -53,22 +53,23 @@ Of the runtime dependencies, one carries its constraint in a comment:
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 ```
 
-The others are `sandbx-approval`, `sandbx-providers`, `sandbx-tools`,
-`serde_json` and `futures-util` — the last for `StreamExt` alone, which is what
-makes `stream.next()` in `accumulate` the only place this crate touches a
-stream.
+The others are `sandbx-approval`, `sandbx-compact`, `sandbx-providers`,
+`sandbx-tools` and `futures-util` — the last for `StreamExt` alone, which is
+what makes `stream.next()` in `accumulate` the only place this crate touches a
+stream. `serde_json` became a **dev**-dependency when `compact_tests.rs` left:
+nothing under `src/` names it, and all four files under `tests/` build the tool
+inputs a scripted turn asks for (#356).
 `sandbx-core` is missing on purpose: it is a **dev**-dependency, the only one of
 its kind in the workspace, so `sandbx_core` cannot be named anywhere in `src/`
 and the crate deciding which tool calls happen cannot form an opinion about a
 `SandboxPolicy`. [05](05-seven-crates.md) spends a section on the argument.
 
-## `lib.rs` is eight names, and that is the whole API
+## The re-export list is the whole API
 
-[`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is thirteen lines: three
-private `mod` declarations and three `pub use` lines, two of them braced, over
-two, one and five names — which is why the count is read off the items and not
-off the lines. The re-export list *is* the public surface, so group it by what
-each name is for:
+[`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is two private `mod`
+declarations and three `pub use` lines, one of which re-exports from another
+crate. The re-export list *is* the public surface, so group it by what each name
+is for:
 
 | group | names |
 |---|---|
@@ -76,22 +77,26 @@ each name is for:
 | what you pass in | `Turn`, `TurnLimits`, `Compaction` |
 | what you get back | `TurnOutcome`, `TurnStop`, `PromptUsage`, `TurnError` |
 
-The gate rows that used to sit between those two are gone: `CallGate` and the
-four shapes it is asked and told with are `sandbx-approval`'s, the section on it
-below.
+Two of those are not this crate's own: `Compaction` and `PromptUsage` are
+`sandbx-compact`'s, re-exported here so a caller threading token counts needs
+one import rather than two — which is what keeps `sandbx-cli/src/session.rs`
+naming `sandbx_agent::PromptUsage` with no edge of its own (#356). The gate rows
+that used to sit between the two groups are gone the other way: `CallGate` and
+the four shapes it is asked and told with are `sandbx-approval`'s and are *not*
+re-exported, the section on it below.
 
-The minimum set to call `run_turn` once is smaller than eight: a `Turn` (needing
-`TurnLimits`, which has a `Default`) and `TurnOutcome` or `TurnError` to handle,
-plus the gate, which is no longer a name from this crate at all. `Compaction`
-and `PromptUsage` are for a caller threading token counts between turns,
-`TurnStop` for one distinguishing how a turn ended — which `agent-run` does, its
-exit code depending on it.
+The minimum set to call `run_turn` once is smaller than the table: a `Turn`
+(needing `TurnLimits`, which has a `Default`) and `TurnOutcome` or `TurnError`
+to handle, plus the gate, which is no longer a name from this crate at all.
+`Compaction` and `PromptUsage` are for a caller threading token counts between
+turns, `TurnStop` for one distinguishing how a turn ended — which `agent-run`
+does, its exit code depending on it.
 
 What a caller also needs and will not find here is the seam: `ExecutionContext`
 and `BuiltinTool` are `sandbx-tools`', `RequestMessage`, `Prompt`, `AgentEvent`
 and `StopReason` are `sandbx-providers`', and `CallGate`, `ToolCall`,
-`ApprovalDecision`, `Settled` and `Outcome` are `sandbx-approval`'s. No set is
-re-exported, so a caller imports from all four.
+`ApprovalDecision`, `Settled` and `Outcome` are `sandbx-approval`'s. None of
+those sets is re-exported, so a caller imports from each.
 
 ## `turn/run.rs` — the signature before the body
 
@@ -150,12 +155,11 @@ pub struct Turn<'a> {
 ```
 
 `history` is read and never appended to, `observed` and `withheld` are the
-compaction thread-back `compact.rs` below is about, and `tools` left empty
-offers none rather than all — which is still not how to stop a model calling
-one, since a history replaying a `tool_use` needs them defined. `tool_choice` is
-that knob,
-and it is dropped from the request when `tools` is empty, the API refusing a
-choice over tools nothing defined.
+compaction thread-back the cut-planner section below is about, and `tools` left
+empty offers none rather than all — which is still not how to stop a model
+calling one, since a history replaying a `tool_use` needs them defined.
+`tool_choice` is that knob, and it is dropped from the request when `tools` is
+empty, the API refusing a choice over tools nothing defined.
 
 `ctx` is the one borrowed parameter and the one `run_turn` itself does nothing
 with: it is cloned per call in `turn/tools.rs` and handed to
@@ -353,20 +357,28 @@ impl<G: CallGate + ?Sized> CallGate for &mut G {
 its gate to the turn. With it, `&mut my_gate` is itself a `CallGate` and the
 caller still holds it afterwards to read what it recorded.
 
-## `compact.rs` — a cut-point algebra, not a line of arithmetic
+## The cut planner left this crate, and the asking stayed
 
-The module no other chapter covers. The problem is
-[02](02-what-a-harness-is.md)'s: every round resends everything, so a long
-conversation eventually dies on the provider's context-length error.
-[`compact.rs`](../../crates/sandbx-agent/src/compact.rs)'s answer, in its module
-doc's words, is "naive compaction: withhold the oldest history from a request
-that has grown past a caller's token budget… No summarisation model, just a
-bounded window."
+`compact.rs` was here until #356 gave it a crate of its own,
+[`sandbx-compact`](../../crates/sandbx-compact/src/lib.rs) — the planner, the
+budget predicate, and the two types this crate still re-exports. The loop kept
+the asking: `TurnLimits::compaction` is still a field here, `run_turn` still
+calls `over_budget` and `plan_cut` each round, and the thread-back through
+`Turn::observed` and `TurnOutcome::withheld` is still this crate's. What moved
+is where the algebra is declared, and the move made `over_budget` and `plan_cut`
+`pub` — they are the loop's two calls across the new boundary. The rest of this
+section is what they do, and no other chapter covers it.
+
+The problem is [02](02-what-a-harness-is.md)'s: every round resends everything,
+so a long conversation eventually dies on the provider's context-length error.
+The answer, in the crate doc's words, is "naive compaction: withhold the oldest
+history from a request that has grown past a caller's token budget… No
+summarisation model, just a bounded window."
 
 **It is opt-in, and `None` is the default.** `TurnLimits::compaction` is an
 `Option<Compaction>` the default leaves empty, and the field's doc states the
 asymmetry: it is "the only bound here that is lossy: the others refuse to go on
-when hit, where this one quietly sends the model less". The crate will not pick
+when hit, where this one quietly sends the model less". Neither crate will pick
 a value, the right one depending on a model and `Turn::model` being a freeform
 string with no context-window table behind it. `Compaction` is two fields and no
 methods — `budget_tokens`, the figure a *measured* prompt must exceed, and
@@ -408,11 +420,10 @@ reported a figure:
             // Within budget asks only to hold the floor; `None` would undo the cut already
             // paid for.
             let keep_recent =
-                compact::over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
+                over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
             // A plan always contains the previous cut, so `unwrap_or` stops a declined plan
             // from restoring history.
-            cut =
-                compact::plan_cut(turn.history, produced.len(), keep_recent, floor).unwrap_or(cut);
+            cut = plan_cut(turn.history, produced.len(), keep_recent, floor).unwrap_or(cut);
             floor = cut;
             measured = false;
         }
@@ -542,16 +553,17 @@ session that caps on every turn can run out of cut points.
 
 ### `compact_tests.rs` — why the algebra has its own test module
 
-[`compact_tests.rs`](../../crates/sandbx-agent/src/compact_tests.rs) is 484
-lines against the module's 117, the largest test-to-code ratio in the crate, and
-a unit module rather than an integration target because `plan_cut` and
-`opens_a_request` are `pub(crate)` and private. Its shape is worth copying: five
-constructors build the vocabulary — `user_text` ("the only shape that is a legal
-cut point"), `assistant_call`, `user_result`, `empty_user` ("a shape `run_turn`
-never produces, but a caller editing its own history can") and `exchange`, one
-complete quartet — `shapes()` returns five histories spanning the interesting
-cases, and two tests sweep the whole product of history, `produced`, `floor` and
-`keep_recent` against the postconditions:
+[`compact_tests.rs`](../../crates/sandbx-compact/src/compact_tests.rs) travelled
+with the planner and is still a unit module rather than an integration target:
+`opens_a_request`, the predicate the whole algebra turns on, is private and
+stays so — #356 made `plan_cut` and `over_budget` `pub` and left it alone, which
+is why `public-api.txt` names the two and not the three. Its shape is worth
+copying: five constructors build the vocabulary — `user_text` ("the only shape
+that is a legal cut point"), `assistant_call`, `user_result`, `empty_user` ("a
+shape `run_turn` never produces, but a caller editing its own history can") and
+`exchange`, one complete quartet — `shapes()` returns five histories spanning
+the interesting cases, and two tests sweep the whole product of history,
+`produced`, `floor` and `keep_recent` against the postconditions:
 
 ```rust
 /// The postcondition `run_turn`'s monotonicity rests on, whatever floor it was given.
@@ -724,9 +736,10 @@ And what it therefore cannot test:
 ## You should now be able to explain
 
 - Which box of 04's request path this crate is, which chapter owns the gate it
-  asks, and which crate declares that gate's shapes.
-- The minimum set of re-exported types needed to call `run_turn` once, and which
-  of the eight a caller threading no token counts never touches.
+  asks, and which crates declare that gate's shapes and the cut it plans.
+- The minimum set of re-exported types needed to call `run_turn` once, which of
+  them a caller threading no token counts never touches, and which two are
+  another crate's re-exported here.
 - What being generic over a stream-opening closure buys, and what `AsyncFnMut`
   costs a generic wrapper.
 - Which two of `run_turn`'s five parameters are not generic, and why the crate

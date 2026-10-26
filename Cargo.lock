@@ -1640,6 +1640,7 @@ version = "0.1.0-alpha.18"
 dependencies = [
  "futures-util",
  "sandbx-approval",
+ "sandbx-compact",
  "sandbx-core",
  "sandbx-providers",
  "sandbx-tools",
@@ -1691,6 +1692,14 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "sandbx-compact"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "sandbx-providers",
+ "serde_json",
 ]
 
 [[package]]

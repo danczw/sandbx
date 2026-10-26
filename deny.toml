@@ -50,7 +50,7 @@ wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-helper", "sandbx-logging", "sa
 
 [[bans.deny]]
 name = "sandbx-providers"
-wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-tui-transcript"]
+wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-compact", "sandbx-tui-transcript"]
 
 [[bans.deny]]
 name = "sandbx-tools"
@@ -118,6 +118,13 @@ name = "sandbx-session-error"
 # than replacing one: #351 `sandbx-session-bridge`, #360 `sandbx-session-id`,
 # #361 `sandbx-session-paths`, #362 `sandbx-session-store`.
 wrappers = ["sandbx-cli", "sandbx-session"]
+
+[[bans.deny]]
+name = "sandbx-compact"
+# `sandbx-turn` takes `sandbx-agent`'s place here when #357 splits the loop out, and
+# `sandbx-session-bridge` joins when #351 moves `cli/src/session.rs` — which reaches
+# `PromptUsage` through `sandbx-agent`'s re-export today, not an edge of its own.
+wrappers = ["sandbx-agent"]
 
 [sources]
 unknown-registry = "deny"

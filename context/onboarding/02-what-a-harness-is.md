@@ -436,14 +436,14 @@ monotonically: each round adds an assistant message and a user message of
 results, and none of it can be dropped from the middle. A long turn therefore
 gets expensive and then gets refused.
 
-sandbx's answer is **compaction**, and its own module doc calls it naive:
+sandbx's answer is **compaction**, and its own crate doc calls it naive:
 "No summarisation model, just a bounded window." It withholds the oldest
 messages from the request. What makes it harder than a sliding window is the
 pairing rule from earlier — because only a *prefix* can drop, and whatever
 becomes the new first message has to be something the API accepts as an opener:
 a user turn, non-empty, with no `tool_result` in it. `opens_a_request` in
-[`compact.rs`](../../crates/sandbx-agent/src/compact.rs) is that predicate, and
-the module doc draws the conclusion: "that makes the legal cut points exactly
+[`sandbx-compact`](../../crates/sandbx-compact/src/lib.rs) is that predicate,
+and the crate doc draws the conclusion: "that makes the legal cut points exactly
 the human prose turns."
 
 Two properties are worth carrying away.

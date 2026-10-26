@@ -1,4 +1,6 @@
 pub mod sandbx_agent
+pub use sandbx_agent::Compaction
+pub use sandbx_agent::PromptUsage
 pub enum sandbx_agent::TurnError
 pub sandbx_agent::TurnError::EndedMidToolUse
 pub sandbx_agent::TurnError::Provider(sandbx_providers::error::ProviderError)
@@ -41,49 +43,12 @@ impl core::marker::Unpin for sandbx_agent::TurnStop
 impl core::marker::UnsafeUnpin for sandbx_agent::TurnStop
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::TurnStop
 impl core::panic::unwind_safe::UnwindSafe for sandbx_agent::TurnStop
-pub struct sandbx_agent::Compaction
-pub sandbx_agent::Compaction::budget_tokens: u32
-pub sandbx_agent::Compaction::keep_recent: usize
-impl core::clone::Clone for sandbx_agent::Compaction
-pub fn sandbx_agent::Compaction::clone(&self) -> sandbx_agent::Compaction
-impl core::fmt::Debug for sandbx_agent::Compaction
-pub fn sandbx_agent::Compaction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for sandbx_agent::Compaction
-impl core::marker::Freeze for sandbx_agent::Compaction
-impl core::marker::Send for sandbx_agent::Compaction
-impl core::marker::Sync for sandbx_agent::Compaction
-impl core::marker::Unpin for sandbx_agent::Compaction
-impl core::marker::UnsafeUnpin for sandbx_agent::Compaction
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::Compaction
-impl core::panic::unwind_safe::UnwindSafe for sandbx_agent::Compaction
-pub struct sandbx_agent::PromptUsage
-pub sandbx_agent::PromptUsage::cache_read_tokens: core::option::Option<u32>
-pub sandbx_agent::PromptUsage::cache_write_tokens: core::option::Option<u32>
-pub sandbx_agent::PromptUsage::input_tokens: core::option::Option<u32>
-impl sandbx_agent::PromptUsage
-pub fn sandbx_agent::PromptUsage::prompt_tokens(&self) -> u64
-impl core::clone::Clone for sandbx_agent::PromptUsage
-pub fn sandbx_agent::PromptUsage::clone(&self) -> sandbx_agent::PromptUsage
-impl core::cmp::Eq for sandbx_agent::PromptUsage
-impl core::cmp::PartialEq for sandbx_agent::PromptUsage
-pub fn sandbx_agent::PromptUsage::eq(&self, &sandbx_agent::PromptUsage) -> bool
-impl core::fmt::Debug for sandbx_agent::PromptUsage
-pub fn sandbx_agent::PromptUsage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for sandbx_agent::PromptUsage
-impl core::marker::StructuralPartialEq for sandbx_agent::PromptUsage
-impl core::marker::Freeze for sandbx_agent::PromptUsage
-impl core::marker::Send for sandbx_agent::PromptUsage
-impl core::marker::Sync for sandbx_agent::PromptUsage
-impl core::marker::Unpin for sandbx_agent::PromptUsage
-impl core::marker::UnsafeUnpin for sandbx_agent::PromptUsage
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::PromptUsage
-impl core::panic::unwind_safe::UnwindSafe for sandbx_agent::PromptUsage
 pub struct sandbx_agent::Turn<'a>
 pub sandbx_agent::Turn::history: &'a [sandbx_providers::prompt::RequestMessage]
 pub sandbx_agent::Turn::limits: sandbx_agent::TurnLimits
 pub sandbx_agent::Turn::max_output_tokens: u32
 pub sandbx_agent::Turn::model: alloc::string::String
-pub sandbx_agent::Turn::observed: core::option::Option<sandbx_agent::PromptUsage>
+pub sandbx_agent::Turn::observed: core::option::Option<sandbx_compact::PromptUsage>
 pub sandbx_agent::Turn::system: core::option::Option<alloc::string::String>
 pub sandbx_agent::Turn::thinking: core::option::Option<sandbx_providers::prompt::Thinking>
 pub sandbx_agent::Turn::tool_choice: core::option::Option<sandbx_providers::prompt::ToolChoice>
@@ -99,7 +64,7 @@ impl<'a> core::marker::UnsafeUnpin for sandbx_agent::Turn<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_agent::Turn<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_agent::Turn<'a>
 pub struct sandbx_agent::TurnLimits
-pub sandbx_agent::TurnLimits::compaction: core::option::Option<sandbx_agent::Compaction>
+pub sandbx_agent::TurnLimits::compaction: core::option::Option<sandbx_compact::Compaction>
 pub sandbx_agent::TurnLimits::max_rounds: usize
 pub sandbx_agent::TurnLimits::stream_timeout: core::time::Duration
 impl core::clone::Clone for sandbx_agent::TurnLimits
@@ -120,7 +85,7 @@ pub struct sandbx_agent::TurnOutcome
 pub sandbx_agent::TurnOutcome::messages: alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>
 pub sandbx_agent::TurnOutcome::round_stop: core::option::Option<sandbx_providers::event::StopReason>
 pub sandbx_agent::TurnOutcome::stop: sandbx_agent::TurnStop
-pub sandbx_agent::TurnOutcome::usage: core::option::Option<sandbx_agent::PromptUsage>
+pub sandbx_agent::TurnOutcome::usage: core::option::Option<sandbx_compact::PromptUsage>
 pub sandbx_agent::TurnOutcome::withheld: usize
 impl core::fmt::Debug for sandbx_agent::TurnOutcome
 pub fn sandbx_agent::TurnOutcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

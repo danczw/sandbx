@@ -4,9 +4,10 @@
 //! received.
 
 use futures_util::StreamExt;
+use sandbx_compact::PromptUsage;
 use sandbx_providers::{AgentEvent, ContentBlock, EventStream, StopReason};
 
-use crate::{PromptUsage, TurnError};
+use crate::TurnError;
 
 /// What one round of streaming came to.
 pub(super) struct Round {

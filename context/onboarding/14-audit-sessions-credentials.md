@@ -691,7 +691,7 @@ like duplicates of the provider crate's types, and the crate doc explains that
 they are deliberate:
 
 > Mirrors `sandbx_providers`'s `RequestMessage`, `Role` and `ContentBlock`, and
-> `sandbx_agent`'s `PromptUsage`, declared here rather than imported because a
+> `sandbx_compact`'s `PromptUsage`, declared here rather than imported because a
 > transcript is a file format, and one that moved whenever a provider type moved
 > would not be. `sandbx-cli` translates, and fails to compile on a new block
 > kind.

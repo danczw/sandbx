@@ -5,13 +5,14 @@
 //! `TurnStop`, to the loop that chooses it and to the outcome that carries it.
 
 use sandbx_approval::CallGate;
+use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut};
 use sandbx_providers::{
     AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, StopReason, Thinking,
     ToolChoice, ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::{Compaction, PromptUsage, TurnError, compact};
+use crate::TurnError;
 
 use super::accumulate::accumulate;
 use super::tools::{Answers, answer_calls, definition};
@@ -234,11 +235,10 @@ where
             // Within budget asks only to hold the floor; `None` would undo the cut already
             // paid for.
             let keep_recent =
-                compact::over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
+                over_budget(observed, policy.budget_tokens).then_some(policy.keep_recent);
             // A plan always contains the previous cut, so `unwrap_or` stops a declined plan
             // from restoring history.
-            cut =
-                compact::plan_cut(turn.history, produced.len(), keep_recent, floor).unwrap_or(cut);
+            cut = plan_cut(turn.history, produced.len(), keep_recent, floor).unwrap_or(cut);
             floor = cut;
             measured = false;
         }
