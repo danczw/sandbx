@@ -43,12 +43,18 @@ sandbx-tui ───────────────────────
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers (pty-fixture is *dev*-only) |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
+| `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
 `sandbx-pty-fixture` is in no crate's build, which is why it is absent from the
 diagram above; its own `//!` says why it is a crate and not a module (#344).
+
+`sandbx-helper` is absent from it for the same reason and a different one: nothing
+depends on it, and it depends on `sandbx-core` only to re-export its dispatch. It
+is a crate so that `CARGO_BIN_EXE_sandbx-helper` resolves for the tests that spawn
+it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
 `sandbx-providers` directly rather than through `sandbx-agent`, which re-exports
@@ -87,7 +93,6 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
       refusal.rs     HelperRefusal — the closed set the channel admits, and
                      SandboxError::decided_by, the one place the two are mapped
                      and every variant's label spelled
-   bin/sandbx-helper.rs
    helper/
       mod.rs         re-exports exit_code, BLOCKED_SYSCALLS, both stages and
                      AUDIT_STDIN_FLAG
@@ -113,14 +118,11 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
          opened.rs   open_grant, reads_back — the path opened is the one granted
          rights.rs   rights_for, fs_rules, net_rules
          tests/      unit tests: compat, grants, net, opened, rules
-tests/               audit, audit_channel, audit_outcome (how a real run ends),
-                     capability_coverage, command, concealment, denylist,
-                     enforcement, enforcement_syscalls, enforcement_network,
-                     enforcement_resolver, fs_guard, helper_args, policy
-tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pinned,
-                     shared by the four enforcement targets; plus 8 [[bin]] probes,
-                     required-features = ["sandbox-integration"] on every one but
-                     concealment_probe, which needs no Landlock ABI
+tests/               audit, capability_coverage, command (what an argv encodes
+                     and parses; the half that spawns the helper is
+                     sandbx-helper's), context_docs, denylist, fs_guard,
+                     helper_args, policy — none gated: everything needing a
+                     kernel went with the binary (#347)
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
@@ -142,6 +144,27 @@ site beats a grep that runs after it. Not `cargo build`, which compiles a stray
 `Command::new` without complaint: `disallowed_methods` is `deny` in the
 workspace lint table, so `cargo clippy` refuses it — in `.githooks/pre-commit`
 and CI's Clippy step.
+
+## `sandbx-helper`
+
+```
+src/main.rs          16 lines: with_helper_dispatch, and a failure message for a
+                     run that is not helper mode. Every mechanism it dispatches
+                     into is sandbx-core's helper/ tree
+tests/               audit_channel, audit_outcome (how a real run ends), command
+                     (the half that spawns the binary), concealment, enforcement,
+                     enforcement_network, enforcement_resolver,
+                     enforcement_syscalls
+tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pinned,
+                     shared by the four enforcement targets; plus 10 [[bin]] probes,
+                     required-features = ["sandbox-integration"] on every one but
+                     concealment_probe, which needs no Landlock ABI
+```
+
+No public surface and no `public-api.txt`: a crate with no lib target has
+nothing importable, and `.github/scripts/public-api.sh` skips it on that test
+rather than by a list. A crate that *lost* its lib target while keeping a
+baseline is an error there, so the skip cannot go quiet.
 
 ## `sandbx-tools`
 

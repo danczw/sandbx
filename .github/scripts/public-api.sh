@@ -31,8 +31,35 @@ rustup run "$nightly" rustc --version >/dev/null 2>&1 || {
     exit 1
 }
 
+command -v jq >/dev/null 2>&1 || {
+    echo "::error::jq missing: it is how the lib-target list below is read"
+    exit 1
+}
+
+# A crate with no lib target has nothing importable and so no surface to diff, and
+# `cargo public-api` errors rather than printing an empty list. With `set -e` and the
+# redirect below, that error arrives *after* the redirect has truncated the baseline to
+# zero bytes, so the failure names this script and not the crate. `sandbx-helper` is
+# bin-only by design (#328 decision 5), hence the skip.
+libs=$(cargo metadata --format-version 1 --no-deps \
+    | jq -r '.packages[] | select(.targets[]?.kind[]? == "lib") | .name' | sort -u)
+
 for manifest in crates/*/Cargo.toml; do
     crate=$(basename "$(dirname "$manifest")")
+
+    if ! printf '%s\n' "$libs" | grep -qx "$crate"; then
+        # Skipping a bin-only crate is right. Skipping one that *lost* its lib target is
+        # how this gate would go quiet while `git diff --exit-code` stayed clean, the
+        # stale baseline still sitting in the tree — so that case is an error.
+        if [ -f "crates/$crate/public-api.txt" ]; then
+            echo "::error::$crate has no lib target, but crates/$crate/public-api.txt exists."
+            echo "::error::Either it lost its lib target, or that baseline should be deleted."
+            exit 1
+        fi
+        echo "  $crate (no lib target)"
+        continue
+    fi
+
     echo "  $crate"
     # `--simplified` omits blanket impls (`impl<T> Any for T`), which every type
     # has and none of which anyone chose. Auto-trait and derived impls stay in: a

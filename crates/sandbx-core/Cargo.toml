@@ -9,8 +9,10 @@ publish.workspace = true
 
 [features]
 # Needs a kernel with Landlock ABI 5 (Linux 6.10+), so it is out of the default
-# `cargo test` run.
-sandbox-integration = ["dep:io-uring"]
+# `cargo test` run. Empty since #347 moved the probe that reached `io_uring_setup` to
+# `sandbx-helper`: nothing in this crate is gated on it any more, and it stays because
+# `sandbx-tools` and `sandbx-helper` both forward to it by name.
+sandbox-integration = []
 
 [dependencies]
 # The only way to drop this process's capabilities that stays inside
@@ -24,9 +26,6 @@ nix = { version = "0.31.3", default-features = false, features = ["sched", "fs",
 seccompiler = "0.5.0"
 sha2 = { version = "0.11.0", default-features = false }
 tracing = "0.1.44"
-# Optional rather than a dev-dependency because the probe that reaches
-# `io_uring_setup` is a `[[bin]]`, and a `[[bin]]` cannot see dev-dependencies.
-io-uring = { version = "0.7.15", optional = true }
 
 # Inherited unchanged: the one site allowed to spawn, `spawn::command`, carries
 # its own `#[allow]` rather than the crate opting out of the ban.
@@ -38,54 +37,3 @@ caps = "0.5.6"
 libc = "0.2.189"
 tempfile = "3.27.0"
 tracing-subscriber = "0.3.23"
-
-# The one probe outside `sandbox-integration`: concealing a process needs no Landlock ABI,
-# only a second process to be concealed from.
-[[bin]]
-name = "sandbx-concealment-probe"
-path = "tests/support/concealment_probe.rs"
-
-[[bin]]
-name = "sandbx-truncate-probe"
-path = "tests/support/truncate_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-unix-probe"
-path = "tests/support/unix_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-socketpair-probe"
-path = "tests/support/socketpair_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-iouring-probe"
-path = "tests/support/iouring_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-memfd-probe"
-path = "tests/support/memfd_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-pidns-probe"
-path = "tests/support/pidns_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-orphan-probe"
-path = "tests/support/orphan_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-egress-probe"
-path = "tests/support/egress_probe.rs"
-required-features = ["sandbox-integration"]
-
-[[bin]]
-name = "sandbx-resolver-probe"
-path = "tests/support/resolver_probe.rs"
-required-features = ["sandbox-integration"]

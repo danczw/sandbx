@@ -236,8 +236,10 @@ fn every_prose_copy_of_the_floor_is_current() {
             both,
         ),
         (
-            "tests/enforcement.rs",
-            include_str!("../../../../tests/enforcement.rs"),
+            // In `sandbx-helper` since #347, so one `..` further out than its siblings:
+            // the suite that spawns the binary moved to the crate that owns it.
+            "sandbx-helper/tests/enforcement.rs",
+            include_str!("../../../../../sandbx-helper/tests/enforcement.rs"),
             both,
         ),
         // The only two of 24 `context/` files stating the floor: a file that never names it

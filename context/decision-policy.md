@@ -301,7 +301,7 @@ are written down.
 ### All of them run, or none of the files compiles
 
 64 real-kernel enforcement tests, split by what enforces them: 40 in
-`tests/enforcement.rs` for paths and grants, 10 in
+`sandbx-helper/tests/enforcement.rs` for paths and grants, 10 in
 `tests/enforcement_syscalls.rs` for the calls Landlock cannot express, 6 in
 `tests/enforcement_network.rs` for the ports it does, and 8 in
 `tests/enforcement_resolver.rs` for the names that resolve. All four files are
@@ -472,7 +472,8 @@ exhaustive `match` the environment does not get by being a row. The audit field 
 still hand-written.
 
 What stands in for the compiler on the *behaviour* — that `spawn::command` narrows
-at all, which the lint says nothing about — is `tests/enforcement.rs`, which runs
+at all, which the lint says nothing about — is
+`sandbx-helper/tests/enforcement.rs`, which runs
 `/usr/bin/env` through the real helper and reads its stdout — the issue's own
 reproducer, inverted — plus the check in `restrict_and_spawn` that refuses an
 environment an earlier stage should have narrowed. The run goes through the
