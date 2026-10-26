@@ -9,8 +9,8 @@ publish.workspace = true
 
 [dependencies]
 # `term` alone: it is what gates both `pty::openpty` and `sys::termios`. A real
-# dependency and not a dev-dependency, because this crate *is* the dev-dependency —
-# its only item is the fixture, and a dev-dependency of its own would not reach it.
+# dependency, not a dev-dependency — this crate is the fixture, so a dev-dependency of
+# its own would not reach it.
 nix = { version = "0.31.3", default-features = false, features = ["term"] }
 
 [lints]

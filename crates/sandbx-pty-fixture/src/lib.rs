@@ -4,13 +4,13 @@
 //! rather than a `#[cfg(test)]` module because two crates drive the same fixture and a
 //! `#[cfg(test)]` item is invisible across a crate boundary (#344).
 //!
-//! A `#[cfg(feature = ..)]` export from one of them instead would hit what
-//! `context/guide-ci.md` records for a self dev-dependency, feature unification making
-//! the two cases one: the other crate's dev edge turns the feature on in the single rlib
-//! `--all-targets` builds, so production code naming the fixture passes clippy and the
-//! whole suite and fails first in the release build, where no dev edge enables it. The
-//! gated item also sits in that crate's public surface, which its `public-api.txt` —
-//! generated without `--all-features` — does not record.
+//! A `#[cfg(feature = ..)]` export from one of them instead would diverge between the two
+//! builds — on in the rlib `--all-targets` builds, off in the release build — so
+//! production code naming the fixture would pass clippy and the whole suite and fail
+//! first at release. `context/guide-ci.md` records that for a *self* dev-dependency;
+//! feature unification makes the cross-crate case the same one. It would also put the
+//! fixture in that crate's public surface, where a `public-api.txt` generated without
+//! `--all-features` does not record it.
 
 use std::fs::File;
 

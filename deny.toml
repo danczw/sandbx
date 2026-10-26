@@ -68,8 +68,8 @@ wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-pty-fixture"
-# A dev-dependency edge, so this crate is in nobody's build; listing it is still what
-# keeps a production one from being added without a line here.
+# A dev-dependency edge, so this crate is in nobody's build; the entry is what keeps a
+# production edge from being added without a line here.
 wrappers = ["sandbx-tui"]
 
 [sources]
