@@ -11,11 +11,8 @@ publish.workspace = true
 sandbx-core = { path = "../sandbx-core" }
 # `tracing` discards every event when no subscriber is installed, and a library
 # cannot install one; this crate owns the workspace's only subscriber.
-#
-# `default-features = false` keeps `ansi` out of *this* crate's selection, which
-# is why `subscriber` forces it off rather than relying on the default: four
-# other crates carry this dependency with its defaults, and `cargo test
-# --workspace` unifies the feature back on.
+# Omitting `ansi` here does not make `lib.rs`'s `with_ansi(false)` redundant —
+# a dev-dependency elsewhere in the workspace unifies the feature back on.
 tracing-subscriber = { version = "0.3.23", default-features = false, features = [
   "fmt",
 ] }
@@ -24,11 +21,10 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 workspace = true
 
 [dev-dependencies]
-# A dev-dependency because `subscriber` returns `impl SubscriberInitExt`; only
-# the tests name a `tracing` macro.
+# Only the tests name a `tracing` macro; `subscriber` returns
+# `impl SubscriberInitExt` so that stays true.
 tracing = "0.1.44"
 tempfile = "3.27.0"
 # `rt` alone: `audit_log_held.rs` needs a current-thread runtime for one
-# `spawn_blocking` task. Nothing here enables `process`, which is why
-# clippy.toml's `tokio::process` entry stays inert.
+# `spawn_blocking` task.
 tokio = { version = "1.53.1", default-features = false, features = ["rt"] }
