@@ -10,9 +10,8 @@
 //! belonging: the turn depends on compaction and not the reverse, so this is the side of
 //! the edge it can sit on (#345).
 //!
-//! A crate and not a module in `sandbx-agent`, which is the only thing that asks: the
-//! planner is pure and total over `RequestMessage` and reaches nothing in the loop, so the
-//! edge above is one the manifest enforces rather than a convention (#356).
+//! A crate and not a module of `sandbx-agent`: nothing here reaches the loop, so the edge
+//! above is one cargo and `deny.toml` enforce rather than a convention (#356).
 
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
 
