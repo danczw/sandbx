@@ -67,7 +67,7 @@ pub enum PolicyError {
     ///
     /// `&'static str`, so no shape of this variant can carry a key.
     HarnessCredential {
-        /// The one name refused, from `auth::ENV_VAR`.
+        /// The one name refused, from `sandbx_auth::ENV_VAR`.
         name: &'static str,
     },
 

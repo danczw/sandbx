@@ -1,4 +1,7 @@
 //! What can stop `auth`, or a key resolution on `agent-run`'s way to the provider.
+//!
+//! No `From` impls: most variants need a path a conversion cannot know, and the two
+//! newtype variants that would not are constructed explicitly anyway.
 
 use std::path::PathBuf;
 

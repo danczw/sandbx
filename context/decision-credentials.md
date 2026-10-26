@@ -22,9 +22,9 @@ did not exist before the turn loop had a caller (#109).
 
 | Tier | Source | Where |
 |---|---|---|
-| 1 | `ANTHROPIC_API_KEY` from the environment, trimmed by `nonblank` | `sandbx-cli/src/auth/key.rs`, wrapped in `secrecy::SecretString` |
+| 1 | `ANTHROPIC_API_KEY` from the environment, trimmed by `nonblank` | `sandbx-auth/src/key.rs`, wrapped in `secrecy::SecretString` |
 | 2 | OS keyring | dropped, below |
-| 3 | `$XDG_CONFIG_HOME/sandbx/credentials.toml` at `0600` | `sandbx-cli/src/auth/key.rs`, over `auth/store.rs` |
+| 3 | `$XDG_CONFIG_HOME/sandbx/credentials.toml` at `0600` | `sandbx-auth/src/key.rs`, over its `store.rs` |
 
 The two live tiers are tried in that order, and the order is the point: exporting
 a variable overrides the stored key for one shell without an `auth logout` first.

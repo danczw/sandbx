@@ -120,8 +120,8 @@ fn the_policy_matches_what_sandbox_run_derives() {
     assert_eq!(agent.allows_unix_sockets(), sandbox.allows_unix_sockets());
 }
 
-/// A literal, never `auth::ENV_VAR`: an expectation derived from the constant it checks
-/// moves with a mutation and so asserts nothing.
+/// A literal, never `sandbx_auth::ENV_VAR`: an expectation derived from the constant it
+/// checks moves with a mutation and so asserts nothing.
 #[test]
 fn agent_run_refuses_the_harness_credential() {
     let error = agent_run(&[

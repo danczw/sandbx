@@ -1,7 +1,7 @@
 pub mod sandbx_cli
 pub enum sandbx_cli::AgentError
 pub sandbx_cli::AgentError::ApproveUnderTui
-pub sandbx_cli::AgentError::Credential(sandbx_cli::AuthError)
+pub sandbx_cli::AgentError::Credential(sandbx_auth::error::AuthError)
 pub sandbx_cli::AgentError::EmptyPrompt
 pub sandbx_cli::AgentError::NoTerminal
 pub sandbx_cli::AgentError::NoTerminal::source: core::io::error::Error
@@ -15,8 +15,8 @@ pub sandbx_cli::AgentError::Session(sandbx_session::error::SessionError)
 pub sandbx_cli::AgentError::Turn(sandbx_agent::error::TurnError)
 impl core::convert::From<sandbx_agent::error::TurnError> for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::from(sandbx_agent::error::TurnError) -> Self
-impl core::convert::From<sandbx_cli::AuthError> for sandbx_cli::AgentError
-pub fn sandbx_cli::AgentError::from(sandbx_cli::AuthError) -> Self
+impl core::convert::From<sandbx_auth::error::AuthError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_auth::error::AuthError) -> Self
 impl core::convert::From<sandbx_cli::PolicyError> for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::from(sandbx_cli::PolicyError) -> Self
 impl core::convert::From<sandbx_providers::error::ProviderError> for sandbx_cli::AgentError
@@ -36,46 +36,9 @@ impl core::marker::Unpin for sandbx_cli::AgentError
 impl core::marker::UnsafeUnpin for sandbx_cli::AgentError
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::AgentError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::AgentError
-pub enum sandbx_cli::AuthError
-pub sandbx_cli::AuthError::BlankKey
-pub sandbx_cli::AuthError::DirPermissions
-pub sandbx_cli::AuthError::DirPermissions::mode: u32
-pub sandbx_cli::AuthError::DirPermissions::path: std::path::PathBuf
-pub sandbx_cli::AuthError::Encode(toml::ser::error::Error)
-pub sandbx_cli::AuthError::Io
-pub sandbx_cli::AuthError::Io::path: std::path::PathBuf
-pub sandbx_cli::AuthError::Io::source: core::io::error::Error
-pub sandbx_cli::AuthError::Malformed
-pub sandbx_cli::AuthError::Malformed::line: usize
-pub sandbx_cli::AuthError::Malformed::path: std::path::PathBuf
-pub sandbx_cli::AuthError::NoConfigHome
-pub sandbx_cli::AuthError::NoCredential
-pub sandbx_cli::AuthError::NoCredential::path: std::path::PathBuf
-pub sandbx_cli::AuthError::NotATable
-pub sandbx_cli::AuthError::NotATable::path: std::path::PathBuf
-pub sandbx_cli::AuthError::Permissions
-pub sandbx_cli::AuthError::Permissions::mode: u32
-pub sandbx_cli::AuthError::Permissions::path: std::path::PathBuf
-pub sandbx_cli::AuthError::Stdin(core::io::error::Error)
-pub sandbx_cli::AuthError::TtyInput
-impl core::convert::From<sandbx_cli::AuthError> for sandbx_cli::AgentError
-pub fn sandbx_cli::AgentError::from(sandbx_cli::AuthError) -> Self
-impl core::error::Error for sandbx_cli::AuthError
-pub fn sandbx_cli::AuthError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl core::fmt::Debug for sandbx_cli::AuthError
-pub fn sandbx_cli::AuthError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for sandbx_cli::AuthError
-pub fn sandbx_cli::AuthError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for sandbx_cli::AuthError
-impl core::marker::Send for sandbx_cli::AuthError
-impl core::marker::Sync for sandbx_cli::AuthError
-impl core::marker::Unpin for sandbx_cli::AuthError
-impl core::marker::UnsafeUnpin for sandbx_cli::AuthError
-impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::AuthError
-impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::AuthError
 pub enum sandbx_cli::Command
 pub sandbx_cli::Command::AgentRun(sandbx_cli::AgentRun)
-pub sandbx_cli::Command::Auth(sandbx_cli::Auth)
+pub sandbx_cli::Command::Auth(sandbx_auth::key::Auth)
 pub sandbx_cli::Command::Hash(sandbx_cli::Hash)
 pub sandbx_cli::Command::SandboxRun(sandbx_cli::SandboxRun)
 pub sandbx_cli::Command::Tui(sandbx_cli::Tui)
@@ -222,27 +185,6 @@ impl core::marker::Unpin for sandbx_cli::AgentRun
 impl core::marker::UnsafeUnpin for sandbx_cli::AgentRun
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::AgentRun
 impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::AgentRun
-pub struct sandbx_cli::Auth
-impl sandbx_cli::Auth
-pub fn sandbx_cli::Auth::execute(&self) -> core::result::Result<i32, sandbx_cli::AuthError>
-impl clap_builder::derive::Args for sandbx_cli::Auth
-pub fn sandbx_cli::Auth::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
-pub fn sandbx_cli::Auth::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
-pub fn sandbx_cli::Auth::group_id() -> core::option::Option<clap_builder::util::id::Id>
-impl clap_builder::derive::FromArgMatches for sandbx_cli::Auth
-pub fn sandbx_cli::Auth::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
-pub fn sandbx_cli::Auth::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
-pub fn sandbx_cli::Auth::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
-pub fn sandbx_cli::Auth::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
-impl core::fmt::Debug for sandbx_cli::Auth
-pub fn sandbx_cli::Auth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for sandbx_cli::Auth
-impl core::marker::Send for sandbx_cli::Auth
-impl core::marker::Sync for sandbx_cli::Auth
-impl core::marker::Unpin for sandbx_cli::Auth
-impl core::marker::UnsafeUnpin for sandbx_cli::Auth
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Auth
-impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Auth
 pub struct sandbx_cli::Cli
 pub sandbx_cli::Cli::command: sandbx_cli::Command
 impl clap_builder::derive::Args for sandbx_cli::Cli

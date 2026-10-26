@@ -59,7 +59,7 @@ impl Tui {
         // ends, and this is the line a redirected log needs most (#224).
         eprintln!("sandbx: tools approved: {approved}");
 
-        let client = AnthropicClient::new(crate::auth::api_key()?)?;
+        let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
         let session = session::open(self.run.session())?;
 
         self.drive(

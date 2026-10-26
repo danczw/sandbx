@@ -1659,6 +1659,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-auth"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "clap",
+ "secrecy",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "sandbx-cli"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1667,6 +1677,7 @@ dependencies = [
  "nix",
  "sandbx-agent",
  "sandbx-approval",
+ "sandbx-auth",
  "sandbx-core",
  "sandbx-logging",
  "sandbx-providers",
