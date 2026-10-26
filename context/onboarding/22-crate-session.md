@@ -12,10 +12,10 @@ with nearly as many again in `tests/`. One internal dependency — the shapes it
 stores are `sandbx-session-message`'s, which is itself a leaf of
 [05 — seven crates](05-seven-crates.md)'s graph — and three external ones:
 `nix` with only `fs` and `user`, `serde`, `serde_json`, plus `tempfile` for the
-tests. The reason to read it anyway is proportion. A
-transcript is the only plaintext copy of a conversation sandbx keeps, it is
-replayed to a model that calls tools, and [`SECURITY.md`](../../SECURITY.md)
-carries what that costs as a non-claim.
+tests. The reason to read it anyway is proportion. A transcript is the only
+plaintext copy of a conversation sandbx keeps, it is replayed to a model that
+calls tools, and [`SECURITY.md`](../../SECURITY.md) carries what that costs as
+a non-claim.
 
 ## The module tree
 
@@ -36,9 +36,12 @@ carries what that costs as a non-claim.
 Two shapes to notice first. **`store/` is the only subdirectory**, and the three
 siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
 the mode constants and every predicate are invisible outside `store/`; the
-crate's public surface is the five names `lib.rs` re-exports. And **the crate
-has no output channel**: no `tracing` dependency, no `println!` or `eprintln!`
-under `src/`. That is not an omission, it is what forces the design in the
+crate's public surface is the five names `lib.rs` re-exports, plus the three
+`sandbx-session-message` types that `append`, `messages` and `observed` name in
+their signatures — which the crate does not re-export, so a consumer takes its
+own dependency to spell them, as `sandbx-cli` does. And **the crate has no
+output channel**: no `tracing` dependency, no `println!` or `eprintln!` under
+`src/`. That is not an omission, it is what forces the design in the
 `store/session.rs` section.
 
 ## `id.rs` — an allowlist is three lines, and this is why
@@ -348,9 +351,8 @@ Position decides the other refusal: anything but a header on line 0 is
 An undeclared *field* is the third case and the lenient one: an extra key on a
 stored line reads back without it, which
 `an_unknown_field_is_ignored_rather_than_refused` in `sandbx-session-message`
-pins with a
-`thinking_signature` beside the message and a `citations` inside a text block.
-An unknown record `type` fails the parse instead —
+pins with a `thinking_signature` beside the message and a `citations` inside a
+text block. An unknown record `type` fails the parse instead —
 [decision-on-disk-state.md](../decision-on-disk-state.md) grades the three, and
 [14](14-audit-sessions-credentials.md) has the `type` half.
 
@@ -581,9 +583,9 @@ consequence of it.
 
 Unit tests sit in `id.rs`, `paths.rs` and `store/record.rs`, and in
 `sandbx-session-message` next door — the four places that are pure functions
-over values. `store/session.rs`,
-`store/vet.rs` and `store/shape.rs` have none, needing a real filesystem or the
-store that drives them; [guide-testing.md](../guide-testing.md) governs the split.
+over values. `store/session.rs`, `store/vet.rs` and `store/shape.rs` have none,
+needing a real filesystem or the store that drives them;
+[guide-testing.md](../guide-testing.md) governs the split.
 
 | target | what it pins |
 |---|---|

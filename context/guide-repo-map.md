@@ -30,8 +30,8 @@ sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-core ────────────────────────────────┤                 derivation, the
 sandbx-logging ─────────────────────────────┤                 turn loop's caller
-sandbx-session-message ──► sandbx-session ──┤
-         └──────────────────────────────────┤
+sandbx-session ─────────────────────────────┤
+sandbx-session-message ─────────────────────┤
 sandbx-tui ─────────────────────────────────┘
 ```
 
@@ -55,6 +55,11 @@ constant, not a mechanism.
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
+
+`sandbx-session` depends on `sandbx-session-message` — the one internal edge the
+diagram above does not draw, both crates having a direct edge to `sandbx-cli` of
+their own. The CLI's is not inherited: it translates between those shapes and
+the provider's, which is why `deny.toml` names both parents.
 
 `sandbx-pty-fixture` is in no crate's build, which is why it is absent from the
 diagram above; its own `//!` says why it is a crate and not a module (#344).
