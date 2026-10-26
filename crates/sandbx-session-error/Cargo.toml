@@ -8,8 +8,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# For `Malformed::source` alone, which hands the parse's own objection back so a
-# damaged line can be found. No `serde`: nothing here derives.
+# `Malformed` holds a `serde_json::Error`. One of the pair and not both, unlike
+# every sibling here: nothing in this crate derives, so there is no `serde`.
 serde_json = "1.0.151"
 
 [lints]
