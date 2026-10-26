@@ -7,12 +7,14 @@ round loop has finished and the gate has gone quiet; in **View 1** it is not a
 box, because nothing here spawns, forks or `exec`s — it opens files in the
 harness process, and that is the whole of it.
 
-Eight source files, a little over a thousand lines outside their test modules
-with nearly as many again in `tests/`. One internal dependency — the shapes it
-stores are `sandbx-session-message`'s, which is itself a leaf of
-[05 — seven crates](05-seven-crates.md)'s graph — and three external ones:
-`nix` with only `fs` and `user`, `serde`, `serde_json`, plus `tempfile` for the
-tests. The reason to read it anyway is proportion. A transcript is the only
+A handful of source files, with nearly as much again in `tests/`
+([guide-repo-map.md](../guide-repo-map.md) keeps the current list). Two internal
+dependencies, both of them crates that depend on nothing — the shapes it stores
+are `sandbx-session-message`'s, itself a leaf of
+[05 — seven crates](05-seven-crates.md)'s graph, and why an operation did not
+happen is `sandbx-session-error`'s — and three external ones: `nix` with only
+`fs` and `user`, `serde`, `serde_json`, plus `tempfile` for the tests. The
+reason to read it anyway is proportion. A transcript is the only
 plaintext copy of a conversation sandbx keeps, it is replayed to a model that
 calls tools, and [`SECURITY.md`](../../SECURITY.md) carries what that costs as
 a non-claim.
@@ -21,7 +23,7 @@ a non-claim.
 
 | file | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | five re-exports and four private modules | — |
+| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | four re-exports and three private modules | — |
 | [`id.rs`](../../crates/sandbx-session/src/id.rs) | `SessionId`, `from_clock`, the allowlist | [14](14-audit-sessions-credentials.md), then below |
 | [`paths.rs`](../../crates/sandbx-session/src/paths.rs) | `sessions_directory` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` — a crate of its own since #359 | [05](05-seven-crates.md), [24](24-crate-cli.md) |
@@ -30,16 +32,17 @@ a non-claim.
 | [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
 | [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, two opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
-| [`error.rs`](../../crates/sandbx-session/src/error.rs) | `SessionError`, seventeen variants | below |
+| [`sandbx-session-error`](../../crates/sandbx-session-error/src/lib.rs) | `SessionError`, seventeen variants — a crate of its own since #358 | below |
 | `tests/` | `identifier`, `permissions`, `recovery`, `transcript` | below |
 
 Two shapes to notice first. **`store/` is the only subdirectory**, and the three
 siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
 the mode constants and every predicate are invisible outside `store/`; the
-crate's public surface is the five names `lib.rs` re-exports, plus the three
+crate's public surface is the four names `lib.rs` re-exports, plus the three
 `sandbx-session-message` types that `append`, `messages` and `observed` name in
-their signatures — which the crate does not re-export, so a consumer takes its
-own dependency to spell them, as `sandbx-cli` does. And **the crate has no
+their signatures and the `SessionError` that every fallible one of them returns
+— none of which the crate re-exports, so a consumer takes its own dependency to
+spell them, as `sandbx-cli` does. And **the crate has no
 output channel**: no `tracing` dependency, no `println!` or `eprintln!` under
 `src/`. That is not an omission, it is what forces the design in the
 `store/session.rs` section.
@@ -529,13 +532,15 @@ replacement after the check is never the directory a transcript is opened in.
   mechanism costs a `bool`; the refusal the record rejects is not the only
   alternative to silence.
 
-## `error.rs` — seventeen variants, and the two kinds
+## `sandbx-session-error` — seventeen variants, and the two kinds
 
-The module doc opens with a rule: "No `From` impls, and do not add one: every
-wrapped failure is paired with the path and operation it came from, which a
-blanket conversion would discard." Ten of the seventeen carry a `PathBuf`, which
-is what that rule protects. The split worth holding is between a **refusal** —
-sandbx decided not to — and a **host failure**, where the machine could not:
+A crate of its own since #358, and the bottom of the session tree: everything
+else here returns it, and it returns to nothing. The crate doc opens with a
+rule: "No `From` impls, and do not add one: every wrapped failure is paired with
+the path and operation it came from, which a blanket conversion would discard."
+Ten of the seventeen carry a `PathBuf`, which is what that rule protects. The
+split worth holding is between a **refusal** — sandbx decided not to — and a
+**host failure**, where the machine could not:
 
 | kind | variants |
 |---|---|
@@ -575,7 +580,7 @@ Worth noticing what the records do and do not settle here.
 [decision-on-disk-state.md](../decision-on-disk-state.md) is the authority on
 what `resume` must *check*, and says nothing at all about what it reports when a
 check fails. The wording and the split are therefore the enum's own business,
-governed by nothing but the rule in the module doc — which is a useful thing to
+governed by nothing but the rule in the crate doc — which is a useful thing to
 know about this repo: a decision record binds the mechanism, not every
 consequence of it.
 
