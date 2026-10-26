@@ -76,8 +76,7 @@ for manifest in crates/*/Cargo.toml; do
         # not this script's, and not because the index is out of reach here: erroring
         # on it would fire on the run that creates the file, which is why someone
         # adding a crate runs this at all. This guard reads the tree the script just
-        # wrote; that one reads what the author staged, which only CI can insist on
-        # (#402).
+        # wrote; that one reads what the author staged (#402).
         if [ -f "crates/$crate/public-api.txt" ]; then
             echo "::error::$crate has no lib target, but crates/$crate/public-api.txt exists."
             echo "::error::Either it lost its lib target, or that baseline should be deleted."
