@@ -191,7 +191,8 @@ tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pin
 No public surface and no `public-api.txt`: a crate with no lib target has
 nothing importable, and `.github/scripts/public-api.sh` skips it on that test
 rather than by a list. A crate that *lost* its lib target while keeping a
-baseline is an error there, so the skip cannot go quiet.
+baseline is an error there, and a lib target whose baseline was never committed
+is an error in `ci.yml`, so the skip cannot go quiet in either direction (#402).
 
 ## `sandbx-logging`
 
