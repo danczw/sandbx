@@ -3,9 +3,9 @@
 [`sandbx-cli`](../../crates/sandbx-cli/) is process 0 in
 [04](04-the-architecture.md)'s View 1 — the unconfined one that "parses argv,
 derives the policy, asks the model, decides, records". It is the only crate that
-depends on all six others and the only one whose binary ships — `sandbx-helper`
-builds a standalone helper and a row of probes beside it, all test support — so
-every box in that drawing is reached from here. Read
+depends on all seven others and the only one whose binary ships —
+`sandbx-helper` builds a standalone helper and a row of probes beside it, all
+test support — so every box in that drawing is reached from here. Read
 [04](04-the-architecture.md)'s *The CLI architecture* section first: it states
 the lib-plus-bin split, the five subcommands, and what `tui` shares with
 `agent-run`. This chapter zooms into that section, file by file.
@@ -44,7 +44,6 @@ The paths carry the nesting: `grants.rs` and `auth.rs` have two children each,
 | [`auth/key.rs`](../../crates/sandbx-cli/src/auth/key.rs) | the two key sources and `login`/`logout`/`status` | here |
 | [`auth/store.rs`](../../crates/sandbx-cli/src/auth/store.rs) | the credential file: read, store, discard, and the modes | here; [14](14-audit-sessions-credentials.md) for the tiers |
 | [`session.rs`](../../crates/sandbx-cli/src/session.rs) | `--session`, and the translation to and from the stored shapes | here, and [22](22-crate-session.md) |
-| [`logging.rs`](../../crates/sandbx-cli/src/logging.rs) | the one `tracing` subscriber, and the hold the screen takes | [14](14-audit-sessions-credentials.md) |
 | [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the five re-exports, and the list of what can refuse a run | here |
 | [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`policy.rs`](../../crates/sandbx-cli/src/error/policy.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` — one each | here |
 | [`error/auth.rs`](../../crates/sandbx-cli/src/error/auth.rs) | `AuthError` | here |
@@ -127,10 +126,10 @@ and run the target command rather than fall through into `Cli::parse`.
 [08](08-the-two-stage-helper.md) has the two flags, the dispatch enum with no
 success variant, and why the re-exec is this binary at all.
 
-Inside that closure the order is `logging::init`, then `Cli::try_parse`, then
-`conceal_process_state`, then the dispatch — and three of those four are where
-they are for a reason of their own. Logging is initialised there because in
-helper mode this process shares the sandboxed command's stderr, which is
+Inside that closure the order is `sandbx_logging::init`, then `Cli::try_parse`,
+then `conceal_process_state`, then the dispatch — and three of those four are
+where they are for a reason of their own. Logging is initialised there because
+in helper mode this process shares the sandboxed command's stderr, which is
 forwarded verbatim, so a subscriber installed above would write into it.
 `try_parse` stands in for `Cli::parse` so a refused command line leaves on a
 code sandbx chose rather than the 2 clap would spend on it; *The exit-code
@@ -146,7 +145,7 @@ The order, and where each step's own refusal leaves:
 flowchart TD
     A["main"] --> B["with_helper_dispatch"]
     B -->|"--sandbx-core-exec"| C["restricts itself, spawns the command"]
-    B --> D["logging::init"]
+    B --> D["sandbx_logging::init"]
     D --> E["Cli::try_parse"]
     E -->|"refused"| F["usage_code, before a Command exists"]
     E --> G["conceal_process_state"]
@@ -525,9 +524,10 @@ argument for spending the round at all.
 `Tui` is `AgentRun`'s flags verbatim. What differs is where the turn is
 reported, and that a keypress or a hung-up terminal can end one — the second
 exiting 3 rather than the keypress's 2, on the reasoning that a turn nobody
-could see is one nobody watched (#264). `logging::hold()` buffers the audit
-trail while the screen owns the terminal, `Screen::enter(transcript)` precedes
-`Keys::listen()` because without raw mode ctrl-c is a signal rather than a key,
+could see is one nobody watched (#264). `sandbx_logging::hold()` buffers the
+audit trail while the screen owns the terminal, `Screen::enter(transcript)`
+precedes `Keys::listen()` because without raw mode ctrl-c is a signal rather
+than a key,
 and the interrupt is a `tokio::select!` that drops the turn's future where it
 stands. Its `Gate` wraps `ArgvGate` and *delegates* the decision rather than
 re-deriving it, drawing `gate::line(call)` into the pane instead of printing it,
@@ -724,9 +724,11 @@ not `println!`, which panics on a closed stdout with `SIGPIPE` ignored — and
 [12](12-a-flag-to-a-kernel-rule.md) covers what its output pins.
 [`sandbox.rs`](../../crates/sandbx-cli/src/sandbox.rs) is one of the workspace's
 two `SandboxedCommand` build sites; see [05](05-seven-crates.md) for why there
-are only two. And [`logging.rs`](../../crates/sandbx-cli/src/logging.rs) owns
-the workspace's only `tracing` subscriber plus the hold the screen takes over
-it, which is [14](14-audit-sessions-credentials.md)'s material.
+are only two. The workspace's only `tracing` subscriber, plus the hold the
+screen takes over it, is
+[`sandbx-logging`](../../crates/sandbx-logging/src/lib.rs)'s since #348 — this
+crate calls `init` and `hold` and owns neither, which is
+[14](14-audit-sessions-credentials.md)'s material.
 
 ## Where the tests are
 

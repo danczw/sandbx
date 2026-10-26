@@ -29,9 +29,14 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-core ────────────────────────────────┤                 derivation, the
-sandbx-session ─────────────────────────────┤                 turn loop's caller
+sandbx-logging ─────────────────────────────┤                 turn loop's caller
+sandbx-session ─────────────────────────────┤
 sandbx-tui ─────────────────────────────────┘
 ```
+
+`sandbx-logging` depends on `sandbx-core` for `AUDIT_TARGET` alone — the target
+its filter admits. Drawn as a leaf for that reason: the edge carries one
+constant, not a mechanism.
 
 | Crate | Owns | Internal deps |
 |---|---|---|
@@ -39,7 +44,8 @@ sandbx-tui ───────────────────────
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients, and what their text may not carry to a terminal | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, providers, session, tools, tui |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, logging, providers, session, tools, tui |
+| `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers (pty-fixture is *dev*-only) |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
@@ -165,6 +171,22 @@ No public surface and no `public-api.txt`: a crate with no lib target has
 nothing importable, and `.github/scripts/public-api.sh` skips it on that test
 rather than by a list. A crate that *lost* its lib target while keeping a
 baseline is an error there, so the skip cannot go quiet.
+
+## `sandbx-logging`
+
+```
+src/lib.rs           subscriber, init — the one subscriber and its global
+                     install; Audit, the writer behind it; hold and Held, the
+                     buffer the screen takes            ◄── guide-logging.md
+tests/               audit_log (what the filter admits over a closure writer),
+                     audit_log_held (the held path end to end, re-execing to
+                     read fd 2), audit_log_install (one test, by necessity)
+```
+
+Three test binaries and not one: `init` installs a process-global subscriber, so
+a second test in the same binary would race whatever the first installed.
+`audit_log_install.rs` holds exactly one test for that reason and its `//!` says
+so.
 
 ## `sandbx-tools`
 
@@ -331,11 +353,9 @@ src/lib.rs      mod lines and re-exports; no code
                 HashError — a path and an io::Error, no variants
    error/auth.rs
                 AuthError — what stops `auth`, or a key resolution under `agent-run`
-   logging.rs   the one subscriber
 src/main.rs     helper dispatch, the tokio runtime, exit codes
-tests/          agent_run, agent_session, audit_log, audit_log_held,
-                audit_log_install, auth, auth_store, cwd_policy, hash, name,
-                sandbox_run, usage
+tests/          agent_run, agent_session, auth, auth_store, cwd_policy, hash,
+                name, sandbox_run, usage
 ```
 
 Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,

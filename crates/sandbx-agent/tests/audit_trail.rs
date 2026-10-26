@@ -3,7 +3,7 @@
 //!
 //! Its own test binary, and so its own process, because the subscriber has to be the
 //! global one: tools run on `spawn_blocking`, and a thread-local subscriber is not
-//! installed on the thread that emits. `sandbx_cli::logging` installs globally for the
+//! installed on the thread that emits. `sandbx_logging` installs globally for the
 //! same reason.
 
 use sandbx_agent::run_turn;

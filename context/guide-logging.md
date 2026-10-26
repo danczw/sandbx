@@ -129,7 +129,7 @@ a reason the error type does not define.
 
 ## The sink
 
-`sandbx-cli/src/logging.rs` — the one subscriber the binary installs (#89).
+`sandbx-logging/src/lib.rs` — the one subscriber the binary installs (#89).
 `subscriber(writer)` builds it; `init()` pins stderr and goes global.
 
 ```
@@ -162,11 +162,11 @@ thread-local and sees nothing a tool emitted: the test passes having captured
 zero records. Asserting over that output takes `set_global_default`, and
 therefore a test binary of its own, since a process installs one global
 subscriber — `sandbx-agent/tests/audit_trail.rs` is that binary.
-`sandbx-core/tests/audit.rs` and `sandbx-cli/tests/audit_log.rs` use
+`sandbx-core/tests/audit.rs` and `sandbx-logging/tests/audit_log.rs` use
 `set_default` correctly, their records being emitted on the calling thread. The
 distinction is which thread emits, not which crate.
 
-`sandbx-cli/tests/audit_log_held.rs` is the second such binary, for the path
+`sandbx-logging/tests/audit_log_held.rs` is the second such binary, for the path
 `tui` runs: a record emitted on a blocking thread, into the global subscriber,
 through `Audit` into the held buffer, and onto stderr when the guard drops. It
 re-execs itself to read fd 2 from outside, `Held::drop` writing there directly

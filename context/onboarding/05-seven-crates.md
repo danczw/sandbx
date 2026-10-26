@@ -194,7 +194,7 @@ against a mechanism it ruled out.
 locally and a hazard in CI, because an unlocked resolve can quietly route around
 a lockfile that is broken at the floor — which is exactly why the `msrv` job
 passes `--locked`. Resolver 3 also unifies features per *package* across a
-dependency graph, which is why `sandbx-cli`'s `logging.rs` forces ANSI off: a
+dependency graph, which is why `sandbx-logging` forces ANSI off: a
 dev-dependency turns `tracing-subscriber`'s `ansi` feature on under
 `cargo test --workspace`. [guide-ci.md](../guide-ci.md) has the trap the same
 rule sets for a crate's own test-only feature.
