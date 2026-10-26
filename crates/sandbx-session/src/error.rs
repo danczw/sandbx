@@ -30,7 +30,9 @@ pub enum SessionError {
 
     /// There is no transcript under that id.
     NotFound {
-        /// The id that was asked for, as it was spelled.
+        /// The id that was asked for, which only a validated `SessionId` supplies —
+        /// which is why the message renders it unquoted where `InvalidIdentifier`,
+        /// carrying whatever was offered, quotes.
         id: String,
     },
 
