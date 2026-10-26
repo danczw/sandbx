@@ -96,7 +96,7 @@ What the model reasons is model-chosen, and under `--show-thinking` it streams t
 the same terminal as the gate's verdicts and the lines saying how the turn ended.
 A delta ending in `\x1b[8m` would conceal every one of them; one carrying
 `\x1b[A\x1b[2K` would erase the verdict before it (#239). So `Render` replaces each
-control character, and each one `sandbx_providers::invisible` names, with U+FFFD —
+control character, and each one `sandbx_text::invisible` names, with U+FFFD —
 the gate's reason for replacing rather than dropping. `\n` and `\t` survive:
 reasoning is prose over many lines. It is not capped, unlike a gate argument:
 nothing is consented to on the strength of it.

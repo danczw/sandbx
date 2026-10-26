@@ -1,4 +1,4 @@
-# Seven crates, and only one of them may spawn
+# The crates, and only one of them may spawn
 
 [04 — the architecture](04-the-architecture.md) draws the system three times,
 and all three drawings are about run time: processes that exist, a request that
@@ -16,7 +16,10 @@ boxes and the arrows between them.
 
 Every crate is a member of `members = ["crates/*"]`, and every internal edge is
 a path dependency. Read an arrow as "may name the types of", and look for the
-three crates no arrow leaves:
+crates no arrow leaves. The graph and the table below predate #332's extractions
+and name neither `sandbx-helper`, `sandbx-pty-fixture` nor `sandbx-text`;
+[guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
+is #332's own closing item:
 
 ```mermaid
 flowchart TD
@@ -59,8 +62,9 @@ Four things about that shape are worth more than the picture.
   argv becomes a policy and a policy becomes a run. 04's *The CLI architecture*
   section covers the lib-plus-bin split.
 - **`sandbx-tui` reaches `sandbx-providers` for the vocabulary, not the
-  transport.** The only names it borrows are `AgentEvent`, `StopReason` and
-  `invisible`, the terminal-safety predicate — see
+  transport.** The only names it borrows are `AgentEvent` and `StopReason`,
+  with the terminal-safety predicate `invisible` coming from `sandbx-text`
+  instead since #363 — see
   [`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs). No client, no
   credential, no policy. The screen folds events it is handed; it never opens a
   stream.
@@ -135,7 +139,7 @@ missing_docs = "warn"
 disallowed_methods = "deny"
 ```
 
-and every one of the seven members carries the two lines that take them:
+and every member carries the two lines that take them:
 
 ```toml
 [lints]
@@ -152,7 +156,7 @@ would have made it legal does not exist. Note the wording — *forbidden*, which
 is a fact about this workspace's first-party code, and not "zero `unsafe`
 anywhere", which would be a claim about the dependency graph too.
 
-What the `forbid` reaches is first-party code in the seven crates, test binaries
+What the `forbid` reaches is first-party code in every crate, test binaries
 included — cargo applies a package's `[lints]` to every target in it. That
 second half shows up as a shape you meet early: `std::env::set_var` is an
 `unsafe fn` under edition 2024, so a test cannot vary a real environment
@@ -203,12 +207,13 @@ dev-dependency turns `tracing-subscriber`'s `ansi` feature on under
 `cargo test --workspace`. [guide-ci.md](../guide-ci.md) has the trap the same
 rule sets for a crate's own test-only feature.
 
-**`edition = "2024"`.** The edition is declared once and inherited by all seven,
-so there is no mixed-edition reading to do. One concrete thing it buys in this
-tree: let-chains — `if cond && let Some(x) = opt` — which are edition-2024-only
-and stable only from the toolchain version the manifest names. The helper uses
-them, and the root manifest's comment on `rust-version` records that the
-let-chain in `helper/` is one of the two things holding the floor where it is.
+**`edition = "2024"`.** The edition is declared once and inherited by every
+member, so there is no mixed-edition reading to do. One concrete thing it buys
+in this tree: let-chains — `if cond && let Some(x) = opt` — which are
+edition-2024-only and stable only from the toolchain version the manifest
+names. The helper uses them, and the root manifest's comment on `rust-version`
+records that the let-chain in `helper/` is one of the two things holding the
+floor where it is.
 When you read a condition in
 [`helper/exec.rs`](../../crates/sandbx-core/src/helper/exec.rs) whose lines begin
 `&& let`, that is the feature, not a typo.
@@ -361,7 +366,7 @@ one line shorter to type:
 
 | where the `#[allow]` could go | what it would then permit |
 |---|---|
-| `[workspace.lints]`, dropping the lint | every `Command::new` in all seven crates |
+| `[workspace.lints]`, dropping the lint | every `Command::new` in every crate |
 | `#![allow(…)]` at the top of `core/src/lib.rs` | every `Command::new` in `sandbx-core` |
 | on `mod spawn;` | every `Command::new` in `spawn.rs` |
 | on `fn command` | every `Command::new` in this function |
