@@ -30,7 +30,8 @@ sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, policy
 sandbx-core ────────────────────────────────┤                 derivation, the
 sandbx-logging ─────────────────────────────┤                 turn loop's caller
-sandbx-session ─────────────────────────────┤
+sandbx-session-message ──► sandbx-session ──┤
+         └──────────────────────────────────┤
 sandbx-tui ─────────────────────────────────┘
 ```
 
@@ -44,12 +45,13 @@ constant, not a mechanism.
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients, and what their text may not carry to a terminal | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, logging, providers, session, tools, tui |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, logging, providers, session, session-message, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
-| `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | — |
+| `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-message |
 | `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers (pty-fixture is *dev*-only) |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
+| `sandbx-session-message` | the five shapes a transcript line is made of | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -262,6 +264,21 @@ tests/       turn_loop, turn_compaction, audit_trail,
              support/mod.rs — the Script double and the request builders
 ```
 
+## `sandbx-session-message`
+
+```
+src/lib.rs        Message, Role, Content, Usage, CompletedTurn — the five
+                  shapes a transcript line is made of, and the three tests
+                  that pin them against the wire
+```
+
+The stored types are declared here rather than imported from
+`sandbx-providers`: a transcript is a file format, and one that moved whenever a
+provider type moved would not be. The translation lives in `sandbx-cli`, where a
+new content block is a compile error rather than a block quietly missing from a
+transcript. Depends on no sandbx crate, which is what lets the format outlive a
+change to either side of it (#359).
+
 ## `sandbx-session`
 
 ```
@@ -270,8 +287,6 @@ src/lib.rs        re-exports
                   becomes a path component
    paths.rs       sessions_directory — $XDG_STATE_HOME, else $HOME, never the
                   working directory
-   message.rs     Message, Role, Content, Usage, CompletedTurn — the stored
-                  shapes, declared rather than imported
    store.rs       re-exports SessionStore and Session
       session.rs  SessionStore, Session; which bit refuses and which reports
       record.rs   the three line kinds, and the fold that replays them
@@ -281,12 +296,10 @@ src/lib.rs        re-exports
 tests/            identifier, permissions, recovery, transcript
 ```
 
-No internal dependency, and the stored types are its own rather than
-`sandbx-providers`': a transcript is a file format, and one that moved whenever a
-provider type moved would not be. The translation lives in `sandbx-cli`, where a
-new content block is a compile error rather than a block quietly missing from a
-transcript. See [decision-on-disk-state.md](decision-on-disk-state.md) for the
-roots, the mode rule and the line format.
+One internal dependency, `sandbx-session-message`, whose section above says why
+those shapes are its own and not the provider's. See
+[decision-on-disk-state.md](decision-on-disk-state.md) for the roots, the mode
+rule and the line format.
 
 ## `sandbx-tui`
 

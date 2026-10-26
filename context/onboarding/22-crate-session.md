@@ -7,11 +7,12 @@ round loop has finished and the gate has gone quiet; in **View 1** it is not a
 box, because nothing here spawns, forks or `exec`s — it opens files in the
 harness process, and that is the whole of it.
 
-Nine source files, a little over a thousand lines outside their test modules
-with nearly as many again in `tests/`, and one of the three leaves of
-[05 — seven crates](05-seven-crates.md)'s graph: no internal dependency, and
-three external ones — `nix` with only `fs` and `user`, `serde`, `serde_json` —
-plus `tempfile` for the tests. The reason to read it anyway is proportion. A
+Eight source files, a little over a thousand lines outside their test modules
+with nearly as many again in `tests/`. One internal dependency — the shapes it
+stores are `sandbx-session-message`'s, which is itself a leaf of
+[05 — seven crates](05-seven-crates.md)'s graph — and three external ones:
+`nix` with only `fs` and `user`, `serde`, `serde_json`, plus `tempfile` for the
+tests. The reason to read it anyway is proportion. A
 transcript is the only plaintext copy of a conversation sandbx keeps, it is
 replayed to a model that calls tools, and [`SECURITY.md`](../../SECURITY.md)
 carries what that costs as a non-claim.
@@ -20,10 +21,10 @@ carries what that costs as a non-claim.
 
 | file | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | ten re-exports and five private modules | — |
+| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | five re-exports and four private modules | — |
 | [`id.rs`](../../crates/sandbx-session/src/id.rs) | `SessionId`, `from_clock`, the allowlist | [14](14-audit-sessions-credentials.md), then below |
 | [`paths.rs`](../../crates/sandbx-session/src/paths.rs) | `sessions_directory` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
-| [`message.rs`](../../crates/sandbx-session/src/message.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` | [05](05-seven-crates.md), [24](24-crate-cli.md) |
+| [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` — a crate of its own since #359 | [05](05-seven-crates.md), [24](24-crate-cli.md) |
 | [`store.rs`](../../crates/sandbx-session/src/store.rs) | re-exports `SessionStore` and `Session` | below |
 | [`store/session.rs`](../../crates/sandbx-session/src/store/session.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
 | [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
@@ -35,9 +36,9 @@ carries what that costs as a non-claim.
 Two shapes to notice first. **`store/` is the only subdirectory**, and the three
 siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
 the mode constants and every predicate are invisible outside `store/`; the
-crate's public surface is the ten names `lib.rs` re-exports. And **the crate has
-no output channel**: no `tracing` dependency, no `println!` or `eprintln!` under
-`src/`. That is not an omission, it is what forces the design in the
+crate's public surface is the five names `lib.rs` re-exports. And **the crate
+has no output channel**: no `tracing` dependency, no `println!` or `eprintln!`
+under `src/`. That is not an omission, it is what forces the design in the
 `store/session.rs` section.
 
 ## `id.rs` — an allowlist is three lines, and this is why
@@ -132,10 +133,13 @@ binaries too, so a test cannot drive a real environment. `sandbx-cli`'s
 its doc says why: "this is the one place that wants the real environment, and a
 test drives the store directly."
 
-## `message.rs` — five types that are not the provider's
+## `sandbx-session-message` — five types that are not the provider's
 
-[05](05-seven-crates.md) argues why the stored shapes are declared here rather
-than imported. This is what the argument looks like at the type level.
+[05](05-seven-crates.md) argues why the stored shapes are declared rather than
+imported. This is what the argument looks like at the type level. They are a
+crate of their own since #359, which is also the reason this chapter covers them
+beside the store that writes them: the file format and the file are read
+together even though they no longer compile together.
 
 `Message` is `{ role: Role, content: Vec<Content> }`; `Role` is `User` or
 `Assistant` under `rename_all = "lowercase"`; `Content` is three variants under
@@ -343,7 +347,8 @@ Position decides the other refusal: anything but a header on line 0 is
 
 An undeclared *field* is the third case and the lenient one: an extra key on a
 stored line reads back without it, which
-`an_unknown_field_is_ignored_rather_than_refused` in `message.rs` pins with a
+`an_unknown_field_is_ignored_rather_than_refused` in `sandbx-session-message`
+pins with a
 `thinking_signature` beside the message and a `citations` inside a text block.
 An unknown record `type` fails the parse instead —
 [decision-on-disk-state.md](../decision-on-disk-state.md) grades the three, and
@@ -574,8 +579,9 @@ consequence of it.
 
 ## Where the tests are
 
-Unit tests sit in `id.rs`, `paths.rs`, `message.rs` and `store/record.rs`, the
-four modules that are pure functions over values. `store/session.rs`,
+Unit tests sit in `id.rs`, `paths.rs` and `store/record.rs`, and in
+`sandbx-session-message` next door — the four places that are pure functions
+over values. `store/session.rs`,
 `store/vet.rs` and `store/shape.rs` have none, needing a real filesystem or the
 store that drives them; [guide-testing.md](../guide-testing.md) governs the split.
 

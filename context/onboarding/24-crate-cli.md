@@ -616,16 +616,16 @@ absent/bare/valued. The id is parsed at parse time, so `--session
 ../../etc/passwd` is refused before any I/O happens at all.
 
 The rest of the module is the seam between `sandbx-providers`' request shapes
-and `sandbx-session`'s stored ones, and the module doc states the property it
-holds:
+and `sandbx-session-message`'s stored ones, and the module doc states the
+property it holds:
 
 > Every match below destructures by field name with no `_` arm: a new
 > [`ContentBlock`] variant is a compile error here rather than a block silently
 > missing from a saved conversation.
 
 This is where [22](22-crate-session.md)'s declared-not-imported choice pays off.
-`sandbx-session` does not depend on `sandbx-providers`; it declares its own
-`Content` enum. Those two types therefore have to be mapped by hand, in this
+`sandbx-session-message` does not depend on `sandbx-providers`; it declares its
+own `Content` enum. Those two types therefore have to be mapped by hand, in this
 file, and the map is written to fail at `cargo build`:
 
 ```rust
@@ -648,7 +648,7 @@ and it closes on the one deliberate exclusion:
 ```
 
 Had that last arm been `_ => return None`, a sixth content block — the
-`ContentBlock` sent has five variants, `sandbx-session`'s `Content` three —
+`ContentBlock` sent has five variants, the stored `Content` three —
 would have compiled and silently vanished from every transcript, the failure the
 module doc is describing. Reasoning is excluded because a signature has no
 replay value; see

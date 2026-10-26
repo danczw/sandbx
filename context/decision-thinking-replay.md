@@ -66,9 +66,9 @@ operator; neither is asked for.
 A signature is a provider replay token. It is of no use to a resumed conversation —
 whose prefix is a rewrite, so the block is invalid anyway — and it is opaque, so
 nothing downstream can read it. `stored_block` names the two variants as arms and
-returns `None`, which is also what keeps `sandbx-session` from needing a `Content`
-variant for them. Rule 1 means nothing reaches that function today; it is the last
-edge before the file, and cheap to hold.
+returns `None`, which is also what keeps `sandbx-session-message` from needing a
+`Content` variant for them. Rule 1 means nothing reaches that function today; it
+is the last edge before the file, and cheap to hold.
 
 ## Switching reasoning on
 
