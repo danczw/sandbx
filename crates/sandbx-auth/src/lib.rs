@@ -5,8 +5,8 @@
 //! `context/decision-credentials.md`.
 //!
 //! `key` is the resolution and the subcommand; `store` is the file itself; `error` is what
-//! stops either. Code spans and not links: all three are private, and a crate doc linking
-//! one is a `private_intra_doc_links` warning the `-D warnings` doc gate fails on.
+//! stops either. Not links: all three are private, and `private_intra_doc_links` fails the
+//! `-D warnings` doc gate.
 
 mod error;
 mod key;
