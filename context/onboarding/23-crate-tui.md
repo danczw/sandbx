@@ -204,14 +204,14 @@ flowchart TD
 
 `invisible` is the bidi-and-zero-width denylist, and it is literally the same
 function [13](13-turn-loop-and-gate.md) meets at the approval prompt:
-`sandbx_providers::invisible`, imported here beside `AgentEvent`.
-`char::is_control` is category `Cc` exactly, so U+202E and the directional
-isolates pass it and a line can *display* as a different line — in this pane
-and the same `sandbx: ` grammar as the gate's own account, which is why one
-table and not two. [20](20-crate-providers.md) has why the owner is a crate
-that talks to an HTTP API, and what the two sinks deliberately do not share:
-each keeps its own replacement, there being no one answer to what belongs in a
-cell versus a line.
+`sandbx_text::invisible`, imported beside `AgentEvent` and from a different
+crate than it. `char::is_control` is category `Cc` exactly, so U+202E and the
+directional isolates pass it and a line can *display* as a different line — in
+this pane and the same `sandbx: ` grammar as the gate's own account, which is
+why one table and not two. `sandbx-text`'s own `//!` has why the owner is a
+crate of its own, and what the two sinks deliberately do not share: each keeps
+its own replacement, there being no one answer to what belongs in a cell versus
+a line.
 
 `forgeable` has no counterpart at the prompt, and is this crate's own:
 

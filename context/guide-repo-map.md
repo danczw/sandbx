@@ -32,7 +32,8 @@ sandbx-core ──────────────────────�
 sandbx-logging ─────────────────────────────┤                 turn loop's caller
 sandbx-session ─────────────────────────────┤
 sandbx-session-message ─────────────────────┤
-sandbx-tui ─────────────────────────────────┘
+sandbx-text ────┬───────────────────────────┤
+                └──► sandbx-tui ────────────┘
 ```
 
 `sandbx-logging` depends on `sandbx-core` for `AUDIT_TARGET` alone — the target
@@ -43,15 +44,16 @@ constant, not a mechanism.
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients, and what their text may not carry to a terminal | — |
+| `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, logging, providers, session, session-message, tools, tui |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, logging, providers, session, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-message |
-| `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers (pty-fixture is *dev*-only) |
+| `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers, text (pty-fixture is *dev*-only) |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
+| `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -71,9 +73,8 @@ it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
 `sandbx-providers` directly rather than through `sandbx-agent`, which re-exports
-none of it: `agent-run` builds the client and the first user turn itself, renders
-the events the loop hands back, and strips its own operator lines with
-`invisible`.
+none of it: `agent-run` builds the client and the first user turn itself, and
+renders the events the loop hands back.
 
 ## `sandbx-core`
 
@@ -219,8 +220,6 @@ src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    prompt.rs      Prompt, RequestMessage, ContentBlock, ToolDefinition,
                   ToolChoice, Thinking — data, with no Serialize
    event.rs       AgentEvent, StopReason
-   text.rs        invisible — the one denylist of what model text may not carry
-                  to a terminal, read by both the cli's line sink and the tui's
    error.rs
    sse.rs         SSE framing
    anthropic.rs   the vendor boundary: re-exports AnthropicClient
@@ -245,6 +244,22 @@ sibling of `anthropic.rs` carries it: `lib.rs` re-exports `AnthropicClient`.
 The key and its variable's name are the CLI's, in `auth/key.rs`. Four more files
 name it in doc comments only. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
+
+## `sandbx-text`
+
+```
+src/lib.rs        invisible — the one denylist of what model text may not carry
+                  to a terminal, read by both the cli's line sink and the tui's
+```
+
+Public surface: `invisible`, and nothing else. Zero dependencies, workspace or
+external, so both sinks can reach it without either reaching the other: a
+character added to one copy and not another re-opens the hole in whichever was
+missed, and the drift would be a terminal-injection difference between two
+surfaces users read as the same. What they share is the hazard — each sink keeps
+its own replacement, there being no one answer to what belongs in a cell versus
+a line. The crate's `//!` has why neither `sandbx-core` nor `sandbx-tui` is the
+home (#363).
 
 ## `sandbx-agent`
 
