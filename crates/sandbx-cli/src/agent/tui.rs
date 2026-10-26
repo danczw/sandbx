@@ -22,7 +22,7 @@ use sandbx_tui::{Keys, Screen, Stopped, Transcript};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
-use crate::{logging, session};
+use crate::session;
 
 /// `sandbx tui [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]
@@ -148,7 +148,7 @@ impl Tui {
         // Before the screen, dropped after it: the alternate screen neither redirects
         // stderr nor gives back what was written to it, so each audit record would land in
         // the pane and die with it.
-        let audit = logging::hold();
+        let audit = sandbx_logging::hold();
 
         // The screen before the keys: without raw mode ctrl-c is a signal, and the reader
         // would never see the key that is supposed to stop the turn. One lock because the

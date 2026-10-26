@@ -1,6 +1,6 @@
 //! What the shipped subscriber records, and what it drops.
 //!
-//! These drive the real subscriber from `sandbx_cli::logging` over an in-memory sink, so
+//! These drive the real subscriber from `sandbx_logging` over an in-memory sink, so
 //! the filter is pinned without spawning the binary or capturing a file descriptor.
 
 use std::sync::{Arc, Mutex};
@@ -45,7 +45,7 @@ impl std::io::Write for Sink {
 fn captured(f: impl FnOnce()) -> String {
     let sink = Sink::default();
     let writer = sink.clone();
-    let _guard = sandbx_cli::logging::subscriber(move || writer.clone()).set_default();
+    let _guard = sandbx_logging::subscriber(move || writer.clone()).set_default();
     f();
     sink.contents()
 }

@@ -46,7 +46,7 @@ name = "sandbx-core"
 # `sandbx-agent`'s edge is a dev-dependency: `sandbx-core` is not in its build.
 # `sandbx-helper`'s is not — the binary is what the enforcement suite spawns, so it
 # links core for real.
-wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-helper", "sandbx-tools"]
+wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-helper", "sandbx-logging", "sandbx-tools"]
 
 [[bans.deny]]
 name = "sandbx-providers"
@@ -58,6 +58,10 @@ wrappers = ["sandbx-agent", "sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-agent"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
+name = "sandbx-logging"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]

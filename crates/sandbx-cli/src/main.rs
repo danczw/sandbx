@@ -24,7 +24,7 @@ fn main() -> std::process::ExitCode {
         // Inside the closure, not above: in helper mode this process shares the sandboxed
         // command's stderr, which is forwarded verbatim, so a subscriber above would leak into
         // it. Helper mode has none; its hardening reports degradations over a pipe instead.
-        if let Err(error) = sandbx_cli::logging::init() {
+        if let Err(error) = sandbx_logging::init() {
             eprintln!("sandbx: audit trail unavailable: {error}");
         }
 
