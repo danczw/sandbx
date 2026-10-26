@@ -7,7 +7,8 @@
 
 use sandbx_agent::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
-use sandbx_session::{Session, SessionError, SessionId, SessionStore, sessions_directory};
+use sandbx_session::{Session, SessionId, SessionStore, sessions_directory};
+use sandbx_session_error::SessionError;
 use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
 
 /// What `--session` asked for.

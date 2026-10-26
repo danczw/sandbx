@@ -6,7 +6,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::SessionError;
+use sandbx_session_error::SessionError;
 
 /// The characters an id may be spelled with.
 const ALPHABET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";

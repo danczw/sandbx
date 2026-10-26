@@ -5,7 +5,7 @@ use std::path::Path;
 use sandbx_session_message::{Message, Usage};
 use serde::{Deserialize, Serialize};
 
-use crate::SessionError;
+use sandbx_session_error::SessionError;
 
 /// The format this build writes, and the only one it reads.
 pub(super) const VERSION: u32 = 1;

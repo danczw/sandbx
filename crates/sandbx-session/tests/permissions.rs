@@ -8,7 +8,8 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use sandbx_session::{SessionError, SessionStore};
+use sandbx_session::SessionStore;
+use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role};
 
 fn store() -> (tempfile::TempDir, SessionStore) {

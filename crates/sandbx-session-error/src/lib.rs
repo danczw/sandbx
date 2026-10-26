@@ -1,13 +1,15 @@
 //! Why a session operation did not happen.
 //!
 //! No `From` impls, and do not add one: every wrapped failure is paired with the path
-//! and operation it came from, which a blanket conversion would discard.
+//! and operation it came from, which a blanket conversion would discard. `sandbx-cli`
+//! is what decides per call site what a session failure becomes — its `agent/run.rs`
+//! reads `IncompleteTurn` off an append as no error at all.
 //!
-//! Nothing here names a `SessionId`, deliberately: `id.rs` returns a `SessionError` from
-//! all three of its fallible paths, and this is the type the rest of the session tree
-//! depends on. The mutual reference compiles while both are modules of one crate and
-//! will not once they are two (#346, #358). `NotFound` carries the spelling instead, at
-//! no cost to the message: `SessionId`'s `Display` writes the inner string and no more.
+//! Nothing here names a `SessionId`, deliberately: every fallible path in the session
+//! tree returns this type, including all three of the id's own, so an edge to the crate
+//! that declares `SessionId` would be a cycle (#346; `sandbx-session-id` once #360 has
+//! split it out). `NotFound` carries the spelling instead, at no cost to the message:
+//! `SessionId`'s `Display` writes the inner string and no more.
 
 use std::path::PathBuf;
 

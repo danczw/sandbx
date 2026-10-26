@@ -17,7 +17,8 @@ use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
     StopReason, Thinking,
 };
-use sandbx_session::{Session, SessionError, SessionId};
+use sandbx_session::{Session, SessionId};
+use sandbx_session_error::SessionError;
 use sandbx_session_message::CompletedTurn;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 

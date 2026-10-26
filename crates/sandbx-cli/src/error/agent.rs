@@ -3,7 +3,7 @@
 use sandbx_agent::TurnError;
 use sandbx_auth::AuthError;
 use sandbx_providers::ProviderError;
-use sandbx_session::SessionError;
+use sandbx_session_error::SessionError;
 
 use super::PolicyError;
 

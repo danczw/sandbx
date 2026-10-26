@@ -11,7 +11,7 @@ use std::path::Path;
 use nix::fcntl::OFlag;
 use nix::sys::stat::Mode;
 
-use crate::SessionError;
+use sandbx_session_error::SessionError;
 
 /// The mode a transcript is created with.
 pub(super) const OWNER_ONLY: u32 = 0o600;

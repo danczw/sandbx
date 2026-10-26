@@ -1682,6 +1682,7 @@ dependencies = [
  "sandbx-logging",
  "sandbx-providers",
  "sandbx-session",
+ "sandbx-session-error",
  "sandbx-session-message",
  "sandbx-text",
  "sandbx-tools",
@@ -1758,10 +1759,18 @@ name = "sandbx-session"
 version = "0.1.0-alpha.18"
 dependencies = [
  "nix",
+ "sandbx-session-error",
  "sandbx-session-message",
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "sandbx-session-error"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
