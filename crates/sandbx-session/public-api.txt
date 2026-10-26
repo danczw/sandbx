@@ -79,7 +79,7 @@ pub sandbx_session::SessionError::MissingHeader
 pub sandbx_session::SessionError::MissingHeader::path: std::path::PathBuf
 pub sandbx_session::SessionError::NoStateHome
 pub sandbx_session::SessionError::NotFound
-pub sandbx_session::SessionError::NotFound::id: sandbx_session::SessionId
+pub sandbx_session::SessionError::NotFound::id: alloc::string::String
 pub sandbx_session::SessionError::Symlink
 pub sandbx_session::SessionError::Symlink::path: std::path::PathBuf
 pub sandbx_session::SessionError::Unresumable

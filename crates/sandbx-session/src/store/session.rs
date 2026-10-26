@@ -107,7 +107,7 @@ impl SessionStore {
         // A missing root or transcript is no session by that id, which is what was asked.
         let absent = |error| match error {
             SessionError::Io { source, .. } if source.kind() == ErrorKind::NotFound => {
-                SessionError::NotFound { id: id.clone() }
+                SessionError::NotFound { id: id.to_string() }
             }
             other => other,
         };
