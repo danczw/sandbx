@@ -19,8 +19,7 @@ sandbx-core = { path = "../sandbx-core" }
 # three of these features are reached from `[[bin]]` probes, and a `[[bin]]` cannot see
 # dev-dependencies. `sched` for the pid-namespace probe, `fs` for `memfd` and
 # `truncate`, `process` for the orphan probe's `setsid`. `signal` is the exception —
-# only `tests/command.rs` reaches it, which could have seen a dev-dependency, but a
-# second nix entry differing by one feature is worse than one covering both.
+# only `tests/command.rs` reaches it, which could have seen a dev-dependency.
 nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "signal", "process"] }
 # Optional rather than a dev-dependency because the probe that reaches
 # `io_uring_setup` is a `[[bin]]`, and a `[[bin]]` cannot see dev-dependencies.
