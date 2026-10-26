@@ -219,11 +219,10 @@ a line.
 fn forgeable(c: char) -> bool {
     matches!(
         c,
-        // Every Box Drawing codepoint with a vertical stroke and no horizontal one: both
-        // weights, the three dash densities, the double, and the half-height stubs. What
-        // draws a horizontal too is left alone — the junctions and corners, not only the
-        // horizontals: a table or a `tree` is ordinary output, and the nub beside the
-        // stroke is a difference on screen where a weight is not.
+        // Every Box Drawing codepoint with a vertical stroke and no horizontal one. What
+        // draws a horizontal too is left alone, junctions and corners included: a `tree` or
+        // a table is ordinary output, and the nub beside the stroke is a difference on
+        // screen where a weight is not.
         GUTTER_MARK
         | '\u{2503}' | '\u{2506}' | '\u{2507}' | '\u{250a}' | '\u{250b}'
         | '\u{254e}' | '\u{254f}' | '\u{2551}'
@@ -232,13 +231,17 @@ fn forgeable(c: char) -> bool {
         | '\u{239c}' | '\u{239f}' | '\u{23a2}' | '\u{23a5}' | '\u{23aa}' | '\u{23ae}'
         | '\u{23b8}' | '\u{23b9}' | '\u{23d0}'
         // Single-cell vertical strokes outside both ranges — an enumeration, not a scope:
-        // Unicode's confusables data is not in the tree to derive one from, which is what
-        // #276 leaves open. Out on purpose: U+1175 and U+4E28, letters in running text, on
-        // ASCII `|`'s reasoning; and every Block Element wider than an eighth, which reads
-        // as filled area rather than a line, and whose loss would cost a sparkline.
+        // Unicode's confusables data is not in the tree to derive one from (#276). Out on
+        // `|`'s reasoning: U+1175 and U+4E28 are letters in running text, and a Block
+        // Element wider than an eighth reads as filled area, its loss costing a sparkline.
         | '\u{00a6}' | '\u{01c0}' | '\u{01c1}' | '\u{05c0}' | '\u{2016}' | '\u{2223}'
         | '\u{2225}' | '\u{258f}' | '\u{2595}' | '\u{2758}' | '\u{fe31}' | '\u{fe32}'
         | '\u{fe33}' | '\u{ff5c}' | '\u{ffdc}' | '\u{ffe8}'
+        // Combining marks drawing a vertical on their base, a space included (#280); the base
+        // survives. Out: the obliques, a slash not being the mark, and on `|`'s reasoning the
+        // centralization strokes and script signs such as U+0951, diacritics in running text.
+        | '\u{030d}' | '\u{030e}' | '\u{0329}' | '\u{0348}' | '\u{20d2}' | '\u{20d3}'
+        | '\u{20e6}'
     )
 }
 ```
@@ -301,11 +304,13 @@ free function over `&str`. Inline in
 survives as ordinary text is visible in the expectation; two more cover the
 reordering characters and the gutter confusables, each asserting
 `!c.is_control()` of its own inputs to keep the justification for `invisible`
-and `forgeable` inside the test. Three more pin the set instead of
+and `forgeable` inside the test. Four more pin the set instead of
 spot-checking it: the 15 Box Drawing verticals, the 113 the carve-out keeps —
-a genuine sweep, the range being walked — and the 25 strokes outside that
-block, which is the enumeration restated. A codepoint added to the function
-and not to a test now fails one.
+a genuine sweep, the range being walked — the 25 strokes outside that block,
+which is the enumeration restated, and the 7 combining marks, swept over both
+combining blocks so a mark drawing a vertical is refused while its base
+survives (#280). A codepoint added to the function and not to a test now
+fails one.
 [`view.rs`](../../crates/sandbx-tui/src/view.rs) draws state and reads none, so
 its tests render into ratatui's `TestBackend` and read cells back as rows of
 strings — which is how `an_answer_cannot_forge_the_row_a_verdict_is_drawn_on`
