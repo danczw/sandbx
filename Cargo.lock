@@ -1787,11 +1787,19 @@ dependencies = [
  "nix",
  "ratatui",
  "rustix",
- "sandbx-providers",
  "sandbx-pty-fixture",
+ "sandbx-tui-transcript",
+ "tokio",
+]
+
+[[package]]
+name = "sandbx-tui-transcript"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "ratatui",
+ "sandbx-providers",
  "sandbx-text",
  "serde_json",
- "tokio",
 ]
 
 [[package]]

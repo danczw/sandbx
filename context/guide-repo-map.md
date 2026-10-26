@@ -34,8 +34,9 @@ sandbx-core ──────────────────────�
 sandbx-logging ─────────────────────────────┤
 sandbx-session ─────────────────────────────┤
 sandbx-session-message ─────────────────────┤
-sandbx-text ────┬───────────────────────────┤
-                └──► sandbx-tui ────────────┘
+sandbx-text ──────┬─────────────────────────┤
+sandbx-providers ─┴─► sandbx-tui-transcript │
+                          └──► sandbx-tui ──┘
 ```
 
 `sandbx-logging` depends on `sandbx-core` for `AUDIT_TARGET` alone — the target
@@ -51,7 +52,8 @@ constant, not a mechanism.
 | `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | approval, core, agent, logging, providers, session, session-message, text, tools, tui |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-message |
-| `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | providers, text (pty-fixture is *dev*-only) |
+| `sandbx-tui` | the screen one turn is drawn on, the keys that stop it | tui-transcript (pty-fixture is *dev*-only) |
+| `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
@@ -65,6 +67,12 @@ tools over a temp dir rather than mocking below the tool boundary.
 diagram above does not draw, both crates having a direct edge to `sandbx-cli` of
 their own. The CLI's is not inherited: it translates between those shapes and
 the provider's, which is why `deny.toml` names both parents.
+
+`sandbx-tui` depends on `sandbx-tui-transcript` and on nothing else of sandbx's:
+the provider and text edges the diagram used to draw to it now land one step
+earlier, on the crate that folds the events. `sandbx-cli` reaches `Transcript`
+through `sandbx-tui`'s re-export and not an edge of its own, which is why
+`deny.toml` names one parent there and not two (#353).
 
 `sandbx-pty-fixture` is in no crate's build, which is why it is absent from the
 diagram above; its own `//!` says why it is a crate and not a module (#344).
@@ -252,7 +260,8 @@ name it in doc comments only. Per-rule account in
 
 ```
 src/lib.rs        invisible — the one denylist of what model text may not carry
-                  to a terminal, read by both the cli's line sink and the tui's
+                  to a terminal, read by both the cli's line sink and the
+                  transcript's cell
 ```
 
 Public surface: `invisible`, and nothing else. Zero dependencies, workspace or
@@ -261,8 +270,8 @@ character added to one copy and not another re-opens the hole in whichever was
 missed, and the drift would be a terminal-injection difference between two
 surfaces users read as the same. What they share is the hazard — each sink keeps
 its own replacement, there being no one answer to what belongs in a cell versus
-a line. The crate's `//!` has why neither `sandbx-core` nor `sandbx-tui` is the
-home (#363).
+a line. The crate's `//!` has why neither `sandbx-core` nor the drawing crate is
+the home (#363).
 
 ## `sandbx-approval`
 
@@ -336,13 +345,27 @@ those shapes are its own and not the provider's. See
 [decision-on-disk-state.md](decision-on-disk-state.md) for the roots, the mode
 rule and the line format.
 
-## `sandbx-tui`
+## `sandbx-tui-transcript`
 
 ```
-src/lib.rs          re-exports; nothing here knows of a policy or a provider
+src/lib.rs          re-exports: Transcript, draw, Hint
    transcript.rs    AgentEvent folded into entries, and the control bytes a cell
                     may not hold — no terminal behind it, so it is unit-tested
    view.rs          the layout: the transcript tail-aligned over a status bar
+```
+
+Public surface: `Transcript`, `draw` and `Hint`. The two files are one crate
+because the fold has to strip what the layout draws — `view::GUTTER_MARK` is the
+claim that sandbx wrote a row, and `transcript::forgeable` replaces it and its
+confusables in entry text. Two crates would make that a cycle on one constant.
+`Kind`, `Entry` and `Transcript`'s three readers stay crate-private for the same
+reason: the layout is the only caller, and it is inside (#353).
+
+## `sandbx-tui`
+
+```
+src/lib.rs          re-exports, Transcript among them; nothing here knows of a
+                    policy or a provider
    screen.rs        Screen — raw mode and the alternate screen, put back on drop
    input.rs         Keys — the reader thread, and the press a turn awaits
 ```

@@ -1,9 +1,12 @@
-# The tui crate decides nothing, and sanitises everything it draws
+# The tui crates decide nothing, and sanitise everything they draw
 
-[`sandbx-tui`](../../crates/sandbx-tui/) is the screen one turn is drawn on and
-the keys that stop it: five source files, about fourteen hundred lines. In
-[04 — the architecture](04-the-architecture.md) it is the box a turn is
-*reported* in, and the one crate with no row in View 3's table of boundaries —
+Two crates, and #353 split them:
+[`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/) is what the
+screen shows, and [`sandbx-tui`](../../crates/sandbx-tui/) is the screen one
+turn is drawn on and the keys that stop it. The module tables below are the
+enumeration; no count here, which would go stale on the next extraction. In
+[04 — the architecture](04-the-architecture.md) they are the box a turn is
+*reported* in, and the one place with no row in View 3's table of boundaries —
 no policy, no gate, no session, no client. 04 also sets the frame: `tui` is
 not a sixth subcommand but `agent-run`'s flags derived into the same policy,
 reported elsewhere.
@@ -12,98 +15,125 @@ What the screen draws, and what interrupting a turn loses, belongs to
 [15 — the seven tools and the screen](15-tools-and-the-screen.md) and to
 [guide-tui.md](../guide-tui.md), the authority. This chapter is the map
 underneath: which file holds which type, what is `pub` and what deliberately is
-not, where the tests are, and one security property that belongs to this crate's
+not, where the tests are, and one security property that belongs to a
 *manifest*. The **driver** is [24](24-crate-cli.md)'s — `cli/src/agent/tui.rs`
 enters the screen, starts the key reader, races the turn against a keypress and
 overrides the gate's `settled`.
 
-## The module tree
+## The module trees
 
 ```
-src/lib.rs          re-exports four names; no policy, no gate, no session here
+sandbx-tui-transcript
+src/lib.rs          re-exports three names; no terminal behind either file
    transcript.rs    AgentEvent folded into entries, and the control bytes a cell
-                    may not hold — no terminal behind it, so it is unit-tested
+                    may not hold — unit-tested over &str
    view.rs          the layout: the transcript tail-aligned over a status bar
+
+sandbx-tui
+src/lib.rs          re-exports four names; no policy, no gate, no session here
    screen.rs        Screen — raw mode and the alternate screen, put back on drop
    input.rs         Keys — the reader thread, and the press a turn awaits
 ```
 
 | module | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-tui/src/lib.rs) | four `mod` lines and three `pub use` lines — the whole public surface | here |
-| [`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs) | `Transcript`, `Entry`, `Kind`, `printable` — the fold, and the sanitiser | here, as the centre; [15](15-tools-and-the-screen.md) for why a renderer gets a security chapter |
-| [`view.rs`](../../crates/sandbx-tui/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar; all crate-private | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
+| [transcript's `lib.rs`](../../crates/sandbx-tui-transcript/src/lib.rs) | two `mod` lines and two `pub use` lines — `Transcript`, `draw`, `Hint` | here |
+| [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs) | `Transcript`, `Entry`, `Kind`, `printable` — the fold, and the sanitiser | here, as the centre; [15](15-tools-and-the-screen.md) for why a renderer gets a security chapter |
+| [`view.rs`](../../crates/sandbx-tui-transcript/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar; only the first two leave the crate | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
+| [tui's `lib.rs`](../../crates/sandbx-tui/src/lib.rs) | two `mod` lines and three `pub use` lines — one of them re-exporting `Transcript` from the crate above | here |
 | [`screen.rs`](../../crates/sandbx-tui/src/screen.rs) | `Screen` — the transcript it draws, raw mode, the alternate screen, the `Drop`, the latched failure | here |
 | [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
 Tests are inline, in the file whose private items they touch, as
 [guide-testing.md](../guide-testing.md) asks: `transcript.rs`,
-`view.rs` and `input.rs` carry a `mod tests`, there is no
-`crates/sandbx-tui/tests/` directory, and `screen.rs` has none — it is the one
-file that needs a real terminal.
+`view.rs` and `input.rs` carry a `mod tests`, neither crate has a `tests/`
+directory, and `screen.rs` has none — it is the one file that needs a real
+terminal.
 
-## lib.rs is four names, and the manifest is the interesting half
+## Four names out, and the manifests are the interesting half
 
-Four `mod` lines and three `pub use` lines — one of them binding two items —
-and no `pub mod`, so no module path is part of the API: a caller gets four
-names and their methods — `Transcript::new`/`event`/`note`,
-`Screen::enter`/`paint`/`finish`/`failure`, `Keys::listen`/`stop`/`press`,
-`Stopped::Pressed`/`Gone`. Deliberately *not* exported is the shape of a
-transcript: `Entry` and `Kind` are `pub(crate)`, as are
-`Transcript::entries`, `rounds`, `tokens`, `view::draw` and `Hint` — `Screen`
-owns the transcript once entered and picks the hint itself, `paint` meaning
-the turn still runs and `finish` that it is over. The only
-way out of a `Transcript` is a drawn frame, so no caller can read the folded
-entries back and print them where the fold does not cover.
+`sandbx-tui` is two `mod` lines and three `pub use` lines, and no `pub mod`, so
+no module path is part of the API: a caller gets four names and their methods —
+`Transcript::new`/`event`/`note`, `Screen::enter`/`paint`/`finish`/`failure`,
+`Keys::listen`/`stop`/`press`, `Stopped::Pressed`/`Gone`. `Transcript` is the
+one of the four it does not own: it re-exports the type, which is what keeps
+`sandbx-cli` on one edge instead of two.
 
-The dependency edges are the second half of
-[`Cargo.toml`](../../crates/sandbx-tui/Cargo.toml).
+Deliberately *not* exported, by either crate, is the shape of a transcript:
+`Entry` and `Kind` are `pub(crate)`, as are `Transcript::entries`, `rounds`,
+`tokens` and `view::GUTTER_MARK` — `Screen` owns the transcript once entered
+and picks the hint itself, `paint` meaning the turn still runs and `finish`
+that it is over. The only way out of a `Transcript` is a drawn frame, so no
+caller can read the folded entries back and print them where the fold does not
+cover. The split cost exactly two of those: `view::draw` and `Hint` went `pub`
+because `Screen` is now a different crate's type, and a frame needs nothing
+else. Keeping `view.rs` beside `transcript.rs` is what kept the other six
+private — the layout is the only reader of any of them, and it is inside
+(#353).
+
+The dependency edges are the second half of each manifest.
+[`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/Cargo.toml) has
+the narrower one:
+
+```toml
+ratatui = { version = "=0.30.2", default-features = false, features = [
+  "unstable-rendered-line-info",
+] }
+sandbx-providers = { path = "../sandbx-providers" }
+sandbx-text = { path = "../sandbx-text" }
+```
+
+[`sandbx-tui`](../../crates/sandbx-tui/Cargo.toml) takes the backend and the
+threads instead:
 
 ```toml
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
-  "unstable-rendered-line-info",
 ] }
 # `poll` alone: the key reader gates every call into crossterm on a `poll`, which is
 # the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
 # spins on the zero-byte read behind it (#264).
 nix = { version = "0.31.3", default-features = false, features = ["poll"] }
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 ```
 
-One internal crate in the build, and a second only for tests. `nix`'s `poll`
+One internal crate in each build, and one more only for tests. `nix`'s `poll`
 feature is the production edge the hangup fix added (#264) — the key reader's
 whole mechanism for seeing a terminal that stopped answering, below and in
 [guide-tui.md](../guide-tui.md). The dev profile takes `sandbx-pty-fixture` for
-the pty pair a hangup test opens and the window it opens with, and keeps
-`serde_json` beside it. Read the production edge as a negative fact stated at
-the type level: **a renderer cannot leak what it cannot name.** With no
-edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or `sandbx-session`,
-nothing here can mention a `SandboxPolicy`, an `ExecutionContext`, a
-`BuiltinTool`, a `CallGate` or a session transcript — not "does not" but
-cannot, as a build error. The borrowed vocabulary is two types:
+the pty pair a hangup test opens and the window it opens with; `serde_json` went
+with the fold it builds one call's input for. Read the production edges as a
+negative fact stated at the type level: **a renderer cannot leak what it cannot
+name.** With no edge to `sandbx-core`, `sandbx-tools`, `sandbx-agent` or
+`sandbx-session` from either crate, nothing here can mention a `SandboxPolicy`,
+an `ExecutionContext`, a `BuiltinTool`, a `CallGate` or a session transcript —
+not "does not" but cannot, as a build error. The borrowed vocabulary is two
+types, and after #353 it is borrowed one crate lower down:
 `transcript.rs` names `sandbx_providers::AgentEvent`, and its tests name
 `StopReason`.
 
 - **Worth questioning:** how much of that the dependency graph carries. Four
   crates' vocabulary is ruled out by a missing edge; the rest is not.
-  `sandbx-providers` also exports `AnthropicClient`, so the renderer *can* name
-  the client, which makes
+  `sandbx-providers` also exports `AnthropicClient`, so whichever crate takes
+  that edge *can* name the client, which makes
   [guide-repo-map.md](../guide-repo-map.md)'s "nothing here knows of a policy or
   a provider" exact about the first half and loose about the second —
-  discipline, where for the policy and the gate it is the compiler.
+  discipline, where for the policy and the gate it is the compiler. #353
+  narrowed the looseness rather than closing it: the edge is the fold's now, so
+  the crate holding the terminal cannot name the client either, and the one
+  crate that still can is the one with no terminal behind it.
   [decision-provider-seam.md](../decision-provider-seam.md) argues by its own
   method: it sealed the vendor boundary by leaving `Prompt` without a
   `Serialize`, so nothing above `anthropic.rs` *can* post a neutral type. The
-  same move is open here — the two event types in a crate of their own — priced
-  against an eighth crate in a workspace whose seven are a feature.
+  same move is open here — the two event types in a crate of their own, which is
+  #365 — and that is what would turn the discipline into a missing edge.
 
 ## transcript.rs is the fold, and the fold is a sanitiser
 
-The file to read, and the only one in the crate with a decision in it.
+The file to read, and the only one in either crate with a decision in it.
 `Transcript` holds the `Vec<Entry>` in arrival order, a `show_thinking` flag, a
 `rounds` counter and `tokens`, a pair of `Option<u32>`. An `Entry` is a `Kind`
 and a `String`, and `Kind`'s four variants — `Prompt`, `Answer`, `Reasoning`,
@@ -158,9 +188,10 @@ attacker-influenced text: a prompt injection in a file the agent read comes back
 through the model and into the pane, and ratatui writes a cell's content to the
 terminal as it was given. A surviving escape sequence could reposition the
 cursor, rewrite the rows above itself — the account of what a tool just did
-included — or set the terminal's title. The module doc draws the conclusion:
-"model-chosen text is stripped here, not at the caller, because the screen is
-what an escape sequence inside it would rewrite". `printable` is the stripper:
+included — or set the terminal's title. `sandbx-tui`'s module doc draws the
+conclusion: model-chosen text "is stripped in `sandbx_tui_transcript`, not at
+the caller, because the screen is what an escape sequence inside it would
+rewrite". `printable` is the stripper:
 
 ```rust
 fn printable(text: &str) -> String {
@@ -213,7 +244,7 @@ crate of its own, and what the two sinks deliberately do not share: each keeps
 its own replacement, there being no one answer to what belongs in a cell versus
 a line.
 
-`forgeable` has no counterpart at the prompt, and is this crate's own:
+`forgeable` has no counterpart at the prompt, and is the fold crate's own:
 
 ```rust
 fn forgeable(c: char) -> bool {
@@ -246,8 +277,9 @@ fn forgeable(c: char) -> bool {
 }
 ```
 
-`GUTTER_MARK` is the first entry in its own denylist, imported from `view.rs` so
-the strip and the draw cannot disagree about the character — pinned by
+`GUTTER_MARK` is the first entry in its own denylist, imported from `view.rs`
+next door so the strip and the draw cannot disagree about the character — which
+is why those two files are one crate and not two (#353) — pinned by
 `the_drawn_gutter_is_the_mark_the_transcript_strips`. Everything after it draws
 the same cell. Why one pane needs an authenticated row at all is
 [15](15-tools-and-the-screen.md)'s argument and
@@ -295,10 +327,10 @@ composes.
 ### Where the tests are, and why they can be here
 
 `Transcript` is a pure fold — events in, entries out, no terminal and no clock —
-so the crate's security-relevant file is also the one with real coverage: what
+so the security-relevant file is also the one with real coverage: what
 an event becomes is an `assert_eq!` on a `Vec<Entry>`, and the sanitiser is a
 free function over `&str`. Inline in
-[`transcript.rs`](../../crates/sandbx-tui/src/transcript.rs),
+[`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs),
 `an_escape_sequence_in_the_answer_does_not_survive_the_fold` folds
 `"done\x1b[2Jgone\r\x07"` and asserts the exact replacement, so the `[2J` that
 survives as ordinary text is visible in the expectation; two more cover the
@@ -311,7 +343,8 @@ which is the enumeration restated, and the 7 combining marks, swept over both
 combining blocks so a mark drawing a vertical is refused while its base
 survives (#280). A codepoint added to the function and not to a test now
 fails one.
-[`view.rs`](../../crates/sandbx-tui/src/view.rs) draws state and reads none, so
+[`view.rs`](../../crates/sandbx-tui-transcript/src/view.rs) draws state and
+reads none, so
 its tests render into ratatui's `TestBackend` and read cells back as rows of
 strings — which is how `an_answer_cannot_forge_the_row_a_verdict_is_drawn_on`
 can assert that exactly one row starts with the mark. What no test reaches
@@ -339,9 +372,11 @@ foreground, making a reasoning line and a refusal read alike.
     frame.render_widget(paragraph.scroll((scroll, 0)), body);
 ```
 
-`line_count` is why the manifest pins ratatui exactly and enables
-`unstable-rendered-line-info`: measuring after wrapping is the alternative to a
-second word-wrapper that would have to agree with ratatui's to the row.
+`line_count` is why `sandbx-tui-transcript`'s manifest pins ratatui exactly and
+enables `unstable-rendered-line-info`: measuring after wrapping is the
+alternative to a second word-wrapper that would have to agree with ratatui's to
+the row. The feature went with `view.rs`, the backend staying with the crate
+that drives a terminal.
 
 - **A long line wraps rather than truncating**, a truncated line being
   unrecoverable — no scroll key, no scrollback behind the alternate screen.
@@ -694,10 +729,12 @@ an in-flight blocking task, and nothing waits for a `std::thread`.
 
 ## You should now be able to explain
 
-- Why `sandbx-tui` has no row in 04's table of boundaries, which four names
-  it exports, and why `Entry` and `Kind` are not among them.
-- What the single internal dependency rules out as a build error, and the
-  two things it does not.
+- Why neither tui crate has a row in 04's table of boundaries, which four names
+  `sandbx-tui` exports, and why `Entry` and `Kind` are not among them.
+- Why `transcript.rs` and `view.rs` are one crate, which two of their items the
+  split had to widen, and why the other six stayed `pub(crate)`.
+- What each crate's single internal dependency rules out as a build error, and
+  the two things neither rules out.
 - Why a terminal renderer is a sanitisation boundary, in terms of where the
   text in a cell came from, and why that file is also the one with real
   coverage.

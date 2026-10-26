@@ -21,7 +21,7 @@ const GUTTER: &str = "│ ";
 
 /// What the status bar says the operator can do now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Hint {
+pub enum Hint {
     /// The turn is streaming, and a key can still stop it.
     Running,
     /// The turn is over and the screen is held so its last rounds can be read.
@@ -29,7 +29,7 @@ pub(crate) enum Hint {
 }
 
 /// Draw one frame: the whole transcript, tail-aligned, and the status bar under it.
-pub(crate) fn draw(frame: &mut Frame, transcript: &Transcript, hint: Hint) {
+pub fn draw(frame: &mut Frame, transcript: &Transcript, hint: Hint) {
     let [body, bar] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
 

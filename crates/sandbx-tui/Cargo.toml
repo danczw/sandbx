@@ -11,12 +11,8 @@ publish.workspace = true
 # No default features: `all-widgets`, `macros` and `underline-color` buy nothing
 # here. `crossterm` is the backend and brings the re-export this crate drives the
 # terminal through, so there is no second crossterm version to diverge from.
-# `unstable-rendered-line-info` is `Paragraph::line_count`, which measures text
-# after wrapping — the alternative is a second word-wrapper that has to agree with
-# ratatui's to the row. Pinned exactly, the API being unstable by that name.
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
-  "unstable-rendered-line-info",
 ] }
 # `poll` alone: the key reader gates every call into crossterm on a `poll`, which is
 # the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
@@ -26,8 +22,7 @@ nix = { version = "0.31.3", default-features = false, features = ["poll"] }
 # `terminal::size` forking `tput` when the measurement fails (#269). nix has no safe
 # `TIOCGWINSZ`, and this is the rustix crossterm already builds.
 rustix = { version = "1.1.4", default-features = false, features = ["std", "termios"] }
-sandbx-providers = { path = "../sandbx-providers" }
-sandbx-text = { path = "../sandbx-text" }
+sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
@@ -36,7 +31,6 @@ tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
 # A hangup is tested by opening a pty pair and closing the master; the fixture's own
 # `//!` says why it is a crate and not a module (#344).
 sandbx-pty-fixture = { path = "../sandbx-pty-fixture" }
-serde_json = "1.0.145"
 
 [lints]
 workspace = true
