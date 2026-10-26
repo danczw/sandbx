@@ -17,8 +17,7 @@ use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::{Position, Rect, Size};
 use sandbx_tui_transcript::{Hint, draw};
 
-/// Re-exported here and not left to the caller: every entry point below takes or hands
-/// back one, so a consumer that has `Screen` has the type it is drawn from (#352).
+/// Re-exported, not left to the caller: every entry point here takes or returns one (#352).
 pub use sandbx_tui_transcript::Transcript;
 
 /// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
