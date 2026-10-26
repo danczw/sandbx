@@ -4,7 +4,7 @@
 //! about a request, `session.rs` to the filesystem's about a file. Every one is a predicate
 //! over messages alone — no path, no mode, no descriptor.
 
-use crate::{Content, Message, Role};
+use sandbx_session_message::{Content, Message, Role};
 
 /// True when no two neighbouring messages carry the same role, except where
 /// [`answers_only`] allows it.

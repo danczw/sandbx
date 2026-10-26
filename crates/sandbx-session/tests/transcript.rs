@@ -2,9 +2,8 @@
 
 use std::str::FromStr;
 
-use sandbx_session::{
-    CompletedTurn, Content, Message, Role, SessionError, SessionId, SessionStore, Usage,
-};
+use sandbx_session::{SessionError, SessionId, SessionStore};
+use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 
 fn store() -> (tempfile::TempDir, SessionStore) {
     let root = tempfile::tempdir().unwrap();

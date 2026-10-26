@@ -17,7 +17,8 @@ use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
     StopReason, Thinking,
 };
-use sandbx_session::{CompletedTurn, Session, SessionError, SessionId};
+use sandbx_session::{Session, SessionError, SessionId};
+use sandbx_session_message::CompletedTurn;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::session::{self, Merged, SessionChoice};
@@ -1253,7 +1254,7 @@ mod tests {
         // The prompt, the round that asked for a tool, its result, and the summary.
         assert_eq!(stored.messages().len(), 4);
         let last = stored.messages().last().expect("a last message");
-        assert_eq!(last.role, sandbx_session::Role::Assistant);
+        assert_eq!(last.role, sandbx_session_message::Role::Assistant);
     }
 
     /// A `?` here would report a provider failure and cost the turn its text.
