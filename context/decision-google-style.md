@@ -87,7 +87,7 @@ intent. That is the price of not doing the whole tree in one unreviewable commit
 `sandbx-core` follows the guide's library rules and every other crate its application
 rules. The split is about who the caller is: `core`'s callers are the other six
 crates and cannot be changed in lockstep with it, while a change inside
-`sandbx-tui` has one caller and it is in this repo.
+`sandbx-tui-input` has one caller and it is in this repo.
 
 What this does *not* buy is `#[non_exhaustive]`. The guide scopes it to enums other
 teams consume; there are no other teams, and `policy/sandbox.rs` depends on its

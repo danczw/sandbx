@@ -295,10 +295,10 @@ stdout, and it refuses `--approve call` (#225).
 ### It draws and nothing else
 
 [`sandbx-screen`](../../crates/sandbx-screen/) takes `&AgentEvent` and
-[`sandbx-tui`](../../crates/sandbx-tui/) gives back a keypress, with
+[`sandbx-tui-input`](../../crates/sandbx-tui-input/) gives back a keypress, with
 [what it shows](../../crates/sandbx-tui-transcript/) carved off into a crate of
-its own (#353) and the screen itself into another (#352). None of the three
-holds a policy, a provider, a session or a gate.
+its own (#353), the screen itself into another (#352) and the keys into the last
+(#354). None of the three holds a policy, a provider, a session or a gate.
 
 ```
 sandbx-tui-transcript
@@ -306,7 +306,7 @@ sandbx-tui-transcript
   view::draw  the entries laid out as rows          TestBackend → unit-tested
 sandbx-screen
   Screen      raw mode, the alternate screen, Drop  a real terminal only
-sandbx-tui
+sandbx-tui-input
   Keys        the reader thread and the press       the predicate → unit-tested
 ```
 

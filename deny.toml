@@ -81,7 +81,7 @@ name = "sandbx-session"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
-name = "sandbx-tui"
+name = "sandbx-tui-input"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
@@ -91,15 +91,15 @@ wrappers = ["sandbx-cli"]
 [[bans.deny]]
 name = "sandbx-tui-transcript"
 # One parent, not three: `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
-# re-export, and `sandbx-tui` dropped the edge with the screen it served (#352).
+# re-export, and `sandbx-tui-input` has no edge here at all (#352, #354).
 wrappers = ["sandbx-screen"]
 
 [[bans.deny]]
 name = "sandbx-pty-fixture"
 # A dev-dependency edge, so this crate is in nobody's build; the entry is what keeps a
-# production edge from being added without a line here. Two parents: both halves of the
-# old `sandbx-tui` drive a pty, the screen for a hangup and the keys for a reader.
-wrappers = ["sandbx-screen", "sandbx-tui"]
+# production edge from being added without a line here. Two parents, each driving a pty:
+# the screen for a hangup, and the keys for a reader.
+wrappers = ["sandbx-screen", "sandbx-tui-input"]
 
 [[bans.deny]]
 name = "sandbx-text"

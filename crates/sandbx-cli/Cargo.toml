@@ -32,7 +32,7 @@ sandbx-session-error = { path = "../sandbx-session-error" }
 sandbx-session-message = { path = "../sandbx-session-message" }
 sandbx-text = { path = "../sandbx-text" }
 sandbx-tools = { path = "../sandbx-tools" }
-sandbx-tui = { path = "../sandbx-tui" }
+sandbx-tui-input = { path = "../sandbx-tui-input" }
 # `macros` is `select!`, which races the turn against the key that interrupts it.
 # Not `rt-multi-thread`: `spawn_blocking` needs only `rt`. `time` is not optional
 # — `run_turn` panics on the first round without a timer. Nothing here enables
