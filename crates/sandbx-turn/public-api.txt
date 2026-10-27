@@ -3,7 +3,7 @@ pub use sandbx_turn::Compaction
 pub use sandbx_turn::PromptUsage
 pub enum sandbx_turn::TurnError
 pub sandbx_turn::TurnError::EndedMidToolUse
-pub sandbx_turn::TurnError::Provider(sandbx_providers::error::ProviderError)
+pub sandbx_turn::TurnError::Provider(sandbx_provider::ProviderError)
 pub sandbx_turn::TurnError::StreamEndedWithoutStop
 pub sandbx_turn::TurnError::TimedOut
 pub sandbx_turn::TurnError::TimedOut::after: core::time::Duration
@@ -96,4 +96,4 @@ impl core::marker::Unpin for sandbx_turn::TurnOutcome
 impl core::marker::UnsafeUnpin for sandbx_turn::TurnOutcome
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnOutcome
 impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnOutcome
-pub async fn sandbx_turn::run_turn<F, O, G>(F, sandbx_turn::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_turn::TurnOutcome, sandbx_turn::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::error::ProviderError>, O: core::ops::function::FnMut(&sandbx_event::AgentEvent), G: sandbx_approval::CallGate
+pub async fn sandbx_turn::run_turn<F, O, G>(F, sandbx_turn::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_turn::TurnOutcome, sandbx_turn::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_prompt::Prompt) -> core::result::Result<sandbx_provider::EventStream, sandbx_provider::ProviderError>, O: core::ops::function::FnMut(&sandbx_event::AgentEvent), G: sandbx_approval::CallGate

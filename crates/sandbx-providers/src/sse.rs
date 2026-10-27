@@ -6,8 +6,7 @@
 
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
-
-use crate::ProviderError;
+use sandbx_provider::ProviderError;
 
 /// Turn a byte stream into a stream of framed SSE events.
 ///

@@ -88,7 +88,25 @@ name = "sandbx-providers"
 # `sandbx-tui-transcript` went with `AgentEvent` and `StopReason` (#365),
 # `sandbx-compact` and `sandbx-session-bridge` with `RequestMessage`, `Role` and
 # `ContentBlock` (#364), so none of the three reaches client code at all.
+#
+# `sandbx-turn` stayed but its edge is now a **dev**-dependency: #366 took the last two
+# names its `src/` had from here, and the one reference left is `turn_loop.rs` typing a
+# field as an `AnthropicClient`. A dev edge is still an edge this file must permit, so
+# the name reads the same as `sandbx-cli`'s and means something narrower (#366).
 wrappers = ["sandbx-cli", "sandbx-turn"]
+
+[[bans.deny]]
+name = "sandbx-provider"
+# The seam, so every consumer of a client is here and none of them inherits the edge:
+# `sandbx-providers` returns an `EventStream` and builds every `ProviderError` on it,
+# `sandbx-turn` names both in `run_turn`'s bound and wraps the error in `TurnError`, and
+# `sandbx-cli` opens the stream itself and converts the error to an `AgentError`.
+#
+# `sandbx-providers`' name is the one that will move rather than stay: #367 and #368 take
+# the SSE framing and the vendor client out of it, and the edge goes with whichever halves
+# construct an error — a re-point or a widening, settled from `cargo metadata` then, not
+# from this sentence (#366).
+wrappers = ["sandbx-cli", "sandbx-providers", "sandbx-turn"]
 
 [[bans.deny]]
 name = "sandbx-tools"
@@ -148,16 +166,19 @@ wrappers = ["sandbx-cli", "sandbx-tui-transcript"]
 
 [[bans.deny]]
 name = "sandbx-event"
-# No parent here inherits the edge through another: `sandbx-providers` builds an event
-# per wire frame and names one in `EventStream`, `sandbx-turn` folds a round out of them,
-# `sandbx-tui-transcript` folds the transcript, and `sandbx-cli`'s renderer is a second
-# fold of its own. `sandbx-compact` names `AgentEvent` in a doc comment and has no edge.
+# No parent here inherits the edge through another: `sandbx-provider` names one in
+# `EventStream`, `sandbx-providers` builds an event per wire frame, `sandbx-turn` folds a
+# round out of them, `sandbx-tui-transcript` folds the transcript, and `sandbx-cli`'s
+# renderer is a second fold of its own. `sandbx-compact` names `AgentEvent` in a doc
+# comment and has no edge.
 #
-# `sandbx-providers`' name here is the one that moves rather than staying: #366 and #368
-# split that crate, and the edge goes to whichever half keeps `EventStream` and the
-# accumulator — a re-point, not an append (#365).
+# #365 predicted #366 would *re-point* `sandbx-providers`' name here rather than append to
+# it. It was an append: `EventStream` left but the accumulator stayed, so the donor kept an
+# edge of its own. #368 is the one that takes it, and settles that from `cargo metadata`
+# rather than from this sentence (#366).
 wrappers = [
     "sandbx-cli",
+    "sandbx-provider",
     "sandbx-providers",
     "sandbx-tui-transcript",
     "sandbx-turn",

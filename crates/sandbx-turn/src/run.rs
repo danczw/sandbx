@@ -8,7 +8,7 @@ use sandbx_approval::CallGate;
 use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut};
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition};
-use sandbx_providers::{EventStream, ProviderError};
+use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::TurnError;

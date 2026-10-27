@@ -8,8 +8,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use futures_util::Stream;
 use sandbx_event::{AgentEvent, StopReason};
-
-use crate::error::ProviderError;
+use sandbx_provider::ProviderError;
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 

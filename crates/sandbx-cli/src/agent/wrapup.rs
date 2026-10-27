@@ -8,7 +8,7 @@ use std::io::Write;
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_prompt::{Prompt, ToolChoice};
-use sandbx_providers::{EventStream, ProviderError};
+use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::ExecutionContext;
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 

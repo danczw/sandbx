@@ -1,33 +1,22 @@
 //! Hand-rolled streaming clients against LLM provider APIs.
 //!
 //! The seam is the return type: every client's `stream_chat` hands back
-//! [`EventStream`], so there is no trait or enum over the backends. No vendor SDK
-//! sits between sandbx and the wire format; see `context/decision-provider-seam.md`.
+//! [`sandbx_provider::EventStream`], so there is no trait or enum over the backends. No
+//! vendor SDK sits between sandbx and the wire format; see
+//! `context/decision-provider-seam.md`.
 //!
-//! [`ProviderError`] is this crate's own vocabulary; what a request is made of is
-//! [`sandbx_prompt`]'s, the events a stream yields are [`sandbx_event`]'s, and what that
-//! text may not carry to a terminal is `sandbx-text`'s. Everything that knows one API's
-//! field names, string tables and body rules lives under `anthropic`.
+//! Nothing here is vocabulary any more: what a request is made of is
+//! [`sandbx_prompt`]'s, the error a stream can fail with is
+//! [`sandbx_provider::ProviderError`], the events it yields are [`sandbx_event`]'s, and
+//! what that text may not carry to a terminal is `sandbx-text`'s. What is left is the
+//! vendor boundary — everything that knows one API's field names, string tables and
+//! body rules lives under `anthropic` — plus the SSE framing and the one crypto-provider
+//! install (#364, #366).
 
 mod anthropic;
-mod error;
 mod sse;
 
 pub use anthropic::AnthropicClient;
-pub use error::ProviderError;
-
-/// The event stream every provider client returns: owned, boxed, and fused.
-///
-/// Boxed because each backend's stream is a different concrete type. `FusedStream`
-/// because the `unfold` under it panics if polled past `None`; `Send` so the turn
-/// built on it can be `tokio::spawn`ed.
-pub type EventStream = std::pin::Pin<
-    Box<
-        dyn futures_util::stream::FusedStream<
-                Item = Result<sandbx_event::AgentEvent, ProviderError>,
-            > + Send,
-    >,
->;
 
 /// Install the `ring` crypto provider for `rustls`, once per process.
 ///

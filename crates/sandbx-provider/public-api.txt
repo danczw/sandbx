@@ -1,0 +1,32 @@
+pub mod sandbx_provider
+pub enum sandbx_provider::ProviderError
+pub sandbx_provider::ProviderError::ApiError
+pub sandbx_provider::ProviderError::ApiError::kind: alloc::string::String
+pub sandbx_provider::ProviderError::ApiError::message: alloc::string::String
+pub sandbx_provider::ProviderError::ApiError::status: core::option::Option<u16>
+pub sandbx_provider::ProviderError::InvalidBaseUrl
+pub sandbx_provider::ProviderError::InvalidBaseUrl::base_url: alloc::string::String
+pub sandbx_provider::ProviderError::InvalidBaseUrl::reason: &'static str
+pub sandbx_provider::ProviderError::MalformedEvent
+pub sandbx_provider::ProviderError::MalformedEvent::detail: alloc::string::String
+pub sandbx_provider::ProviderError::RateLimited
+pub sandbx_provider::ProviderError::RateLimited::message: alloc::string::String
+pub sandbx_provider::ProviderError::RateLimited::retry_after: core::option::Option<core::time::Duration>
+pub sandbx_provider::ProviderError::StreamEndedUnexpectedly
+pub sandbx_provider::ProviderError::Transport
+pub sandbx_provider::ProviderError::Transport::detail: alloc::string::String
+pub sandbx_provider::ProviderError::Transport::source: reqwest::error::Error
+impl core::error::Error for sandbx_provider::ProviderError
+pub fn sandbx_provider::ProviderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_provider::ProviderError
+pub fn sandbx_provider::ProviderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_provider::ProviderError
+pub fn sandbx_provider::ProviderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_provider::ProviderError
+impl core::marker::Send for sandbx_provider::ProviderError
+impl core::marker::Sync for sandbx_provider::ProviderError
+impl core::marker::Unpin for sandbx_provider::ProviderError
+impl core::marker::UnsafeUnpin for sandbx_provider::ProviderError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_provider::ProviderError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_provider::ProviderError
+pub type sandbx_provider::EventStream = core::pin::Pin<alloc::boxed::Box<(dyn futures_core::stream::FusedStream<Item = core::result::Result<sandbx_event::AgentEvent, sandbx_provider::ProviderError>> + core::marker::Send)>>

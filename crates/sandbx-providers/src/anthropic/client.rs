@@ -2,10 +2,9 @@
 //! rules that keep the API key off the network in cleartext.
 
 use sandbx_prompt::Prompt;
+use sandbx_provider::{EventStream, ProviderError};
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::EventStream;
-use crate::error::ProviderError;
 use crate::{ensure_crypto_provider_installed, sse};
 
 use super::body::Body;
