@@ -40,16 +40,15 @@ import sys
 import tempfile
 import tomllib
 
-# The workspace's namespace. Only check 1 uses it, and only as the answer to a question
-# the name alone cannot settle: a block naming no package is either a typo in a workspace
-# crate or a deliberate third-party ban, and nothing in the file distinguishes them. Every
-# workspace member is `sandbx-*`, so a `sandbx-*` name that resolves to nothing is read as
-# the typo and anything else as the deliberate ban.
+# Check 1's only input, and only because the name alone cannot settle its question: a
+# block naming no package is either a typo in a workspace crate or a deliberate
+# third-party ban, and nothing in the file distinguishes them. Every member is
+# `sandbx-*`, so a `sandbx-*` name resolving to nothing is read as the typo.
 #
-# The cost, stated because it is a real one: a third-party crate actually named `sandbx-*`
-# — a typosquat, which is the package this repo would most want to ban — cannot be added
-# without relaxing check 1. Checks 2 and 3 do not use the prefix at all; they key on
-# membership of the graph, so an off-prefix workspace member is still fully checked.
+# The cost, since it is real: a third-party crate actually named `sandbx-*` — a
+# typosquat, the package this repo would most want to ban — needs check 1 relaxed first.
+# Checks 2 and 3 key on graph membership instead, so an off-prefix member is still
+# fully checked.
 PREFIX = "sandbx-"
 
 
@@ -172,9 +171,9 @@ def check(root: pathlib.Path, out) -> int:
     #    `warning[unused-wrapper]`, which it does not, and which overstates who may
     #    depend on the crate. An absent array bans the crate outright — cargo-deny does
     #    reject that, but with a message about the crate rather than about this file.
-    #    Keyed on membership of the graph alone, *not* on the prefix: a workspace member
-    #    named off-prefix would otherwise get an array nothing ever compares, while
-    #    check 2 was satisfied by the block merely existing.
+    #    Keyed on membership of the graph alone, *not* on the prefix: check 2 is
+    #    satisfied by a block merely existing, so this is the only check that reads an
+    #    off-prefix member's array at all.
     compared = 0
     for name, block in named:
         if name not in packages:
@@ -210,19 +209,16 @@ def check(root: pathlib.Path, out) -> int:
             )
 
     # A comparison of nothing is not a pass — `guide-ci.md`'s *A glob that matches
-    # nothing must fail*, which says any check that iterates needs this guard.
+    # nothing must fail*, which asks it of any check that iterates.
     #
-    # Unreachable from any `deny.toml`, and deliberately kept anyway. Check 2 requires a
-    # block for every crate that has dependents, and those names are workspace packages
-    # by construction, so with edges present `compared` cannot be zero while check 2
-    # passes. It is an assertion against a future edit to check 3's keying, not against a
-    # config — so it is the one check here with no self-test case, because no fixture can
-    # reach it. It became unreachable when check 3 started keying on graph membership
-    # instead of the name prefix; while it keyed on the prefix, renaming every crate
-    # off-prefix did reach it.
+    # No `deny.toml` can reach this, and it is kept anyway: check 2 requires a block per
+    # crate with dependents and those names are packages by construction, so `compared`
+    # cannot be zero while check 2 passes. It asserts against a future edit to check 3's
+    # keying, which is why no fixture covers it — one of two such guards here, with the
+    # empty-package-set check in `read_graph`.
     #
-    # Conditioned on there being edges: a workspace with no internal dependency needs no
-    # blocks, and that is a correct empty result rather than a broken check.
+    # Gated on `edges`: a workspace with no internal dependency needs no blocks, and
+    # that is a correct empty result rather than a broken check.
     if not failed and edges and compared == 0:
         error(
             "no deny.toml block was compared against the graph, though "
@@ -276,10 +272,10 @@ wrappers = ["sandbx-b", "sandbx-c"]
 name = "sandbx-a"
 wrappers = ["sandbx-b", "sandbx-c"]
 """),
-    # `sandbx-a` is depended on and has no block, and nothing else here can fail: the
-    # third-party ban is skipped by prefix, so check 1 and check 3 both have nothing to
-    # say. A fixture that also tripped check 3 would leave check 2's membership test
-    # unexercised while still exiting 1 on the other check's message.
+    # `sandbx-a` is depended on and has no block, and only check 2 can fail this: the
+    # third-party ban is skipped by prefix, so checks 1 and 3 have nothing to say. A
+    # fixture that tripped check 3 too would exit 1 on that message with check 2's
+    # membership test unexercised.
     ("missing_block_only", False, "has no deny.toml block", """
 [[bans.deny]]
 name = "openssl"
