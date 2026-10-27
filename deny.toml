@@ -97,9 +97,7 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 name = "sandbx-session"
 # One temporary whole-crate edge left: `sandbx-session-bridge`'s two remaining names,
 # `Session` and `SessionStore`, become the narrow crate #362 extracts, #360 and #361 having
-# taken `SessionId` and `sessions_directory` already. `sandbx-grants` left this array with
-# #361 — it reaches `sandbx-session-paths` now, so it no longer reaches the store at all
-# (#350, #351).
+# taken `SessionId` and `sessions_directory` already (#350, #351).
 wrappers = ["sandbx-cli", "sandbx-session-bridge"]
 
 [[bans.deny]]
@@ -156,11 +154,11 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-session-paths"
-# Neither parent inherits this through `sandbx-session`, which has no edge here at all now
-# that `paths.rs` has left it: `sandbx-grants` names `sessions_directory` to refuse a grant
-# covering the transcript directory, and `sandbx-session-bridge` names it to build the store
-# from the real environment. `sandbx-cli` is absent — it names `Session`, `SessionStore` and
-# `SessionId`, never this (#361).
+# Neither parent inherits this through `sandbx-session`, which has no edge here:
+# `sandbx-grants` names `sessions_directory` to refuse a grant covering the transcript
+# directory, and `sandbx-session-bridge` names it to build the store from the real
+# environment. `sandbx-cli` is absent — it names `Session`, `SessionStore` and `SessionId`,
+# never this (#361).
 wrappers = ["sandbx-grants", "sandbx-session-bridge"]
 
 [[bans.deny]]
