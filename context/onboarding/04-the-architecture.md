@@ -297,13 +297,16 @@ into a build failure.
 `sandbx_cli`, bin `sandbx`. The split is not cosmetic, and the module doc says
 what it is for:
 
-> Parsing and policy derivation live here, not in `main.rs`, so a unit test can
-> answer what a flag grants on a machine with no sandbox-capable kernel.
+> Parsing lives here, not in `main.rs`, so a unit test can answer what a
+> subcommand does on a machine with no sandbox-capable kernel. Deriving a policy
+> from the flags is `sandbx-grants`, whose `Grants` every subcommand that
+> confines something flattens.
 
 That is the whole reason. CI runs on hosts that cannot necessarily install a
 Landlock ruleset; "what does `--allow-write /srv` grant" is a question about a
-pure function over argv, and keeping it in the library half means it is answered
-by a unit test rather than by a spawned binary.
+pure function over argv, and keeping it out of `main.rs` means it is answered by
+a unit test rather than by a spawned binary — in `sandbx-grants`' own tests
+since #350, which is the same property one crate further down.
 
 So `main.rs` holds only what needs a real process:
 
@@ -372,8 +375,8 @@ session, tui, cli.
 - What `CallGate` being a mandatory parameter rather than an `Option` buys.
 - Why "a closed enum plus an exhaustive match" keeps appearing, and name two
   places it does.
-- Why parsing and policy derivation live in the library half rather than in
-  `main.rs`.
+- Why parsing and the policy derivation it drives live in a library rather than
+  in `main.rs`.
 
 ## Next
 

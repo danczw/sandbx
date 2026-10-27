@@ -1,7 +1,7 @@
 //! The `sandbx` binary: helper dispatch, then the command line.
 //!
-//! Holds only what needs a real process; the parsing and policy derivation it drives
-//! live in the library half.
+//! Holds only what needs a real process; the parsing it drives, and the policy derivation
+//! behind that, live in libraries — `sandbx_cli` and `sandbx-grants`.
 
 use std::io::Write;
 

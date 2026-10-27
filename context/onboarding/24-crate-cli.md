@@ -666,7 +666,7 @@ whose content all translated away, since an empty content array is something no
 provider accepts, and storing one would fail the *next* resumed turn rather than
 this one.
 
-## five error types for five surfaces, four of them in error/
+## five error types for five surfaces, three of them in error/
 
 | type | raised by | shape |
 |---|---|---|
@@ -674,7 +674,7 @@ this one.
 | `AgentError` | `agent-run` and `tui` | twelve variants, from `EmptyPrompt` to `Turn` |
 | `HashError` | `hash` | a struct, no variants: a path and an `io::Error` |
 | `AuthError` | `auth`, and `agent-run` reading a key | eleven variants; `sandbx-auth`'s, not `error/`'s (#349) |
-| `PolicyError` | `Grants::policy`, a leaf inside the first two | one variant per way a policy can be refused |
+| `PolicyError` | `Grants::policy`, a leaf inside the first two | one variant per way a policy can be refused; `sandbx-grants`', not `error/`'s (#350) |
 
 What five buys over one enum is a per-subcommand `Display` surface and a
 per-subcommand exit code: `main.rs` maps `Auth(_)` to 2 and everything else to 1
@@ -692,17 +692,18 @@ reusing it, because deriving a policy is the CLI's own step and `sandbx-core`
 must not grow a variant it never produces.
 
 `error.rs` used to declare itself one module on purpose — "one `Display` arm per
-variant, and the list of everything that can refuse a run is only readable in one
-place" — and the guide's rule against code in a module with submodules took that
-co-location (#331). The thirty-eight `Display` arms `error.rs` held now span
-three files — `hash.rs` is a struct and has none — so per-variant readability in
-one place is gone. What remains is narrower and was the load-bearing half:
-`error.rs` is a `mod` line and a re-export per error type, so the set of things
-that can refuse a run is still readable in one place — `sandbx_grants::PolicyError`
-included, which `lib.rs` re-exports beside them. `ADVICE` still has exactly one
-home, now in `sandbx-grants`' `error.rs` beside its only readers, so two
-derived-default refusals cannot advise differently. A refusal of a *flag* says
-what to change about the flag. The co-location was ending either way, and #350
+variant, and the list of everything that can refuse a run is only readable in
+one place" — and the guide's rule against code in a module with submodules took
+that co-location (#331). The `Display` arms `error.rs` held now span `agent.rs`
+and `run.rs` here and `sandbx-grants`' own `error.rs` — `hash.rs` is a struct
+and has none — so per-variant readability in one place is gone. What remains is
+narrower and was the load-bearing half: `error.rs` is a `mod` line and a
+re-export per error type, so the set of things that can refuse a run is still
+readable in one place — `sandbx_grants::PolicyError` included, which `lib.rs`
+re-exports beside them. `ADVICE` still has exactly one home, now in
+`sandbx-grants`' `error.rs` beside its only readers, so two derived-default
+refusals cannot advise differently. A refusal of a *flag* says what to change
+about the flag. The co-location was ending either way, and #350
 is what ended it.
 
 One absence is a design statement. A failing tool is not an `AgentError`: it

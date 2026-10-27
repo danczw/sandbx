@@ -644,9 +644,9 @@ The thing to notice is the *direction* the rule points. `crates/*/tests/` is a
 separate crate, so moving a unit test there means making something public to
 suit it — and the guide says never make that trade, because a module is private
 precisely so its internals are not an API. That is the instinct
-[12](12-a-flag-to-a-kernel-rule.md) points out in `grants/root.rs`, where a
-split *narrowed* a surface to `pub(super)` and the tests moved to the code
-rather than the reverse.
+[12](12-a-flag-to-a-kernel-rule.md) points out in `sandbx-grants`' `root.rs`,
+where a split *narrowed* a surface to `pub(super)` and the tests moved to the
+code rather than the reverse.
 
 So `helper/seccomp/tests/` and `helper/ruleset/tests/` are **unit** tests inside
 `src/`, despite looking like an integration directory. They got their own

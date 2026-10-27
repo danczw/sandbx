@@ -60,9 +60,11 @@ Four things about that shape are worth more than the picture.
 - **`sandbx-cli` is the only crate that depends on all the others, and the only
   one whose binary is the shipped artifact.** `sandbx-helper` builds a standalone
   helper and a row of probes beside it, all test support. Everything
-  converges in the CLI because that is where
-  argv becomes a policy and a policy becomes a run. 04's *The CLI architecture*
-  section covers the lib-plus-bin split.
+  converges in the CLI because that is where argv becomes a policy and a policy
+  becomes a run — the deriving itself is `sandbx-grants`' since #350, and the
+  CLI flattens `Grants` into each subcommand that confines something and calls
+  `policy()` on it. 04's *The CLI architecture* section covers the lib-plus-bin
+  split.
 - **The screen reaches `sandbx-providers` for the vocabulary, not the
   transport.** The only names it borrows are `AgentEvent` and `StopReason`, and
   since #353 the edge is `sandbx-tui-transcript`'s rather than `sandbx-tui`'s,
@@ -90,7 +92,8 @@ Four things about that shape are worth more than the picture.
 | `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
 | `sandbx-session` | the on-disk transcript: an id, a root, append-only JSONL | `SessionStore` |
 | `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |
-| `sandbx-cli` | parsing, policy derivation, the five subcommand bodies | `Cli`, `Command`, `Grants` |
+| `sandbx-cli` | argv parsing and the five subcommand bodies | `Cli`, `Command` |
+| `sandbx-grants` | the `--allow-…` flags, and the policy they describe — `sandbx-cli`'s until #350 | `Grants`, `PolicyError` |
 
 The crate set is also the label set. GitHub carries exactly one `crate:*` label
 per crate — `crate:core`, `crate:tools`, and so on — each with a description

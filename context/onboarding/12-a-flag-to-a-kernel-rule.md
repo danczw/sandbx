@@ -55,12 +55,12 @@ flowchart TD
 allow_read: Vec<PathBuf>,
 ```
 
-That is in [`sandbx-grants`'s `flags.rs`](../../crates/sandbx-grants/src/flags.rs), on
-the `Grants` struct — the one flattened into every subcommand that confines
-something, so `sandbox-run` and `agent-run` cannot disagree about what a flag
-means. The field is a `Vec`, because the flag repeats; the doc comment above it
-*is* the `--help` text, and it is where the replacement rule is told to the
-operator.
+That is in [`sandbx-grants`'s
+`flags.rs`](../../crates/sandbx-grants/src/flags.rs), on the `Grants` struct —
+the one flattened into every subcommand that confines something, so
+`sandbox-run` and `agent-run` cannot disagree about what a flag means. The field
+is a `Vec`, because the flag repeats; the doc comment above it *is* the `--help`
+text, and it is where the replacement rule is told to the operator.
 
 Three path axes mean three such fields, and the code never touches them by name.
 `Grants::paths(axis)` is an exhaustive match from `Axis` to the matching `Vec`,
@@ -183,14 +183,17 @@ it.
 
 ### The module boundary is itself worth a look
 
-`grants.rs` was split (#250) into the flag surface, now
-[`sandbx-grants`'s `flags.rs`](../../crates/sandbx-grants/src/flags.rs), and
-[`sandbx-grants`'s `root.rs`](../../crates/sandbx-grants/src/root.rs), which owns root
-derivation and path vetting; behaviour did not change. What changed is a
-*visibility*. The `root.rs` functions above are `pub(super)` — visible in the
-`grants` module and everything under it, and nowhere else — while `vetted_root`,
-`named_homes`, the `Homes` type and the `$HOME` predicates are private to
-`root.rs`, with their tests inline beside them.
+`grants.rs` was split (#250) into the flag surface, now [`sandbx-grants`'s
+`flags.rs`](../../crates/sandbx-grants/src/flags.rs), and [`sandbx-grants`'s
+`root.rs`](../../crates/sandbx-grants/src/root.rs), which owns root derivation
+and path vetting; behaviour did not change. What changed is a *visibility*. The
+`root.rs` functions above are `pub(super)` — and since #350 made that module a
+child of a crate root rather than of `grants`, `super` is the crate root and the
+spelling now means crate-wide. None of them escapes the crate, which
+`public-api.txt` is the proof of, but the token has stopped saying what it
+means; #334 sweeps the spelling once phase 4 flattens every `src/`.
+`vetted_root`, `named_homes`, the `Homes` type and the `$HOME` predicates are
+private to `root.rs`, with their tests inline beside them.
 
 That is this repo narrowing a surface rather than widening one, and it is the
 trade [guide-testing.md](../guide-testing.md) asks for. The `sandbx-grants`
@@ -539,10 +542,11 @@ puts it plainly: this is a different mechanism, not more of the path refusal.
 
 - **Worth questioning:** the departure at `axis.grants().write` is keyed so that
   "a future write-conferring axis inherits the affordance instead of silently
-  missing it", and [decision-policy.md](../decision-policy.md) presents
-  that as the safe default. It is the safe default for *forgetting*; it is also
-  an automatic widening. Whoever adds a fifth axis that confers write gets a
-  read grant from the CLI without ever opening `grants/flags.rs`, which is the
+  missing it", and [decision-policy.md](../decision-policy.md) presents that as
+  the safe default. It is the safe default for *forgetting*; it is also an
+  automatic widening. Whoever adds a fifth axis that confers write gets a read
+  grant from the CLI without ever opening `sandbx-grants`' `flags.rs`, which is
+  the
   opposite of every other new-axis story in that record — where the point is
   that a new axis must visit each site that decides something about it, and the
   test suite fails until it does. The two goals conflict here and only one is
