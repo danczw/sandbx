@@ -321,7 +321,8 @@ The five subcommands are one `Command` enum, and `Grants` — the `--allow-…`
 flags — is flattened into each one that confines something, so no two
 subcommands can disagree about what a flag means. `tui` is not a sixth thing:
 it takes `agent-run`'s flags, derives the same policy, shares `gate.rs`,
-`orientation.rs` and `session.rs`, and differs only in where a turn is reported.
+`orientation.rs` and `sandbx-session-bridge`, and differs only in where a turn
+is reported.
 
 ## Where each box's detail lives
 

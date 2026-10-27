@@ -28,6 +28,7 @@ sandbx-logging = { path = "../sandbx-logging" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-screen = { path = "../sandbx-screen" }
 sandbx-session = { path = "../sandbx-session" }
+sandbx-session-bridge = { path = "../sandbx-session-bridge" }
 sandbx-session-error = { path = "../sandbx-session-error" }
 sandbx-session-message = { path = "../sandbx-session-message" }
 sandbx-text = { path = "../sandbx-text" }

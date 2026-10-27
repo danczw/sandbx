@@ -9,7 +9,6 @@ mod grants;
 mod hash;
 mod invocation;
 mod sandbox;
-mod session;
 
 pub use agent::{AgentRun, Tui};
 pub use error::{AgentError, HashError, PolicyError, SandboxRunError};
@@ -17,4 +16,3 @@ pub use grants::Grants;
 pub use hash::Hash;
 pub use invocation::{Cli, Command};
 pub use sandbox::SandboxRun;
-pub use session::SessionChoice;

@@ -141,22 +141,6 @@ impl core::marker::Unpin for sandbx_cli::SandboxRunError
 impl core::marker::UnsafeUnpin for sandbx_cli::SandboxRunError
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::SandboxRunError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_cli::SandboxRunError
-pub enum sandbx_cli::SessionChoice<'a>
-pub sandbx_cli::SessionChoice::New
-pub sandbx_cli::SessionChoice::Off
-pub sandbx_cli::SessionChoice::Resume(&'a sandbx_session::id::SessionId)
-impl<'a> core::clone::Clone for sandbx_cli::SessionChoice<'a>
-pub fn sandbx_cli::SessionChoice<'a>::clone(&self) -> sandbx_cli::SessionChoice<'a>
-impl<'a> core::fmt::Debug for sandbx_cli::SessionChoice<'a>
-pub fn sandbx_cli::SessionChoice<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a> core::marker::Copy for sandbx_cli::SessionChoice<'a>
-impl<'a> core::marker::Freeze for sandbx_cli::SessionChoice<'a>
-impl<'a> core::marker::Send for sandbx_cli::SessionChoice<'a>
-impl<'a> core::marker::Sync for sandbx_cli::SessionChoice<'a>
-impl<'a> core::marker::Unpin for sandbx_cli::SessionChoice<'a>
-impl<'a> core::marker::UnsafeUnpin for sandbx_cli::SessionChoice<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::SessionChoice<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_cli::SessionChoice<'a>
 pub struct sandbx_cli::AgentRun
 impl sandbx_cli::AgentRun
 pub async fn sandbx_cli::AgentRun::execute(&self) -> core::result::Result<i32, sandbx_cli::AgentError>
@@ -165,7 +149,7 @@ pub fn sandbx_cli::AgentRun::max_tokens(&self) -> u32
 pub fn sandbx_cli::AgentRun::model(&self) -> &str
 pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_cli::PolicyError>
 pub fn sandbx_cli::AgentRun::prompt(&self) -> alloc::string::String
-pub fn sandbx_cli::AgentRun::session(&self) -> sandbx_cli::SessionChoice<'_>
+pub fn sandbx_cli::AgentRun::session(&self) -> sandbx_session_bridge::SessionChoice<'_>
 pub fn sandbx_cli::AgentRun::system(&self) -> core::option::Option<&str>
 impl clap_builder::derive::Args for sandbx_cli::AgentRun
 pub fn sandbx_cli::AgentRun::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command

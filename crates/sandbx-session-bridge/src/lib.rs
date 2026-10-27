@@ -1,11 +1,11 @@
 //! Where a conversation is kept between runs, and the translation at the edge of it.
 //!
-//! `sandbx-session` keeps shapes of its own, so this module is the seam. Every match
+//! `sandbx-session` keeps shapes of its own, so this crate is the seam. Every match
 //! below destructures by field name with no `_` arm: a new [`ContentBlock`] variant is a
 //! compile error here rather than a block silently missing from a saved conversation.
 //! Free functions and not `From` impls, both types being foreign to this crate.
 
-use sandbx_agent::PromptUsage;
+use sandbx_compact::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
 use sandbx_session::{Session, SessionId, SessionStore, sessions_directory};
 use sandbx_session_error::SessionError;

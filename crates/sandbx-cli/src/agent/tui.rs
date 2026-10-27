@@ -16,12 +16,12 @@ use sandbx_providers::{
 };
 use sandbx_screen::{Screen, Transcript};
 use sandbx_session::Session;
+use sandbx_session_bridge as session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
-use crate::session;
 
 /// `sandbx tui [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]

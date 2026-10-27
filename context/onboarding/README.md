@@ -84,7 +84,7 @@ that crate.
 | [21 — sandbx-agent](21-crate-agent.md) | a small crate holding the control flow: the re-export list that is its whole API, `run_turn`'s signature read before its body, the offered tool set, the gate's one blocking site, the shapes that left for `sandbx-approval`, the planner that left for `sandbx-compact`, and compaction as a cut-point algebra |
 | [22 — sandbx-session](22-crate-session.md) | the one thing that outlives the run: a three-line identifier allowlist, two roots tried and one never considered, five types that are deliberately not the provider's, and which bit of a file's mode refuses rather than reports |
 | [23 — the tui crates](23-crate-tui.md) | three crates that decide nothing and sanitise everything they draw: four names out between them and manifests that are the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
-| [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent/` and its seven modules as one pipeline, and the exit codes |
+| [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent/` and its seven modules as one pipeline, the seam that left for `sandbx-session-bridge` and is still read here, and the exit codes |
 
 These run longer than the read-through chapters, and that is the one place in
 the set where length was not trimmed to a sitting. A reference chapter is read
