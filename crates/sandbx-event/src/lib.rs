@@ -87,7 +87,7 @@ pub enum AgentEvent {
     /// The turn ended, and why.
     ///
     /// At `message_stop`, not when a stop reason is first seen; a turn that never
-    /// reaches it yields the provider crate's `ProviderError::StreamEndedUnexpectedly`
+    /// reaches it yields `sandbx-provider`'s `ProviderError::StreamEndedUnexpectedly`
     /// instead. Not a link: the edge back to that crate would be a cycle.
     Stop {
         /// Why it ended, or [`StopReason::Unspecified`] when the API never said.

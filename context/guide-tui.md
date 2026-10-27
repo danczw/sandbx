@@ -31,8 +31,8 @@ None of the three holds a policy, a provider, a session or a gate, which is what
 keeps the security-bearing code in one place: a renderer that could decide
 anything would be a second place to look for what approved a call. The provider
 half of that is enforced rather than observed since #365: `AgentEvent` is
-`sandbx-event`'s, none of the three has an edge to `sandbx-providers`, and
-`deny.toml` is what would refuse one.
+`sandbx-event`'s, none of the three has an edge to `sandbx-provider` or
+`sandbx-providers`, and `deny.toml` is what would refuse one.
 
 ```
 sandbx-tui-transcript

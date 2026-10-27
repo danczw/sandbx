@@ -34,6 +34,7 @@ sandbx-core ──────────────────────�
 sandbx-grants ──────────────────────────────┤
 sandbx-logging ─────────────────────────────┤
 sandbx-prompt ──────────────────────────────┤
+sandbx-provider ────────────────────────────┤
 sandbx-session-bridge ──────────────────────┤
 sandbx-session-error ───────────────────────┤
 sandbx-session-id ──────────────────────────┤
@@ -58,21 +59,26 @@ need a node drawn first, for the reason below.
 direct dependencies and this not being one of them. Its two parents are
 `sandbx-grants` and `sandbx-session-bridge`, both drawn as leaves of that bus.
 
-`sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`
-and `sandbx-prompt` are its two internal edges, since `EventStream` names an
-`AgentEvent` and the accumulator builds one per frame, and `anthropic/body.rs`
-serializes a `&Prompt`. Neither arrow is drawn, both crates being leaves of the
-bus further down, and two more crossings would say less than the table rows do.
-`sandbx-turn` and `sandbx-cli` reach each of them directly as well, and not
-through the `sandbx-providers` edge drawn beside them (#364, #365).
+`sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`,
+`sandbx-prompt` and `sandbx-provider` are its three internal edges — the
+accumulator builds an `AgentEvent` per wire frame, `anthropic/body.rs`
+serializes a `&Prompt`, and `stream_chat` returns an `EventStream` and builds
+every `ProviderError` on it. `sandbx-provider` is drawn as a leaf and is not one
+either, for the first of those reasons: the alias's `Item` names an
+`AgentEvent`. None of the four arrows is drawn, every target already being a
+leaf of the bus, and four more crossings would say less than the table rows do.
+The edge that runs the other way is now a **dev** one: nothing in
+`sandbx-turn`'s `src/` names this crate since #366 took the last two, so the
+turn loop reaches no client code in a production build and `turn_loop.rs`'s
+spawnability pin is the one reference left (#364, #365, #366).
 
 | Crate | Owns | Internal deps |
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients | event, prompt |
-| `sandbx-turn` | the turn loop | approval, compact, event, prompt, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, prompt, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
+| `sandbx-providers` | hand-rolled streaming API clients | event, prompt, provider |
+| `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (core and providers are *dev*-only) |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, prompt, provider, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
@@ -86,6 +92,7 @@ through the `sandbx-providers` edge drawn beside them (#364, #365).
 | `sandbx-session-paths` | where transcripts live: `$XDG_STATE_HOME`, else `$HOME`, never the working directory | session-error |
 | `sandbx-event` | the vocabulary a streamed turn is spoken in: one event per thing that arrived, and why it ended | — |
 | `sandbx-prompt` | what a model is asked for, in no API's vocabulary: the request shapes, carrying no `Serialize` | — |
+| `sandbx-provider` | the provider seam: the stream a client hands back, and the error it can fail with | event |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
@@ -140,11 +147,12 @@ is a crate so that `CARGO_BIN_EXE_sandbx-helper` resolves for the tests that spa
 it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
-`sandbx-providers`, `sandbx-prompt` and `sandbx-event` directly rather than
-through `sandbx-turn`, which re-exports none of the three: `agent-run` builds the
-client, which is `sandbx-providers`', and the first user turn, which is
-`sandbx-prompt`'s, and its renderer is a second fold of the events the loop hands
-back.
+`sandbx-provider`, `sandbx-prompt`, `sandbx-providers` and `sandbx-event`
+directly rather than through `sandbx-turn`, which re-exports none of the four:
+`agent-run` builds the client, which is `sandbx-providers`', and the first user
+turn, which is `sandbx-prompt`'s; it names the closure's own
+`Result<EventStream, ProviderError>`; and its renderer is a second fold of the
+events the loop hands back.
 
 ## `sandbx-core`
 
@@ -287,15 +295,15 @@ tests/            per-tool (find and grep share search), plus registry, limits,
 ## `sandbx-providers`
 
 ```
-src/lib.rs        EventStream (boxed FusedStream) — the provider seam
-   error.rs
+src/lib.rs        re-exports; ensure_crypto_provider_installed
    sse.rs         SSE framing
    anthropic.rs   the vendor boundary: re-exports AnthropicClient
       client.rs   AnthropicClient — the request, and the base-URL and
                   transport rules that keep the key off the network in cleartext
       body.rs     Serialize for the Messages body, built from a &Prompt
       wire/       accumulate.rs, payload.rs + unit tests
-tests/            anthropic_client, crypto_provider, error,
+tests/            anthropic_client, crypto_provider, error (Transport alone,
+                  which is the one variant needing a crypto provider),
                   live_anthropic (needs `live-anthropic-tests`)
 ```
 
@@ -315,6 +323,25 @@ test, no CI grep — and one sibling of `anthropic.rs` carries it: `lib.rs`
 re-exports `AnthropicClient`. The key and its variable's name are
 `sandbx-auth`'s, in its `key.rs`. A grep says which other files name it in doc
 comments only. Per-rule account in
+[decision-provider-seam.md](decision-provider-seam.md).
+
+## `sandbx-provider`
+
+```
+src/lib.rs        EventStream (boxed FusedStream) — the provider seam;
+                  ProviderError — why a call produced no usable stream
+tests/            error (every variant but Transport)
+```
+
+The seam, and the whole of it: there is no provider trait and no provider enum,
+so a client is anything whose `stream_chat` returns an `EventStream`. The two
+items are one crate because neither is nameable without the other: the alias's
+`Item` is a `Result<AgentEvent, ProviderError>`.
+
+Not a light crate: `Transport` carries a `reqwest::Error` as a public field, so
+the client chain travels with the seam, and nothing downstream shed anything
+when it moved out. Whether that field should be boxed is a code change, and so a
+separate question from the move. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-event`

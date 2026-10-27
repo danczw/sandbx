@@ -28,6 +28,13 @@ F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>
 stream. One adapter plus a test double is two producers of `EventStream` and one of
 `Provider` — the alias was always the real seam, and the enum only looked like one.
 
+Since #366 the alias and `ProviderError` are `sandbx-provider`, a crate of their own,
+and `sandbx-providers` depends on it rather than declaring it. That makes the seam
+something a consumer can name without an edge to any client: `sandbx-turn` and
+`sandbx-cli` both do, and neither has to reach `AnthropicClient` to spell the
+closure's return type. The two items are inseparable — the alias's `Item` is
+`Result<AgentEvent, ProviderError>` — which is why one crate holds both.
+
 #90 asked for this to be settled *before* the loop was written. It was written
 first; the loop happened to pick the right side, and deleting the enum afterwards
 was cheap because nothing but a test had ever named it. Do not read that as
@@ -74,6 +81,8 @@ there are:
   holding vendor strings; it did not settle that one must exist. No backoff layer
   reads one, so #306 removed `transient`, `is_retryable` and `RETRYABLE_KINDS`.
   Code that classifies retries belongs at those construction sites, as #59 said.
+  Since #366 the type is in a crate that holds no vendor string at all, so adding
+  one back would mean adding the first — the same test `StopReason` passed above.
 
 The weakness this leaves, stated rather than designed around: with one adapter the
 neutral shape is informed by one wire format, so a second backend will still move
