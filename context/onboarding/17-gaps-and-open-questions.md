@@ -308,14 +308,14 @@ ordinary outcome and not a rare one.
 - **The installed binary is the one harness-owned path no refusal covers.** A
   no-flag run from a user-level install prefix derives write over the directory
   holding the binary. **Partly answered, and the records disagree about the
-  frame.** [decision-default-policy.md](../decision-default-policy.md) removed
-  the guard that would have caught it and is explicit about the residue, on the
-  ground that the old check compared a name nothing is reached by and fired in
-  ordinary use; that reasoning is about the spawn *inside* this run, which the
-  inode closes.
-  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) frames
-  on-disk state the harness owns as refusable from argv, and does not weigh the
-  binary in those terms.
+  frame.** `vetted_root`'s `///` in `sandbx-grants` records removing the guard
+  that would have caught it, and is explicit about the residue, on the ground
+  that the old check compared a name nothing is reached by and fired in ordinary
+  use; that reasoning is about the spawn *inside* this run, which the inode
+  closes.
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns)
+  frames on-disk state the harness owns as refusable from argv, and does not
+  weigh the binary in those terms.
 
 ### From 07 — the kernel primer
 
@@ -381,21 +381,20 @@ ordinary outcome and not a rare one.
   what is local", which [`SECURITY.md`](../../SECURITY.md) repeats. What neither
   weighs is that the flag carries none of it: a port list reads as a narrower
   network grant, and the widening arrives as a side effect of asking for less.
-  [decision-default-policy.md](../decision-default-policy.md) settles a close
-  cousin with "narrow and loud beats wide and silent", and the missing step is
-  the loudness rather than the mechanism.
+  The `sandbx-grants` crate's `//!` settles a close cousin with "narrow and loud
+  beats wide and silent", and the missing step is the loudness rather than the
+  mechanism.
 
 ### From 11 — the two seams
 
 - **`check_read` and `check_write` stay public although nothing in production
   calls them.** They bound nothing after the measurement, their own docs say to
   prefer the opening forms, and every call site is a test. **Open.**
-  [decision-policy.md](../decision-policy.md#the-enforcement-seam) marks them "no
-  tool" and [`SECURITY.md`](../../SECURITY.md) carries them as a non-claim, so
-  the exposure is known; neither prices why the pair stays public once the
-  window-closing forms exist, and
-  [decision-default-policy.md](../decision-default-policy.md) refuses the same
-  trade elsewhere by keeping a seam private rather than widening it for a test.
+  [decision-policy.md](../decision-policy.md#the-enforcement-seam) marks them
+  "no tool" and [`SECURITY.md`](../../SECURITY.md) carries them as a non-claim,
+  so the exposure is known; neither prices why the pair stays public once the
+  window-closing forms exist, and `sandbx-grants` refuses the same trade
+  elsewhere by keeping a seam private rather than widening it for a test.
 - **Seam 1 has no chokepoint lint.** A direct spawn is a build failure because
   `clippy.toml` denies the constructor workspace-wide; nothing stops a future
   in-process tool from opening a file directly, and the audit record is emitted

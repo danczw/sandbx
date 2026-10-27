@@ -36,13 +36,13 @@ Three things follow, and the third is the security property.
   in stage 2 is the encoder's own counterpart from the same build, not a
   separately versioned program that might parse `--rx` differently.
 - **A rename over the binary cannot redirect the next spawn.** This is the
-  reason the doc on `SandboxedCommand` gives, and
-  [decision-default-policy.md](../decision-default-policy.md) states it as a
-  rule under "the enforcer is reached by inode" (#149). `/proc/self/exe` names
-  the *inode of the running image*, so replacing the file at the installed path
-  — a package upgrade, or an attacker with write access to it — does not change
-  what the re-exec reaches. The running image is also protected from in-place
-  overwrite by the kernel's own `ETXTBSY`.
+  reason the doc on `SandboxedCommand` gives, and `vetted_root`'s `///` in
+  `sandbx-grants` states it as a rule under "no arm compares the running
+  `sandbx` against the cwd" (#149). `/proc/self/exe` names the *inode of the
+  running image*, so replacing the file at the installed path — a package
+  upgrade, or an attacker with write access to it — does not change what the
+  re-exec reaches. The running image is also protected from in-place overwrite
+  by the kernel's own `ETXTBSY`.
 
 There is one subtlety in handing `execve` a self-referential path. The
 resolution happens in the *child* that `Command::spawn` forked, so "self" there

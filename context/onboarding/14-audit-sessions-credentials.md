@@ -588,7 +588,7 @@ available — Landlock composes rules by union and has no exclusion form, so a
 ruleset cannot say "everything under `$HOME` except one path"; adding the
 narrower rule *adds* access. So both on-disk roots are refused instead, in
 either direction, by `reaches_owned` in
-[`cli/src/grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) — a grant
+[`sandbx-grants/src/root.rs`](../../crates/sandbx-grants/src/root.rs) — a grant
 above the root and a grant naming one file inside it both fail. The operator's
 escape is not a flag: point `XDG_STATE_HOME` elsewhere and the refusal moves
 with it, which says where the state went instead of leaving sandbx holding state

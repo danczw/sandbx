@@ -6,14 +6,18 @@ use sandbx_core::SandboxError;
 
 /// What to type instead, appended to every [`PolicyError`] that refused the derived default
 /// so two of them cannot advise differently. A refusal of a flag says what to change about it.
+///
+/// Three variants are outside it deliberately. `ImposedVariable` is about neither a path nor
+/// the working directory, so path-flag advice would answer a question nobody asked, and the
+/// two `--pin-sha256` refusals say what to write instead on their own account.
 const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
                       for the tree the command needs";
 
 /// Why the flags described no policy.
 ///
 /// Every variant refuses rather than falling back to a narrower policy, which would make
-/// an ordinary command fail for a reason the message could not explain; see
-/// `context/decision-default-policy.md`.
+/// an ordinary command fail for a reason the message could not explain; the crate `//!` and
+/// `root`'s `vetted_root` hold which shapes are refused and why.
 #[derive(Debug)]
 pub enum PolicyError {
     /// The process state the default is derived from could not be read.

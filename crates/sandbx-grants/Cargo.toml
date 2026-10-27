@@ -1,0 +1,25 @@
+[package]
+name = "sandbx-grants"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+clap = { version = "4.5.51", features = ["derive"] }
+sandbx-auth = { path = "../sandbx-auth" }
+sandbx-core = { path = "../sandbx-core" }
+# The whole session crate for `sessions_directory` alone, there being no narrower
+# target yet: #361 extracts `sandbx-session-paths` and re-points this line and the
+# `deny.toml` array beside it.
+sandbx-session = { path = "../sandbx-session" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# A refusal is asserted against a real directory tree, symlinks included, so the
+# cases that turn on canonicalization are not mocked below the thing they test.
+tempfile = "3.27.0"

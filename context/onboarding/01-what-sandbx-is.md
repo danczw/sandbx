@@ -111,12 +111,11 @@ Three consequences that catch everybody once:
   it.** `--allow-read /srv` buys read on `/srv` and no working-directory grant
   at all — not *nothing* else, since read on the system binaries and the startup
   environment are granted either way, before the flags are consulted, because
-  nothing starts without them. The alternative
-  — an unconditional default plus an opt-out — was rejected because a
-  deliberately tight hand-written policy would then silently gain write over
-  the whole working tree.
-  [decision-default-policy.md](../decision-default-policy.md) states the rule
-  as "narrow and loud beats wide and silent".
+  nothing starts without them. The alternative — an unconditional default plus
+  an opt-out — was rejected because a deliberately tight hand-written policy
+  would then silently gain write over the whole working tree. The
+  `sandbx-grants` crate's `//!` states the rule as "narrow and loud beats wide
+  and silent".
 - **Grants do not widen each other.** Read does not confer execute, and write
   confers neither. `allow_read_execute` is the single exception, and it exists
   because a program needs execute on the binary *and* read on the libraries its
@@ -140,17 +139,17 @@ rewrite anything under the directory you ran it from. The CLI help says so in as
 many words.
 
 - **Worth questioning:** whether the *default* should be shared as well as the
-  flags. `decision-default-policy.md` gives one reason for sharing — "it lives
-  in `Grants`, which both subcommands flatten, so `sandbox-run` and `agent-run`
-  cannot disagree about it" — and that argument is about the *flags*, which
-  genuinely must not drift. It does not obviously extend to the default, where
-  the two subcommands differ in the thing that matters: under `sandbox-run` a
-  human chose the command, and under `agent-run` a model did, possibly at the
-  direction of text it read out of a file. A read-only derived default for
-  `agent-run`, with write arriving only on an explicit `--allow-write .`, would
-  keep one `Grants` and still make the asymmetry explicit. The record's own
-  closing argument applies in this direction too: narrow and loud beats wide and
-  silent.
+  flags. `sandbx-grants`' `//!` gives one reason for sharing — the default
+  "lives in `Grants`, which both subcommands flatten, so `sandbox-run` and
+  `agent-run` cannot disagree about it" — and that argument is about the
+  *flags*, which genuinely must not drift. It does not obviously extend to the
+  default, where the two subcommands differ in the thing that matters: under
+  `sandbox-run` a human chose the command, and under `agent-run` a model did,
+  possibly at the direction of text it read out of a file. A read-only derived
+  default for `agent-run`, with write arriving only on an explicit
+  `--allow-write .`, would keep one `Grants` and still make the asymmetry
+  explicit. The crate doc's own closing argument applies in this direction too:
+  narrow and loud beats wide and silent.
 
 ## What the kernel has to provide
 

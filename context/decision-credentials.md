@@ -216,19 +216,19 @@ every axis, and `a_divergence_between_the_run_subcommands_is_a_refusal` pins the
 first — the one shape a difference is allowed to take.
 
 Which makes the rule a test to apply to the next route, and the test is
-**decidable from argv**. `--allow-env ANTHROPIC_API_KEY` is a name matched against
-a constant, so `agent-run` can refuse it with nothing derived. A route reachable
-only by asking whether a *granted path contains* one the harness owns is not: the
-answer needs the derived policy, which makes a one-sided answer a policy
-difference rather than a refusal, and the rule forbids it — so it must be refused
-on both subcommands or on neither. That is why the config-directory route (#184)
-and the procfs one (#192) are not simply more of this, and why neither is
-subtractable either: Landlock composes rules by union with no exclusion form, as
-`decision-default-policy.md` records in rejecting a carve-out for the enforcer
-binary. The question both leave open is the same one — what the harness does when
-a grant it was given contains something the harness itself owns — and
-`decision-policy.md` answers it, on both subcommands, under this
-rule.
+**decidable from argv**. `--allow-env ANTHROPIC_API_KEY` is a name matched
+against a constant, so `agent-run` can refuse it with nothing derived. A route
+reachable only by asking whether a *granted path contains* one the harness owns
+is not: the answer needs the derived policy, which makes a one-sided answer a
+policy difference rather than a refusal, and the rule forbids it — so it must be
+refused on both subcommands or on neither. That is why the config-directory
+route (#184) and the procfs one (#192) are not simply more of this, and why
+neither is subtractable either: Landlock composes rules by union with no
+exclusion form, as `vetted_root` in `sandbx-grants` records in rejecting a
+carve-out for the enforcer binary. The question both leave open is the same
+one — what the harness does when a grant it was given contains something the
+harness itself owns — and `decision-policy.md` answers it, on both subcommands,
+under this rule.
 
 ### By name, and without asking the environment
 

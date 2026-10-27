@@ -1,0 +1,80 @@
+pub mod sandbx_grants
+pub enum sandbx_grants::PolicyError
+pub sandbx_grants::PolicyError::CwdReachesOwned
+pub sandbx_grants::PolicyError::CwdReachesOwned::cwd: std::path::PathBuf
+pub sandbx_grants::PolicyError::CwdReachesOwned::holds: &'static str
+pub sandbx_grants::PolicyError::CwdReachesOwned::owned: std::path::PathBuf
+pub sandbx_grants::PolicyError::DnsGrantsBoundFile
+pub sandbx_grants::PolicyError::DnsGrantsBoundFile::granted: std::path::PathBuf
+pub sandbx_grants::PolicyError::DnsWithEveryPort
+pub sandbx_grants::PolicyError::DnsWithNameserverPort
+pub sandbx_grants::PolicyError::DnsWithResolverHint
+pub sandbx_grants::PolicyError::DnsWithUnixSockets
+pub sandbx_grants::PolicyError::DnsWithoutEgress
+pub sandbx_grants::PolicyError::FilesystemRoot
+pub sandbx_grants::PolicyError::GrantReachesOwned
+pub sandbx_grants::PolicyError::GrantReachesOwned::granted: std::path::PathBuf
+pub sandbx_grants::PolicyError::GrantReachesOwned::holds: &'static str
+pub sandbx_grants::PolicyError::GrantReachesOwned::owned: std::path::PathBuf
+pub sandbx_grants::PolicyError::HarnessCredential
+pub sandbx_grants::PolicyError::HarnessCredential::name: &'static str
+pub sandbx_grants::PolicyError::HomeDirectory
+pub sandbx_grants::PolicyError::HomeDirectory::cwd: std::path::PathBuf
+pub sandbx_grants::PolicyError::HomeDirectory::home: std::path::PathBuf
+pub sandbx_grants::PolicyError::HomeParent
+pub sandbx_grants::PolicyError::HomeParent::cwd: std::path::PathBuf
+pub sandbx_grants::PolicyError::ImposedVariable
+pub sandbx_grants::PolicyError::ImposedVariable::name: alloc::string::String
+pub sandbx_grants::PolicyError::PinNeedsAbsoluteProgram
+pub sandbx_grants::PolicyError::PinNeedsAbsoluteProgram::program: alloc::string::String
+pub sandbx_grants::PolicyError::RepeatedPin
+pub sandbx_grants::PolicyError::SystemExecutables
+pub sandbx_grants::PolicyError::SystemExecutables::cwd: std::path::PathBuf
+pub sandbx_grants::PolicyError::SystemExecutables::path: std::path::PathBuf
+pub sandbx_grants::PolicyError::Unavailable
+pub sandbx_grants::PolicyError::Unavailable::detail: &'static str
+pub sandbx_grants::PolicyError::Unavailable::source: core::io::error::Error
+pub sandbx_grants::PolicyError::UnnamedHome
+pub sandbx_grants::PolicyError::UnnamedHome::cwd: std::path::PathBuf
+pub sandbx_grants::PolicyError::UnnamedHome::home: core::option::Option<std::path::PathBuf>
+pub sandbx_grants::PolicyError::UnpinnableGrant
+pub sandbx_grants::PolicyError::UnpinnableGrant::granted: std::path::PathBuf
+pub sandbx_grants::PolicyError::UnpinnableGrant::source: sandbx_core::error::sandbox::SandboxError
+pub sandbx_grants::PolicyError::UnresolvableGrant
+pub sandbx_grants::PolicyError::UnresolvableGrant::granted: std::path::PathBuf
+pub sandbx_grants::PolicyError::UnresolvableGrant::source: core::io::error::Error
+impl core::error::Error for sandbx_grants::PolicyError
+pub fn sandbx_grants::PolicyError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_grants::PolicyError
+pub fn sandbx_grants::PolicyError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_grants::PolicyError
+pub fn sandbx_grants::PolicyError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_grants::PolicyError
+impl core::marker::Send for sandbx_grants::PolicyError
+impl core::marker::Sync for sandbx_grants::PolicyError
+impl core::marker::Unpin for sandbx_grants::PolicyError
+impl core::marker::UnsafeUnpin for sandbx_grants::PolicyError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_grants::PolicyError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_grants::PolicyError
+pub struct sandbx_grants::Grants
+impl sandbx_grants::Grants
+pub fn sandbx_grants::Grants::names_env(&self, &str) -> bool
+pub fn sandbx_grants::Grants::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_grants::PolicyError>
+impl clap_builder::derive::Args for sandbx_grants::Grants
+pub fn sandbx_grants::Grants::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_grants::Grants::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
+pub fn sandbx_grants::Grants::group_id() -> core::option::Option<clap_builder::util::id::Id>
+impl clap_builder::derive::FromArgMatches for sandbx_grants::Grants
+pub fn sandbx_grants::Grants::from_arg_matches(&clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_grants::Grants::from_arg_matches_mut(&mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<Self, clap_builder::Error>
+pub fn sandbx_grants::Grants::update_from_arg_matches(&mut self, &clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+pub fn sandbx_grants::Grants::update_from_arg_matches_mut(&mut self, &mut clap_builder::parser::matches::arg_matches::ArgMatches) -> core::result::Result<(), clap_builder::Error>
+impl core::fmt::Debug for sandbx_grants::Grants
+pub fn sandbx_grants::Grants::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_grants::Grants
+impl core::marker::Send for sandbx_grants::Grants
+impl core::marker::Sync for sandbx_grants::Grants
+impl core::marker::Unpin for sandbx_grants::Grants
+impl core::marker::UnsafeUnpin for sandbx_grants::Grants
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_grants::Grants
+impl core::panic::unwind_safe::UnwindSafe for sandbx_grants::Grants

@@ -97,7 +97,7 @@ shows it without the `///`, so what the test asserts has to be legible from the
 failure line alone. Past about fifty characters it stops being scannable in a list of
 four hundred.
 
-Renaming a test can break a prose reference. `context/*.md` cites test names as the
-evidence for a claim — `decision-default-policy.md`'s mutation index is a
-claim-to-test-name map outright. Grep `context/` for the old name before considering
-the rename done.
+Renaming a test can break a prose reference. `context/*.md` cites test names as
+the evidence for a claim, and so does a `//!` — the mutation index on
+`sandbx-grants`' `root::tests` is a claim-to-test-name map outright. Grep
+`context/` and `crates/` for the old name before considering the rename done.
