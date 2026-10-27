@@ -41,6 +41,34 @@
 //! the reason folding every CLI error into one enum was rejected — that would make the
 //! provider and turn variants look reachable from `sandbox-run`.
 //!
+//! # The six working directories a no-flag run refuses
+//!
+//! Public here because `SECURITY.md` cites this list to back a claim, and the list itself is
+//! `vetted_root`'s six arms in a private module — a reader checking the claim would otherwise
+//! need the source or a `--document-private-items` build. In refusal order, each naming the
+//! [`PolicyError`] variant it produces:
+//!
+//! 1. **The filesystem root**, `/`, which has no parent — `FilesystemRoot`.
+//! 2. **`$HOME` itself, or any directory holding it** — `HomeDirectory`. One `starts_with` test
+//!    covers both, and it is whole-component, so `/home/u/project-tools` is outside
+//!    `/home/u/project`.
+//! 3. **A directory holding home directories**, `/home` and its kin — `HomeParent`.
+//! 4. **Something that looks like a home while `$HOME` is unusable** — `UnnamedHome`. An empty
+//!    or relative `HOME` names no resolved `getcwd`, so arm 2 cannot fire and this one does.
+//! 5. **A directory reaching a granted system executable path, either direction** —
+//!    `SystemExecutables`. Landlock rights cover a subtree, so containment either way is
+//!    reachability; both sides are resolved, so a merged-`/usr` host compares `/usr/bin` with
+//!    `/usr/bin`. This arm is also what keeps the derived root non-executable, the one way it
+//!    could have been executable being to sit under a granted system path.
+//! 6. **A directory reaching harness-owned state**, the session directory above all —
+//!    `CwdReachesOwned`. The default grants write over the cwd, and inside the session
+//!    directory the cwd *is* the history (#173, with no flag).
+//!
+//! Each refuses outright rather than deriving a narrower root, because a narrower root would
+//! be a grant the operator did not state. Arms 2 to 4 are three readings of one question —
+//! whether the cwd is somewhere a person keeps their own files — and they are separate arms
+//! because each has a different error for the operator to act on.
+//!
 //! The seam is `vetted_root(root, homes, granted, owned)`, pure with all four inputs injected
 //! as values, and `named_homes(home) -> Homes` taking the one variable the same way;
 //! `current_root` is the thin wrapper that reads the cwd and `$HOME` off the process. Same
