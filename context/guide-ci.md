@@ -125,21 +125,29 @@ survive, both unreachable from any config and both saying so in their comments â
 the zero-comparison guard and the empty-package-set guard. They assert against a
 future edit to the keying or the graph read, not against a file.
 
-**It also checks two spellings that make cargo-deny's own block vacuous**, which
-is the same hole as a typo'd name wearing different clothes. A `version`
-requirement no crate satisfies matches nothing and still reports `bans ok` at
-exit 0 (measured with `version = "=9.9.9"`), and it is never legitimate here
-since every workspace crate shares one inherited version. `crate =` is
-cargo-deny's modern synonym for `name =`, correct for it and unreadable to this
-check, so it is rejected with a message naming the spelling to use rather than
-claiming the block is nameless.
+**It also refuses three keys that make cargo-deny's own enforcement vacuous**,
+each the same hole as a typo'd name wearing different clothes, and all three
+measured on 0.20.2 rather than assumed:
 
-One consequence worth stating plainly: **for workspace-internal edges this
-script, not cargo-deny, is now the load-bearing check.** `version`,
-`[graph] exclude-dev` and `[graph] exclude` can each empty cargo-deny's view of
-those edges while it still exits 0, whereas this compares the arrays against the
-manifests directly. cargo-deny remains the authority for advisories, licences
-and third-party bans.
+| key | what cargo-deny does |
+|---|---|
+| `version = "=9.9.9"` | matches no crate; `bans ok`, exit 0 |
+| `crate = "sandbx-a@9.9.9"` | the same, through the PackageSpec |
+| `[graph] exclude-dev`, `[graph] exclude` | drops those edges from the graph it walks, turning real parents into `warning[unused-wrapper]` |
+
+A version pin is refused even when it currently resolves, because every
+workspace crate shares one inherited version and a pin that matches today goes
+vacuous at the next release with nothing to say so. `crate =` on its own is
+cargo-deny's accepted synonym for `name =` and is simply read â€” refusing a legal
+spelling would fail CI over a correct file, which is what pressures people into
+editing the file instead of the gate.
+
+Refusing the `[graph]` keys is what **keeps cargo-deny load-bearing rather than
+replaced**. Without them its `wrappers` enforcement can be emptied while it
+exits 0, leaving this script as the only real check on workspace edges; with
+them the two are defence in depth. That matters most for `sandbx-core`, whose
+entry rests entirely on a dev edge. cargo-deny remains the sole authority for
+advisories, licences and third-party bans.
 
 Python, where its three neighbours are `/bin/sh`, because it has to read TOML and
 `/bin/sh` has no parser for it. The first version approximated one in awk and a
