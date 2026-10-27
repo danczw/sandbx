@@ -324,9 +324,10 @@ The shapes only: no policy, no channel to ask on, and nothing that decides.
 `sandbx-cli`'s, and both of those edges are why `deny.toml` names two wrappers
 (#355). Neither runs the other way: `CallGate` is foreign in `sandbx-cli` and
 the gate types local there, which the orphan rule permits, so this crate needs
-no edge to either of its parents — which is what let #357 move the asking into a
-crate of its own without moving the asked. Depends on `sandbx-tools` for the
-`BuiltinTool` a call names and the `ToolError` an outcome carries.
+no edge to either of its parents and neither can drag it along by moving: #357
+renamed the loop's crate without touching anything here. Depends on
+`sandbx-tools` for the `BuiltinTool` a call names and the `ToolError` an outcome
+carries.
 
 ## `sandbx-compact`
 

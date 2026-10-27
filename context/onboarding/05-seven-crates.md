@@ -19,11 +19,13 @@ a path dependency. Read an arrow as "may name the types of", and look for the
 crates no arrow leaves. The graph and the table below name only the seven crates
 that existed before #332 began splitting them, so every crate that phase adds is
 missing from both — enumerating them here would go stale on the next extraction.
-Two of the seven were since renamed outright rather than split, so both name a
-crate that no longer exists at all: `sandbx-tui` became `sandbx-tui-input`
-(#354) and `sandbx-agent` became `sandbx-turn` (#357).
-[guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
-is #332's own closing item:
+Two of the seven no longer exist under the names used here, in different ways.
+`sandbx-tui` was dissolved into three crates — `sandbx-screen` (#352),
+`sandbx-tui-transcript` (#353) and `sandbx-tui-input` (#354) — so the `Screen`
+and `Transcript` on its row below are now two different crates'. `sandbx-agent`
+was renamed rather than split: it became `sandbx-turn` in #357, carrying the
+same surface. [guide-repo-map.md](../guide-repo-map.md) is current, and
+redrawing this chapter is #332's own closing item:
 
 ```mermaid
 flowchart TD
@@ -424,10 +426,10 @@ benchmarks. It is *not* available to `src/`. Naming `sandbx_core::` in `run.rs`
 would simply fail to resolve.
 
 The stated reason is about the tests. `guide-repo-map.md` puts it in one line —
-the agent's tests "drive real tools over a temp dir rather than mocking below
-the tool boundary." The loop's own test double is a scripted provider, not a
-scripted tool: `run_turn` is generic over a closure that opens a stream, so the
-*provider* side is faked with no network and no API key, while the tool side
+`sandbx-turn`'s tests "drive real tools over a temp dir rather than mocking
+below the tool boundary." The loop's own test double is a scripted provider, not
+a scripted tool: `run_turn` is generic over a closure that opens a stream, so
+the *provider* side is faked with no network and no API key, while the tool side
 runs the genuine `BuiltinTool` against a `tempfile` directory. To build the
 `ExecutionContext` those real tools need, a test has to construct a
 `SandboxPolicy` and a `VettedPath`, and both are `sandbx-core` types — hence the
