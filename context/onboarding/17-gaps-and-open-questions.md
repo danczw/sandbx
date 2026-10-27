@@ -617,7 +617,7 @@ ordinary outcome and not a rare one.
   against the transcript rule — a merely readable transcript resumes *and* sets
   a field, precisely so the operator hears about a disclosure that cannot be
   undone.
-### From 23 — the tui crate
+### From 23 — the tui crates
 
 - **The dependency graph carries less of the isolation than the guide implies.**
   Four crates' vocabulary is ruled out by a missing edge; the provider crate's
