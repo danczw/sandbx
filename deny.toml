@@ -97,8 +97,8 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 name = "sandbx-session"
 # Two temporary whole-crate edges, each narrowing later: `sandbx-grants` reaches
 # `sessions_directory` alone and follows it to `sandbx-session-paths` with #361, and
-# `sandbx-session-bridge`'s four names become the three narrow ones #360, #361 and #362
-# extract (#350, #351).
+# `sandbx-session-bridge`'s three remaining names become the two narrow ones #361 and #362
+# extract, #360 having taken `SessionId` already (#350, #351).
 wrappers = ["sandbx-cli", "sandbx-grants", "sandbx-session-bridge"]
 
 [[bans.deny]]
