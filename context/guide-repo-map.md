@@ -51,9 +51,12 @@ its filter admits. Drawn as a leaf for that reason: the edge carries one
 constant, not a mechanism.
 
 `sandbx-grants` is drawn as a leaf and is not one: it depends on `sandbx-core`,
-`sandbx-auth` and `sandbx-session`, all three of which this diagram draws as
-leaves of the same bus. Three more crossings would say less than its table row
-does.
+`sandbx-auth` and `sandbx-session-paths`. Three more crossings would say less
+than its table row does.
+
+`sandbx-session-paths` is not drawn at all, the bus above being `sandbx-cli`'s
+direct dependencies and this not being one of them. Its two parents are
+`sandbx-grants` and `sandbx-session-bridge`, both drawn as leaves of that bus.
 
 | Crate | Owns | Internal deps |
 |---|---|---|
@@ -72,12 +75,13 @@ does.
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-session-error` | why a session operation did not happen | — |
 | `sandbx-session-id` | a session's name, and the one rule that makes it safe in a path | session-error |
+| `sandbx-session-paths` | where transcripts live: `$XDG_STATE_HOME`, else `$HOME`, never the working directory | session-error |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
 | `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
-| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-id, session-message |
-| `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session |
+| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-id, session-message, session-paths |
+| `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session-paths |
 
 `sandbx-turn` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -92,13 +96,14 @@ else, where `CompletedTurn` appends a finished turn, and where a `SessionId` is
 parsed off argv (#351, #360). `sandbx-session-id` is itself a parent of
 `sandbx-session-error`, the id's own parser returning that type.
 
-`sandbx-session-bridge` is the only crate reaching all six of `sandbx-compact`,
-`sandbx-providers`, `sandbx-session`, `sandbx-session-error`,
-`sandbx-session-id` and `sandbx-session-message`, which is what being the seam
-costs: the two vocabularies it maps between are declared in crates that do not
-depend on each other, by the choice `sandbx-session-message`'s `//!` records.
-Its edge to `sandbx-session` is the whole crate for three names now that #360
-has taken `SessionId`, and #361 and #362 replace it with the last two. The
+`sandbx-session-bridge` is the only crate reaching all seven of
+`sandbx-compact`, `sandbx-providers`, `sandbx-session`, `sandbx-session-error`,
+`sandbx-session-id`, `sandbx-session-message` and `sandbx-session-paths`, which
+is what being the seam costs: the two vocabularies it maps between are declared
+in crates that do not depend on each other, by the choice
+`sandbx-session-message`'s `//!` records. Its edge to `sandbx-session` is the
+whole crate for two names now that #360 and #361 have taken `SessionId` and
+`sessions_directory`, and #362 replaces it with the last two. The
 diagram above draws none of those six, only the edge on to `sandbx-cli` — so
 note in particular that `sandbx-compact` is drawn into the `sandbx-turn`
 bundle alone and has had two dependents since #351.
@@ -404,8 +409,6 @@ crate names no `SessionId` — the edge back would be a cycle (#360).
 
 ```
 src/lib.rs        re-exports
-   paths.rs       sessions_directory — $XDG_STATE_HOME, else $HOME, never the
-                  working directory
    store.rs       re-exports SessionStore and Session
       session.rs  SessionStore, Session; which bit refuses and which reports
       record.rs   the three line kinds, and the fold that replays them
@@ -435,6 +438,25 @@ operation it came from, which a blanket conversion would discard, and
 fallible path in the session tree returns this type — the id's own included — so
 an edge to `sandbx-session-id`, which declares it, would be a cycle (#346,
 #358, #360).
+
+## `sandbx-session-paths`
+
+```
+src/lib.rs        sessions_directory — $XDG_STATE_HOME, else $HOME, never the
+                  working directory
+```
+
+Both roots are required to be absolute, and the refusal stands where a third
+root would have gone: a transcript under the working directory would sit inside
+the tree a run can grant a tool write over, and the history resumed from it is
+what the model is told it said. The lookup is injected rather than read off the
+process because `set_var` is an `unsafe fn` under edition 2024 and the
+workspace forbids `unsafe_code` in test binaries too, so a test cannot drive a
+real environment; `sandbx-auth`'s `config_file` resolves its root the same way.
+
+Depends on `sandbx-session-error` alone. A crate of its own so that
+`sandbx-grants`, which reaches this one function to refuse a grant covering the
+directory, no longer takes the whole session crate to get it (#361).
 
 ## `sandbx-session-bridge`
 
@@ -600,10 +622,10 @@ than a module of `sandbx-cli`: `deny.toml` names one parent, and nothing else
 can grow a second definition of what a flag grants.
 
 Depends on `sandbx-core` for `SandboxPolicy`, `Axis` and `VettedPath`, and on
-`sandbx-auth` and `sandbx-session` for the two paths sandbx owns — the
+`sandbx-auth` and `sandbx-session-paths` for the two paths sandbx owns — the
 credential file and the session directory — which a derived root and a path
-flag are both refused for reaching. The `sandbx-session` edge takes the whole
-crate for `sessions_directory` alone; #361 narrows it to `sandbx-session-paths`.
+flag are both refused for reaching. Each of those two edges is one function
+wide, so nothing here can reach the store that writes a transcript (#361).
 
 ## Reading order
 

@@ -11,10 +11,9 @@ publish.workspace = true
 clap = { version = "4.5.51", features = ["derive"] }
 sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
-# The whole session crate for `sessions_directory` alone, there being no narrower
-# target yet: #361 extracts `sandbx-session-paths` and re-points this line and the
-# `deny.toml` array beside it.
-sandbx-session = { path = "../sandbx-session" }
+# `sessions_directory` alone, to refuse a grant covering the transcript directory. Nothing
+# here reaches the store that writes into it.
+sandbx-session-paths = { path = "../sandbx-session-paths" }
 
 [lints]
 workspace = true

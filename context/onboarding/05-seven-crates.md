@@ -177,7 +177,7 @@ included — cargo applies a package's `[lints]` to every target in it. That
 second half shows up as a shape you meet early: `std::env::set_var` is an
 `unsafe fn` under edition 2024, so a test cannot vary a real environment
 variable, and both
-[`session/src/paths.rs`](../../crates/sandbx-session/src/paths.rs) and
+[`session-paths/src/lib.rs`](../../crates/sandbx-session-paths/src/lib.rs) and
 [`auth/src/key.rs`](../../crates/sandbx-auth/src/key.rs)
 take an injected lookup instead of reading the process environment directly.
 

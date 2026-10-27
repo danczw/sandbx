@@ -262,7 +262,7 @@ pub(super) struct OwnedPath {
 pub(super) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
     let mut owned = Vec::new();
 
-    if let Ok(path) = sandbx_session::sessions_directory(lookup) {
+    if let Ok(path) = sandbx_session_paths::sessions_directory(lookup) {
         owned.push(OwnedPath {
             path,
             holds: "the session transcripts a resumed run replays to the model",

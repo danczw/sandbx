@@ -5,7 +5,7 @@ Two roots, each owned by one crate, each created `0700` with its files `0600`.
 | Root | Holds | Owner |
 |---|---|---|
 | `$XDG_CONFIG_HOME/sandbx/`, else `~/.config/sandbx/` | `credentials.toml` | `sandbx-auth/src/store.rs` |
-| `$XDG_STATE_HOME/sandbx/sessions/`, else `~/.local/state/sandbx/sessions/` | `<id>.jsonl`, one per session | `sandbx-session/src/paths.rs` |
+| `$XDG_STATE_HOME/sandbx/sessions/`, else `~/.local/state/sandbx/sessions/` | `<id>.jsonl`, one per session | `sandbx-session-paths/src/lib.rs` |
 
 Config and state are split because XDG splits them, and the split earns its
 keep here: a credential is something you put there, a transcript is something

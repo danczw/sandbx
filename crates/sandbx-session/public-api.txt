@@ -35,4 +35,3 @@ impl core::marker::Unpin for sandbx_session::SessionStore
 impl core::marker::UnsafeUnpin for sandbx_session::SessionStore
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session::SessionStore
 impl core::panic::unwind_safe::UnwindSafe for sandbx_session::SessionStore
-pub fn sandbx_session::sessions_directory(&impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<std::path::PathBuf, sandbx_session_error::SessionError>
