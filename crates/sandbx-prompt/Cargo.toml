@@ -10,7 +10,7 @@ publish.workspace = true
 [dependencies]
 # `serde_json`, and deliberately not `serde`: two fields are opaque `Value`s replayed
 # verbatim, and nothing here derives or implements a trait from it. The absent
-# dependency is what the `//!` below rests on.
+# dependency is what `src/lib.rs`'s `//!` rests on.
 serde_json = "1.0.151"
 
 [lints]
