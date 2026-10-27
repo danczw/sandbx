@@ -1,14 +1,16 @@
 //! Which conversation a run opens, and the translation at the edge of the one it kept.
 //!
-//! `sandbx-session` keeps shapes of its own, so this crate is the seam. Every match
-//! below destructures by field name with no `_` arm: a new [`ContentBlock`] variant is a
-//! compile error here rather than a block silently missing from a saved conversation.
-//! Free functions and not `From` impls, both types being foreign to this crate.
+//! `sandbx-session` keeps shapes of its own, so this crate is the seam. The two block
+//! translations — `request_block` and `stored_block`, both private — destructure by field
+//! name with no `_` arm, so a sixth [`ContentBlock`] variant is a compile error here
+//! rather than a block silently missing from a saved conversation, and a fourth
+//! [`Content`] variant is the same in the other direction. Free functions and not `From`
+//! impls, both types being foreign to this crate.
 //!
 //! A crate and not the module of `sandbx-cli` it was, though `sandbx-cli` is its only
-//! dependent: these four translations are the whole of what names `PromptUsage` outside
-//! `sandbx-agent`, so folding them back would give `sandbx-cli` a `sandbx-compact` edge
-//! for a type nothing else in it mentions (#351).
+//! dependent: [`request_usage`] and [`stored_usage`] are the only first-party code outside
+//! `sandbx-agent` that names `PromptUsage`, so folding them back would give `sandbx-cli` a
+//! `sandbx-compact` edge for a type nothing else in it mentions (#351).
 
 use sandbx_compact::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
