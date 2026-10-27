@@ -68,11 +68,13 @@ wrappers = [
 
 [[bans.deny]]
 name = "sandbx-providers"
+# `sandbx-tui-transcript` left this array rather than being added to another: its whole
+# edge was `AgentEvent` and `StopReason`, which are `sandbx-event`'s now, so the drawing
+# side reaches no client code at all (#365).
 wrappers = [
     "sandbx-cli",
     "sandbx-compact",
     "sandbx-session-bridge",
-    "sandbx-tui-transcript",
     "sandbx-turn",
 ]
 
@@ -131,6 +133,23 @@ wrappers = ["sandbx-screen", "sandbx-tui-input"]
 [[bans.deny]]
 name = "sandbx-text"
 wrappers = ["sandbx-cli", "sandbx-tui-transcript"]
+
+[[bans.deny]]
+name = "sandbx-event"
+# Four parents, none of them inheriting the edge: `sandbx-providers` builds an event per
+# wire frame and names one in `EventStream`, `sandbx-turn` folds a round out of them,
+# `sandbx-tui-transcript` folds the transcript, and `sandbx-cli`'s renderer is a second
+# fold of its own. `sandbx-compact` names `AgentEvent` in a doc comment and has no edge.
+#
+# `sandbx-providers`' name here is the one that moves rather than staying: #366 and #368
+# split that crate, and the edge goes to whichever half keeps `EventStream` and the
+# accumulator — a re-point, not an append (#365).
+wrappers = [
+    "sandbx-cli",
+    "sandbx-providers",
+    "sandbx-tui-transcript",
+    "sandbx-turn",
+]
 
 [[bans.deny]]
 name = "sandbx-approval"

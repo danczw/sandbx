@@ -263,7 +263,7 @@ Two instructions in the streaming docs are implemented literally here.
 - **"The token counts shown in the usage field of the `message_delta` event are
   cumulative."** So summing them double-counts. `AgentEvent::Usage` is emitted
   at most once, and its doc in
-  [`event.rs`](../../crates/sandbx-providers/src/event.rs) carries the whole
+  [`sandbx-event`](../../crates/sandbx-event/src/lib.rs) carries the whole
   rule: "Anthropic restates the counts cumulatively on every `message_delta`, so
   summing them double-counts. `None` is 'not reported', not a reported zero."
 

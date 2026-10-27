@@ -118,7 +118,7 @@ pub(super) enum RawDelta {
 #[derive(Debug, Deserialize, Default)]
 pub(super) struct RawMessageDelta {
     /// Nullable on the wire, and null does happen — hence
-    /// [`StopReason::Unspecified`](crate::event::StopReason::Unspecified).
+    /// [`StopReason::Unspecified`](sandbx_event::StopReason::Unspecified).
     pub(super) stop_reason: Option<String>,
 }
 

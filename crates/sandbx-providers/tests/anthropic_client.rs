@@ -2,9 +2,10 @@
 //! — no live network access, no API key.
 
 use futures_util::StreamExt;
+use sandbx_event::{AgentEvent, StopReason};
 use sandbx_providers::{
-    AgentEvent, AnthropicClient, ContentBlock, Prompt, ProviderError, RequestMessage, Role,
-    StopReason, Thinking, ToolChoice, ToolDefinition,
+    AnthropicClient, ContentBlock, Prompt, ProviderError, RequestMessage, Role, Thinking,
+    ToolChoice, ToolDefinition,
 };
 use secrecy::SecretString;
 use wiremock::matchers::{body_json, header, method, path};

@@ -6,9 +6,9 @@
 
 use sandbx_approval::CallGate;
 use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut};
+use sandbx_event::{AgentEvent, StopReason};
 use sandbx_providers::{
-    AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, Role, StopReason, Thinking,
-    ToolChoice, ToolDefinition,
+    EventStream, Prompt, ProviderError, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 

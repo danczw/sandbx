@@ -93,7 +93,7 @@ the narrower one:
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "unstable-rendered-line-info",
 ] }
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-event = { path = "../sandbx-event" }
 sandbx-text = { path = "../sandbx-text" }
 ```
 
@@ -139,25 +139,26 @@ level: **a renderer cannot leak what it cannot name.** With no edge to
 `sandbx-core`, `sandbx-tools`, `sandbx-turn` or `sandbx-session-store` from any
 of the three, nothing here can mention a `SandboxPolicy`, an `ExecutionContext`,
 a `BuiltinTool`, a `CallGate` or a session transcript — not "does not" but
-cannot, as a build error. The borrowed vocabulary is two types, and after #353
-it is borrowed one crate lower down: `transcript.rs` names
-`sandbx_providers::AgentEvent`, and its tests name `StopReason`.
+cannot, as a build error. Since #365 `sandbx-providers` is on that list too, so an
+`AnthropicClient` is a fifth name none of the three can mention. The borrowed
+vocabulary is still two types, now borrowed from a leaf: `transcript.rs` names
+`sandbx_event::AgentEvent`, and its tests name `StopReason`.
 
-- **Worth questioning:** how much of that the dependency graph carries. Four
-  crates' vocabulary is ruled out by a missing edge; the rest is not.
-  `sandbx-providers` also exports `AnthropicClient`, so whichever crate takes
-  that edge *can* name the client, which makes
+- **Worth reading as settled, because it was an open question until #365.**
+  `sandbx-providers` also exports `AnthropicClient`, so for as long as one of
+  these crates held that edge it *could* name the client, which made
   [guide-repo-map.md](../guide-repo-map.md)'s "nothing here knows of a policy or
   a provider" exact about the first half and loose about the second —
-  discipline, where for the policy and the gate it is the compiler. #353
-  narrowed the looseness rather than closing it: the edge is the fold's now, so
-  the crate holding the terminal cannot name the client either, and the one
-  crate that still can is the one with no terminal behind it.
-  [decision-provider-seam.md](../decision-provider-seam.md) argues by its own
-  method: it sealed the vendor boundary by leaving `Prompt` without a
-  `Serialize`, so nothing above `anthropic.rs` *can* post a neutral type. The
-  same move is open here — the two event types in a crate of their own, which is
-  #365 — and that is what would turn the discipline into a missing edge.
+  discipline, where for the policy and the gate it was the compiler. #353
+  narrowed the looseness without closing it, moving the edge down to the fold so
+  that at least the crate holding the terminal could not name the client. #365
+  closed it, by the method
+  [decision-provider-seam.md](../decision-provider-seam.md) uses throughout:
+  that record sealed the vendor boundary by leaving `Prompt` without a
+  `Serialize`, so nothing above `anthropic.rs` *can* post a neutral type, and the
+  two event types moving into `sandbx-event` turns the same discipline here into
+  a missing edge. What is left to question is narrower: nothing *states* the
+  property, so it is `deny.toml` and a reader's eye rather than a test.
 
 ## transcript.rs is the fold, and the fold is a sanitiser
 
@@ -263,9 +264,10 @@ flowchart TD
 
 `invisible` is the bidi-and-zero-width denylist, and it is literally the same
 function [13](13-turn-loop-and-gate.md) meets at the approval prompt:
-`sandbx_text::invisible`, imported beside `AgentEvent` and from a different
-crate than it. `char::is_control` is category `Cc` exactly, so U+202E and the
-directional isolates pass it and a line can *display* as a different line — in
+`sandbx_text::invisible`, imported beside `AgentEvent` and from a second leaf
+crate rather than the same one. `char::is_control` is category `Cc` exactly, so
+U+202E and the directional isolates pass it and a line can *display* as a
+different line — in
 this pane and the same `sandbx: ` grammar as the gate's own account, which is
 why one table and not two. `sandbx-text`'s own `//!` has why the owner is a
 crate of its own, and what the two sinks deliberately do not share: each keeps

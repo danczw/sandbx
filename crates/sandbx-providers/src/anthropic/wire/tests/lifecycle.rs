@@ -1,8 +1,9 @@
 //! How a turn ends: one `Stop` when `message_stop` arrives, an error when it does
 //! not, and the fusedness the returned stream promises.
 
+use sandbx_event::{AgentEvent, StopReason};
+
 use crate::error::ProviderError;
-use crate::event::{AgentEvent, StopReason};
 
 use super::super::event_stream;
 use super::fixture::{events, ok_events, raw, stop};

@@ -50,8 +50,8 @@ async fn streams_a_real_response_from_the_anthropic_api() {
     let mut saw_stop = false;
     for event in events {
         match event.expect("every event from a real turn must parse") {
-            sandbx_providers::AgentEvent::Text { .. } => saw_text = true,
-            sandbx_providers::AgentEvent::Stop { .. } => saw_stop = true,
+            sandbx_event::AgentEvent::Text { .. } => saw_text = true,
+            sandbx_event::AgentEvent::Stop { .. } => saw_stop = true,
             _ => {}
         }
     }

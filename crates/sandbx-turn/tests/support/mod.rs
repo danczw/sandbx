@@ -7,9 +7,8 @@ use std::collections::VecDeque;
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
-use sandbx_providers::{
-    AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, StopReason,
-};
+use sandbx_event::{AgentEvent, StopReason};
+use sandbx_providers::{EventStream, Prompt, ProviderError, RequestMessage};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Turn, TurnLimits};
 

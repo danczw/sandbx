@@ -48,10 +48,15 @@ there are:
   them), and `stream: true`. It is `pub(super)`, so nothing above `anthropic.rs` can
   post a neutral type to an API.
 - `StopReason` is a neutral enum with `Other(String)`; the string table is a
-  free `stop_reason` in `anthropic/wire/`. `sandbx-turn` names it in its own
-  public API, as `TurnOutcome::round_stop` (#190), and does not re-export it —
-  one path to one type. That is the test of the neutrality above, passed because
-  nothing outside `anthropic/` can build one from a wire string.
+  free `stop_reason` in `anthropic/wire/`. Since #365 the two are in different
+  crates — the enum is `sandbx-event`'s, the table stayed — which states the seam
+  rather than weakening it: the only crate that can turn a wire string into a
+  `StopReason` is the one that holds no public way to do it. `sandbx-turn` names
+  the enum in its own public API, as `TurnOutcome::round_stop` (#190), and does
+  not re-export it — one path to one type, and that path no longer runs through a
+  crate that also hands out `AnthropicClient`. That is the test of the neutrality
+  above, passed because nothing outside `anthropic/` can build one from a wire
+  string.
 - `ProviderError` classifies nothing as retryable. #59 settled that such a
   judgement belongs at the adapter's construction sites, not in shared code
   holding vendor strings; it did not settle that one must exist. No backoff layer

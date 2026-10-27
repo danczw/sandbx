@@ -16,9 +16,7 @@ publish.workspace = true
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "unstable-rendered-line-info",
 ] }
-# For `AgentEvent` and `StopReason` alone, and it carries the whole client tree
-# #328 exists to shed: the edge leaves when `sandbx-event` (#365) lands.
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-event = { path = "../sandbx-event" }
 sandbx-text = { path = "../sandbx-text" }
 
 [dev-dependencies]

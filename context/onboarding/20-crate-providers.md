@@ -6,17 +6,19 @@ names twice in View 3: **the provider seam** at
 boundary** at [`anthropic.rs`](../../crates/sandbx-providers/src/anthropic.rs)
 and below. In View 2 it is one line — `open(request)` at the top of every round.
 In View 1 it is nowhere, because nothing in here spawns a process or installs a
-kernel rule. It has no internal dependency, so it could be lifted out of the
-workspace and still compile. `guide-repo-map.md`'s table has the others, and is
-the place to count them: #332 is still adding crates, so a number written here
-would be wrong by the next extraction.
+kernel rule. Its one internal dependency is `sandbx-event`, the vocabulary a
+stream yields, which #365 cut out of this crate — so it can no longer be lifted
+out of the workspace alone, and that edge points at a leaf.
+`guide-repo-map.md`'s table has the others, and is the place to count them: #332
+is still adding crates, so a number written here would be wrong by the next
+extraction.
 
 [02 — what a harness is](02-what-a-harness-is.md) is the on-ramp, and it owns
 the protocol: the stateless `POST /v1/messages`, `tool_use`/`tool_result`
 pairing, the streaming event sequence, reasoning that comes back signed. Read it
-first. Nothing here re-derives any of that. This chapter is about the seventeen
-files that implement it, what each one is allowed to know, and where its tests
-are.
+first. Nothing here re-derives any of that. This chapter is about the files that
+implement it, what each one is allowed to know, and where its tests are — the
+tree below is the enumeration, so no count here.
 
 ## The tree, and which half of it knows a vendor
 
@@ -28,7 +30,6 @@ crates/sandbx-providers/src/
   lib.rs           EventStream — the seam — plus every re-export
   prompt.rs        Prompt, RequestMessage, ContentBlock, Role,
                    ToolDefinition, ToolChoice, Thinking — data, no Serialize
-  event.rs         AgentEvent, StopReason
   error.rs         ProviderError
   sse.rs           SSE framing, knowing no API's field names
   ─────────────────── below here, one API's vocabulary ───────────────────
@@ -49,7 +50,7 @@ the answer is a compiler rule, and one row of it is not.
 |---|---|
 | the body — key names, omission rules, `stream: true` | `Body` is `pub(super)` inside a private `mod body`, and no neutral type has a `Serialize` at all, so there is no second way to turn one into JSON |
 | the frame shapes | every `Raw*` in `payload.rs` is `pub(super)`; the two error shapes are `pub(crate)` so `anthropic/client.rs` can parse a non-2xx body, and none of them leaves the crate |
-| the `stop_reason` string table | `stop_reason` is a private free function in `accumulate.rs`. `StopReason::Other(String)` is public, but nothing outside `anthropic/` can build one *from a wire string* |
+| the `stop_reason` string table | `stop_reason` is a private free function in `accumulate.rs`. `StopReason::Other(String)` is public, and `sandbx-event`'s rather than this crate's since #365, but nothing outside `anthropic/` can build one *from a wire string* |
 | the vendor's **name** | nothing mechanical |
 
 The first three rows are why the boundary holds. The last is worth stating
@@ -57,10 +58,12 @@ plainly, because the tree above is read as if it were absolute. `lib.rs` names
 the module and re-exports `AnthropicClient`, which is unavoidable — the type has
 to be reachable. The key's variable is not read here at all — the crate takes a
 key only through `AnthropicClient::new` — so the literal `"ANTHROPIC_API_KEY"`
-lives in the CLI. And the doc comments in `prompt.rs`, `event.rs` and `sse.rs` name Anthropic wherever
-a neutral type's shape was decided by one API's behaviour — `Thinking` having
-one variant, `Usage` being emitted once, the frame cap being "orders of
-magnitude above any real Anthropic frame". None of that is checked by anything.
+lives in the CLI. And the doc comments in `prompt.rs` and `sse.rs` name
+Anthropic wherever a neutral type's shape was decided by one API's behaviour —
+`Thinking` having one variant, the frame cap being "orders of magnitude above any
+real Anthropic frame". `sandbx-event` took a third instance of it with the events
+(`Usage` being emitted once), so the leak is now spread over two crates rather
+than contained in one directory listing. None of that is checked by anything.
 
 The same line seen from the other side — one round's path through the crate,
 out and back:
@@ -70,7 +73,7 @@ flowchart TD
     subgraph above["neutral, at or above lib.rs"]
         P["Prompt, prompt.rs"]
         K["sse::tokenize, framing only"]
-        A["AgentEvent, event.rs"]
+        A["AgentEvent, sandbx-event"]
     end
     subgraph below["one API's vocabulary, anthropic.rs and under it"]
         B["Body, body.rs"]
@@ -94,17 +97,23 @@ flowchart TD
   another. A third in the same style — the vendor's name appears in no
   `src/*.rs` above `anthropic.rs`, with an explicit exemption list for the
   re-export — would cost a few dozen lines and turn
-  the boundary's last row from a habit into a build failure. The argument the
+  the boundary's last row from a habit into a build failure. #365 widened what
+  such a test would have to read: `sandbx-event`'s `Usage` doc names Anthropic,
+  so the file set is no longer one crate's `src/`. The argument the
   record makes against inventing abstractions for a backend that does not exist
   does not reach this, because a grep is not an abstraction.
 
 ## `lib.rs` — the seam is a type, not an object
 
-Fifty-one lines, and three of them are the crate's whole public abstraction:
+Short, and this much of it is the crate's whole public abstraction:
 
 ```rust
 pub type EventStream = std::pin::Pin<
-    Box<dyn futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send>,
+    Box<
+        dyn futures_util::stream::FusedStream<
+                Item = Result<sandbx_event::AgentEvent, ProviderError>,
+            > + Send,
+    >,
 >;
 ```
 
@@ -120,7 +129,10 @@ adapter actually have to produce?
   `run_turn` in `sandbx-turn` is generic over a closure, so it never names it —
   which is why its tests' doubles are closures returning the same alias.
 - **A fold onto `AgentEvent` and `StopReason`.** Those are the vocabulary, and a
-  second adapter maps its own frames onto them rather than extending them.
+  second adapter maps its own frames onto them rather than extending them. They
+  are `sandbx-event`'s since #365, which is what makes that sentence a build
+  constraint rather than an aspiration: a second adapter depends on the same leaf
+  crate this one does, so there is nothing to extend from inside either.
 - **Its own body serializer over `&Prompt`,** since there is no shared one to
   reuse and no `Serialize` to derive from.
 
@@ -216,57 +228,43 @@ the key lives in the client, not the prompt.
 
 `ToolDefinition::schema` is a `serde_json::Value` rather than a
 `schemars::Schema`, with the reason in the field's own doc: "so this crate need
-not depend on sandbx-tools". That is what keeps the dependency column in
-[guide-repo-map.md](../guide-repo-map.md) empty for this crate.
+not depend on sandbx-tools". That is still what keeps `sandbx-tools` out of the
+dependency column in [guide-repo-map.md](../guide-repo-map.md) — the column is no
+longer empty, `sandbx-event` having been cut out of this crate rather than pulled
+into it (#365).
 
 Tests: `anthropic/body.rs`'s own `mod tests` is where every field of this tree
 is pinned, because the only observable thing about a `Prompt` is what it
 serializes to.
 
-## `event.rs` — the vocabulary everything above speaks
+## `AgentEvent` and `StopReason` left this crate, and what they took with them
 
-Ninety-six lines, no logic, and it is the file to read before any of
-`sandbx-turn`, `sandbx-tui-transcript` or the CLI's renderer. Seven events:
+The seven events and the six stop reasons were `event.rs` here until #365 gave
+them a crate of their own,
+[`sandbx-event`](../../crates/sandbx-event/src/lib.rs). It is still the first
+thing to read before any of `sandbx-turn`, `sandbx-tui-transcript` or the CLI's
+renderer — only now it is one `cargo tree` hop rather than one directory listing,
+and reading it costs no client code at all. What each event is emitted for and
+carries is in the variants' own docs; the four asymmetries in them are
+[02](02-what-a-harness-is.md)'s, which is where they were explained before the
+move too.
 
-| event | emitted | carries |
-|---|---|---|
-| `Text` | per `text_delta` | `delta` — the new text, not the accumulation |
-| `Thinking` | per `thinking_delta` | `delta`, for a renderer only |
-| `ThinkingBlock` | at a signed block's close | `text`, `signature` — the replayable form |
-| `RedactedThinking` | at `content_block_start` | `data`, already whole |
-| `ToolCallRequested` | once per call, on close | `id`, `name`, parsed `input` |
-| `Usage` | at most once per turn | four `Option<u32>` counters |
-| `Stop` | at `message_stop` | `reason: StopReason` |
+The move **inverted this crate's relationship to the vocabulary.** `lib.rs`'s
+`EventStream` names an `AgentEvent`, and `accumulate.rs` builds one per frame, so
+`sandbx-providers` is a consumer of the enum it used to declare — one internal
+dependency, pointing at a leaf. `sandbx-turn` still names `StopReason` in its own
+public API as `TurnOutcome::round_stop` and still re-exports nothing (#190), and
+that "one path to one type" got *stronger*: the one path no longer runs through a
+crate that also hands out `AnthropicClient`.
 
-Three asymmetries in that table are each a decision, and all three are explained
-in [02](02-what-a-harness-is.md): `Thinking` streams while `ThinkingBlock` is
-whole, because a renderer and the replay need different things from one pass;
-`Usage` is once because the counts are cumulative; `ThinkingBlock` is withheld
-entirely when the signature never arrived.
+What stayed is the half of the #59 seam that is a mechanism rather than a type.
+`stop_reason` is a private free function in `accumulate.rs`, so a `StopReason`
+still cannot be built from a wire string outside `anthropic/` — the enum
+travelled, the string table did not, and `StopReason::Other(String)` goes on
+carrying a vendor string as opaque data. The crate's `//!` is where the rest of
+the reasoning lives: why these two are a crate and not a module, and why nothing
+in them derives `Serialize`.
 
-A fourth asymmetry is a consequence rather than a decision, and `Text`'s own doc
-is where it is named: block boundaries are not recoverable. No event marks the
-close of a *text* block, so two text blocks and one produce the same sequence of
-`Text` deltas — a consumer rebuilding content coalesces consecutive text blocks
-into one, and neither a renderer nor a stored assistant message can put a break
-back where the model had one.
-
-`StopReason` has six variants — `EndTurn`, `ToolUse`, `MaxTokens`,
-`StopSequence`, `Unspecified` and `Other(String)`. `Unspecified` exists because
-`message_delta.stop_reason` is nullable on the wire; `Other` exists because new
-reasons ship over time and, as its doc says, "which strings map here is an
-adapter's business". `sandbx-turn` names this type in its own public API as
-`TurnOutcome::round_stop` and does not re-export it (#190), so there is one path
-to one type: a consumer that wants a `StopReason` depends on this crate.
-
-**What happens to a wire event with no `AgentEvent`?** Nothing at all. It is
-parsed into a catch-all variant and the arm that handles that variant is empty —
-at all three levels, for an unknown `type`, an unknown `content_block` kind and
-an unknown delta kind. The stream does not end, no error is produced, and
-nothing is recorded, because this crate has no `tracing` dependency to record
-with. That is upstream's own instruction followed literally, and
-[02](02-what-a-harness-is.md) raises the cost of doing it silently; it is not
-re-raised here.
 
 ## `invisible` left this crate, and what it took with it
 
@@ -386,6 +384,15 @@ only the tokenizer's output — and it turns a flat sequence of frames back into
 the blocks a round produced. Its module doc names
 the two invariants: "an unmodeled tag is skipped rather than ending the stream,
 and a turn ends exactly once".
+
+**What happens to a wire event with no `AgentEvent`?** Nothing at all. It is
+parsed into a catch-all variant and the arm that handles that variant is empty —
+at all three levels, for an unknown `type`, an unknown `content_block` kind and
+an unknown delta kind. The stream does not end, no error is produced, and
+nothing is recorded, because this crate has no `tracing` dependency to record
+with. That is upstream's own instruction followed literally, and
+[02](02-what-a-harness-is.md) raises the cost of doing it silently; it is not
+re-raised here.
 
 The state is a `WireState` holding the pinned source stream, the open blocks, a
 running `RawUsage`, a held `stop_reason`, a `VecDeque` of events ready to hand
@@ -641,7 +648,8 @@ belonged to — and `Body` borrowing a `&Prompt` while every `Raw*` owns its
 strings is the other half of why one type cannot serve.
 
 **One block, both halves.** A thinking block's round trip is the clearest walk
-across the boundary, and it touches five files of this crate:
+across the boundary. It touches four files of this crate and one of
+`sandbx-event`, the seam-crossing hop being the one that left (#365):
 
 | hop | file | shape |
 |---|---|---|
@@ -650,7 +658,7 @@ across the boundary, and it touches five files of this crate:
 | signature arrives | `payload.rs` | `RawDelta::SignatureDelta`, one frame before the stop |
 | held open | `accumulate.rs` | `OpenBlock::Thinking { text, signature: Option<String> }` |
 | closes | `accumulate.rs` | `closed_block_event` — `None` if the signature is absent or empty |
-| crosses the seam | `event.rs` | `AgentEvent::ThinkingBlock { text, signature }` |
+| crosses the seam | `sandbx-event` | `AgentEvent::ThinkingBlock { text, signature }` |
 | rebuilt by the caller | `prompt.rs` | `ContentBlock::Thinking { text, signature }` |
 | back on the wire | `body.rs` | `{"type":"thinking","thinking":text,"signature":sig}` |
 
@@ -835,7 +843,7 @@ case where *being a separate crate* is itself the thing asserted.
 - What the absence of `Serialize` on `Prompt` prevents, and which single module
   is allowed to supply it.
 - Which of the seven `AgentEvent`s stream and which arrive whole, and why a
-  thinking block with no signature never leaves the crate.
+  thinking block with no signature never leaves `anthropic/`.
 - Why a `char` predicate lives in a crate that talks to an HTTP API, which two
   sinks read it, and what those two deliberately do not share.
 - What the tokenizer does with a frame that has no trailing blank line, and why
@@ -847,7 +855,8 @@ case where *being a separate crate* is itself the thing asserted.
 - Why open blocks live in a `BTreeMap` keyed by index rather than in a `Vec`,
   and what reusing an index without closing it would otherwise cause.
 - Why the outbound and inbound wire types are two sets with no type in common,
-  and the five files a thinking block crosses on its way back out.
+  and the files a thinking block crosses on its way back out, including the one
+  that is no longer this crate's.
 - Why a flush happens at `message_stop` and not on the paths that end without
   one.
 - What a caller pays for `secrecy` not being re-exported, and what that buys.

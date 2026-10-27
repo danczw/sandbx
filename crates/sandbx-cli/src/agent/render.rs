@@ -6,7 +6,7 @@
 
 use std::io::Write;
 
-use sandbx_providers::AgentEvent;
+use sandbx_event::AgentEvent;
 use sandbx_text::invisible;
 
 use super::prompt::{APPROVE_CALL, account};
@@ -292,7 +292,7 @@ fn inert(delta: &str) -> String {
 
 #[cfg(test)]
 pub(super) mod tests {
-    use sandbx_providers::StopReason;
+    use sandbx_event::StopReason;
 
     use super::*;
 

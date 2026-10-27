@@ -1,5 +1,5 @@
 //! Anthropic-specific SSE payload shapes, and their accumulation into
-//! [`AgentEvent`](crate::event::AgentEvent)s.
+//! [`AgentEvent`](sandbx_event::AgentEvent)s.
 //!
 //! Each `data:` payload is deserialized by its own `"type"` tag; the `event:` line
 //! only restates that tag, so it is ignored.

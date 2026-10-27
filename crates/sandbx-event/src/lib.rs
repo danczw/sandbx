@@ -1,3 +1,21 @@
+//! The vocabulary a streamed model turn is spoken in: one event per thing that arrived,
+//! and the reason the turn ended.
+//!
+//! A crate rather than a module in the provider crate, because every layer above speaks
+//! this vocabulary and only one of them wants a client: the turn loop, the CLI's renderer
+//! and `sandbx-tui-transcript`'s fold all name these two types, and the fold names nothing
+//! else of a provider's. While they lived beside the clients, the drawing side reached
+//! reqwest, rustls and hyper to match on an enum — 89 packages for two types, carried on
+//! to `sandbx-screen` behind it (#328, #365). One dependency here, `serde_json`, for the
+//! one field that holds a call's arguments.
+//!
+//! A second adapter maps its own frames onto these types rather than extending them, which
+//! is the seam `context/decision-provider-seam.md` records. Nothing here derives
+//! `Serialize` or `Deserialize`, and nothing here parses: `StopReason::Other` carries a
+//! vendor string as opaque data, and the string table that produces one is a private free
+//! function in the adapter, so no `StopReason` is built from a wire string outside it
+//! (#59).
+
 /// A provider-agnostic unit of a streamed model turn, fully owned so it outlives the
 /// HTTP response it came from.
 #[derive(Debug, Clone, PartialEq)]
@@ -13,9 +31,9 @@ pub enum AgentEvent {
     },
     /// An incremental chunk of the model's reasoning text, for a renderer.
     ///
-    /// Empty unless [`Thinking::Visible`](crate::Thinking) was asked for, and never
-    /// the whole block: [`ThinkingBlock`](Self::ThinkingBlock) is what carries one
-    /// back into a later request.
+    /// Empty unless `Thinking::Visible` was asked for, and never the whole block:
+    /// [`ThinkingBlock`](Self::ThinkingBlock) is what carries one back into a later
+    /// request.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
@@ -68,8 +86,8 @@ pub enum AgentEvent {
     /// The turn ended, and why.
     ///
     /// At `message_stop`, not when a stop reason is first seen; a turn that never
-    /// reaches it yields
-    /// [`StreamEndedUnexpectedly`](crate::ProviderError::StreamEndedUnexpectedly).
+    /// reaches it yields the provider crate's `ProviderError::StreamEndedUnexpectedly`
+    /// instead. Not a link: the edge back to that crate would be a cycle.
     Stop {
         /// Why it ended, or [`StopReason::Unspecified`] when the API never said.
         reason: StopReason,

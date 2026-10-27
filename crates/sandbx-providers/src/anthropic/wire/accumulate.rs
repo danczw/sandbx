@@ -7,13 +7,13 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use futures_util::Stream;
+use sandbx_event::{AgentEvent, StopReason};
 
 use crate::error::ProviderError;
-use crate::event::{AgentEvent, StopReason};
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 
-/// Map Anthropic's `stop_reason` onto this crate's own.
+/// Map Anthropic's `stop_reason` onto the neutral enum.
 fn stop_reason(value: &str) -> StopReason {
     match value {
         "end_turn" => StopReason::EndTurn,

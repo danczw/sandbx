@@ -25,9 +25,13 @@ three crates — `sandbx-screen` (#352), `sandbx-tui-transcript` (#353) and
 are now two different crates'. A crate the phase merely *renamed* is corrected
 in place instead, `sandbx-agent` having become `sandbx-turn` in #357 and
 `sandbx-session` having become `sandbx-session-store` in #362: the row still
-answers the question it answered, so a dead name in it would only mislead.
-[guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
-is #332's own closing item:
+answers the question it answered, so a dead name in it would only mislead. One
+node is now in the wrong *place* rather than carrying the wrong name:
+`sandbx-providers` is drawn under "no internal dependency" and has had one since
+#365 cut `sandbx-event` out of it. Moving it would mean drawing that crate, which
+is the enumeration this chapter freezes, so the position is left stale and said
+so here. [guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this
+chapter is #332's own closing item:
 
 ```mermaid
 flowchart TD
@@ -53,13 +57,14 @@ flowchart TD
 
 Four things about that shape are worth more than the picture.
 
-- **Three crates own something that outlives the call, and none of them has an
-  internal dependency:** `sandbx-core` owns the kernel, `sandbx-providers` owns
-  the wire, `sandbx-session-message` owns the file format that
-  `sandbx-session-store` writes to the disk. Other crates have no internal
-  dependency either — that is not what picks these three out. None of the three
-  can name another's types, which is why a stored transcript is not a `Prompt`
-  and a `SandboxPolicy` is not a request body. The crate doc on
+- **Three crates own something that outlives the call:** `sandbx-core` owns the
+  kernel, `sandbx-providers` owns the wire, `sandbx-session-message` owns the
+  file format that `sandbx-session-store` writes to the disk. Two of the three
+  have no internal dependency, and `sandbx-providers` has exactly one since #365
+  — but a dependency count is not what picks these three out, and other crates
+  have none either. None of the three can name another's types, which is why a
+  stored transcript is not a `Prompt` and a `SandboxPolicy` is not a request
+  body. The crate doc on
   [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs)
   says the consequence out loud — the stored shapes are declared there rather
   than imported, because a file format that moved whenever a provider type moved
@@ -72,16 +77,20 @@ Four things about that shape are worth more than the picture.
   CLI flattens `Grants` into each subcommand that confines something and calls
   `policy()` on it. 04's *The CLI architecture* section covers the lib-plus-bin
   split.
-- **The screen reaches `sandbx-providers` for the vocabulary, not the
-  transport.** The only names it borrows are `AgentEvent` and `StopReason`, and
-  since #353 the edge is `sandbx-tui-transcript`'s rather than `sandbx-tui`'s,
-  which #352 and #354 then split into `sandbx-screen` and `sandbx-tui-input`,
-  retiring the name the frozen graph and table on either side of this list still
-  carry; the terminal-safety predicate `invisible` comes from `sandbx-text`
-  instead since #363. See
+- **The screen no longer reaches `sandbx-providers` at all.** The only names it
+  borrowed were `AgentEvent` and `StopReason`, and #365 gave those a crate of
+  their own, so what was an edge to the crate that also hands out
+  `AnthropicClient` is now an edge to a leaf — the `tui --> providers` arrow in
+  the frozen graph above is one of the things that makes it frozen. The edge had
+  already moved twice: to `sandbx-tui-transcript` in #353, after #352 and #354
+  split `sandbx-tui` into `sandbx-screen` and `sandbx-tui-input` and retired the
+  name the graph and table on either side of this list still carry. The
+  terminal-safety predicate `invisible` comes from `sandbx-text` since #363, so
+  both of the drawing side's edges are now leaf crates. See
   [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs). No
-  client, no credential, no policy. The screen folds events it is handed; it
-  never opens a stream.
+  client, no credential, no policy — and "no client" is a missing edge now rather
+  than a thing nobody wrote. The screen folds events it is handed; it never opens
+  a stream.
 - **Nothing points up.** There is no cycle, and no crate reaches sideways into a
   peer at its own level. `sandbx-tools` cannot see `sandbx-turn`, so a tool
   cannot ask the loop for another round; `sandbx-turn` cannot see

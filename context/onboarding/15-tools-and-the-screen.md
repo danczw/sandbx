@@ -298,7 +298,9 @@ stdout, and it refuses `--approve call` (#225).
 [`sandbx-tui-input`](../../crates/sandbx-tui-input/) gives back a keypress, with
 [what it shows](../../crates/sandbx-tui-transcript/) carved off into a crate of
 its own (#353), the screen itself into another (#352) and the keys into the last
-(#354). None of the three holds a policy, a provider, a session or a gate.
+(#354). None of the three holds a policy, a provider, a session or a gate — and
+since #365 the provider half of that is a missing edge rather than a thing
+nobody wrote, the two event types having moved to `sandbx-event`.
 
 ```
 sandbx-tui-transcript
