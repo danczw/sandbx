@@ -1,4 +1,8 @@
 /target
+# `.github/scripts/deny-wrappers.py` is the only Python here, and running it leaves
+# nothing — but *importing* it, as its own mutation testing does, writes a `.pyc` beside
+# it, which `git add -A` would then commit.
+__pycache__/
 /CLAUDE.local.md
 /local/
 /.git-commit-msg
