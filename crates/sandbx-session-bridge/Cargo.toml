@@ -10,9 +10,9 @@ publish.workspace = true
 [dependencies]
 sandbx-compact = { path = "../sandbx-compact" }
 sandbx-providers = { path = "../sandbx-providers" }
-# The whole crate for three names, until stage 4 of #332 splits it: `SessionId` goes to
-# #360, `sessions_directory` to #361, `Session` and `SessionStore` to #362. One line to
-# re-point then, which is why the wide edge is allowed now.
+# The whole crate for four names, until stage 4 of #332 splits it across three: `SessionId`
+# goes to #360, `sessions_directory` to #361, `Session` and `SessionStore` to #362. One line
+# to re-point then, which is why the wide edge is allowed now.
 sandbx-session = { path = "../sandbx-session" }
 sandbx-session-error = { path = "../sandbx-session-error" }
 sandbx-session-message = { path = "../sandbx-session-message" }

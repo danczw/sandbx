@@ -86,8 +86,8 @@ blocks (#351).
 `sandbx-providers` and the three session crates, which is what being the seam
 costs: the two vocabularies it maps between are declared in crates that do not
 depend on each other, by the choice `sandbx-session-message`'s `//!` records.
-Its edge to `sandbx-session` is the whole crate for three names, and #360, #361
-and #362 replace it with the narrow ones.
+Its edge to `sandbx-session` is the whole crate for four names, and #360, #361
+and #362 replace it with the three narrow ones.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
 sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges
@@ -330,8 +330,8 @@ is the side of the edge it can sit on (#345). `sandbx-agent` re-exports both
 types, which is how `sandbx-cli` still names `PromptUsage` without an edge of
 its own. `sandbx-session-bridge` does not use that re-export — it names
 `PromptUsage` through an edge of its own, which is the second parent in
-`deny.toml`'s block here, and #357 adds the third (#351, #356). Depends on
-`sandbx-providers` for
+`deny.toml`'s block here, and #357 replaces `sandbx-agent` with `sandbx-turn`
+rather than adding a third (#351, #356). Depends on `sandbx-providers` for
 `RequestMessage`, `Role` and `ContentBlock`; #364 narrows that to the prompt
 crate alone.
 
@@ -362,10 +362,10 @@ src/lib.rs        Message, Role, Content, Usage, CompletedTurn — the five
 
 The stored types are declared here rather than imported from
 `sandbx-providers`: a transcript is a file format, and one that moved whenever a
-provider type moved would not be. The translation lives in `sandbx-cli`, where a
-new content block is a compile error rather than a block quietly missing from a
-transcript. Depends on no sandbx crate, which is what lets the format outlive a
-change to either side of it (#359).
+provider type moved would not be. The translation lives in
+`sandbx-session-bridge`, where a new content block is a compile error rather
+than a block quietly missing from a transcript. Depends on no sandbx crate,
+which is what lets the format outlive a change to either side of it (#359).
 
 ## `sandbx-session`
 

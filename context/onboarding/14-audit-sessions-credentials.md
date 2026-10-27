@@ -693,18 +693,18 @@ they are deliberate:
 > Mirrors `sandbx_providers`'s `RequestMessage`, `Role` and `ContentBlock`, and
 > `sandbx_compact`'s `PromptUsage`, declared here rather than imported because a
 > transcript is a file format, and one that moved whenever a provider type moved
-> would not be. `sandbx-cli` translates, and fails to compile on a new block
-> kind.
+> would not be. `sandbx-session-bridge` translates, and fails to compile on a
+> new block kind.
 
 Two things are bought by that duplication, and both are about a file that
 outlives the build that wrote it. First, the on-disk format stops being a
 hostage to a vendor type: a provider adding a content block cannot silently
-change what a transcript means, and the translation in `sandbx-cli` is where a
-new block kind has to be decided about — as a compile error. Second, the crate
-holding those four types depends on no other workspace crate, so the format
-cannot be changed by changing something else — which is why #359 gave them a
-crate instead of leaving them inside `sandbx-session`, whose own dependencies
-would otherwise have reached the format.
+change what a transcript means, and the translation in `sandbx-session-bridge`
+is where a new block kind has to be decided about — as a compile error. Second,
+the crate holding those four types depends on no other workspace crate, so the
+format cannot be changed by changing something else — which is why #359 gave
+them a crate instead of leaving them inside `sandbx-session`, whose own
+dependencies would otherwise have reached the format.
 
 The cost is real and is the thing to look for when you touch either side: the
 two type sets have to be kept in correspondence by hand, and the only thing
