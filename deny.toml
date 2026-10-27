@@ -95,11 +95,12 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-session"
-# Two temporary whole-crate edges, each narrowing later: `sandbx-grants` reaches
-# `sessions_directory` alone and follows it to `sandbx-session-paths` with #361, and
-# `sandbx-session-bridge`'s three remaining names become the two narrow ones #361 and #362
-# extract, #360 having taken `SessionId` already (#350, #351).
-wrappers = ["sandbx-cli", "sandbx-grants", "sandbx-session-bridge"]
+# One temporary whole-crate edge left: `sandbx-session-bridge`'s two remaining names,
+# `Session` and `SessionStore`, become the narrow crate #362 extracts, #360 and #361 having
+# taken `SessionId` and `sessions_directory` already. `sandbx-grants` left this array with
+# #361 — it reaches `sandbx-session-paths` now, so it no longer reaches the store at all
+# (#350, #351).
+wrappers = ["sandbx-cli", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-tui-input"
@@ -134,15 +135,15 @@ wrappers = ["sandbx-cli", "sandbx-turn"]
 name = "sandbx-session-error"
 # `sandbx-cli`'s edge is direct and not inherited through `sandbx-session`: it matches
 # the variants and converts them to an `AgentError`. `sandbx-session-bridge`'s is direct
-# too: `open` returns a `SessionError` rather than wrapping one (#351). Two more parents are
-# coming, this crate being the bottom of the session tree, and each *appends* its name here
-# rather than replacing one, as #360 `sandbx-session-id` did: #361 `sandbx-session-paths`,
-# #362 `sandbx-session-store`.
+# too: `open` returns a `SessionError` rather than wrapping one (#351). One more parent is
+# coming, this crate being the bottom of the session tree, and it *appends* its name here
+# rather than replacing one, as #360 and #361 did: #362 `sandbx-session-store`.
 wrappers = [
     "sandbx-cli",
     "sandbx-session",
     "sandbx-session-bridge",
     "sandbx-session-id",
+    "sandbx-session-paths",
 ]
 
 [[bans.deny]]
@@ -152,6 +153,15 @@ name = "sandbx-session-id"
 # not inherited through it: `sandbx-session-bridge` names `SessionId` in `SessionChoice`, and
 # `sandbx-cli` parses one off argv (#360).
 wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
+
+[[bans.deny]]
+name = "sandbx-session-paths"
+# Neither parent inherits this through `sandbx-session`, which has no edge here at all now
+# that `paths.rs` has left it: `sandbx-grants` names `sessions_directory` to refuse a grant
+# covering the transcript directory, and `sandbx-session-bridge` names it to build the store
+# from the real environment. `sandbx-cli` is absent — it names `Session`, `SessionStore` and
+# `SessionId`, never this (#361).
+wrappers = ["sandbx-grants", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-compact"

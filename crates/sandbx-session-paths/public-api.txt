@@ -1,0 +1,2 @@
+pub mod sandbx_session_paths
+pub fn sandbx_session_paths::sessions_directory(&impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<std::path::PathBuf, sandbx_session_error::SessionError>

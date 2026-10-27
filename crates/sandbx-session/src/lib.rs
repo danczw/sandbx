@@ -5,8 +5,6 @@
 //! `context/decision-on-disk-state.md`). Nothing here expires or redacts one, and it
 //! holds whatever a tool read into the conversation; see `SECURITY.md`.
 
-mod paths;
 mod store;
 
-pub use paths::sessions_directory;
 pub use store::{Session, SessionStore};

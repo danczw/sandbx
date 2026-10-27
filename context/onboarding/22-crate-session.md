@@ -24,9 +24,9 @@ of a conversation sandbx keeps, it is replayed to a model that calls tools, and
 
 | file | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | three re-exports and two private modules | — |
+| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | two re-exports and one private module | — |
 | [`sandbx-session-id`](../../crates/sandbx-session-id/src/lib.rs) | `SessionId`, `from_clock`, `clock_millis`, the allowlist — a crate of its own since #360 | [14](14-audit-sessions-credentials.md), then below |
-| [`paths.rs`](../../crates/sandbx-session/src/paths.rs) | `sessions_directory` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
+| [`sandbx-session-paths`](../../crates/sandbx-session-paths/src/lib.rs) | `sessions_directory` — a crate of its own since #361 | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` — a crate of its own since #359 | [05](05-seven-crates.md), [24](24-crate-cli.md) |
 | [`store.rs`](../../crates/sandbx-session/src/store.rs) | re-exports `SessionStore` and `Session` | below |
 | [`store/session.rs`](../../crates/sandbx-session/src/store/session.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
@@ -39,7 +39,7 @@ of a conversation sandbx keeps, it is replayed to a model that calls tools, and
 Two shapes to notice first. **`store/` is the only subdirectory**, and the three
 siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
 the mode constants and every predicate are invisible outside `store/`; the
-crate's public surface is the three names `lib.rs` re-exports, plus the three
+crate's public surface is the two names `lib.rs` re-exports, plus the three
 `sandbx-session-message` types that `append`, `messages` and `observed` name in
 their signatures, the `SessionError` that every fallible one of them returns,
 and the `SessionId` that `Session::id` and `SessionStore::resume` name — none of
@@ -98,7 +98,7 @@ number; and the type derives `Ord` while its doc says not to trust it, because
 base36 gains a digit as the clock grows and the derived order sorts by length
 first. Order a listing by the header's `created_at_millis`.
 
-## `paths.rs` — two roots tried, and one never considered
+## `sandbx-session-paths` — two roots tried, and one never considered
 
 ```rust
     let absolute = |name| lookup(name).map(PathBuf::from).filter(|d| d.is_absolute());
@@ -128,17 +128,18 @@ The clause worth stopping on names no variable at all: nothing falls back to the
 working directory. The function's doc says what that rules out — "a transcript
 there would sit inside the tree a run can grant a tool write over, and the
 history resumed from it is what the model is told it said." Neither half of that
-hazard is enough alone: `paths.rs` keeps the store out of the working tree, and
-`reaches_owned` in `sandbx-cli` refuses a grant that reaches back in (#173) —
+hazard is enough alone: `sandbx-session-paths` keeps the store out of the
+working tree, and `reaches_owned` in `sandbx-grants` refuses a grant that
+reaches back in (#173) —
 see [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns), and
 [12](12-a-flag-to-a-kernel-rule.md) for the refusal.
 
 **The lookup is injected** rather than read off the process: `set_var` is an
 `unsafe fn` under edition 2024 and the workspace forbids `unsafe_code` in test
-binaries too, so a test cannot drive a real environment. `sandbx-cli`'s
-`session::store` is the one place that hands `std::env::var_os` to this crate —
-its doc says why: "this is the one place that wants the real environment, and a
-test drives the store directly."
+binaries too, so a test cannot drive a real environment.
+`sandbx-session-bridge`'s `store` is the one place that hands
+`std::env::var_os` to `sessions_directory` — its doc says why: "this is the one
+place that wants the real environment, and a test drives the store directly."
 
 ## `sandbx-session-message` — five types that are not the provider's
 
@@ -592,7 +593,7 @@ consequence of it.
 
 ## Where the tests are
 
-Unit tests sit in `paths.rs` and `store/record.rs`, and next door in
+Unit tests sit in `store/record.rs`, and next door in `sandbx-session-paths`,
 `sandbx-session-id` and `sandbx-session-message` — the places that are pure
 functions over values. `store/session.rs`, `store/vet.rs` and `store/shape.rs`
 have none, needing a real filesystem or the store that drives them;

@@ -14,10 +14,11 @@
 
 use sandbx_compact::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
-use sandbx_session::{Session, SessionStore, sessions_directory};
+use sandbx_session::{Session, SessionStore};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
+use sandbx_session_paths::sessions_directory;
 
 /// What `--session` asked for.
 #[derive(Debug, Clone, Copy)]
@@ -84,8 +85,8 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
 
 /// The store under this process's environment.
 ///
-/// `var_os` is read here and not injected, unlike in `sandbx-session` itself: this is the
-/// one place that wants the real environment, and a test drives the store directly.
+/// `var_os` is read here and not injected, unlike in `sandbx-session-paths` itself: this is
+/// the one place that wants the real environment, and a test drives the store directly.
 fn store() -> Result<SessionStore, SessionError> {
     sessions_directory(&|name| std::env::var_os(name)).map(SessionStore::new)
 }
