@@ -88,9 +88,10 @@ blocks (#351).
 vocabularies it maps between are declared in crates that do not depend on each
 other, by the choice `sandbx-session-message`'s `//!` records. Its edge to
 `sandbx-session` is the whole crate for four names, and #360, #361 and #362
-replace it with the three narrow ones. Its edge to `sandbx-compact` is the third
-the diagram above does not draw: compact is drawn into the `sandbx-agent` bundle
-alone, and has had two dependents since #351.
+replace it with the three narrow ones. The diagram above draws none of those
+five, only the edge on to `sandbx-cli` — so note in particular that
+`sandbx-compact` is drawn into the `sandbx-agent` bundle alone and has had two
+dependents since #351.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
 sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges
@@ -331,15 +332,18 @@ it. `PromptUsage` is declared here and not beside `Turn::observed`, where it
 reads as belonging: the turn depends on compaction and not the reverse, so this
 is the side of the edge it can sit on (#345). `sandbx-agent` re-exports both
 types, which #356 did so that `cli/src/session.rs` could keep naming
-`sandbx_agent::PromptUsage` until #351 moved it. #351 has, and took an edge of
-its own rather than the re-export, so the two parents in `deny.toml`'s block
-here are `sandbx-agent` and `sandbx-session-bridge`, and #357 replaces the first
-with `sandbx-turn` rather than adding a third. The re-export now has no consumer
-outside `sandbx-agent`'s own `tests/turn_compaction.rs` — `grep PromptUsage
-crates/sandbx-cli/` is empty and `Compaction` was never named there at all — so
-it is spent, and retiring it is a change to `sandbx-agent`'s surface rather than
-a move (#351, #356). Depends on `sandbx-providers` for `RequestMessage`, `Role`
-and `ContentBlock`; #364 narrows that to the prompt crate alone.
+`sandbx_agent::PromptUsage` until #351 moved it. That move has landed, and took
+an edge of its own rather than the re-export, so the two parents in
+`deny.toml`'s block here are `sandbx-agent` and `sandbx-session-bridge`, and
+#357 replaces the first with `sandbx-turn` rather than adding a third. The
+re-export has no *first-party*
+consumer left outside `sandbx-agent`'s own `tests/turn_compaction.rs` — `grep
+PromptUsage crates/sandbx-cli/` is empty and `Compaction` was never named there
+at all. It is not therefore dead: `Turn::observed` and `TurnOutcome::usage` are
+public fields typed `Option<sandbx_compact::PromptUsage>`, so the re-export is
+still how a consumer outside this workspace names them, which is what #356
+claimed for it. Depends on `sandbx-providers` for `RequestMessage`, `Role` and
+`ContentBlock`; #364 narrows that to the prompt crate alone.
 
 ## `sandbx-agent`
 
@@ -420,17 +424,17 @@ src/lib.rs        SessionChoice and open — which session a run opens, and what
                   space that collapse moves
 ```
 
-The four content matches — `request_block` and `stored_block`, and the role
-match either side of them — destructure by field name with no `_` arm, so a
-sixth `ContentBlock` variant is a compile error here rather than a block missing
-from a transcript. That is the property, and it is about those matches and not
-the file: `merge_user_runs` matches on a `last_mut()` option and does have a `_`
-arm, where a catch-all costs nothing. Free functions and not `From` impls: both
-vocabularies are foreign to this crate, which is the whole reason it exists.
-`decision-on-disk-state.md`
-has the two index spaces and why `Merged` carries both;
-`decision-thinking-replay.md` has the one block kind that is deliberately
-dropped on the way to storage.
+The property is about the two block translations and not the file.
+`request_block` and `stored_block` destructure by field name with no `_` arm, so
+a fourth `Content` variant and a sixth `ContentBlock` variant are each a compile
+error, in whichever direction the vocabulary grew, rather than a block missing
+from a transcript. `merge_user_runs` does have a `_` arm — it matches a
+`last_mut()` option, where a catch-all costs nothing — and the two role matches
+are over unit variants, so they destructure nothing. Free functions and not
+`From` impls: both vocabularies are foreign to this crate, which is the whole
+reason it exists. `decision-on-disk-state.md` has the two index spaces and why
+`Merged` carries both; `decision-thinking-replay.md` has the one block kind that
+is deliberately dropped on the way to storage.
 
 ## `sandbx-tui-transcript`
 
@@ -550,8 +554,7 @@ Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,
 `tui`, `hash` and `auth`. `tui` is `agent-run`'s flags, policy and session
 drawn on a screen rather than streamed to stdout, so the two share `gate.rs`,
 `orientation.rs` and `sandbx-session-bridge`, and differ only in where a turn
-is reported.
-`hash` and `auth` run no sandbox — `hash` reads one file, so a
+is reported. `hash` and `auth` run no sandbox — `hash` reads one file, so a
 digest can be taken before there is a policy to take it under, and `auth` touches
 only the credential file. `auth` is the one subcommand whose body is not here:
 `invocation.rs` holds the variant and `sandbx-auth` everything under it.

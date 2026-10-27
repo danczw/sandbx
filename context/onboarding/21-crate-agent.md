@@ -82,10 +82,12 @@ Two of those are not this crate's own: `Compaction` and `PromptUsage` are
 one import rather than two (#356). The caller #356 had in mind was
 `cli/src/session.rs`, and #351 moved that file into `sandbx-session-bridge`,
 which takes a `sandbx-compact` edge of its own instead. So the re-export has no
-consumer left outside this crate's own `tests/turn_compaction.rs`:
+first-party consumer left outside this crate's own `tests/turn_compaction.rs`:
 `grep PromptUsage crates/sandbx-cli/` is empty, and `Compaction` was never named
-there. It is spent rather than wrong, and retiring it changes this crate's
-surface, so it is not a move-only change. The gate rows that used to sit between
+there. That does not make it dead. `Turn::observed` and `TurnOutcome::usage` are
+public fields typed `Option<sandbx_compact::PromptUsage>`, so a consumer outside
+this workspace still needs the name from somewhere, and the re-export is where
+#356 put it. The gate rows that used to sit between
 the two groups are gone the other way: `CallGate` and the four shapes it is
 asked and told with are `sandbx-approval`'s and are *not* re-exported, the
 section on it below.
