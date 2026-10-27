@@ -2,7 +2,7 @@ pub mod sandbx_session_bridge
 pub enum sandbx_session_bridge::SessionChoice<'a>
 pub sandbx_session_bridge::SessionChoice::New
 pub sandbx_session_bridge::SessionChoice::Off
-pub sandbx_session_bridge::SessionChoice::Resume(&'a sandbx_session::id::SessionId)
+pub sandbx_session_bridge::SessionChoice::Resume(&'a sandbx_session_id::SessionId)
 impl<'a> core::clone::Clone for sandbx_session_bridge::SessionChoice<'a>
 pub fn sandbx_session_bridge::SessionChoice<'a>::clone(&self) -> sandbx_session_bridge::SessionChoice<'a>
 impl<'a> core::fmt::Debug for sandbx_session_bridge::SessionChoice<'a>

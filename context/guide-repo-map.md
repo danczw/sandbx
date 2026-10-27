@@ -38,6 +38,7 @@ sandbx-logging ─────────────────────�
 sandbx-session ─────────────────────────────┤
 sandbx-session-bridge ──────────────────────┤
 sandbx-session-error ───────────────────────┤
+sandbx-session-id ──────────────────────────┤
 sandbx-session-message ─────────────────────┤
 sandbx-text ──────┬─────────────────────────┤
 sandbx-providers ─┴─► sandbx-tui-transcript │
@@ -60,9 +61,9 @@ does.
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, agent, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-message, text, tools, tui-input |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, agent, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-id, session-message, text, tools, tui-input |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
-| `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-error, session-message |
+| `sandbx-session` | the on-disk transcript: a root, and append-only JSONL | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
 | `sandbx-tui-input` | the keys that stop a turn, and what a hangup means | — (pty-fixture is *dev*-only) |
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
@@ -70,35 +71,37 @@ does.
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-session-error` | why a session operation did not happen | — |
+| `sandbx-session-id` | a session's name, and the one rule that makes it safe in a path | session-error |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
 | `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
-| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-message |
+| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-id, session-message |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
-`sandbx-session` depends on both `sandbx-session-message` and
-`sandbx-session-error` — the two internal edges the diagram above does not
-draw. `sandbx-session-bridge` and `sandbx-cli` each have an edge to those two
-as well, and none of the four is inherited through `sandbx-session`: the bridge
-translates between the stored shapes and the provider's, and the CLI is where a
-`SessionError` becomes something else and where `CompletedTurn` appends a
-finished turn. That is why `deny.toml` names three parents in each of those two
-blocks (#351).
+`sandbx-session` depends on `sandbx-session-error`, `sandbx-session-id` and
+`sandbx-session-message` — the three internal edges the diagram above does not
+draw. `sandbx-session-bridge` and `sandbx-cli` each have an edge to all three
+as well, and none of those is inherited through `sandbx-session`: the bridge
+translates between the stored shapes and the provider's and names a `SessionId`
+in `SessionChoice`, and the CLI is where a `SessionError` becomes something
+else, where `CompletedTurn` appends a finished turn, and where a `SessionId` is
+parsed off argv (#351, #360). `sandbx-session-id` is itself a parent of
+`sandbx-session-error`, the id's own parser returning that type.
 
-`sandbx-session-bridge` is the only crate reaching all five of `sandbx-compact`,
-`sandbx-providers`, `sandbx-session`, `sandbx-session-error` and
-`sandbx-session-message`, which is what being the seam costs: the two
-vocabularies it maps between are declared in crates that do not depend on each
-other, by the choice `sandbx-session-message`'s `//!` records. Its edge to
-`sandbx-session` is the whole crate for four names, and #360, #361 and #362
-replace it with the three narrow ones. The diagram above draws none of those
-five, only the edge on to `sandbx-cli` — so note in particular that
-`sandbx-compact` is drawn into the `sandbx-agent` bundle alone and has had two
-dependents since #351.
+`sandbx-session-bridge` is the only crate reaching all six of `sandbx-compact`,
+`sandbx-providers`, `sandbx-session`, `sandbx-session-error`,
+`sandbx-session-id` and `sandbx-session-message`, which is what being the seam
+costs: the two vocabularies it maps between are declared in crates that do not
+depend on each other, by the choice `sandbx-session-message`'s `//!` records.
+Its edge to `sandbx-session` is the whole crate for three names now that #360
+has taken `SessionId`, and #361 and #362 replace it with the last two. The
+diagram above draws none of those six, only the edge on to `sandbx-cli` — so
+note in particular that `sandbx-compact` is drawn into the `sandbx-agent`
+bundle alone and has had two dependents since #351.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
 sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges
@@ -384,12 +387,24 @@ provider type moved would not be. The translation lives in
 than a block quietly missing from a transcript. Depends on no sandbx crate,
 which is what lets the format outlive a change to either side of it (#359).
 
+## `sandbx-session-id`
+
+```
+src/lib.rs        SessionId — 1–32 of [0-9a-z], an allowlist because an id
+                  becomes a path component; from_clock and clock_millis
+tests/            identifier — the refusal list, and a text round trip
+```
+
+The alphabet is an allowlist and not a search for `..` because a denylist's
+first omission is a traversal, and `--session` takes its value straight off
+argv. `clock_millis` is `pub` for `sandbx-session`'s header write; #362 takes
+that caller over. Depends on `sandbx-session-error` alone, which is why that
+crate names no `SessionId` — the edge back would be a cycle (#360).
+
 ## `sandbx-session`
 
 ```
 src/lib.rs        re-exports
-   id.rs          SessionId — 1–32 of [0-9a-z], an allowlist because an id
-                  becomes a path component
    paths.rs       sessions_directory — $XDG_STATE_HOME, else $HOME, never the
                   working directory
    store.rs       re-exports SessionStore and Session
@@ -397,12 +412,13 @@ src/lib.rs        re-exports
       record.rs   the three line kinds, and the fold that replays them
       shape.rs    which orders of messages a request may carry, as predicates
       vet.rs      the modes, O_NOFOLLOW, and reading one off a descriptor
-tests/            identifier, permissions, recovery, transcript
+tests/            permissions, recovery, transcript
 ```
 
-Two internal dependencies, `sandbx-session-message` and
-`sandbx-session-error`, whose sections say why the stored shapes are their own
-and not the provider's, and why the error names no `SessionId`. See
+Three internal dependencies, `sandbx-session-error`, `sandbx-session-id` and
+`sandbx-session-message`, whose sections say why the stored shapes are their
+own and not the provider's, why the id is a crate of its own since #360, and
+why the error names no `SessionId`. See
 [decision-on-disk-state.md](decision-on-disk-state.md) for the roots, the mode
 rule and the line format.
 
@@ -418,7 +434,8 @@ operation it came from, which a blanket conversion would discard, and
 `sandbx-cli` is what decides per call site what a session failure becomes.
 `NotFound` carries an id's spelling and not a `SessionId`, because every
 fallible path in the session tree returns this type — the id's own included — so
-an edge to the crate declaring `SessionId` would be a cycle (#346, #358).
+an edge to `sandbx-session-id`, which declares it, would be a cycle (#346,
+#358, #360).
 
 ## `sandbx-session-bridge`
 

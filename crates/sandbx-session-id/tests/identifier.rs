@@ -5,8 +5,8 @@
 
 use std::str::FromStr;
 
-use sandbx_session::SessionId;
 use sandbx_session_error::SessionError;
+use sandbx_session_id::SessionId;
 
 #[test]
 fn a_traversing_id_is_refused_before_any_io() {

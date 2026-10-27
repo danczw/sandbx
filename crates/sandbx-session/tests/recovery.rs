@@ -27,7 +27,7 @@ fn exchange(ask: &str, reply: &str) -> Vec<Message> {
 }
 
 /// One session with one turn in it, and the path it was written to.
-fn spoken_to(store: &SessionStore) -> (sandbx_session::SessionId, std::path::PathBuf) {
+fn spoken_to(store: &SessionStore) -> (sandbx_session_id::SessionId, std::path::PathBuf) {
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {

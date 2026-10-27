@@ -39,7 +39,7 @@ fn exchange() -> Vec<Message> {
 }
 
 /// One session with one turn in it.
-fn spoken_to(store: &SessionStore) -> sandbx_session::SessionId {
+fn spoken_to(store: &SessionStore) -> sandbx_session_id::SessionId {
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {

@@ -215,7 +215,7 @@ so `degraded` and the terminal record are both timestamped after `spawned`. See
 | Missing | Consequence |
 |---|---|
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone. Zero emission sites in tools, agent, providers, tui, session |
-| session ids | nothing ties a spawn to its outcome but `program`. `SessionId` now exists (`sandbx-session`) and reaches no `tracing` field, so a correlation id is buildable rather than built (#249) |
+| session ids | nothing ties a spawn to its outcome but `program`. `SessionId` now exists (`sandbx-session-id`) and reaches no `tracing` field, so a correlation id is buildable rather than built (#249) |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`. XDG resolution exists but not for a log: `sandbx-session/src/paths.rs` is what a sink would reuse |
 
 Libraries emit and never choose a sink — no emission site touches a file or a

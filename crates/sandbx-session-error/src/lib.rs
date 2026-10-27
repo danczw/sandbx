@@ -6,10 +6,10 @@
 //! `IncompleteTurn` off an append as no error at all.
 //!
 //! Nothing here names a `SessionId`, deliberately: every fallible path in the session
-//! tree returns this type, the id's own included, so an edge to the crate declaring
-//! `SessionId` would be a cycle (#346; `sandbx-session-id` once #360 lands). `NotFound`
-//! carries the spelling instead, at no cost to the message — `SessionId`'s `Display`
-//! writes the inner string and no more.
+//! tree returns this type, the id's own included, so an edge to `sandbx-session-id`,
+//! which declares it, would be a cycle (#346, #360). `NotFound` carries the spelling
+//! instead, at no cost to the message — `SessionId`'s `Display` writes the inner string
+//! and no more.
 
 use std::path::PathBuf;
 

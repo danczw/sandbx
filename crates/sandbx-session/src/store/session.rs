@@ -11,10 +11,8 @@ use std::path::{Path, PathBuf};
 
 use nix::fcntl::OFlag;
 use sandbx_session_error::SessionError;
+use sandbx_session_id::{SessionId, clock_millis};
 use sandbx_session_message::{CompletedTurn, Message, Usage};
-
-use crate::SessionId;
-use crate::id::clock_millis;
 
 use super::record::{Accounting, Header, Record, VERSION, fold};
 use super::shape::{alternating, answers_only, follows, opens, resumable};
