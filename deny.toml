@@ -135,10 +135,23 @@ wrappers = ["sandbx-agent", "sandbx-cli"]
 name = "sandbx-session-error"
 # `sandbx-cli`'s edge is direct and not inherited through `sandbx-session`: it matches
 # the variants and converts them to an `AgentError`. `sandbx-session-bridge`'s is direct
-# too: `open` returns a `SessionError` rather than wrapping one (#351). Three more parents
-# are coming, this crate being the bottom of the session tree, and each *appends* its name
-# here rather than replacing one: #360 `sandbx-session-id`, #361 `sandbx-session-paths`,
+# too: `open` returns a `SessionError` rather than wrapping one (#351). Two more parents are
+# coming, this crate being the bottom of the session tree, and each *appends* its name here
+# rather than replacing one, as #360 `sandbx-session-id` did: #361 `sandbx-session-paths`,
 # #362 `sandbx-session-store`.
+wrappers = [
+    "sandbx-cli",
+    "sandbx-session",
+    "sandbx-session-bridge",
+    "sandbx-session-id",
+]
+
+[[bans.deny]]
+name = "sandbx-session-id"
+# `sandbx-session` is here for `clock_millis` and for the two signatures that still name a
+# `SessionId`; #362 takes that edge over with `store/session.rs`. The other two are direct and
+# not inherited through it: `sandbx-session-bridge` names `SessionId` in `SessionChoice`, and
+# `sandbx-cli` parses one off argv (#360).
 wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]

@@ -9,10 +9,12 @@ harness process, and that is the whole of it.
 
 A handful of source files under `src/`, with nearly as much test code again
 under `tests/`; [guide-repo-map.md](../guide-repo-map.md) keeps the current file
-list. Two internal dependencies, neither of which names a sandbx crate of its
-own — the shapes it stores are `sandbx-session-message`'s, itself a leaf of
-[05 — seven crates](05-seven-crates.md)'s graph, and why an operation did not
-happen is `sandbx-session-error`'s — and three external ones: `nix` with only
+list. Every internal dependency is elsewhere in the session tree: the shapes it
+stores are `sandbx-session-message`'s, itself a leaf of
+[05 — seven crates](05-seven-crates.md)'s graph; why an operation did not
+happen is `sandbx-session-error`'s; and the name a transcript is filed under is
+`sandbx-session-id`'s, a crate of its own since #360 and the only one of them
+that depends on a sandbx crate itself. Three external ones: `nix` with only
 `fs` and `user`, `serde`, `serde_json`, plus `tempfile` for the tests. The
 reason to read it anyway is proportion. A transcript is the only plaintext copy
 of a conversation sandbx keeps, it is replayed to a model that calls tools, and
@@ -22,8 +24,8 @@ of a conversation sandbx keeps, it is replayed to a model that calls tools, and
 
 | file | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | four re-exports and three private modules | — |
-| [`id.rs`](../../crates/sandbx-session/src/id.rs) | `SessionId`, `from_clock`, the allowlist | [14](14-audit-sessions-credentials.md), then below |
+| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | three re-exports and two private modules | — |
+| [`sandbx-session-id`](../../crates/sandbx-session-id/src/lib.rs) | `SessionId`, `from_clock`, `clock_millis`, the allowlist — a crate of its own since #360 | [14](14-audit-sessions-credentials.md), then below |
 | [`paths.rs`](../../crates/sandbx-session/src/paths.rs) | `sessions_directory` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` — a crate of its own since #359 | [05](05-seven-crates.md), [24](24-crate-cli.md) |
 | [`store.rs`](../../crates/sandbx-session/src/store.rs) | re-exports `SessionStore` and `Session` | below |
@@ -32,20 +34,21 @@ of a conversation sandbx keeps, it is replayed to a model that calls tools, and
 | [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
 | [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, two opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
 | [`sandbx-session-error`](../../crates/sandbx-session-error/src/lib.rs) | `SessionError`, seventeen variants — a crate of its own since #358 | below |
-| `tests/` | `identifier`, `permissions`, `recovery`, `transcript` | below |
+| `tests/` | `permissions`, `recovery`, `transcript`; `identifier` went with the id to `sandbx-session-id` | below |
 
 Two shapes to notice first. **`store/` is the only subdirectory**, and the three
 siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
 the mode constants and every predicate are invisible outside `store/`; the
-crate's public surface is the four names `lib.rs` re-exports, plus the three
+crate's public surface is the three names `lib.rs` re-exports, plus the three
 `sandbx-session-message` types that `append`, `messages` and `observed` name in
-their signatures and the `SessionError` that every fallible one of them returns
-— none of which the crate re-exports, so a consumer takes its own dependency to
-spell them, as `sandbx-cli` does. And **the crate has no output channel**: no
+their signatures, the `SessionError` that every fallible one of them returns,
+and the `SessionId` that `Session::id` and `SessionStore::resume` name — none of
+which the crate re-exports, so a consumer takes its own dependency to spell
+them, as `sandbx-cli` does. And **the crate has no output channel**: no
 `tracing` dependency, no `println!` or `eprintln!` under `src/`. That is not an
 omission, it is what forces the design in the `store/session.rs` section.
 
-## `id.rs` — an allowlist is three lines, and this is why
+## `sandbx-session-id` — an allowlist is three lines, and this is why
 
 [14](14-audit-sessions-credentials.md) quotes the doc comment that states the
 rule — "an allowlist, not a search for `..`". The code under it:
@@ -89,7 +92,7 @@ argument parser — and each is a list to keep complete forever. Thirty-six
 characters is complete by construction, and `--session` takes its value straight
 off argv.
 
-Two module facts: `from_clock(attempt)` **adds** `attempt` to the millisecond
+Two more facts: `from_clock(attempt)` **adds** `attempt` to the millisecond
 rather than suffixing it, so a retry after a collision is still one base36
 number; and the type derives `Ord` while its doc says not to trust it, because
 base36 gains a digit as the clock grows and the derived order sorts by length
@@ -255,7 +258,9 @@ construct. This is [11](11-the-two-seams.md)'s shape for `FsGuard`'s handles —
 the value *is* the capability — and it sticks because `Session` holds an open
 `File` and derives no `Clone`. `SessionStore` is `{ root: PathBuf }`, `Clone`,
 and holds no descriptor: a directory you have named rather than been let into.
-`transcript` is private, so only a `SessionId` can build a path.
+`transcript` is private, so only a `SessionId` can build a path — and since
+#360 the field that `SessionId` wraps is private in a crate of its own, so no
+code here can forge one either.
 
 Printing the report is `sandbx-cli`'s work, and `session::open` is the single
 place it happens — reached by both `agent/run.rs` and `agent/tui.rs`, so the
@@ -587,18 +592,21 @@ consequence of it.
 
 ## Where the tests are
 
-Unit tests sit in `id.rs`, `paths.rs` and `store/record.rs`, and in
-`sandbx-session-message` next door — the four places that are pure functions
-over values. `store/session.rs`, `store/vet.rs` and `store/shape.rs` have none,
-needing a real filesystem or the store that drives them;
+Unit tests sit in `paths.rs` and `store/record.rs`, and next door in
+`sandbx-session-id` and `sandbx-session-message` — the places that are pure
+functions over values. `store/session.rs`, `store/vet.rs` and `store/shape.rs`
+have none, needing a real filesystem or the store that drives them;
 [guide-testing.md](../guide-testing.md) governs the split.
 
 | target | what it pins |
 |---|---|
-| `identifier` | the public contract of `SessionId` — the refusal list above, and a text round trip |
 | `permissions` | what `create` creates, what `resume` refuses, and both symlink arms |
 | `recovery` | a damaged file: the torn tail, the interior pair, the blockless turn |
 | `transcript` | the format's own rules — round trips, the `#188` relaxation, versions, ordering |
+
+`identifier` was a fourth row here until #360 gave the id a crate of its own,
+and it moved with the code it pins: the refusal list above and a text round
+trip are now `sandbx-session-id`'s only integration target.
 
 The suite is honest about its two limits. `permissions.rs` says one outright: "A
 foreign owner is refused too, but no test here drives that arm, which needs a

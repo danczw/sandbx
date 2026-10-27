@@ -2,7 +2,7 @@ pub mod sandbx_session
 pub struct sandbx_session::Session
 impl sandbx_session::Session
 pub fn sandbx_session::Session::append(&mut self, sandbx_session_message::CompletedTurn<'_>) -> core::result::Result<(), sandbx_session_error::SessionError>
-pub fn sandbx_session::Session::id(&self) -> &sandbx_session::SessionId
+pub fn sandbx_session::Session::id(&self) -> &sandbx_session_id::SessionId
 pub fn sandbx_session::Session::messages(&self) -> &[sandbx_session_message::Message]
 pub fn sandbx_session::Session::observed(&self) -> core::option::Option<sandbx_session_message::Usage>
 pub fn sandbx_session::Session::path(&self) -> &std::path::Path
@@ -18,40 +18,11 @@ impl core::marker::Unpin for sandbx_session::Session
 impl core::marker::UnsafeUnpin for sandbx_session::Session
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session::Session
 impl core::panic::unwind_safe::UnwindSafe for sandbx_session::Session
-pub struct sandbx_session::SessionId(_)
-impl sandbx_session::SessionId
-pub fn sandbx_session::SessionId::from_clock(u64) -> core::result::Result<Self, sandbx_session_error::SessionError>
-impl core::clone::Clone for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::clone(&self) -> sandbx_session::SessionId
-impl core::cmp::Eq for sandbx_session::SessionId
-impl core::cmp::Ord for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::cmp(&self, &sandbx_session::SessionId) -> core::cmp::Ordering
-impl core::cmp::PartialEq for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::eq(&self, &sandbx_session::SessionId) -> bool
-impl core::cmp::PartialOrd for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::partial_cmp(&self, &sandbx_session::SessionId) -> core::option::Option<core::cmp::Ordering>
-impl core::fmt::Debug for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for sandbx_session::SessionId
-pub fn sandbx_session::SessionId::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::StructuralPartialEq for sandbx_session::SessionId
-impl core::str::traits::FromStr for sandbx_session::SessionId
-pub type sandbx_session::SessionId::Err = sandbx_session_error::SessionError
-pub fn sandbx_session::SessionId::from_str(&str) -> core::result::Result<Self, sandbx_session_error::SessionError>
-impl core::marker::Freeze for sandbx_session::SessionId
-impl core::marker::Send for sandbx_session::SessionId
-impl core::marker::Sync for sandbx_session::SessionId
-impl core::marker::Unpin for sandbx_session::SessionId
-impl core::marker::UnsafeUnpin for sandbx_session::SessionId
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session::SessionId
-impl core::panic::unwind_safe::UnwindSafe for sandbx_session::SessionId
 pub struct sandbx_session::SessionStore
 impl sandbx_session::SessionStore
 pub fn sandbx_session::SessionStore::create(&self) -> core::result::Result<sandbx_session::Session, sandbx_session_error::SessionError>
 pub fn sandbx_session::SessionStore::new(std::path::PathBuf) -> Self
-pub fn sandbx_session::SessionStore::resume(&self, &sandbx_session::SessionId) -> core::result::Result<sandbx_session::Session, sandbx_session_error::SessionError>
+pub fn sandbx_session::SessionStore::resume(&self, &sandbx_session_id::SessionId) -> core::result::Result<sandbx_session::Session, sandbx_session_error::SessionError>
 pub fn sandbx_session::SessionStore::root(&self) -> &std::path::Path
 impl core::clone::Clone for sandbx_session::SessionStore
 pub fn sandbx_session::SessionStore::clone(&self) -> sandbx_session::SessionStore

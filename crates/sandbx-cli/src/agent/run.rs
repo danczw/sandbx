@@ -17,9 +17,10 @@ use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
     StopReason, Thinking,
 };
-use sandbx_session::{Session, SessionId};
+use sandbx_session::Session;
 use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
+use sandbx_session_id::SessionId;
 use sandbx_session_message::CompletedTurn;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
@@ -1331,7 +1332,7 @@ mod tests {
     }
 
     /// The id of the one session in `store`.
-    fn only_session(store: &sandbx_session::SessionStore) -> sandbx_session::SessionId {
+    fn only_session(store: &sandbx_session::SessionStore) -> sandbx_session_id::SessionId {
         let mut ids: Vec<String> = std::fs::read_dir(store.root())
             .expect("the store exists")
             .map(|entry| {

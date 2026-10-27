@@ -602,7 +602,10 @@ a path at all.
 ## The session store
 
 [`sandbx-session`](../../crates/sandbx-session/) is a small crate with a strict
-remit: a name, a directory, a file of lines, and the rules for reading one back.
+remit: a directory, a file of lines, and the rules for reading one back. The
+name it files them under is
+[`sandbx-session-id`](../../crates/sandbx-session-id/src/lib.rs)'s, a crate of
+its own since #360.
 
 ### An id is an allowlist, and that is what makes it a path component
 

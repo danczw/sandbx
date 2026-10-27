@@ -36,7 +36,7 @@ impl SessionId {
 /// `u64`, not the `u128` the duration reports: a clock far enough ahead to overflow it
 /// is as broken as one before the epoch, and truncating would yield an ordinary-looking
 /// id.
-pub(crate) fn clock_millis() -> Result<u64, SessionError> {
+pub fn clock_millis() -> Result<u64, SessionError> {
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| SessionError::Clock)?;

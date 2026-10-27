@@ -1,0 +1,31 @@
+pub mod sandbx_session_id
+pub struct sandbx_session_id::SessionId(_)
+impl sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::from_clock(u64) -> core::result::Result<Self, sandbx_session_error::SessionError>
+impl core::clone::Clone for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::clone(&self) -> sandbx_session_id::SessionId
+impl core::cmp::Eq for sandbx_session_id::SessionId
+impl core::cmp::Ord for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::cmp(&self, &sandbx_session_id::SessionId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::eq(&self, &sandbx_session_id::SessionId) -> bool
+impl core::cmp::PartialOrd for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::partial_cmp(&self, &sandbx_session_id::SessionId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for sandbx_session_id::SessionId
+pub fn sandbx_session_id::SessionId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for sandbx_session_id::SessionId
+impl core::str::traits::FromStr for sandbx_session_id::SessionId
+pub type sandbx_session_id::SessionId::Err = sandbx_session_error::SessionError
+pub fn sandbx_session_id::SessionId::from_str(&str) -> core::result::Result<Self, sandbx_session_error::SessionError>
+impl core::marker::Freeze for sandbx_session_id::SessionId
+impl core::marker::Send for sandbx_session_id::SessionId
+impl core::marker::Sync for sandbx_session_id::SessionId
+impl core::marker::Unpin for sandbx_session_id::SessionId
+impl core::marker::UnsafeUnpin for sandbx_session_id::SessionId
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_id::SessionId
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_id::SessionId
+pub fn sandbx_session_id::clock_millis() -> core::result::Result<u64, sandbx_session_error::SessionError>
