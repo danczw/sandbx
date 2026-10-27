@@ -30,6 +30,8 @@ fixture per case, and asserts both the exit status and which error fired.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import pathlib
 import shutil
@@ -111,12 +113,39 @@ def check(root: pathlib.Path, out) -> int:
     for index, block in enumerate(blocks):
         name = block.get("name")
         if not isinstance(name, str) or not name:
-            error(
-                f"deny.toml's [[bans.deny]] block #{index + 1} has no name.",
-                "This check addresses blocks by name, so an unnamed block is unchecked.",
-            )
+            if "crate" in block:
+                # cargo-deny accepts `crate = "x"` as a modern synonym (verified on
+                # 0.20.2), so a file modernised that way is correct and this check would
+                # otherwise reject it as nameless. Said rather than silently supported:
+                # `crate` is a PackageSpec that may carry `@version`, which is the
+                # vacuity below in another spelling.
+                error(
+                    f"deny.toml's [[bans.deny]] block #{index + 1} spells its crate as"
+                    " `crate =`; this check reads `name =`.",
+                    "Both work in cargo-deny. Use `name =`, as every other block does.",
+                )
+            else:
+                error(
+                    f"deny.toml's [[bans.deny]] block #{index + 1} has no name.",
+                    "This check addresses blocks by name, so an unnamed block is"
+                    " unchecked.",
+                )
             continue
-        named.append((name, block.get("wrappers")))
+        named.append((name, block))
+
+    # A version requirement narrows a block to the versions it matches, so one no crate
+    # satisfies is vacuous in exactly the way a typo'd name is: cargo-deny matches nothing
+    # and reports `bans ok` at exit 0. Measured on 0.20.2 with `version = "=9.9.9"`.
+    # Never legitimate here — every workspace crate shares one inherited version and no
+    # entry constrains a particular one.
+    for name, block in named:
+        if name in packages and "version" in block:
+            error(
+                f"'{name}''s deny.toml block carries a version requirement"
+                f" ({block['version']!r}).",
+                "A version no crate satisfies makes the block vacuous while cargo-deny"
+                " still exits 0, which is the hole this check exists to close.",
+            )
 
     # 1. Every `sandbx-*` block names a real package. The hole this script exists for.
     for name, _ in named:
@@ -147,10 +176,11 @@ def check(root: pathlib.Path, out) -> int:
     #    named off-prefix would otherwise get an array nothing ever compares, while
     #    check 2 was satisfied by the block merely existing.
     compared = 0
-    for name, wrappers in named:
+    for name, block in named:
         if name not in packages:
             continue
         compared += 1
+        wrappers = block.get("wrappers")
         want = edges.get(name, set())
         if wrappers is None or wrappers == []:
             error(
@@ -320,6 +350,21 @@ wrappers = ["sandbx-b", 7]
 name = "sandbx-a"
 wrappers = [["sandbx-b"], "sandbx-c"]
 """),
+    # A version requirement no crate satisfies is a typo'd name in another spelling:
+    # cargo-deny matches nothing and still exits 0.
+    ("version_requirement", False, "version requirement", """
+[[bans.deny]]
+name = "sandbx-a"
+version = "=9.9.9"
+wrappers = ["sandbx-b", "sandbx-c"]
+"""),
+    # cargo-deny's modern synonym. Correct for it, so the error must name the spelling
+    # this check wants rather than claiming the block is nameless.
+    ("crate_key_spelling", False, "spells its crate as", """
+[[bans.deny]]
+crate = "sandbx-a"
+wrappers = ["sandbx-b", "sandbx-c"]
+"""),
     # The five shapes the awk parser got wrong, kept as cases so a future rewrite back
     # into shell cannot reintroduce them quietly.
     ("multiline_array", True, "", """
@@ -424,8 +469,6 @@ wrappers = ["sandbx-nobody-at-all"]
 
 
 def self_test() -> int:
-    import io
-
     root = pathlib.Path(tempfile.mkdtemp())
     failures = 0
     total = 0
@@ -462,11 +505,29 @@ def self_test() -> int:
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    # The argv guard, covered here rather than left to the comment above it: it is the
+    # one check outside `check()`, and an argv that fell through to the real check would
+    # pass the CI step with the self-test never having run.
+    #
+    # Its own `::error::` lines are swallowed, not shown: GitHub renders that prefix as
+    # an annotation on the job whatever the exit status, so a passing self-test would
+    # otherwise decorate a green run with four errors it had deliberately provoked.
+    for argv in (["--selftest"], ["--help"], ["deny.toml"], ["--self-test", "extra"]):
+        total += 1
+        sink = io.StringIO()
+        with contextlib.redirect_stderr(sink):
+            got = main(argv)
+        if got != 2:
+            print(f"::error::self-test 'argv {argv}': exited {got}, want 2")
+            failures += 1
+        else:
+            print(f"  ok  argv {' '.join(argv)}")
+
     if failures:
         return 1
     # Asserted, not just printed: a loop that silently iterated zero cases would
     # otherwise report success, which is the defect this whole script is about.
-    expected = len(CASES) + len(OFF_PREFIX_CASES)
+    expected = len(CASES) + len(OFF_PREFIX_CASES) + 4
     if total != expected:
         print(f"::error::self-test ran {total} cases, expected {expected}")
         return 1

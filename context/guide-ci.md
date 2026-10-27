@@ -118,10 +118,28 @@ an array that is not exactly the real parent set — an extra parent being
 the crate. It runs before `cargo-deny-action` for the reason the release-channel
 check does, and its `--self-test` runs first, against scratch workspaces, so a
 checker that has stopped checking fails rather than passing the real file by
-default. Every check but one is mutation-tested: disable it and a named case
-fails. The exception is the zero-comparison guard, which no `deny.toml` can
-reach — it asserts against a future edit to the membership keying rather than
-against a config, and its comment says so rather than implying a case covers it.
+default. Every check a `deny.toml` can reach is mutation-tested: disable it and a
+named case fails, and the harness asserts the set of survivors, so a check that
+becomes untestable fails the run rather than passing quietly. Exactly two
+survive, both unreachable from any config and both saying so in their comments —
+the zero-comparison guard and the empty-package-set guard. They assert against a
+future edit to the keying or the graph read, not against a file.
+
+**It also checks two spellings that make cargo-deny's own block vacuous**, which
+is the same hole as a typo'd name wearing different clothes. A `version`
+requirement no crate satisfies matches nothing and still reports `bans ok` at
+exit 0 (measured with `version = "=9.9.9"`), and it is never legitimate here
+since every workspace crate shares one inherited version. `crate =` is
+cargo-deny's modern synonym for `name =`, correct for it and unreadable to this
+check, so it is rejected with a message naming the spelling to use rather than
+claiming the block is nameless.
+
+One consequence worth stating plainly: **for workspace-internal edges this
+script, not cargo-deny, is now the load-bearing check.** `version`,
+`[graph] exclude-dev` and `[graph] exclude` can each empty cargo-deny's view of
+those edges while it still exits 0, whereas this compares the arrays against the
+manifests directly. cargo-deny remains the authority for advisories, licences
+and third-party bans.
 
 Python, where its three neighbours are `/bin/sh`, because it has to read TOML and
 `/bin/sh` has no parser for it. The first version approximated one in awk and a
