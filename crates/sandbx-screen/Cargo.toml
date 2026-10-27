@@ -11,7 +11,7 @@ publish.workspace = true
 # No default features: `all-widgets`, `macros` and `underline-color` buy nothing
 # here. `crossterm` is the backend `Measured` wraps.
 #
-# This pin and `sandbx-tui`'s must move together, and nothing enforces it: the
+# This pin and `sandbx-tui-input`'s must move together, and nothing enforces it: the
 # reader lock `Keys` holds and the raw-mode flag `try_restore` reads are crossterm
 # *globals*, so two resolved crossterms give two of each and the exclusion
 # `Screen::finish` relies on stops holding. `deny.toml` has
@@ -27,7 +27,7 @@ sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 
 [dev-dependencies]
 # `Errno` alone, to assert the pty's own `EIO` and not a size from elsewhere; no
-# feature gates it, hence none here where `sandbx-tui` takes `poll`.
+# feature gates it, hence none here where `sandbx-tui-input` takes `poll`.
 nix = { version = "0.31.3", default-features = false }
 # A hangup is tested by opening a pty pair and closing the master; the fixture's own
 # `//!` says why it is a crate and not a module (#344).

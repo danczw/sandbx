@@ -66,9 +66,9 @@ Four things about that shape are worth more than the picture.
 - **The screen reaches `sandbx-providers` for the vocabulary, not the
   transport.** The only names it borrows are `AgentEvent` and `StopReason`, and
   since #353 the edge is `sandbx-tui-transcript`'s rather than `sandbx-tui`'s,
-  which #352 then split again into `sandbx-screen` and the keys; the
-  terminal-safety predicate `invisible` comes from `sandbx-text` instead since
-  #363. See
+  which #352 and #354 then split into `sandbx-screen` and `sandbx-tui-input`,
+  retiring the name above; the terminal-safety predicate `invisible` comes from
+  `sandbx-text` instead since #363. See
   [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs). No
   client, no credential, no policy. The screen folds events it is handed; it
   never opens a stream.

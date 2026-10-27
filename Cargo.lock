@@ -1688,7 +1688,7 @@ dependencies = [
  "sandbx-session-message",
  "sandbx-text",
  "sandbx-tools",
- "sandbx-tui",
+ "sandbx-tui-input",
  "serde_json",
  "tempfile",
  "tokio",
@@ -1820,7 +1820,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbx-tui"
+name = "sandbx-tui-input"
 version = "0.1.0-alpha.18"
 dependencies = [
  "nix",

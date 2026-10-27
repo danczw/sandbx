@@ -1,9 +1,10 @@
 # The tui crates decide nothing, and sanitise everything they draw
 
-Three crates, and #353 and #352 split them:
+Three crates, and #353, #352 and #354 split them:
 [`sandbx-tui-transcript`](../../crates/sandbx-tui-transcript/) is what the
 screen shows, [`sandbx-screen`](../../crates/sandbx-screen/) is the screen one
-turn is drawn on, and [`sandbx-tui`](../../crates/sandbx-tui/) is the keys that
+turn is drawn on, and
+[`sandbx-tui-input`](../../crates/sandbx-tui-input/) is the keys that
 stop it. The module tables below are the enumeration; no count here, which
 would go stale on the next extraction. In
 [04 — the architecture](04-the-architecture.md) they are the box a turn is
@@ -34,9 +35,9 @@ sandbx-screen
 src/lib.rs          Screen and Measured, and Transcript re-exported; one file,
                     the window measurement having no reader outside it
 
-sandbx-tui
-src/lib.rs          re-exports two names; no policy, no gate, no session here
-   input.rs         Keys — the reader thread, and the press a turn awaits
+sandbx-tui-input
+src/lib.rs          Keys — the reader thread, and the press a turn awaits; one
+                    file, nothing inside it having a reader outside
 ```
 
 | module | what it holds | covered in |
@@ -45,15 +46,14 @@ src/lib.rs          re-exports two names; no policy, no gate, no session here
 | [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs) | `Transcript`, `Entry`, `Kind`, `printable` — the fold, and the sanitiser | here, as the centre; [15](15-tools-and-the-screen.md) for why a renderer gets a security chapter |
 | [`view.rs`](../../crates/sandbx-tui-transcript/src/view.rs) | `draw`, `Hint`, `GUTTER_MARK` — rows, styles, the status bar; only the first two leave the crate | here for the layout; [guide-tui.md](../guide-tui.md) owns the gutter argument |
 | [screen's `lib.rs`](../../crates/sandbx-screen/src/lib.rs) | `Screen` — the transcript it draws, raw mode, the alternate screen, the `Drop`, the latched failure — and `Measured`, which does not leave the crate | here |
-| [tui's `lib.rs`](../../crates/sandbx-tui/src/lib.rs) | one `mod` line and one `pub use` line | here |
-| [`input.rs`](../../crates/sandbx-tui/src/input.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
+| [input's `lib.rs`](../../crates/sandbx-tui-input/src/lib.rs) | `Keys`, `Seen`, `Stopped`, `interrupts` — the two threads and the two awaits | here; [15](15-tools-and-the-screen.md) for what the interrupt costs |
 
 Tests are inline, in the file whose private items they touch, as
 [guide-testing.md](../guide-testing.md) asks: all four of `transcript.rs`,
-`view.rs`, `input.rs` and screen's `lib.rs` carry a `mod tests`, and no crate
-here has a `tests/` directory. The screen's three are the #269 hangup trio, and
-they need a pty pair rather than a terminal; what no test reaches at all is
-`Screen::enter` and crossterm's reader, below.
+`view.rs` and the screen's and the keys' `lib.rs` carry a `mod tests`, and no
+crate here has a `tests/` directory. The screen's three are the #269 hangup
+trio, and they need a pty pair rather than a terminal; what no test reaches at
+all is `Screen::enter` and crossterm's reader, below.
 
 ## Four names out, and the manifests are the interesting half
 
@@ -61,7 +61,7 @@ No crate here has a `pub mod`, so no module path is part of the API: a caller
 gets four names and their methods — `Transcript::new`/`event`/`note`,
 `Screen::enter`/`paint`/`finish`/`failure`, `Keys::listen`/`stop`/`press`,
 `Stopped::Pressed`/`Gone`. Two come from `sandbx-screen` and two from
-`sandbx-tui`, and `Transcript` is the one `sandbx-screen` does not own: it
+`sandbx-tui-input`, and `Transcript` is the one `sandbx-screen` does not own: it
 re-exports the type rather than leave the caller a second edge, every entry
 point it has taking or handing back one (#352).
 
@@ -110,8 +110,8 @@ rustix = { version = "1.1.4", default-features = false, features = ["std", "term
 sandbx-tui-transcript = { path = "../sandbx-tui-transcript" }
 ```
 
-[`sandbx-tui`](../../crates/sandbx-tui/Cargo.toml) takes the threads, and no
-crate of sandbx's at all:
+[`sandbx-tui-input`](../../crates/sandbx-tui-input/Cargo.toml) takes the
+threads, and no crate of sandbx's at all:
 
 ```toml
 ratatui = { version = "=0.30.2", default-features = false, features = [
@@ -377,8 +377,8 @@ its tests render into ratatui's `TestBackend` and read cells back as rows of
 strings — which is how `an_answer_cannot_forge_the_row_a_verdict_is_drawn_on`
 can assert that exactly one row starts with the mark. What no test reaches
 is `Screen::enter` and crossterm's reader itself — the loop around it in
-`input.rs` is tested through a private `Source` fake, and neither of the two
-still untested holds a decision, which is the order to take that in.
+`sandbx-tui-input` is tested through a private `Source` fake, and neither of
+the two still untested holds a decision, which is the order to take that in.
 
 ## view.rs tail-aligns, and loses nothing it could show
 
@@ -600,7 +600,7 @@ calls the function with a `BrokenPipe` latch and asserts `Ok(3)`, `Ok(2)` and
 still returns `Err` with its own error, latch or no latch. Without that pair
 the test would pass on a function that ignored `code` entirely.
 
-## input.rs is two threads, because `event::read` cannot be cancelled
+## The key reader is two threads, because `event::read` cannot be cancelled
 
 `Keys` is one `watch::Receiver<Seen>`, and `Seen` is a press tally plus two
 sticky flags: `stop`, set by an interrupting key, and `gone`, set by
