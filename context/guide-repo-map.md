@@ -339,10 +339,12 @@ items are one crate because neither is nameable without the other: the alias's
 `Item` is a `Result<AgentEvent, ProviderError>`.
 
 Not a light crate: `Transport` carries a `reqwest::Error` as a public field, so
-the client chain travels with the seam, and nothing downstream shed anything
-when it moved out. Whether that field should be boxed is a code change, and so a
-separate question from the move. Per-rule account in
-[decision-provider-seam.md](decision-provider-seam.md).
+reqwest and its HTTP stack travel with the seam and nothing downstream shed
+anything when it moved out. Not the TLS half — this crate names no reqwest
+feature, which is what keeps rustls and `ring` with the one crate that opens
+connections, and its manifest says why that matters. Whether the field should be
+boxed is a code change, and so a separate question from the move. Per-rule
+account in [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-event`
 
