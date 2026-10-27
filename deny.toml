@@ -39,7 +39,7 @@ allow-wildcard-paths = true
 # `sandbx-cli` and `sandbx-helper` are deliberately absent. Nothing depends on either,
 # and an entry with an empty `wrappers` bans a crate outright rather than permitting
 # nothing — so the rule "nothing may depend on this" is unexpressed *here*. It is not
-# unenforced: `deny-wrappers.sh` fails when a crate something depends on has no block,
+# unenforced: `deny-wrappers.py` fails when a crate something depends on has no block,
 # so a first dependency on either of those two fails that check rather than this file
 # (#415). Every crate that *is* depended on is listed, including the leaves.
 #

@@ -103,18 +103,32 @@ needs the same guard.
 `cargo deny` reads a block's `name` as a package to look for, so a name matching
 nothing is vacuous rather than wrong: the block bans a package that does not
 exist, the crate the typo meant becomes unbanned, and every edge into it goes
-unchecked — `bans ok`, exit 0. Measured on #415 and reproduced against a second
-block, which is why it is not filed as a suspicion.
+unchecked. It is not silent — each listed parent gets a `warning[unused-wrapper]`
+— but it is **non-fatal**, so the run ends `bans ok`, exit 0. On this repo that
+is one warning beside five ambient `warning[duplicate]` lines, which is the
+practical point: the signal exists and is indistinguishable from the noise a
+passing run already prints. Measured on #415 and reproduced against a second
+block, which is why it is not a suspicion about the tool.
 
-`deny-wrappers.sh` reads the allowlist back against `cargo metadata` and closes
-three holes cargo-deny cannot see: that name resolving, a crate something depends
-on having no block at all, and an array naming a parent with no edge — the last
-being only `warning[unused-wrapper]`, which passes while overstating who may
-depend on the crate. It runs before `cargo-deny-action` for the reason the
-release-channel check does, and its `--self-test` runs first, against scratch
-workspaces, so a checker that has stopped checking fails rather than passing the
-real file by default. Each of its checks is mutation-tested: disable one and a
-named case fails.
+`deny-wrappers.py` reads the allowlist back against `cargo metadata` and fails on
+three things cargo-deny only warns about or ignores: a `sandbx-*` name that
+resolves to no package, a crate something depends on having no block at all, and
+an array that is not exactly the real parent set — an extra parent being
+`warning[unused-wrapper]` again, which passes while overstating who may depend on
+the crate. It runs before `cargo-deny-action` for the reason the release-channel
+check does, and its `--self-test` runs first, against scratch workspaces, so a
+checker that has stopped checking fails rather than passing the real file by
+default. Each check is mutation-tested: disable one and a named case fails.
+
+Python, where its three neighbours are `/bin/sh`, because it has to read TOML and
+`/bin/sh` has no parser for it. The first version approximated one in awk and a
+review found six ways to break it — a comment inside a multi-line array injecting
+a phantom parent, a trailing comment after `name`, a `name` key in any later
+table being absorbed, an indented closing bracket swallowing the next table, and
+key order inside a block mattering when TOML says it does not. `tomllib` is
+standard library from 3.11 and removes the class rather than patching it. All six
+shapes are self-test cases, so a rewrite back into shell cannot reintroduce them
+quietly.
 
 The general shape, and the third instance of it in this file: **a gate that
 cannot distinguish "nothing to check" from "checked and clean" is not a gate.**
