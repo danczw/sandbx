@@ -339,12 +339,17 @@ items are one crate because neither is nameable without the other: the alias's
 `Item` is a `Result<AgentEvent, ProviderError>`.
 
 Not a light crate: `Transport` carries a `reqwest::Error` as a public field, so
-reqwest and its HTTP stack travel with the seam and nothing downstream shed
-anything when it moved out. Not the TLS half — this crate names no reqwest
-feature, which is what keeps rustls and `ring` with the one crate that opens
-connections, and its manifest says why that matters. Whether the field should be
-boxed is a code change, and so a separate question from the move. Per-rule
-account in [decision-provider-seam.md](decision-provider-seam.md).
+reqwest and its HTTP stack travel with the seam. Not the TLS half — this crate
+names no reqwest feature, which is what keeps rustls and `ring` with the one
+crate that opens connections, and its manifest says why that matters. That line
+between the two halves is what the turn loop gained: naming the seam here rather
+than through `sandbx-providers` costs it reqwest and hyper and sheds rustls,
+`ring`, the four `rustls-*` crates, `tokio-rustls`, `hyper-rustls`, `h2` and
+`secrecy` — so no production build of `sandbx-turn` links TLS or can name the
+type the API key is kept in. Whether the field should be boxed, which would shed
+the rest, is a code change and so a separate question from the move; it is a box
+on #335. Per-rule account in
+[decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-event`
 
