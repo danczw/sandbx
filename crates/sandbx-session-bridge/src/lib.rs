@@ -1,9 +1,15 @@
-//! Where a conversation is kept between runs, and the translation at the edge of it.
+//! Which conversation a run opens, and the translation at the edge of the one it kept.
 //!
 //! `sandbx-session` keeps shapes of its own, so this crate is the seam. Every match
 //! below destructures by field name with no `_` arm: a new [`ContentBlock`] variant is a
 //! compile error here rather than a block silently missing from a saved conversation.
 //! Free functions and not `From` impls, both types being foreign to this crate.
+//!
+//! A crate and not the module of `sandbx-cli` it was, though `sandbx-cli` is its only
+//! dependent: it is the one abstraction #328 asks a crate to be, and the edges it needs
+//! to be that are its own rather than the CLI's. `sandbx-cli` names `PromptUsage` through
+//! `sandbx-agent`'s re-export and has no `sandbx-compact` edge; folding this back would
+//! give it one, for a type it only ever passes along (#351).
 
 use sandbx_compact::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
