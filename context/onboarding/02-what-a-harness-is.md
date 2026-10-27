@@ -550,11 +550,15 @@ The seam itself is a type, and it is the whole of the abstraction:
 /// because the `unfold` under it panics if polled past `None`; `Send` so the turn
 /// built on it can be `tokio::spawn`ed.
 pub type EventStream = std::pin::Pin<
-    Box<dyn futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send>,
+    Box<
+        dyn futures_util::stream::FusedStream<
+                Item = Result<sandbx_event::AgentEvent, ProviderError>,
+            > + Send,
+    >,
 >;
 ```
 
-Four Rust corners are packed into those three lines, and they are worth
+Four Rust corners are packed into that alias, and they are worth
 unpacking once. `Box<dyn …>` because two backends' streams are two unrelated
 concrete types that need one name. `Pin` because a stream cannot be polled
 through a trait object without it — `poll_next` takes `Pin<&mut Self>`, and a
