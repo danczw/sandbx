@@ -1,8 +1,10 @@
 //! A session's name, and the one rule that makes it safe to put in a path.
 //!
-//! The inner `String` is private, so a `SessionId` cannot exist without having passed
-//! [`FromStr`](std::str::FromStr) — which is what lets the store join one to a
-//! directory unchecked.
+//! The inner `String` is private and there are exactly two constructors, so every
+//! `SessionId` is a spelling [`FromStr`](std::str::FromStr) accepts — which is what lets
+//! the store join one to a directory unchecked. `from_clock` is the half the type does not
+//! enforce, skipping the parser; what makes its output legal is that `base36` draws every
+//! digit from `ALPHABET` and never returns an empty string. A test pins the composition.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

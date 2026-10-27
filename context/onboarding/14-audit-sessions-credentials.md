@@ -609,8 +609,11 @@ its own since #360.
 
 ### An id is an allowlist, and that is what makes it a path component
 
-`SessionId` wraps a private `String`, so one cannot exist without having passed
-`FromStr` — which is what lets `transcript` join it to a directory unchecked:
+`SessionId` wraps a private `String` and has exactly two constructors, so every
+one in existence is a spelling `FromStr` accepts — which is what lets
+`transcript` join it to a directory unchecked. `from_clock` is the one that does
+not go through the parser; `base36` draws its digits from the same alphabet and
+never returns an empty string, and a unit test pins the round trip:
 
 ```rust
     /// Accepts one to 32 characters of `0-9` and `a-z`, and nothing else.
