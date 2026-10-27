@@ -19,13 +19,14 @@ a path dependency. Read an arrow as "may name the types of", and look for the
 crates no arrow leaves. The graph and the table below name only the seven crates
 that existed before #332 began splitting them, so every crate that phase adds is
 missing from both — enumerating them here would go stale on the next extraction.
-Two of the seven no longer exist under the names used here, in different ways.
-`sandbx-tui` was dissolved into three crates — `sandbx-screen` (#352),
-`sandbx-tui-transcript` (#353) and `sandbx-tui-input` (#354) — so the `Screen`
-and `Transcript` on its row below are now two different crates'. `sandbx-agent`
-was renamed rather than split: it became `sandbx-turn` in #357, carrying the
-same surface. [guide-repo-map.md](../guide-repo-map.md) is current, and
-redrawing this chapter is #332's own closing item:
+One of the seven is still named here as it was: `sandbx-tui` was dissolved into
+three crates — `sandbx-screen` (#352), `sandbx-tui-transcript` (#353) and
+`sandbx-tui-input` (#354) — so the `Screen` and `Transcript` on its row below
+are now two different crates'. A crate the phase merely *renamed* is corrected
+in place instead, `sandbx-agent` having become `sandbx-turn` in #357: the row
+still answers the question it answered, so a dead name in it would only mislead.
+[guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
+is #332's own closing item:
 
 ```mermaid
 flowchart TD
@@ -34,7 +35,7 @@ flowchart TD
         providers["sandbx-providers: the wire"]
         message["sandbx-session-message: the file format"]
     end
-    cli["sandbx-cli"] --> agent["sandbx-agent"]
+    cli["sandbx-cli"] --> turn["sandbx-turn"]
     cli --> tui["sandbx-tui"]
     cli --> session["sandbx-session: the disk"]
     cli --> message
@@ -42,9 +43,9 @@ flowchart TD
     cli --> providers
     cli --> tools["sandbx-tools"]
     cli --> core
-    agent --> providers
-    agent --> tools
-    agent -->|"dev-dependency only"| core
+    turn --> providers
+    turn --> tools
+    turn -->|"dev-dependency only"| core
     tui --> providers
     tools --> core
 ```
@@ -93,17 +94,19 @@ Four things about that shape are worth more than the picture.
 | `sandbx-core` | sandboxing: the policy type, the in-process guard, the helper, the one spawn site | `SandboxPolicy`, `SandboxedCommand`, `FsGuard` |
 | `sandbx-tools` | the seven built-ins, each confined by core | `BuiltinTool`, `ExecutionContext` |
 | `sandbx-providers` | hand-rolled streaming clients against an LLM API | `EventStream`, `Prompt` |
-| `sandbx-agent` | the turn loop, and the gate a caller must supply — whose shapes are `sandbx-approval`'s since #355 | `run_turn`, `CallGate` |
+| `sandbx-turn` | the turn loop, and the gate a caller must supply — whose shapes are `sandbx-approval`'s since #355, under this name since #357 | `run_turn`, `CallGate` |
 | `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
 | `sandbx-session` | the on-disk transcript: a root, append-only JSONL — the id is `sandbx-session-id`'s since #360 | `SessionStore` |
 | `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |
 | `sandbx-cli` | argv parsing and the five subcommand bodies | `Cli`, `Command` |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — `sandbx-cli`'s until #350 | `Grants`, `PolicyError` |
 
-The crate set is also the label set. GitHub carries exactly one `crate:*` label
-per crate — `crate:core`, `crate:tools`, and so on — each with a description
-naming what that crate owns, so a triage label and this table answer the same
-question.
+A `crate:*` label and a row here answer the same question, each describing what
+that crate owns — but the two sets have not matched since #332 began splitting
+the seven, and the table above is the frozen half. The labels track the real
+crates; a donor's label also outlives the crate it named, rather than being
+deleted, so that closed issues keep the record of which crate they touched
+(#354, #357).
 
 ## A Rust aside: the workspace is not a crate
 
