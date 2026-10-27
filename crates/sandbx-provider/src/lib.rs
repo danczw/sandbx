@@ -2,10 +2,10 @@
 //!
 //! There is no provider trait and no provider object. `Provider` was a one-variant enum
 //! whose methods were pass-throughs, and it was deleted (#90) — a client's `stream_chat`
-//! returns [`EventStream`] directly, and a test double is a closure returning the same
-//! alias. The seam is the **return type**, which is also why these two are one crate: the
-//! alias's `Item` names [`ProviderError`], so neither is nameable without the other. The
-//! per-rule account is `context/decision-provider-seam.md`.
+//! returns [`EventStream`] directly. The seam is the **return type**, which is also why
+//! these two are one crate: the alias's `Item` names [`ProviderError`], so neither is
+//! nameable without the other. The per-rule account is
+//! `context/decision-provider-seam.md`.
 //!
 //! Nothing here speaks a wire format — the vendor's field names, string tables and body
 //! rules are `sandbx-providers`'. What does cross is `reqwest::Error`, which
