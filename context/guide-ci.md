@@ -118,17 +118,21 @@ an array that is not exactly the real parent set — an extra parent being
 the crate. It runs before `cargo-deny-action` for the reason the release-channel
 check does, and its `--self-test` runs first, against scratch workspaces, so a
 checker that has stopped checking fails rather than passing the real file by
-default. Each check is mutation-tested: disable one and a named case fails.
+default. Every check but one is mutation-tested: disable it and a named case
+fails. The exception is the zero-comparison guard, which no `deny.toml` can
+reach — it asserts against a future edit to the membership keying rather than
+against a config, and its comment says so rather than implying a case covers it.
 
 Python, where its three neighbours are `/bin/sh`, because it has to read TOML and
 `/bin/sh` has no parser for it. The first version approximated one in awk and a
-review found six ways to break it — a comment inside a multi-line array injecting
-a phantom parent, a trailing comment after `name`, a `name` key in any later
-table being absorbed, an indented closing bracket swallowing the next table, and
-key order inside a block mattering when TOML says it does not. `tomllib` is
-standard library from 3.11 and removes the class rather than patching it. All six
-shapes are self-test cases, so a rewrite back into shell cannot reintroduce them
-quietly.
+review found five ways to break it — a comment inside a multi-line array
+injecting a phantom parent, a trailing comment after `name`, a `name` key in any
+later table being absorbed, an indented closing bracket swallowing the next
+table, and key order inside a block mattering when TOML says it does not.
+`tomllib` is standard library from 3.11 and removes the class rather than
+patching it. All five are self-test cases, beside a sixth for the plain
+multi-line array that awk did handle, so a rewrite back into shell cannot
+reintroduce any of them quietly.
 
 The general shape, and the third instance of it in this file: **a gate that
 cannot distinguish "nothing to check" from "checked and clean" is not a gate.**
