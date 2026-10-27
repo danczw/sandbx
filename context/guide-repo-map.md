@@ -51,8 +51,9 @@ its filter admits. Drawn as a leaf for that reason: the edge carries one
 constant, not a mechanism.
 
 `sandbx-grants` is drawn as a leaf and is not one: it depends on `sandbx-core`,
-`sandbx-auth` and `sandbx-session-paths`. Three more crossings would say less
-than its table row does.
+`sandbx-auth` and `sandbx-session-paths`. The first two are leaves of the same
+bus, so two crossings would say less than its table row does; the third would
+need a node drawn first, for the reason below.
 
 `sandbx-session-paths` is not drawn at all, the bus above being `sandbx-cli`'s
 direct dependencies and this not being one of them. Its two parents are
@@ -66,7 +67,7 @@ direct dependencies and this not being one of them. Its two parents are
 | `sandbx-turn` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
 | `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-id, session-message, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
-| `sandbx-session` | the on-disk transcript: a root, and append-only JSONL | session-error, session-id, session-message |
+| `sandbx-session` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
 | `sandbx-tui-input` | the keys that stop a turn, and what a hangup means | — (pty-fixture is *dev*-only) |
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
@@ -104,7 +105,7 @@ in crates that do not depend on each other, by the choice
 `sandbx-session-message`'s `//!` records. Its edge to `sandbx-session` is the
 whole crate for two names now that #360 and #361 have taken `SessionId` and
 `sessions_directory`, and #362 replaces it with the last two. The
-diagram above draws none of those six, only the edge on to `sandbx-cli` — so
+diagram above draws none of those seven, only the edge on to `sandbx-cli` — so
 note in particular that `sandbx-compact` is drawn into the `sandbx-turn`
 bundle alone and has had two dependents since #351.
 
