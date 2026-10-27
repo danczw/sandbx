@@ -52,7 +52,7 @@ pub(super) fn opening(path: &Path, source: std::io::Error) -> SessionError {
 }
 
 /// Open the root for reading, refusing one that is a symbolic link, since
-/// [`narrow_root`](super::SessionStore::narrow_root) `fchmod`s this descriptor.
+/// [`narrow_root`](crate::session::SessionStore::narrow_root) `fchmod`s this descriptor.
 ///
 /// No `O_DIRECTORY`: with `O_NOFOLLOW` the kernel reports a symlinked directory as
 /// `ENOTDIR`, as it does a root that is a plain file, and the two are worth telling apart.

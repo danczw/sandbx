@@ -16,11 +16,11 @@ use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
     StopReason, Thinking,
 };
-use sandbx_session::Session;
 use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::CompletedTurn;
+use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
@@ -741,9 +741,13 @@ mod tests {
     }
 
     /// A store under a temporary directory, and one new session in it.
-    fn new_session() -> (tempfile::TempDir, sandbx_session::SessionStore, Session) {
+    fn new_session() -> (
+        tempfile::TempDir,
+        sandbx_session_store::SessionStore,
+        Session,
+    ) {
         let root = tempfile::tempdir().expect("a temp dir");
-        let store = sandbx_session::SessionStore::new(root.path().join("sessions"));
+        let store = sandbx_session_store::SessionStore::new(root.path().join("sessions"));
         let session = store.create().expect("a new session");
         (root, store, session)
     }
@@ -1332,7 +1336,7 @@ mod tests {
     }
 
     /// The id of the one session in `store`.
-    fn only_session(store: &sandbx_session::SessionStore) -> sandbx_session_id::SessionId {
+    fn only_session(store: &sandbx_session_store::SessionStore) -> sandbx_session_id::SessionId {
         let mut ids: Vec<String> = std::fs::read_dir(store.root())
             .expect("the store exists")
             .map(|entry| {

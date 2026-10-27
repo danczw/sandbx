@@ -14,9 +14,9 @@ use sandbx_session_error::SessionError;
 use sandbx_session_id::{SessionId, clock_millis};
 use sandbx_session_message::{CompletedTurn, Message, Usage};
 
-use super::record::{Accounting, Header, Record, VERSION, fold};
-use super::shape::{alternating, answers_only, follows, opens, resumable};
-use super::vet::{
+use crate::record::{Accounting, Header, Record, VERSION, fold};
+use crate::shape::{alternating, answers_only, follows, opens, resumable};
+use crate::vet::{
     DIR_OWNER_ONLY, DIR_SHARED_BITS, READABLE_BITS, WRITABLE_BITS, open_at, open_nofollow,
     ownership,
 };

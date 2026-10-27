@@ -35,11 +35,11 @@ sandbx-auth ──────────────────────�
 sandbx-core ────────────────────────────────┤                 caller
 sandbx-grants ──────────────────────────────┤
 sandbx-logging ─────────────────────────────┤
-sandbx-session ─────────────────────────────┤
 sandbx-session-bridge ──────────────────────┤
 sandbx-session-error ───────────────────────┤
 sandbx-session-id ──────────────────────────┤
 sandbx-session-message ─────────────────────┤
+sandbx-session-store ───────────────────────┤
 sandbx-text ──────┬─────────────────────────┤
 sandbx-providers ─┴─► sandbx-tui-transcript │
                        └──► sandbx-screen ──┤
@@ -65,9 +65,9 @@ direct dependencies and this not being one of them. Its two parents are
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-turn` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-id, session-message, text, tools, tui-input, turn |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, grants, logging, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
-| `sandbx-session` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
+| `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
 | `sandbx-tui-input` | the keys that stop a turn, and what a hangup means | — (pty-fixture is *dev*-only) |
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
@@ -81,33 +81,34 @@ direct dependencies and this not being one of them. Its two parents are
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
 | `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
-| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-id, session-message, session-paths |
+| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session-error, session-id, session-message, session-paths, session-store |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session-paths |
 
 `sandbx-turn` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
-`sandbx-session` depends on `sandbx-session-error`, `sandbx-session-id` and
-`sandbx-session-message` — the three internal edges the diagram above does not
-draw. `sandbx-session-bridge` and `sandbx-cli` each have an edge to all three
-as well, and none of those is inherited through `sandbx-session`: the bridge
-translates between the stored shapes and the provider's and names a `SessionId`
-in `SessionChoice`, and the CLI is where a `SessionError` becomes something
-else, where `CompletedTurn` appends a finished turn, and where a `SessionId` is
-parsed off argv (#351, #360). `sandbx-session-id` is itself a parent of
-`sandbx-session-error`, the id's own parser returning that type.
+`sandbx-session-store` depends on `sandbx-session-error`, `sandbx-session-id`
+and `sandbx-session-message` — the three internal edges the diagram above does
+not draw. `sandbx-session-bridge` and `sandbx-cli` each have an edge to all
+three as well, and none of those is inherited through `sandbx-session-store`:
+the bridge translates between the stored shapes and the provider's and names a
+`SessionId` in `SessionChoice`, and the CLI is where a `SessionError` becomes
+something else, where `CompletedTurn` appends a finished turn, and where a
+`SessionId` is parsed off argv (#351, #360). `sandbx-session-id` is itself a
+parent of `sandbx-session-error`, the id's own parser returning that type.
 
 `sandbx-session-bridge` is the only crate reaching all seven of
-`sandbx-compact`, `sandbx-providers`, `sandbx-session`, `sandbx-session-error`,
-`sandbx-session-id`, `sandbx-session-message` and `sandbx-session-paths`, which
-is what being the seam costs: the two vocabularies it maps between are declared
-in crates that do not depend on each other, by the choice
-`sandbx-session-message`'s `//!` records. Its edge to `sandbx-session` is the
-whole crate for two names now that #360 and #361 have taken `SessionId` and
-`sessions_directory`, and #362 replaces it with the last two. The
-diagram above draws none of those seven, only the edge on to `sandbx-cli` — so
-note in particular that `sandbx-compact` is drawn into the `sandbx-turn`
-bundle alone and has had two dependents since #351.
+`sandbx-compact`, `sandbx-providers`, `sandbx-session-error`,
+`sandbx-session-id`, `sandbx-session-message`, `sandbx-session-paths` and
+`sandbx-session-store`, which is what being the seam costs: the two
+vocabularies it maps between are declared in crates that do not depend on each
+other, by the choice `sandbx-session-message`'s `//!` records. Its edge to
+`sandbx-session-store` is no longer the wide one it was: `Session` and
+`SessionStore` are that crate's whole surface, #360, #361 and #362 having taken
+`SessionId`, `sessions_directory` and the store itself out of the crate the
+edge used to reach. The diagram above draws none of those seven, only the edge
+on to `sandbx-cli` — so note in particular that `sandbx-compact` is drawn into
+the `sandbx-turn` bundle alone and has had two dependents since #351.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
 sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges
@@ -402,20 +403,19 @@ tests/            identifier — the refusal list, and a text round trip
 
 The alphabet is an allowlist and not a search for `..` because a denylist's
 first omission is a traversal, and `--session` takes its value straight off
-argv. `clock_millis` is `pub` for `sandbx-session`'s header write; #362 takes
-that caller over. Depends on `sandbx-session-error` alone, which is why that
-crate names no `SessionId` — the edge back would be a cycle (#360).
+argv. `clock_millis` is `pub` for `sandbx-session-store`'s header write.
+Depends on `sandbx-session-error` alone, which is why that crate names no
+`SessionId` — the edge back would be a cycle (#360).
 
-## `sandbx-session`
+## `sandbx-session-store`
 
 ```
-src/lib.rs        re-exports
-   store.rs       re-exports SessionStore and Session
-      session.rs  SessionStore, Session; which bit refuses and which reports
-      record.rs   the three line kinds, and the fold that replays them
-      shape.rs    which orders of messages a request may carry, as predicates
-      vet.rs      the modes, O_NOFOLLOW, and reading one off a descriptor
-tests/            permissions, recovery, transcript
+src/lib.rs     re-exports SessionStore and Session
+   session.rs  SessionStore, Session; which bit refuses and which reports
+   record.rs   the three line kinds, and the fold that replays them
+   shape.rs    which orders of messages a request may carry, as predicates
+   vet.rs      the modes, O_NOFOLLOW, and reading one off a descriptor
+tests/         permissions, recovery, transcript
 ```
 
 Three internal dependencies, `sandbx-session-error`, `sandbx-session-id` and
@@ -545,7 +545,7 @@ variant, the `sandbx` binary the end-to-end tests spawn, and `AgentError`'s
 and `config_file` what a path grant is refused for. See
 [decision-credentials.md](decision-credentials.md) for the source order and that
 refusal, and [decision-on-disk-state.md](decision-on-disk-state.md) for the mode
-rule this crate shares with `sandbx-session`.
+rule this crate shares with `sandbx-session-store`.
 
 ## `sandbx-cli`
 

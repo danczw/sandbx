@@ -14,8 +14,8 @@ use sandbx_providers::{
     StopReason, Thinking,
 };
 use sandbx_screen::{Screen, Transcript};
-use sandbx_session::Session;
 use sandbx_session_bridge as session;
+use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};

@@ -28,7 +28,7 @@ impl core::marker::UnsafeUnpin for sandbx_session_bridge::Merged
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::Merged
 impl core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::Merged
 pub fn sandbx_session_bridge::merge_user_runs(alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>, usize) -> sandbx_session_bridge::Merged
-pub fn sandbx_session_bridge::open(sandbx_session_bridge::SessionChoice<'_>) -> core::result::Result<core::option::Option<sandbx_session::store::session::Session>, sandbx_session_error::SessionError>
+pub fn sandbx_session_bridge::open(sandbx_session_bridge::SessionChoice<'_>) -> core::result::Result<core::option::Option<sandbx_session_store::session::Session>, sandbx_session_error::SessionError>
 pub fn sandbx_session_bridge::request_history(&[sandbx_session_message::Message]) -> alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>
 pub fn sandbx_session_bridge::request_usage(sandbx_session_message::Usage) -> sandbx_compact::PromptUsage
 pub fn sandbx_session_bridge::stored_messages(&[sandbx_providers::prompt::RequestMessage]) -> alloc::vec::Vec<sandbx_session_message::Message>

@@ -409,7 +409,7 @@ a umask they have already paid for. What a resume can still prevent is
 **substitution** — a transcript another user can write is a history another user
 chose, replayed to a model that calls tools. Hence two constants where the
 credential store has one, and
-[`session/src/store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) says
+[`session-store/src/vet.rs`](../../crates/sandbx-session-store/src/vet.rs) says
 not to merge them:
 
 ```rust
@@ -601,9 +601,9 @@ a path at all.
 
 ## The session store
 
-[`sandbx-session`](../../crates/sandbx-session/) is a small crate with a strict
-remit: a directory, a file of lines, and the rules for reading one back. The
-name it files them under is
+[`sandbx-session-store`](../../crates/sandbx-session-store/) is a small crate
+with a strict remit: a directory, a file of lines, and the rules for reading one
+back. The name it files them under is
 [`sandbx-session-id`](../../crates/sandbx-session-id/src/lib.rs)'s, a crate of
 its own since #360.
 
@@ -647,7 +647,7 @@ fails the parse rather than being skipped.
 
 Why lines rather than one JSON document: an append is one `write_all` of one
 buffer, so a crash mid-write can only truncate the tail. `fold` in
-[`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) turns that
+[`record.rs`](../../crates/sandbx-session-store/src/record.rs) turns that
 into a rule with exactly one exception:
 
 ```rust
@@ -709,7 +709,7 @@ change what a transcript means, and the translation in `sandbx-session-bridge`
 is where a new block kind has to be decided about — as a compile error. Second,
 the crate holding those four types depends on no other workspace crate, so the
 format cannot be changed by changing something else — which is why #359 gave
-them a crate instead of leaving them inside `sandbx-session`, whose own
+them a crate instead of leaving them inside `sandbx-session-store`, whose own
 dependencies would otherwise have reached the format.
 
 The cost is real and is the thing to look for when you touch either side: the

@@ -38,8 +38,8 @@ it refuses a private key on a shared bit and says nothing about `known_hosts`.
 What a resume *can* still prevent is substitution. A transcript another user can
 write is a history another user chose, and it is replayed to a model that calls
 tools; that is the one novel hazard in session persistence and the read path is
-the only place it can be caught. So `sandbx-session` names `WRITABLE_BITS` and
-`READABLE_BITS` separately where `sandbx-auth`'s `store.rs` has a single
+the only place it can be caught. So `sandbx-session-store` names `WRITABLE_BITS`
+and `READABLE_BITS` separately where `sandbx-auth`'s `store.rs` has a single
 `SHARED_BITS`. Do not unify them.
 
 That single `SHARED_BITS` is the whole of `0o077`, read off `credentials.toml` and

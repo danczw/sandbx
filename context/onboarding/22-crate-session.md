@@ -1,4 +1,4 @@
-# sandbx-session writes the one thing that outlives the run
+# sandbx-session-store writes the one thing that outlives the run
 
 [04 — the architecture](04-the-architecture.md) closes its request path on one
 clause: "the finished turn is appended to a session transcript as JSONL." This
@@ -24,29 +24,35 @@ of a conversation sandbx keeps, it is replayed to a model that calls tools, and
 
 | file | what it holds | covered in |
 |---|---|---|
-| [`lib.rs`](../../crates/sandbx-session/src/lib.rs) | two re-exports and one private module | — |
+| [`lib.rs`](../../crates/sandbx-session-store/src/lib.rs) | two re-exports and four private modules | — |
 | [`sandbx-session-id`](../../crates/sandbx-session-id/src/lib.rs) | `SessionId`, `from_clock`, `clock_millis`, the allowlist — a crate of its own since #360 | [14](14-audit-sessions-credentials.md), then below |
 | [`sandbx-session-paths`](../../crates/sandbx-session-paths/src/lib.rs) | `sessions_directory` — a crate of its own since #361 | [decision-on-disk-state.md](../decision-on-disk-state.md) |
 | [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs) | `Message`, `Role`, `Content`, `Usage`, `CompletedTurn` — a crate of its own since #359 | [05](05-seven-crates.md), [24](24-crate-cli.md) |
-| [`store.rs`](../../crates/sandbx-session/src/store.rs) | re-exports `SessionStore` and `Session` | below |
-| [`store/session.rs`](../../crates/sandbx-session/src/store/session.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
-| [`store/record.rs`](../../crates/sandbx-session/src/store/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
-| [`store/shape.rs`](../../crates/sandbx-session/src/store/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
-| [`store/vet.rs`](../../crates/sandbx-session/src/store/vet.rs) | five mode constants, two opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
+| [`session.rs`](../../crates/sandbx-session-store/src/session.rs) | `SessionStore`, `Session`, the sequence `create` and `resume` run | below; the mode rule in [14](14-audit-sessions-credentials.md) |
+| [`record.rs`](../../crates/sandbx-session-store/src/record.rs) | `Record`, `Header`, `Accounting`, `VERSION`, `fold` | [decision-on-disk-state.md](../decision-on-disk-state.md) |
+| [`shape.rs`](../../crates/sandbx-session-store/src/shape.rs) | eight predicates over messages | [02](02-what-a-harness-is.md) for the API's rules |
+| [`vet.rs`](../../crates/sandbx-session-store/src/vet.rs) | five mode constants, two opens, `ownership` | [11](11-the-two-seams.md) for the pattern, [14](14-audit-sessions-credentials.md) for the bits |
 | [`sandbx-session-error`](../../crates/sandbx-session-error/src/lib.rs) | `SessionError`, seventeen variants — a crate of its own since #358 | below |
 | `tests/` | `permissions`, `recovery`, `transcript`; `identifier` went with the id to `sandbx-session-id` | below |
 
-Two shapes to notice first. **`store/` is the only subdirectory**, and the three
-siblings of `session.rs` in it are `pub(super)` throughout — `Record`, `fold`,
-the mode constants and every predicate are invisible outside `store/`; the
-crate's public surface is the two names `lib.rs` re-exports, plus the three
+`store.rs` left this table with #362: it was a `mod`-only shim re-exporting the
+two names, and `lib.rs` already did that job, so the four modules are siblings
+at `src/` and the shim is gone.
+
+Two shapes to notice first. **`src/` has no subdirectory**, and the three
+siblings of `session.rs` are `pub(super)` throughout — `Record`, `fold`, the
+mode constants and every predicate are invisible outside the crate; at a crate
+root `pub(super)` *is* `pub(crate)`, so what the token grants widened from
+`store/` to the whole crate when the shim dissolved, with no visibility edit
+anywhere and no line moving in `public-api.txt`. The crate's public surface is
+still the two names `lib.rs` re-exports, plus the three
 `sandbx-session-message` types that `append`, `messages` and `observed` name in
 their signatures, the `SessionError` that every fallible one of them returns,
 and the `SessionId` that `Session::id` and `SessionStore::resume` name — none of
 which the crate re-exports, so a consumer takes its own dependency to spell
 them, as `sandbx-cli` does. And **the crate has no output channel**: no
 `tracing` dependency, no `println!` or `eprintln!` under `src/`. That is not an
-omission, it is what forces the design in the `store/session.rs` section.
+omission, it is what forces the design in the `session.rs` section.
 
 ## `sandbx-session-id` — an allowlist is three lines, and this is why
 
@@ -208,7 +214,7 @@ last an index into the history its doc calls "exact only because a transcript is
 appended to". `append` takes one by value, so a caller cannot write messages
 without the accounting that describes them, or accounting without its messages.
 
-## `store/session.rs` — which bit refuses, and which only reports
+## `session.rs` — which bit refuses, and which only reports
 
 `vet.rs`'s module doc draws the division: "Which mode bit refuses and which
 only reports stays with the sequence that applies it." `vet.rs` *names* the mode
@@ -269,7 +275,7 @@ Printing the report is `sandbx-cli`'s work, and `session::open` is the single
 place it happens — reached by both `agent/run.rs` and `agent/tui.rs`, so the
 stderr note cannot be on one surface and missing on the other.
 
-Three more things `store/session.rs` decides:
+Three more things `session.rs` decides:
 
 - **`O_EXCL` is what makes an id unique**, not a prior existence check. The
   loop tries `ATTEMPTS` ids, treating `AlreadyExists` as "try the next
@@ -282,7 +288,7 @@ Three more things `store/session.rs` decides:
   *where* a partial write lands, not about a completed append surviving power
   loss.
 
-## `store/record.rs` — three line kinds, and the fold
+## `record.rs` — three line kinds, and the fold
 
 An append-only log plus a fold is the whole persistence model.
 
@@ -402,7 +408,7 @@ why the ordering predicates run over the whole history rather than its end, and
 it is the same reason the version is read off every header — a file is not taken
 to be internally consistent just because its first line was well-formed.
 
-## `store/shape.rs` — eight predicates and no I/O
+## `shape.rs` — eight predicates and no I/O
 
 Its module doc draws the boundary: "these answer to the Messages API's rules
 about a request, `session.rs` to the filesystem's about a file. Every one is a
@@ -460,7 +466,7 @@ claims to answer — which costs one diagnosis, stated in the decision record an
 tracked as #226: an append torn after its `tool_result` line reads as a round
 limit, and `session::open` tells the *model* its last turn ran out of rounds.
 
-## `store/vet.rs` — the mode comes off the descriptor
+## `vet.rs` — the mode comes off the descriptor
 
 This is [11 — the two seams](11-the-two-seams.md)'s pattern applied a second
 time: there, `confirm` takes its measurement through an `O_PATH` descriptor
@@ -595,10 +601,10 @@ consequence of it.
 
 ## Where the tests are
 
-Unit tests sit in `store/record.rs`, and next door in `sandbx-session-paths`,
+Unit tests sit in `record.rs`, and next door in `sandbx-session-paths`,
 `sandbx-session-id` and `sandbx-session-message` — the places that are pure
-functions over values. `store/session.rs`, `store/vet.rs` and `store/shape.rs`
-have none, needing a real filesystem or the store that drives them;
+functions over values. `session.rs`, `vet.rs` and `shape.rs` have none, needing
+a real filesystem or the store that drives them;
 [guide-testing.md](../guide-testing.md) governs the split.
 
 | target | what it pins |

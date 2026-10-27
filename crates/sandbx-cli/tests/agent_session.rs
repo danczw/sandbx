@@ -2,7 +2,7 @@
 //!
 //! The refusals are the half worth pinning: an id becomes a path component, so a value
 //! clap accepts is a value the store will open. Everything here stops at parsing — what
-//! a transcript then holds is `sandbx-session`'s own tests.
+//! a transcript then holds is `sandbx-session-store`'s own tests.
 
 use clap::Parser;
 use sandbx_cli::{Cli, Command, SessionChoice};

@@ -2,10 +2,10 @@
 
 use std::str::FromStr;
 
-use sandbx_session::SessionStore;
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
+use sandbx_session_store::SessionStore;
 
 fn store() -> (tempfile::TempDir, SessionStore) {
     let root = tempfile::tempdir().unwrap();

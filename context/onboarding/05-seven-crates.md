@@ -23,8 +23,9 @@ One of the seven is still named here as it was: `sandbx-tui` was dissolved into
 three crates — `sandbx-screen` (#352), `sandbx-tui-transcript` (#353) and
 `sandbx-tui-input` (#354) — so the `Screen` and `Transcript` on its row below
 are now two different crates'. A crate the phase merely *renamed* is corrected
-in place instead, `sandbx-agent` having become `sandbx-turn` in #357: the row
-still answers the question it answered, so a dead name in it would only mislead.
+in place instead, `sandbx-agent` having become `sandbx-turn` in #357 and
+`sandbx-session` `sandbx-session-store` in #362: the row still answers the
+question it answered, so a dead name in it would only mislead.
 [guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
 is #332's own closing item:
 
@@ -37,7 +38,7 @@ flowchart TD
     end
     cli["sandbx-cli"] --> turn["sandbx-turn"]
     cli --> tui["sandbx-tui"]
-    cli --> session["sandbx-session: the disk"]
+    cli --> session["sandbx-session-store: the disk"]
     cli --> message
     session --> message
     cli --> providers
@@ -54,11 +55,11 @@ Four things about that shape are worth more than the picture.
 
 - **Three crates own something that outlives the call, and none of them has an
   internal dependency:** `sandbx-core` owns the kernel, `sandbx-providers` owns
-  the wire, `sandbx-session-message` owns the file format that `sandbx-session`
-  writes to the disk. Other crates have no internal dependency either — that is
-  not what picks these three out. None of the three can name another's types,
-  which is why a stored transcript is not a `Prompt` and a
-  `SandboxPolicy` is not a request body. The crate doc on
+  the wire, `sandbx-session-message` owns the file format that
+  `sandbx-session-store` writes to the disk. Other crates have no internal
+  dependency either — that is not what picks these three out. None of the three
+  can name another's types, which is why a stored transcript is not a `Prompt`
+  and a `SandboxPolicy` is not a request body. The crate doc on
   [`sandbx-session-message`](../../crates/sandbx-session-message/src/lib.rs)
   says the consequence out loud — the stored shapes are declared there rather
   than imported, because a file format that moved whenever a provider type moved
@@ -84,8 +85,8 @@ Four things about that shape are worth more than the picture.
 - **Nothing points up.** There is no cycle, and no crate reaches sideways into a
   peer at its own level. `sandbx-tools` cannot see `sandbx-turn`, so a tool
   cannot ask the loop for another round; `sandbx-turn` cannot see
-  `sandbx-session`, so the loop cannot write to the transcript — the CLI does
-  that after a turn ends.
+  `sandbx-session-store`, so the loop cannot write to the transcript — the CLI
+  does that after a turn ends.
 
 ## Who owns what
 
@@ -96,7 +97,7 @@ Four things about that shape are worth more than the picture.
 | `sandbx-providers` | hand-rolled streaming clients against an LLM API | `EventStream`, `Prompt` |
 | `sandbx-turn` | the turn loop, and the gate a caller must supply — whose shapes are `sandbx-approval`'s since #355, under this name since #357 | `run_turn`, `CallGate` |
 | `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
-| `sandbx-session` | the on-disk transcript: append-only JSONL — the id is `sandbx-session-id`'s since #360, the root `sandbx-session-paths`' since #361 | `SessionStore` |
+| `sandbx-session-store` | the on-disk transcript: append-only JSONL — the id is `sandbx-session-id`'s since #360, the root `sandbx-session-paths`' since #361, and the crate under this name since #362 | `SessionStore` |
 | `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |
 | `sandbx-cli` | argv parsing and the five subcommand bodies | `Cli`, `Command` |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — `sandbx-cli`'s until #350 | `Grants`, `PolicyError` |

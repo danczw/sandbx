@@ -1,6 +1,6 @@
 //! Which conversation a run opens, and the translation at the edge of the one it kept.
 //!
-//! `sandbx-session` keeps shapes of its own, so this crate is the seam. The two block
+//! `sandbx-session-store` keeps shapes of its own, so this crate is the seam. The two block
 //! translations — `request_block` and `stored_block`, both private — destructure by field
 //! name with no `_` arm, so a sixth [`ContentBlock`] variant is a compile error here
 //! rather than a block silently missing from a saved conversation, and a fourth
@@ -14,11 +14,11 @@
 
 use sandbx_compact::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
-use sandbx_session::{Session, SessionStore};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
 use sandbx_session_paths::sessions_directory;
+use sandbx_session_store::{Session, SessionStore};
 
 /// What `--session` asked for.
 #[derive(Debug, Clone, Copy)]
