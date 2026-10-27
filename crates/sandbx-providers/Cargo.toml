@@ -16,7 +16,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no
 # time.
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 # The vocabulary a stream yields: `accumulate.rs` builds an `AgentEvent` per wire frame
-# (#365). The `EventStream` half of this edge left with #366.
+# (#365).
 sandbx-event = { path = "../sandbx-event" }
 # What a request is made of. `anthropic/` and the two client tests are the whole edge,
 # and `body.rs` is the only writer of one (#364).

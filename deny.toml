@@ -172,10 +172,9 @@ name = "sandbx-event"
 # renderer is a second fold of its own. `sandbx-compact` names `AgentEvent` in a doc
 # comment and has no edge.
 #
-# #365 predicted #366 would *re-point* `sandbx-providers`' name here rather than append to
-# it. It was an append: `EventStream` left but the accumulator stayed, so the donor kept an
-# edge of its own. #368 is the one that takes it, and settles that from `cargo metadata`
-# rather than from this sentence (#366).
+# `sandbx-providers`' name here is #368's to take, with the accumulator. Settle whether
+# that is a re-point or a removal from `cargo metadata` and not from this sentence: #365
+# predicted a re-point for #366 and it was an append (#366).
 wrappers = [
     "sandbx-cli",
     "sandbx-provider",
