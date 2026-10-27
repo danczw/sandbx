@@ -85,10 +85,18 @@ def read_graph(root: pathlib.Path) -> tuple[set[str], dict[str, set[str]]]:
     return packages, edges
 
 
-def read_blocks(path: pathlib.Path) -> list[dict]:
-    """`[[bans.deny]]` as tomllib gives it, so key order and comments cannot matter."""
+def read_deny(path: pathlib.Path) -> dict:
+    """`deny.toml` as tomllib gives it, so key order and comments cannot matter."""
     with path.open("rb") as handle:
-        return tomllib.load(handle).get("bans", {}).get("deny", [])
+        return tomllib.load(handle)
+
+
+# `[graph]` keys that remove workspace edges from the graph cargo-deny walks, which makes
+# its own `wrappers` enforcement vacuous for those edges while it still exits 0 —
+# measured on 0.20.2, where `exclude-dev = true` turns a real dev parent into
+# `warning[unused-wrapper]`. Refused so cargo-deny stays a check behind this one rather
+# than being replaced by it; `sandbx-core`'s entry rests entirely on a dev edge.
+GRAPH_KEYS_THAT_HIDE_EDGES = ("exclude", "exclude-dev")
 
 
 def check(root: pathlib.Path, out) -> int:
@@ -99,7 +107,8 @@ def check(root: pathlib.Path, out) -> int:
     many blocks exist.
     """
     packages, edges = read_graph(root)
-    blocks = read_blocks(root / "deny.toml")
+    deny = read_deny(root / "deny.toml")
+    blocks = deny.get("bans", {}).get("deny", [])
     failed = False
 
     def error(*lines: str) -> None:
@@ -108,43 +117,53 @@ def check(root: pathlib.Path, out) -> int:
         for line in lines:
             print(f"::error::{line}", file=out)
 
+    for key in GRAPH_KEYS_THAT_HIDE_EDGES:
+        if key in deny.get("graph", {}):
+            error(
+                f"deny.toml's [graph] sets {key!r}.",
+                "That removes workspace edges from the graph cargo-deny walks, so its"
+                " own wrappers enforcement goes vacuous while it exits 0.",
+            )
+
     named = []
     for index, block in enumerate(blocks):
-        name = block.get("name")
+        # `crate` is cargo-deny's synonym for `name`, accepted and undeprecated on
+        # 0.20.2, so a file written that way is correct and reading only `name` would
+        # fail CI over a spelling. It is a PackageSpec rather than a bare name, hence
+        # the `@` split below.
+        name = block.get("name") or block.get("crate")
         if not isinstance(name, str) or not name:
-            if "crate" in block:
-                # cargo-deny accepts `crate = "x"` as a modern synonym (verified on
-                # 0.20.2), so a file modernised that way is correct and this check would
-                # otherwise reject it as nameless. Said rather than silently supported:
-                # `crate` is a PackageSpec that may carry `@version`, which is the
-                # vacuity below in another spelling.
-                error(
-                    f"deny.toml's [[bans.deny]] block #{index + 1} spells its crate as"
-                    " `crate =`; this check reads `name =`.",
-                    "Both work in cargo-deny. Use `name =`, as every other block does.",
-                )
-            else:
-                error(
-                    f"deny.toml's [[bans.deny]] block #{index + 1} has no name.",
-                    "This check addresses blocks by name, so an unnamed block is"
-                    " unchecked.",
-                )
+            error(
+                f"deny.toml's [[bans.deny]] block #{index + 1} has no name.",
+                "This check addresses blocks by name, so an unnamed block is unchecked.",
+            )
             continue
         named.append((name, block))
 
     # A version requirement narrows a block to the versions it matches, so one no crate
-    # satisfies is vacuous in exactly the way a typo'd name is: cargo-deny matches nothing
-    # and reports `bans ok` at exit 0. Measured on 0.20.2 with `version = "=9.9.9"`.
-    # Never legitimate here — every workspace crate shares one inherited version and no
-    # entry constrains a particular one.
+    # satisfies is vacuous in exactly the way a typo'd name is: cargo-deny matches
+    # nothing and reports `bans ok` at exit 0. Measured on 0.20.2 as both `version =
+    # "=9.9.9"` and `crate = "sandbx-a@9.9.9"`, which are the same hole in two spellings.
+    #
+    # Rejected even when the pin currently matches: every workspace crate shares one
+    # inherited version, so a pin that resolves today goes vacuous at the next release
+    # and nothing would say so.
     for name, block in named:
-        if name in packages and "version" in block:
+        pinned = "@" in name
+        bare = name.split("@", 1)[0]
+        if bare not in packages:
+            continue
+        if pinned or "version" in block:
+            requirement = name if pinned else repr(block["version"])
             error(
-                f"'{name}''s deny.toml block carries a version requirement"
-                f" ({block['version']!r}).",
+                f"'{bare}''s deny.toml block pins a version ({requirement}).",
                 "A version no crate satisfies makes the block vacuous while cargo-deny"
-                " still exits 0, which is the hole this check exists to close.",
+                " still exits 0, and every pin here goes vacuous at the next release.",
             )
+
+    # The pin is reported above; everything downstream keys on the bare name, so a pinned
+    # block is still checked for its parents rather than skipped on a second fault.
+    named = [(name.split("@", 1)[0], block) for name, block in named]
 
     # 1. Every `sandbx-*` block names a real package. The hole this script exists for.
     for name, _ in named:
@@ -348,17 +367,49 @@ wrappers = [["sandbx-b"], "sandbx-c"]
 """),
     # A version requirement no crate satisfies is a typo'd name in another spelling:
     # cargo-deny matches nothing and still exits 0.
-    ("version_requirement", False, "version requirement", """
+    ("version_requirement", False, "pins a version", """
 [[bans.deny]]
 name = "sandbx-a"
 version = "=9.9.9"
 wrappers = ["sandbx-b", "sandbx-c"]
 """),
-    # cargo-deny's modern synonym. Correct for it, so the error must name the spelling
-    # this check wants rather than claiming the block is nameless.
-    ("crate_key_spelling", False, "spells its crate as", """
+    # cargo-deny's synonym for `name`, accepted and undeprecated. Correct for it, so it
+    # must be read rather than rejected over a spelling.
+    ("crate_key_plain", True, "", """
 [[bans.deny]]
 crate = "sandbx-a"
+wrappers = ["sandbx-b", "sandbx-c"]
+"""),
+    # The same vacuity as `version =`, reached through the PackageSpec. Rejected even
+    # though this pin matches today, because the workspace version bumps every release.
+    ("crate_key_pinned", False, "pins a version", """
+[[bans.deny]]
+crate = "sandbx-a@0.0.0"
+wrappers = ["sandbx-b", "sandbx-c"]
+"""),
+    # A pinned block is still checked for its parents, so this reports both faults
+    # rather than stopping at the pin.
+    ("crate_key_pinned_and_wrong_parents", False, "lists the wrong parents", """
+[[bans.deny]]
+crate = "sandbx-a@9.9.9"
+wrappers = ["sandbx-b"]
+"""),
+    # `[graph]` keys that hide workspace edges from cargo-deny. Refused so it stays a
+    # check behind this one; the arrays themselves are correct in both.
+    ("graph_exclude_dev", False, "[graph] sets 'exclude-dev'", """
+[graph]
+exclude-dev = true
+
+[[bans.deny]]
+name = "sandbx-a"
+wrappers = ["sandbx-b", "sandbx-c"]
+"""),
+    ("graph_exclude", False, "[graph] sets 'exclude'", """
+[graph]
+exclude = ["sandbx-c"]
+
+[[bans.deny]]
+name = "sandbx-a"
 wrappers = ["sandbx-b", "sandbx-c"]
 """),
     # The five shapes the awk parser got wrong, kept as cases so a future rewrite back

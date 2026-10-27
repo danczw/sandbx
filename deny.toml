@@ -43,11 +43,12 @@ allow-wildcard-paths = true
 # so a first dependency on either of those two fails that check rather than this file
 # (#415). Every crate that *is* depended on is listed, including the leaves.
 #
-# Two more things that file cannot say and the script checks, both measured rather than
+# Three more things this file cannot say and the script checks, all measured rather than
 # assumed: a `name` matching no package is vacuous, so a typo un-gates the crate it meant
-# while `cargo deny check bans` still exits 0; and a `wrappers` array naming a parent with
-# no edge is only `warning[unused-wrapper]`, so it passes while overstating who may
-# depend on the crate.
+# while `cargo deny check bans` still exits 0; a `wrappers` array naming a parent with no
+# edge is only `warning[unused-wrapper]`, so it passes while overstating who may depend
+# on the crate; and a version pin or a `[graph]` exclusion empties cargo-deny's own view
+# of these edges the same way, which is why neither may be added here (#415).
 [[bans.deny]]
 name = "sandbx-core"
 # `sandbx-turn`'s edge is a dev-dependency: `sandbx-core` is not in its build.
