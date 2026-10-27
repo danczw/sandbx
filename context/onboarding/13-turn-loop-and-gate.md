@@ -21,7 +21,7 @@ is restated; both are the authority for anything this chapter leaves out.
 
 ## The loop, one level down
 
-[`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) exports one async function.
+[`run.rs`](../../crates/sandbx-turn/src/run.rs) exports one async function.
 Its signature is the first security property in the file, and it is a property
 of the *shape* rather than of any code:
 
@@ -34,8 +34,7 @@ of the *shape* rather than of any code:
 
 The loop runs at most `max_rounds` times. Each round opens a stream, consumes
 it, and then asks one question: were there any `ToolUse` blocks? If not, the
-turn is over. If so,
-[`turn/tools.rs`](../../crates/sandbx-agent/src/turn/tools.rs) — see
+turn is over. If so, [`tools.rs`](../../crates/sandbx-turn/src/tools.rs) — see
 `answer_calls` — answers every one of them, sequentially, in the order the model
 asked.
 

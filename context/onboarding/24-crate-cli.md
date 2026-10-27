@@ -159,10 +159,10 @@ flowchart TD
 
 The runtime is built once, in `block_on`, whose doc comment explains both
 choices: `new_current_thread` "because `spawn_blocking` is all the loop asks of
-the scheduler", so the flavour stays the binary's and the agent crate can ask
-for `rt` without `rt-multi-thread`; and `enable_all` rather than `enable_time`
-for both drivers — the timer behind the per-round timeout, and the IO the
-provider's connector opens on.
+the scheduler", so the flavour stays the binary's and `sandbx-turn` can ask for
+`rt` without `rt-multi-thread`; and `enable_all` rather than `enable_time` for
+both drivers — the timer behind the per-round timeout, and the IO the provider's
+connector opens on.
 
 ```rust
     tokio::runtime::Builder::new_current_thread()
@@ -286,7 +286,7 @@ consumes it" — a module with one reason to change stays whole however long it
 grows.
 
 `sandbx-cli` holds every `run_turn` call site in the workspace outside
-`sandbx-agent` itself — three of them: `AgentRun::drive`, `Tui::drive` and
+`sandbx-turn` itself — three of them: `AgentRun::drive`, `Tui::drive` and
 `wrapup::run`. What follows is one `agent-run` walking its own modules in
 order.
 

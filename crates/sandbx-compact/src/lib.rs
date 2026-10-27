@@ -10,7 +10,7 @@
 //! belonging: the turn depends on compaction and not the reverse, so this is the side of
 //! the edge it can sit on (#345).
 //!
-//! A crate and not a module of `sandbx-agent`: nothing here reaches the loop, so the edge
+//! A crate and not a module of `sandbx-turn`: nothing here reaches the loop, so the edge
 //! above is one cargo and `deny.toml` enforce rather than a convention (#356).
 
 use sandbx_providers::{ContentBlock, RequestMessage, Role};

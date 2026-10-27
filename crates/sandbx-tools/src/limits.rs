@@ -1,7 +1,7 @@
 /// How much a tool may do, and how much it may return.
 ///
 /// Output goes straight into the model's context, and the tokens are spent before
-/// `sandbx-agent` sees the result, so an uncapped result cannot be fixed
+/// `sandbx-turn` sees the result, so an uncapped result cannot be fixed
 /// downstream — it evicts the conversation that explains what the agent was doing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolLimits {

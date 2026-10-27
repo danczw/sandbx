@@ -8,7 +8,6 @@
 use std::io::{self, IsTerminal, Write};
 use std::sync::{Mutex, PoisonError};
 
-use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
@@ -19,6 +18,7 @@ use sandbx_session::Session;
 use sandbx_session_bridge as session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
+use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
@@ -364,7 +364,7 @@ impl CallGate for Gate<'_> {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use sandbx_agent::TurnError;
+    use sandbx_turn::TurnError;
 
     use super::*;
     use crate::{Cli, Command};

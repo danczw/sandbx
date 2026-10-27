@@ -156,15 +156,15 @@ still beats a run that does not happen. Installed *inside* the
 records into the output of the command being sandboxed.
 
 **Global, and a test over tool-originated records needs that too.** Tools run on
-`spawn_blocking` (`sandbx-agent/src/turn/tools.rs`), so the thread that emits is
-not the thread that asked. A subscriber installed with `set_default` is
-thread-local and sees nothing a tool emitted: the test passes having captured
-zero records. Asserting over that output takes `set_global_default`, and
-therefore a test binary of its own, since a process installs one global
-subscriber — `sandbx-agent/tests/audit_trail.rs` is that binary.
-`sandbx-core/tests/audit.rs` and `sandbx-logging/tests/audit_log.rs` use
-`set_default` correctly, their records being emitted on the calling thread. The
-distinction is which thread emits, not which crate.
+`spawn_blocking` (`sandbx-turn/src/tools.rs`), so the thread that emits is not
+the thread that asked. A subscriber installed with `set_default` is thread-local
+and sees nothing a tool emitted: the test passes having captured zero records.
+Asserting over that output takes `set_global_default`, and therefore a test
+binary of its own, since a process installs one global subscriber —
+`sandbx-turn/tests/audit_trail.rs` is that binary. `sandbx-core/tests/audit.rs`
+and `sandbx-logging/tests/audit_log.rs` use `set_default` correctly, their
+records being emitted on the calling thread. The distinction is which thread
+emits, not which crate.
 
 `sandbx-logging/tests/audit_log_held.rs` is the second such binary, for the path
 `tui` runs: a record emitted on a blocking thread, into the global subscriber,

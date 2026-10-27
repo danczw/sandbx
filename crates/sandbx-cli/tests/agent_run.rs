@@ -300,7 +300,7 @@ fn max_tokens_has_a_default_and_takes_an_override() {
 fn the_round_cap_defaults_to_the_crates_own() {
     assert_eq!(
         agent_run(&["sandbx", "agent-run", "--", "hi"]).max_rounds(),
-        sandbx_agent::TurnLimits::default().max_rounds
+        sandbx_turn::TurnLimits::default().max_rounds
     );
     assert_eq!(
         agent_run(&["sandbx", "agent-run", "--max-rounds", "32", "--", "hi"]).max_rounds(),

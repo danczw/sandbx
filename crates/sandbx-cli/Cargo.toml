@@ -20,7 +20,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 # `term` alone: the one call is `tcflush`, discarding a consent answer typed before the
 # question that would have claimed it.
 nix = { version = "0.31.3", default-features = false, features = ["term"] }
-sandbx-agent = { path = "../sandbx-agent" }
+sandbx-turn = { path = "../sandbx-turn" }
 sandbx-approval = { path = "../sandbx-approval" }
 sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
@@ -47,7 +47,7 @@ tokio = { version = "1.53.1", default-features = false, features = [
   "time",
 ] }
 # A tool call's arguments arrive as `serde_json::Value`, and the gate reads a subject out
-# of them to report; the version must match whatever `sandbx-agent` resolves.
+# of them to report; the version must match whatever `sandbx-turn` resolves.
 serde_json = "1.0.151"
 
 [dev-dependencies]

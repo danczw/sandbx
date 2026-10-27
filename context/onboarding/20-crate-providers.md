@@ -117,7 +117,7 @@ adapter actually have to produce?
 
 - **One `async fn` returning `Result<EventStream, ProviderError>`.** Not an
   `impl` of anything. `AnthropicClient::stream_chat` is an inherent method, and
-  `run_turn` in `sandbx-agent` is generic over a closure, so it never names it —
+  `run_turn` in `sandbx-turn` is generic over a closure, so it never names it —
   which is why its tests' doubles are closures returning the same alias.
 - **A fold onto `AgentEvent` and `StopReason`.** Those are the vocabulary, and a
   second adapter maps its own frames onto them rather than extending them.
@@ -160,7 +160,7 @@ that accounting. The field's own doc says it in the same accounting: "a ceiling
 on the model's reply, so on one round".
 
 `ContentBlock` is the one to read properly, because it is the type
-`sandbx-agent` and `sandbx-cli` both build by hand. The derive line is part of
+`sandbx-turn` and `sandbx-cli` both build by hand. The derive line is part of
 the design:
 
 ```rust
@@ -183,10 +183,10 @@ whole tree's and not one type's. The five variants:
 | variant | fields | who builds one |
 |---|---|---|
 | `Text` | `text` | the CLI, from the user's prompt or a session replay |
-| `Thinking` | `text`, `signature` | `sandbx-agent`, from an `AgentEvent::ThinkingBlock` |
+| `Thinking` | `text`, `signature` | `sandbx-turn`, from an `AgentEvent::ThinkingBlock` |
 | `RedactedThinking` | `data` | the same, from `AgentEvent::RedactedThinking` |
-| `ToolUse` | `id`, `name`, `input` | `sandbx-agent`, replaying a call it answered |
-| `ToolResult` | `tool_use_id`, `content`, `is_error` | `sandbx-agent`, after the gate and the tool |
+| `ToolUse` | `id`, `name`, `input` | `sandbx-turn`, replaying a call it answered |
+| `ToolResult` | `tool_use_id`, `content`, `is_error` | `sandbx-turn`, after the gate and the tool |
 
 The last one is where the pairing rule from [02](02-what-a-harness-is.md) lands:
 
@@ -226,7 +226,7 @@ serializes to.
 ## `event.rs` — the vocabulary everything above speaks
 
 Ninety-six lines, no logic, and it is the file to read before any of
-`sandbx-agent`, `sandbx-tui-transcript` or the CLI's renderer. Seven events:
+`sandbx-turn`, `sandbx-tui-transcript` or the CLI's renderer. Seven events:
 
 | event | emitted | carries |
 |---|---|---|
@@ -255,7 +255,7 @@ back where the model had one.
 `StopSequence`, `Unspecified` and `Other(String)`. `Unspecified` exists because
 `message_delta.stop_reason` is nullable on the wire; `Other` exists because new
 reasons ship over time and, as its doc says, "which strings map here is an
-adapter's business". `sandbx-agent` names this type in its own public API as
+adapter's business". `sandbx-turn` names this type in its own public API as
 `TurnOutcome::round_stop` and does not re-export it (#190), so there is one path
 to one type: a consumer that wants a `StopReason` depends on this crate.
 
@@ -546,7 +546,7 @@ stateDiagram-v2
   not, so a gateway streaming valid, in-cap fragments forever allocates until
   the process dies, and the diagnostic `MAX_EVENT_BYTES` exists to preserve is
   lost one layer above where it was installed. What bounds it today is
-  `TurnLimits::stream_timeout` in `sandbx-agent` — a wall-clock bound owned by a
+  `TurnLimits::stream_timeout` in `sandbx-turn` — a wall-clock bound owned by a
   *different crate*, which a library caller using this one directly does not
   get. [`SECURITY.md`](../../SECURITY.md) claims no memory bound, so the claim
   is honest and only the mechanism is in question.
@@ -659,7 +659,7 @@ boundary doing its job on the one type that has to survive both directions
 byte-for-byte. The two middle hops are where the rules live:
 [decision-thinking-replay.md](../decision-thinking-replay.md) is the record and
 [02](02-what-a-harness-is.md) the on-ramp, and the short version is that
-`sandbx-agent` builds that `ContentBlock` inside a turn and strips it on the way
+`sandbx-turn` builds that `ContentBlock` inside a turn and strips it on the way
 out, so this trip happens between rounds and nowhere else. The request side's
 own `thinking` object does not gate it: `display` governs only whether the
 summary text comes back, so the signature arrives either way.
@@ -753,7 +753,7 @@ secrecy = "0.10.3"
 What it buys is that the secret type is not part of this crate's API surface. A
 re-export would make every `secrecy` major bump a breaking change here, and
 would invite a caller to treat `sandbx_providers::SecretString` as the canonical
-one — which is the same reasoning that keeps `sandbx-agent` from re-exporting
+one — which is the same reasoning that keeps `sandbx-turn` from re-exporting
 `StopReason` (#190): one path to one type.
 
 ## `live-anthropic-tests`, the crate's one feature
@@ -856,7 +856,7 @@ case where *being a separate crate* is itself the thing asserted.
 
 ## Next
 
-[21 — the agent crate](21-crate-agent.md), which is the first consumer of
+[21 — the turn crate](21-crate-agent.md), which is the first consumer of
 everything here: `run_turn` takes a closure that hands back an `EventStream`,
 folds `AgentEvent`s into one round's message, and decides what a `ToolUse` block
 becomes. The vocabulary this chapter described is the vocabulary that one

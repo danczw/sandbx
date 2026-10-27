@@ -9,7 +9,7 @@
 //!
 //! A crate and not the module of `sandbx-cli` it was, though `sandbx-cli` is its only
 //! dependent: [`request_usage`] and [`stored_usage`] are the only first-party code outside
-//! `sandbx-agent` that names `PromptUsage`, so folding them back would give `sandbx-cli` a
+//! `sandbx-turn` that names `PromptUsage`, so folding them back would give `sandbx-cli` a
 //! `sandbx-compact` edge for a type nothing else in it mentions (#351).
 
 use sandbx_compact::PromptUsage;

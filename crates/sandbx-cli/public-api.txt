@@ -15,9 +15,7 @@ pub sandbx_cli::AgentError::Provider(sandbx_providers::error::ProviderError)
 pub sandbx_cli::AgentError::Runtime(core::io::error::Error)
 pub sandbx_cli::AgentError::Screen(core::io::error::Error)
 pub sandbx_cli::AgentError::Session(sandbx_session_error::SessionError)
-pub sandbx_cli::AgentError::Turn(sandbx_agent::error::TurnError)
-impl core::convert::From<sandbx_agent::error::TurnError> for sandbx_cli::AgentError
-pub fn sandbx_cli::AgentError::from(sandbx_agent::error::TurnError) -> Self
+pub sandbx_cli::AgentError::Turn(sandbx_turn::error::TurnError)
 impl core::convert::From<sandbx_auth::error::AuthError> for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::from(sandbx_auth::error::AuthError) -> Self
 impl core::convert::From<sandbx_grants::error::PolicyError> for sandbx_cli::AgentError
@@ -26,6 +24,8 @@ impl core::convert::From<sandbx_providers::error::ProviderError> for sandbx_cli:
 pub fn sandbx_cli::AgentError::from(sandbx_providers::error::ProviderError) -> Self
 impl core::convert::From<sandbx_session_error::SessionError> for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::from(sandbx_session_error::SessionError) -> Self
+impl core::convert::From<sandbx_turn::error::TurnError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_turn::error::TurnError) -> Self
 impl core::error::Error for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for sandbx_cli::AgentError

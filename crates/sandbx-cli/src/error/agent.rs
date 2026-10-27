@@ -1,9 +1,9 @@
 //! What stops a turn, under `agent-run` or `tui`.
 
-use sandbx_agent::TurnError;
 use sandbx_auth::AuthError;
 use sandbx_providers::ProviderError;
 use sandbx_session_error::SessionError;
+use sandbx_turn::TurnError;
 
 use sandbx_grants::PolicyError;
 

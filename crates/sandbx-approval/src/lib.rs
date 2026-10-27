@@ -1,14 +1,14 @@
-//! What `sandbx-agent`'s `run_turn` asks before it runs a tool call, and what it reports
+//! What `sandbx-turn`'s `run_turn` asks before it runs a tool call, and what it reports
 //! once the call is done with.
 //!
 //! Two methods, both required: the loop knows what became of every call and a caller is the
 //! only thing that can tell an operator. `context/decision-approval-gate.md` has the rest.
 //!
 //! A crate and not a module in either of the two that use it, because both would need it:
-//! `sandbx-agent` asks, `sandbx-cli` implements, and whichever held the vocabulary would put
+//! `sandbx-turn` asks, `sandbx-cli` implements, and whichever held the vocabulary would put
 //! an edge on the other. `sandbx-cli` cannot be the home — nothing may depend on it, which is
-//! why `deny.toml` omits it deliberately — and `sandbx-agent` was, until moving the asking out
-//! would have dragged the asked along with it (#355, #357).
+//! why `deny.toml` omits it deliberately — and the loop's crate was, until #355 moved the
+//! asking out rather than let a second extraction drag the asked along with it (#357).
 
 use sandbx_tools::{BuiltinTool, ToolError};
 
@@ -38,7 +38,7 @@ pub enum ApprovalDecision {
     ///
     /// For a gate that can no longer be *asked* — a consent channel that went away — not one
     /// that decided no: the rest of the round is refused unasked, and
-    /// `sandbx-agent`'s `TurnStop::GateAborted` ends the turn.
+    /// `sandbx-turn`'s `TurnStop::GateAborted` ends the turn.
     Abort {
         /// The text of a `tool_result` marked `is_error`, as in [`Deny`](Self::Deny).
         reason: String,
