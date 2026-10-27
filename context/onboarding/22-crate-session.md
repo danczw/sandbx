@@ -130,16 +130,18 @@ there would sit inside the tree a run can grant a tool write over, and the
 history resumed from it is what the model is told it said." Neither half of that
 hazard is enough alone: `sandbx-session-paths` keeps the store out of the
 working tree, and `reaches_owned` in `sandbx-grants` refuses a grant that
-reaches back in (#173) —
-see [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns), and
-[12](12-a-flag-to-a-kernel-rule.md) for the refusal.
+reaches back in (#173) — see
+[decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns),
+and [12](12-a-flag-to-a-kernel-rule.md) for the refusal.
 
 **The lookup is injected** rather than read off the process: `set_var` is an
 `unsafe fn` under edition 2024 and the workspace forbids `unsafe_code` in test
-binaries too, so a test cannot drive a real environment.
-`sandbx-session-bridge`'s `store` is the one place that hands
-`std::env::var_os` to `sessions_directory` — its doc says why: "this is the one
-place that wants the real environment, and a test drives the store directly."
+binaries too, so a test cannot drive a real environment. Two places hand
+`std::env::var_os` to `sessions_directory`, both in production code:
+`sandbx-session-bridge`'s `store`, whose doc says why — "this is the one place
+that wants the real environment, and a test drives the store directly" — and
+`sandbx-grants`' `flags.rs`, which passes the same lookup to `owned_paths` to
+work out what a grant must be refused for reaching.
 
 ## `sandbx-session-message` — five types that are not the provider's
 
