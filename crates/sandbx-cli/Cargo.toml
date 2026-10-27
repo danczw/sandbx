@@ -20,7 +20,6 @@ clap = { version = "4.5.51", features = ["derive"] }
 # `term` alone: the one call is `tcflush`, discarding a consent answer typed before the
 # question that would have claimed it.
 nix = { version = "0.31.3", default-features = false, features = ["term"] }
-sandbx-turn = { path = "../sandbx-turn" }
 sandbx-approval = { path = "../sandbx-approval" }
 sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
@@ -36,6 +35,7 @@ sandbx-session-message = { path = "../sandbx-session-message" }
 sandbx-text = { path = "../sandbx-text" }
 sandbx-tools = { path = "../sandbx-tools" }
 sandbx-tui-input = { path = "../sandbx-tui-input" }
+sandbx-turn = { path = "../sandbx-turn" }
 # `macros` is `select!`, which races the turn against the key that interrupts it.
 # Not `rt-multi-thread`: `spawn_blocking` needs only `rt`. `time` is not optional
 # — `run_turn` panics on the first round without a timer. Nothing here enables

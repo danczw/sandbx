@@ -8,7 +8,7 @@
 //! `sandbx-turn` asks, `sandbx-cli` implements, and whichever held the vocabulary would put
 //! an edge on the other. `sandbx-cli` cannot be the home — nothing may depend on it, which is
 //! why `deny.toml` omits it deliberately — and the loop's crate was, until #355 moved the
-//! asking out rather than let a second extraction drag the asked along with it (#357).
+//! asked out ahead of #357: extracting the asking would have dragged the vocabulary with it.
 
 use sandbx_tools::{BuiltinTool, ToolError};
 
