@@ -4,10 +4,10 @@
 //! names and its required-together rules belong to one API. An adapter owns those;
 //! see `context/decision-provider-seam.md`.
 //!
-//! Being a crate rather than a module is what enforces that rather than asking for
-//! it. `serde` is not a dependency here, so the orphan rule leaves this crate the
-//! only place an `impl Serialize for Prompt` could be written — an adapter must
-//! declare a local wrapper and spell every field out, which is what
+//! Being a crate enforces that rather than asking for it: the orphan rule leaves
+//! this the only place an `impl Serialize for Prompt` could be written, and no
+//! dependency here names the trait, so it cannot be written here either. An adapter
+//! must declare a local wrapper and spell every field out, which is what
 //! `sandbx-providers`' `anthropic/body.rs` does (#59, #364).
 
 /// One request for one model turn.
