@@ -183,7 +183,8 @@ impl SessionStore {
     }
 
     /// The transcript an id names, in the root and as a path. No check of its own: a
-    /// [`SessionId`] cannot exist without having passed its own parser.
+    /// [`SessionId`]'s field is private in `sandbx-session-id`, so nothing here can spell
+    /// one its allowlist would refuse.
     fn transcript(&self, id: &SessionId) -> (String, PathBuf) {
         let name = format!("{id}.jsonl");
         let path = self.root.join(&name);
