@@ -79,13 +79,16 @@ is for:
 
 Two of those are not this crate's own: `Compaction` and `PromptUsage` are
 `sandbx-compact`'s, re-exported here so a caller threading token counts needs
-one import rather than two (#356). `sandbx-cli` is the caller that takes them
-that way. `sandbx-session-bridge`, which #351 moved out of `sandbx-cli`, does
-not: it names `sandbx_compact::PromptUsage` through an edge of its own, so the
-re-export carries one parent here and not two. The gate rows
-that used to sit between the two groups are gone the other way: `CallGate` and
-the four shapes it is asked and told with are `sandbx-approval`'s and are *not*
-re-exported, the section on it below.
+one import rather than two (#356). The caller #356 had in mind was
+`cli/src/session.rs`, and #351 moved that file into `sandbx-session-bridge`,
+which takes a `sandbx-compact` edge of its own instead. So the re-export has no
+consumer left outside this crate's own `tests/turn_compaction.rs`:
+`grep PromptUsage crates/sandbx-cli/` is empty, and `Compaction` was never named
+there. It is spent rather than wrong, and retiring it changes this crate's
+surface, so it is not a move-only change. The gate rows that used to sit between
+the two groups are gone the other way: `CallGate` and the four shapes it is
+asked and told with are `sandbx-approval`'s and are *not* re-exported, the
+section on it below.
 
 The minimum set to call `run_turn` once is smaller than the table: a `Turn`
 (needing `TurnLimits`, which has a `Default`) and `TurnOutcome` or `TurnError`
