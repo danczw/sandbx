@@ -1680,6 +1680,7 @@ dependencies = [
  "sandbx-approval",
  "sandbx-auth",
  "sandbx-core",
+ "sandbx-grants",
  "sandbx-logging",
  "sandbx-providers",
  "sandbx-screen",
@@ -1716,6 +1717,17 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sandbx-grants"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "clap",
+ "sandbx-auth",
+ "sandbx-core",
+ "sandbx-session",
+ "tempfile",
 ]
 
 [[package]]

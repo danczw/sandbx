@@ -360,10 +360,10 @@ dropped before the assertion read it, a comparison that fell through — every o
 of those denies everything, and a suite of denial tests stays green through all
 of them.
 
-So three `decision-*.md` files carry five `The mutation check` sections between
-them, of which the axis table's in [decision-policy.md](../decision-policy.md)
-and [decision-default-policy.md](../decision-default-policy.md)'s are the clearest: a
-list of single-line mutations to the code,
+So a `The mutation check` section recurs across the records and now inside a
+crate's rustdoc too, of which the axis table's in
+[decision-policy.md](../decision-policy.md) and the one on `sandbx-grants`'
+`root::tests` are the clearest: a list of single-line mutations to the code,
 each one applied and the suite run, with the tests that failed recorded
 underneath. The axis table's framing is the clearest statement of the point —
 change one row, see what breaks, because that is what distinguishes a table from
@@ -382,14 +382,14 @@ default becomes unconditional (drop the paths_given guard)
 
 That last line is a whole lesson. `the_default_matches_what_sandbox_run_derives`
 survives the mutation because both sides of its comparison mutate together — it
-reads its expectation off the thing under test. `decision-default-policy.md`
-identifies it as the derived-expectation trap that
-`decision-policy.md` names, and draws the right conclusion rather
-than deleting the test: it is a cross-subcommand *consistency* test, and not the
-one pinning what the default is. The same table shows the opposite result too —
-dropping the guard breaks tests in two suites that never mention the default,
-because both assert on the whole policy, so the suppression turns out to be
-pinned by tests older than it is.
+reads its expectation off the thing under test. `sandbx-grants`' `root::tests`
+identifies it as the derived-expectation trap that `decision-policy.md` names,
+and draws the right conclusion rather than deleting the test: it is a
+cross-subcommand *consistency* test, and not the one pinning what the default
+is. The same table shows the opposite result too — dropping the guard breaks
+tests in two suites that never mention the default, because both assert on the
+whole policy, so the suppression turns out to be pinned by tests older than it
+is.
 
 The axis table's second round shows the other half: adding a fourth axis breaks
 exactly two exhaustive matches, which are "forced to notice", while every other
@@ -601,11 +601,11 @@ Assume a small change to `sandbx-cli`.
   sandbox one being a two-architecture matrix. If `test`'s fmt, clippy or doc step is what
   went red, a hook was skipped.
 
-One closing note that ties back to the tests above. `guide-testing.md` warns that
-renaming a test can break a prose reference, because `context/*.md` cites test
-names as the evidence for a claim — `decision-default-policy.md`'s mutation
-table is a claim-to-test-name map outright. Nothing automated catches that one.
-Grep `context/` for the old name before you consider a rename done.
+One closing note that ties back to the tests above. `guide-testing.md` warns
+that renaming a test can break a prose reference, because `context/*.md` cites
+test names as the evidence for a claim — the mutation table on `sandbx-grants`'
+`root::tests` is a claim-to-test-name map outright. Nothing automated catches
+that one. Grep `context/` for the old name before you consider a rename done.
 
 The same gap applies to prose about a mechanism rather than about a test name,
 and it is not hypothetical: #254 collects three sentences in `context/` that

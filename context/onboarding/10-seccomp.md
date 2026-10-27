@@ -609,17 +609,16 @@ because a number was added to `BLOCKED_SYSCALLS`, and
   `hardening::isolate` drops `CLONE_NEWNET` and the command lands in the
   *host's* network namespace — host loopback reachable on an allowlisted port,
   and the host's abstract unix socket namespace no longer isolated, leaving only
-  the two `AF_UNIX` denials in front of it. The record's conclusion,
-  "narrower on remote ports, wider on what is local", is right, and
-  `SECURITY.md` repeats it. What neither weighs is that the *flag* carries none
-  of this: `--allow-network 443` reads as a narrower `--allow-network`, and the
-  widening arrives as a side effect of asking for less.
-  [decision-default-policy.md](../decision-default-policy.md) settles a very
-  similar question with "narrow and loud beats wide and silent", and the same
-  standard would ask for either a second flag the operator has to type, or a
-  refusal where a port list is the only thing keeping a run out of the host's
-  namespaces. The step that is missing is not the mechanism — the netns drop is
-  forced, as the record says — but the loudness.
+  the two `AF_UNIX` denials in front of it. The record's conclusion, "narrower
+  on remote ports, wider on what is local", is right, and `SECURITY.md` repeats
+  it. What neither weighs is that the *flag* carries none of this:
+  `--allow-network 443` reads as a narrower `--allow-network`, and the widening
+  arrives as a side effect of asking for less. The `sandbx-grants` crate's `//!`
+  settles a very similar question with "narrow and loud beats wide and silent",
+  and the same standard would ask for either a second flag the operator has to
+  type, or a refusal where a port list is the only thing keeping a run out of
+  the host's namespaces. The step that is missing is not the mechanism — the
+  netns drop is forced, as the record says — but the loudness.
 
 ## You should now be able to explain
 

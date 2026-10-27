@@ -336,7 +336,7 @@ before it.
 | `apply`, Landlock, seccomp, the mount sequence | [08](08-the-two-stage-helper.md), [09](09-landlock.md), [10](10-seccomp.md) | [guide-sandboxing.md](../guide-sandboxing.md) |
 | the two enforcement seams | [11](11-the-two-seams.md) | [decision-policy.md](../decision-policy.md#the-enforcement-seam) |
 | what a grant confers on which axis | [12](12-a-flag-to-a-kernel-rule.md) | [decision-policy.md](../decision-policy.md) |
-| what a no-flag run derives, and what it refuses | [12](12-a-flag-to-a-kernel-rule.md) | [decision-default-policy.md](../decision-default-policy.md) |
+| what a no-flag run derives, and what it refuses | [12](12-a-flag-to-a-kernel-rule.md) | `sandbx-grants`' rustdoc |
 | the round loop, compaction, the three traps | [02](02-what-a-harness-is.md), [13](13-turn-loop-and-gate.md) | [guide-turn-loop.md](../guide-turn-loop.md) |
 | the gate, and how much it claims | [13](13-turn-loop-and-gate.md) | [decision-approval-gate.md](../decision-approval-gate.md) |
 | the provider seam and the vendor boundary | [02](02-what-a-harness-is.md) | [decision-provider-seam.md](../decision-provider-seam.md) |

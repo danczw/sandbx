@@ -197,7 +197,7 @@ impl Grants {
     }
 
     /// Whether `--allow-env` named `name`, for a subcommand that refuses one.
-    pub(crate) fn names_env(&self, name: &str) -> bool {
+    pub fn names_env(&self, name: &str) -> bool {
         self.allow_env.iter().any(|named| named == name)
     }
 
@@ -219,6 +219,12 @@ impl Grants {
     /// program name only reaches glibc's `/bin:/usr/bin` fallback. The cwd gets read and
     /// write only when no path flag was given; a path flag *replaces* that default rather
     /// than adding to it.
+    ///
+    /// The derived root gets read and write and no execute, which
+    /// `the_default_root_is_not_executable` pins by asserting the execute axis is
+    /// byte-identical to `allow_system_executables`'. `root`'s overlap arm is what makes that
+    /// assertion mean something: the one way a derived root could have been executable anyway
+    /// was by sitting under a granted system path, and such a root is refused.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()

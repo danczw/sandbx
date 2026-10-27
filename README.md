@@ -72,8 +72,9 @@ sandbx: refusing to derive a policy from your home directory /home/you — pass 
 
 Refused as a derived root: the filesystem root, `$HOME`, where home directories
 live, anything overlapping the system binaries. Every refusal names the flags to
-type instead, and the guard governs what `sandbx` derives, never what you ask for
-([context/decision-default-policy.md](context/decision-default-policy.md)).
+type instead, and the guard governs what `sandbx` derives, never what you ask
+for — the `sandbx-grants` crate's `//!` has the whole rule, and `vetted_root`'s
+`///` the refusals one by one.
 
 One refusal does govern what you ask for, and no flag lifts it: a granted path
 may not reach sandbx's own state — the session store, and the credential file

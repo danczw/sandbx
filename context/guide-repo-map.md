@@ -29,10 +29,11 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
                         ├──► sandbx-agent ──┐  turn loop
 sandbx-compact ─────────┤                   │
 sandbx-providers ───────┘                   │
-         └──────────────────────────────────┼──► sandbx-cli   clap, policy
-sandbx-approval ────────────────────────────┤                 derivation, the
-sandbx-auth ────────────────────────────────┤                 turn loop's caller
-sandbx-core ────────────────────────────────┤
+         └──────────────────────────────────┼──► sandbx-cli   clap, the
+sandbx-approval ────────────────────────────┤                 subcommand bodies,
+sandbx-auth ────────────────────────────────┤                 the turn loop's
+sandbx-core ────────────────────────────────┤                 caller
+sandbx-grants ──────────────────────────────┤
 sandbx-logging ─────────────────────────────┤
 sandbx-session ─────────────────────────────┤
 sandbx-session-bridge ──────────────────────┤
@@ -48,13 +49,18 @@ sandbx-tui-input ─────────────────────
 its filter admits. Drawn as a leaf for that reason: the edge carries one
 constant, not a mechanism.
 
+`sandbx-grants` is drawn as a leaf and is not one: it depends on `sandbx-core`,
+`sandbx-auth` and `sandbx-session`, all three of which this diagram draws as
+leaves of the same bus. Three more crossings would say less than its table row
+does.
+
 | Crate | Owns | Internal deps |
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, screen, session, session-bridge, session-error, session-message, text, tools, tui-input |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, agent, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-message, text, tools, tui-input |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-error, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
@@ -69,6 +75,7 @@ constant, not a mechanism.
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
 | `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
 | `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-message |
+| `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
@@ -507,15 +514,6 @@ rule this crate shares with `sandbx-session`.
 src/lib.rs      mod lines and re-exports; no code
    invocation.rs
                 Cli, Command — the clap surface and nothing else
-   grants.rs    re-exports Grants
-   grants/flags.rs
-                Grants — the --allow-… flags, flattened into every subcommand
-                that confines something, and the policy they derive
-   grants/root.rs
-                where a no-flag run may root its default policy, and what a
-                path flag is vetted against, including the refusal of a grant
-                reaching a path sandbx owns (unit-testable without a
-                sandbox-capable kernel)
    sandbox.rs
    hash.rs      Hash — the one subcommand that confines nothing
    agent.rs     re-exports AgentRun and Tui, and what the siblings reach
@@ -535,14 +533,11 @@ src/lib.rs      mod lines and re-exports; no code
       tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
                 one, and the gate that draws its verdicts instead of printing
                 them                                 ◄── guide-tui.md
-   error.rs     re-exports the four, and is the list of them
+   error.rs     re-exports the three, and is the list of them
    error/agent.rs
                 AgentError — twelve ways a turn does not finish
    error/run.rs
                 SandboxRunError — Policy, Sandbox
-   error/policy.rs
-                PolicyError, and the one ADVICE every derived-default refusal
-                appends
    error/hash.rs
                 HashError — a path and an io::Error, no variants
 src/main.rs     helper dispatch, the tokio runtime, exit codes
@@ -559,10 +554,40 @@ digest can be taken before there is a policy to take it under, and `auth` touche
 only the credential file. `auth` is the one subcommand whose body is not here:
 `invocation.rs` holds the variant and `sandbx-auth` everything under it.
 
+`Grants` and `PolicyError` are `sandbx-grants`', re-exported here so
+`sandbx_cli::Grants` and `sandbx_cli::PolicyError` stay spellable: the flags are
+flattened into `SandboxRun` and `AgentRun`, and `AgentError` and
+`SandboxRunError` each carry a `Policy` variant (#350).
+
+## `sandbx-grants`
+
+```
+src/lib.rs      re-exports Grants and PolicyError — and holds what a no-flag run
+                grants, why a path flag replaces that default rather than adding
+                to it, and why deriving one is fallible
+   flags.rs     Grants — the --allow-… flags, flattened into every subcommand
+                that confines something, and the policy they derive
+   root.rs      where a no-flag run may root its default policy, and what a
+                path flag is vetted against, including the refusal of a grant
+                reaching a path sandbx owns (unit-testable without a
+                sandbox-capable kernel); vetted_root's /// is the six refusals,
+                and root::tests' //! the mutation check over them
+   error.rs     PolicyError, and the one ADVICE every derived-default refusal
+                appends
+```
+
 `Grants` exists so the axis loop, the one widening it applies — a write grant
 confers read — and the working-directory default are written once. Two copies
 would drift, and the drift would be a policy difference between subcommands that
-users reasonably read as the same flags.
+users reasonably read as the same flags, which is why this is a crate rather
+than a module of `sandbx-cli`: `deny.toml` names one parent, and nothing else
+can grow a second definition of what a flag grants.
+
+Depends on `sandbx-core` for `SandboxPolicy`, `Axis` and `VettedPath`, and on
+`sandbx-auth` and `sandbx-session` for the two paths sandbx owns — the
+credential file and the session directory — which a derived root and a path
+flag are both refused for reaching. The `sandbx-session` edge takes the whole
+crate for `sessions_directory` alone; #361 narrows it to `sandbx-session-paths`.
 
 ## Reading order
 
@@ -584,38 +609,36 @@ pass, and reads as reference rather than as a wall once the first is done.
 5. `decision-port-allowlist.md` — why a TCP port list costs UDP, what bounding
    egress to a host rather than a port would cost, and why a name allowlist is a
    hosts file and not a responder
-6. `decision-default-policy.md` — what a no-flag run grants, and the directories
-   it refuses instead
-7. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
+6. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
    that started it
-8. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
+7. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
    recorded, how one made inside the helper gets out, and why a grant names a
    path and one flag names bytes instead
-9. `decision-audit-records-access.md` — why a record names the access obtained
+8. `decision-audit-records-access.md` — why a record names the access obtained
    and not the policy's decision
-10. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-11. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
+9. `guide-tools.md`, `guide-turn-loop.md` — the layers above
+10. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
     on its output are different propositions
-12. `decision-provider-seam.md` — why there is no provider trait, and where the
+11. `decision-provider-seam.md` — why there is no provider trait, and where the
     vendor's vocabulary stops
-13. `decision-approval-gate.md` — what sits between the model and a tool, and how
-    much it claims
-14. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
+12. `decision-approval-gate.md` — what sits between the model and a tool, and
+    how much it claims
+13. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
     handed none, and the one name that is refused
-15. `decision-on-disk-state.md` — what sandbx writes outside the working
+14. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-16. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
+15. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
     more, and what that costs
-17. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+16. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-18. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-19. `guide-testing.md` — what a test has to assert, where it lives, and how long
+17. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+18. `guide-testing.md` — what a test has to assert, where it lives, and how long
     its name may be
-20. `guide-ci.md` — what runs before a push, and what runs after
-21. `guide-release-notes.md` — which half of a release body is written by hand,
+19. `guide-ci.md` — what runs before a push, and what runs after
+20. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
-22. `decision-google-style.md` — which style guide the code follows, and where it
-    departs from it
+21. `decision-google-style.md` — which style guide the code follows, and where
+    it departs from it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a
 choice was made, and stays useful after the code moves.

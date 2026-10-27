@@ -5,7 +5,7 @@ use sandbx_auth::AuthError;
 use sandbx_providers::ProviderError;
 use sandbx_session_error::SessionError;
 
-use super::PolicyError;
+use sandbx_grants::PolicyError;
 
 /// Why a turn did not finish.
 ///

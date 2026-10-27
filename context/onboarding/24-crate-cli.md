@@ -19,17 +19,14 @@ it says what each module holds and, where another chapter explains the
 mechanism, which one. The two `_tests.rs` siblings have no row of their own;
 they sit with the module whose tests they are.
 
-The paths carry the nesting: `grants.rs` has two children, `agent.rs` seven, and
-`error.rs` one per error type.
+The paths carry the nesting: `agent.rs` has seven children and `error.rs` one
+per error type.
 
 | file | holds | covered in |
 |---|---|---|
 | [`lib.rs`](../../crates/sandbx-cli/src/lib.rs) | the `mod` lines and the `pub use` list, and no code at all | here |
 | [`invocation.rs`](../../crates/sandbx-cli/src/invocation.rs) | `Cli` and `Command` — the clap surface; each variant's `///` block is its long `--help` | here |
 | [`main.rs`](../../crates/sandbx-cli/src/main.rs) | helper dispatch, the tokio runtime, the exit-code mapping | here, and [08](08-the-two-stage-helper.md) for the dispatch |
-| [`grants.rs`](../../crates/sandbx-cli/src/grants.rs) | re-exports `Grants` | below |
-| [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs) | every `--allow-…` flag, the axis loop, and the one widening it applies | [12](12-a-flag-to-a-kernel-rule.md) |
-| [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) | where a no-flag run may root a default, and what a path flag is vetted against | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`sandbox.rs`](../../crates/sandbx-cli/src/sandbox.rs) | `sandbox-run`: one of the two `SandboxedCommand` build sites in the workspace | [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) | the one subcommand that confines nothing | [12](12-a-flag-to-a-kernel-rule.md) |
 | [`agent.rs`](../../crates/sandbx-cli/src/agent.rs) | re-exports `AgentRun` and `Tui`, the one name the rest of the crate reaches, and what the siblings reach through it | here |
@@ -42,7 +39,7 @@ The paths carry the nesting: `grants.rs` has two children, `agent.rs` seven, and
 | [`agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) | the `tui` subcommand, the interrupt, the drawing gate | [15](15-tools-and-the-screen.md), [23](23-crate-tui.md) |
 | [`sandbx-session-bridge`](../../crates/sandbx-session-bridge/src/lib.rs) | `--session`, and the translation to and from the stored shapes — a crate since #351, not a file here | here, and [22](22-crate-session.md) |
 | [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the re-exports, and the list of what can refuse a run | here |
-| [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`policy.rs`](../../crates/sandbx-cli/src/error/policy.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` — one each | here |
+| [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `HashError` — one each | here |
 
 `auth`'s body is not in this crate.
 [`sandbx-auth`](../../crates/sandbx-auth/src/lib.rs) holds `key.rs`, `store.rs`
@@ -700,31 +697,34 @@ place" — and the guide's rule against code in a module with submodules took th
 co-location (#331). The thirty-eight `Display` arms `error.rs` held now span
 three files — `hash.rs` is a struct and has none — so per-variant readability in
 one place is gone. What remains is narrower and was the load-bearing half:
-`error.rs` is five `mod` lines and five re-exports, one per error type, so the
-set of things that can refuse a run is still readable in one place, and `ADVICE`
-still has exactly one home, in `policy.rs` beside its only readers, so two
+`error.rs` is a `mod` line and a re-export per error type, so the set of things
+that can refuse a run is still readable in one place — `sandbx_grants::PolicyError`
+included, which `lib.rs` re-exports beside them. `ADVICE` still has exactly one
+home, now in `sandbx-grants`' `error.rs` beside its only readers, so two
 derived-default refusals cannot advise differently. A refusal of a *flag* says
-what to change about the flag. The co-location was ending either way — #350
-takes `PolicyError` out of this crate.
+what to change about the flag. The co-location was ending either way, and #350
+is what ended it.
 
 One absence is a design statement. A failing tool is not an `AgentError`: it
 comes back to the model as an error result for it to try something else, which
 is the loop's own contract rather than a way for a run to end.
 
-## The five files this chapter only names
+## The flags moved out; the step did not
+
+Argv still becomes a policy here — `SandboxRun` and `AgentRun` each flatten
+`Grants` and call `policy()` on it — but the flags and the derivation behind
+that call are [`sandbx-grants`](../../crates/sandbx-grants/src/lib.rs)' since
+#350: `flags.rs` for every `--allow-…` flag and the axis loop, `root.rs` for
+where a no-flag run may root a default and what a path flag is vetted against,
+`error.rs` for `PolicyError`. This crate re-exports `Grants` and `PolicyError`
+so `sandbx_cli::Grants` stays spellable, and owns neither.
+[12](12-a-flag-to-a-kernel-rule.md) is still that material's chapter, traced
+from argv to a kernel rule.
+
+## The files this chapter only names
 
 One sentence each, because each has a chapter of its own.
-[`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs) holds every
-`--allow-…` flag and the axis loop that turns them into a policy, so the one
-widening and the working-directory default exist once rather than once per
-subcommand. [`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs) holds
-no flag at all: it decides where a no-flag run may root a default and what a
-path flag is vetted against, and its module doc warns that one order is
-load-bearing and is not one function's — `vetted_root` refuses in the order
-written — while the second thing it used to warn about, the spelling every
-comparison needs, is now a type the module is the only producer of. Both are
-[12](12-a-flag-to-a-kernel-rule.md)'s whole subject, traced from argv to a
-kernel rule. [`hash.rs`](../../crates/sandbx-cli/src/hash.rs) is the one
+[`hash.rs`](../../crates/sandbx-cli/src/hash.rs) is the one
 subcommand that confines nothing: a `Sha256Digest::of_file` and a `write_all` —
 not `println!`, which panics on a closed stdout with `SIGPIPE` ignored — and
 [12](12-a-flag-to-a-kernel-rule.md) covers what its output pins.
@@ -764,10 +764,11 @@ this one's.
 
 ## You should now be able to explain
 
-- Why parsing and policy derivation live in `sandbx_cli` rather than in
-  `main.rs`, and what that buys CI.
+- Why parsing lives in `sandbx_cli` rather than in `main.rs`, and what that
+  buys CI.
 - Why `Grants` is one flattened struct rather than a copy per subcommand, and
-  what the two-copy version would have drifted into.
+  what the two-copy version would have drifted into — and why it is a crate of
+  its own rather than a module here.
 - Why helper dispatch must run before `Cli::try_parse`, and why logging is
   initialised inside its closure rather than above it.
 - Which error becomes which exit code, and why `auth` fails with 2 while

@@ -109,10 +109,10 @@ architecture the filter gates on.
   system binaries and libraries, a handful of environment variables, and, with
   *no* path flag, read **and write** on the working directory, which any path
   flag replaces rather than adds to. That derived default refuses six shapes of
-  working directory outright rather than deriving a narrower root, and the record
-  lists them
-  ([context/decision-default-policy.md](context/decision-default-policy.md)).
-  What the write grant means for files executed *later* is a non-claim below.
+  working directory outright rather than deriving a narrower root, and
+  `vetted_root` in `sandbx-grants` is both the list and the record of why each
+  is refused. What the write grant means for files executed *later* is a
+  non-claim below.
 - **Grants do not widen each other, with one named exception.** Read does not
   confer execute; write confers neither read nor execute — a write-only drop
   directory stays unreadable, on both enforcement layers. That is per *grant*: the

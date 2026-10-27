@@ -84,7 +84,7 @@ that crate.
 | [21 — sandbx-agent](21-crate-agent.md) | a small crate holding the control flow: the re-export list that is its whole API, `run_turn`'s signature read before its body, the offered tool set, the gate's one blocking site, the shapes that left for `sandbx-approval`, the planner that left for `sandbx-compact`, and compaction as a cut-point algebra |
 | [22 — sandbx-session](22-crate-session.md) | the one thing that outlives the run: a three-line identifier allowlist, two roots tried and one never considered, five types that are deliberately not the provider's, and which bit of a file's mode refuses rather than reports |
 | [23 — the tui crates](23-crate-tui.md) | three crates that decide nothing and sanitise everything they draw: four names out between them and manifests that are the interesting half, the transcript fold as the sanitiser, and an input thread that exists because `event::read` cannot be cancelled |
-| [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent/` and its seven modules as one pipeline, the seam that left for `sandbx-session-bridge` and is still read here, and the exit codes |
+| [24 — sandbx-cli](24-crate-cli.md) | where argv becomes a policy, and the only crate that ships a binary: the clap surface, what `main.rs` does before the subcommand, `agent/` and its seven modules as one pipeline, the seam that left for `sandbx-session-bridge` and is still read here, the flags that left for `sandbx-grants`, and the exit codes |
 
 These run longer than the read-through chapters, and that is the one place in
 the set where length was not trimmed to a sitting. A reference chapter is read
@@ -93,10 +93,10 @@ dropping modules rather than shortening prose.
 
 ## Every decision record, and where its vocabulary comes from
 
-[`context/`](../) holds twelve `decision-*.md` files, and they are the hardest
-part of the repo to arrive at cold — each is the record of one choice, written
-for someone who already knows the alternatives it was chosen over. Each row
-names the chapter that supplies what the record assumes.
+[`context/`](../) holds the `decision-*.md` files, and they are the hardest part
+of the repo to arrive at cold — each is the record of one choice, written for
+someone who already knows the alternatives it was chosen over. Each row names
+the chapter that supplies what the record assumes.
 
 | decision record | read first |
 |---|---|
@@ -105,7 +105,6 @@ names the chapter that supplies what the record assumes.
 | [decision-policy.md](../decision-policy.md) | [09](09-landlock.md), [11](11-the-two-seams.md), [06](06-claims-and-non-claims.md), [05](05-seven-crates.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-bounding-tool-work.md](../decision-bounding-tool-work.md) | [15](15-tools-and-the-screen.md), [19](19-crate-tools.md) |
 | [decision-credentials.md](../decision-credentials.md) | [14](14-audit-sessions-credentials.md) |
-| [decision-default-policy.md](../decision-default-policy.md) | [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-helper-audit-channel.md](../decision-helper-audit-channel.md) | [14](14-audit-sessions-credentials.md), [12](12-a-flag-to-a-kernel-rule.md) |
 | [decision-on-disk-state.md](../decision-on-disk-state.md) | [14](14-audit-sessions-credentials.md), [22](22-crate-session.md) |
 | [decision-port-allowlist.md](../decision-port-allowlist.md) | [10](10-seccomp.md) |

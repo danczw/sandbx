@@ -55,7 +55,7 @@ flowchart TD
 allow_read: Vec<PathBuf>,
 ```
 
-That is in [`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs), on
+That is in [`sandbx-grants`'s `flags.rs`](../../crates/sandbx-grants/src/flags.rs), on
 the `Grants` struct — the one flattened into every subcommand that confines
 something, so `sandbox-run` and `agent-run` cannot disagree about what a flag
 means. The field is a `Vec`, because the flag repeats; the doc comment above it
@@ -71,7 +71,7 @@ rather than a flag silently parsed and never granted.
 ## Stage 2 — the vetting chain, in call order
 
 Five steps turn the typed path into something a policy will accept. Four live in
-[`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), all
+[`sandbx-grants`'s `root.rs`](../../crates/sandbx-grants/src/root.rs), all
 `pub(super)`; the other is `VettedPath::vet`, in core. The first thing to know
 about them is that **the order they appear in the file is not the order they
 run.** Trace the chain in
@@ -184,8 +184,8 @@ it.
 ### The module boundary is itself worth a look
 
 `grants.rs` was split (#250) into the flag surface, now
-[`grants/flags.rs`](../../crates/sandbx-cli/src/grants/flags.rs), and
-[`grants/root.rs`](../../crates/sandbx-cli/src/grants/root.rs), which owns root
+[`sandbx-grants`'s `flags.rs`](../../crates/sandbx-grants/src/flags.rs), and
+[`sandbx-grants`'s `root.rs`](../../crates/sandbx-grants/src/root.rs), which owns root
 derivation and path vetting; behaviour did not change. What changed is a
 *visibility*. The `root.rs` functions above are `pub(super)` — visible in the
 `grants` module and everything under it, and nowhere else — while `vetted_root`,
@@ -193,12 +193,11 @@ derivation and path vetting; behaviour did not change. What changed is a
 `root.rs`, with their tests inline beside them.
 
 That is this repo narrowing a surface rather than widening one, and it is the
-trade [guide-testing.md](../guide-testing.md) asks for.
-[decision-default-policy.md](../decision-default-policy.md) states the
-counterfactual in as many words: making that seam public so an integration test
-could drive the refusals is the trade the guide forbids. A reader coming from a
-codebase where "make it `pub` so the test can reach it" is routine should notice
-that the tests moved to the code instead.
+trade [guide-testing.md](../guide-testing.md) asks for. The `sandbx-grants`
+crate's `//!` states the counterfactual in as many words: making that seam
+public so an integration test could drive the refusals is the trade the guide
+forbids. A reader coming from a codebase where "make it `pub` so the test can
+reach it" is routine should notice that the tests moved to the code instead.
 
 ## Stage 3 — into the policy
 
@@ -444,11 +443,11 @@ typed become the whole of the filesystem policy. `paths_given` runs over
 `Axis::ALL`, so a fourth path axis joins the rule rather than being forgotten
 into a default that widens it.
 
-[decision-default-policy.md](../decision-default-policy.md) is clear that what
-decided this was the failure mode and not the ergonomics. The alternative was an
-unconditional default plus a `--no-default-policy` opt-out, and under that shape
-`sandbx agent-run --allow-read /srv` — a deliberately tight, hand-written policy
-— *silently gains write over the whole working tree*. Suppression's failure mode
+The `sandbx-grants` crate's `//!` is clear that what decided this was the
+failure mode and not the ergonomics. The alternative was an unconditional
+default plus a `--no-default-policy` opt-out, and under that shape `sandbx
+agent-run --allow-read /srv` — a deliberately tight, hand-written policy —
+*silently gains write over the whole working tree*. Suppression's failure mode
 is the mirror image and is the safe one: the operator gets less than they
 expected and hears about it at once, as a refusal naming the path the grant
 lacked. The record's own summary is the line worth carrying: **narrow and loud

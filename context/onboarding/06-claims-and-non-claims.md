@@ -359,22 +359,23 @@ no-flag run from a user-level install prefix grants write there.
 
 - **Worth questioning:** that last sentence is the one harness-owned path no
   refusal covers, and the property above says harness-owned paths are refused
-  from argv on both subcommands.
-  [decision-default-policy.md](../decision-default-policy.md) settled it and is
-  explicit about the residue — the path guard it removed was "comparing a name
-  nothing is reached by", a carve-out is impossible, and the arm was the one
-  that fired in ordinary use, including on sandbx's own developers in their own
-  repo. All of that is about the *spawn inside this run*, which the inode
-  closes. The residue is a different hazard with a different actor: a human
-  running `sandbx` again tomorrow, reached entirely by name. The existing
-  derived-default guard already refuses six shapes by location and is decidable
-  from argv plus `/proc/self/exe`, which is exactly the test
-  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns) sets for
-  a refusal. Its own framing — the two on-disk roots are the harness's, not the
-  project's — seems to reach the installed binary as readily as it reaches the
-  session store, and the record does not weigh it in those terms. The cost is
-  real and should be named with the objection: a further arm takes the no-flag
-  run away from anybody who installed to `~/.local/bin` and works there.
+  from argv on both subcommands. `vetted_root`'s `///` in `sandbx-grants`
+  settled it and is explicit about the residue — the path guard it removed was
+  "comparing a name nothing is reached by", a carve-out is impossible, and the
+  arm was the one that fired in ordinary use, including on sandbx's own
+  developers in their own repo. All of that is about the *spawn inside this
+  run*, which the inode closes. The residue is a different hazard with a
+  different actor: a human running `sandbx` again tomorrow, reached entirely by
+  name. The existing derived-default guard already refuses six shapes by
+  location and is decidable from argv plus `/proc/self/exe`, which is exactly
+  the test
+  [decision-policy.md](../decision-policy.md#what-the-harness-does-when-a-grant-covers-something-it-owns)
+  sets for a refusal. Its own framing — the two on-disk roots are the harness's,
+  not the project's — seems to reach the installed binary as readily as it
+  reaches the session store, and the record does not weigh it in those terms.
+  The cost is real and should be named with the objection: a further arm takes
+  the no-flag run away from anybody who installed to `~/.local/bin` and works
+  there.
 
 ### Identity is measured, not held
 

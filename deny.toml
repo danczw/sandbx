@@ -46,7 +46,17 @@ name = "sandbx-core"
 # `sandbx-agent`'s edge is a dev-dependency: `sandbx-core` is not in its build.
 # `sandbx-helper`'s is not — the binary is what the enforcement suite spawns, so it
 # links core for real.
-wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-helper", "sandbx-logging", "sandbx-tools"]
+#
+# One name per line from here: a sixth parent puts this past the width every other line in
+# the file keeps.
+wrappers = [
+    "sandbx-agent",
+    "sandbx-cli",
+    "sandbx-grants",
+    "sandbx-helper",
+    "sandbx-logging",
+    "sandbx-tools",
+]
 
 [[bans.deny]]
 name = "sandbx-providers"
@@ -68,9 +78,9 @@ wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-auth"
-# Not `sandbx-grants`, which does not exist until #350 adds itself here — it reaches
-# `config_file` to refuse a grant covering the credential file.
-wrappers = ["sandbx-cli"]
+# `sandbx-grants` reaches `config_file` to refuse a grant covering the credential file;
+# `sandbx-cli`'s edge is its own, for the key the `auth` subcommand reads (#350).
+wrappers = ["sandbx-cli", "sandbx-grants"]
 
 [[bans.deny]]
 name = "sandbx-logging"
@@ -85,9 +95,11 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-session"
-# `sandbx-session-bridge`'s edge is the temporary whole-crate one, which #360, #361 and
-# #362 replace with the three narrow ones it actually reaches (#351).
-wrappers = ["sandbx-cli", "sandbx-session-bridge"]
+# Two temporary whole-crate edges, each narrowing later: `sandbx-grants` reaches
+# `sessions_directory` alone and follows it to `sandbx-session-paths` with #361, and
+# `sandbx-session-bridge`'s four names become the three narrow ones #360, #361 and #362
+# extract (#350, #351).
+wrappers = ["sandbx-cli", "sandbx-grants", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-tui-input"
@@ -138,6 +150,12 @@ wrappers = ["sandbx-agent", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-session-bridge"
+wrappers = ["sandbx-cli"]
+
+[[bans.deny]]
+name = "sandbx-grants"
+# One parent, and it stays one: every subcommand that confines something flattens `Grants`,
+# and all of them are `sandbx-cli`'s (#350).
 wrappers = ["sandbx-cli"]
 
 [sources]

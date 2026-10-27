@@ -2,7 +2,7 @@
 
 use sandbx_core::SandboxError;
 
-use super::PolicyError;
+use sandbx_grants::PolicyError;
 
 /// Why `sandbox-run` did not run the command.
 ///

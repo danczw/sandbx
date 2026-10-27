@@ -373,17 +373,16 @@ nearest-resolving-ancestor rule on its own sees neither.
   either — the four opening forms call them internally, and every other call
   site is a test, in `crates/sandbx-core/tests/` or, since #347, in
   `crates/sandbx-helper/tests/enforcement.rs`.
-  [decision-policy.md](../decision-policy.md#the-enforcement-seam) marks them "no
-  tool" in its own seam diagram and [`SECURITY.md`](../../SECURITY.md) carries
-  them as a non-claim, so the exposure is known; what neither prices is why the
-  pair stays public once the four window-closing forms exist. The repo refuses
-  exactly this trade elsewhere, and says so in as many words:
-  [decision-default-policy.md](../decision-default-policy.md) keeps
-  `vetted_root` and its helpers private with inline tests rather than making a
-  seam public so an integration test could drive it, calling that the trade
-  [guide-testing.md](../guide-testing.md) forbids. Here the same
-  trade appears to have gone the other way, on the mechanism where losing the
-  race is the actual hazard.
+  [decision-policy.md](../decision-policy.md#the-enforcement-seam) marks them
+  "no tool" in its own seam diagram and [`SECURITY.md`](../../SECURITY.md)
+  carries them as a non-claim, so the exposure is known; what neither prices is
+  why the pair stays public once the four window-closing forms exist. The repo
+  refuses exactly this trade elsewhere, and says so in as many words:
+  `sandbx-grants` keeps `vetted_root` and its helpers private with inline tests
+  rather than making a seam public so an integration test could drive it, and
+  its `//!` calls that the trade [guide-testing.md](../guide-testing.md)
+  forbids. Here the same trade appears to have gone the other way, on the
+  mechanism where losing the race is the actual hazard.
 
 ## Seam 2 — argv, into the helper
 

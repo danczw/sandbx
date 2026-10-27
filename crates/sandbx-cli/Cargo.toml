@@ -24,6 +24,7 @@ sandbx-agent = { path = "../sandbx-agent" }
 sandbx-approval = { path = "../sandbx-approval" }
 sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
+sandbx-grants = { path = "../sandbx-grants" }
 sandbx-logging = { path = "../sandbx-logging" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-screen = { path = "../sandbx-screen" }

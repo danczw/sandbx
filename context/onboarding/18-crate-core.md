@@ -61,10 +61,11 @@ lookups, while `helper/resolver.rs` *mounts* what the first produced; the
 second's module doc opens by naming the first, which is the quickest way to tell
 which file you are in. And there are two types called `Grants`:
 `sandbx_core::Grants` is three booleans, what an `Axis` confers, while
-`sandbx_cli::Grants` is the clap struct of `--allow-…` flags, the one
-[05](05-seven-crates.md) means by "flattened into every subcommand". Nothing
-imports both, so the collision is harmless in the code and expensive in
-conversation.
+`sandbx_grants::Grants` is the clap struct of `--allow-…` flags, the one
+[05](05-seven-crates.md) means by "flattened into every subcommand" — and since
+#350 gave the latter a crate named after it, the two names are a crate apart as
+well as a type apart. Nothing imports both, so the collision is harmless in the
+code and expensive in conversation.
 
 ## It is Linux-only, and the compiler says so
 

@@ -12,12 +12,37 @@ use sandbx_core::{SandboxError, VettedPath};
 use crate::PolicyError;
 
 /// Where home directories live, for a cwd `$HOME` does not settle.
+///
+/// Refused by location, whatever the environment says; only the child reading below is gated
+/// on `$HOME` at all. This is a list of names, which is the shape rejected for *depth* — not
+/// refusing direct children of `/`, because depth is not sensitivity: `/srv`, `/opt`,
+/// `/workspace`, `/app` and `/data` are ordinary project roots, in a container `/app` *is*
+/// the working directory, and `~/.ssh` is three levels down and far worse. Enumerating the
+/// dangerous children instead (`/etc`, `/root`, `/proc`) starts a denylist whose first
+/// omission is silent, the shape `context/decision-policy.md` already rejected for variable
+/// names. The distinction is thin and worth stating: a depth rule would be guessing at which
+/// directories are *sensitive*, where this names the one place on a Unix system whose entire
+/// purpose is to hold other people's trees. Nor is there a subdirectory-of-`$HOME` rule:
+/// `~/code/project` is the entire use case, and the accidental no-flag run is standing in
+/// `$HOME` itself.
+///
+/// Non-goal: a home root this does not list. With no usable `$HOME`, a site keeping homes at
+/// `/srv/people` or behind autofs gets neither refusal, both recognising a home by location.
+/// A `$HOME` outside the list leaves the same gap standing — `HOME=/tmp` with cwd
+/// `/home/other` still derives, a real directory somewhere unlisted being what a legitimate
+/// non-standard home looks like. Consulting `/etc/passwd` was considered and does not fix it:
+/// the LDAP and autofs layouts that need it are the ones `/etc/passwd` cannot see either, so
+/// it moves the omission at the cost of parsing a file inside the guard. The cost of an
+/// omission here is that one layout degrades to no protection rather than that the mechanism
+/// has a hole, and `--allow-read`/`--allow-write` are the answer for such a site either way.
 const HOME_PARENTS: [&str; 4] = ["/home", "/Users", "/var/home", "/root"];
 
 /// Whether `cwd` is one of [`HOME_PARENTS`] or holds one.
 ///
 /// Not gated on `$HOME`: a service account's `HOME=/var/lib/svc` would let `/home` through,
-/// where a root there is write over every user's home whatever the variable names.
+/// where a root there is write over every user's home whatever the variable names. It is this
+/// arm — the one depending on `$HOME` not at all — that never had any of the four holes
+/// [`Homes`] records, and that is the reason to prefer it.
 fn holds_home_directories(cwd: &Path) -> bool {
     HOME_PARENTS
         .into_iter()
@@ -27,7 +52,10 @@ fn holds_home_directories(cwd: &Path) -> bool {
 /// The [`HOME_PARENTS`] that hold other users' homes rather than being one.
 ///
 /// `/root` is a home as well as the place for root's, so `HOME=/root` names one where
-/// `HOME=/home` names none. Widening this to all four refuses root's own `/root/app`.
+/// `HOME=/home` names none. Widening this to all four refuses root's own `/root/app`, the
+/// conventional root container, over a `$HOME` that is set, resolvable and names exactly the
+/// home it should. The cwd arms still read all four — a cwd *at* `/root` is refused whatever
+/// `$HOME` says — which is the asymmetry the two lists encode.
 const SHARED_HOME_PARENTS: [&str; 3] = ["/home", "/Users", "/var/home"];
 
 /// Whether `home` is one of [`SHARED_HOME_PARENTS`] or holds one, and so is nobody's home.
@@ -50,7 +78,28 @@ fn looks_like_a_home(cwd: &Path) -> bool {
 /// The spellings of `$HOME` a cwd is compared against, and whether it names a home at all.
 ///
 /// Two fields because an unresolvable `$HOME` is still a path a cwd can hold, and still no
-/// usable home for the stand-in to defer to.
+/// usable home for the stand-in to defer to. One list answering both questions was the shape
+/// of four reproduced holes, each deriving `readable=1 writable=1` where it should refuse, so
+/// a fifth tightening of one list is not the fix:
+///
+/// 1. The whole rule gated on the list being empty: `cd /home && env -u HOME sandbx
+///    sandbox-run -- true` derived read and write over every user's home.
+/// 2. Empty asks whether `HOME` was *set*, not whether it named anything useful. `HOME=`,
+///    `HOME=relative/path`, `HOME=/nonexistent` and — the ordinary case — a service
+///    account's `HOME=/var/lib/svc` all leave a non-empty list holding a path no cwd under
+///    `/home` can match, disabling the exact arm and skipping the stand-in at once.
+/// 3. The same conflation one layer in, on the child reading, where `$HOME` legitimately
+///    gates: any absolute path kept for *comparison* also silenced the stand-in.
+///    `HOME=/nonexistent` with cwd `/home/other` derived over a neighbour's tree (#154), as
+///    did `HOME=/dev/null` and the `HOME=/` Docker hands a UID with no passwd entry.
+/// 4. `usable` asking only that `$HOME` resolve to a directory. `HOME=/home` does, and is a
+///    place that holds homes rather than being one, so `/home/other` derived over a
+///    neighbour's tree (#162) — which is why the resolved form is tested by location too,
+///    subsuming `HOME=/` for free.
+///
+/// An unresolvable `$HOME` is still compared: `cd /srv/people` with `HOME=/srv/people/alice`
+/// unprovisioned is refused for *holding* a home, which a filter that dropped the path would
+/// have lost.
 #[derive(Debug, PartialEq, Eq)]
 struct Homes {
     paths: Vec<PathBuf>,
@@ -62,6 +111,39 @@ struct Homes {
 /// An unusable `$HOME` leaves the exact home rule nothing to compare — so
 /// [`looks_like_a_home`] stands in for it rather than being skipped, and such a cwd still
 /// derives rather than being refused: `HOME` unset with cwd `/app` is the container case.
+/// That is the one constraint here a plausible edit would quietly reverse.
+///
+/// A derived write grant is reachable by accident in a way a typed one is not, so every arm
+/// refuses outright rather than deriving a narrower root: falling back to the system paths
+/// alone makes an ordinary command fail for a reason the message would not explain, and
+/// granting the directory anyway is the thing being refused. So each refusal names the two
+/// flags to type instead, behind one `const` so two of them cannot advise differently. What
+/// that costs, visibly: a cwd shaped like a home under [`HOME_PARENTS`] with an unusable
+/// `$HOME` is refused where it once derived, and so is `/usr/src/app`, the stock `WORKDIR`
+/// in the official Node images. Both are real losses on deployments this feature is for, and
+/// both are the trade being made — less than expected, heard about immediately, by name.
+///
+/// **No arm compares the running `sandbx` against the cwd, and that is deliberate.** Whether
+/// a derived root may hold the enforcer is settled by not needing an answer: `command_line`
+/// hands the kernel `/proc/self/exe`, a magic link to the image this process is running
+/// (#149). What a path guard had to stop was live rather than theoretical — resolved by path
+/// on *every* spawn, the helper could be swapped between two tool calls in one turn by
+/// renaming a replacement over the binary, and the next spawn would exec it, choosing its own
+/// confinement with nothing asking the operator first. (`ETXTBSY` blocks overwriting in
+/// place; rename-over is what `cargo build` does.) A link to the inode cannot be redirected.
+/// Any replacement for `exe.starts_with(cwd)` would be comparing a name nothing is reached
+/// by, and a carve-out — grant the tree except the binary — is not expressible: a
+/// `SandboxPolicy` is grants-only, matching is prefix-only, and Landlock composes rules by
+/// union with no subtraction.
+///
+/// What dropping that arm widened is worth naming rather than filing under bounded cost. A
+/// `/usr`-rooted prefix is still refused, by the overlap arm below and not by that one, since
+/// `/usr/local/bin` holds `/usr`. It was the only thing refusing a *user-level* prefix, so a
+/// no-flag run from `~/.cargo/bin`, `~/.local/bin` or `/opt/x/bin` now derives read and write
+/// over the directory holding the installed binary. The residue is the *next* invocation of
+/// `sandbx`: a write grant over the binary replaces what runs then, by a human or a script.
+/// No guard reaches that, it is the same property as `.git/hooks/*` in a granted tree, and it
+/// stays a non-claim in `SECURITY.md`.
 fn vetted_root<'a>(
     root: &'a ResolvedPath,
     homes: &Homes,
@@ -92,14 +174,20 @@ fn vetted_root<'a>(
     if !homes.usable && looks_like_a_home(cwd) {
         return Err(PolicyError::UnnamedHome {
             cwd: cwd.to_path_buf(),
-            // The written spelling; `named_homes` keeps it only when absolute.
+            // The written spelling; `named_homes` keeps it only when absolute. Named because
+            // this arm fires on a `$HOME` that is *set*: "with no usable HOME" read as unset
+            // and sent the operator to check whether they had exported it.
             home: homes.paths.first().cloned(),
         });
     }
 
     // Either direction, since Landlock rights cover a subtree. Both sides are resolved — the
     // cwd by its type, grants by `allow_system_executables` — so a merged-`/usr` host
-    // compares `/usr/bin` with `/usr/bin` rather than with `/bin`.
+    // compares `/usr/bin` with `/usr/bin` rather than with `/bin`. One way round was tried
+    // and is not a control: a merged-`/usr` cwd of `/bin` resolves to `/usr/bin`, which
+    // *holds* no granted path, handing a no-flag run write over every system binary. This
+    // arm is also what keeps the derived root non-executable — the one way it could have
+    // been was by sitting under a granted system path.
     if let Some(path) = granted
         .iter()
         .map(VettedPath::path)
@@ -314,6 +402,113 @@ pub(super) fn current_root(
 
 #[cfg(test)]
 pub(super) mod tests {
+    //! The mutation check, the same one `context/decision-policy.md` does for a table change.
+    //! Each mutation below was run rather than reasoned about, and the `passes` column is the
+    //! load-bearing one:
+    //!
+    //! ```text
+    //! default becomes unconditional (drop the paths_given guard)
+    //!    ──► a_path_flag_replaces_the_working_directory      fails   ◄── the rule itself
+    //!        each_allow_flag_widens_only_its_own_axis        fails
+    //!        allow_flags_repeat_to_grant_several_paths       fails
+    //!        a_path_flag_runs_from_the_home_directory        fails   ◄── fires on an explicit policy
+    //!        the_default_matches_what_sandbox_run_derives    passes  ◄── derives its expectation
+    //!
+    //! default removed entirely
+    //!    ──► the_working_directory_is_readable_and_writable  fails
+    //!        an_env_flag_keeps_the_working_directory         fails
+    //!        refuses_to_run_from_the_filesystem_root         fails
+    //!        refuses_to_run_from_the_home_directory          fails
+    //!
+    //! home arm narrowed from starts_with to equality
+    //!    ──► a_directory_holding_home_is_refused             fails
+    //!        a_refusal_names_the_flags_to_type_instead       fails
+    //!
+    //! holds_home_directories arm deleted
+    //!    ──► the_home_parents_are_refused_with_no_home_set       fails
+    //!        the_home_parents_are_refused_when_home_is_elsewhere fails
+    //!        a_refusal_names_the_flags_to_type_instead           fails
+    //!        refuses_to_run_from_home_whatever_home_names        fails
+    //!        an_unset_home_still_derives_a_root                  passes  ◄── /app is not a home parent
+    //!        a_named_home_leaves_a_neighbour_alone               passes
+    //!
+    //! that arm re-gated on homes.is_empty() (the draft-2 hole)
+    //!    ──► the_home_parents_are_refused_when_home_is_elsewhere fails   ◄── $HOME=/var/lib/svc
+    //!        refuses_to_run_from_home_whatever_home_names        fails
+    //!        the_home_parents_are_refused_with_no_home_set       passes  ◄── the gate is satisfied
+    //!
+    //! the child reading deleted
+    //!    ──► an_unset_home_refuses_a_child_of_one                fails
+    //!        an_unresolvable_home_refuses_a_child_of_one         fails
+    //!        a_home_that_is_no_directory_refuses_a_child_of_one  fails
+    //!        a_refusal_names_the_flags_to_type_instead           fails
+    //!        the_home_parents_are_refused_with_no_home_set       passes
+    //!
+    //! that gate re-read off the path list, !usable ──► paths.is_empty() (the #154 hole)
+    //!    ──► an_unresolvable_home_refuses_a_child_of_one         fails
+    //!        a_home_that_is_no_directory_refuses_a_child_of_one  fails
+    //!        an_unset_home_refuses_a_child_of_one                passes  ◄── the gate is satisfied
+    //!        refuses_to_run_from_home_whatever_home_names        passes  ◄── /home is a home parent
+    //!
+    //! usable stops asking for a directory (HOME=/dev/null)
+    //!    ──► a_home_that_is_no_directory_refuses_a_child_of_one  fails
+    //!        an_unresolvable_home_refuses_a_child_of_one         passes  ◄── it never resolved
+    //!
+    //! usable stops asking that $HOME holds no homes (HOME=/home, the #162 hole)
+    //!    ──► a_home_that_holds_homes_refuses_a_child_of_one      fails
+    //!        a_home_that_is_no_directory_refuses_a_child_of_one  fails   ◄── HOME=/ holds homes
+    //!        an_unresolvable_home_refuses_a_child_of_one         passes  ◄── it never resolved
+    //!
+    //! that test widened from SHARED_HOME_PARENTS to all four (HOME=/root)
+    //!    ──► a_root_home_still_derives_under_itself             fails   ◄── /root/app refuses
+    //!        a_home_that_holds_homes_refuses_a_child_of_one      passes  ◄── /home is in both
+    //!
+    //! UnnamedHome stops naming the $HOME it rejected
+    //!    ──► a_home_that_holds_homes_refuses_a_child_of_one      fails
+    //!        an_unset_home_refuses_a_child_of_one                passes  ◄── nothing to name
+    //!
+    //! the written form dropped when $HOME does not resolve
+    //!    ──► an_unresolvable_home_is_still_compared              fails
+    //!        an_unresolvable_home_refuses_a_child_of_one         passes  ◄── the other field
+    //!
+    //! the Silverblue second spelling dropped
+    //!    ──► a_symlinked_home_names_both_forms                   fails
+    //!
+    //! an unusable $HOME refused outright instead of deriving
+    //!    ──► an_unresolvable_home_still_runs_from_a_project      fails
+    //!        refuses_to_run_from_home_whatever_home_names        fails   ◄── the wrong refusal
+    //!        an_unset_home_still_runs_from_a_project             passes  ◄── nothing to refuse on
+    //!
+    //! overlap arm deleted, or tested one way round
+    //!    ──► a_directory_overlapping_the_system_binaries_is_refused  fails
+    //!        refuses_to_run_from_the_system_binaries                 fails
+    //!        a_directory_named_like_a_system_one_is_a_valid_root     passes
+    //! ```
+    //!
+    //! Deleting the overlap arm and testing it one way round fail the same two tests, which is
+    //! the signal being asked for: the loop covers each granted path *and* a directory under it,
+    //! so a one-way test is detected as the absence it is. That loop reads [`granted`] rather
+    //! than naming paths, because `allow_system_executables` skips a path the host lacks —
+    //! `/lib64` is absent on arm64, which failed a hardcoded list on CI's aarch64 leg while
+    //! passing x86_64.
+    //!
+    //! Two things the first mutation shows. Dropping the guard breaks tests in two suites that
+    //! never mention the default — `each_allow_flag_widens_only_its_own_axis` and
+    //! `allow_flags_repeat_to_grant_several_paths` both assert on the whole policy — so
+    //! suppression is pinned by tests older than it. And
+    //! `the_default_matches_what_sandbox_run_derives` passes, because both sides of the
+    //! comparison mutate together: that is the derived-expectation trap
+    //! `context/decision-policy.md` names, and it is why it is a cross-subcommand consistency
+    //! test and not the one pinning what the default *is*.
+    //!
+    //! The gap the tests do not close, narrowed by #154 and #162: [`named_homes`] takes `$HOME`
+    //! as a value and is unit-tested over every shape — unset, empty, relative, unresolvable,
+    //! resolving to a non-directory, resolving to `/`, resolving to a place homes live, resolving
+    //! to a real home, and symlinked, that last against a `tempfile` symlink rather than argued
+    //! from a Silverblue host. All that is left reading the live process is [`current_root`]'s
+    //! two lookups themselves, `getcwd` and `var_os("HOME")`; `sandbx-cli`'s `tests/cwd_policy.rs`
+    //! covers what it can of them by setting `HOME` on the spawned binary.
+
     use sandbx_core::SandboxPolicy;
 
     use super::*;
