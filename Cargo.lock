@@ -1666,6 +1666,7 @@ dependencies = [
  "sandbx-grants",
  "sandbx-logging",
  "sandbx-prompt",
+ "sandbx-provider",
  "sandbx-providers",
  "sandbx-screen",
  "sandbx-session-bridge",
@@ -1756,6 +1757,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-provider"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "futures-util",
+ "reqwest",
+ "sandbx-event",
+]
+
+[[package]]
 name = "sandbx-providers"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1765,6 +1775,7 @@ dependencies = [
  "rustls",
  "sandbx-event",
  "sandbx-prompt",
+ "sandbx-provider",
  "secrecy",
  "serde",
  "serde_json",
@@ -1893,6 +1904,7 @@ dependencies = [
  "sandbx-core",
  "sandbx-event",
  "sandbx-prompt",
+ "sandbx-provider",
  "sandbx-providers",
  "sandbx-tools",
  "serde_json",

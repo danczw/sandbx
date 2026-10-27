@@ -2,8 +2,7 @@
 //! not, and the fusedness the returned stream promises.
 
 use sandbx_event::{AgentEvent, StopReason};
-
-use crate::error::ProviderError;
+use sandbx_provider::ProviderError;
 
 use super::super::event_stream;
 use super::fixture::{events, ok_events, raw, stop};

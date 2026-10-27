@@ -1,4 +1,4 @@
-use sandbx_providers::ProviderError;
+use sandbx_provider::ProviderError;
 
 /// Why a turn did not finish.
 ///

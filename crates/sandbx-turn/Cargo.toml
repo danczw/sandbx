@@ -12,7 +12,7 @@ sandbx-approval = { path = "../sandbx-approval" }
 sandbx-compact = { path = "../sandbx-compact" }
 sandbx-event = { path = "../sandbx-event" }
 sandbx-prompt = { path = "../sandbx-prompt" }
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-provider = { path = "../sandbx-provider" }
 sandbx-tools = { path = "../sandbx-tools" }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 # Not `rt-multi-thread`: the runtime flavour is the binary's call. `time` is not
@@ -28,6 +28,10 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"
 # names it, and the four files under `tests/` build the inputs a scripted turn asks for.
 serde_json = "1.0.151"
 sandbx-core = { path = "../sandbx-core" }
+# Dev-only since #366 took `EventStream` and `ProviderError`: #364 had already taken the
+# request shapes, so nothing under `src/` names this crate at all and the one reference
+# left is `turn_loop.rs`'s spawnability pin, which types a field as an `AnthropicClient`.
+sandbx-providers = { path = "../sandbx-providers" }
 tempfile = "3.27.0"
 # To read the trail a scripted turn leaves, never to write one: `tracing` is a
 # dependency of `sandbx-core` alone, and this crate holds no emission site.

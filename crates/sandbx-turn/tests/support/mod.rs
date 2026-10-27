@@ -9,7 +9,7 @@ use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{Prompt, RequestMessage};
-use sandbx_providers::{EventStream, ProviderError};
+use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Turn, TurnLimits};
 

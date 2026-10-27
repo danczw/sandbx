@@ -2,8 +2,7 @@
 //! API reported for each counter.
 
 use sandbx_event::{AgentEvent, StopReason};
-
-use crate::error::ProviderError;
+use sandbx_provider::ProviderError;
 
 use super::fixture::{events, ok_events, raw, stop};
 

@@ -1,8 +1,7 @@
 //! Frame builders and event shorthands shared by the wire tests.
 
 use sandbx_event::{AgentEvent, StopReason};
-
-use crate::error::ProviderError;
+use sandbx_provider::ProviderError;
 
 use super::super::event_stream;
 
