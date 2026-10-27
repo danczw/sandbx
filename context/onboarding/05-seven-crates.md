@@ -90,7 +90,7 @@ Four things about that shape are worth more than the picture.
 | `sandbx-providers` | hand-rolled streaming clients against an LLM API | `EventStream`, `Prompt` |
 | `sandbx-agent` | the turn loop, and the gate a caller must supply — whose shapes are `sandbx-approval`'s since #355 | `run_turn`, `CallGate` |
 | `sandbx-session-message` | the five shapes a transcript line is made of | `Message`, `CompletedTurn` |
-| `sandbx-session` | the on-disk transcript: an id, a root, append-only JSONL | `SessionStore` |
+| `sandbx-session` | the on-disk transcript: a root, append-only JSONL — the id is `sandbx-session-id`'s since #360 | `SessionStore` |
 | `sandbx-tui` | the screen one turn is drawn on, and the keys that stop it | `Screen`, `Transcript` |
 | `sandbx-cli` | argv parsing and the five subcommand bodies | `Cli`, `Command` |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — `sandbx-cli`'s until #350 | `Grants`, `PolicyError` |
