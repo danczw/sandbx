@@ -6,9 +6,9 @@
 //! Free functions and not `From` impls, both types being foreign to this crate.
 //!
 //! A crate and not the module of `sandbx-cli` it was, though `sandbx-cli` is its only
-//! dependent: `sandbx-cli` names `PromptUsage` through `sandbx-agent`'s re-export and has
-//! no `sandbx-compact` edge of its own, and folding this back would give it one for a type
-//! it only passes along (#351).
+//! dependent: these four translations are the whole of what names `PromptUsage` outside
+//! `sandbx-agent`, so folding them back would give `sandbx-cli` a `sandbx-compact` edge
+//! for a type nothing else in it mentions (#351).
 
 use sandbx_compact::PromptUsage;
 use sandbx_providers::{ContentBlock, RequestMessage, Role};
