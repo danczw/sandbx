@@ -136,11 +136,11 @@ both the screen and the keys, for the pty pair a hangup test opens and the
 window it opens with; `serde_json` went with the fold it builds one call's
 input for. Read the production edges as a negative fact stated at the type
 level: **a renderer cannot leak what it cannot name.** With no edge to
-`sandbx-core`, `sandbx-tools`, `sandbx-turn` or `sandbx-session` from any of
-the three, nothing here can mention a `SandboxPolicy`, an `ExecutionContext`, a
-`BuiltinTool`, a `CallGate` or a session transcript — not "does not" but cannot,
-as a build error. The borrowed vocabulary is two types, and after #353 it is
-borrowed one crate lower down: `transcript.rs` names
+`sandbx-core`, `sandbx-tools`, `sandbx-turn` or `sandbx-session-store` from any
+of the three, nothing here can mention a `SandboxPolicy`, an `ExecutionContext`,
+a `BuiltinTool`, a `CallGate` or a session transcript — not "does not" but
+cannot, as a build error. The borrowed vocabulary is two types, and after #353
+it is borrowed one crate lower down: `transcript.rs` names
 `sandbx_providers::AgentEvent`, and its tests name `StopReason`.
 
 - **Worth questioning:** how much of that the dependency graph carries. Four

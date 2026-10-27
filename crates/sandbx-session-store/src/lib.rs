@@ -6,7 +6,14 @@
 //! handed, so keeping that root outside the working tree is `sandbx-session-paths`' and not
 //! enforced here. Nothing here expires or redacts a transcript, and it holds whatever a
 //! tool read into the conversation; see `SECURITY.md`.
+//!
+//! `session` is the store and an open transcript, `record` the line format, `shape` what a
+//! legal history looks like, `vet` who may read the files. Spans and not links: a crate
+//! `//!` may not link a private item.
 
-mod store;
+mod record;
+mod session;
+mod shape;
+mod vet;
 
-pub use store::{Session, SessionStore};
+pub use session::{Session, SessionStore};

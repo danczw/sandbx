@@ -8,9 +8,9 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use sandbx_session::SessionStore;
 use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role};
+use sandbx_session_store::SessionStore;
 
 fn store() -> (tempfile::TempDir, SessionStore) {
     let root = tempfile::tempdir().unwrap();

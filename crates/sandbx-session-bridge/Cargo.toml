@@ -10,14 +10,11 @@ publish.workspace = true
 [dependencies]
 sandbx-compact = { path = "../sandbx-compact" }
 sandbx-providers = { path = "../sandbx-providers" }
-# The whole crate for two names now that #360 and #361 have taken `SessionId` and
-# `sessions_directory`, until stage 4 of #332 splits the rest: `Session` and `SessionStore`
-# go to #362. One line to re-point each time, which is why the wide edge is allowed meanwhile.
-sandbx-session = { path = "../sandbx-session" }
 sandbx-session-error = { path = "../sandbx-session-error" }
 sandbx-session-id = { path = "../sandbx-session-id" }
 sandbx-session-paths = { path = "../sandbx-session-paths" }
 sandbx-session-message = { path = "../sandbx-session-message" }
+sandbx-session-store = { path = "../sandbx-session-store" }
 
 [lints]
 workspace = true

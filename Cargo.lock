@@ -1666,11 +1666,11 @@ dependencies = [
  "sandbx-logging",
  "sandbx-providers",
  "sandbx-screen",
- "sandbx-session",
  "sandbx-session-bridge",
  "sandbx-session-error",
  "sandbx-session-id",
  "sandbx-session-message",
+ "sandbx-session-store",
  "sandbx-text",
  "sandbx-tools",
  "sandbx-tui-input",
@@ -1773,29 +1773,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbx-session"
-version = "0.1.0-alpha.18"
-dependencies = [
- "nix",
- "sandbx-session-error",
- "sandbx-session-id",
- "sandbx-session-message",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "sandbx-session-bridge"
 version = "0.1.0-alpha.18"
 dependencies = [
  "sandbx-compact",
  "sandbx-providers",
- "sandbx-session",
  "sandbx-session-error",
  "sandbx-session-id",
  "sandbx-session-message",
  "sandbx-session-paths",
+ "sandbx-session-store",
  "serde_json",
 ]
 
@@ -1826,6 +1813,19 @@ name = "sandbx-session-paths"
 version = "0.1.0-alpha.18"
 dependencies = [
  "sandbx-session-error",
+]
+
+[[package]]
+name = "sandbx-session-store"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "nix",
+ "sandbx-session-error",
+ "sandbx-session-id",
+ "sandbx-session-message",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

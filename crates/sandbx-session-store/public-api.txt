@@ -1,0 +1,37 @@
+pub mod sandbx_session_store
+pub struct sandbx_session_store::Session
+impl sandbx_session_store::Session
+pub fn sandbx_session_store::Session::append(&mut self, sandbx_session_message::CompletedTurn<'_>) -> core::result::Result<(), sandbx_session_error::SessionError>
+pub fn sandbx_session_store::Session::id(&self) -> &sandbx_session_id::SessionId
+pub fn sandbx_session_store::Session::messages(&self) -> &[sandbx_session_message::Message]
+pub fn sandbx_session_store::Session::observed(&self) -> core::option::Option<sandbx_session_message::Usage>
+pub fn sandbx_session_store::Session::path(&self) -> &std::path::Path
+pub fn sandbx_session_store::Session::pending_call(&self) -> bool
+pub fn sandbx_session_store::Session::shared_read(&self) -> bool
+pub fn sandbx_session_store::Session::withheld(&self) -> usize
+impl core::fmt::Debug for sandbx_session_store::Session
+pub fn sandbx_session_store::Session::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_session_store::Session
+impl core::marker::Send for sandbx_session_store::Session
+impl core::marker::Sync for sandbx_session_store::Session
+impl core::marker::Unpin for sandbx_session_store::Session
+impl core::marker::UnsafeUnpin for sandbx_session_store::Session
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_store::Session
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_store::Session
+pub struct sandbx_session_store::SessionStore
+impl sandbx_session_store::SessionStore
+pub fn sandbx_session_store::SessionStore::create(&self) -> core::result::Result<sandbx_session_store::Session, sandbx_session_error::SessionError>
+pub fn sandbx_session_store::SessionStore::new(std::path::PathBuf) -> Self
+pub fn sandbx_session_store::SessionStore::resume(&self, &sandbx_session_id::SessionId) -> core::result::Result<sandbx_session_store::Session, sandbx_session_error::SessionError>
+pub fn sandbx_session_store::SessionStore::root(&self) -> &std::path::Path
+impl core::clone::Clone for sandbx_session_store::SessionStore
+pub fn sandbx_session_store::SessionStore::clone(&self) -> sandbx_session_store::SessionStore
+impl core::fmt::Debug for sandbx_session_store::SessionStore
+pub fn sandbx_session_store::SessionStore::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_session_store::SessionStore
+impl core::marker::Send for sandbx_session_store::SessionStore
+impl core::marker::Sync for sandbx_session_store::SessionStore
+impl core::marker::Unpin for sandbx_session_store::SessionStore
+impl core::marker::UnsafeUnpin for sandbx_session_store::SessionStore
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_store::SessionStore
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_store::SessionStore
