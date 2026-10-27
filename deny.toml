@@ -78,10 +78,9 @@ wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-session-message"
-# `sandbx-session-bridge` is the translation between these shapes and the provider's, so
-# its edge is the one #359 described. `sandbx-cli`'s is direct too and survives the split
-# — `agent/run.rs` names `CompletedTurn` to append a finished turn — and neither is
-# inherited through `sandbx-session` (#351).
+# Neither `sandbx-session-bridge`'s edge nor `sandbx-cli`'s is inherited through
+# `sandbx-session`: the bridge is the translation #359 described, and `agent/run.rs` names
+# `CompletedTurn` to append a finished turn (#351).
 wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
@@ -133,7 +132,7 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 name = "sandbx-compact"
 # `sandbx-turn` takes `sandbx-agent`'s place here when #357 splits the loop out.
 # `sandbx-session-bridge` names `PromptUsage` through an edge of its own and not
-# `sandbx-agent`'s re-export, which is the shape #351 landed (not the one it predicted).
+# `sandbx-agent`'s re-export (#351).
 wrappers = ["sandbx-agent", "sandbx-session-bridge"]
 
 [[bans.deny]]
