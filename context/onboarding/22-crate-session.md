@@ -632,7 +632,7 @@ is masked by the umask, which can only clear bits.
 
 ## Next
 
-[23 — the tui crate](23-crate-tui.md): the screen one turn is drawn on, the
+[23 — the tui crates](23-crate-tui.md): the screen one turn is drawn on, the
 events it folds, and the keys that stop it. Where this crate's output is a file
 nobody watches, that one's is a surface somebody reads as it is written — and it
 borrows `sandbx-providers` for the vocabulary alone, the nearest thing in the
