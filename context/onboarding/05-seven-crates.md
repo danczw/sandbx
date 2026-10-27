@@ -82,9 +82,10 @@ Four things about that shape are worth more than the picture.
   their own, so what was an edge to the crate that also hands out
   `AnthropicClient` is now an edge to a leaf — the `tui --> providers` arrow in
   the frozen graph above is one of the things that makes it frozen. The edge had
-  already moved twice: to `sandbx-tui-transcript` in #353, after #352 and #354
-  split `sandbx-tui` into `sandbx-screen` and `sandbx-tui-input` and retired the
-  name the graph and table on either side of this list still carry. The
+  already moved once, in #353, from `sandbx-tui` down to `sandbx-tui-transcript`;
+  #352 and #354 then split what was left of `sandbx-tui` into `sandbx-screen` and
+  `sandbx-tui-input`, retiring the name the graph and table on either side of
+  this list still carry. The
   terminal-safety predicate `invisible` comes from `sandbx-text` since #363, so
   both of the drawing side's edges are now leaf crates. See
   [`transcript.rs`](../../crates/sandbx-tui-transcript/src/transcript.rs). No

@@ -265,7 +265,6 @@ carrying a vendor string as opaque data. The crate's `//!` is where the rest of
 the reasoning lives: why these two are a crate and not a module, and why nothing
 in them derives `Serialize`.
 
-
 ## `invisible` left this crate, and what it took with it
 
 `invisible` — whether a character renders as nothing, or reorders what follows

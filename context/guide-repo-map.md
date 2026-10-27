@@ -62,9 +62,9 @@ direct dependencies and this not being one of them. Its two parents are
 `sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`
 is its one internal edge, since `EventStream` names an `AgentEvent` and the
 accumulator builds one per frame. The arrow is not drawn because `sandbx-event`
-is already on the bus two rows below, and a second crossing would say less than
-the two table rows do. `sandbx-turn` reaches it directly as well, not through
-either of the two crates above it on the diagram (#365).
+is already a leaf of the bus further down, and a second crossing would say less
+than the two table rows do. `sandbx-turn` reaches it directly as well, and not
+through the `sandbx-providers` edge drawn beside it (#365).
 
 | Crate | Owns | Internal deps |
 |---|---|---|

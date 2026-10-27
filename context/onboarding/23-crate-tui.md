@@ -139,8 +139,9 @@ level: **a renderer cannot leak what it cannot name.** With no edge to
 `sandbx-core`, `sandbx-tools`, `sandbx-turn` or `sandbx-session-store` from any
 of the three, nothing here can mention a `SandboxPolicy`, an `ExecutionContext`,
 a `BuiltinTool`, a `CallGate` or a session transcript — not "does not" but
-cannot, as a build error. Since #365 `sandbx-providers` is on that list too, so an
-`AnthropicClient` is a fifth name none of the three can mention. The borrowed
+cannot, as a build error. Since #365 `sandbx-providers` is a fifth crate on that
+list, so an `AnthropicClient` is one more name none of the three can mention. The
+borrowed
 vocabulary is still two types, now borrowed from a leaf: `transcript.rs` names
 `sandbx_event::AgentEvent`, and its tests name `StopReason`.
 

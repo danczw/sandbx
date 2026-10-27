@@ -5,9 +5,9 @@
 //! this vocabulary and only one of them wants a client: the turn loop, the CLI's renderer
 //! and `sandbx-tui-transcript`'s fold all name these two types, and the fold names nothing
 //! else of a provider's. While they lived beside the clients, the drawing side reached
-//! reqwest, rustls and hyper to match on an enum — 89 packages for two types, carried on
-//! to `sandbx-screen` behind it (#328, #365). One dependency here, `serde_json`, for the
-//! one field that holds a call's arguments.
+//! reqwest, rustls and hyper to match on an enum, and carried them on to `sandbx-screen`
+//! behind it; both crates now reach neither (#328, #365). One dependency here,
+//! `serde_json`, for the one field that holds a call's arguments.
 //!
 //! A second adapter maps its own frames onto these types rather than extending them, which
 //! is the seam `context/decision-provider-seam.md` records. Nothing here derives
@@ -31,9 +31,10 @@ pub enum AgentEvent {
     },
     /// An incremental chunk of the model's reasoning text, for a renderer.
     ///
-    /// Empty unless `Thinking::Visible` was asked for, and never the whole block:
-    /// [`ThinkingBlock`](Self::ThinkingBlock) is what carries one back into a later
-    /// request.
+    /// Empty unless the provider crate's `Thinking::Visible` was asked for, and never
+    /// the whole block: [`ThinkingBlock`](Self::ThinkingBlock) is what carries one back
+    /// into a later request. Not a link, for the same reason as on
+    /// [`Stop`](Self::Stop): the edge back to that crate would be a cycle.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
