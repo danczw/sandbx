@@ -15,8 +15,6 @@ deny.toml           cargo-deny
 .github/scripts/    what a workflow calls but must be runnable without one
                     ◄── all three: guide-ci.md
 docs/release-notes/ one file per tag, which the release gates on; TEMPLATE.md
-context/onboarding/ the read-through for a new engineer, with its own index
-                    ◄── the on-ramp to the reading order at the end of this file
 SECURITY.md         the promise to users — the one doc that must never lag
 ```
 
@@ -658,12 +656,9 @@ wide, so nothing here can reach the store that writes a transcript (#361).
 
 ## Reading order
 
-Two passes, if the repo is new to you. `context/onboarding/` is the first: a
-numbered read-through that builds the vocabulary this order assumes, from what
-sandbx is to why the order of `apply` is load-bearing, followed by a per-crate
-reference block read when you land in a crate rather than in order. It carries
-its own index, and no entry here per chapter. The order below is the second
-pass, and reads as reference rather than as a wall once the first is done.
+If the repo is new to you, `cargo doc --open` first: each crate's `//!` says
+what that crate owns and what it refuses, which is the vocabulary the order
+below assumes. The order itself reads as reference rather than as a wall.
 
 1. `guide-repo-map.md` — this file: which crate owns what, and what depends on
    what
