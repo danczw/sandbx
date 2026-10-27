@@ -14,27 +14,27 @@ use crate::PolicyError;
 /// Where home directories live, for a cwd `$HOME` does not settle.
 ///
 /// Refused by location, whatever the environment says; only the child reading below is gated
-/// on `$HOME` at all. This is a list of names, which is the shape rejected for *depth* — not
-/// refusing direct children of `/`, because depth is not sensitivity: `/srv`, `/opt`,
-/// `/workspace`, `/app` and `/data` are ordinary project roots, in a container `/app` *is*
-/// the working directory, and `~/.ssh` is three levels down and far worse. Enumerating the
-/// dangerous children instead (`/etc`, `/root`, `/proc`) starts a denylist whose first
-/// omission is silent, the shape `context/decision-policy.md` already rejected for variable
-/// names. The distinction is thin and worth stating: a depth rule would be guessing at which
-/// directories are *sensitive*, where this names the one place on a Unix system whose entire
+/// on `$HOME` at all.
+///
+/// Two rejected shapes, both likely to be re-proposed. **Depth** — refusing direct children
+/// of `/` — because depth is not sensitivity: `/srv`, `/opt`, `/workspace` and `/data` are
+/// ordinary project roots, in a container `/app` *is* the working directory, and `~/.ssh` is
+/// three levels down and far worse. And a **denylist of the dangerous children** (`/etc`,
+/// `/root`, `/proc`), whose first omission is silent — the shape
+/// `context/decision-policy.md` already rejected for variable names. A list of names is
+/// nonetheless what this is, and the difference is that a depth rule guesses at which
+/// directories are *sensitive* where this names the one place on a Unix system whose entire
 /// purpose is to hold other people's trees. Nor is there a subdirectory-of-`$HOME` rule:
 /// `~/code/project` is the entire use case, and the accidental no-flag run is standing in
 /// `$HOME` itself.
 ///
-/// Non-goal: a home root this does not list. With no usable `$HOME`, a site keeping homes at
-/// `/srv/people` or behind autofs gets neither refusal, both recognising a home by location.
-/// A `$HOME` outside the list leaves the same gap standing — `HOME=/tmp` with cwd
-/// `/home/other` still derives, a real directory somewhere unlisted being what a legitimate
-/// non-standard home looks like. Consulting `/etc/passwd` was considered and does not fix it:
-/// the LDAP and autofs layouts that need it are the ones `/etc/passwd` cannot see either, so
-/// it moves the omission at the cost of parsing a file inside the guard. The cost of an
-/// omission here is that one layout degrades to no protection rather than that the mechanism
-/// has a hole, and `--allow-read`/`--allow-write` are the answer for such a site either way.
+/// Non-goal: a home root this does not list. `/srv/people`, autofs and `HOME=/tmp` with cwd
+/// `/home/other` all still derive, a real directory somewhere unlisted being what a
+/// legitimate non-standard home looks like. Consulting `/etc/passwd` was considered and does
+/// not fix it — the LDAP and autofs layouts that need it are the ones `/etc/passwd` cannot
+/// see either — so it moves the omission at the cost of parsing a file inside the guard. One
+/// layout degrading to no protection is the accepted cost, rather than the mechanism having
+/// a hole, and `--allow-read`/`--allow-write` answer for such a site either way.
 const HOME_PARENTS: [&str; 4] = ["/home", "/Users", "/var/home", "/root"];
 
 /// Whether `cwd` is one of [`HOME_PARENTS`] or holds one.
@@ -136,8 +136,8 @@ struct Homes {
 /// `SandboxPolicy` is grants-only, matching is prefix-only, and Landlock composes rules by
 /// union with no subtraction.
 ///
-/// What dropping that arm widened is worth naming rather than filing under bounded cost. A
-/// `/usr`-rooted prefix is still refused, by the overlap arm below and not by that one, since
+/// Dropping that arm widened something, and it is named here rather than filed under bounded
+/// cost. A `/usr`-rooted prefix is still refused, by the overlap arm below and not by it, since
 /// `/usr/local/bin` holds `/usr`. It was the only thing refusing a *user-level* prefix, so a
 /// no-flag run from `~/.cargo/bin`, `~/.local/bin` or `/opt/x/bin` now derives read and write
 /// over the directory holding the installed binary. The residue is the *next* invocation of
@@ -411,7 +411,7 @@ pub(super) mod tests {
     //!    ──► a_path_flag_replaces_the_working_directory      fails   ◄── the rule itself
     //!        each_allow_flag_widens_only_its_own_axis        fails
     //!        allow_flags_repeat_to_grant_several_paths       fails
-    //!        a_path_flag_runs_from_the_home_directory        fails   ◄── fires on an explicit policy
+    //!        a_path_flag_runs_from_the_home_directory        fails   ◄── on an explicit policy
     //!        the_default_matches_what_sandbox_run_derives    passes  ◄── derives its expectation
     //!
     //! default removed entirely
@@ -429,7 +429,7 @@ pub(super) mod tests {
     //!        the_home_parents_are_refused_when_home_is_elsewhere fails
     //!        a_refusal_names_the_flags_to_type_instead           fails
     //!        refuses_to_run_from_home_whatever_home_names        fails
-    //!        an_unset_home_still_derives_a_root                  passes  ◄── /app is not a home parent
+    //!        an_unset_home_still_derives_a_root                  passes  ◄── /app is no home par.
     //!        a_named_home_leaves_a_neighbour_alone               passes
     //!
     //! that arm re-gated on homes.is_empty() (the draft-2 hole)
@@ -448,7 +448,7 @@ pub(super) mod tests {
     //!    ──► an_unresolvable_home_refuses_a_child_of_one         fails
     //!        a_home_that_is_no_directory_refuses_a_child_of_one  fails
     //!        an_unset_home_refuses_a_child_of_one                passes  ◄── the gate is satisfied
-    //!        refuses_to_run_from_home_whatever_home_names        passes  ◄── /home is a home parent
+    //!        refuses_to_run_from_home_whatever_home_names        passes  ◄── /home is a home par.
     //!
     //! usable stops asking for a directory (HOME=/dev/null)
     //!    ──► a_home_that_is_no_directory_refuses_a_child_of_one  fails

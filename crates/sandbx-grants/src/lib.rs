@@ -6,11 +6,10 @@
 //! the loop over them are `flags`; `error` is what stops either. Not links: all three are
 //! private, and a crate `//!` may not link anything narrower than `pub`.
 //!
-//! A no-flag `sandbx sandbox-run` grants read and write on the directory it was run from.
-//! Every grant was typed by hand before #109, which made the common case — work on the
-//! project I am standing in — a wall of flags. Execute and environment were already
-//! unconditional, so what was left was the filesystem axes and the guards that make a
-//! *default-reachable write grant* safe to ship.
+//! A no-flag `sandbx sandbox-run` grants read and write on the directory it was run from
+//! (#109). Execute and environment were already unconditional, so what the default added was
+//! the filesystem axes — and with them the guards that make a *default-reachable write grant*
+//! safe to ship, which is most of what this crate is.
 //!
 //! What it does not reach is a toolchain installed under `$HOME`. `cargo test` is the example
 //! everyone reaches for and it is the wrong one: with rustup, `cargo` is `~/.cargo/bin/cargo`
