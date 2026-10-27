@@ -136,8 +136,8 @@ wrappers = ["sandbx-cli", "sandbx-tui-transcript"]
 
 [[bans.deny]]
 name = "sandbx-event"
-# Four parents, none of them inheriting the edge: `sandbx-providers` builds an event per
-# wire frame and names one in `EventStream`, `sandbx-turn` folds a round out of them,
+# No parent here inherits the edge through another: `sandbx-providers` builds an event
+# per wire frame and names one in `EventStream`, `sandbx-turn` folds a round out of them,
 # `sandbx-tui-transcript` folds the transcript, and `sandbx-cli`'s renderer is a second
 # fold of its own. `sandbx-compact` names `AgentEvent` in a doc comment and has no edge.
 #

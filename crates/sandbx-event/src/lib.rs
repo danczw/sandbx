@@ -6,8 +6,7 @@
 //! and `sandbx-tui-transcript`'s fold all name these two types, and the fold names nothing
 //! else of a provider's. While they lived beside the clients, the drawing side reached
 //! reqwest, rustls and hyper to match on an enum, and carried them on to `sandbx-screen`
-//! behind it; both crates now reach neither (#328, #365). One dependency here,
-//! `serde_json`, for the one field that holds a call's arguments.
+//! behind it; both crates now reach neither (#328, #365).
 //!
 //! A second adapter maps its own frames onto these types rather than extending them, which
 //! is the seam `context/decision-provider-seam.md` records. Nothing here derives
