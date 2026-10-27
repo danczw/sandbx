@@ -50,9 +50,12 @@ paths.
 
 ## invocation.rs is the clap surface, and lib.rs the list of names
 
-The library root declares the crate's modules and re-exports their types. That
-is the whole file: `lib.rs` has submodules, so it may hold only `mod` lines and
-re-exports (#331), and the clap surface it used to hold is now `invocation.rs`.
+The library root declares the crate's modules and re-exports their types, plus
+two names that are no module of this crate's — `sandbx-grants`' `Grants` and
+`PolicyError`, and `sandbx-session-bridge`'s `SessionChoice`, each re-exported
+by the extraction that made it foreign (#350, #351). That is the whole file:
+`lib.rs` has submodules, so it may hold only `mod` lines and re-exports (#331),
+and the clap surface it used to hold is now `invocation.rs`.
 No work happens in either, which is the point: `Cli::parse` is reachable from a
 unit test, so "what does this argv grant" is a question answered without a
 sandbox-capable kernel.
@@ -622,9 +625,11 @@ The rest of the crate is the seam between `sandbx-providers`' request shapes
 and `sandbx-session-message`'s stored ones, and the crate doc states the
 property it holds:
 
-> Every match below destructures by field name with no `_` arm: a new
-> [`ContentBlock`] variant is a compile error here rather than a block silently
-> missing from a saved conversation.
+> The two block translations — `request_block` and `stored_block`, both private
+> — destructure by field name with no `_` arm, so a sixth [`ContentBlock`]
+> variant is a compile error here rather than a block silently missing from a
+> saved conversation, and a fourth [`Content`] variant is the same in the other
+> direction.
 
 This is where [22](22-crate-session.md)'s declared-not-imported choice pays off.
 `sandbx-session-message` does not depend on `sandbx-providers`; it declares its

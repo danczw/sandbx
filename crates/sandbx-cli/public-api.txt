@@ -1,6 +1,7 @@
 pub mod sandbx_cli
 pub use sandbx_cli::Grants
 pub use sandbx_cli::PolicyError
+pub use sandbx_cli::SessionChoice
 pub enum sandbx_cli::AgentError
 pub sandbx_cli::AgentError::ApproveUnderTui
 pub sandbx_cli::AgentError::Credential(sandbx_auth::error::AuthError)

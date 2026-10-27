@@ -17,3 +17,8 @@ pub use invocation::{Cli, Command};
 pub use sandbox::SandboxRun;
 
 pub use sandbx_grants::{Grants, PolicyError};
+// `AgentRun::session` returns one and a caller matches on its *variants*, which is what
+// separates it from the other foreign types in this surface — the errors, the policy and
+// the digest are displayed or passed along, never destructured, so they stay spelled by
+// their own crates (#351).
+pub use sandbx_session_bridge::SessionChoice;

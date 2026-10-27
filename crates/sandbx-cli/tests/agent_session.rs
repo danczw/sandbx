@@ -5,8 +5,7 @@
 //! a transcript then holds is `sandbx-session`'s own tests.
 
 use clap::Parser;
-use sandbx_cli::{Cli, Command};
-use sandbx_session_bridge::SessionChoice;
+use sandbx_cli::{Cli, Command, SessionChoice};
 
 fn agent_run(argv: &[&str]) -> sandbx_cli::AgentRun {
     match Cli::parse_from(argv).command {
