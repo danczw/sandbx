@@ -45,7 +45,7 @@ and `Turn::tool_choice` are new for it, and the field is dropped on the way out
 when `tools` is empty, the API refusing a choice over tools no request defined.
 
 The round loop's contract is otherwise the same one: this is `agent-run` choosing
-to call it twice. Anything else embedding `sandbx-agent` keeps the raw
+to call it twice. Anything else embedding `sandbx-turn` keeps the raw
 `RoundLimit` and decides for itself.
 
 ### The gate still refuses

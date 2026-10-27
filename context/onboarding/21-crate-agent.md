@@ -1,6 +1,6 @@
 # A small crate holds the control flow
 
-`sandbx-agent` is a small crate, and it is the box
+`sandbx-turn` is a small crate, and it is the box
 [04 — the architecture](04-the-architecture.md) draws in View 2: the round that
 opens a stream, consumes it and answers what the model asked for.
 View 3's **gate** — "`CallGate`, two methods, `run_turn`'s mandatory fifth
@@ -23,12 +23,11 @@ map, the signature a caller meets, and the cut planner the loop asks.
 ## The module map
 
 ```
-src/lib.rs          re-exports, two of them `sandbx-compact`'s, and two private
+src/lib.rs          re-exports, two of them `sandbx-compact`'s, and four private
                     modules; nothing else
-   turn.rs          five re-exports and three private modules; nothing else
-      run.rs        run_turn, and the public types it is driven by
-      accumulate.rs one round's assistant message, rebuilt from deltas
-      tools.rs      the offered set, the gate call, one spawn_blocking
+   run.rs           run_turn, and the public types it is driven by
+   accumulate.rs    one round's assistant message, rebuilt from deltas
+   tools.rs         the offered set, the gate call, one spawn_blocking
    error.rs         TurnError — only what ends a turn in failure
 tests/
    turn_loop.rs       what one streamed turn becomes
@@ -37,13 +36,16 @@ tests/
    support/mod.rs     the Script provider double and the request builders
 ```
 
-Three things to read off that shape. **The deepest path is two levels**, and
-`run.rs`'s two siblings are the two halves of a round: rebuilding what arrived,
-running what it asked for. **`run.rs` is the longest file under `src/` and stays
-one module**, which its own doc says outright, because a new way for a turn to
-stop is one edit to `TurnStop`, one to the loop that chooses it and one to the
-outcome that carries it. **The test tree is larger than `src/`** — the last
-section is why, and the cut planner's own unit module left with it (#356).
+Three things to read off that shape. **The tree is flat** — every module a
+direct child of the crate root, with `accumulate.rs` and `tools.rs` the two
+halves of a round: rebuilding what arrived, running what it asked for. The
+`turn.rs` level that used to sit between them and `lib.rs` was a `mod`-only
+shim, and #357 dissolved it into `lib.rs` rather than stack two of them in one
+crate. **`run.rs` is the longest file under `src/` and stays one module**, which
+its own doc says outright, because a new way for a turn to stop is one edit to
+`TurnStop`, one to the loop that chooses it and one to the outcome that carries
+it. **The test tree is larger than `src/`** — the last section is why, and the
+cut planner's own unit module left with it (#356).
 
 Of the runtime dependencies, one carries its constraint in a comment:
 
@@ -66,7 +68,7 @@ and the crate deciding which tool calls happen cannot form an opinion about a
 
 ## The re-export list is the whole API
 
-[`lib.rs`](../../crates/sandbx-agent/src/lib.rs) is two private `mod`
+[`lib.rs`](../../crates/sandbx-turn/src/lib.rs) is four private `mod`
 declarations and three `pub use` lines, one of which re-exports from another
 crate. The re-export list *is* the public surface, so group it by what each name
 is for:
@@ -105,10 +107,10 @@ and `StopReason` are `sandbx-providers`', and `CallGate`, `ToolCall`,
 `ApprovalDecision`, `Settled` and `Outcome` are `sandbx-approval`'s. None of
 those sets is re-exported, so a caller imports from each.
 
-## `turn/run.rs` — the signature before the body
+## `run.rs` — the signature before the body
 
-[`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) exports one async
-function and the four types that drive it. Read the signature before the loop:
+[`run.rs`](../../crates/sandbx-turn/src/run.rs) exports one async function and
+the four types that drive it. Read the signature before the loop:
 
 ```rust
 pub async fn run_turn<F, O, G>(
@@ -169,10 +171,10 @@ calling one, since a history replaying a `tool_use` needs them defined.
 empty, the API refusing a choice over tools nothing defined.
 
 `ctx` is the one borrowed parameter and the one `run_turn` itself does nothing
-with: it is cloned per call in `turn/tools.rs` and handed to
-`BuiltinTool::execute`, never read here. Nor could it be — `ExecutionContext`
-is `sandbx-tools`', and the `SandboxPolicy` inside it is a name `src/` cannot
-write at all, for the dev-dependency reason above.
+with: it is cloned per call in `tools.rs` and handed to `BuiltinTool::execute`,
+never read here. Nor could it be — `ExecutionContext` is `sandbx-tools`', and
+the `SandboxPolicy` inside it is a name `src/` cannot write at all, for the
+dev-dependency reason above.
 
 The body is a `for` over `max_rounds` with eight mutable locals above it, five
 there only for compaction — `observed`, `cut`, `floor`, `measured` and
@@ -197,14 +199,14 @@ flowchart TD
     H -->|"max_rounds spent"| F
 ```
 
-## `turn/accumulate.rs` — a round's message, rebuilt
+## `accumulate.rs` — a round's message, rebuilt
 
-[`turn/accumulate.rs`](../../crates/sandbx-agent/src/turn/accumulate.rs) drains
-one `EventStream` into the blocks it describes, plus the round's token counts
-and stop reason, as a crate-private `Round`. Text deltas accumulate into a
-`String` flushed immediately before any `ToolUse` or reasoning block, the API
-reading a content array in order. Counts are last-one-wins rather than summed,
-and the reason is the wire's: Anthropic restates them cumulatively on every
+[`accumulate.rs`](../../crates/sandbx-turn/src/accumulate.rs) drains one
+`EventStream` into the blocks it describes, plus the round's token counts and
+stop reason, as a crate-private `Round`. Text deltas accumulate into a `String`
+flushed immediately before any `ToolUse` or reasoning block, the API reading a
+content array in order. Counts are last-one-wins rather than summed, and the
+reason is the wire's: Anthropic restates them cumulatively on every
 `message_delta`, so adding them up would multiply the figure. That makes `Usage`
 having to arrive *before* `Stop` an ordering dependency — the `Stop` arm
 `return`s, so anything behind it is never seen — whose breakage would be silent:
@@ -218,21 +220,20 @@ a reader grepping the name hits both:
 | file | what it folds |
 |---|---|
 | [`providers/src/anthropic/wire/accumulate.rs`](../../crates/sandbx-providers/src/anthropic/wire/accumulate.rs) | raw SSE frames into vendor-neutral `AgentEvent`s |
-| [`agent/src/turn/accumulate.rs`](../../crates/sandbx-agent/src/turn/accumulate.rs) | `AgentEvent`s into one replayable `RequestMessage` |
+| [`turn/src/accumulate.rs`](../../crates/sandbx-turn/src/accumulate.rs) | `AgentEvent`s into one replayable `RequestMessage` |
 
 The provider's sits below the vendor boundary and knows `content_block_start`
 from `message_delta`; this crate's sits above it and has never heard of SSE. See
 [20 — the providers crate](20-crate-providers.md) for the lower half.
 
-## `turn/tools.rs` — the offered set, the gate, and the one blocking site
+## `tools.rs` — the offered set, the gate, and the one blocking site
 
-[`turn/tools.rs`](../../crates/sandbx-agent/src/turn/tools.rs) holds
-`answer_calls`, which [13](13-turn-loop-and-gate.md) takes apart decision by
-decision. Two things here are the module's own. The smaller is `definition`, a
-seven-line bridge from a `BuiltinTool` to the `ToolDefinition` a request
-carries; it keeps no table, name and description and schema coming from one
-`SPEC` per tool in `sandbx-tools`, and `run_turn` builds the whole `Vec` once
-before the first round.
+[`tools.rs`](../../crates/sandbx-turn/src/tools.rs) holds `answer_calls`, which
+[13](13-turn-loop-and-gate.md) takes apart decision by decision. Two things here
+are the module's own. The smaller is `definition`, a seven-line bridge from a
+`BuiltinTool` to the `ToolDefinition` a request carries; it keeps no table, name
+and description and schema coming from one `SPEC` per tool in `sandbx-tools`,
+and `run_turn` builds the whole `Vec` once before the first round.
 
 The larger is the **only `spawn_blocking` call site in the harness**:
 
@@ -272,11 +273,10 @@ the same".
 `approval.rs` was here until #355 gave it a crate of its own,
 [`sandbx-approval`](../../crates/sandbx-approval/src/lib.rs) — 110 lines holding
 four types and the trait, and no policy at all: no risk table, no allowlist, no
-default verdict. `sandbx-agent` kept the asking, so `run_turn`'s fifth parameter
-is unchanged and both the trait's methods are still called from
-`turn/tools.rs`; what moved is where the vocabulary is declared, and the three
-production implementors were never here to begin with — they are
-`sandbx-cli`'s.
+default verdict. `sandbx-turn` keeps the asking, so `run_turn`'s fifth parameter
+is unchanged and both the trait's methods are still called from `tools.rs`; what
+moved is where the vocabulary is declared, and the three production implementors
+were never here to begin with — they are `sandbx-cli`'s.
 
 Every judgement is the caller's gate's, which for the shipped binary is
 `ArgvGate` in `sandbx-cli`; [13](13-turn-loop-and-gate.md) is the chapter for
@@ -626,7 +626,7 @@ the moment the turn produces them — "Do not delete it as dead weight."
 
 ## `error.rs` — only what ends a turn in failure
 
-[`error.rs`](../../crates/sandbx-agent/src/error.rs) is one enum, a `Display`
+[`error.rs`](../../crates/sandbx-turn/src/error.rs) is one enum, a `Display`
 impl, and an `Error` impl whose `source` is `Some` for exactly one variant. The
 type's doc states what belongs in it — "a tool that fails is not an error here:
 a refused or malformed call goes back to the model as a `tool_result` marked
@@ -680,10 +680,10 @@ Four files, divided by subject rather than by module:
 
 | target | subject |
 |---|---|
-| [`tests/turn_loop.rs`](../../crates/sandbx-agent/tests/turn_loop.rs) | what one streamed turn becomes: deltas, reasoning replay, the gate, the traps, both bounds |
-| [`tests/turn_compaction.rs`](../../crates/sandbx-agent/tests/turn_compaction.rs) | compaction's wiring, asserted on what the provider *received* |
-| [`tests/audit_trail.rs`](../../crates/sandbx-agent/tests/audit_trail.rs) | one model-issued call end to end, through to a `decision=` field |
-| [`tests/support/mod.rs`](../../crates/sandbx-agent/tests/support/mod.rs) | the `Script` double and the request builders both halves share |
+| [`tests/turn_loop.rs`](../../crates/sandbx-turn/tests/turn_loop.rs) | what one streamed turn becomes: deltas, reasoning replay, the gate, the traps, both bounds |
+| [`tests/turn_compaction.rs`](../../crates/sandbx-turn/tests/turn_compaction.rs) | compaction's wiring, asserted on what the provider *received* |
+| [`tests/audit_trail.rs`](../../crates/sandbx-turn/tests/audit_trail.rs) | one model-issued call end to end, through to a `decision=` field |
+| [`tests/support/mod.rs`](../../crates/sandbx-turn/tests/support/mod.rs) | the `Script` double and the request builders both halves share |
 
 `audit_trail.rs` is its own binary for a reason worth knowing before writing any
 `tracing` test in this repo: the subscriber has to be the *global* one, because

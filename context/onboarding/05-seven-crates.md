@@ -19,6 +19,9 @@ a path dependency. Read an arrow as "may name the types of", and look for the
 crates no arrow leaves. The graph and the table below name only the seven crates
 that existed before #332 began splitting them, so every crate that phase adds is
 missing from both — enumerating them here would go stale on the next extraction.
+Two of the seven were since renamed outright rather than split, so both name a
+crate that no longer exists at all: `sandbx-tui` became `sandbx-tui-input`
+(#354) and `sandbx-agent` became `sandbx-turn` (#357).
 [guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
 is #332's own closing item:
 
@@ -76,8 +79,8 @@ Four things about that shape are worth more than the picture.
   client, no credential, no policy. The screen folds events it is handed; it
   never opens a stream.
 - **Nothing points up.** There is no cycle, and no crate reaches sideways into a
-  peer at its own level. `sandbx-tools` cannot see `sandbx-agent`, so a tool
-  cannot ask the loop for another round; `sandbx-agent` cannot see
+  peer at its own level. `sandbx-tools` cannot see `sandbx-turn`, so a tool
+  cannot ask the loop for another round; `sandbx-turn` cannot see
   `sandbx-session`, so the loop cannot write to the transcript — the CLI does
   that after a turn ends.
 
@@ -411,14 +414,14 @@ private field on `ExecutionContext`, the gate as a mandatory parameter and this
 have to remember, and give it to the compiler at the narrowest scope that still
 covers it.
 
-## Why `sandbx-core` is a *dev*-dependency of `sandbx-agent`
+## Why `sandbx-core` is a *dev*-dependency of `sandbx-turn`
 
-[`agent/Cargo.toml`](../../crates/sandbx-agent/Cargo.toml) lists
-`sandbx-providers` and `sandbx-tools` under `[dependencies]`, and
-`sandbx-core` under `[dev-dependencies]`. For a reader new to the distinction: a
+[`turn/Cargo.toml`](../../crates/sandbx-turn/Cargo.toml) lists
+`sandbx-providers` and `sandbx-tools` under `[dependencies]`, and `sandbx-core`
+under `[dev-dependencies]`. For a reader new to the distinction: a
 dev-dependency is linked only when cargo builds that crate's tests, examples and
-benchmarks. It is *not* available to `src/`. Naming `sandbx_core::` in
-`turn.rs` would simply fail to resolve.
+benchmarks. It is *not* available to `src/`. Naming `sandbx_core::` in `run.rs`
+would simply fail to resolve.
 
 The stated reason is about the tests. `guide-repo-map.md` puts it in one line —
 the agent's tests "drive real tools over a temp dir rather than mocking below
@@ -429,7 +432,7 @@ runs the genuine `BuiltinTool` against a `tempfile` directory. To build the
 `ExecutionContext` those real tools need, a test has to construct a
 `SandboxPolicy` and a `VettedPath`, and both are `sandbx-core` types — hence the
 manifest edge, used by
-[`tests/support/mod.rs`](../../crates/sandbx-agent/tests/support/mod.rs) and the
+[`tests/support/mod.rs`](../../crates/sandbx-turn/tests/support/mod.rs) and the
 three test targets beside it.
 
 Two more dev-dependencies ride along for the same reason, and the manifest says
@@ -442,13 +445,13 @@ tracing = "0.1.44"
 ```
 
 That is what driving real tools buys.
-[`audit_trail.rs`](../../crates/sandbx-agent/tests/audit_trail.rs) installs a
+[`audit_trail.rs`](../../crates/sandbx-turn/tests/audit_trail.rs) installs a
 subscriber over an in-memory sink, runs a scripted turn whose tool calls are
 genuine, and asserts on the `decision=` fields `sandbx-core` emitted while they
 ran. Fake the tool side and there is no trail to read.
 
 The consequence is the more interesting half, and you can check it in one grep:
-**`sandbx_core` appears nowhere in `sandbx-agent/src/`.** Not once. The loop
+**`sandbx_core` appears nowhere in `sandbx-turn/src/`.** Not once. The loop
 takes an `&ExecutionContext` from `sandbx-tools` and hands it to
 `BuiltinTool::execute`; it never sees a policy, cannot read one, and could not
 name the type if it wanted to. Combine that with the private field on
@@ -457,7 +460,7 @@ and the arrangement is doubly closed:
 
 - the field is private, so even a crate that *can* name `SandboxPolicy` cannot
   pull one out of a context and re-interpret it;
-- and `sandbx-agent` cannot name `SandboxPolicy` at all, so the question does
+- and `sandbx-turn` cannot name `SandboxPolicy` at all, so the question does
   not arise in the one crate that decides which tool calls happen.
 
 A plain `[dependencies]` edge would have cost nothing at run time and would have
@@ -495,7 +498,7 @@ unable to have an opinion about policy, which is the same shape as the
 - Why the `#[allow(clippy::disallowed_methods)]` sits on a `let` rather than on
   the function, the module, or the crate.
 - What a dev-dependency does not give `src/`, what that buys where
-  `sandbx-agent` is concerned, and what would break if the edge were a plain
+  `sandbx-turn` is concerned, and what would break if the edge were a plain
   one.
 
 ## Next

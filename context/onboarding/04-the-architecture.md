@@ -315,8 +315,7 @@ So `main.rs` holds only what needs a real process:
   because `spawn_blocking` is all the loop asks of the scheduler; `enable_all`
   rather than `enable_time` because the per-round timeout needs the timer *and*
   the provider's connector needs the IO driver. The flavour stays the binary's
-  choice, which is why the agent crate asks for `rt` and never
-  `rt-multi-thread`;
+  choice, which is why `sandbx-turn` asks for `rt` and never `rt-multi-thread`;
 - **exit codes**, including the detail that `auth` fails with 2 rather than 1
   because `auth status` already spends 1 on "no key anywhere".
 

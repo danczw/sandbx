@@ -1,7 +1,7 @@
 //! Unit tests for the cut planner: which prefix of a history may be withheld, and
 //! which boundaries are legal cut points.
 //!
-//! `sandbx-agent`'s `tests/turn_compaction.rs` covers the wiring instead: that a measurement
+//! `sandbx-turn`'s `tests/turn_compaction.rs` covers the wiring instead: that a measurement
 //! reaches the trigger and that what reaches the API is a conversation it would accept.
 
 use super::*;

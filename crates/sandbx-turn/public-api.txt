@@ -1,0 +1,99 @@
+pub mod sandbx_turn
+pub use sandbx_turn::Compaction
+pub use sandbx_turn::PromptUsage
+pub enum sandbx_turn::TurnError
+pub sandbx_turn::TurnError::EndedMidToolUse
+pub sandbx_turn::TurnError::Provider(sandbx_providers::error::ProviderError)
+pub sandbx_turn::TurnError::StreamEndedWithoutStop
+pub sandbx_turn::TurnError::TimedOut
+pub sandbx_turn::TurnError::TimedOut::after: core::time::Duration
+pub sandbx_turn::TurnError::ToolPanicked
+pub sandbx_turn::TurnError::ToolPanicked::name: alloc::string::String
+impl core::error::Error for sandbx_turn::TurnError
+pub fn sandbx_turn::TurnError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for sandbx_turn::TurnError
+pub fn sandbx_turn::TurnError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for sandbx_turn::TurnError
+pub fn sandbx_turn::TurnError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_turn::TurnError
+impl core::marker::Send for sandbx_turn::TurnError
+impl core::marker::Sync for sandbx_turn::TurnError
+impl core::marker::Unpin for sandbx_turn::TurnError
+impl core::marker::UnsafeUnpin for sandbx_turn::TurnError
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnError
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnError
+pub enum sandbx_turn::TurnStop
+pub sandbx_turn::TurnStop::Answered
+pub sandbx_turn::TurnStop::GateAborted
+pub sandbx_turn::TurnStop::RoundLimit
+pub sandbx_turn::TurnStop::RoundLimit::rounds: usize
+impl core::clone::Clone for sandbx_turn::TurnStop
+pub fn sandbx_turn::TurnStop::clone(&self) -> sandbx_turn::TurnStop
+impl core::cmp::Eq for sandbx_turn::TurnStop
+impl core::cmp::PartialEq for sandbx_turn::TurnStop
+pub fn sandbx_turn::TurnStop::eq(&self, &sandbx_turn::TurnStop) -> bool
+impl core::fmt::Debug for sandbx_turn::TurnStop
+pub fn sandbx_turn::TurnStop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_turn::TurnStop
+impl core::marker::StructuralPartialEq for sandbx_turn::TurnStop
+impl core::marker::Freeze for sandbx_turn::TurnStop
+impl core::marker::Send for sandbx_turn::TurnStop
+impl core::marker::Sync for sandbx_turn::TurnStop
+impl core::marker::Unpin for sandbx_turn::TurnStop
+impl core::marker::UnsafeUnpin for sandbx_turn::TurnStop
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnStop
+impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnStop
+pub struct sandbx_turn::Turn<'a>
+pub sandbx_turn::Turn::history: &'a [sandbx_providers::prompt::RequestMessage]
+pub sandbx_turn::Turn::limits: sandbx_turn::TurnLimits
+pub sandbx_turn::Turn::max_output_tokens: u32
+pub sandbx_turn::Turn::model: alloc::string::String
+pub sandbx_turn::Turn::observed: core::option::Option<sandbx_compact::PromptUsage>
+pub sandbx_turn::Turn::system: core::option::Option<alloc::string::String>
+pub sandbx_turn::Turn::thinking: core::option::Option<sandbx_providers::prompt::Thinking>
+pub sandbx_turn::Turn::tool_choice: core::option::Option<sandbx_providers::prompt::ToolChoice>
+pub sandbx_turn::Turn::tools: &'a [sandbx_tools::builtin::BuiltinTool]
+pub sandbx_turn::Turn::withheld: usize
+impl<'a> core::clone::Clone for sandbx_turn::Turn<'a>
+pub fn sandbx_turn::Turn<'a>::clone(&self) -> sandbx_turn::Turn<'a>
+impl<'a> core::marker::Freeze for sandbx_turn::Turn<'a>
+impl<'a> core::marker::Send for sandbx_turn::Turn<'a>
+impl<'a> core::marker::Sync for sandbx_turn::Turn<'a>
+impl<'a> core::marker::Unpin for sandbx_turn::Turn<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_turn::Turn<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::Turn<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_turn::Turn<'a>
+pub struct sandbx_turn::TurnLimits
+pub sandbx_turn::TurnLimits::compaction: core::option::Option<sandbx_compact::Compaction>
+pub sandbx_turn::TurnLimits::max_rounds: usize
+pub sandbx_turn::TurnLimits::stream_timeout: core::time::Duration
+impl core::clone::Clone for sandbx_turn::TurnLimits
+pub fn sandbx_turn::TurnLimits::clone(&self) -> sandbx_turn::TurnLimits
+impl core::default::Default for sandbx_turn::TurnLimits
+pub fn sandbx_turn::TurnLimits::default() -> Self
+impl core::fmt::Debug for sandbx_turn::TurnLimits
+pub fn sandbx_turn::TurnLimits::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_turn::TurnLimits
+impl core::marker::Freeze for sandbx_turn::TurnLimits
+impl core::marker::Send for sandbx_turn::TurnLimits
+impl core::marker::Sync for sandbx_turn::TurnLimits
+impl core::marker::Unpin for sandbx_turn::TurnLimits
+impl core::marker::UnsafeUnpin for sandbx_turn::TurnLimits
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnLimits
+impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnLimits
+pub struct sandbx_turn::TurnOutcome
+pub sandbx_turn::TurnOutcome::messages: alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>
+pub sandbx_turn::TurnOutcome::round_stop: core::option::Option<sandbx_providers::event::StopReason>
+pub sandbx_turn::TurnOutcome::stop: sandbx_turn::TurnStop
+pub sandbx_turn::TurnOutcome::usage: core::option::Option<sandbx_compact::PromptUsage>
+pub sandbx_turn::TurnOutcome::withheld: usize
+impl core::fmt::Debug for sandbx_turn::TurnOutcome
+pub fn sandbx_turn::TurnOutcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_turn::TurnOutcome
+impl core::marker::Send for sandbx_turn::TurnOutcome
+impl core::marker::Sync for sandbx_turn::TurnOutcome
+impl core::marker::Unpin for sandbx_turn::TurnOutcome
+impl core::marker::UnsafeUnpin for sandbx_turn::TurnOutcome
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnOutcome
+impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnOutcome
+pub async fn sandbx_turn::run_turn<F, O, G>(F, sandbx_turn::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_turn::TurnOutcome, sandbx_turn::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_providers::prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::error::ProviderError>, O: core::ops::function::FnMut(&sandbx_providers::event::AgentEvent), G: sandbx_approval::CallGate

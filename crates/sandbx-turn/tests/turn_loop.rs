@@ -3,11 +3,11 @@
 //! Driven through the closure seam with `support::Script`, so the suite needs no network
 //! and no API key.
 
-use sandbx_agent::{TurnError, TurnLimits, TurnStop, run_turn};
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{AgentEvent, ContentBlock, EventStream, RequestMessage, Role, StopReason};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_turn::{TurnError, TurnLimits, TurnStop, run_turn};
 
 mod support;
 
@@ -980,7 +980,7 @@ fn asking_forever(root: &std::path::Path) -> Script {
     ))
 }
 
-fn capped_at_three() -> sandbx_agent::Turn<'static> {
+fn capped_at_three() -> sandbx_turn::Turn<'static> {
     let mut turn = turn(&[], &[BuiltinTool::Ls]);
     turn.limits = TurnLimits {
         max_rounds: 3,

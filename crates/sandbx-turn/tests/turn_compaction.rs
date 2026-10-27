@@ -4,10 +4,10 @@
 //! The planner's own algebra is unit-tested beside the private `plan_cut`. What is
 //! asserted here is `Script::sent` — the request itself.
 
-use sandbx_agent::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{AgentEvent, ContentBlock, RequestMessage, Role, StopReason};
 use sandbx_tools::BuiltinTool;
+use sandbx_turn::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 
 mod support;
 

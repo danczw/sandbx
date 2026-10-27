@@ -11,7 +11,6 @@
 
 use std::io::{IsTerminal, Write};
 
-use sandbx_agent::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
@@ -23,6 +22,7 @@ use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::CompletedTurn;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use crate::{AgentError, Grants, PolicyError};
 

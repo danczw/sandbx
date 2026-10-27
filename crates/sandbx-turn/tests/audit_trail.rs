@@ -6,10 +6,10 @@
 //! installed on the thread that emits. `sandbx_logging` installs globally for the
 //! same reason.
 
-use sandbx_agent::run_turn;
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{ContentBlock, StopReason};
 use sandbx_tools::BuiltinTool;
+use sandbx_turn::run_turn;
 
 mod support;
 

@@ -43,37 +43,37 @@ allow-wildcard-paths = true
 # leaves, or omission reads as permission.
 [[bans.deny]]
 name = "sandbx-core"
-# `sandbx-agent`'s edge is a dev-dependency: `sandbx-core` is not in its build.
+# `sandbx-turn`'s edge is a dev-dependency: `sandbx-core` is not in its build.
 # `sandbx-helper`'s is not — the binary is what the enforcement suite spawns, so it
 # links core for real.
 #
 # One name per line from here: a sixth parent puts this past the width every other line in
 # the file keeps.
 wrappers = [
-    "sandbx-agent",
     "sandbx-cli",
     "sandbx-grants",
     "sandbx-helper",
     "sandbx-logging",
     "sandbx-tools",
+    "sandbx-turn",
 ]
 
 [[bans.deny]]
 name = "sandbx-providers"
 wrappers = [
-    "sandbx-agent",
     "sandbx-cli",
     "sandbx-compact",
     "sandbx-session-bridge",
     "sandbx-tui-transcript",
+    "sandbx-turn",
 ]
 
 [[bans.deny]]
 name = "sandbx-tools"
-wrappers = ["sandbx-agent", "sandbx-approval", "sandbx-cli"]
+wrappers = ["sandbx-approval", "sandbx-cli", "sandbx-turn"]
 
 [[bans.deny]]
-name = "sandbx-agent"
+name = "sandbx-turn"
 wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
@@ -128,8 +128,7 @@ wrappers = ["sandbx-cli", "sandbx-tui-transcript"]
 
 [[bans.deny]]
 name = "sandbx-approval"
-# Not `sandbx-turn`, which does not exist until #357 takes over `sandbx-agent`'s place here.
-wrappers = ["sandbx-agent", "sandbx-cli"]
+wrappers = ["sandbx-cli", "sandbx-turn"]
 
 [[bans.deny]]
 name = "sandbx-session-error"
@@ -156,10 +155,9 @@ wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-compact"
-# `sandbx-turn` takes `sandbx-agent`'s place here when #357 splits the loop out.
 # `sandbx-session-bridge` names `PromptUsage` through an edge of its own and not
-# `sandbx-agent`'s re-export (#351).
-wrappers = ["sandbx-agent", "sandbx-session-bridge"]
+# `sandbx-turn`'s re-export (#351).
+wrappers = ["sandbx-session-bridge", "sandbx-turn"]
 
 [[bans.deny]]
 name = "sandbx-session-bridge"

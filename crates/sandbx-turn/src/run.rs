@@ -13,9 +13,8 @@ use sandbx_providers::{
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::TurnError;
-
-use super::accumulate::accumulate;
-use super::tools::{Answers, answer_calls, definition};
+use crate::accumulate::accumulate;
+use crate::tools::{Answers, answer_calls, definition};
 
 /// What to ask the model for. Borrows the history, which [`run_turn`] never appends to.
 #[derive(Clone)]

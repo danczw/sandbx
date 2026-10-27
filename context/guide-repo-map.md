@@ -26,7 +26,7 @@ SECURITY.md         the promise to users — the one doc that must never lag
 sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed to spawn
     └──► sandbx-tools ──┬──► sandbx-approval ──┐
                         ├──────────────────────┘
-                        ├──► sandbx-agent ──┐  turn loop
+                        ├──► sandbx-turn ───┐  turn loop
 sandbx-compact ─────────┤                   │
 sandbx-providers ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, the
@@ -60,8 +60,8 @@ does.
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
-| `sandbx-agent` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, agent, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-id, session-message, text, tools, tui-input |
+| `sandbx-turn` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, grants, logging, providers, screen, session, session-bridge, session-error, session-id, session-message, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: a root, and append-only JSONL | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
@@ -79,7 +79,7 @@ does.
 | `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-id, session-message |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session |
 
-`sandbx-agent` depends on core only as a dev-dependency: its tests drive real
+`sandbx-turn` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
 `sandbx-session` depends on `sandbx-session-error`, `sandbx-session-id` and
@@ -100,7 +100,7 @@ depend on each other, by the choice `sandbx-session-message`'s `//!` records.
 Its edge to `sandbx-session` is the whole crate for three names now that #360
 has taken `SessionId`, and #361 and #362 replace it with the last two. The
 diagram above draws none of those six, only the edge on to `sandbx-cli` — so
-note in particular that `sandbx-compact` is drawn into the `sandbx-agent`
+note in particular that `sandbx-compact` is drawn into the `sandbx-turn`
 bundle alone and has had two dependents since #351.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
@@ -120,7 +120,7 @@ is a crate so that `CARGO_BIN_EXE_sandbx-helper` resolves for the tests that spa
 it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
-`sandbx-providers` directly rather than through `sandbx-agent`, which re-exports
+`sandbx-providers` directly rather than through `sandbx-turn`, which re-exports
 none of it: `agent-run` builds the client and the first user turn itself, and
 renders the events the loop hands back.
 
@@ -320,13 +320,13 @@ src/lib.rs        CallGate, ToolCall, ApprovalDecision, Settled, Outcome — wha
 ```
 
 The shapes only: no policy, no channel to ask on, and nothing that decides.
-`sandbx-agent` asks through them, the three production implementors are
+`sandbx-turn` asks through them, the three production implementors are
 `sandbx-cli`'s, and both of those edges are why `deny.toml` names two wrappers
 (#355). Neither runs the other way: `CallGate` is foreign in `sandbx-cli` and
 the gate types local there, which the orphan rule permits, so this crate needs
-no edge to either of its parents and a later phase can move the asking without
-moving the asked. Depends on `sandbx-tools` for the `BuiltinTool` a call names
-and the `ToolError` an outcome carries.
+no edge to either of its parents — which is what let #357 move the asking into a
+crate of its own without moving the asked. Depends on `sandbx-tools` for the
+`BuiltinTool` a call names and the `ToolError` an outcome carries.
 
 ## `sandbx-compact`
 
@@ -340,31 +340,29 @@ src/lib.rs    over_budget, plan_cut, Compaction, PromptUsage — which prefix of
 Pure and total over `RequestMessage`, reaching nothing in the loop that calls
 it. `PromptUsage` is declared here and not beside `Turn::observed`, where it
 reads as belonging: the turn depends on compaction and not the reverse, so this
-is the side of the edge it can sit on (#345). `sandbx-agent` re-exports both
-types, which #356 did so that `cli/src/session.rs` could keep naming
-`sandbx_agent::PromptUsage` until #351 moved it. That move has landed, and took
-an edge of its own rather than the re-export, so the two parents in
-`deny.toml`'s block here are `sandbx-agent` and `sandbx-session-bridge`, and
-#357 replaces the first with `sandbx-turn` rather than adding a third. The
-re-export has no *first-party*
-consumer left outside `sandbx-agent`'s own `tests/turn_compaction.rs` — `grep
-PromptUsage crates/sandbx-cli/` is empty and `Compaction` was never named there
-at all. It is not therefore dead: `Turn::observed` and `TurnOutcome::usage` are
-public fields typed `Option<sandbx_compact::PromptUsage>`, so the re-export is
-still how a consumer outside this workspace names them, which is what #356
-claimed for it. Depends on `sandbx-providers` for `RequestMessage`, `Role` and
+is the side of the edge it can sit on (#345). `sandbx-turn` re-exports both
+types, which #356 did so that `cli/src/session.rs` could keep naming the
+re-export until #351 moved it. That move has landed, and took an edge of its own
+rather than the re-export, so the two parents in `deny.toml`'s block here are
+`sandbx-session-bridge` and `sandbx-turn` — #357 re-pointed the second rather
+than adding a third. The re-export has no *first-party* consumer left outside
+`sandbx-turn`'s own `tests/turn_compaction.rs` — `grep PromptUsage
+crates/sandbx-cli/` is empty and `Compaction` was never named there at all. It
+is not therefore dead: `Turn::observed` and `TurnOutcome::usage` are public
+fields typed `Option<sandbx_compact::PromptUsage>`, so the re-export is still
+how a consumer outside this workspace names them, which is what #356 claimed for
+it. Depends on `sandbx-providers` for `RequestMessage`, `Role` and
 `ContentBlock`; #364 narrows that to the prompt crate alone.
 
-## `sandbx-agent`
+## `sandbx-turn`
 
 ```
 src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
                           TurnStop, PromptUsage, Compaction, run_turn
-   turn.rs    re-exports run_turn and the four types that drive it
-      run.rs         run_turn — generic over a stream-opening closure
-      accumulate.rs  one round's message, rebuilt from deltas
-      tools.rs       what is offered, the gate, and the one spawn_blocking site
-   error.rs   TurnError
+   run.rs         run_turn — generic over a stream-opening closure
+   accumulate.rs  one round's message, rebuilt from deltas
+   tools.rs       what is offered, the gate, and the one spawn_blocking site
+   error.rs       TurnError
 tests/       turn_loop, turn_compaction, audit_trail,
              support/mod.rs — the Script double and the request builders
 ```

@@ -5,13 +5,13 @@
 
 use std::collections::VecDeque;
 
-use sandbx_agent::{Turn, TurnLimits};
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_providers::{
     AgentEvent, EventStream, Prompt, ProviderError, RequestMessage, StopReason,
 };
 use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_turn::{Turn, TurnLimits};
 
 /// Scripts one canned round per call, and records what was sent.
 pub(crate) struct Script {

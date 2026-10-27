@@ -45,7 +45,7 @@ crates/sandbx-tools/
 
 [`Cargo.toml`](../../crates/sandbx-tools/Cargo.toml) names four dependencies and
 no more: `sandbx-core`, `schemars`, `serde`, `serde_json`. No async runtime, no
-`regex`, no `walkdir`. Tools are synchronous, and `sandbx-agent` owns the one
+`regex`, no `walkdir`. Tools are synchronous, and `sandbx-turn` owns the one
 `spawn_blocking` site that calls them.
 
 ## `builtin.rs` and `shared.rs`: a closed enum, and six shared helpers
@@ -607,7 +607,7 @@ consulted.
 ## How a result reaches the model
 
 At the type level the hand-off is one block, in
-[`agent/src/turn/tools.rs`](../../crates/sandbx-agent/src/turn/tools.rs):
+[`turn/src/tools.rs`](../../crates/sandbx-turn/src/tools.rs):
 
 ```rust
                 ContentBlock::ToolResult {
@@ -621,11 +621,11 @@ At the type level the hand-off is one block, in
 is why that method exists beside `content()`. The error path calls a local
 `refused` helper building the same block from `error.to_string()` with
 `is_error: Some(true)`. So `ToolOutput` and `ToolError` are the two things this
-crate produces, and the agent crate turns both into one
-`ContentBlock::ToolResult`, one per `tool_use` block, in the order the model
-asked. The block carries a `String`, not a `ToolOutput`: `sandbx-tools` does not
-depend on `sandbx-providers` and does not know what a `tool_result` is. The same
-file holds `definition`, which builds a `ToolDefinition` from `name()`,
+crate produces, and the loop turns both into one `ContentBlock::ToolResult`, one
+per `tool_use` block, in the order the model asked. The block carries a
+`String`, not a `ToolOutput`: `sandbx-tools` does not depend on
+`sandbx-providers` and does not know what a `tool_result` is. The same file
+holds `definition`, which builds a `ToolDefinition` from `name()`,
 `description()` and `input_schema()`. [02](02-what-a-harness-is.md) owns the
 wire protocol and [13](13-turn-loop-and-gate.md) the round that sends it.
 
@@ -681,7 +681,7 @@ meaning of each `<=`.
 ## Next
 
 [20 — the providers crate](20-crate-providers.md), the other half of what
-`sandbx-agent` depends on: the vendor boundary, the event stream, and the one
+`sandbx-turn` depends on: the vendor boundary, the event stream, and the one
 row of that boundary nothing mechanical holds. The authorities *this* chapter is
 an on-ramp to are [guide-tools.md](../guide-tools.md) and
 [decision-bounding-tool-work.md](../decision-bounding-tool-work.md).

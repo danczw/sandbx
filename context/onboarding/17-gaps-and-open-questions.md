@@ -586,7 +586,7 @@ ordinary outcome and not a rare one.
   honest and only the mechanism is in question; the record states the one
   weakness it accepts and this is not among them.
 
-### From 21 — the agent crate
+### From 21 — the turn crate
 
 - **`Outcome` cannot tell a verdict the gate gave from one the loop gave on its
   behalf.** A call refused unasked behind an abort latch arrives in the same

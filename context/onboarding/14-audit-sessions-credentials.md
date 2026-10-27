@@ -72,7 +72,7 @@ Three more properties of the sink, each with a counterexample attached:
 - **Global, not `set_default`.** Tools run on `spawn_blocking`, so the thread
   that emits is not the thread that asked, and a thread-local subscriber
   captures nothing a tool emitted. This is why
-  `sandbx-agent/tests/audit_trail.rs` is a test binary of its own: a process
+  `sandbx-turn/tests/audit_trail.rs` is a test binary of its own: a process
   installs exactly one global subscriber.
 
 ## Under `tui`, the trail is held and released, not dropped

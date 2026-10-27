@@ -1635,23 +1635,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbx-agent"
-version = "0.1.0-alpha.18"
-dependencies = [
- "futures-util",
- "sandbx-approval",
- "sandbx-compact",
- "sandbx-core",
- "sandbx-providers",
- "sandbx-tools",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "sandbx-approval"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1676,7 +1659,6 @@ dependencies = [
  "clap",
  "futures-util",
  "nix",
- "sandbx-agent",
  "sandbx-approval",
  "sandbx-auth",
  "sandbx-core",
@@ -1692,6 +1674,7 @@ dependencies = [
  "sandbx-text",
  "sandbx-tools",
  "sandbx-tui-input",
+ "sandbx-turn",
  "serde_json",
  "tempfile",
  "tokio",
@@ -1872,6 +1855,23 @@ dependencies = [
  "sandbx-providers",
  "sandbx-text",
  "serde_json",
+]
+
+[[package]]
+name = "sandbx-turn"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "futures-util",
+ "sandbx-approval",
+ "sandbx-compact",
+ "sandbx-core",
+ "sandbx-providers",
+ "sandbx-tools",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -97,8 +97,7 @@ The consequence is the single most load-bearing fact about writing a harness:
 An unanswered `tool_use` is not a skipped call, it is a conversation the API
 will not accept again. So all three ways a call can fail to run still produce a
 `tool_result`, via `refused` in
-[`turn/tools.rs`](../../crates/sandbx-agent/src/turn/tools.rs), each with
-`is_error` set:
+[`tools.rs`](../../crates/sandbx-turn/src/tools.rs), each with `is_error` set:
 
 - a name no built-in matches, answered "unknown tool: …" — lookup is exact by
   design, because a miss is a prompt or schema bug rather than a near-miss to
@@ -163,7 +162,7 @@ sequenceDiagram
     end
 ```
 
-`run_turn` in [`turn/run.rs`](../../crates/sandbx-agent/src/turn/run.rs) is that loop.
+`run_turn` in [`run.rs`](../../crates/sandbx-turn/src/run.rs) is that loop.
 Per round:
 
 - the request is the surviving history plus everything this turn has produced so
@@ -294,12 +293,12 @@ flowchart TD
 
 That fold is
 [`accumulate.rs`](../../crates/sandbx-providers/src/anthropic/wire/accumulate.rs)
-and its module doc names the two invariants: "an unmodeled tag is skipped
-rather than ending the stream, and a turn ends exactly once". Open blocks are
-held in a `BTreeMap` keyed by index rather than a `HashMap`, for a reason the
-comment gives: blocks still open when the turn ends flush in index order. A
-second fold sits above the seam, and a reader grepping the file name meets both:
-[`turn/accumulate.rs`](../../crates/sandbx-agent/src/turn/accumulate.rs) folds
+and its module doc names the two invariants: "an unmodeled tag is skipped rather
+than ending the stream, and a turn ends exactly once". Open blocks are held in a
+`BTreeMap` keyed by index rather than a `HashMap`, for a reason the comment
+gives: blocks still open when the turn ends flush in index order. A second fold
+sits above the seam, and a reader grepping the file name meets both:
+[`accumulate.rs`](../../crates/sandbx-turn/src/accumulate.rs) folds
 `AgentEvent`s into one round's `ContentBlock`s and has never heard of SSE.
 [21](21-crate-agent.md) draws the division.
 

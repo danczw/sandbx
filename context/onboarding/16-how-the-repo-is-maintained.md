@@ -424,10 +424,13 @@ With no roadmap file, the issue tracker carries the whole of what is intended.
   milestone of the release it shipped in. Open work being actively worked on
   takes the next one. **No milestone is not a defect** — it means unscheduled,
   and stripping one off in-progress work is a mistake in the other direction.
-- **One `crate:*` label per crate the change materially touches.** The label set
-  is exactly the crate set — `crate:core`, `crate:tools`, `crate:providers`,
-  `crate:agent`, `crate:session`, `crate:tui`, `crate:cli` — each described by
-  what that crate owns, as in [05](05-seven-crates.md)'s ownership table.
+- **One `crate:*` label per crate the change materially touches**, each
+  described by what that crate owns, as in
+  [guide-repo-map.md](../guide-repo-map.md)'s crate table. No list of them here:
+  #332 is splitting the seven into about twenty-five, and a donor's label
+  outlives the crate rather than being deleted, since deleting it strips the
+  only record of which crate each already-closed issue and merged PR touched
+  (#354).
 - **No `crate:*` label where the change is workspace-wide or outside
   `crates/`.** A docs-only PR touching `context/`, a workflow change, a
   lint-table change: none of these takes one. The absence is informative, which
