@@ -18,9 +18,11 @@ publish.workspace = true
 reqwest = { version = "0.13.5", default-features = false }
 # What a stream yields: the alias's `Item` is a `Result<AgentEvent, ProviderError>`.
 sandbx-event = { path = "../sandbx-event" }
-# `FusedStream`, the bound on the boxed stream. Declared from `futures-util` because
-# that is where the moved alias names it; the trait is `futures-core`'s, which is what
-# the baseline renders, so this edge could narrow — a code change, not #366's.
+# `FusedStream`, the bound on the boxed stream. The trait is `futures-core`'s, which is
+# what the baseline renders, so this looks like it should be the narrower edge. It is not
+# worth narrowing: `sandbx-providers`, `sandbx-turn` and `sandbx-cli` each declare
+# `futures-util` anyway, so it sheds nothing from any build that exists. Revisit only if
+# this crate becomes a dependency of something light.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 
 [lints]
