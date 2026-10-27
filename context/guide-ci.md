@@ -53,7 +53,7 @@ Two things fall out of that pattern that are easy to trip over:
 | `msrv` | the suite still builds at the floor the manifest states |
 | `notes` | the manifest's version has a notes file, and every `v*.md` is within budget |
 | `api-diff` | every crate with a public surface has a committed baseline, and every widening of it has a line there |
-| `audit` | cargo-deny — advisories, licences, and which workspace crate may depend on which — both release-channel tables, and zizmor over the workflows |
+| `audit` | cargo-deny — advisories, licences, and which workspace crate may depend on which — the allowlist read back against the real graph, both release-channel tables, and zizmor over the workflows |
 
 `permissions: contents: read` replaces the repo default and
 `persist-credentials: false` drops the clone's token, so a compromised action
@@ -97,6 +97,29 @@ versions, so an unlocked run resolves around a broken lockfile and passes.
 `docs/release-notes/v*.md` that found no file would otherwise exit 0, and a
 green gate that checked nothing is worse than a red one. Any check that iterates
 needs the same guard.
+
+### A vacuous `[[bans.deny]]` block is the same shape of hole
+
+`cargo deny` reads a block's `name` as a package to look for, so a name matching
+nothing is vacuous rather than wrong: the block bans a package that does not
+exist, the crate the typo meant becomes unbanned, and every edge into it goes
+unchecked — `bans ok`, exit 0. Measured on #415 and reproduced against a second
+block, which is why it is not filed as a suspicion.
+
+`deny-wrappers.sh` reads the allowlist back against `cargo metadata` and closes
+three holes cargo-deny cannot see: that name resolving, a crate something depends
+on having no block at all, and an array naming a parent with no edge — the last
+being only `warning[unused-wrapper]`, which passes while overstating who may
+depend on the crate. It runs before `cargo-deny-action` for the reason the
+release-channel check does, and its `--self-test` runs first, against scratch
+workspaces, so a checker that has stopped checking fails rather than passing the
+real file by default. Each of its checks is mutation-tested: disable one and a
+named case fails.
+
+The general shape, and the third instance of it in this file: **a gate that
+cannot distinguish "nothing to check" from "checked and clean" is not a gate.**
+`notes` counts its files, `api-diff` guards a crate that lost its lib target, and
+this reads its own input back against the graph it describes.
 
 ### The baseline is the diff, not the log
 

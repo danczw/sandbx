@@ -263,6 +263,21 @@ jobs:
       - name: Check the release channel table
         run: .github/scripts/release-channel.sh --self-test
 
+      # Also before cargo-deny, and for a second reason beyond masking: this checks what
+      # cargo-deny structurally cannot. A `[[bans.deny]]` name matching no package is
+      # vacuous rather than wrong, so a typo un-gates the crate it meant and still exits
+      # 0 (#415). No toolchain step: `cargo metadata --no-deps` runs on the runner
+      # image's cargo, as `msrv` and `notes` do for the reason *Ordering: `cargo
+      # metadata` before any toolchain step* gives — and a runner without one fails the
+      # assignment under `set -eu` rather than skipping the check.
+      #
+      # The self-test runs first, against scratch workspaces, so a checker that has
+      # stopped checking fails here rather than passing this file by default.
+      - name: Check the dependency allowlist against the graph
+        run: |
+          .github/scripts/deny-wrappers.sh --self-test
+          .github/scripts/deny-wrappers.sh
+
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
