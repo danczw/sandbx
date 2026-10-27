@@ -18,11 +18,11 @@ use sandbx_providers::{
     StopReason, Thinking,
 };
 use sandbx_session::{Session, SessionId};
+use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
 use sandbx_session_message::CompletedTurn;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
-use crate::session::{self, Merged, SessionChoice};
 use crate::{AgentError, Grants, PolicyError};
 
 use super::gate::{self, tool_name};

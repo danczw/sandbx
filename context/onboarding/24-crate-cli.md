@@ -40,7 +40,7 @@ The paths carry the nesting: `grants.rs` has two children, `agent.rs` seven, and
 | [`agent/render.rs`](../../crates/sandbx-cli/src/agent/render.rs) | the stdout/stderr split, and `finish`'s code | here, and [13](13-turn-loop-and-gate.md) for `finish`'s ordering |
 | [`agent/wrapup.rs`](../../crates/sandbx-cli/src/agent/wrapup.rs) | the wrap-up round's mechanics | here; [13](13-turn-loop-and-gate.md) for why it is spent |
 | [`agent/tui.rs`](../../crates/sandbx-cli/src/agent/tui.rs) | the `tui` subcommand, the interrupt, the drawing gate | [15](15-tools-and-the-screen.md), [23](23-crate-tui.md) |
-| [`session.rs`](../../crates/sandbx-cli/src/session.rs) | `--session`, and the translation to and from the stored shapes | here, and [22](22-crate-session.md) |
+| [`sandbx-session-bridge`](../../crates/sandbx-session-bridge/src/lib.rs) | `--session`, and the translation to and from the stored shapes — a crate since #351, not a file here | here, and [22](22-crate-session.md) |
 | [`error.rs`](../../crates/sandbx-cli/src/error.rs) | the re-exports, and the list of what can refuse a run | here |
 | [`error/agent.rs`](../../crates/sandbx-cli/src/error/agent.rs), [`run.rs`](../../crates/sandbx-cli/src/error/run.rs), [`policy.rs`](../../crates/sandbx-cli/src/error/policy.rs), [`hash.rs`](../../crates/sandbx-cli/src/error/hash.rs) | `AgentError`, `SandboxRunError`, `PolicyError`, `HashError` — one each | here |
 
@@ -611,15 +611,18 @@ and which has no `Display`. `login` reads it from stdin and refuses a terminal
 shell history. [14](14-audit-sessions-credentials.md) has the three credential
 tiers this file sits in.
 
-## session.rs is the translation at the edge
+## `sandbx-session-bridge` is the translation at the edge
+
+It was `session.rs` in this crate until #351 made it a crate of its own; both
+`agent/run.rs` and `agent/tui.rs` still call it, so it is read here.
 
 `--session` parses to a three-variant enum — `Off`, `New`, `Resume(&SessionId)`
 — from an `Option<Option<SessionId>>`, which is clap's way of spelling
 absent/bare/valued. The id is parsed at parse time, so `--session
 ../../etc/passwd` is refused before any I/O happens at all.
 
-The rest of the module is the seam between `sandbx-providers`' request shapes
-and `sandbx-session-message`'s stored ones, and the module doc states the
+The rest of the crate is the seam between `sandbx-providers`' request shapes
+and `sandbx-session-message`'s stored ones, and the crate doc states the
 property it holds:
 
 > Every match below destructures by field name with no `_` arm: a new
@@ -628,8 +631,8 @@ property it holds:
 
 This is where [22](22-crate-session.md)'s declared-not-imported choice pays off.
 `sandbx-session-message` does not depend on `sandbx-providers`; it declares its
-own `Content` enum. Those two types therefore have to be mapped by hand, in this
-file, and the map is written to fail at `cargo build`:
+own `Content` enum. Those two types therefore have to be mapped by hand, which
+is what this crate is, and the map is written to fail at `cargo build`:
 
 ```rust
 fn stored_block(sent: &ContentBlock) -> Option<Content> {
@@ -653,7 +656,7 @@ and it closes on the one deliberate exclusion:
 Had that last arm been `_ => return None`, a sixth content block — the
 `ContentBlock` sent has five variants, the stored `Content` three —
 would have compiled and silently vanished from every transcript, the failure the
-module doc is describing. Reasoning is excluded because a signature has no
+crate doc is describing. Reasoning is excluded because a signature has no
 replay value; see
 [decision-thinking-replay.md](../decision-thinking-replay.md).
 
@@ -779,8 +782,8 @@ this one's.
   merged into the one turn a session stores.
 - How a credential file's mode is checked, why it is read from a descriptor,
   and why a too-wide file is refused rather than fixed.
-- Why `session.rs` has no `_` arm, and what a sixth content block would do to
-  a transcript if it did.
+- Why `sandbx-session-bridge` has no `_` arm, and what a sixth content block
+  would do to a transcript if it did.
 - What `AgentRun::execute` settles before `drive` is reached, and why the
   credential is read after the policy and the terminal but before the session.
 - Why `drive` takes its stream opener and its channels as arguments, and what

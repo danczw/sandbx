@@ -50,7 +50,13 @@ wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-helper", "sandbx-logging", "sa
 
 [[bans.deny]]
 name = "sandbx-providers"
-wrappers = ["sandbx-agent", "sandbx-cli", "sandbx-compact", "sandbx-tui-transcript"]
+wrappers = [
+    "sandbx-agent",
+    "sandbx-cli",
+    "sandbx-compact",
+    "sandbx-session-bridge",
+    "sandbx-tui-transcript",
+]
 
 [[bans.deny]]
 name = "sandbx-tools"
@@ -72,13 +78,17 @@ wrappers = ["sandbx-cli"]
 
 [[bans.deny]]
 name = "sandbx-session-message"
-# `sandbx-cli`'s edge is direct and not inherited through `sandbx-session`: it translates
-# between these shapes and the provider's, so both names are required here (#359).
-wrappers = ["sandbx-cli", "sandbx-session"]
+# `sandbx-session-bridge` is the translation between these shapes and the provider's, so
+# its edge is the one #359 described. `sandbx-cli`'s is direct too and survives the split
+# — `agent/run.rs` names `CompletedTurn` to append a finished turn — and neither is
+# inherited through `sandbx-session` (#351).
+wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-session"
-wrappers = ["sandbx-cli"]
+# `sandbx-session-bridge`'s edge is the temporary whole-crate one, which #360, #361 and
+# #362 replace with the three narrow ones it actually reaches (#351).
+wrappers = ["sandbx-cli", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-tui-input"
@@ -113,18 +123,22 @@ wrappers = ["sandbx-agent", "sandbx-cli"]
 [[bans.deny]]
 name = "sandbx-session-error"
 # `sandbx-cli`'s edge is direct and not inherited through `sandbx-session`: it matches
-# the variants and converts them to an `AgentError`. Four more parents are coming, this
+# the variants and converts them to an `AgentError`. Three more parents are coming, this
 # crate being the bottom of the session tree, and each *appends* its name here rather
-# than replacing one: #351 `sandbx-session-bridge`, #360 `sandbx-session-id`,
-# #361 `sandbx-session-paths`, #362 `sandbx-session-store`.
-wrappers = ["sandbx-cli", "sandbx-session"]
+# than replacing one: #360 `sandbx-session-id`, #361 `sandbx-session-paths`,
+# #362 `sandbx-session-store`.
+wrappers = ["sandbx-cli", "sandbx-session", "sandbx-session-bridge"]
 
 [[bans.deny]]
 name = "sandbx-compact"
-# `sandbx-turn` takes `sandbx-agent`'s place here when #357 splits the loop out, and
-# `sandbx-session-bridge` joins when #351 moves `cli/src/session.rs` — which reaches
-# `PromptUsage` through `sandbx-agent`'s re-export today, not an edge of its own.
-wrappers = ["sandbx-agent"]
+# `sandbx-turn` takes `sandbx-agent`'s place here when #357 splits the loop out.
+# `sandbx-session-bridge` names `PromptUsage` through an edge of its own and not
+# `sandbx-agent`'s re-export, which is the shape #351 landed (not the one it predicted).
+wrappers = ["sandbx-agent", "sandbx-session-bridge"]
+
+[[bans.deny]]
+name = "sandbx-session-bridge"
+wrappers = ["sandbx-cli"]
 
 [sources]
 unknown-registry = "deny"

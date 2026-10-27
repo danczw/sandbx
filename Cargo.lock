@@ -1684,6 +1684,7 @@ dependencies = [
  "sandbx-providers",
  "sandbx-screen",
  "sandbx-session",
+ "sandbx-session-bridge",
  "sandbx-session-error",
  "sandbx-session-message",
  "sandbx-text",
@@ -1785,6 +1786,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "sandbx-session-bridge"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "sandbx-compact",
+ "sandbx-providers",
+ "sandbx-session",
+ "sandbx-session-error",
+ "sandbx-session-message",
+ "serde_json",
 ]
 
 [[package]]

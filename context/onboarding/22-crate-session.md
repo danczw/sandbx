@@ -176,8 +176,8 @@ respelling a block changes `body.rs` while a transcript keeps its shape.
 
 The point is that `sandbx_providers::ContentBlock` has **five** variants: those
 three plus `Thinking` and `RedactedThinking`. Nothing in the compiler's view
-relates the two sets. What relates them is `session.rs` in `sandbx-cli`, whose
-module doc states the contract:
+relates the two sets. What relates them is `sandbx-session-bridge`, whose crate
+doc states the contract:
 
 > Every match below destructures by field name with no `_` arm: a new
 > [`ContentBlock`] variant is a compile error here rather than a block silently

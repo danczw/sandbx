@@ -37,6 +37,7 @@ sandbx-logging ─────────────────────�
 sandbx-session ─────────────────────────────┤
 sandbx-session-error ───────────────────────┤
 sandbx-session-message ─────────────────────┤
+sandbx-session-bridge ──────────────────────┤
 sandbx-text ──────┬─────────────────────────┤
 sandbx-providers ─┴─► sandbx-tui-transcript │
                        └──► sandbx-screen ──┤
@@ -53,7 +54,7 @@ constant, not a mechanism.
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-providers` | hand-rolled streaming API clients | — |
 | `sandbx-agent` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, screen, session, session-error, session-message, text, tools, tui-input |
+| `sandbx-cli` | arg parsing, policy derivation, the subcommand bodies | core, agent, approval, auth, logging, providers, screen, session, session-bridge, session-error, session-message, text, tools, tui-input |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session` | the on-disk transcript: an id, a root, and append-only JSONL | session-error, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
@@ -67,17 +68,26 @@ constant, not a mechanism.
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
 | `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
+| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session, session-error, session-message |
 
 `sandbx-agent` depends on core only as a dev-dependency: its tests drive real
 tools over a temp dir rather than mocking below the tool boundary.
 
 `sandbx-session` depends on both `sandbx-session-message` and
 `sandbx-session-error` — the two internal edges the diagram above does not
-draw. `sandbx-cli` has an edge to each of those two as well, and neither is
-inherited through `sandbx-session`: the CLI translates between the stored
-shapes and the provider's, and it is where a `SessionError` becomes something
-else. That is why `deny.toml` names both parents in each of those two blocks,
-while `sandbx-session`'s own names `sandbx-cli` alone.
+draw. `sandbx-session-bridge` and `sandbx-cli` each have an edge to those two
+as well, and none of the four is inherited through `sandbx-session`: the bridge
+translates between the stored shapes and the provider's, and the CLI is where a
+`SessionError` becomes something else and where `CompletedTurn` appends a
+finished turn. That is why `deny.toml` names three parents in each of those two
+blocks (#351).
+
+`sandbx-session-bridge` is the only crate reaching all five of `sandbx-compact`,
+`sandbx-providers` and the three session crates, which is what being the seam
+costs: the two vocabularies it maps between are declared in crates that do not
+depend on each other, by the choice `sandbx-session-message`'s `//!` records.
+Its edge to `sandbx-session` is the whole crate for three names, and #360, #361
+and #362 replace it with the narrow ones.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
 sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges
@@ -318,8 +328,10 @@ it. `PromptUsage` is declared here and not beside `Turn::observed`, where it
 reads as belonging: the turn depends on compaction and not the reverse, so this
 is the side of the edge it can sit on (#345). `sandbx-agent` re-exports both
 types, which is how `sandbx-cli` still names `PromptUsage` without an edge of
-its own — `deny.toml` names one parent here for that reason, and #351 and #357
-each add one when they move a caller (#356). Depends on `sandbx-providers` for
+its own. `sandbx-session-bridge` does not use that re-export — it names
+`PromptUsage` through an edge of its own, which is the second parent in
+`deny.toml`'s block here, and #357 adds the third (#351, #356). Depends on
+`sandbx-providers` for
 `RequestMessage`, `Role` and `ContentBlock`; #364 narrows that to the prompt
 crate alone.
 
@@ -390,6 +402,25 @@ operation it came from, which a blanket conversion would discard, and
 `NotFound` carries an id's spelling and not a `SessionId`, because every
 fallible path in the session tree returns this type — the id's own included — so
 an edge to the crate declaring `SessionId` would be a cycle (#346, #358).
+
+## `sandbx-session-bridge`
+
+```
+src/lib.rs        SessionChoice and open — which session a run opens, and what
+                  it says on stderr about one it did; request_history,
+                  stored_messages, request_usage, stored_usage — the four
+                  translations; Merged and merge_user_runs — a run of user
+                  messages collapsed into the one the API takes, and the index
+                  space that collapse moves
+```
+
+Every match in it destructures by field name with no `_` arm, so a sixth
+`ContentBlock` variant is a compile error here rather than a block missing from
+a transcript. Free functions and not `From` impls: both vocabularies are foreign
+to this crate, which is the whole reason it exists. `decision-on-disk-state.md`
+has the two index spaces and why `Merged` carries both;
+`decision-thinking-replay.md` has the one block kind that is deliberately
+dropped on the way to storage.
 
 ## `sandbx-tui-transcript`
 
@@ -490,8 +521,6 @@ src/lib.rs      mod lines and re-exports; no code
       tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
                 one, and the gate that draws its verdicts instead of printing
                 them                                 ◄── guide-tui.md
-   session.rs   --session: which session to open, and the translation to and from
-                the stored shapes
    error.rs     re-exports the four, and is the list of them
    error/agent.rs
                 AgentError — twelve ways a turn does not finish
@@ -510,7 +539,8 @@ tests/          agent_run, agent_session, auth, auth_store, cwd_policy, hash,
 Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,
 `tui`, `hash` and `auth`. `tui` is `agent-run`'s flags, policy and session
 drawn on a screen rather than streamed to stdout, so the two share `gate.rs`,
-`orientation.rs` and `session.rs` and differ only in where a turn is reported.
+`orientation.rs` and `sandbx-session-bridge` and differ only in where a turn is
+reported.
 `hash` and `auth` run no sandbox — `hash` reads one file, so a
 digest can be taken before there is a policy to take it under, and `auth` touches
 only the credential file. `auth` is the one subcommand whose body is not here:

@@ -171,7 +171,7 @@ user turn of **nothing but tool results** may end a transcript, and the prompt t
 resumes one may follow it, which is the only legal pair of user turns.
 
 It is legal because the pair never reaches the wire: `merge_user_runs` in
-`sandbx-cli/src/session.rs` collapses a run of user messages into the one message
+`sandbx-session-bridge` collapses a run of user messages into the one message
 the API takes, results first. The rule the API enforces is about messages in a
 request, not lines in a file, and those stopped being the same thing here.
 

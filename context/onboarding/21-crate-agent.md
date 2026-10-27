@@ -79,8 +79,10 @@ is for:
 
 Two of those are not this crate's own: `Compaction` and `PromptUsage` are
 `sandbx-compact`'s, re-exported here so a caller threading token counts needs
-one import rather than two — which is what keeps `sandbx-cli/src/session.rs`
-naming `sandbx_agent::PromptUsage` with no edge of its own (#356). The gate rows
+one import rather than two (#356). `sandbx-cli` is the caller that takes them
+that way. `sandbx-session-bridge`, which #351 moved out of `sandbx-cli`, does
+not: it names `sandbx_compact::PromptUsage` through an edge of its own, so the
+re-export carries one parent here and not two. The gate rows
 that used to sit between the two groups are gone the other way: `CallGate` and
 the four shapes it is asked and told with are `sandbx-approval`'s and are *not*
 re-exported, the section on it below.

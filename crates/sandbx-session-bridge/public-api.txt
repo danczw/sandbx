@@ -1,0 +1,35 @@
+pub mod sandbx_session_bridge
+pub enum sandbx_session_bridge::SessionChoice<'a>
+pub sandbx_session_bridge::SessionChoice::New
+pub sandbx_session_bridge::SessionChoice::Off
+pub sandbx_session_bridge::SessionChoice::Resume(&'a sandbx_session::id::SessionId)
+impl<'a> core::clone::Clone for sandbx_session_bridge::SessionChoice<'a>
+pub fn sandbx_session_bridge::SessionChoice<'a>::clone(&self) -> sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::fmt::Debug for sandbx_session_bridge::SessionChoice<'a>
+pub fn sandbx_session_bridge::SessionChoice<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::marker::Freeze for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::marker::Send for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::marker::Sync for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::marker::Unpin for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::SessionChoice<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::SessionChoice<'a>
+pub struct sandbx_session_bridge::Merged
+pub sandbx_session_bridge::Merged::history: alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>
+pub sandbx_session_bridge::Merged::withheld: usize
+impl sandbx_session_bridge::Merged
+pub fn sandbx_session_bridge::Merged::unmerged(&self, usize) -> usize
+impl core::marker::Freeze for sandbx_session_bridge::Merged
+impl core::marker::Send for sandbx_session_bridge::Merged
+impl core::marker::Sync for sandbx_session_bridge::Merged
+impl core::marker::Unpin for sandbx_session_bridge::Merged
+impl core::marker::UnsafeUnpin for sandbx_session_bridge::Merged
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::Merged
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::Merged
+pub fn sandbx_session_bridge::merge_user_runs(alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>, usize) -> sandbx_session_bridge::Merged
+pub fn sandbx_session_bridge::open(sandbx_session_bridge::SessionChoice<'_>) -> core::result::Result<core::option::Option<sandbx_session::store::session::Session>, sandbx_session_error::SessionError>
+pub fn sandbx_session_bridge::request_history(&[sandbx_session_message::Message]) -> alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>
+pub fn sandbx_session_bridge::request_usage(sandbx_session_message::Usage) -> sandbx_compact::PromptUsage
+pub fn sandbx_session_bridge::stored_messages(&[sandbx_providers::prompt::RequestMessage]) -> alloc::vec::Vec<sandbx_session_message::Message>
+pub fn sandbx_session_bridge::stored_usage(sandbx_compact::PromptUsage) -> sandbx_session_message::Usage
