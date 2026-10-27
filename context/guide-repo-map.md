@@ -103,12 +103,12 @@ parent of `sandbx-session-error`, the id's own parser returning that type.
 `sandbx-session-store`, which is what being the seam costs: the two
 vocabularies it maps between are declared in crates that do not depend on each
 other, by the choice `sandbx-session-message`'s `//!` records. Its edge to
-`sandbx-session-store` is no longer the wide one it was: `Session` and
-`SessionStore` are that crate's whole surface, #360, #361 and #362 having taken
-`SessionId`, `sessions_directory` and the store itself out of the crate the
-edge used to reach. The diagram above draws none of those seven, only the edge
-on to `sandbx-cli` — so note in particular that `sandbx-compact` is drawn into
-the `sandbx-turn` bundle alone and has had two dependents since #351.
+`sandbx-session-store` is no longer the wide one it was: #360 and #361 took
+`SessionId` and `sessions_directory` out of the crate the edge used to reach,
+and #362 renamed what was left, so `Session` and `SessionStore` are now that
+crate's whole surface. The diagram above draws none of those seven, only the
+edge on to `sandbx-cli` — so note in particular that `sandbx-compact` is drawn
+into the `sandbx-turn` bundle alone and has had two dependents since #351.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
 sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges

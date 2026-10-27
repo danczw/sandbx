@@ -181,7 +181,7 @@ floor goes in translated, and the figure the turn reports comes back out through
 `Merged::unmerged` before it is stored. See `guide-turn-loop.md` for why that
 figure's exactness is load-bearing rather than cosmetic.
 
-Three predicates in `store/shape.rs` carry the relaxation, and `settled` — "ends
+Three predicates in `shape.rs` carry the relaxation, and `settled` — "ends
 on the model's reply" — is not one of them. It keeps its definition and `resumable`
 composes beside it, because a reader asking whether a conversation ended on an
 answer still wants that answer. What relaxes:

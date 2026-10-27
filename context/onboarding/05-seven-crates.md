@@ -24,8 +24,8 @@ three crates — `sandbx-screen` (#352), `sandbx-tui-transcript` (#353) and
 `sandbx-tui-input` (#354) — so the `Screen` and `Transcript` on its row below
 are now two different crates'. A crate the phase merely *renamed* is corrected
 in place instead, `sandbx-agent` having become `sandbx-turn` in #357 and
-`sandbx-session` `sandbx-session-store` in #362: the row still answers the
-question it answered, so a dead name in it would only mislead.
+`sandbx-session` having become `sandbx-session-store` in #362: the row still
+answers the question it answered, so a dead name in it would only mislead.
 [guide-repo-map.md](../guide-repo-map.md) is current, and redrawing this chapter
 is #332's own closing item:
 

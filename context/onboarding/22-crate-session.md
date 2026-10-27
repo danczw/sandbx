@@ -44,8 +44,8 @@ siblings of `session.rs` are `pub(super)` throughout — `Record`, `fold`, the
 mode constants and every predicate are invisible outside the crate; at a crate
 root `pub(super)` *is* `pub(crate)`, so what the token grants widened from
 `store/` to the whole crate when the shim dissolved, with no visibility edit
-anywhere and no line moving in `public-api.txt`. The crate's public surface is
-still the two names `lib.rs` re-exports, plus the three
+anywhere and no item added to or removed from `public-api.txt`. The crate's
+public surface is still the two names `lib.rs` re-exports, plus the three
 `sandbx-session-message` types that `append`, `messages` and `observed` name in
 their signatures, the `SessionError` that every fallible one of them returns,
 and the `SessionId` that `Session::id` and `SessionStore::resume` name — none of
