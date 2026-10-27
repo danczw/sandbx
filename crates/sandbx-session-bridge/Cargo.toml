@@ -9,7 +9,7 @@ publish.workspace = true
 
 [dependencies]
 sandbx-compact = { path = "../sandbx-compact" }
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-prompt = { path = "../sandbx-prompt" }
 sandbx-session-error = { path = "../sandbx-session-error" }
 sandbx-session-id = { path = "../sandbx-session-id" }
 sandbx-session-paths = { path = "../sandbx-session-paths" }

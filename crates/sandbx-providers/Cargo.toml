@@ -18,6 +18,9 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 # The vocabulary a stream yields: `EventStream` names `AgentEvent`, and `accumulate.rs`
 # builds one per frame (#365).
 sandbx-event = { path = "../sandbx-event" }
+# What a request is made of. `anthropic/body.rs` is the only reader: it declares a local
+# wrapper per type and writes the wire shape by hand (#364).
+sandbx-prompt = { path = "../sandbx-prompt" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 secrecy = "0.10.3"

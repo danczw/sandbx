@@ -1,8 +1,14 @@
-//! What to ask a model for, in this crate's own vocabulary.
+//! What to ask a model for, in no API's vocabulary.
 //!
 //! Plain data: no `Serialize` anywhere below, because the body shape, its field
 //! names and its required-together rules belong to one API. An adapter owns those;
 //! see `context/decision-provider-seam.md`.
+//!
+//! Being a crate rather than a module is what enforces that rather than asking for
+//! it. `serde` is not a dependency here, so the orphan rule leaves this crate the
+//! only place an `impl Serialize for Prompt` could be written — an adapter must
+//! declare a local wrapper and spell every field out, which is what
+//! `sandbx-providers`' `anthropic/body.rs` does (#59, #364).
 
 /// One request for one model turn.
 ///

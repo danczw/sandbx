@@ -1,36 +1,4 @@
 pub mod sandbx_providers
-pub enum sandbx_providers::ContentBlock
-pub sandbx_providers::ContentBlock::RedactedThinking
-pub sandbx_providers::ContentBlock::RedactedThinking::data: alloc::string::String
-pub sandbx_providers::ContentBlock::Text
-pub sandbx_providers::ContentBlock::Text::text: alloc::string::String
-pub sandbx_providers::ContentBlock::Thinking
-pub sandbx_providers::ContentBlock::Thinking::signature: alloc::string::String
-pub sandbx_providers::ContentBlock::Thinking::text: alloc::string::String
-pub sandbx_providers::ContentBlock::ToolResult
-pub sandbx_providers::ContentBlock::ToolResult::content: alloc::string::String
-pub sandbx_providers::ContentBlock::ToolResult::is_error: core::option::Option<bool>
-pub sandbx_providers::ContentBlock::ToolResult::tool_use_id: alloc::string::String
-pub sandbx_providers::ContentBlock::ToolUse
-pub sandbx_providers::ContentBlock::ToolUse::id: alloc::string::String
-pub sandbx_providers::ContentBlock::ToolUse::input: serde_json::value::Value
-pub sandbx_providers::ContentBlock::ToolUse::name: alloc::string::String
-impl sandbx_providers::ContentBlock
-pub fn sandbx_providers::ContentBlock::is_thinking(&self) -> bool
-impl core::clone::Clone for sandbx_providers::ContentBlock
-pub fn sandbx_providers::ContentBlock::clone(&self) -> sandbx_providers::ContentBlock
-impl core::cmp::PartialEq for sandbx_providers::ContentBlock
-pub fn sandbx_providers::ContentBlock::eq(&self, &sandbx_providers::ContentBlock) -> bool
-impl core::fmt::Debug for sandbx_providers::ContentBlock
-pub fn sandbx_providers::ContentBlock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for sandbx_providers::ContentBlock
-impl core::marker::Freeze for sandbx_providers::ContentBlock
-impl core::marker::Send for sandbx_providers::ContentBlock
-impl core::marker::Sync for sandbx_providers::ContentBlock
-impl core::marker::Unpin for sandbx_providers::ContentBlock
-impl core::marker::UnsafeUnpin for sandbx_providers::ContentBlock
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::ContentBlock
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::ContentBlock
 pub enum sandbx_providers::ProviderError
 pub sandbx_providers::ProviderError::ApiError
 pub sandbx_providers::ProviderError::ApiError::kind: alloc::string::String
@@ -61,66 +29,11 @@ impl core::marker::Unpin for sandbx_providers::ProviderError
 impl core::marker::UnsafeUnpin for sandbx_providers::ProviderError
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::ProviderError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_providers::ProviderError
-pub enum sandbx_providers::Role
-pub sandbx_providers::Role::Assistant
-pub sandbx_providers::Role::User
-impl core::clone::Clone for sandbx_providers::Role
-pub fn sandbx_providers::Role::clone(&self) -> sandbx_providers::Role
-impl core::cmp::Eq for sandbx_providers::Role
-impl core::cmp::PartialEq for sandbx_providers::Role
-pub fn sandbx_providers::Role::eq(&self, &sandbx_providers::Role) -> bool
-impl core::fmt::Debug for sandbx_providers::Role
-pub fn sandbx_providers::Role::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for sandbx_providers::Role
-impl core::marker::StructuralPartialEq for sandbx_providers::Role
-impl core::marker::Freeze for sandbx_providers::Role
-impl core::marker::Send for sandbx_providers::Role
-impl core::marker::Sync for sandbx_providers::Role
-impl core::marker::Unpin for sandbx_providers::Role
-impl core::marker::UnsafeUnpin for sandbx_providers::Role
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::Role
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::Role
-pub enum sandbx_providers::Thinking
-pub sandbx_providers::Thinking::Visible
-impl core::clone::Clone for sandbx_providers::Thinking
-pub fn sandbx_providers::Thinking::clone(&self) -> sandbx_providers::Thinking
-impl core::cmp::Eq for sandbx_providers::Thinking
-impl core::cmp::PartialEq for sandbx_providers::Thinking
-pub fn sandbx_providers::Thinking::eq(&self, &sandbx_providers::Thinking) -> bool
-impl core::fmt::Debug for sandbx_providers::Thinking
-pub fn sandbx_providers::Thinking::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for sandbx_providers::Thinking
-impl core::marker::StructuralPartialEq for sandbx_providers::Thinking
-impl core::marker::Freeze for sandbx_providers::Thinking
-impl core::marker::Send for sandbx_providers::Thinking
-impl core::marker::Sync for sandbx_providers::Thinking
-impl core::marker::Unpin for sandbx_providers::Thinking
-impl core::marker::UnsafeUnpin for sandbx_providers::Thinking
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::Thinking
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::Thinking
-pub enum sandbx_providers::ToolChoice
-pub sandbx_providers::ToolChoice::None
-impl core::clone::Clone for sandbx_providers::ToolChoice
-pub fn sandbx_providers::ToolChoice::clone(&self) -> sandbx_providers::ToolChoice
-impl core::cmp::Eq for sandbx_providers::ToolChoice
-impl core::cmp::PartialEq for sandbx_providers::ToolChoice
-pub fn sandbx_providers::ToolChoice::eq(&self, &sandbx_providers::ToolChoice) -> bool
-impl core::fmt::Debug for sandbx_providers::ToolChoice
-pub fn sandbx_providers::ToolChoice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for sandbx_providers::ToolChoice
-impl core::marker::StructuralPartialEq for sandbx_providers::ToolChoice
-impl core::marker::Freeze for sandbx_providers::ToolChoice
-impl core::marker::Send for sandbx_providers::ToolChoice
-impl core::marker::Sync for sandbx_providers::ToolChoice
-impl core::marker::Unpin for sandbx_providers::ToolChoice
-impl core::marker::UnsafeUnpin for sandbx_providers::ToolChoice
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::ToolChoice
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::ToolChoice
 pub struct sandbx_providers::AnthropicClient
 impl sandbx_providers::AnthropicClient
 pub const sandbx_providers::AnthropicClient::DEFAULT_BASE_URL: &'static str
 pub fn sandbx_providers::AnthropicClient::new(secrecy::SecretString) -> core::result::Result<Self, sandbx_providers::ProviderError>
-pub async fn sandbx_providers::AnthropicClient::stream_chat(&self, sandbx_providers::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::ProviderError>
+pub async fn sandbx_providers::AnthropicClient::stream_chat(&self, sandbx_prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::ProviderError>
 pub fn sandbx_providers::AnthropicClient::with_base_url(self, impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, sandbx_providers::ProviderError>
 impl core::clone::Clone for sandbx_providers::AnthropicClient
 pub fn sandbx_providers::AnthropicClient::clone(&self) -> sandbx_providers::AnthropicClient
@@ -133,62 +46,5 @@ impl core::marker::Unpin for sandbx_providers::AnthropicClient
 impl core::marker::UnsafeUnpin for sandbx_providers::AnthropicClient
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::AnthropicClient
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_providers::AnthropicClient
-pub struct sandbx_providers::Prompt
-pub sandbx_providers::Prompt::max_output_tokens: u32
-pub sandbx_providers::Prompt::messages: alloc::vec::Vec<sandbx_providers::RequestMessage>
-pub sandbx_providers::Prompt::model: alloc::string::String
-pub sandbx_providers::Prompt::system: core::option::Option<alloc::string::String>
-pub sandbx_providers::Prompt::thinking: core::option::Option<sandbx_providers::Thinking>
-pub sandbx_providers::Prompt::tool_choice: core::option::Option<sandbx_providers::ToolChoice>
-pub sandbx_providers::Prompt::tools: alloc::vec::Vec<sandbx_providers::ToolDefinition>
-impl core::clone::Clone for sandbx_providers::Prompt
-pub fn sandbx_providers::Prompt::clone(&self) -> sandbx_providers::Prompt
-impl core::cmp::PartialEq for sandbx_providers::Prompt
-pub fn sandbx_providers::Prompt::eq(&self, &sandbx_providers::Prompt) -> bool
-impl core::fmt::Debug for sandbx_providers::Prompt
-pub fn sandbx_providers::Prompt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for sandbx_providers::Prompt
-impl core::marker::Freeze for sandbx_providers::Prompt
-impl core::marker::Send for sandbx_providers::Prompt
-impl core::marker::Sync for sandbx_providers::Prompt
-impl core::marker::Unpin for sandbx_providers::Prompt
-impl core::marker::UnsafeUnpin for sandbx_providers::Prompt
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::Prompt
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::Prompt
-pub struct sandbx_providers::RequestMessage
-pub sandbx_providers::RequestMessage::content: alloc::vec::Vec<sandbx_providers::ContentBlock>
-pub sandbx_providers::RequestMessage::role: sandbx_providers::Role
-impl core::clone::Clone for sandbx_providers::RequestMessage
-pub fn sandbx_providers::RequestMessage::clone(&self) -> sandbx_providers::RequestMessage
-impl core::cmp::PartialEq for sandbx_providers::RequestMessage
-pub fn sandbx_providers::RequestMessage::eq(&self, &sandbx_providers::RequestMessage) -> bool
-impl core::fmt::Debug for sandbx_providers::RequestMessage
-pub fn sandbx_providers::RequestMessage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for sandbx_providers::RequestMessage
-impl core::marker::Freeze for sandbx_providers::RequestMessage
-impl core::marker::Send for sandbx_providers::RequestMessage
-impl core::marker::Sync for sandbx_providers::RequestMessage
-impl core::marker::Unpin for sandbx_providers::RequestMessage
-impl core::marker::UnsafeUnpin for sandbx_providers::RequestMessage
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::RequestMessage
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::RequestMessage
-pub struct sandbx_providers::ToolDefinition
-pub sandbx_providers::ToolDefinition::description: alloc::string::String
-pub sandbx_providers::ToolDefinition::name: alloc::string::String
-pub sandbx_providers::ToolDefinition::schema: serde_json::value::Value
-impl core::clone::Clone for sandbx_providers::ToolDefinition
-pub fn sandbx_providers::ToolDefinition::clone(&self) -> sandbx_providers::ToolDefinition
-impl core::cmp::PartialEq for sandbx_providers::ToolDefinition
-pub fn sandbx_providers::ToolDefinition::eq(&self, &sandbx_providers::ToolDefinition) -> bool
-impl core::fmt::Debug for sandbx_providers::ToolDefinition
-pub fn sandbx_providers::ToolDefinition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for sandbx_providers::ToolDefinition
-impl core::marker::Freeze for sandbx_providers::ToolDefinition
-impl core::marker::Send for sandbx_providers::ToolDefinition
-impl core::marker::Sync for sandbx_providers::ToolDefinition
-impl core::marker::Unpin for sandbx_providers::ToolDefinition
-impl core::marker::UnsafeUnpin for sandbx_providers::ToolDefinition
-impl core::panic::unwind_safe::RefUnwindSafe for sandbx_providers::ToolDefinition
-impl core::panic::unwind_safe::UnwindSafe for sandbx_providers::ToolDefinition
 pub fn sandbx_providers::ensure_crypto_provider_installed()
 pub type sandbx_providers::EventStream = core::pin::Pin<alloc::boxed::Box<(dyn futures_core::stream::FusedStream<Item = core::result::Result<sandbx_event::AgentEvent, sandbx_providers::ProviderError>> + core::marker::Send)>>

@@ -3,10 +3,10 @@
 
 use futures_util::StreamExt;
 use sandbx_event::{AgentEvent, StopReason};
-use sandbx_providers::{
-    AnthropicClient, ContentBlock, Prompt, ProviderError, RequestMessage, Role, Thinking,
-    ToolChoice, ToolDefinition,
+use sandbx_prompt::{
+    ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
+use sandbx_providers::{AnthropicClient, ProviderError};
 use secrecy::SecretString;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

@@ -8,7 +8,8 @@
 #![cfg(feature = "live-anthropic-tests")]
 
 use futures_util::StreamExt;
-use sandbx_providers::{AnthropicClient, ContentBlock, Prompt, RequestMessage, Role};
+use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role};
+use sandbx_providers::AnthropicClient;
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {

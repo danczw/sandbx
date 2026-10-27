@@ -11,6 +11,7 @@ publish.workspace = true
 sandbx-approval = { path = "../sandbx-approval" }
 sandbx-compact = { path = "../sandbx-compact" }
 sandbx-event = { path = "../sandbx-event" }
+sandbx-prompt = { path = "../sandbx-prompt" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-tools = { path = "../sandbx-tools" }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }

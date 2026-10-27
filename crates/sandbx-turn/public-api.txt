@@ -44,14 +44,14 @@ impl core::marker::UnsafeUnpin for sandbx_turn::TurnStop
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnStop
 impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnStop
 pub struct sandbx_turn::Turn<'a>
-pub sandbx_turn::Turn::history: &'a [sandbx_providers::prompt::RequestMessage]
+pub sandbx_turn::Turn::history: &'a [sandbx_prompt::RequestMessage]
 pub sandbx_turn::Turn::limits: sandbx_turn::TurnLimits
 pub sandbx_turn::Turn::max_output_tokens: u32
 pub sandbx_turn::Turn::model: alloc::string::String
 pub sandbx_turn::Turn::observed: core::option::Option<sandbx_compact::PromptUsage>
 pub sandbx_turn::Turn::system: core::option::Option<alloc::string::String>
-pub sandbx_turn::Turn::thinking: core::option::Option<sandbx_providers::prompt::Thinking>
-pub sandbx_turn::Turn::tool_choice: core::option::Option<sandbx_providers::prompt::ToolChoice>
+pub sandbx_turn::Turn::thinking: core::option::Option<sandbx_prompt::Thinking>
+pub sandbx_turn::Turn::tool_choice: core::option::Option<sandbx_prompt::ToolChoice>
 pub sandbx_turn::Turn::tools: &'a [sandbx_tools::builtin::BuiltinTool]
 pub sandbx_turn::Turn::withheld: usize
 impl<'a> core::clone::Clone for sandbx_turn::Turn<'a>
@@ -82,7 +82,7 @@ impl core::marker::UnsafeUnpin for sandbx_turn::TurnLimits
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnLimits
 impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnLimits
 pub struct sandbx_turn::TurnOutcome
-pub sandbx_turn::TurnOutcome::messages: alloc::vec::Vec<sandbx_providers::prompt::RequestMessage>
+pub sandbx_turn::TurnOutcome::messages: alloc::vec::Vec<sandbx_prompt::RequestMessage>
 pub sandbx_turn::TurnOutcome::round_stop: core::option::Option<sandbx_event::StopReason>
 pub sandbx_turn::TurnOutcome::stop: sandbx_turn::TurnStop
 pub sandbx_turn::TurnOutcome::usage: core::option::Option<sandbx_compact::PromptUsage>
@@ -96,4 +96,4 @@ impl core::marker::Unpin for sandbx_turn::TurnOutcome
 impl core::marker::UnsafeUnpin for sandbx_turn::TurnOutcome
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn::TurnOutcome
 impl core::panic::unwind_safe::UnwindSafe for sandbx_turn::TurnOutcome
-pub async fn sandbx_turn::run_turn<F, O, G>(F, sandbx_turn::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_turn::TurnOutcome, sandbx_turn::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_providers::prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::error::ProviderError>, O: core::ops::function::FnMut(&sandbx_event::AgentEvent), G: sandbx_approval::CallGate
+pub async fn sandbx_turn::run_turn<F, O, G>(F, sandbx_turn::Turn<'_>, &sandbx_tools::context::ExecutionContext, O, G) -> core::result::Result<sandbx_turn::TurnOutcome, sandbx_turn::TurnError> where F: core::ops::async_function::AsyncFnMut(sandbx_prompt::Prompt) -> core::result::Result<sandbx_providers::EventStream, sandbx_providers::error::ProviderError>, O: core::ops::function::FnMut(&sandbx_event::AgentEvent), G: sandbx_approval::CallGate

@@ -1,0 +1,145 @@
+pub mod sandbx_prompt
+pub enum sandbx_prompt::ContentBlock
+pub sandbx_prompt::ContentBlock::RedactedThinking
+pub sandbx_prompt::ContentBlock::RedactedThinking::data: alloc::string::String
+pub sandbx_prompt::ContentBlock::Text
+pub sandbx_prompt::ContentBlock::Text::text: alloc::string::String
+pub sandbx_prompt::ContentBlock::Thinking
+pub sandbx_prompt::ContentBlock::Thinking::signature: alloc::string::String
+pub sandbx_prompt::ContentBlock::Thinking::text: alloc::string::String
+pub sandbx_prompt::ContentBlock::ToolResult
+pub sandbx_prompt::ContentBlock::ToolResult::content: alloc::string::String
+pub sandbx_prompt::ContentBlock::ToolResult::is_error: core::option::Option<bool>
+pub sandbx_prompt::ContentBlock::ToolResult::tool_use_id: alloc::string::String
+pub sandbx_prompt::ContentBlock::ToolUse
+pub sandbx_prompt::ContentBlock::ToolUse::id: alloc::string::String
+pub sandbx_prompt::ContentBlock::ToolUse::input: serde_json::value::Value
+pub sandbx_prompt::ContentBlock::ToolUse::name: alloc::string::String
+impl sandbx_prompt::ContentBlock
+pub fn sandbx_prompt::ContentBlock::is_thinking(&self) -> bool
+impl core::clone::Clone for sandbx_prompt::ContentBlock
+pub fn sandbx_prompt::ContentBlock::clone(&self) -> sandbx_prompt::ContentBlock
+impl core::cmp::PartialEq for sandbx_prompt::ContentBlock
+pub fn sandbx_prompt::ContentBlock::eq(&self, &sandbx_prompt::ContentBlock) -> bool
+impl core::fmt::Debug for sandbx_prompt::ContentBlock
+pub fn sandbx_prompt::ContentBlock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_prompt::ContentBlock
+impl core::marker::Freeze for sandbx_prompt::ContentBlock
+impl core::marker::Send for sandbx_prompt::ContentBlock
+impl core::marker::Sync for sandbx_prompt::ContentBlock
+impl core::marker::Unpin for sandbx_prompt::ContentBlock
+impl core::marker::UnsafeUnpin for sandbx_prompt::ContentBlock
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::ContentBlock
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::ContentBlock
+pub enum sandbx_prompt::Role
+pub sandbx_prompt::Role::Assistant
+pub sandbx_prompt::Role::User
+impl core::clone::Clone for sandbx_prompt::Role
+pub fn sandbx_prompt::Role::clone(&self) -> sandbx_prompt::Role
+impl core::cmp::Eq for sandbx_prompt::Role
+impl core::cmp::PartialEq for sandbx_prompt::Role
+pub fn sandbx_prompt::Role::eq(&self, &sandbx_prompt::Role) -> bool
+impl core::fmt::Debug for sandbx_prompt::Role
+pub fn sandbx_prompt::Role::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_prompt::Role
+impl core::marker::StructuralPartialEq for sandbx_prompt::Role
+impl core::marker::Freeze for sandbx_prompt::Role
+impl core::marker::Send for sandbx_prompt::Role
+impl core::marker::Sync for sandbx_prompt::Role
+impl core::marker::Unpin for sandbx_prompt::Role
+impl core::marker::UnsafeUnpin for sandbx_prompt::Role
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::Role
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::Role
+pub enum sandbx_prompt::Thinking
+pub sandbx_prompt::Thinking::Visible
+impl core::clone::Clone for sandbx_prompt::Thinking
+pub fn sandbx_prompt::Thinking::clone(&self) -> sandbx_prompt::Thinking
+impl core::cmp::Eq for sandbx_prompt::Thinking
+impl core::cmp::PartialEq for sandbx_prompt::Thinking
+pub fn sandbx_prompt::Thinking::eq(&self, &sandbx_prompt::Thinking) -> bool
+impl core::fmt::Debug for sandbx_prompt::Thinking
+pub fn sandbx_prompt::Thinking::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_prompt::Thinking
+impl core::marker::StructuralPartialEq for sandbx_prompt::Thinking
+impl core::marker::Freeze for sandbx_prompt::Thinking
+impl core::marker::Send for sandbx_prompt::Thinking
+impl core::marker::Sync for sandbx_prompt::Thinking
+impl core::marker::Unpin for sandbx_prompt::Thinking
+impl core::marker::UnsafeUnpin for sandbx_prompt::Thinking
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::Thinking
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::Thinking
+pub enum sandbx_prompt::ToolChoice
+pub sandbx_prompt::ToolChoice::None
+impl core::clone::Clone for sandbx_prompt::ToolChoice
+pub fn sandbx_prompt::ToolChoice::clone(&self) -> sandbx_prompt::ToolChoice
+impl core::cmp::Eq for sandbx_prompt::ToolChoice
+impl core::cmp::PartialEq for sandbx_prompt::ToolChoice
+pub fn sandbx_prompt::ToolChoice::eq(&self, &sandbx_prompt::ToolChoice) -> bool
+impl core::fmt::Debug for sandbx_prompt::ToolChoice
+pub fn sandbx_prompt::ToolChoice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_prompt::ToolChoice
+impl core::marker::StructuralPartialEq for sandbx_prompt::ToolChoice
+impl core::marker::Freeze for sandbx_prompt::ToolChoice
+impl core::marker::Send for sandbx_prompt::ToolChoice
+impl core::marker::Sync for sandbx_prompt::ToolChoice
+impl core::marker::Unpin for sandbx_prompt::ToolChoice
+impl core::marker::UnsafeUnpin for sandbx_prompt::ToolChoice
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::ToolChoice
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::ToolChoice
+pub struct sandbx_prompt::Prompt
+pub sandbx_prompt::Prompt::max_output_tokens: u32
+pub sandbx_prompt::Prompt::messages: alloc::vec::Vec<sandbx_prompt::RequestMessage>
+pub sandbx_prompt::Prompt::model: alloc::string::String
+pub sandbx_prompt::Prompt::system: core::option::Option<alloc::string::String>
+pub sandbx_prompt::Prompt::thinking: core::option::Option<sandbx_prompt::Thinking>
+pub sandbx_prompt::Prompt::tool_choice: core::option::Option<sandbx_prompt::ToolChoice>
+pub sandbx_prompt::Prompt::tools: alloc::vec::Vec<sandbx_prompt::ToolDefinition>
+impl core::clone::Clone for sandbx_prompt::Prompt
+pub fn sandbx_prompt::Prompt::clone(&self) -> sandbx_prompt::Prompt
+impl core::cmp::PartialEq for sandbx_prompt::Prompt
+pub fn sandbx_prompt::Prompt::eq(&self, &sandbx_prompt::Prompt) -> bool
+impl core::fmt::Debug for sandbx_prompt::Prompt
+pub fn sandbx_prompt::Prompt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_prompt::Prompt
+impl core::marker::Freeze for sandbx_prompt::Prompt
+impl core::marker::Send for sandbx_prompt::Prompt
+impl core::marker::Sync for sandbx_prompt::Prompt
+impl core::marker::Unpin for sandbx_prompt::Prompt
+impl core::marker::UnsafeUnpin for sandbx_prompt::Prompt
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::Prompt
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::Prompt
+pub struct sandbx_prompt::RequestMessage
+pub sandbx_prompt::RequestMessage::content: alloc::vec::Vec<sandbx_prompt::ContentBlock>
+pub sandbx_prompt::RequestMessage::role: sandbx_prompt::Role
+impl core::clone::Clone for sandbx_prompt::RequestMessage
+pub fn sandbx_prompt::RequestMessage::clone(&self) -> sandbx_prompt::RequestMessage
+impl core::cmp::PartialEq for sandbx_prompt::RequestMessage
+pub fn sandbx_prompt::RequestMessage::eq(&self, &sandbx_prompt::RequestMessage) -> bool
+impl core::fmt::Debug for sandbx_prompt::RequestMessage
+pub fn sandbx_prompt::RequestMessage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_prompt::RequestMessage
+impl core::marker::Freeze for sandbx_prompt::RequestMessage
+impl core::marker::Send for sandbx_prompt::RequestMessage
+impl core::marker::Sync for sandbx_prompt::RequestMessage
+impl core::marker::Unpin for sandbx_prompt::RequestMessage
+impl core::marker::UnsafeUnpin for sandbx_prompt::RequestMessage
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::RequestMessage
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::RequestMessage
+pub struct sandbx_prompt::ToolDefinition
+pub sandbx_prompt::ToolDefinition::description: alloc::string::String
+pub sandbx_prompt::ToolDefinition::name: alloc::string::String
+pub sandbx_prompt::ToolDefinition::schema: serde_json::value::Value
+impl core::clone::Clone for sandbx_prompt::ToolDefinition
+pub fn sandbx_prompt::ToolDefinition::clone(&self) -> sandbx_prompt::ToolDefinition
+impl core::cmp::PartialEq for sandbx_prompt::ToolDefinition
+pub fn sandbx_prompt::ToolDefinition::eq(&self, &sandbx_prompt::ToolDefinition) -> bool
+impl core::fmt::Debug for sandbx_prompt::ToolDefinition
+pub fn sandbx_prompt::ToolDefinition::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_prompt::ToolDefinition
+impl core::marker::Freeze for sandbx_prompt::ToolDefinition
+impl core::marker::Send for sandbx_prompt::ToolDefinition
+impl core::marker::Sync for sandbx_prompt::ToolDefinition
+impl core::marker::Unpin for sandbx_prompt::ToolDefinition
+impl core::marker::UnsafeUnpin for sandbx_prompt::ToolDefinition
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_prompt::ToolDefinition
+impl core::panic::unwind_safe::UnwindSafe for sandbx_prompt::ToolDefinition

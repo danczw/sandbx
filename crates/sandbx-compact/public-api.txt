@@ -37,4 +37,4 @@ impl core::marker::UnsafeUnpin for sandbx_compact::PromptUsage
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_compact::PromptUsage
 impl core::panic::unwind_safe::UnwindSafe for sandbx_compact::PromptUsage
 pub fn sandbx_compact::over_budget(core::option::Option<sandbx_compact::PromptUsage>, u32) -> bool
-pub fn sandbx_compact::plan_cut(&[sandbx_providers::prompt::RequestMessage], usize, core::option::Option<usize>, usize) -> core::option::Option<usize>
+pub fn sandbx_compact::plan_cut(&[sandbx_prompt::RequestMessage], usize, core::option::Option<usize>, usize) -> core::option::Option<usize>

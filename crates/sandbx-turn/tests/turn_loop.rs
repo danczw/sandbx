@@ -6,7 +6,8 @@
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
-use sandbx_providers::{ContentBlock, EventStream, RequestMessage, Role};
+use sandbx_prompt::{ContentBlock, RequestMessage, Role};
+use sandbx_providers::EventStream;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{TurnError, TurnLimits, TurnStop, run_turn};
 

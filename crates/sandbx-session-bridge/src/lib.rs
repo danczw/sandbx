@@ -13,7 +13,7 @@
 //! `sandbx-compact` edge for a type nothing else in it mentions (#351).
 
 use sandbx_compact::PromptUsage;
-use sandbx_providers::{ContentBlock, RequestMessage, Role};
+use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
