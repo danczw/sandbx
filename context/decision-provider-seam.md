@@ -81,8 +81,10 @@ there are:
   holding vendor strings; it did not settle that one must exist. No backoff layer
   reads one, so #306 removed `transient`, `is_retryable` and `RETRYABLE_KINDS`.
   Code that classifies retries belongs at those construction sites, as #59 said.
-  Since #366 the type is in a crate that holds no vendor string at all, so adding
-  one back would mean adding the first — the same test `StopReason` passed above.
+  Since #366 the type is in a crate that holds no vendor *table* and nothing that
+  turns a wire string into anything — the same test `StopReason` passed above. It
+  does carry vendor strings as prose and as test fixtures (`x-api-key`,
+  `"invalid_request_error"`); what it has no way to do is match on one.
 
 The weakness this leaves, stated rather than designed around: with one adapter the
 neutral shape is informed by one wire format, so a second backend will still move
