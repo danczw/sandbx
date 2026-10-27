@@ -570,8 +570,8 @@ src/lib.rs      re-exports Grants and PolicyError — and holds what a no-flag r
    root.rs      where a no-flag run may root its default policy, and what a
                 path flag is vetted against, including the refusal of a grant
                 reaching a path sandbx owns (unit-testable without a
-                sandbox-capable kernel); vetted_root's /// is the six refusals,
-                and root::tests' //! the mutation check over them
+                sandbox-capable kernel); vetted_root's /// is why it refuses
+                rather than narrowing, and root::tests' //! the mutation check
    error.rs     PolicyError, and the one ADVICE every derived-default refusal
                 appends
 ```
