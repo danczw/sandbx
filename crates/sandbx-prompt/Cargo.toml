@@ -8,9 +8,11 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# `serde_json`, and deliberately not `serde`: two fields are opaque `Value`s replayed
-# verbatim, and nothing here derives or implements a trait from it. The absent
-# dependency is what `src/lib.rs`'s `//!` rests on.
+# Two fields are opaque `Value`s replayed verbatim. The list stopping here is the seam
+# `src/lib.rs`'s `//!` rests on, and `serde` is not the only name that would break it:
+# `serde_core` declares `Serialize` and is already in the tree under `serde_json`, so a
+# direct edge to either puts the trait in scope. Nothing gates that — no `deny.toml`
+# block bans either — which is why the reason is written where the list is edited.
 serde_json = "1.0.151"
 
 [lints]

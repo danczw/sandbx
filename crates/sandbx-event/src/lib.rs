@@ -32,9 +32,9 @@ pub enum AgentEvent {
     ///
     /// Empty unless `sandbx_prompt`'s `Thinking::Visible` was asked for, and never the
     /// whole block: [`ThinkingBlock`](Self::ThinkingBlock) is what carries one back into
-    /// a later request. Not a link, and not for [`Stop`](Self::Stop)'s reason — since
-    /// #364 that crate is a leaf and the edge would be no cycle. This crate just has no
-    /// edge to it, and one taken for a doc link would be the only thing holding it.
+    /// a later request. Not a link, and not for [`Stop`](Self::Stop)'s reason — there is
+    /// no cycle here, just no edge, and one taken for a doc link would be the only thing
+    /// holding it.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,

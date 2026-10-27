@@ -68,11 +68,11 @@ wrappers = [
 
 [[bans.deny]]
 name = "sandbx-prompt"
-# Five parents, and no workspace dependency of its own: a request is built in
-# `sandbx-cli`, carried through `sandbx-turn`, cut by `sandbx-compact`, translated by
-# `sandbx-session-bridge`, and serialized by `sandbx-providers`' `anthropic/body.rs` —
-# which is the one edge that could post these types to an API, and the only one that can
-# declare the wrappers to do it (#364).
+# No parent here inherits the edge through another: a request is built in `sandbx-cli`,
+# carried through `sandbx-turn`, cut by `sandbx-compact`, translated by
+# `sandbx-session-bridge`, and serialized by `sandbx-providers` — the last being the only
+# one that can post these types to an API, and the only one that can declare the
+# wrappers to do it (#364).
 wrappers = [
     "sandbx-cli",
     "sandbx-compact",
@@ -83,11 +83,11 @@ wrappers = [
 
 [[bans.deny]]
 name = "sandbx-providers"
-# Three crates have left this array rather than being added to another, each the same
-# shape: their whole edge was a vocabulary that now has a crate of its own.
-# `sandbx-tui-transcript` went with `AgentEvent` and `StopReason` (#365); `sandbx-compact`
-# and `sandbx-session-bridge` with `RequestMessage`, `Role` and `ContentBlock`, so neither
-# reaches client code at all any more (#364).
+# Crates have left this array rather than being added to another, each for the same
+# reason: their whole edge was a vocabulary that now has a crate of its own.
+# `sandbx-tui-transcript` went with `AgentEvent` and `StopReason` (#365),
+# `sandbx-compact` and `sandbx-session-bridge` with `RequestMessage`, `Role` and
+# `ContentBlock` (#364), so none of the three reaches client code at all.
 wrappers = ["sandbx-cli", "sandbx-turn"]
 
 [[bans.deny]]

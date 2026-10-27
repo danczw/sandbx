@@ -5,9 +5,8 @@
 //! know. Hand-written rather than derived, because several rules are conditional and
 //! `serde`'s attributes cannot express them.
 //!
-//! Every impl below is on a local wrapper, which the orphan rule now requires rather
-//! than merely permitting: the types are another crate's and `serde` is not among its
-//! dependencies, so this is the only shape such an impl can take (#364).
+//! Every impl below is on a local wrapper because the orphan rule requires it, the
+//! types being another crate's since #364 — not because a wrapper reads better.
 
 use sandbx_prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
