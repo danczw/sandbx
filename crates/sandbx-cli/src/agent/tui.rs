@@ -10,10 +10,8 @@ use std::sync::{Mutex, PoisonError};
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_event::StopReason;
-use sandbx_providers::{
-    AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
-    Thinking,
-};
+use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
+use sandbx_providers::{AnthropicClient, EventStream, ProviderError};
 use sandbx_screen::{Screen, Transcript};
 use sandbx_session_bridge as session;
 use sandbx_session_store::Session;

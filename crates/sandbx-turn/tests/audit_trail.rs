@@ -8,7 +8,7 @@
 
 use sandbx_core::SandboxPolicy;
 use sandbx_event::StopReason;
-use sandbx_providers::ContentBlock;
+use sandbx_prompt::ContentBlock;
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::run_turn;
 

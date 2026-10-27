@@ -1,16 +1,19 @@
 //! A [`Prompt`] in the shape `POST /v1/messages` wants.
 //!
 //! Every wire field name, every omission rule and the `stream` constant live here
-//! and nowhere else — this module is the whole of what [`crate::prompt`] refuses to
+//! and nowhere else — this module is the whole of what [`sandbx_prompt`] refuses to
 //! know. Hand-written rather than derived, because several rules are conditional and
 //! `serde`'s attributes cannot express them.
+//!
+//! Every impl below is on a local wrapper, which the orphan rule now requires rather
+//! than merely permitting: the types are another crate's and `serde` is not among its
+//! dependencies, so this is the only shape such an impl can take (#364).
 
-use serde::ser::SerializeMap;
-use serde::{Serialize, Serializer};
-
-use crate::prompt::{
+use sandbx_prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 
 pub(super) struct Body<'a>(pub(super) &'a Prompt);
 

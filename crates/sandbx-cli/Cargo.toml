@@ -26,6 +26,7 @@ sandbx-core = { path = "../sandbx-core" }
 sandbx-event = { path = "../sandbx-event" }
 sandbx-grants = { path = "../sandbx-grants" }
 sandbx-logging = { path = "../sandbx-logging" }
+sandbx-prompt = { path = "../sandbx-prompt" }
 sandbx-providers = { path = "../sandbx-providers" }
 sandbx-screen = { path = "../sandbx-screen" }
 sandbx-session-bridge = { path = "../sandbx-session-bridge" }

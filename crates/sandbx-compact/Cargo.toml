@@ -8,7 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-prompt = { path = "../sandbx-prompt" }
 
 [lints]
 workspace = true

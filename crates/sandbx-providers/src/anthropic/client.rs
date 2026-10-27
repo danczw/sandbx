@@ -1,11 +1,11 @@
 //! The streaming client: one `POST /v1/messages`, and the base-URL and transport
 //! rules that keep the API key off the network in cleartext.
 
+use sandbx_prompt::Prompt;
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::EventStream;
 use crate::error::ProviderError;
-use crate::prompt::Prompt;
 use crate::{ensure_crypto_provider_installed, sse};
 
 use super::body::Body;

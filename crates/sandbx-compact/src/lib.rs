@@ -13,7 +13,7 @@
 //! A crate and not a module of `sandbx-turn`: nothing here reaches the loop, so the edge
 //! above is one cargo and `deny.toml` enforce rather than a convention (#356).
 
-use sandbx_providers::{ContentBlock, RequestMessage, Role};
+use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 
 /// When to withhold history, and how much to keep.
 ///

@@ -33,6 +33,7 @@ sandbx-auth ──────────────────────�
 sandbx-core ────────────────────────────────┤                 caller
 sandbx-grants ──────────────────────────────┤
 sandbx-logging ─────────────────────────────┤
+sandbx-prompt ──────────────────────────────┤
 sandbx-session-bridge ──────────────────────┤
 sandbx-session-error ───────────────────────┤
 sandbx-session-id ──────────────────────────┤
@@ -58,19 +59,20 @@ direct dependencies and this not being one of them. Its two parents are
 `sandbx-grants` and `sandbx-session-bridge`, both drawn as leaves of that bus.
 
 `sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`
-is its one internal edge, since `EventStream` names an `AgentEvent` and the
-accumulator builds one per frame. The arrow is not drawn because `sandbx-event`
-is already a leaf of the bus further down, and a second crossing would say less
-than the two table rows do. `sandbx-turn` reaches it directly as well, and not
-through the `sandbx-providers` edge drawn beside it (#365).
+and `sandbx-prompt` are its two internal edges, since `EventStream` names an
+`AgentEvent` and the accumulator builds one per frame, and `anthropic/body.rs`
+serializes a `&Prompt`. Neither arrow is drawn, both crates being leaves of the
+bus further down, and two more crossings would say less than the table rows do.
+`sandbx-turn` and `sandbx-cli` reach each of them directly as well, and not
+through the `sandbx-providers` edge drawn beside them (#364, #365).
 
 | Crate | Owns | Internal deps |
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients | event |
-| `sandbx-turn` | the turn loop | approval, compact, event, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
+| `sandbx-providers` | hand-rolled streaming API clients | event, prompt |
+| `sandbx-turn` | the turn loop | approval, compact, event, prompt, tools, providers (core is *dev*-only) |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, prompt, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
@@ -83,11 +85,12 @@ through the `sandbx-providers` edge drawn beside it (#365).
 | `sandbx-session-id` | a session's name, and the one rule that makes it safe in a path | session-error |
 | `sandbx-session-paths` | where transcripts live: `$XDG_STATE_HOME`, else `$HOME`, never the working directory | session-error |
 | `sandbx-event` | the vocabulary a streamed turn is spoken in: one event per thing that arrived, and why it ended | — |
+| `sandbx-prompt` | what a model is asked for, in no API's vocabulary: the request shapes, carrying no `Serialize` | — |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
-| `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | providers |
-| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, providers, session-error, session-id, session-message, session-paths, session-store |
+| `sandbx-compact` | which prefix of a history may be withheld from a request, and the measurement that decides it | prompt |
+| `sandbx-session-bridge` | the translation between the stored transcript shapes and the provider's request shapes | compact, prompt, session-error, session-id, session-message, session-paths, session-store |
 | `sandbx-grants` | the `--allow-…` flags, and the policy they describe — including what a no-flag run derives and the working directories it refuses | auth, core, session-paths |
 
 `sandbx-turn` depends on core only as a dev-dependency: its tests drive real
@@ -104,11 +107,13 @@ something else, where `CompletedTurn` appends a finished turn, and where a
 parent of `sandbx-session-error`, the id's own parser returning that type.
 
 `sandbx-session-bridge` is the only crate reaching all seven of
-`sandbx-compact`, `sandbx-providers`, `sandbx-session-error`,
+`sandbx-compact`, `sandbx-prompt`, `sandbx-session-error`,
 `sandbx-session-id`, `sandbx-session-message`, `sandbx-session-paths` and
 `sandbx-session-store`, which is what being the seam costs: the two
 vocabularies it maps between are declared in crates that do not depend on each
-other, by the choice `sandbx-session-message`'s `//!` records. Its edge to
+other, by the choice `sandbx-session-message`'s `//!` records. Still seven and
+not eight: #364 narrowed the client edge to the request shapes rather than
+adding one, so the crate now reaches no client code at all. Its edge to
 `sandbx-session-store` is no longer the wide one it was: #360 and #361 took
 `SessionId` and `sessions_directory` out of the crate the edge used to reach,
 and #362 renamed what was left, so `Session` and `SessionStore` are now that
@@ -135,9 +140,11 @@ is a crate so that `CARGO_BIN_EXE_sandbx-helper` resolves for the tests that spa
 it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
-`sandbx-providers` and `sandbx-event` directly rather than through `sandbx-turn`,
-which re-exports neither: `agent-run` builds the client and the first user turn
-itself, and its renderer is a second fold of the events the loop hands back.
+`sandbx-providers`, `sandbx-prompt` and `sandbx-event` directly rather than
+through `sandbx-turn`, which re-exports none of the three: `agent-run` builds the
+client, which is `sandbx-providers`', and the first user turn, which is
+`sandbx-prompt`'s, and its renderer is a second fold of the events the loop hands
+back.
 
 ## `sandbx-core`
 
@@ -281,8 +288,6 @@ tests/            per-tool (find and grep share search), plus registry, limits,
 
 ```
 src/lib.rs        EventStream (boxed FusedStream) — the provider seam
-   prompt.rs      Prompt, RequestMessage, ContentBlock, ToolDefinition,
-                  ToolChoice, Thinking — data, with no Serialize
    error.rs
    sse.rs         SSE framing
    anthropic.rs   the vendor boundary: re-exports AnthropicClient
@@ -298,9 +303,11 @@ The tree is the boundary for every vendor *rule*, and for every wire string
 sandbx writes or matches on — the ones it carries verbatim cross as opaque data
 (`sandbx-event`'s `StopReason::Other`, this crate's `ApiError::kind`). The rules
 are compiler-enforced: `Body` is `pub(super)` in a private `mod body` and no
-neutral type derives `Serialize`, so the top-level types cannot be posted to any
-API by accident; the wire payloads are `pub(super)` bar the two error envelopes
-at `pub(crate)`; and `stop_reason` is a private free function, so no
+neutral type derives `Serialize`, so the request shapes cannot be posted to any
+API by accident — which since #364 rests on the orphan rule rather than on this
+crate's own discipline, the shapes being `sandbx-prompt`'s and `serde` not being
+among its dependencies; the wire payloads are `pub(super)` bar the two error
+envelopes at `pub(crate)`; and `stop_reason` is a private free function, so no
 `StopReason` comes from a wire string outside `anthropic/` (#59) — which the
 enum leaving for `sandbx-event` did not weaken, the string table having stayed.
 The vendor *name* is the one row nothing *contains* — no lint, no containment
@@ -326,6 +333,25 @@ them reaching a client: until #365 these two lived beside the clients, and
 carrying the chain on to `sandbx-screen` behind it. The crate's `//!` has why it
 is a crate and not a module, and the half of the #59 seam that travels with the
 types.
+
+## `sandbx-prompt`
+
+```
+src/lib.rs        Prompt, RequestMessage, Role, ContentBlock, ToolDefinition,
+                  ToolChoice, Thinking — what a model is asked for, as data
+```
+
+Public surface: those seven types and `ContentBlock::is_thinking`. One
+dependency, `serde_json`, and it is the two opaque fields alone —
+`ToolUse::input` and `ToolDefinition::schema`, each replayed or forwarded
+verbatim. **`serde` is not a dependency**, and that absence is the mechanism
+rather than a tidiness: with the types declared here, the orphan rule leaves this
+the only crate in which an `impl Serialize for Prompt` could be written, so an
+adapter has to declare a local wrapper and spell every field out. Until #364 the
+same property rested on `anthropic/body.rs` being `pub(super)` within one crate.
+`PartialEq` and not `Serialize` is also what a test wants to compare. The
+cross-crate account is in
+[decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-text`
 
@@ -385,8 +411,9 @@ crates/sandbx-cli/` is empty and `Compaction` was never named there at all. It
 is not therefore dead: `Turn::observed` and `TurnOutcome::usage` are public
 fields typed `Option<sandbx_compact::PromptUsage>`, so the re-export is still
 how a consumer outside this workspace names them, which is what #356 claimed for
-it. Depends on `sandbx-providers` for `RequestMessage`, `Role` and
-`ContentBlock`; #364 narrows that to the prompt crate alone.
+it. `sandbx-prompt` is its one dependency, for `RequestMessage`, `Role` and
+`ContentBlock` — #364 narrowed that from the whole client crate, so nothing here
+reaches reqwest, rustls or hyper any more.
 
 ## `sandbx-turn`
 
@@ -413,8 +440,8 @@ src/lib.rs        Message, Role, Content, Usage, CompletedTurn — the five
 ```
 
 The stored types are declared here rather than imported from
-`sandbx-providers`: a transcript is a file format, and one that moved whenever a
-provider type moved would not be. The translation lives in
+`sandbx-prompt`: a transcript is a file format, and one that moved whenever a
+request type moved would not be. The translation lives in
 `sandbx-session-bridge`, where a new content block is a compile error rather
 than a block quietly missing from a transcript. Depends on no sandbx crate,
 which is what lets the format outlive a change to either side of it (#359).

@@ -1,9 +1,9 @@
 //! What a transcript line holds: one turn of the conversation, and what the request for it
 //! cost.
 //!
-//! Mirrors `sandbx_providers`'s `RequestMessage`, `Role` and `ContentBlock`, and
+//! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`, and
 //! `sandbx_compact`'s `PromptUsage`, declared here rather than imported because a transcript
-//! is a file format, and one that moved whenever a provider type moved would not be.
+//! is a file format, and one that moved whenever a request type moved would not be.
 //! `sandbx-session-bridge` translates, and fails to compile on a new block kind.
 //! `context/decision-on-disk-state.md` has the line format these sit in.
 

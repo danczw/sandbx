@@ -6,7 +6,7 @@
 
 use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
-use sandbx_providers::{ContentBlock, RequestMessage, Role};
+use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 

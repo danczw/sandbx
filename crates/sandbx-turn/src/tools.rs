@@ -4,7 +4,7 @@
 //! boundary lives here rather than spread through seven tool bodies.
 
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
-use sandbx_providers::{ContentBlock, ToolDefinition};
+use sandbx_prompt::{ContentBlock, ToolDefinition};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 
 use crate::TurnError;

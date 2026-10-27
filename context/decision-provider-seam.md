@@ -2,6 +2,10 @@
 
 ## No wrapper crate
 
+This decision spans four crates: `sandbx-prompt` holds what is asked for,
+`sandbx-event` what comes back, `sandbx-providers` the one adapter between them, and
+`sandbx-turn` the loop driving it.
+
 No `genai`, no `rig-core` — `sandbx-providers` is hand-rolled `reqwest` + `rustls`.
 An early diagram said "wraps `genai`"; the decision not to is the one that held. The
 cost of a wrapper is that every new capability waits on someone else's abstraction,
@@ -42,11 +46,19 @@ What #59 changed is **where the vendor's vocabulary stops**, not how many backen
 there are:
 
 - `Prompt` and its tree carry no `Serialize`. They are data, and `PartialEq` instead,
-  which is what a test wants to compare.
+  which is what a test wants to compare. Since #364 they are also in a crate of their
+  own, `sandbx-prompt`, which **states** this the way #365 states the `StopReason`
+  half below: `serde` is not among that crate's dependencies, so the orphan rule
+  leaves it the only place such an impl could be written at all. What was a
+  discipline inside one crate is now a thing the compiler refuses.
 - `anthropic/body.rs` owns the whole body: the key names, the omissions (`system`
   absent rather than null, `tools` dropped when empty, `tool_choice` only alongside
-  them), and `stream: true`. It is `pub(super)`, so nothing above `anthropic.rs` can
-  post a neutral type to an API.
+  them), and `stream: true`. Every one of its seven `Serialize` impls is on a local
+  wrapper, which the orphan rule now requires rather than merely permitting — so an
+  adapter cannot post a request shape without first naming every field of it. It is
+  also `pub(super)`, which keeps the wrappers themselves inside `anthropic.rs`; that
+  token is the narrower of the two guarantees now, and the one that would survive the
+  types moving back.
 - `StopReason` is a neutral enum with `Other(String)`; the string table is a
   free `stop_reason` in `anthropic/wire/`. Since #365 the two are in different
   crates — the enum is `sandbx-event`'s, the table stayed — which states the seam
@@ -71,7 +83,8 @@ no capability negotiation was invented for a backend that does not exist — the
 timing argument #59 made against doing this early was withdrawn, not satisfied.
 
 `Prompt::thinking` is the one field whose presence is a capability claim rather than
-a request shape; [decision-thinking-replay.md](decision-thinking-replay.md) is why it
+a request shape, and the one place the split above leaves a claim about a provider in
+`sandbx-prompt`; [decision-thinking-replay.md](decision-thinking-replay.md) is why it
 is one variant, and what the loop does with what comes back.
 
 See also [guide-turn-loop.md](guide-turn-loop.md).
