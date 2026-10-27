@@ -22,7 +22,7 @@ const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Arguments for the `grep` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct GrepInput {
+pub(crate) struct GrepInput {
     /// Absolute path of the directory to search.
     pub path: PathBuf,
     /// Literal text to look for. Not a regular expression.
@@ -33,7 +33,7 @@ pub struct GrepInput {
 ///
 /// A literal search, not a regex: a regex adds a dependency and a class of
 /// pathological-pattern behaviour, for a tool mostly asked where a symbol appears.
-pub fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let walk = ctx
         .guard()
         .walk_readable(&input.path, ctx.limits().max_files_scanned)

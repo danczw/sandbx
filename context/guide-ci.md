@@ -175,6 +175,14 @@ job does not judge the widening, even though it is a required check: it goes red
 when the baseline no longer matches the surface. What it forbids is a widening with
 no line recording it, and the fix is always to commit that line.
 
+It forbids that only for a widening the surface can *see*. An item whose parent
+module is private is absent from the baseline at any visibility, so turning it
+`pub` moves no line and the gate stays green — which is why `unreachable_pub` is
+a workspace lint (`Cargo.toml`). The two split the class between them: the
+baseline records a widening that reaches the surface, the lint rejects one that
+does not reach it, and neither sees the other's half. Read the paragraph above
+alone and you will credit this job with a guarantee it only half holds.
+
 Being required, its name is pinned like the others above — renaming the job silently
 drops the gate until the ruleset is updated to match.
 

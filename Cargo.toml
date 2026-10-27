@@ -21,6 +21,17 @@ publish = false
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
+# The half `crates/*/public-api.txt` cannot see. A `pub` under a private parent
+# never reaches the baseline, so widening one leaves no line for a reviewer to
+# read — and during #328's extractions `pub` is the cheapest way to make a moved
+# item compile. This is the compiler saying the intent and the reachability
+# disagree; `pub(crate)` is what was meant. Allow-by-default upstream only
+# because it fires on so much existing code.
+unreachable_pub = "warn"
+# The other direction: a type reachable through a signature but not nameable, so
+# a caller can hold it and never write it down. `unreachable_pub`'s own docs
+# name this as the leak it does not cover.
+unnameable_types = "warn"
 
 [workspace.lints.clippy]
 # Method list: clippy.toml.

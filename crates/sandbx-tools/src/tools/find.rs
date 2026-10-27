@@ -14,7 +14,7 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
 
 /// Arguments for the `find` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct FindInput {
+pub(crate) struct FindInput {
     /// Absolute path of the directory to search.
     pub path: PathBuf,
     /// Substring to match against file names.
@@ -22,7 +22,7 @@ pub struct FindInput {
 }
 
 /// Find files beneath a directory whose name contains a substring.
-pub fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: FindInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let walk = ctx
         .guard()
         .walk_readable(&input.path, ctx.limits().max_files_scanned)

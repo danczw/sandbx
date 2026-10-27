@@ -14,7 +14,7 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
 
 /// Arguments for the `read` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ReadInput {
+pub(crate) struct ReadInput {
     /// Absolute path of the file to read.
     pub path: PathBuf,
 }
@@ -23,7 +23,7 @@ pub struct ReadInput {
 ///
 /// Never spawns, so the kernel enforcement never sees it: the `FsGuard` check
 /// inside [`crate::read_file`] is the only thing holding it inside the policy.
-pub fn execute(input: ReadInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: ReadInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let content = crate::read_file(&input.path, ctx)?;
 
     Ok(ToolOutput::new(ctx.limits().take_bytes(content)))

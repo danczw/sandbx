@@ -5,10 +5,10 @@
 //! the constraint that changes how the tool is called, since a model that learns it
 //! from an error has already spent a turn.
 
-pub mod bash;
-pub mod edit;
-pub mod find;
-pub mod grep;
-pub mod ls;
-pub mod read;
-pub mod write;
+pub(crate) mod bash;
+pub(crate) mod edit;
+pub(crate) mod find;
+pub(crate) mod grep;
+pub(crate) mod ls;
+pub(crate) mod read;
+pub(crate) mod write;
