@@ -21,7 +21,7 @@ fn run(input: serde_json::Value, ctx: &ExecutionContext) -> Result<ToolOutput, T
 
 /// Arguments for the `bash` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct BashInput {
+pub(crate) struct BashInput {
     /// Shell command to run.
     pub command: String,
 }
@@ -33,7 +33,7 @@ pub struct BashInput {
 /// and a seccomp filter before `exec`. The command string reaches `sh -c` verbatim;
 /// running arbitrary commands is the purpose, and the sandbox — not argument
 /// parsing — is what bounds the damage.
-pub fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let command = ctx
         .sandboxed_command("/bin/sh")
         .arg("-c")

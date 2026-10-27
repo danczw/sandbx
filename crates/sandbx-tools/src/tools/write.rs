@@ -15,7 +15,7 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
 
 /// Arguments for the `write` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct WriteInput {
+pub(crate) struct WriteInput {
     /// Absolute path of the file to write. Created if it does not exist.
     pub path: PathBuf,
     /// Full contents to write, replacing anything already there.
@@ -27,7 +27,7 @@ pub struct WriteInput {
 /// In-process, so `FsGuard` is the only confinement. It also rejects a symlink
 /// leaf, which matters here: the agent can plant symlinks in any writable root,
 /// and following one would land the write outside the policy.
-pub fn execute(input: WriteInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: WriteInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let mut file = ctx
         .guard()
         .open_write(&input.path)

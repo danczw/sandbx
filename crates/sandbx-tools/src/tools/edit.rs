@@ -16,7 +16,7 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
 
 /// Arguments for the `edit` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct EditInput {
+pub(crate) struct EditInput {
     /// Absolute path of the file to edit.
     pub path: PathBuf,
     /// Exact text to replace. Must appear exactly once.
@@ -31,7 +31,7 @@ pub struct EditInput {
 /// on a read-only root must fail even though its read half succeeds. An absent or
 /// ambiguous match is an error, never a silent no-op — the model otherwise believes
 /// the edit happened.
-pub fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     // Read first, where the read half of the policy check lives, so a write-only
     // grant fails before an error message can disclose content.
     let content = crate::read_file(&input.path, ctx)?;

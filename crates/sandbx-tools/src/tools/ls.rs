@@ -14,14 +14,14 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
 
 /// Arguments for the `ls` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct LsInput {
+pub(crate) struct LsInput {
     /// Absolute path of the directory to list.
     pub path: PathBuf,
 }
 
 /// List a directory's entries, marking directories with a trailing `/` so the model
 /// need not spend a call per entry to find what it can descend into.
-pub fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+pub(crate) fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let entries = ctx
         .guard()
         .read_dir(&input.path)
