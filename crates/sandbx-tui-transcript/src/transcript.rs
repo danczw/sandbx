@@ -3,7 +3,7 @@
 //! No terminal behind it, so the fold is a unit test rather than a screenshot. Nothing
 //! here renders a *requested* call: only a settled one has an outcome.
 
-use sandbx_providers::AgentEvent;
+use sandbx_event::AgentEvent;
 use sandbx_text::invisible;
 
 use crate::view::GUTTER_MARK;
@@ -232,7 +232,7 @@ mod tests {
             &[
                 text("looking"),
                 AgentEvent::Stop {
-                    reason: sandbx_providers::StopReason::ToolUse,
+                    reason: sandbx_event::StopReason::ToolUse,
                 },
                 text(" — found it"),
             ],
@@ -503,8 +503,8 @@ mod tests {
         );
 
         for reason in [
-            sandbx_providers::StopReason::ToolUse,
-            sandbx_providers::StopReason::EndTurn,
+            sandbx_event::StopReason::ToolUse,
+            sandbx_event::StopReason::EndTurn,
         ] {
             transcript.event(&AgentEvent::Stop { reason });
         }

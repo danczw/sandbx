@@ -23,6 +23,7 @@ nix = { version = "0.31.3", default-features = false, features = ["term"] }
 sandbx-approval = { path = "../sandbx-approval" }
 sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
+sandbx-event = { path = "../sandbx-event" }
 sandbx-grants = { path = "../sandbx-grants" }
 sandbx-logging = { path = "../sandbx-logging" }
 sandbx-providers = { path = "../sandbx-providers" }

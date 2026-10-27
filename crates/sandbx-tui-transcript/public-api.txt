@@ -20,7 +20,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Hint
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Hint
 pub struct sandbx_tui_transcript::Transcript
 impl sandbx_tui_transcript::Transcript
-pub fn sandbx_tui_transcript::Transcript::event(&mut self, &sandbx_providers::event::AgentEvent)
+pub fn sandbx_tui_transcript::Transcript::event(&mut self, &sandbx_event::AgentEvent)
 pub fn sandbx_tui_transcript::Transcript::new(&str, bool) -> Self
 pub fn sandbx_tui_transcript::Transcript::note(&mut self, &str)
 impl core::marker::Freeze for sandbx_tui_transcript::Transcript

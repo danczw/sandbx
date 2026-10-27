@@ -1,8 +1,9 @@
 //! Tool-call accumulation: the one block kind whose deltas must be buffered whole,
 //! and the ways a stream can leave that buffer in an odd state.
 
+use sandbx_event::{AgentEvent, StopReason};
+
 use crate::error::ProviderError;
-use crate::event::{AgentEvent, StopReason};
 
 use super::fixture::{events, ok_events, raw, stop};
 

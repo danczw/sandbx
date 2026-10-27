@@ -1,0 +1,58 @@
+pub mod sandbx_event
+pub enum sandbx_event::AgentEvent
+pub sandbx_event::AgentEvent::RedactedThinking
+pub sandbx_event::AgentEvent::RedactedThinking::data: alloc::string::String
+pub sandbx_event::AgentEvent::Stop
+pub sandbx_event::AgentEvent::Stop::reason: sandbx_event::StopReason
+pub sandbx_event::AgentEvent::Text
+pub sandbx_event::AgentEvent::Text::delta: alloc::string::String
+pub sandbx_event::AgentEvent::Thinking
+pub sandbx_event::AgentEvent::Thinking::delta: alloc::string::String
+pub sandbx_event::AgentEvent::ThinkingBlock
+pub sandbx_event::AgentEvent::ThinkingBlock::signature: alloc::string::String
+pub sandbx_event::AgentEvent::ThinkingBlock::text: alloc::string::String
+pub sandbx_event::AgentEvent::ToolCallRequested
+pub sandbx_event::AgentEvent::ToolCallRequested::id: alloc::string::String
+pub sandbx_event::AgentEvent::ToolCallRequested::input: serde_json::value::Value
+pub sandbx_event::AgentEvent::ToolCallRequested::name: alloc::string::String
+pub sandbx_event::AgentEvent::Usage
+pub sandbx_event::AgentEvent::Usage::cache_read_tokens: core::option::Option<u32>
+pub sandbx_event::AgentEvent::Usage::cache_write_tokens: core::option::Option<u32>
+pub sandbx_event::AgentEvent::Usage::input_tokens: core::option::Option<u32>
+pub sandbx_event::AgentEvent::Usage::output_tokens: core::option::Option<u32>
+impl core::clone::Clone for sandbx_event::AgentEvent
+pub fn sandbx_event::AgentEvent::clone(&self) -> sandbx_event::AgentEvent
+impl core::cmp::PartialEq for sandbx_event::AgentEvent
+pub fn sandbx_event::AgentEvent::eq(&self, &sandbx_event::AgentEvent) -> bool
+impl core::fmt::Debug for sandbx_event::AgentEvent
+pub fn sandbx_event::AgentEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_event::AgentEvent
+impl core::marker::Freeze for sandbx_event::AgentEvent
+impl core::marker::Send for sandbx_event::AgentEvent
+impl core::marker::Sync for sandbx_event::AgentEvent
+impl core::marker::Unpin for sandbx_event::AgentEvent
+impl core::marker::UnsafeUnpin for sandbx_event::AgentEvent
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_event::AgentEvent
+impl core::panic::unwind_safe::UnwindSafe for sandbx_event::AgentEvent
+pub enum sandbx_event::StopReason
+pub sandbx_event::StopReason::EndTurn
+pub sandbx_event::StopReason::MaxTokens
+pub sandbx_event::StopReason::Other(alloc::string::String)
+pub sandbx_event::StopReason::StopSequence
+pub sandbx_event::StopReason::ToolUse
+pub sandbx_event::StopReason::Unspecified
+impl core::clone::Clone for sandbx_event::StopReason
+pub fn sandbx_event::StopReason::clone(&self) -> sandbx_event::StopReason
+impl core::cmp::Eq for sandbx_event::StopReason
+impl core::cmp::PartialEq for sandbx_event::StopReason
+pub fn sandbx_event::StopReason::eq(&self, &sandbx_event::StopReason) -> bool
+impl core::fmt::Debug for sandbx_event::StopReason
+pub fn sandbx_event::StopReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_event::StopReason
+impl core::marker::Freeze for sandbx_event::StopReason
+impl core::marker::Send for sandbx_event::StopReason
+impl core::marker::Sync for sandbx_event::StopReason
+impl core::marker::Unpin for sandbx_event::StopReason
+impl core::marker::UnsafeUnpin for sandbx_event::StopReason
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_event::StopReason
+impl core::panic::unwind_safe::UnwindSafe for sandbx_event::StopReason

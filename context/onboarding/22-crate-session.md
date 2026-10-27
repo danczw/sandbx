@@ -653,6 +653,7 @@ is masked by the umask, which can only clear bits.
 
 [23 — the tui crates](23-crate-tui.md): the screen one turn is drawn on, the
 events it folds, and the keys that stop it. Where this crate's output is a file
-nobody watches, that one's is a surface somebody reads as it is written — and it
-borrows `sandbx-providers` for the vocabulary alone, the nearest thing in the
-workspace to the independence this crate has outright.
+nobody watches, that one's is a surface somebody reads as it is written — and
+since #365 it borrows the vocabulary from a leaf crate rather than from the one
+that opens the stream, which makes its independence the same kind as this
+crate's rather than the nearest thing to it.

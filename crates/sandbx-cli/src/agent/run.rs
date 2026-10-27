@@ -12,9 +12,10 @@
 use std::io::{IsTerminal, Write};
 
 use sandbx_core::SandboxPolicy;
+use sandbx_event::StopReason;
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
-    StopReason, Thinking,
+    Thinking,
 };
 use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
@@ -497,7 +498,8 @@ fn session_id(value: &str) -> Result<SessionId, String> {
 
 #[cfg(test)]
 mod tests {
-    use sandbx_providers::{AgentEvent, StopReason, ToolChoice};
+    use sandbx_event::{AgentEvent, StopReason};
+    use sandbx_providers::ToolChoice;
 
     use super::super::render::tests::{stop, text};
     use super::*;

@@ -1,0 +1,18 @@
+[package]
+name = "sandbx-event"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The one dependency, and it is `ToolCallRequested::input` alone: a call's arguments
+# are whatever the model sent. Nothing here derives `Serialize` or `Deserialize` —
+# see the `//!` for why an event is not a wire shape. The version must match whatever
+# `sandbx-providers` resolves, that being where the value is parsed.
+serde_json = "1.0.151"
+
+[lints]
+workspace = true

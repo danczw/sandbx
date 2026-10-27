@@ -5,7 +5,8 @@
 //! asserted here is `Script::sent` — the request itself.
 
 use sandbx_core::SandboxPolicy;
-use sandbx_providers::{AgentEvent, ContentBlock, RequestMessage, Role, StopReason};
+use sandbx_event::{AgentEvent, StopReason};
+use sandbx_providers::{ContentBlock, RequestMessage, Role};
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 

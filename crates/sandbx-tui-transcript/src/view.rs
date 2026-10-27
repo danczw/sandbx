@@ -126,7 +126,7 @@ fn status(transcript: &Transcript, hint: Hint) -> Paragraph<'static> {
 mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
-    use sandbx_providers::AgentEvent;
+    use sandbx_event::AgentEvent;
 
     use super::*;
 
@@ -170,7 +170,7 @@ mod tests {
     fn the_status_bar_reports_usage_once_it_arrives() {
         let mut transcript = turn("three files");
         transcript.event(&AgentEvent::Stop {
-            reason: sandbx_providers::StopReason::EndTurn,
+            reason: sandbx_event::StopReason::EndTurn,
         });
         transcript.event(&AgentEvent::Usage {
             input_tokens: Some(1200),

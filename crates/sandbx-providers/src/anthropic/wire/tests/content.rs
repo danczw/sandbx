@@ -2,7 +2,7 @@
 //! replayable block; and the frames that must produce no event rather than ending the
 //! turn: pings, unmodeled tags at all three levels, a payload-less heartbeat.
 
-use crate::event::{AgentEvent, StopReason};
+use sandbx_event::{AgentEvent, StopReason};
 
 use super::fixture::{ok_events, raw, stop};
 

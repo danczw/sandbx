@@ -55,8 +55,9 @@ Of the runtime dependencies, one carries its constraint in a comment:
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 ```
 
-The others are `sandbx-approval`, `sandbx-compact`, `sandbx-providers`,
-`sandbx-tools` and `futures-util` — the last for `StreamExt` alone, which is
+The others are `sandbx-approval`, `sandbx-compact`, `sandbx-event`,
+`sandbx-providers`, `sandbx-tools` and `futures-util` — the last for `StreamExt`
+alone, which is
 what makes `stream.next()` in `accumulate` the only place this crate touches a
 stream. `serde_json` became a **dev**-dependency when `compact_tests.rs` left:
 nothing under `src/` names it, and all four files under `tests/` build the tool
@@ -102,10 +103,11 @@ turns, `TurnStop` for one distinguishing how a turn ended — which `agent-run`
 does, its exit code depending on it.
 
 What a caller also needs and will not find here is the seam: `ExecutionContext`
-and `BuiltinTool` are `sandbx-tools`', `RequestMessage`, `Prompt`, `AgentEvent`
-and `StopReason` are `sandbx-providers`', and `CallGate`, `ToolCall`,
-`ApprovalDecision`, `Settled` and `Outcome` are `sandbx-approval`'s. None of
-those sets is re-exported, so a caller imports from each.
+and `BuiltinTool` are `sandbx-tools`', `RequestMessage` and `Prompt` are
+`sandbx-providers`', `AgentEvent` and `StopReason` are `sandbx-event`'s since
+#365, and `CallGate`, `ToolCall`, `ApprovalDecision`, `Settled` and `Outcome` are
+`sandbx-approval`'s. None of those sets is re-exported, so a caller imports from
+each.
 
 ## `run.rs` — the signature before the body
 

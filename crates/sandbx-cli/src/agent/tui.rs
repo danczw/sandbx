@@ -9,9 +9,10 @@ use std::io::{self, IsTerminal, Write};
 use std::sync::{Mutex, PoisonError};
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
+use sandbx_event::StopReason;
 use sandbx_providers::{
     AnthropicClient, ContentBlock, EventStream, Prompt, ProviderError, RequestMessage, Role,
-    StopReason, Thinking,
+    Thinking,
 };
 use sandbx_screen::{Screen, Transcript};
 use sandbx_session_bridge as session;

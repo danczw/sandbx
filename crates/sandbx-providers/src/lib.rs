@@ -4,19 +4,18 @@
 //! [`EventStream`], so there is no trait or enum over the backends. No vendor SDK
 //! sits between sandbx and the wire format; see `context/decision-provider-seam.md`.
 //!
-//! [`Prompt`], [`AgentEvent`] and [`ProviderError`] are this crate's own vocabulary; what
-//! that text may not carry to a terminal is `sandbx-text`'s. Everything that knows one
-//! API's field names, string tables and body rules lives under `anthropic`.
+//! [`Prompt`] and [`ProviderError`] are this crate's own vocabulary; the events a stream
+//! yields are [`sandbx_event`]'s, and what that text may not carry to a terminal is
+//! `sandbx-text`'s. Everything that knows one API's field names, string tables and body
+//! rules lives under `anthropic`.
 
 mod anthropic;
 mod error;
-mod event;
 mod prompt;
 mod sse;
 
 pub use anthropic::AnthropicClient;
 pub use error::ProviderError;
-pub use event::{AgentEvent, StopReason};
 pub use prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
@@ -27,7 +26,11 @@ pub use prompt::{
 /// because the `unfold` under it panics if polled past `None`; `Send` so the turn
 /// built on it can be `tokio::spawn`ed.
 pub type EventStream = std::pin::Pin<
-    Box<dyn futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send>,
+    Box<
+        dyn futures_util::stream::FusedStream<
+                Item = Result<sandbx_event::AgentEvent, ProviderError>,
+            > + Send,
+    >,
 >;
 
 /// Install the `ring` crypto provider for `rustls`, once per process.

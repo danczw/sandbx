@@ -132,7 +132,7 @@ pub(super) fn merge(first: TurnOutcome, second: TurnOutcome) -> TurnOutcome {
 
 #[cfg(test)]
 mod tests {
-    use sandbx_providers::StopReason;
+    use sandbx_event::StopReason;
 
     use super::*;
 

@@ -40,8 +40,8 @@ sandbx-session-error ───────────────────�
 sandbx-session-id ──────────────────────────┤
 sandbx-session-message ─────────────────────┤
 sandbx-session-store ───────────────────────┤
-sandbx-text ──────┬─────────────────────────┤
-sandbx-providers ─┴─► sandbx-tui-transcript │
+sandbx-event ─────┬─────────────────────────┤
+sandbx-text ──────┴─► sandbx-tui-transcript │
                        └──► sandbx-screen ──┤
 sandbx-tui-input ───────────────────────────┘
 ```
@@ -59,24 +59,32 @@ need a node drawn first, for the reason below.
 direct dependencies and this not being one of them. Its two parents are
 `sandbx-grants` and `sandbx-session-bridge`, both drawn as leaves of that bus.
 
+`sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`
+is its one internal edge, since `EventStream` names an `AgentEvent` and the
+accumulator builds one per frame. The arrow is not drawn because `sandbx-event`
+is already on the bus two rows below, and a second crossing would say less than
+the two table rows do. `sandbx-turn` reaches it directly as well, not through
+either of the two crates above it on the diagram (#365).
+
 | Crate | Owns | Internal deps |
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients | — |
-| `sandbx-turn` | the turn loop | approval, compact, tools, providers (core is *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, grants, logging, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
+| `sandbx-providers` | hand-rolled streaming API clients | event |
+| `sandbx-turn` | the turn loop | approval, compact, event, tools, providers (core is *dev*-only) |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
 | `sandbx-tui-input` | the keys that stop a turn, and what a hangup means | — (pty-fixture is *dev*-only) |
-| `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | providers, text |
+| `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | event, text |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-session-error` | why a session operation did not happen | — |
 | `sandbx-session-id` | a session's name, and the one rule that makes it safe in a path | session-error |
 | `sandbx-session-paths` | where transcripts live: `$XDG_STATE_HOME`, else `$HOME`, never the working directory | session-error |
+| `sandbx-event` | the vocabulary a streamed turn is spoken in: one event per thing that arrived, and why it ended | — |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
@@ -111,12 +119,14 @@ edge on to `sandbx-cli` — so note in particular that `sandbx-compact` is drawn
 into the `sandbx-turn` bundle alone and has had two dependents since #351.
 
 `sandbx-screen` depends on `sandbx-tui-transcript` and on nothing else of
-sandbx's, and `sandbx-tui-input` on nothing at all: the provider and text edges
-the diagram used to draw to the drawing side land one step earlier, on the crate
-that folds the events. `sandbx-cli` reaches `Transcript` through
-`sandbx-screen`'s re-export and not an edge of its own — every entry point
-`sandbx-screen` has takes or returns one — which is why `deny.toml` names one
-parent there and not two (#352, #353).
+sandbx's, and `sandbx-tui-input` on nothing at all: the event and text edges the
+diagram used to draw to the drawing side land one step earlier, on the crate that
+folds the events. Both are leaves, so no client code reaches the drawing side at
+all — until #365 the event edge was `sandbx-providers`', and reqwest, rustls and
+hyper came with it. `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
+re-export and not an edge of its own — every entry point `sandbx-screen` has
+takes or returns one — which is why `deny.toml` names one parent there and not
+two (#352, #353).
 
 `sandbx-pty-fixture` is in no crate's build, which is why it is absent from the
 diagram above; its own `//!` says why it is a crate and not a module (#344).
@@ -127,9 +137,9 @@ is a crate so that `CARGO_BIN_EXE_sandbx-helper` resolves for the tests that spa
 it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
-`sandbx-providers` directly rather than through `sandbx-turn`, which re-exports
-none of it: `agent-run` builds the client and the first user turn itself, and
-renders the events the loop hands back.
+`sandbx-providers` and `sandbx-event` directly rather than through `sandbx-turn`,
+which re-exports neither: `agent-run` builds the client and the first user turn
+itself, and its renderer is a second fold of the events the loop hands back.
 
 ## `sandbx-core`
 
@@ -275,7 +285,6 @@ tests/            per-tool (find and grep share search), plus registry, limits,
 src/lib.rs        EventStream (boxed FusedStream) — the provider seam
    prompt.rs      Prompt, RequestMessage, ContentBlock, ToolDefinition,
                   ToolChoice, Thinking — data, with no Serialize
-   event.rs       AgentEvent, StopReason
    error.rs
    sse.rs         SSE framing
    anthropic.rs   the vendor boundary: re-exports AnthropicClient
@@ -289,17 +298,36 @@ tests/            anthropic_client, crypto_provider, error,
 
 The tree is the boundary for every vendor *rule*, and for every wire string
 sandbx writes or matches on — the ones it carries verbatim cross as opaque data
-(`StopReason::Other`, `ApiError::kind`). The rules are compiler-enforced: `Body`
-is `pub(super)` in a private `mod body` and no neutral type derives `Serialize`,
-so the top-level types cannot be posted to any API by accident; the wire
-payloads are `pub(super)` bar the two error envelopes at `pub(crate)`;
-and `stop_reason` is a private free function, so no `StopReason` comes from a
-wire string outside `anthropic/` (#59). The vendor *name* is the one row
-nothing *contains* — no lint, no containment test, no CI grep — and one
-sibling of `anthropic.rs` carries it: `lib.rs` re-exports `AnthropicClient`.
-The key and its variable's name are `sandbx-auth`'s, in its `key.rs`. Four
-more files name it in doc comments only. Per-rule account in
+(`sandbx-event`'s `StopReason::Other`, this crate's `ApiError::kind`). The rules
+are compiler-enforced: `Body` is `pub(super)` in a private `mod body` and no
+neutral type derives `Serialize`, so the top-level types cannot be posted to any
+API by accident; the wire payloads are `pub(super)` bar the two error envelopes
+at `pub(crate)`; and `stop_reason` is a private free function, so no
+`StopReason` comes from a wire string outside `anthropic/` (#59) — which the
+enum leaving for `sandbx-event` did not weaken, the string table having stayed.
+The vendor *name* is the one row nothing *contains* — no lint, no containment
+test, no CI grep — and one sibling of `anthropic.rs` carries it: `lib.rs`
+re-exports `AnthropicClient`. The key and its variable's name are
+`sandbx-auth`'s, in its `key.rs`. A grep says which other files name it in doc
+comments only. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
+
+## `sandbx-event`
+
+```
+src/lib.rs        AgentEvent, StopReason — one event per thing a streamed turn
+                  produced, and why it ended
+```
+
+Public surface: those two enums and nothing else. One dependency, `serde_json`,
+and it is `ToolCallRequested::input` alone — a call's arguments are whatever the
+model sent. Nothing here derives `Serialize` or `Deserialize` and nothing here
+parses, which is what lets every layer above speak the vocabulary without any of
+them reaching a client: until #365 these two lived beside the clients, and
+`sandbx-tui-transcript` reached reqwest, rustls and hyper to match on an enum,
+carrying the chain on to `sandbx-screen` behind it. The crate's `//!` has why it
+is a crate and not a module, and the half of the #59 seam that travels with the
+types.
 
 ## `sandbx-text`
 

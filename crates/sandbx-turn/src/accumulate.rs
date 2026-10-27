@@ -5,7 +5,8 @@
 
 use futures_util::StreamExt;
 use sandbx_compact::PromptUsage;
-use sandbx_providers::{AgentEvent, ContentBlock, EventStream, StopReason};
+use sandbx_event::{AgentEvent, StopReason};
+use sandbx_providers::{ContentBlock, EventStream};
 
 use crate::TurnError;
 
