@@ -24,9 +24,9 @@ sandbx-prompt = { path = "../sandbx-prompt" }
 # The seam every client returns through: `stream_chat` hands back an `EventStream` and
 # fails with a `ProviderError` (#366).
 sandbx-provider = { path = "../sandbx-provider" }
-# The framing under the payloads: `client.rs` hands the response body to `tokenize` and
-# the accumulator reads one frame per item. Nothing here reaches further in — what a
-# frame's `data` means is this crate's alone (#367).
+# `client.rs` hands the response body to `tokenize` and the accumulator reads one frame
+# per item. The edge runs one way only: framing knows nothing of what a `data` payload
+# means, which is what keeps the vendor rules here (#367).
 sandbx-sse = { path = "../sandbx-sse" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

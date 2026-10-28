@@ -45,8 +45,7 @@ enum OpenBlock {
 
 /// Map a stream of raw SSE frames into [`AgentEvent`]s.
 ///
-/// `Send` is stated, and the result fused, for the reasons
-/// [`sandbx_sse::tokenize`] gives.
+/// `Send` is stated, and the result fused, for the reasons [`sandbx_sse::tokenize`] gives.
 pub(crate) fn event_stream(
     raw: impl Stream<Item = Result<String, ProviderError>> + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send {
