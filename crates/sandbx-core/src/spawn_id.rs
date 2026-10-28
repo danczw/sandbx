@@ -20,8 +20,13 @@ static SPAWNS: AtomicU64 = AtomicU64::new(0);
 ///
 /// Spelled `{pid:x}.{nanos:x}.{counter}`. Unique because a pid names one process at any
 /// instant, so two processes sharing a pid started at different instants and take different
-/// nonces. The precondition is a clock that does not step backwards: moved back far enough
-/// to reissue a `(pid, nanos)` pair to a reused pid, two processes collide.
+/// nonces. Two preconditions, both of which a caller can break:
+///
+/// - **A clock that does not step backwards.** Moved back far enough to reissue a
+///   `(pid, nanos)` pair to a reused pid, two processes collide.
+/// - **No `fork` without `exec`.** The child inherits this process's already-derived nonce
+///   *and* its counter, so both then mint the same ids. sandbx never forks without
+///   exec'ing — but this is a library, and the claim above is otherwise unconditional.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnId(String);
 

@@ -296,3 +296,49 @@ fn a_run_under_a_session_renders_its_id() {
 
     assert!(output.contains(r#"session="abc123""#), "{output}");
 }
+
+/// `args` is the one field the layer renders unquoted, so it is last on the record. Ahead
+/// of the policy fields, a command spelling `readable=99` would shadow the real field of
+/// that name for any reader taking the first match, and an odd number of quotes in it
+/// would desync a quote-pairing one for the rest of the line.
+#[test]
+fn a_command_cannot_shadow_a_policy_field() {
+    let readable = tempfile::tempdir().expect("a directory to grant read");
+    let policy = SandboxPolicy::default().allow_read(vetted(readable.path()));
+
+    let output = captured(|| {
+        let _ = sandbx_core::SandboxedCommand::new("/bin/sh", policy)
+            .helper("/nonexistent/helper")
+            .arg("-c")
+            // An unbalanced quote as well as the forged fields: the two failures are a
+            // first-match read and a quote-pairing read, and one command exercises both.
+            .arg(r#"echo readable=99 pinned=true network="any" ""#)
+            .output();
+    });
+
+    let spawned = output
+        .lines()
+        .find(|line| line.contains(r#"decision="spawned""#))
+        .unwrap_or_else(|| panic!("no spawn was recorded: {output}"));
+
+    let at = |needle: &str| {
+        spawned
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle:?} is not on the record: {spawned}"))
+    };
+    let args = at("args=");
+
+    for field in ["readable=1", r#"network="denied""#, "pinned=false"] {
+        assert!(
+            at(field) < args,
+            "{field} follows the model's own text, which can therefore shadow it: {spawned}"
+        );
+    }
+
+    // The anti-vacuity half: the forged text has to be on the record for the order above to
+    // be what protects the fields, rather than the field having been dropped.
+    assert!(
+        at("readable=99") > args,
+        "the forged value is not inside the args field: {spawned}"
+    );
+}
