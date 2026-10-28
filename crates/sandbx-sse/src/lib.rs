@@ -16,8 +16,7 @@ use sandbx_provider::ProviderError;
 /// continuation or lead byte takes that value.
 ///
 /// `Send` is stated rather than left to leak out of the opaque type, so a non-`Send`
-/// field added to the state below fails here, not at the coercion in a client's
-/// `stream_chat`.
+/// field added to the state below fails here, not at the coercion in a client's `stream_chat`.
 pub fn tokenize(
     bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<String, ProviderError>> + Send {
