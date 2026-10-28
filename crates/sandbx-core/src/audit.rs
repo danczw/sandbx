@@ -103,10 +103,10 @@ pub enum AuditEvent<'a> {
         /// middle of a run would still be attributed by position (#249).
         spawn: &'a str,
         /// The session this ran under, as in [`Spawned`](Self::Spawned). `rooted_access`
-        /// carries the sentinel here too, and for a second reason: the guard is built
-        /// before the session is opened, so even a run that *has* one cannot name it from
-        /// there — `sandbx-cli` reads the credential first, a session opened ahead of it
-        /// leaving a header-only transcript nothing deletes.
+        /// does carry one despite having no run: what it weakens is every access for the
+        /// session, so this is the field that record is about — which is why
+        /// [`FsGuard::for_session`](crate::FsGuard::for_session) exists, the record being
+        /// written while the guard is built and so unreachable by a setter.
         session: &'a str,
         /// Why it did not, and what holds instead.
         detail: &'a str,

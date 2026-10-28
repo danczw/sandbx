@@ -270,6 +270,7 @@ pub struct sandbx_core::FsGuard
 impl sandbx_core::FsGuard
 pub fn sandbx_core::FsGuard::check_read(&self, &std::path::Path) -> core::result::Result<std::path::PathBuf, sandbx_core::SandboxError>
 pub fn sandbx_core::FsGuard::check_write(&self, &std::path::Path) -> core::result::Result<std::path::PathBuf, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::for_session(&sandbx_core::SandboxPolicy, &str) -> Self
 pub fn sandbx_core::FsGuard::new(&sandbx_core::SandboxPolicy) -> Self
 pub fn sandbx_core::FsGuard::open_read(&self, &std::path::Path) -> core::result::Result<std::fs::File, sandbx_core::SandboxError>
 pub fn sandbx_core::FsGuard::open_write(&self, &std::path::Path) -> core::result::Result<std::fs::File, sandbx_core::SandboxError>

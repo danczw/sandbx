@@ -36,13 +36,37 @@ impl ExecutionContext {
     /// `allow_system_executables().allow_standard_env()`; a credential is named with
     /// [`SandboxPolicy::allow_env`].
     pub fn new(policy: SandboxPolicy) -> Self {
+        Self::build(policy, None)
+    }
+
+    /// [`new`](Self::new), naming the session every record of this context's work carries —
+    /// each spawn's pair, and the `rooted_access` degradation the guard may report as it is
+    /// built.
+    ///
+    /// A constructor and not a setter, which is the whole reason this exists: the guard
+    /// reports while it is *built*, so a context told its session afterwards has already
+    /// emitted a record disclaiming one. Call it before the credential is read and there is
+    /// no session yet to pass; `sandbx-cli` therefore builds the context after
+    /// `session::open` rather than hoisting the session (#249).
+    pub fn for_session(policy: SandboxPolicy, session: impl Into<String>) -> Self {
+        Self::build(policy, Some(session.into()))
+    }
+
+    /// Both constructors, so the guard cannot be built one way on one path.
+    ///
+    /// A spelling and not a `SessionId`: the type lives in `sandbx-session-id`, and taking
+    /// it would be this crate's second dependency for a value it only passes along.
+    fn build(policy: SandboxPolicy, session: Option<String>) -> Self {
         Self {
-            guard: FsGuard::new(&policy),
+            guard: match &session {
+                Some(id) => FsGuard::for_session(&policy, id),
+                None => FsGuard::new(&policy),
+            },
             policy,
             helper: None,
             limits: ToolLimits::default(),
             timeout: DEFAULT_TIMEOUT,
-            session: None,
+            session,
         }
     }
 
@@ -66,17 +90,6 @@ impl ExecutionContext {
     #[must_use]
     pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.timeout = timeout;
-        self
-    }
-
-    /// Name the session tool calls run under, so each spawn's records pair with the
-    /// transcript; unset by default, which is what a test and `sandbox-run` are.
-    ///
-    /// A spelling and not a `SessionId`: the type lives in `sandbx-session-id`, and taking
-    /// it would be this crate's second dependency for a value it only passes along.
-    #[must_use]
-    pub fn with_session(mut self, id: impl Into<String>) -> Self {
-        self.session = Some(id.into());
         self
     }
 

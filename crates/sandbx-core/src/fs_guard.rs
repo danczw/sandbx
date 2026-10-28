@@ -66,14 +66,24 @@ impl FsGuard {
     /// refused by the check, nothing resolving inside a path that does not resolve, so
     /// there is nothing for construction to refuse and the surviving grants still work.
     pub fn new(policy: &SandboxPolicy) -> Self {
-        Self::with_rooting(policy, resolves_beneath())
+        Self::with_rooting(policy, None, resolves_beneath())
+    }
+
+    /// [`new`](Self::new), naming the session whose accesses this guard will bound.
+    ///
+    /// Only the `rooted_access` degradation reads it, and only to say which session lost a
+    /// root's descriptor. A separate constructor rather than a setter because the record is
+    /// written *here*: a guard built first and told its session afterwards has already
+    /// reported, so the setter shape cannot be made correct (#249).
+    pub fn for_session(policy: &SandboxPolicy, session: &str) -> Self {
+        Self::with_rooting(policy, Some(session), resolves_beneath())
     }
 
     /// [`new`](Self::new), with the kernel's answer supplied rather than asked.
     ///
     /// Split so the fallback is reachable from a test: no CI runner is below the 5.6 that
     /// `openat2` needs, so the by-path branch is otherwise exercised nowhere.
-    fn with_rooting(policy: &SandboxPolicy, beneath: bool) -> Self {
+    fn with_rooting(policy: &SandboxPolicy, session: Option<&str>, beneath: bool) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
         // One record per *root*, not per grant entry. `granted_paths` yields a path once per
@@ -109,7 +119,7 @@ impl FsGuard {
                         );
                         // No run to name: the guard is built before anything is spawned, and
                         // this weakens every access for the session rather than one spawn.
-                        crate::AuditEvent::degraded("rooted_access", None, None, &detail).emit();
+                        crate::AuditEvent::degraded("rooted_access", None, session, &detail).emit();
                         told.push(granted.path().to_path_buf());
                     }
                     None
@@ -1303,8 +1313,8 @@ mod tests {
             .allow_read(VettedPath::vet(root.path()).unwrap())
             .allow_write(VettedPath::vet(root.path()).unwrap());
 
-        let rooted = FsGuard::with_rooting(&policy, true);
-        let by_path = FsGuard::with_rooting(&policy, false);
+        let rooted = FsGuard::with_rooting(&policy, None, true);
+        let by_path = FsGuard::with_rooting(&policy, None, false);
         assert!(
             rooted.readable[0].dir.is_some() && by_path.readable[0].dir.is_none(),
             "the two branches must actually differ, or this compares one thing twice"
@@ -1445,7 +1455,7 @@ mod tests {
 
         let root = tempfile::tempdir().unwrap();
         let policy = SandboxPolicy::default().allow_write(VettedPath::vet(root.path()).unwrap());
-        let guard = FsGuard::with_rooting(&policy, true);
+        let guard = FsGuard::with_rooting(&policy, None, true);
         assert!(
             guard.writable[0].dir.is_some(),
             "this must be the rooted path"

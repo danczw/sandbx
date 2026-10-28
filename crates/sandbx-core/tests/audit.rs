@@ -664,19 +664,29 @@ fn records_a_degraded_hardening_step() {
     );
 }
 
-/// `FsGuard::new` is the one `degraded` with no run to name: it is emitted before anything
-/// is spawned, and what it weakens is every access for the session.
-#[test]
-fn a_degradation_outside_a_run_records_the_absence() {
-    let work = tempfile::tempdir().unwrap();
-    let granted = work.path().join("granted");
-    let other = work.path().join("other");
+/// A policy whose granted root has been swapped for another directory, so building a guard
+/// over it reports `rooted_access`. The root is `work`-relative, which keeps the swap and
+/// the grant in one scratch tree.
+fn substituted_root(work: &std::path::Path) -> SandboxPolicy {
+    let granted = work.join("granted");
+    let other = work.join("other");
     std::fs::create_dir(&granted).unwrap();
     std::fs::create_dir(&other).unwrap();
 
     let policy = SandboxPolicy::default().allow_read(vetted(&granted));
     std::fs::remove_dir_all(&granted).unwrap();
     std::fs::rename(&other, &granted).unwrap();
+
+    policy
+}
+
+/// `rooted_access` is the one `degraded` with no run to name: the guard is built before
+/// anything is spawned, and what it weakens is every access for the session rather than
+/// one spawn.
+#[test]
+fn a_degradation_outside_a_run_records_the_absence() {
+    let work = tempfile::tempdir().unwrap();
+    let policy = substituted_root(work.path());
 
     let lines = capture(|| {
         let _ = FsGuard::new(&policy);
@@ -688,6 +698,40 @@ fn a_degradation_outside_a_run_records_the_absence() {
         "got: {}",
         lines[0]
     );
+    assert_eq!(
+        spawn_id(&lines[0]),
+        "-",
+        "a step belonging to no run named one: {}",
+        lines[0]
+    );
+}
+
+/// The session it *does* have. What this step weakens is every access for the session, so a
+/// record disclaiming one is the single most misleading shape it could take — and the guard
+/// reports while it is built, which is why naming the session is a constructor's job rather
+/// than a setter's (#249).
+#[test]
+fn a_degradation_outside_a_run_still_names_the_session() {
+    let work = tempfile::tempdir().unwrap();
+    let policy = substituted_root(work.path());
+
+    let lines = capture(|| {
+        let _ = FsGuard::for_session(&policy, "abc123");
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(
+        lines[0].contains("mechanism=rooted_access"),
+        "got: {}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains("session=abc123 "),
+        "the weakened session is the one thing this record is about: {}",
+        lines[0]
+    );
+    // Still no run: a session is not a spawn, and the sentinel has to survive the other
+    // field being filled in.
     assert_eq!(
         spawn_id(&lines[0]),
         "-",
