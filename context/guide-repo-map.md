@@ -60,23 +60,27 @@ direct dependencies and this not being one of them. Its two parents are
 `sandbx-grants` and `sandbx-session-bridge`, both drawn as leaves of that bus.
 
 `sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`,
-`sandbx-prompt` and `sandbx-provider` are its three internal edges — the
-accumulator builds an `AgentEvent` per wire frame, `anthropic/body.rs`
-serializes a `&Prompt`, and `stream_chat` returns an `EventStream` and builds
-every `ProviderError` on it. `sandbx-provider` is drawn as a leaf and is not one
-either, for the first of those reasons: the alias's `Item` names an
-`AgentEvent`. None of the four arrows is drawn, every target already being a
-leaf of the bus, and four more crossings would say less than the table rows do.
-The edge that runs the other way is now a **dev** one: nothing in
-`sandbx-turn`'s `src/` names this crate since #366 took the last two, so the
-turn loop reaches no client code in a production build and `turn_loop.rs`'s
-spawnability pin is the one reference left (#364, #365, #366).
+`sandbx-prompt`, `sandbx-provider` and `sandbx-sse` are its four internal edges
+— the accumulator builds an `AgentEvent` per wire frame, `anthropic/body.rs`
+serializes a `&Prompt`, `stream_chat` returns an `EventStream` and builds every
+`ProviderError` on it, and `client.rs` hands the response body to `tokenize`.
+`sandbx-provider` is drawn as a leaf and is not one either, for the first of
+those reasons: the alias's `Item` names an `AgentEvent`. Four of the five arrows
+are undrawn, every target already being a leaf of the bus and four more
+crossings saying less than the table rows do. The fifth has no node to point at:
+`sandbx-sse` is absent for `sandbx-session-paths`' reason, the bus being
+`sandbx-cli`'s direct dependencies and framing being reached only by whatever
+opens the connection. The edge that runs the other way is now a **dev** one:
+nothing in `sandbx-turn`'s `src/` names this crate since #366 took the last two,
+so the turn loop reaches no client code in a production build and
+`turn_loop.rs`'s spawnability pin is the one reference left (#364, #365, #366,
+#367).
 
 | Crate | Owns | Internal deps |
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients | event, prompt, provider |
+| `sandbx-providers` | hand-rolled streaming API clients | event, prompt, provider, sse |
 | `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (core and providers are *dev*-only) |
 | `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, prompt, provider, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
@@ -93,6 +97,7 @@ spawnability pin is the one reference left (#364, #365, #366).
 | `sandbx-event` | the vocabulary a streamed turn is spoken in: one event per thing that arrived, and why it ended | — |
 | `sandbx-prompt` | what a model is asked for, in no API's vocabulary: the request shapes, carrying no `Serialize` | — |
 | `sandbx-provider` | the provider seam: the stream a client hands back, and the error it can fail with | event |
+| `sandbx-sse` | Server-Sent Events framing over a byte stream, in no API's vocabulary | provider |
 | `sandbx-text` | the one denylist of what model text may not carry to a terminal | — |
 | `sandbx-approval` | what a gate is asked and what it is told; no policy | tools |
 | `sandbx-auth` | the provider key: which source it comes from, and the file it is kept in | — |
@@ -296,7 +301,6 @@ tests/            per-tool (find and grep share search), plus registry, limits,
 
 ```
 src/lib.rs        re-exports; ensure_crypto_provider_installed
-   sse.rs         SSE framing
    anthropic.rs   the vendor boundary: re-exports AnthropicClient
       client.rs   AnthropicClient — the request, and the base-URL and
                   transport rules that keep the key off the network in cleartext
@@ -350,6 +354,26 @@ type the API key is kept in. Whether the field should be boxed, which would shed
 the rest, is a code change and so a separate question from the move; it is a box
 on #335. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
+
+## `sandbx-sse`
+
+```
+src/lib.rs        tokenize — Server-Sent Events framing over a byte stream: one
+                  item per frame, and that frame's `data` alone
+```
+
+Public surface: `tokenize`, and nothing else. The cap, the buffer state and the
+four helpers behind it stay private, so what a caller can reach is the framing
+and not the framing's bookkeeping.
+
+A frame is its `data`, `event:` dropped, which is what makes this a crate and
+not part of the vendor client: it knows the framing rules and nothing about what
+any particular API puts in `data:`, so a second provider can reuse it as long as
+its payloads name their own type. One workspace dependency, `sandbx-provider`,
+and it is `ProviderError`'s `MalformedEvent` and `Transport` variants alone —
+not `EventStream`, framing yielding strings rather than events. The reqwest edge
+is `Transport`'s field type reached through that one, and the manifest names no
+reqwest feature, which is what keeps rustls out of this tree (#366, #367).
 
 ## `sandbx-event`
 
