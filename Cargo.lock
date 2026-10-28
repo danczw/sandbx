@@ -1769,7 +1769,6 @@ dependencies = [
 name = "sandbx-providers"
 version = "0.1.0-alpha.18"
 dependencies = [
- "bytes",
  "futures-util",
  "reqwest",
  "rustls",
