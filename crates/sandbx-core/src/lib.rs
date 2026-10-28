@@ -29,7 +29,7 @@ pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_
 pub use concealment::conceal_process_state;
 pub use digest::{DigestParseError, Sha256Digest};
 pub use error::{Access, HelperRefusal, SandboxError};
-pub use fs_guard::{FsGuard, ReadableWalk};
+pub use fs_guard::{FsGuard, Listed, Listing, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;
 pub use policy::{

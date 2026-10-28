@@ -20,7 +20,10 @@ sandbox-integration = []
 caps = "0.5.6"
 landlock = "0.4.7"
 libc = "0.2.189"
-nix = { version = "0.31.3", default-features = false, features = ["sched", "fs", "mount", "signal", "user", "resource"] }
+# `dir` is `fdopendir`, the only way to list a directory off a descriptor: `std`'s
+# `ReadDir` can be built from a path and nothing else, so a listing rooted at a granted
+# descriptor has no std form (#230).
+nix = { version = "0.31.3", default-features = false, features = ["dir", "sched", "fs", "mount", "signal", "user", "resource"] }
 # A caret range, not `=0.5.0`. Widening past 0.5 needs `eval` in
 # `helper/seccomp/tests/bpf.rs` to learn any new opcode first; it panics by name.
 seccompiler = "0.5.0"

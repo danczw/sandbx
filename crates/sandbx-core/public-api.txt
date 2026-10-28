@@ -264,7 +264,7 @@ pub fn sandbx_core::FsGuard::check_write(&self, &std::path::Path) -> core::resul
 pub fn sandbx_core::FsGuard::new(&sandbx_core::SandboxPolicy) -> Self
 pub fn sandbx_core::FsGuard::open_read(&self, &std::path::Path) -> core::result::Result<std::fs::File, sandbx_core::SandboxError>
 pub fn sandbx_core::FsGuard::open_write(&self, &std::path::Path) -> core::result::Result<std::fs::File, sandbx_core::SandboxError>
-pub fn sandbx_core::FsGuard::read_dir(&self, &std::path::Path) -> core::result::Result<core::io::error::Result<std::fs::ReadDir>, sandbx_core::SandboxError>
+pub fn sandbx_core::FsGuard::read_dir(&self, &std::path::Path) -> core::result::Result<core::io::error::Result<sandbx_core::Listing>, sandbx_core::SandboxError>
 pub fn sandbx_core::FsGuard::walk_readable(&self, &std::path::Path, usize) -> core::result::Result<sandbx_core::ReadableWalk, sandbx_core::SandboxError>
 impl core::clone::Clone for sandbx_core::FsGuard
 pub fn sandbx_core::FsGuard::clone(&self) -> sandbx_core::FsGuard
@@ -320,6 +320,41 @@ impl core::marker::Unpin for sandbx_core::HelperArgs
 impl core::marker::UnsafeUnpin for sandbx_core::HelperArgs
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::HelperArgs
 impl core::panic::unwind_safe::UnwindSafe for sandbx_core::HelperArgs
+pub struct sandbx_core::Listed
+pub sandbx_core::Listed::directory: bool
+pub sandbx_core::Listed::name: std::ffi::os_str::OsString
+impl core::clone::Clone for sandbx_core::Listed
+pub fn sandbx_core::Listed::clone(&self) -> sandbx_core::Listed
+impl core::cmp::Eq for sandbx_core::Listed
+impl core::cmp::PartialEq for sandbx_core::Listed
+pub fn sandbx_core::Listed::eq(&self, &sandbx_core::Listed) -> bool
+impl core::fmt::Debug for sandbx_core::Listed
+pub fn sandbx_core::Listed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::Listed
+impl core::marker::Freeze for sandbx_core::Listed
+impl core::marker::Send for sandbx_core::Listed
+impl core::marker::Sync for sandbx_core::Listed
+impl core::marker::Unpin for sandbx_core::Listed
+impl core::marker::UnsafeUnpin for sandbx_core::Listed
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Listed
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Listed
+pub struct sandbx_core::Listing
+pub sandbx_core::Listing::entries: alloc::vec::Vec<sandbx_core::Listed>
+impl core::clone::Clone for sandbx_core::Listing
+pub fn sandbx_core::Listing::clone(&self) -> sandbx_core::Listing
+impl core::cmp::Eq for sandbx_core::Listing
+impl core::cmp::PartialEq for sandbx_core::Listing
+pub fn sandbx_core::Listing::eq(&self, &sandbx_core::Listing) -> bool
+impl core::fmt::Debug for sandbx_core::Listing
+pub fn sandbx_core::Listing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::Listing
+impl core::marker::Freeze for sandbx_core::Listing
+impl core::marker::Send for sandbx_core::Listing
+impl core::marker::Sync for sandbx_core::Listing
+impl core::marker::Unpin for sandbx_core::Listing
+impl core::marker::UnsafeUnpin for sandbx_core::Listing
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Listing
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Listing
 pub struct sandbx_core::ObjectId
 impl core::clone::Clone for sandbx_core::ObjectId
 pub fn sandbx_core::ObjectId::clone(&self) -> sandbx_core::ObjectId
