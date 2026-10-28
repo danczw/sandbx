@@ -1509,12 +1509,11 @@ fn a_listing_omits_dot_and_dotdot() {
 /// the descriptor introduced — the by-path stack could not do this, `std::fs::read_dir`
 /// holding one directory at a time (#230).
 ///
-/// The soft descriptor limit is lowered for the duration, because otherwise this test only
-/// means anything where the host's limit happens to sit below the tree's width: at the
-/// 1024 a systemd default gives it fails against a push-time descent, and on a host with a
-/// raised limit — 1048576 under WSL, where this was written — it passes against one. The
-/// limit is process-wide and `cargo test` shares a process across threads, hence a ceiling
-/// well above anything a concurrent test opens rather than the tightest one that would do.
+/// The soft descriptor limit is lowered for the duration, because otherwise this test means
+/// something only where the host's own limit happens to sit below the tree's width — it
+/// passes against a push-time descent on any host whose limit is raised above it. The limit
+/// is process-wide and `cargo test` shares a process across threads, hence a ceiling well
+/// above anything a concurrent test opens rather than the tightest one that would do.
 #[test]
 fn a_wide_tree_does_not_exhaust_descriptors() {
     let root = tempfile::tempdir().unwrap();
