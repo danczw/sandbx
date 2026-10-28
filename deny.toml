@@ -70,19 +70,19 @@ wrappers = [
 name = "sandbx-prompt"
 # No parent here inherits the edge through another: a request is built in `sandbx-cli`,
 # carried through `sandbx-turn`, cut by `sandbx-compact`, translated by
-# `sandbx-session-bridge`, and serialized by `sandbx-providers` — the last being the only
+# `sandbx-session-bridge`, and serialized by `sandbx-anthropic` — the last being the only
 # one that can post these types to an API, and the only one that can declare the
 # wrappers to do it (#364).
 wrappers = [
+    "sandbx-anthropic",
     "sandbx-cli",
     "sandbx-compact",
-    "sandbx-providers",
     "sandbx-session-bridge",
     "sandbx-turn",
 ]
 
 [[bans.deny]]
-name = "sandbx-providers"
+name = "sandbx-anthropic"
 # Crates have left this array rather than being added to another, each for the same
 # reason: their whole edge was a vocabulary that now has a crate of its own.
 # `sandbx-tui-transcript` went with `AgentEvent` and `StopReason` (#365),
@@ -98,25 +98,23 @@ wrappers = ["sandbx-cli", "sandbx-turn"]
 [[bans.deny]]
 name = "sandbx-provider"
 # The seam, so every consumer of a client is here and none of them inherits the edge:
-# `sandbx-providers` returns an `EventStream` and builds every `ProviderError` on it,
+# `sandbx-anthropic` returns an `EventStream` and builds every `ProviderError` on it,
 # `sandbx-turn` names both in `run_turn`'s bound and wraps the error in `TurnError`, and
 # `sandbx-cli` opens the stream itself and converts the error to an `AgentError`.
 #
 # #367 was an append and not the re-point the sentence here predicted: taking the SSE
 # framing out added `sandbx-sse`, which builds `MalformedEvent` and `Transport`, without
 # removing the donor's own edge — `client.rs` still names both items and `wire/` names
-# `ProviderError`. `sandbx-providers`' name is #368's to take, with the vendor client,
-# and whether that is a re-point or a removal is settled from `cargo metadata` then, not
-# from this sentence (#366, #367).
-wrappers = ["sandbx-cli", "sandbx-providers", "sandbx-sse", "sandbx-turn"]
+# `ProviderError`. #368 then settled the other half as a re-point and not a removal, for
+# that same reason: renaming the donor moved the edge, it did not end it (#366, #367).
+wrappers = ["sandbx-anthropic", "sandbx-cli", "sandbx-sse", "sandbx-turn"]
 
 [[bans.deny]]
 name = "sandbx-sse"
-# Not `sandbx-anthropic`, which does not exist until #368 takes the vendor client out of
-# `sandbx-providers` and inherits this edge. One parent either way: framing is reached
+# One parent, and #368's rename of the donor did not add a second: framing is reached
 # only by whatever opens the connection, and `sandbx-turn` and `sandbx-cli` read the
-# accumulated events rather than the frames (#367).
-wrappers = ["sandbx-providers"]
+# accumulated events rather than the frames (#367, #368).
+wrappers = ["sandbx-anthropic"]
 
 [[bans.deny]]
 name = "sandbx-tools"
@@ -177,18 +175,14 @@ wrappers = ["sandbx-cli", "sandbx-tui-transcript"]
 [[bans.deny]]
 name = "sandbx-event"
 # No parent here inherits the edge through another: `sandbx-provider` names one in
-# `EventStream`, `sandbx-providers` builds an event per wire frame, `sandbx-turn` folds a
+# `EventStream`, `sandbx-anthropic` builds an event per wire frame, `sandbx-turn` folds a
 # round out of them, `sandbx-tui-transcript` folds the transcript, and `sandbx-cli`'s
 # renderer is a second fold of its own. `sandbx-compact` names `AgentEvent` in a doc
 # comment and has no edge.
-#
-# `sandbx-providers`' name here is #368's to take, with the accumulator. Settle whether
-# that is a re-point or a removal from `cargo metadata` and not from this sentence: #365
-# predicted a re-point for #366 and it was an append (#366).
 wrappers = [
+    "sandbx-anthropic",
     "sandbx-cli",
     "sandbx-provider",
-    "sandbx-providers",
     "sandbx-tui-transcript",
     "sandbx-turn",
 ]

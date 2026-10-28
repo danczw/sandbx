@@ -31,7 +31,7 @@ sandbx-core = { path = "../sandbx-core" }
 # Dev-only since #366 took `EventStream` and `ProviderError`: #364 had already taken the
 # request shapes, so nothing under `src/` names this crate at all and the one reference
 # left is `turn_loop.rs`'s spawnability pin, which types a field as an `AnthropicClient`.
-sandbx-providers = { path = "../sandbx-providers" }
+sandbx-anthropic = { path = "../sandbx-anthropic" }
 tempfile = "3.27.0"
 # To read the trail a scripted turn leaves, never to write one: `tracing` is a
 # dependency of `sandbx-core` alone, and this crate holds no emission site.

@@ -11,11 +11,11 @@
 
 use std::io::{IsTerminal, Write};
 
+use sandbx_anthropic::AnthropicClient;
 use sandbx_core::SandboxPolicy;
 use sandbx_event::StopReason;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
-use sandbx_providers::AnthropicClient;
 use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;

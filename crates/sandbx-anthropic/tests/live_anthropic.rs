@@ -4,12 +4,12 @@
 //! feature rather than a runtime env-var check: without the feature `cargo test`
 //! reports zero tests here instead of a silently-passing no-op.
 //!
-//! Run manually: `cargo test -p sandbx-providers --features live-anthropic-tests`
+//! Run manually: `cargo test -p sandbx-anthropic --features live-anthropic-tests`
 #![cfg(feature = "live-anthropic-tests")]
 
 use futures_util::StreamExt;
+use sandbx_anthropic::AnthropicClient;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role};
-use sandbx_providers::AnthropicClient;
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {

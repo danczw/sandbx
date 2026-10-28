@@ -1094,7 +1094,7 @@ fn the_default_stream_bound_is_the_documented_one() {
 /// Also pins that the future is `Send`, the one thing a named `Fut` would have bought.
 #[allow(dead_code)]
 fn documented_call_shape_stays_spawnable(
-    client: &'static sandbx_providers::AnthropicClient,
+    client: &'static sandbx_anthropic::AnthropicClient,
     ctx: &'static ExecutionContext,
 ) {
     fn assert_send<T: Send>(_: T) {}

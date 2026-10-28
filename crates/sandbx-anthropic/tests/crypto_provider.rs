@@ -3,7 +3,7 @@
 //! Here rather than in a `#[cfg(test)] mod tests` so it exercises the reason the
 //! function is `pub`: an integration test is a separate compiled crate.
 
-use sandbx_providers::ensure_crypto_provider_installed;
+use sandbx_anthropic::ensure_crypto_provider_installed;
 
 #[test]
 fn installing_the_provider_twice_does_not_panic() {

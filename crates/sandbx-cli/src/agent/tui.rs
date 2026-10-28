@@ -8,11 +8,11 @@
 use std::io::{self, IsTerminal, Write};
 use std::sync::{Mutex, PoisonError};
 
+use sandbx_anthropic::AnthropicClient;
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_event::StopReason;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
-use sandbx_providers::AnthropicClient;
 use sandbx_screen::{Screen, Transcript};
 use sandbx_session_bridge as session;
 use sandbx_session_store::Session;

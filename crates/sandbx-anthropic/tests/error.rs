@@ -3,8 +3,8 @@
 //! installed, and [`ensure_crypto_provider_installed`] is this crate's. Every other
 //! variant is covered by `sandbx-provider`'s own `tests/error.rs` (#366).
 
+use sandbx_anthropic::ensure_crypto_provider_installed;
 use sandbx_provider::ProviderError;
-use sandbx_providers::ensure_crypto_provider_installed;
 
 fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)> {
     std::error::Error::source(error)
