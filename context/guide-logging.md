@@ -275,7 +275,7 @@ so `degraded` and the terminal record are both timestamped after `spawned`. See
 | Missing | Consequence |
 |---|---|
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone, so every other crate has zero emission sites by construction. The list of which crates those are is `guide-repo-map.md`'s, and this one went stale three times carrying a copy |
-| `spawn` and `session` on `allowed`, `absent` and `denied` | only the spawn-shaped half of correlation is built. Those three carry `tool` and `subject` and nothing else, and six of the seven tools never spawn — so on a shared sink an in-process access cannot be attributed to a run or a session at all, where a spawn now can (#249) |
+| `spawn` and `session` on `allowed`, `absent` and `denied` | only the spawn-shaped half of correlation is built. Those three carry `tool` and `subject` and nothing else, and six of the seven tools never spawn — so on a shared sink an in-process access cannot be attributed to a run or a session at all, where a spawn now can (#429) |
 | a host in the `spawn` id | nothing, for the sink there is. The nonce is `(pid, the instant it was derived)`: it separates processes on one machine and claims nothing across two, so an aggregator merging several hosts cannot rely on it — and a clock stepped backwards breaks even the one-host case (#249) |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`. XDG resolution exists but not for a log: `sandbx-session-paths/src/lib.rs` is what a sink would reuse |
 
