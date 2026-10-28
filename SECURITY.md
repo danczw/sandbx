@@ -469,7 +469,22 @@ Open, and public on purpose — a sandbox that hides its gaps is worse than one
 that names them.
 
 None currently known that let a command reach outside the boundary. Track them
-with the [`security` label](https://github.com/danczw/sandbx/labels/security).
+with the [`security` label](https://github.com/danczw/sandbx/labels/security),
+which carries exactly one `severity:` rung beside it:
+
+- [**`severity:high`**](https://github.com/danczw/sandbx/labels/severity%3Ahigh)
+  — escape, or execution that is not restricted as claimed.
+- [**`severity:medium`**](https://github.com/danczw/sandbx/labels/severity%3Amedium)
+  — contained, but only under a condition the sandbox does not itself enforce.
+- [**`severity:low`**](https://github.com/danczw/sandbx/labels/severity%3Alow)
+  — contained and enforced, but narrower or wider than documented.
+
+A rung states what the mechanism guarantees, not how likely the condition is to
+arise, so it does not move because something is hard to reach or because a
+workaround exists elsewhere — only because the guarantee changed.
+
+No open `severity:high` is the same statement as the first sentence above. If
+one is ever filed, that sentence is wrong and changes with it.
 
 ## Not vulnerabilities
 
