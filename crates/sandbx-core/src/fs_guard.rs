@@ -38,10 +38,12 @@ pub struct FsGuard {
 
 /// A granted root, and the descriptor a permitted access resolves beneath.
 ///
-/// `dir` is `None` for three causes a check cannot tell apart and need not: a kernel
-/// without `openat2`, a grant naming a file rather than a directory, and a granted name
-/// that no longer opens as one. All three mean the same thing to an access — resolve by
-/// path, bounded by the confirmation alone, which is what every access did before #230.
+/// `dir` is `None` for three causes: a kernel without `openat2`, a grant naming a file
+/// rather than a directory, and a granted name that no longer reaches the directory it was
+/// vetted on. All three mean the same thing to an *access* — resolve by path, bounded by the
+/// confirmation alone, which is what every access did before #230 — which is why nothing
+/// below this point distinguishes them. [`open_root`] does, because at construction the
+/// third is a substitution and the other two are not: see [`Rooting`].
 #[derive(Debug, Clone)]
 struct Root {
     vetted: VettedPath,
@@ -74,6 +76,11 @@ impl FsGuard {
     fn with_rooting(policy: &SandboxPolicy, beneath: bool) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
+        // One record per *root*, not per grant entry. `granted_paths` yields a path once per
+        // axis, and the shipped CLI puts every `--allow-write` on two of them — so recording
+        // per entry would report one substituted root twice and an operator counting them
+        // would overcount on the ordinary shape.
+        let mut told = Vec::new();
 
         for (axis, granted) in policy.granted_paths() {
             let crate::Grants {
@@ -82,9 +89,9 @@ impl FsGuard {
                 execute: _,
             } = axis.grants();
 
-            // Once per grant, then shared: a `ReadExecute` grant feeds `readable` alone, but
-            // a path granted read *and* write is two entries here and so two descriptors —
-            // policy-level duplication, not this loop's to collapse.
+            // One open per grant entry, then shared: a path granted on two axes is two
+            // entries here and so two descriptors — policy-level duplication, not this
+            // loop's to collapse.
             let dir = match beneath.then(|| open_root(granted)) {
                 Some(Rooting::Beneath(dir)) => Some(Arc::new(dir)),
                 Some(Rooting::Unpinned) => {
@@ -93,12 +100,16 @@ impl FsGuard {
                     // confirmation — it has only lost the descriptor that would have made a
                     // swap unreachable rather than merely refused. Naming the root discloses
                     // nothing: it is a path the operator granted.
-                    let detail = format!(
-                        "{} did not hold its vetted object when opened; its accesses resolve \
-                         by path, bounded by the per-access confirmation alone",
-                        granted.path().display()
-                    );
-                    crate::AuditEvent::degraded("rooted_access", &detail).emit();
+                    if !told.iter().any(|path| path == granted.path()) {
+                        let detail = format!(
+                            "{} no longer reaches the directory it was vetted on; its \
+                             accesses resolve by path, bounded by the per-access \
+                             confirmation alone",
+                            granted.path().display()
+                        );
+                        crate::AuditEvent::degraded("rooted_access", &detail).emit();
+                        told.push(granted.path().to_path_buf());
+                    }
                     None
                 }
                 Some(Rooting::ByPath) | None => None,
@@ -681,29 +692,57 @@ fn nearest_area<'a>(requested: &'a Path, roots: &[Root]) -> (Option<&'a Path>, C
 fn open_root(granted: &VettedPath) -> Rooting {
     use std::os::unix::fs::OpenOptionsExt;
 
-    let opened = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW)
-        .open(granted.path())
-        .ok()
-        .map(OwnedFd::from);
+    let open = |flags| {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(flags)
+            .open(granted.path())
+            .ok()
+            .map(OwnedFd::from)
+    };
 
-    let Some(opened) = opened else {
+    // Measured through the name first, exactly as `VettedPath::confirm` does and for the
+    // same reason: without `O_NOFOLLOW` this reports whatever object the name now holds,
+    // which is what tells a substitution from a grant that simply never named a directory.
+    // Opening strictly first cannot: a symlink and a regular file both fail it, and a
+    // legitimate `--allow-read /etc/hosts` fails it identically to an attacker's swap.
+    let Some(named) = open(libc::O_PATH) else {
+        // The name resolves to nothing, which the check refuses on its own.
         return Rooting::ByPath;
     };
 
-    // The descriptor is measured against the pin before it is kept, because the open and
+    let Ok(object) = ObjectId::of_fd(&named) else {
+        // An `fstat` failing on a handle we hold is the host's business, and says nothing
+        // about whether the name was substituted.
+        return Rooting::ByPath;
+    };
+
+    // The descriptor is measured against the pin before it is kept, because this open and
     // the per-access confirmation are two different moments. A granted name holding an
-    // attacker's directory while this runs, restored before the first access, would confirm
+    // attacker's object while this runs, restored before the first access, would confirm
     // against the pin and still resolve every access beneath the substitute — the one way a
     // held descriptor could be worse than the path it replaced.
-    match ObjectId::of_fd(&opened) {
-        Ok(object) if object == granted.object() => Rooting::Beneath(opened),
-        Ok(_) => Rooting::Unpinned,
-        // A descriptor that cannot be measured is not one to resolve beneath, but nothing
-        // says the name was substituted either — an `fstat` failing on a handle we hold is
-        // the host's business, not a grant's.
-        Err(_) => Rooting::ByPath,
+    if object != granted.object() {
+        return Rooting::Unpinned;
+    }
+
+    let Ok(at) = nix::sys::stat::fstat(&named) else {
+        return Rooting::ByPath;
+    };
+
+    if at.st_mode & libc::S_IFMT != libc::S_IFDIR {
+        // A grant naming a file, which is legal — `--allow-write /dev/null`, and every path
+        // the resolver binds over. There is no directory to resolve beneath and nothing was
+        // substituted, so this is the one silent cause left.
+        return Rooting::ByPath;
+    }
+
+    // The vetted object is a directory and the name still holds it, so the strict open can
+    // only fail if the name reaches it *through a link* — a substitution of the name rather
+    // than of the object, which `O_NOFOLLOW` is here to refuse.
+    match open(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW) {
+        Some(dir) => Rooting::Beneath(dir),
+        None => Rooting::Unpinned,
     }
 }
 
@@ -712,13 +751,14 @@ fn open_root(granted: &VettedPath) -> Rooting {
 enum Rooting {
     /// Accesses resolve beneath this.
     Beneath(OwnedFd),
-    /// Nothing to resolve beneath, and nothing suspicious: no `openat2` on this kernel, or
-    /// the grant does not name a directory. Both are properties of the host or the policy,
-    /// which an operator can read off either without being told.
+    /// Nothing to resolve beneath, and nothing substituted: the grant does not name a
+    /// directory, or the name reaches nothing at all, which the check refuses anyway. A
+    /// file grant is legal and ordinary, so this one is silent.
     ByPath,
-    /// The granted name did not hold its vetted object when the descriptor was opened, so
-    /// there is no descriptor worth keeping. Unlike the two above this is a *substitution*,
-    /// and it costs that root its mitigation for the session — hence a record.
+    /// The granted name no longer reaches the directory it was vetted on — another object
+    /// at that name, or the vetted one only through a link. Either way there is no
+    /// descriptor worth keeping, and unlike [`ByPath`](Self::ByPath) this is a
+    /// *substitution*, costing that root its mitigation for the session — hence a record.
     Unpinned,
 }
 

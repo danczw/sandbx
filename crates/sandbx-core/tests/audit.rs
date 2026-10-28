@@ -806,9 +806,99 @@ fn a_root_that_lost_its_object_records_the_weakened_access() {
     assert!(line.contains("decision=degraded"), "got: {line}");
     assert!(line.contains("mechanism=rooted_access"), "got: {line}");
     assert!(
-        line.contains("did not hold its vetted object"),
+        line.contains("no longer reaches the directory it was vetted on"),
         "got: {line}"
     );
+}
+
+/// The other shapes the same substitution takes, and the reason they need their own test: a
+/// directory swap is the *loudest*, and an attacker reading the guard picks whichever is
+/// quiet. A symlink at the granted name reaches another object, which the pin sees; a
+/// symlink to the vetted object reaches the right one by the wrong route, which only the
+/// strict open sees. Both cost the root its descriptor exactly as a directory swap does.
+///
+/// A granted directory replaced by a *regular file* is deliberately absent, and it is the
+/// pin's documented floor rather than a gap here: ext4 hands the new file the directory's
+/// freed inode number — measured, `2096:1468374` for both across repeats — so the pin
+/// compares equal and the guard cannot tell it from the legal `--allow-read /etc/hosts`
+/// shape below. `SECURITY.md`'s reused-inode non-claim is where that lives.
+#[test]
+fn every_visible_shape_of_substituted_root_records_the_weakened_access() {
+    for shape in ["symlink", "symlink-to-the-vetted-object"] {
+        let work = tempfile::tempdir().unwrap();
+        let granted = work.path().join("granted");
+        let elsewhere = work.path().join("elsewhere");
+        std::fs::create_dir(&granted).unwrap();
+        std::fs::create_dir(&elsewhere).unwrap();
+
+        let policy = SandboxPolicy::default().allow_read(vetted(&granted));
+        let aside = work.path().join("aside");
+
+        match shape {
+            "symlink" => {
+                std::fs::remove_dir_all(&granted).unwrap();
+                std::os::unix::fs::symlink(&elsewhere, &granted).unwrap();
+            }
+            // The vetted object is still what the name reaches, but only through a link, so
+            // the pin alone cannot see it — the strict open is what refuses this one.
+            _ => {
+                std::fs::rename(&granted, &aside).unwrap();
+                std::os::unix::fs::symlink(&aside, &granted).unwrap();
+            }
+        }
+
+        let lines = capture(|| {
+            let _ = FsGuard::new(&policy);
+        });
+
+        assert_eq!(lines.len(), 1, "{shape}: got {lines:?}");
+        assert!(
+            lines[0].contains("mechanism=rooted_access"),
+            "{shape}: got {}",
+            lines[0]
+        );
+    }
+}
+
+/// A grant naming a file is legal — `--allow-write /dev/null`, and every path the resolver
+/// binds over — and has no directory to resolve beneath. Nothing was substituted, so it
+/// must stay silent, or the record cries wolf on an ordinary policy.
+#[test]
+fn a_file_grant_records_nothing_when_the_guard_is_built() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("hosts");
+    std::fs::write(&file, b"127.0.0.1 localhost").unwrap();
+    let policy = SandboxPolicy::default().allow_read(vetted(&file));
+
+    let lines = capture(|| {
+        let _ = FsGuard::new(&policy);
+    });
+
+    assert!(lines.is_empty(), "a file grant is ordinary: {lines:?}");
+}
+
+/// One record per root, not per grant entry. `granted_paths` yields a path once per axis,
+/// and `--allow-write` on the shipped CLI adds the matching read grant — so the ordinary
+/// shape would report one substituted root twice and an operator counting them overcount.
+#[test]
+fn a_root_on_two_axes_records_its_weakened_access_once() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+
+    let policy = SandboxPolicy::default()
+        .allow_read(vetted(&granted))
+        .allow_write(vetted(&granted));
+    std::fs::remove_dir_all(&granted).unwrap();
+    std::fs::rename(&other, &granted).unwrap();
+
+    let lines = capture(|| {
+        let _ = FsGuard::new(&policy);
+    });
+
+    assert_eq!(lines.len(), 1, "one root, one record: {lines:?}");
 }
 
 /// The anti-vacuity half: a grant whose object is intact records nothing at all. Without
