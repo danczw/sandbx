@@ -137,8 +137,8 @@ into the `sandbx-turn` bundle alone and has had two dependents since #351.
 sandbx's, and `sandbx-tui-input` on nothing at all: the event and text edges the
 diagram used to draw to the drawing side land one step earlier, on the crate that
 folds the events. Both are leaves, so no client code reaches the drawing side at
-all — until #365 the event edge was the client crate's, and reqwest, rustls and
-hyper came with it. `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
+all — until #365 the event edge was `sandbx-anthropic`'s, and reqwest, rustls
+and hyper came with it. `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
 re-export and not an edge of its own — every entry point `sandbx-screen` has
 takes or returns one — which is why `deny.toml` names one parent there and not
 two (#352, #353).
