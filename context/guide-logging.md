@@ -154,9 +154,12 @@ and getting it to is why `FsGuard::for_session` and
 `ExecutionContext::for_session` are constructors rather than setters — the record
 is written *while the guard is built*, so a guard told its session afterwards has
 already reported without one, and no setter shape can be made correct. What moved
-to meet that is the context: `sandbx-cli` builds it after `session::open` rather
-than before, the credential-then-session ordering above being the half that cannot
-move.
+to meet that is the **session**, which `sandbx-cli` now opens ahead of the policy
+so the context can still be built in the same breath as the vetting it pins — the
+vet-to-pin window being a sandbox property and not a logging one
+(`guide-sandboxing.md`, *Known gaps*). The credential stays below the policy, so a
+refused policy still reads no key; what it can now leave is a header-only
+transcript.
 
 `Exited.code` is `exit_code`'s encoding, 128 + n for a signal, so the number on
 the trail is the number `sandbx` exits with rather than a second encoding of the
