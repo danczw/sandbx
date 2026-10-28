@@ -10,10 +10,16 @@ use crate::{Axis, NetworkPolicy, SandboxPolicy, SpawnId};
 /// subscriber can route it on its own; see `context/guide-logging.md`.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
 
-/// How much of a command's argument list a record carries, in characters.
+/// How much of a command's argument list a record carries, in characters of the **rendered**
+/// list — after the escaping, not before.
 ///
-/// `sandbx-cli`'s `gate::printable` caps a model-chosen field at the same 512 for the same
-/// reason. Not that function: it reaches `sandbx_text::invisible`, an edge
+/// The number is `gate::printable`'s and the reason is the same, but the measurement is not:
+/// that one caps the raw text and strips afterwards, so 512 there is 512 characters the
+/// model wrote. Here an escape costs what it renders as — six for an ESC, two for a
+/// newline or a quote — so an escape-heavy command is cut well short of 512 of its own
+/// characters. Capping the raw text instead would mean rendering after cutting, and a cut
+/// that landed inside a multi-byte character would then be escaped into visible garbage.
+/// Not `gate::printable` itself: it reaches `sandbx_text::invisible`, an edge
 /// `crates/sandbx-text/src/lib.rs` refuses this crate.
 const ARGS_CAP: usize = 512;
 
@@ -90,7 +96,11 @@ pub enum AuditEvent<'a> {
         /// A degradation falls *between* a spawn and its outcome, so without this the
         /// middle of a run would still be attributed by position (#249).
         spawn: &'a str,
-        /// The session this ran under, as in [`Spawned`](Self::Spawned).
+        /// The session this ran under, as in [`Spawned`](Self::Spawned). `rooted_access`
+        /// carries the sentinel here too, and for a second reason: the guard is built
+        /// before the session is opened, so even a run that *has* one cannot name it from
+        /// there — `sandbx-cli` reads the credential first, a session opened ahead of it
+        /// leaving a header-only transcript nothing deletes.
         session: &'a str,
         /// Why it did not, and what holds instead.
         detail: &'a str,
@@ -108,10 +118,6 @@ pub enum AuditEvent<'a> {
         session: &'a str,
         /// The program the sandbox is about to become.
         program: &'a str,
-        /// What it was asked to do, cut to `ARGS_CAP`. Here because `program` is
-        /// `/bin/sh` for every `bash` call, so the `-c` string — the command itself — was
-        /// on no record at all (#249).
-        args: &'a str,
         /// How many paths were readable, not which ones.
         readable: usize,
         /// How many paths were writable.
@@ -136,6 +142,17 @@ pub enum AuditEvent<'a> {
         /// Whether a digest had to match before the exec. Not the digest, already in
         /// `/proc/self/cmdline`; what an auditor cannot recover is that it was checked.
         pinned: bool,
+        /// What the program was asked to do, cut to `ARGS_CAP`. Here because `program` is
+        /// `/bin/sh` for every `bash` call, so the `-c` string — the command itself — was
+        /// on no record at all (#249).
+        ///
+        /// **Last on the record, and that placement is load-bearing.** It is the one field
+        /// a model writes and the one `emit` renders unquoted, so a command spelling
+        /// `readable=99 pinned=true` would shadow the real field of that name for anything
+        /// parsing first-match, and an odd number of quotes in it would desync a
+        /// quote-pairing reader for the rest of the line. Every field it could shadow now
+        /// precedes it.
+        args: &'a str,
     },
 
     /// A sandboxed process ended, and with what status.
@@ -242,7 +259,6 @@ impl<'a> AuditEvent<'a> {
             spawn: spawn.as_str(),
             session: session.unwrap_or(SESSION_ABSENT),
             program,
-            args,
             readable,
             writable,
             executable,
@@ -253,6 +269,7 @@ impl<'a> AuditEvent<'a> {
             dns_over_tcp: policy.hints_dns_over_tcp(),
             dns_names: policy.allowed_dns_names().len(),
             pinned,
+            args,
         }
     }
 
@@ -336,7 +353,6 @@ impl<'a> AuditEvent<'a> {
                 spawn,
                 session,
                 program,
-                args,
                 readable,
                 writable,
                 executable,
@@ -347,15 +363,13 @@ impl<'a> AuditEvent<'a> {
                 dns_over_tcp,
                 dns_names,
                 pinned,
+                args,
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "spawned",
                 spawn,
                 session,
                 program,
-                // `%`, so the layer renders the list as `args_field` escaped it rather than
-                // escaping every quote and backslash a second time.
-                args = %args,
                 readable,
                 writable,
                 executable,
@@ -366,6 +380,10 @@ impl<'a> AuditEvent<'a> {
                 dns_over_tcp,
                 dns_names,
                 pinned,
+                // Last, so no field a model could spell can shadow a real one ahead of it;
+                // the variant's own doc has why. `%` so the layer renders the list as
+                // `args_field` escaped it rather than escaping every quote a second time.
+                args = %args,
             ),
             Self::Exited {
                 spawn,

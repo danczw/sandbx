@@ -402,8 +402,9 @@ the pane has no scrollback. For a `bash` call that used to mean the command's te
 appeared nowhere else either, the trail recording `program="/bin/sh"` and not the
 `-c` string; #249 put it on the `spawned` record under `args`, with a `spawn` id
 and the session's own, so an interrupted run does leave a record of what ran. What
-the pane is still alone in showing is a command longer than `ARGS_CAP`'s 512
-characters, which the trail cuts and marks.
+the pane is still alone in showing is a command the trail had to cut — `ARGS_CAP`
+is 512 characters of the *rendered* list, so a command of ordinary text gets about
+that many and one thick with newlines or escapes considerably fewer.
 
 Both methods still run on the async task, so **neither may wait on the runtime**
 — `decision-approval-gate.md` has why. `tui`'s gate waits on nothing at all: the

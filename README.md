@@ -133,7 +133,7 @@ it. Seven fields do not read the way they look:
 |---|---|
 | `decision="spawned"` | the *intent* to spawn, written before the helper execs — so it appears for a command that then fails to start — carrying the settled policy |
 | `spawn=` | which run this is, unique across processes so several `sandbx` invocations can write one file. Not a pid, which the kernel reuses. `-` on the one `degraded` that belongs to no run, reported while the in-process gate is built |
-| `session=` | the session whose transcript holds this run, or `-` where there is none: `sandbox-run` has no session, and `sandbx agent-run` only with `--session` |
+| `session=` | the session whose transcript holds this run, or `-` where the record cannot name one: `sandbox-run` has no session, `sandbx agent-run` only with `--session`, and the `rooted_access` degradation is reported before the session is opened even when there will be one |
 | `args=` | what the command was asked to do, cut at 512 characters with a `…` where it was cut — so the `-c` string of a `bash` call is on the record, and a longer one only in part |
 | `decision="absent"` | a path naming nothing inside a root you granted — no `reason=`. Outside your roots it is a `denied` like any other, so the trail never says which outside paths exist |
 | `env=` | how many names were *granted*, not how many crossed: a name `sandbx`'s own environment lacks passes nothing |

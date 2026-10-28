@@ -7,10 +7,14 @@
 //! emits from two into one pipe and counts how many *distinct* ids come back.
 //!
 //! Its own binary, because it re-execs itself: `audit_log_held.rs` does the same for the
-//! same reason, a real file descriptor being the only place two processes meet. Reading one
-//! pipe is safe because each record is a single `write_all` far under `PIPE_BUF`, so two
-//! writers cannot interleave within a line — which is also what the torn-line assertion
-//! below is checking has not changed.
+//! same reason, a real file descriptor being the only place two processes meet.
+//!
+//! Reading one pipe is safe *for the records below*: each is a single `write_all` of a
+//! fixed fixture — a short `program` and a one-argument argv — which is a few hundred bytes
+//! against `PIPE_BUF`'s 4096, so two writers cannot interleave within a line. That is a
+//! property of this fixture and not of the format: `Spawned.args` carries up to `ARGS_CAP`
+//! characters the model chose, which in non-ASCII is four bytes each, so a record in the
+//! field can approach the limit. The record count below is what would catch a tear.
 // `Command::new` here spawns this test binary, never a command that bypasses the sandbox.
 #![allow(clippy::disallowed_methods)]
 

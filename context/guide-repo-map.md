@@ -185,6 +185,8 @@ src/lib.rs           re-exports; Linux-only, refused at compile time
    degradation.rs    the helper's channel to the parent, and its wire format
    spawn.rs          spawn::command — the one Command::new; env_clear, then
                      the allowlist and the policy's own constants
+   spawn_id.rs       SpawnId — the per-run id every record of a run carries;
+                     a per-process nonce, not the pid, which is reused
    error.rs          re-exports
       sandbox.rs     SandboxError — every refusal and failure, and its label
       refusal.rs     HelperRefusal — the closed set the channel admits, and

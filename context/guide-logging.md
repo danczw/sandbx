@@ -66,8 +66,9 @@ a filter can rely on (#146).
 That clause said *fixed* width until #249, and the change is to the wording rather
 than to #146's conclusion. `Denied.subject` and `Degraded.detail` were always
 variable-length; it was `Spawned` alone that was fixed, and `args` is what ends
-that — bounded instead by `ARGS_CAP`, 512 characters with the cut marked, which is
-`gate::printable`'s cap and reason. Nothing about the pin is reopened: the digest
+that — bounded instead by `ARGS_CAP`, 512 characters of the rendered list with the
+cut marked, which is `gate::printable`'s number and reason over a different
+measurement (its 512 is of the raw text). Nothing about the pin is reopened: the digest
 is still not recorded, and `--pin-sha256` is *sandbx's* own argv where
 `Spawned.args` is the *command's*.
 
@@ -137,7 +138,11 @@ says the sandbox got *weaker*. It is also emitted after the wait rather than whe
 the step failed (below), so its position says even less than the pair's does.
 `rooted_access` is the one `degraded` with no run to name, emitted while the
 in-process gate is built, and it carries `spawn=-` for it: what that step weakens
-is every access for the session rather than one spawn.
+is every access for the session rather than one spawn. It carries `session=-` as
+well, and that one is a limit rather than a statement — the guard is built before
+`session::open`, which `sandbx-cli` cannot hoist because a session opened ahead of
+the credential leaves a header-only transcript nothing deletes. So the one record
+whose reach *is* the session is the one that cannot name it.
 
 `Exited.code` is `exit_code`'s encoding, 128 + n for a signal, so the number on
 the trail is the number `sandbx` exits with rather than a second encoding of the
@@ -253,6 +258,7 @@ so `degraded` and the terminal record are both timestamped after `spawned`. See
 | Missing | Consequence |
 |---|---|
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone, so every other crate has zero emission sites by construction. The list of which crates those are is `guide-repo-map.md`'s, and this one went stale three times carrying a copy |
+| `spawn` and `session` on `allowed`, `absent` and `denied` | only the spawn-shaped half of correlation is built. Those three carry `tool` and `subject` and nothing else, and six of the seven tools never spawn — so on a shared sink an in-process access cannot be attributed to a run or a session at all, where a spawn now can (#249) |
 | a host in the `spawn` id | nothing, for the sink there is. The nonce is `(pid, the instant it was derived)`: it separates processes on one machine and claims nothing across two, so an aggregator merging several hosts cannot rely on it — and a clock stepped backwards breaks even the one-host case (#249) |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`. XDG resolution exists but not for a log: `sandbx-session-paths/src/lib.rs` is what a sink would reuse |
 
