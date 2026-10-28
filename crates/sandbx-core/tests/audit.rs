@@ -776,3 +776,55 @@ fn a_degradation_is_emitted_at_info_not_debug() {
         "degradation was filtered out at INFO; a weakened sandbox must not be a debug-level event"
     );
 }
+
+/// A granted name that no longer holds its vetted object when the guard opens it loses the
+/// descriptor its accesses would have resolved beneath, and so loses the mitigation #230
+/// added, for the whole session. That is fail-safe — the per-access confirmation still
+/// bounds it, exactly as it did before #230 — but it is a substitution rather than a
+/// property of the host, so an operator is told rather than left to infer it from an
+/// absence. No race needed: the swap lands before the guard is built, not during an access.
+#[test]
+fn a_root_that_lost_its_object_records_the_weakened_access() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    std::fs::write(granted.join("notes.txt"), b"vetted").unwrap();
+    std::fs::write(other.join("notes.txt"), b"planted").unwrap();
+
+    let policy = SandboxPolicy::default().allow_read(vetted(&granted));
+    std::fs::remove_dir_all(&granted).unwrap();
+    std::fs::rename(&other, &granted).unwrap();
+
+    let lines = capture(|| {
+        let _ = FsGuard::new(&policy);
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    let line = &lines[0];
+    assert!(line.contains("decision=degraded"), "got: {line}");
+    assert!(line.contains("mechanism=rooted_access"), "got: {line}");
+    assert!(
+        line.contains("did not hold its vetted object"),
+        "got: {line}"
+    );
+}
+
+/// The anti-vacuity half: a grant whose object is intact records nothing at all. Without
+/// it the assertion above would pass on a guard that announced every root it opened.
+#[test]
+fn an_intact_root_records_nothing_when_the_guard_is_built() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("notes.txt"), b"x").unwrap();
+    let policy = SandboxPolicy::default().allow_read(vetted(root.path()));
+
+    let lines = capture(|| {
+        let _ = FsGuard::new(&policy);
+    });
+
+    assert!(
+        lines.is_empty(),
+        "building a guard is not an access: {lines:?}"
+    );
+}
