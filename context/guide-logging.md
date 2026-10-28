@@ -149,11 +149,14 @@ says the sandbox got *weaker*. It is also emitted after the wait rather than whe
 the step failed (below), so its position says even less than the pair's does.
 `rooted_access` is the one `degraded` with no run to name, emitted while the
 in-process gate is built, and it carries `spawn=-` for it: what that step weakens
-is every access for the session rather than one spawn. It carries `session=-` as
-well, and that one is a limit rather than a statement — the guard is built before
-`session::open`, which `sandbx-cli` cannot hoist because a session opened ahead of
-the credential leaves a header-only transcript nothing deletes. So the one record
-whose reach *is* the session is the one that cannot name it.
+is every access for the session rather than one spawn. It does name the session,
+and getting it to is why `FsGuard::for_session` and
+`ExecutionContext::for_session` are constructors rather than setters — the record
+is written *while the guard is built*, so a guard told its session afterwards has
+already reported without one, and no setter shape can be made correct. What moved
+to meet that is the context: `sandbx-cli` builds it after `session::open` rather
+than before, the credential-then-session ordering above being the half that cannot
+move.
 
 `Exited.code` is `exit_code`'s encoding, 128 + n for a signal, so the number on
 the trail is the number `sandbx` exits with rather than a second encoding of the

@@ -90,8 +90,7 @@ const SESSION: &str = "abc123";
 /// A context whose spawns fail to start: the helper does not exist, so the pair is a
 /// `spawned` and a `failed` with no kernel and no command ever executed.
 fn spawning_ctx() -> ExecutionContext {
-    ExecutionContext::new(SandboxPolicy::default())
-        .with_session(SESSION)
+    ExecutionContext::for_session(SandboxPolicy::default(), SESSION)
         .with_helper("/nonexistent/helper")
 }
 
@@ -100,7 +99,7 @@ fn bash(command: &str, ctx: &ExecutionContext) {
     let _ = BuiltinTool::Bash.execute(json!({ "command": command }), ctx);
 }
 
-/// `with_session` to `ExecutionContext` to `SandboxedCommand` to the record, which is the
+/// `for_session` to `ExecutionContext` to `SandboxedCommand` to the record, which is the
 /// whole of the plumbing #249 added — and `program` is `/bin/sh` for every `bash` call, so
 /// without `args` the command itself is on no record at all.
 #[test]
@@ -159,5 +158,60 @@ fn two_bash_calls_take_two_spawn_ids() {
         2,
         "two calls through one context share an id, so their outcomes cannot be told \
          apart: {ids:?}"
+    );
+}
+
+/// The guard reports a substituted root while the context is *built*, so the session has to
+/// be known by then — which is why `for_session` is a constructor and `with_session` is
+/// gone. This is the end-to-end evidence: a context that was told its session afterwards
+/// would emit this record naming none, and nothing downstream could repair it (#249).
+#[test]
+fn a_substituted_root_names_the_session_it_weakened() {
+    let work = tempfile::tempdir().expect("a scratch tree");
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).expect("a directory to grant");
+    std::fs::create_dir(&other).expect("a directory to swap in");
+
+    let policy = SandboxPolicy::default().allow_read(vetted(&granted));
+    std::fs::remove_dir_all(&granted).expect("the granted root goes");
+    std::fs::rename(&other, &granted).expect("another takes its name");
+
+    let lines = capture(|| {
+        let _ = ExecutionContext::for_session(policy, SESSION);
+    });
+
+    assert_eq!(
+        lines.len(),
+        1,
+        "one substituted root, one record: {lines:?}"
+    );
+    assert!(
+        lines[0].contains("mechanism=rooted_access"),
+        "got: {}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains(&format!("session={SESSION} ")),
+        "the record that says this session's accesses weakened did not name it: {}",
+        lines[0]
+    );
+}
+
+/// The anti-vacuity half: an intact root records nothing, so the assertions above are about
+/// a substitution rather than about every context announcing itself.
+#[test]
+fn an_intact_root_records_nothing_when_a_context_is_built() {
+    let work = tempfile::tempdir().expect("a scratch tree");
+    std::fs::write(work.path().join("notes.txt"), b"x").expect("a file under the root");
+    let policy = SandboxPolicy::default().allow_read(vetted(work.path()));
+
+    let lines = capture(|| {
+        let _ = ExecutionContext::for_session(policy, SESSION);
+    });
+
+    assert!(
+        lines.is_empty(),
+        "building a context is not an access: {lines:?}"
     );
 }

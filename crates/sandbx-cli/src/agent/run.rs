@@ -263,7 +263,6 @@ impl AgentRun {
         // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
         // meanwhile would name the model a root the sandbox did not grant.
         let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
-        let ctx = ExecutionContext::new(policy);
 
         eprintln!(
             "sandbx: tools approved: {}",
@@ -280,12 +279,15 @@ impl AgentRun {
 
         let session = session::open(self.session())?;
 
-        // Shadowed here rather than built here: the two comments above pin why `ctx`
-        // precedes the terminal and the credential, and a spawn with no session to name
-        // still records its own id (#249).
+        // After the session and not before, which is why the policy is derived further up
+        // and held: the guard this builds reports a granted root that lost its descriptor
+        // *as it is built*, so a context constructed earlier would emit that record
+        // disclaiming a session this run has. The ordering above cannot move to meet it —
+        // a session opened before the credential leaves a header-only transcript nothing
+        // deletes — so the context comes last instead (#249).
         let ctx = match session.as_ref() {
-            Some(open) => ctx.with_session(open.id().to_string()),
-            None => ctx,
+            Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
+            None => ExecutionContext::new(policy),
         };
 
         self.drive(

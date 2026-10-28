@@ -53,7 +53,6 @@ impl Tui {
         let policy = self.run.policy()?;
         let system =
             orientation::system_prompt(&policy, self.run.allow_tool.as_deref(), self.run.system());
-        let ctx = ExecutionContext::new(policy);
 
         let approved = gate::approved_tools(self.run.allow_tool.as_deref()).join(", ");
         // On stderr as well as on the screen: the screen is gone the moment the process
@@ -63,12 +62,12 @@ impl Tui {
         let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
         let session = session::open(self.run.session())?;
 
-        // Shadowed here rather than built here, as in `AgentRun::execute`: the pane is the
-        // only place a command's text was drawn, so the trail needs the session's id to tie
-        // a spawn to the transcript (#249).
+        // After the session, for `AgentRun::execute`'s reason — the guard reports as it is
+        // built, so a context built before the session names none. The pane being the only
+        // place a command's text was drawn is why this path in particular needs the id.
         let ctx = match session.as_ref() {
-            Some(open) => ctx.with_session(open.id().to_string()),
-            None => ctx,
+            Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
+            None => ExecutionContext::new(policy),
         };
 
         self.drive(
