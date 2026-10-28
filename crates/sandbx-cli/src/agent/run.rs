@@ -267,29 +267,30 @@ impl AgentRun {
             gate::approved_tools(self.allow_tool.as_deref()).join(", ")
         );
 
-        // Ahead of the policy, and that is the whole reason this line is here rather than
-        // below it. The context needs the session — it is what the `rooted_access` record
-        // names — and nothing may come between `self.policy()?`, which *vets* each granted
-        // root, and the context, which *pins* it: everything in that window is time an
-        // attacker has to swap a root and force the run onto by-path resolution for good.
-        // Opening a session is a directory create and two writes, and `eprintln!` here can
-        // block outright on a stderr nobody drains, so this is the one call that could not
-        // stay in the middle.
+        // Ahead of the policy, and that placement is the whole point. The context needs a
+        // session — it is what `rooted_access` names — and nothing may sit between
+        // `self.policy()?`, which *vets* each granted root, and the context, which *pins*
+        // it: that window is time an attacker has to swap a root and force the run onto
+        // by-path resolution for good. This call's `eprintln!` can block outright on a
+        // stderr nobody drains, so it is the one that could not stay in the middle.
         //
         // The cost, taken deliberately: a refused policy below now leaves a header-only
-        // transcript nothing deletes, where before only a missing credential could. A
-        // mistyped `--allow-read` is the commonest failure there is, so that is real — and
-        // it is still only a stray directory, against a window in the sandbox's TOCTOU
-        // guarantee (`guide-sandboxing.md`, *Known gaps*). The credential stays below the
-        // policy regardless, so a refused policy still reads no key.
+        // transcript nothing deletes, where before only a missing credential could. A stray
+        // directory against a window in the sandbox's TOCTOU guarantee
+        // (`guide-sandboxing.md`, *Known gaps*). The credential stays below the policy, so
+        // a refused policy still reads no key.
         let session = session::open(self.session())?;
 
         let policy = self.policy()?;
         // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
         // meanwhile would name the model a root the sandbox did not grant.
         let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
-        // Nothing between this and the vet above but that pure formatting: a granted root is
-        // vetted there and pinned here, and the two are adjacent on purpose.
+        // A granted root is vetted above and pinned here, and the two are adjacent on
+        // purpose. Not *nothing* in between — `system_prompt` resolves and stats each
+        // granted path again — but a bounded number of path lookups on operator-named
+        // paths, with nothing that blocks and no model-chosen input. What may not come
+        // between them is anything an attacker can stall, which is why the session is
+        // opened above rather than here.
         let ctx = match session.as_ref() {
             Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
             None => ExecutionContext::new(policy),

@@ -706,10 +706,9 @@ fn a_degradation_outside_a_run_records_the_absence() {
     );
 }
 
-/// The session it *does* have. What this step weakens is every access for the session, so a
-/// record disclaiming one is the single most misleading shape it could take — and the guard
-/// reports while it is built, which is why naming the session is a constructor's job rather
-/// than a setter's (#249).
+/// The session it *does* have, which by the case above is the whole of what it weakens — so
+/// a record disclaiming one is the most misleading shape this could take. The guard reports
+/// while it is built, which is why naming the session is a constructor's job (#249).
 #[test]
 fn a_degradation_outside_a_run_still_names_the_session() {
     let work = tempfile::tempdir().unwrap();
