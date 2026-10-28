@@ -1385,3 +1385,155 @@ fn walk_of_exactly_the_cap_is_not_truncated() {
     assert_eq!(walk.files.len(), 4);
     assert!(!walk.truncated, "a tree that exactly fits is not partial");
 }
+
+/// A grant may name a file and not a directory — `--allow-write /dev/null`, and every path
+/// `grant_bound_by_resolver` covers — so there is nothing for an access to resolve beneath.
+/// The guard has to fall back to the path rather than refuse, and no other test grants a
+/// file, so this is the one that catches a design where no descriptor means no access (#230).
+#[test]
+fn a_file_grant_opens_and_writes_through_its_own_name() {
+    let root = tempfile::tempdir().unwrap();
+    let readable = root.path().join("notes.txt");
+    let writable = root.path().join("drop.txt");
+    std::fs::write(&readable, b"hello").unwrap();
+    std::fs::write(&writable, b"before").unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&readable))
+            .allow_write(vetted(&writable)),
+    );
+
+    let mut got = String::new();
+    std::io::Read::read_to_string(&mut guard.open_read(&readable).unwrap(), &mut got).unwrap();
+    assert_eq!(got, "hello", "a file grant must still open for reading");
+
+    std::io::Write::write_all(&mut guard.open_write(&writable).unwrap(), b"after").unwrap();
+    assert_eq!(std::fs::read_to_string(&writable).unwrap(), "after");
+}
+
+/// Grants overlap by design, and a link from one into another resolves inside the granted
+/// set. The access has to be rooted at the root holding the *resolved* path and not at the
+/// one the spelling named, or resolution would be refused for leaving the first root —
+/// which `check_read` cannot catch, performing no access of its own (#230).
+#[test]
+fn an_open_through_overlapping_grants_reads_the_target() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let data = work.path().join("data");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("shared.txt"), b"shared").unwrap();
+    std::os::unix::fs::symlink(data.join("shared.txt"), granted.join("link")).unwrap();
+
+    let guard = FsGuard::new(
+        &SandboxPolicy::default()
+            .allow_read(vetted(&granted))
+            .allow_read(vetted(&data)),
+    );
+
+    let mut got = String::new();
+    std::io::Read::read_to_string(
+        &mut guard.open_read(&granted.join("link")).unwrap(),
+        &mut got,
+    )
+    .unwrap();
+    assert_eq!(got, "shared");
+}
+
+/// `vet` resolves a grant before pinning it, so a symlinked grant is the target and the
+/// root descriptor is opened on that. The `O_NOFOLLOW` guarding the root open must therefore
+/// be asked about the canonical path, not the spelling the operator typed (#230).
+#[test]
+fn a_grant_spelled_as_a_symlink_still_opens() {
+    let work = tempfile::tempdir().unwrap();
+    let real = work.path().join("real");
+    let spelled = work.path().join("spelled");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::write(real.join("f.txt"), b"body").unwrap();
+    std::os::unix::fs::symlink(&real, &spelled).unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&spelled)));
+
+    let mut got = String::new();
+    std::io::Read::read_to_string(&mut guard.open_read(&real.join("f.txt")).unwrap(), &mut got)
+        .unwrap();
+    assert_eq!(got, "body");
+}
+
+/// `Listed::directory` is `ls`'s whole contract: it is what marks an entry descendable, and
+/// a listing read off a descriptor has to establish it without `std`'s `lstat` fallback.
+#[test]
+fn a_listing_marks_its_directories() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("sub")).unwrap();
+    std::fs::write(root.path().join("file.txt"), b"x").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
+    let listing = guard.read_dir(root.path()).unwrap().unwrap();
+
+    let mut got: Vec<(String, bool)> = listing
+        .entries
+        .into_iter()
+        .map(|entry| (entry.name.to_string_lossy().into_owned(), entry.directory))
+        .collect();
+    got.sort();
+
+    assert_eq!(
+        got,
+        vec![("file.txt".to_string(), false), ("sub".to_string(), true)]
+    );
+}
+
+/// `readdir(2)` reports `.` and `..` where `std::fs::read_dir` filters them, so a listing
+/// built off a descriptor grows two entries unless it filters them too.
+#[test]
+fn a_listing_omits_dot_and_dotdot() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("only.txt"), b"x").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
+    let listing = guard.read_dir(root.path()).unwrap().unwrap();
+
+    let names: Vec<_> = listing
+        .entries
+        .iter()
+        .map(|entry| entry.name.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec!["only.txt".to_string()], "got: {names:?}");
+}
+
+/// The descent opens a child when it is popped, not when it is pushed: holding a descriptor
+/// per pending sibling would run a wide tree into `EMFILE`, which the by-path stack could
+/// not do. Breadth and not depth, since that is the bound that changed (#230).
+#[test]
+fn a_wide_tree_does_not_exhaust_descriptors() {
+    let root = tempfile::tempdir().unwrap();
+    for index in 0..2_000 {
+        let dir = root.path().join(format!("d{index}"));
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("f.txt"), b"x").unwrap();
+    }
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
+    let walk = guard.walk_readable(root.path(), usize::MAX).unwrap();
+
+    assert_eq!(walk.files.len(), 2_000, "every sibling must be walked");
+    assert!(!walk.truncated);
+}
+
+/// A walk that treated `.` as an entry would descend into it forever. It would *hang*
+/// rather than fail, the file cap bounding files and not directories, so the bound here is
+/// what turns the hang into a failure.
+#[test]
+fn a_walk_does_not_descend_into_itself() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("a/b")).unwrap();
+    std::fs::write(root.path().join("a/b/deep.txt"), b"x").unwrap();
+
+    let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
+    let walk = guard.walk_readable(root.path(), 8).unwrap();
+
+    assert_eq!(walk.files.len(), 1);
+    assert!(!walk.truncated, "one file under a cap of eight is whole");
+}
