@@ -64,7 +64,8 @@ impl Tui {
         let policy = self.run.policy()?;
         let system =
             orientation::system_prompt(&policy, self.run.allow_tool.as_deref(), self.run.system());
-        // Adjacent to the vet above, with only that formatting between them.
+        // Adjacent to the vet above, for `AgentRun::execute`'s reason: what is between them
+        // resolves paths but cannot be stalled.
         let ctx = match session.as_ref() {
             Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
             None => ExecutionContext::new(policy),

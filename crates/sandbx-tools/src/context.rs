@@ -45,9 +45,9 @@ impl ExecutionContext {
     ///
     /// A constructor and not a setter, which is the whole reason this exists: the guard
     /// reports while it is *built*, so a context told its session afterwards has already
-    /// emitted a record disclaiming one. Call it before the credential is read and there is
-    /// no session yet to pass; `sandbx-cli` therefore builds the context after
-    /// `session::open` rather than hoisting the session (#249).
+    /// emitted a record disclaiming one. The caller therefore has to hold a session before
+    /// it builds a context — `sandbx-cli` opens one ahead of deriving the policy, since
+    /// nothing may come between that derivation and this call (#249).
     pub fn for_session(policy: SandboxPolicy, session: impl Into<String>) -> Self {
         Self::build(policy, Some(session.into()))
     }
