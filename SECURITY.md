@@ -189,8 +189,12 @@ architecture the filter gates on.
   resolves each permitted access beneath it with
   `openat2(dirfd, …, RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)` — `openat2` being
   Linux 5.6 — so the object the confirmation measured is the object the access
-  resolves from, by construction, and a substitution landing between the two
-  refuses rather than being granted
+  resolves from, and a substitution landing between the two refuses rather than
+  being granted. The descriptor is itself measured against the grant's pin before
+  it is kept, since the open and the per-access confirmation are different
+  moments: a granted name holding a substitute while the guard is built, restored
+  before the first access, would otherwise confirm and still resolve beneath the
+  substitute
   ([#230](https://github.com/danczw/sandbx/issues/230); the `FsGuard` TOCTOU row
   of [context/guide-sandboxing.md](context/guide-sandboxing.md) has the shapes).
   Three cases keep the older shape, where the access goes by path and a

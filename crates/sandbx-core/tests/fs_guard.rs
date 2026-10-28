@@ -1504,8 +1504,17 @@ fn a_listing_omits_dot_and_dotdot() {
 }
 
 /// The descent opens a child when it is popped, not when it is pushed: holding a descriptor
-/// per pending sibling would run a wide tree into `EMFILE`, which the by-path stack could
-/// not do. Breadth and not depth, since that is the bound that changed (#230).
+/// per pending sibling runs a wide tree out of them, and the subtrees then dropped leave a
+/// partial result reporting `truncated: false`. Breadth and not depth, that being the bound
+/// the descriptor introduced — the by-path stack could not do this, `std::fs::read_dir`
+/// holding one directory at a time (#230).
+///
+/// The soft descriptor limit is lowered for the duration, because otherwise this test only
+/// means anything where the host's limit happens to sit below the tree's width: at the
+/// 1024 a systemd default gives it fails against a push-time descent, and on a host with a
+/// raised limit — 1048576 under WSL, where this was written — it passes against one. The
+/// limit is process-wide and `cargo test` shares a process across threads, hence a ceiling
+/// well above anything a concurrent test opens rather than the tightest one that would do.
 #[test]
 fn a_wide_tree_does_not_exhaust_descriptors() {
     let root = tempfile::tempdir().unwrap();
@@ -1516,8 +1525,16 @@ fn a_wide_tree_does_not_exhaust_descriptors() {
     }
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
-    let walk = guard.walk_readable(root.path(), usize::MAX).unwrap();
 
+    let (soft, hard) = nix::sys::resource::getrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE)
+        .expect("the descriptor limit to be readable");
+    nix::sys::resource::setrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE, 512, hard)
+        .expect("to lower the descriptor limit");
+    let walk = guard.walk_readable(root.path(), usize::MAX);
+    nix::sys::resource::setrlimit(nix::sys::resource::Resource::RLIMIT_NOFILE, soft, hard)
+        .expect("to restore the descriptor limit");
+
+    let walk = walk.expect("a readable tree is permitted");
     assert_eq!(walk.files.len(), 2_000, "every sibling must be walked");
     assert!(!walk.truncated);
 }
