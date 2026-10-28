@@ -4,10 +4,21 @@
 //! One module on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
 
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use nix::fcntl::{OFlag, OpenHow, ResolveFlag};
 
 use crate::policy::Confirmation;
 use crate::{Access, ObjectId, SandboxError, SandboxPolicy, VettedPath};
+
+/// How a permitted access resolves the rest of its path: beneath a held descriptor, or by
+/// the path again. `RESOLVE_NO_SYMLINKS` beside `RESOLVE_BENEATH` because `BENEATH` alone
+/// follows a link that stays inside the root, which would open an object the confirmation
+/// did not measure. No false positives: what is handed to the kernel is the canonical
+/// path's remainder, so it holds no link to refuse.
+const BENEATH: ResolveFlag = ResolveFlag::RESOLVE_BENEATH.union(ResolveFlag::RESOLVE_NO_SYMLINKS);
 
 /// Checks paths against a [`SandboxPolicy`] before sandbx's own code touches them: the
 /// in-process complement to kernel enforcement, since Rust tools (`read`, `write`, `edit`)
@@ -17,17 +28,46 @@ use crate::{Access, ObjectId, SandboxError, SandboxPolicy, VettedPath};
 /// root is in bounds only while it still holds the object that was vetted.
 #[derive(Debug, Clone)]
 pub struct FsGuard {
-    readable: Vec<VettedPath>,
-    writable: Vec<VettedPath>,
+    readable: Vec<Root>,
+    writable: Vec<Root>,
+}
+
+/// A granted root, and the descriptor a permitted access resolves beneath.
+///
+/// `dir` is `None` for three causes a check cannot tell apart and need not: a kernel
+/// without `openat2`, a grant naming a file rather than a directory, and a granted name
+/// that no longer opens as one. All three mean the same thing to an access — resolve by
+/// path, bounded by the confirmation alone, which is what every access did before #230.
+#[derive(Debug, Clone)]
+struct Root {
+    vetted: VettedPath,
+    /// Shared rather than owned: [`FsGuard`] is `Clone`, and a tool call clones one per
+    /// `spawn_blocking`, so an `OwnedFd` field would cost a `dup` per call or the derive.
+    dir: Option<Arc<OwnedFd>>,
 }
 
 impl FsGuard {
-    /// Sort `policy`'s grants into the two lists a check compares against. No I/O: a grant is
-    /// already resolved and pinned, so resolving it again here would answer with whatever its
-    /// spelling names now. Which axis feeds which list is
+    /// Sort `policy`'s grants into the two lists a check compares against, opening a
+    /// descriptor per granted directory to resolve its accesses beneath.
+    ///
+    /// The grant itself is never re-resolved: the descriptor is opened on the path the
+    /// policy already canonicalized, so this answers about that object and not about
+    /// whatever the spelling names now. Which axis feeds which list is
     /// [`Axis::grants`](crate::Axis::grants)'s to say — no `executable` list, since nothing
     /// in-process execs, but execute feeds `readable`.
+    ///
+    /// Infallible, and one dead root denies only itself: a root that has gone is already
+    /// refused by the check, nothing resolving inside a path that does not resolve, so
+    /// there is nothing for construction to refuse and the surviving grants still work.
     pub fn new(policy: &SandboxPolicy) -> Self {
+        Self::with_rooting(policy, resolves_beneath())
+    }
+
+    /// [`new`](Self::new), with the kernel's answer supplied rather than asked.
+    ///
+    /// Split so the fallback is reachable from a test: no CI runner is below the 5.6 that
+    /// `openat2` needs, so the by-path branch is otherwise exercised nowhere.
+    fn with_rooting(policy: &SandboxPolicy, beneath: bool) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
 
@@ -38,11 +78,23 @@ impl FsGuard {
                 execute: _,
             } = axis.grants();
 
+            // Once per grant, then shared: a `ReadExecute` grant feeds `readable` alone, but
+            // a path granted read *and* write is two entries here and so two descriptors —
+            // policy-level duplication, not this loop's to collapse.
+            let dir = beneath
+                .then(|| open_root(granted.path()))
+                .flatten()
+                .map(Arc::new);
+            let root = Root {
+                vetted: granted.clone(),
+                dir,
+            };
+
             if read {
-                readable.push(granted.clone());
+                readable.push(root.clone());
             }
             if write {
-                writable.push(granted.clone());
+                writable.push(root);
             }
         }
 
@@ -53,6 +105,13 @@ impl FsGuard {
     /// Records a refusal and nothing else — the `allowed` belongs to the access that follows,
     /// so prefer [`open_read`](FsGuard::open_read) or [`read_dir`](FsGuard::read_dir).
     pub fn check_read(&self, path: &Path) -> Result<PathBuf, SandboxError> {
+        self.permit_read(path).map(|permitted| permitted.resolved)
+    }
+
+    /// [`check_read`](Self::check_read)'s verdict, keeping the root the access resolves
+    /// beneath. The whole of the check is here; the public form drops the descriptor
+    /// because it hands back a path and so performs no access to root.
+    fn permit_read(&self, path: &Path) -> Result<Permitted, SandboxError> {
         match path.canonicalize() {
             Ok(resolved) => permit(resolved, &self.readable, path, Access::Read),
             // Why a path failed to resolve is information: ENOENT against EACCES over
@@ -76,7 +135,7 @@ impl FsGuard {
         requested: &Path,
         failed: &Path,
         source: std::io::Error,
-        roots: &[VettedPath],
+        roots: &[Root],
         access: Access,
     ) -> SandboxError {
         if let Some(moved) = moved_root(requested, roots) {
@@ -120,13 +179,31 @@ impl FsGuard {
     /// symlink out of the roots. `O_NOFOLLOW` fails such an open with `ELOOP`, but guards the
     /// final component only; a swapped parent needs `openat`-chain resolution.
     pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
-        let resolved = self.check_read(path)?;
-        open(
-            std::fs::OpenOptions::new().read(true),
-            &resolved,
-            path,
+        let permitted = self.permit_read(path)?;
+
+        let Some(root) = &permitted.root else {
+            return open(
+                std::fs::OpenOptions::new().read(true),
+                &permitted.resolved,
+                path,
+                Access::Read,
+            );
+        };
+
+        let opened = beneath(
+            root,
+            &permitted.resolved,
+            OFlag::O_RDONLY,
+            nix::sys::stat::Mode::empty(),
+        );
+
+        record(
+            opened.map(std::fs::File::from),
             Access::Read,
+            path,
+            names_nothing,
         )
+        .map_err(|source| classify(source, path))
     }
 
     /// Read the entries of `path`, refusing anything the policy does not allow. Here and not
@@ -148,7 +225,28 @@ impl FsGuard {
     /// Open `path` for writing, creating or truncating it; closes the check-to-open window
     /// as [`open_read`](FsGuard::open_read) does.
     pub fn open_write(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
-        let resolved = self.check_write(path)?;
+        let permitted = self.permit_write(path)?;
+
+        if let Some(root) = &permitted.root {
+            let opened = beneath(
+                root,
+                &permitted.resolved,
+                OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_TRUNC,
+                // `OpenOptions`' own default, not a choice: `OpenHow` zeroes the mode, so
+                // omitting it creates every file `0o000` and the handle already open hides it.
+                nix::sys::stat::Mode::from_bits_truncate(0o666),
+            );
+
+            return record(
+                opened.map(std::fs::File::from),
+                Access::Write,
+                path,
+                names_nothing,
+            )
+            .map_err(|source| classify(source, path));
+        }
+
+        let resolved = permitted.resolved;
         open(
             std::fs::OpenOptions::new()
                 .write(true)
@@ -258,6 +356,12 @@ impl FsGuard {
     /// `..` is collapsed first either way. Records a refusal and nothing else; prefer
     /// [`open_write`](FsGuard::open_write).
     pub fn check_write(&self, path: &Path) -> Result<PathBuf, SandboxError> {
+        self.permit_write(path).map(|permitted| permitted.resolved)
+    }
+
+    /// [`check_write`](Self::check_write)'s verdict, keeping the root the access resolves
+    /// beneath — the write half of [`permit_read`](Self::permit_read).
+    fn permit_write(&self, path: &Path) -> Result<Permitted, SandboxError> {
         let resolved = match path.canonicalize() {
             Ok(existing) => existing,
             Err(_) => {
@@ -326,6 +430,14 @@ const ROOT_REPLACED: &str = "granted root is not the object it was vetted on";
 /// an operator counting refusals reads as a traversal attempt.
 const INCOMPLETE: &str = "access did not complete";
 
+/// A permitted access whose resolution left the root it was rooted at — the swap window
+/// #230 closes, caught in the act. `RESOLVE_BENEATH` answers `EXDEV` only for a `rename(2)`
+/// moving a component out from under the descriptor mid-resolution, the remainder handed to
+/// the kernel being canonical and so holding no `..` and no link of its own. Its own string,
+/// not `UNRESOLVABLE`: an operator counting substitution attempts would otherwise read this
+/// as a dangling symlink.
+const ESCAPED: &str = "resolution left the granted root since the check";
+
 /// Whether resolution failed because the name denotes no file, rather than because
 /// something refused the lookup. A wrong name is the caller's to fix; EACCES and the
 /// `ELOOP` of a swapped leaf are not, and stay refusals. ENOTDIR and ENAMETOOLONG are as
@@ -364,7 +476,7 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
 /// Where the deepest part of `requested` that resolves sits, and which part that was. A
 /// path that does not resolve is judged by its nearest resolving ancestor, so the root
 /// under it is measured here and before any reason the leaf would name.
-fn nearest_area<'a>(requested: &'a Path, roots: &[VettedPath]) -> (Option<&'a Path>, Containment) {
+fn nearest_area<'a>(requested: &'a Path, roots: &[Root]) -> (Option<&'a Path>, Containment) {
     let Some((ancestor, existing)) = requested
         .ancestors()
         .skip(1)
@@ -376,10 +488,117 @@ fn nearest_area<'a>(requested: &'a Path, roots: &[VettedPath]) -> (Option<&'a Pa
     (Some(ancestor), contains(&existing, roots))
 }
 
+/// Open `granted` as a directory to resolve accesses beneath, or `None` if it is not one.
+///
+/// `O_DIRECTORY` and `O_NOFOLLOW` together, and neither is optional. `O_NOFOLLOW` is what
+/// makes a granted name replaced by a symlink refuse here rather than root the resolution
+/// at whatever the link points to; `O_DIRECTORY` is what makes `O_NOFOLLOW` bite, since
+/// `O_PATH | O_NOFOLLOW` alone returns a handle to the link itself. The opposite choice
+/// from [`VettedPath::confirm`], which omits `O_NOFOLLOW` on purpose: it asks what object
+/// the name holds, and this asks for a directory to resolve beneath.
+///
+/// Through `OpenOptions` rather than `openat2`: a grant is absolute, so there is no
+/// descriptor to resolve it beneath, and `OpenOptions` sets `O_CLOEXEC` itself.
+fn open_root(granted: &Path) -> Option<OwnedFd> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(granted)
+        .ok()
+        .map(OwnedFd::from)
+}
+
+/// Whether this kernel resolves beneath a descriptor, asked once per [`FsGuard`].
+///
+/// `/` is the subject: it always exists, it is always a directory, asking about it discloses
+/// nothing, and it keeps the answer independent of the policy being built.
+fn resolves_beneath() -> bool {
+    resolves_beneath_from(|| {
+        let slash = open_root(Path::new("/")).ok_or(nix::errno::Errno::ENOTDIR)?;
+        kernel_probe(&slash)
+    })
+}
+
+/// Ask the kernel the question an access will ask, in a form that commits to nothing.
+///
+/// `openat2` on `"."` beneath a descriptor, with the resolve flags every access uses: a
+/// probe asking anything narrower could answer differently from the call it stands in for.
+fn kernel_probe(dir: &OwnedFd) -> nix::Result<OwnedFd> {
+    let how = OpenHow::new()
+        .flags(OFlag::O_PATH | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC)
+        .resolve(BENEATH);
+
+    nix::fcntl::openat2(dir, ".", how)
+}
+
+/// Whether `probe`'s answer says this kernel has `openat2` with the resolve flags.
+///
+/// Split from the kernel it asks because the decision is which errnos are a *capability*
+/// verdict, and no CI runner is old enough to produce them. Only the four below are:
+/// anything else — `EACCES` on `/`, say — says nothing about `openat2` and must leave
+/// rooting on, since switching it off for every root on an unrelated errno is a hole both
+/// test suites would pass.
+fn resolves_beneath_from(probe: impl FnOnce() -> nix::Result<OwnedFd>) -> bool {
+    match probe() {
+        Ok(_) => true,
+        Err(
+            nix::errno::Errno::ENOSYS
+            | nix::errno::Errno::EINVAL
+            | nix::errno::Errno::E2BIG
+            | nix::errno::Errno::EOPNOTSUPP,
+        ) => false,
+        Err(_) => true,
+    }
+}
+
+/// A path the policy allows, and the granted root an access resolves it beneath.
+struct Permitted {
+    resolved: PathBuf,
+    root: Option<Rooted>,
+}
+
+/// The descriptor a permitted access resolves beneath, with the granted path it was opened
+/// on — which is what the remainder is measured against.
+struct Rooted {
+    dir: Arc<OwnedFd>,
+    granted: PathBuf,
+}
+
+/// Open `resolved` beneath the root it was permitted under, rather than by its own path.
+///
+/// The relative part comes off the *canonical* resolution and never off the caller's
+/// spelling, so what the kernel resolves holds no `..`, no `.` and no symlink — which is
+/// why [`BENEATH`]'s `RESOLVE_NO_SYMLINKS` costs nothing. An empty remainder means the
+/// grant itself, which `openat2` will not take, so it becomes `"."`.
+fn beneath(
+    root: &Rooted,
+    resolved: &Path,
+    flags: OFlag,
+    mode: nix::sys::stat::Mode,
+) -> std::io::Result<OwnedFd> {
+    let rest = resolved.strip_prefix(&root.granted).unwrap_or(resolved);
+    let rest = match rest.as_os_str().is_empty() {
+        true => Path::new("."),
+        false => rest,
+    };
+
+    let how = OpenHow::new()
+        // `O_CLOEXEC` by hand: `OpenOptions` adds it and `openat2` does not, and without it
+        // the agent's own commands inherit every handle an access opens.
+        .flags(flags | OFlag::O_CLOEXEC)
+        .mode(mode)
+        .resolve(BENEATH);
+
+    nix::fcntl::openat2(root.dir.as_ref(), rest, how).map_err(std::io::Error::from)
+}
+
 /// Where `resolved` sits relative to a set of granted roots.
 enum Containment {
-    /// Inside a root that still holds the object the policy granted it on.
-    Inside,
+    /// Inside a root that still holds the object the policy granted it on, carrying that
+    /// root's descriptor where it has one — what the access then resolves beneath.
+    Inside(Option<Rooted>),
     /// Inside no such root, carrying the root that matched the spelling but had moved: a
     /// second measurement to find out which can disagree with the first.
     Outside(Option<Replacement>),
@@ -397,7 +616,7 @@ struct Replacement {
 /// one the substitute chose. Two forms cover what one cannot: `starts_with` compares whole
 /// components, so `root/link/../..` names the root while collapsing out of it, while
 /// `other/../root` matches only once collapsed (`context/decision-policy.md`).
-fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
+fn moved_root(requested: &Path, roots: &[Root]) -> Option<Replacement> {
     let collapsed = collapsed(requested).filter(|form| form != requested);
 
     [Some(requested), collapsed.as_deref()]
@@ -405,7 +624,7 @@ fn moved_root(requested: &Path, roots: &[VettedPath]) -> Option<Replacement> {
         .flatten()
         .find_map(|form| match contains(form, roots) {
             Containment::Outside(moved) => moved,
-            Containment::Inside => None,
+            Containment::Inside(_) => None,
         })
 }
 
@@ -438,19 +657,33 @@ fn collapsed(requested: &Path) -> Option<PathBuf> {
 /// does not match the root `/work`. The first root both lexical and confirmed wins: nested
 /// and sibling grants overlap, so a moved root must not deny a path another root still
 /// covers. One that cannot be measured accuses nothing and grants nothing.
-fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
+fn contains(resolved: &Path, roots: &[Root]) -> Containment {
     let mut moved = None;
+    let mut confirmed = None;
 
     for root in roots
         .iter()
-        .filter(|root| resolved.starts_with(root.path()))
+        .filter(|root| resolved.starts_with(root.vetted.path()))
     {
-        match root.confirm() {
-            Confirmation::Vetted => return Containment::Inside,
+        match root.vetted.confirm() {
+            // The first confirmed root settles the verdict, but the scan continues for one
+            // that also holds a descriptor: overlapping grants mean the root that matched
+            // first may be the one with no directory to resolve beneath, and taking its
+            // answer would send an access by path that another root could have rooted.
+            // Verdict-neutral — `Inside` either way.
+            Confirmation::Vetted => match &root.dir {
+                Some(dir) => {
+                    return Containment::Inside(Some(Rooted {
+                        dir: Arc::clone(dir),
+                        granted: root.vetted.path().to_path_buf(),
+                    }));
+                }
+                None => confirmed = Some(()),
+            },
             Confirmation::Replaced(opened) => {
                 moved.get_or_insert_with(|| Replacement {
-                    granted: root.path().to_path_buf(),
-                    vetted: root.object(),
+                    granted: root.vetted.path().to_path_buf(),
+                    vetted: root.vetted.object(),
                     opened,
                 });
             }
@@ -458,7 +691,10 @@ fn contains(resolved: &Path, roots: &[VettedPath]) -> Containment {
         }
     }
 
-    Containment::Outside(moved)
+    match confirmed {
+        Some(()) => Containment::Inside(None),
+        None => Containment::Outside(moved),
+    }
 }
 
 /// Refuse `requested`, recording which of the two reasons the gate decided on. One
@@ -495,10 +731,10 @@ fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> Sandbox
 /// axis's roots would record a true verdict with a false reason.
 fn permit(
     resolved: PathBuf,
-    roots: &[VettedPath],
+    roots: &[Root],
     requested: &Path,
     access: Access,
-) -> Result<PathBuf, SandboxError> {
+) -> Result<Permitted, SandboxError> {
     // Before the resolution is judged: a link out of a substituted root lands wherever the
     // substitute points, and an `Ok` there beside an absent name's refusal is a bit about it.
     if let Some(moved) = moved_root(requested, roots) {
@@ -508,7 +744,7 @@ fn permit(
     // And no reason comes off the resolution: a link planted in a root that *confirms*
     // resolves into one that does not, which is the same bit the other way round.
     match contains(&resolved, roots) {
-        Containment::Inside => Ok(resolved),
+        Containment::Inside(root) => Ok(Permitted { resolved, root }),
         Containment::Outside(_) => Err(deny(None, requested, access)),
     }
 }
@@ -539,10 +775,10 @@ fn record<T>(
 /// the leaf swapped since the check, the one post-gate failure that really is a resolution
 /// failure, the rest having found the path and stopped there.
 fn reason(source: &std::io::Error) -> &'static str {
-    if source.raw_os_error() == Some(libc::ELOOP) {
-        UNRESOLVABLE
-    } else {
-        INCOMPLETE
+    match source.raw_os_error() {
+        Some(libc::EXDEV) => ESCAPED,
+        Some(libc::ELOOP) => UNRESOLVABLE,
+        _ => INCOMPLETE,
     }
 }
 
