@@ -1635,6 +1635,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbx-anthropic"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "futures-util",
+ "reqwest",
+ "rustls",
+ "sandbx-event",
+ "sandbx-prompt",
+ "sandbx-provider",
+ "sandbx-sse",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "sandbx-approval"
 version = "0.1.0-alpha.18"
 dependencies = [
@@ -1659,6 +1677,7 @@ dependencies = [
  "clap",
  "futures-util",
  "nix",
+ "sandbx-anthropic",
  "sandbx-approval",
  "sandbx-auth",
  "sandbx-core",
@@ -1667,7 +1686,6 @@ dependencies = [
  "sandbx-logging",
  "sandbx-prompt",
  "sandbx-provider",
- "sandbx-providers",
  "sandbx-screen",
  "sandbx-session-bridge",
  "sandbx-session-error",
@@ -1763,24 +1781,6 @@ dependencies = [
  "futures-util",
  "reqwest",
  "sandbx-event",
-]
-
-[[package]]
-name = "sandbx-providers"
-version = "0.1.0-alpha.18"
-dependencies = [
- "futures-util",
- "reqwest",
- "rustls",
- "sandbx-event",
- "sandbx-prompt",
- "sandbx-provider",
- "sandbx-sse",
- "secrecy",
- "serde",
- "serde_json",
- "tokio",
- "wiremock",
 ]
 
 [[package]]
@@ -1910,13 +1910,13 @@ name = "sandbx-turn"
 version = "0.1.0-alpha.18"
 dependencies = [
  "futures-util",
+ "sandbx-anthropic",
  "sandbx-approval",
  "sandbx-compact",
  "sandbx-core",
  "sandbx-event",
  "sandbx-prompt",
  "sandbx-provider",
- "sandbx-providers",
  "sandbx-tools",
  "serde_json",
  "tempfile",

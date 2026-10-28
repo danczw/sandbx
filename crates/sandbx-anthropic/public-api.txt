@@ -1,0 +1,19 @@
+pub mod sandbx_anthropic
+pub struct sandbx_anthropic::AnthropicClient
+impl sandbx_anthropic::AnthropicClient
+pub const sandbx_anthropic::AnthropicClient::DEFAULT_BASE_URL: &'static str
+pub fn sandbx_anthropic::AnthropicClient::new(secrecy::SecretString) -> core::result::Result<Self, sandbx_provider::ProviderError>
+pub async fn sandbx_anthropic::AnthropicClient::stream_chat(&self, sandbx_prompt::Prompt) -> core::result::Result<sandbx_provider::EventStream, sandbx_provider::ProviderError>
+pub fn sandbx_anthropic::AnthropicClient::with_base_url(self, impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, sandbx_provider::ProviderError>
+impl core::clone::Clone for sandbx_anthropic::AnthropicClient
+pub fn sandbx_anthropic::AnthropicClient::clone(&self) -> sandbx_anthropic::AnthropicClient
+impl core::fmt::Debug for sandbx_anthropic::AnthropicClient
+pub fn sandbx_anthropic::AnthropicClient::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_anthropic::AnthropicClient
+impl core::marker::Send for sandbx_anthropic::AnthropicClient
+impl core::marker::Sync for sandbx_anthropic::AnthropicClient
+impl core::marker::Unpin for sandbx_anthropic::AnthropicClient
+impl core::marker::UnsafeUnpin for sandbx_anthropic::AnthropicClient
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_anthropic::AnthropicClient
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_anthropic::AnthropicClient
+pub fn sandbx_anthropic::ensure_crypto_provider_installed()

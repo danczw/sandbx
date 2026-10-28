@@ -20,6 +20,7 @@ clap = { version = "4.5.51", features = ["derive"] }
 # `term` alone: the one call is `tcflush`, discarding a consent answer typed before the
 # question that would have claimed it.
 nix = { version = "0.31.3", default-features = false, features = ["term"] }
+sandbx-anthropic = { path = "../sandbx-anthropic" }
 sandbx-approval = { path = "../sandbx-approval" }
 sandbx-auth = { path = "../sandbx-auth" }
 sandbx-core = { path = "../sandbx-core" }
@@ -28,7 +29,6 @@ sandbx-grants = { path = "../sandbx-grants" }
 sandbx-logging = { path = "../sandbx-logging" }
 sandbx-prompt = { path = "../sandbx-prompt" }
 sandbx-provider = { path = "../sandbx-provider" }
-sandbx-providers = { path = "../sandbx-providers" }
 sandbx-screen = { path = "../sandbx-screen" }
 sandbx-session-bridge = { path = "../sandbx-session-bridge" }
 sandbx-session-error = { path = "../sandbx-session-error" }
