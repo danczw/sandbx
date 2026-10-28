@@ -202,14 +202,19 @@ architecture the filter gates on.
   confirmation saw: a kernel below 5.6, which has nothing equivalent; a grant
   naming a *file* rather than a directory, which has no directory to resolve
   beneath; a granted name that no longer opens as a directory, where the root open
-  refuses; and that same pin check failing, which is the ceiling on what this
-  buys — somebody able to swap a granted name during the one open per root at
-  startup degrades that root to the older shape for the session. Never wider than
-  the older shape, and never wider than the policy, but not narrower either, so
-  that last case is **recorded**: a `degraded` event naming the root, at `INFO`,
-  since the grant is still bounded by the per-access confirmation and nothing the
-  agent asked for was refused. The other three are properties of the host or the
-  policy and are left to be read off those. There the window is a few
+  refuses. That last one is the ceiling on what this buys: somebody able to swap a
+  granted name during the one open per root at startup degrades that root to the
+  older shape for the session. Never wider than the older shape, and never wider
+  than the policy, but not narrower either, so it is **recorded** — a `degraded`
+  event naming the root, at `INFO`, the grant still being bounded by the
+  per-access confirmation and nothing the agent asked for refused. The record
+  reaches the substitutions the pin can see: another object at the granted name,
+  or the vetted one reached only through a link. It does not reach a granted
+  directory replaced by a regular *file*, because the freed inode number is
+  commonly reused and the pin then compares equal — the reused-inode non-claim
+  below is that floor, and it bounds this record as it bounds the verdict. A
+  kernel below 5.6 and a grant naming a file are properties of the host and the
+  policy, and are left to be read off those. There the window is a few
   syscalls wide for the four single-path tools — `edit` confirms twice,
   `crate::read_file` then `open_write` once the match is known unique — and the
   whole traversal for `find` and `grep`, whose walk confirms its root once and

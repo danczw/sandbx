@@ -34,7 +34,10 @@ record out of the helper at all was the second (see below).
 What a missing step costs depends on which one it was, so `mechanism` carries
 that rather than `Degraded` implying a single answer. A bounding set left as
 inherited is a weaker sandbox; an unmapped identity costs only uid fidelity and
-is, if anything, more restrictive.
+is, if anything, more restrictive. Not every one is a hardening step at exec:
+`rooted_access` is emitted while the in-process gate is *built*, for a granted
+root whose name no longer reaches the directory it was vetted on, and says that
+root's accesses resolve by path for the session (#230).
 
 **Metadata only, never output.** That a tool read a file is a different
 proposition from storing what the file contained; output is where secrets live.
