@@ -1,9 +1,8 @@
 //! A hand-rolled streaming client against the Anthropic Messages API.
 //!
-//! The seam is the return type: `stream_chat` hands back
-//! [`sandbx_provider::EventStream`], so there is no trait or enum over the backends. No
-//! vendor SDK sits between sandbx and the wire format; see
-//! `context/decision-provider-seam.md`.
+//! The seam is the return type: there is no trait or enum over the backends, only
+//! `stream_chat` handing back an [`sandbx_provider::EventStream`]. No vendor SDK sits
+//! between sandbx and the wire format; see `context/decision-provider-seam.md`.
 //!
 //! Nothing here is vocabulary: what a request is made of is [`sandbx_prompt`]'s, the
 //! error a stream can fail with is [`sandbx_provider::ProviderError`], the events it
