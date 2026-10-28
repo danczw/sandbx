@@ -1,0 +1,30 @@
+[package]
+name = "sandbx-sse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The byte chunks a frame is reassembled from: `Bytes` is the stream's item.
+bytes = "1"
+# `Stream` and `StreamExt` to drive the input, `unfold` to carry the buffer across
+# polls, and `FusedStream` as the stated return bound.
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+# `reqwest::Result` is the input stream's item, so the error half is a
+# `reqwest::Error` — the type `ProviderError::Transport` carries. Naming no feature is
+# what keeps rustls out of this tree; `sandbx-provider/Cargo.toml` records why the bare
+# form would put aws-lc-rs on the rustls the client crate drives with `ring` (#366).
+reqwest = { version = "0.13.5", default-features = false }
+# `ProviderError` alone, and only two of its variants: a frame that could not be decoded
+# is `MalformedEvent`, a stream that failed under one is `Transport`. Not `EventStream` —
+# framing yields strings, and what a payload means is the vendor's.
+sandbx-provider = { path = "../sandbx-provider" }
+
+[dev-dependencies]
+tokio = { version = "1.53.1", default-features = false, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

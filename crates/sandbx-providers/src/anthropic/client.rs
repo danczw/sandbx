@@ -5,7 +5,7 @@ use sandbx_prompt::Prompt;
 use sandbx_provider::{EventStream, ProviderError};
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::{ensure_crypto_provider_installed, sse};
+use crate::ensure_crypto_provider_installed;
 
 use super::body::Body;
 use super::wire;
@@ -92,7 +92,7 @@ impl AnthropicClient {
             return Err(map_error_response(status, response).await);
         }
 
-        let events = wire::event_stream(sse::tokenize(response.bytes_stream()));
+        let events = wire::event_stream(sandbx_sse::tokenize(response.bytes_stream()));
         Ok(Box::pin(events))
     }
 }

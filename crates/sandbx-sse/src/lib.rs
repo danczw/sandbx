@@ -16,8 +16,9 @@ use sandbx_provider::ProviderError;
 /// continuation or lead byte takes that value.
 ///
 /// `Send` is stated rather than left to leak out of the opaque type, so a non-`Send`
-/// field added to the state below fails here, not at the coercion in `stream_chat`.
-pub(crate) fn tokenize(
+/// field added to the state below fails here, not at the coercion in a client's
+/// `stream_chat`.
+pub fn tokenize(
     bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<String, ProviderError>> + Send {
     // `.fuse()`: `unfold` panics if polled after it returns `None`, and callers
@@ -244,7 +245,7 @@ mod tests {
         assert_eq!(events[0].as_ref().unwrap(), "{}");
     }
 
-    /// A CDN or proxy heartbeat: still a frame, for `wire/accumulate.rs` to skip.
+    /// A CDN or proxy heartbeat: still a frame, for the vendor's accumulator to skip.
     #[tokio::test]
     async fn a_comment_only_frame_yields_an_empty_payload() {
         let events = tokenize_all(vec![b": keep-alive\n\ndata: {}\n\n"]).await;

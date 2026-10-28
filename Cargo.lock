@@ -1776,6 +1776,7 @@ dependencies = [
  "sandbx-event",
  "sandbx-prompt",
  "sandbx-provider",
+ "sandbx-sse",
  "secrecy",
  "serde",
  "serde_json",
@@ -1855,6 +1856,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "sandbx-sse"
+version = "0.1.0-alpha.18"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "reqwest",
+ "sandbx-provider",
+ "tokio",
 ]
 
 [[package]]
