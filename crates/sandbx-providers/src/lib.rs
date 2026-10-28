@@ -7,9 +7,9 @@
 //!
 //! Nothing here is vocabulary any more: what a request is made of is
 //! [`sandbx_prompt`]'s, the error a stream can fail with is
-//! [`sandbx_provider::ProviderError`], the events it yields are [`sandbx_event`]'s, and
-//! what that text may not carry to a terminal is `sandbx-text`'s, and the SSE framing a
-//! payload arrives in is `sandbx-sse`'s. What is left is the vendor boundary —
+//! [`sandbx_provider::ProviderError`], the events it yields are [`sandbx_event`]'s,
+//! what that text may not carry to a terminal is `sandbx-text`'s, and the framing a
+//! payload arrives in is [`sandbx_sse`]'s. What is left is the vendor boundary —
 //! everything that knows one API's field names, string tables and body rules lives
 //! under `anthropic` — plus the one crypto-provider install (#364, #366, #367).
 
