@@ -45,7 +45,8 @@ enum OpenBlock {
 
 /// Map a stream of raw SSE frames into [`AgentEvent`]s.
 ///
-/// `Send` is stated, and the result fused, for the reasons `sse::tokenize` gives.
+/// `Send` is stated, and the result fused, for the reasons
+/// [`sandbx_sse::tokenize`] gives.
 pub(crate) fn event_stream(
     raw: impl Stream<Item = Result<String, ProviderError>> + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<AgentEvent, ProviderError>> + Send {
@@ -208,7 +209,7 @@ where
             }
         };
 
-        // A CDN or proxy heartbeat, which `sse.rs` reports as a frame with an empty
+        // A CDN or proxy heartbeat, which `sandbx-sse` reports as a frame with an empty
         // payload. Treating `""` as malformed would end a healthy turn the moment an
         // intermediary inserted one.
         if data.trim().is_empty() {
