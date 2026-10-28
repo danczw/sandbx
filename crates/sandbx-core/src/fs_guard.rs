@@ -295,8 +295,18 @@ impl FsGuard {
         // One record for the walk, naming the root: per entry would name thousands of files
         // it only listed. A caller that then reads them — `grep` — adds its own per open.
         let requested = root;
-        let root = self.check_read(root)?;
+        let permitted = self.permit_read(root)?;
 
+        if let Some(rooted) = &permitted.root {
+            let walked = self.walk_beneath(rooted, &permitted.resolved, max_files);
+            // The one record for the whole walk, as below: a rooted descent refuses
+            // nothing a by-path one would not, so it reports the same success.
+            crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
+                .emit();
+            return Ok(walked);
+        }
+
+        let root = permitted.resolved;
         let mut files = Vec::new();
         let mut stack = vec![root];
         // Set where a file enters the result, so directories do not count toward the cap
@@ -369,6 +379,110 @@ impl FsGuard {
         crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
             .emit();
         Ok(ReadableWalk { files, truncated })
+    }
+
+    /// [`walk_readable`](Self::walk_readable)'s descent, by descriptor rather than by path.
+    ///
+    /// The stack holds a *parent* descriptor and a child's name, and the child is opened
+    /// when it is popped rather than when it is pushed. Opening at push time would hold one
+    /// descriptor per pending sibling and run a wide tree into `EMFILE`; popping bounds the
+    /// live set by the tree's depth, which the by-path stack bounded for free.
+    ///
+    /// The symlink arm stays by path on purpose: it is the verdict deciding whether a link
+    /// leaves the granted set, which is the concealment rule's and not this descent's, and
+    /// the files it yields are opened later through [`open_read`](Self::open_read), rooted
+    /// there.
+    fn walk_beneath(&self, rooted: &Rooted, resolved: &Path, max_files: usize) -> ReadableWalk {
+        use std::os::unix::ffi::OsStrExt;
+
+        let mut files = Vec::new();
+        let mut truncated = false;
+
+        let Ok(top) = beneath(
+            rooted,
+            resolved,
+            OFlag::O_RDONLY | OFlag::O_DIRECTORY,
+            nix::sys::stat::Mode::empty(),
+        ) else {
+            return ReadableWalk { files, truncated };
+        };
+
+        let mut stack = vec![(Arc::new(top), resolved.to_path_buf())];
+
+        'walk: while let Some((dir, at)) = stack.pop() {
+            // `try_clone` because listing consumes a descriptor and this one is also the
+            // parent its subdirectories are opened beneath. An unreadable directory is
+            // skipped and not fatal, as it was by path.
+            let Ok(for_listing) = dir.try_clone() else {
+                continue;
+            };
+            let Ok(entries) = entries_at(for_listing) else {
+                continue;
+            };
+
+            for (name, kind) in entries {
+                let child = at.join(std::ffi::OsStr::from_bytes(&name));
+
+                match kind {
+                    Some(nix::dir::Type::Symlink) => {
+                        if let Some(resolved) = self.walked_link(&child) {
+                            if files.len() == max_files {
+                                truncated = true;
+                                break 'walk;
+                            }
+                            files.push(resolved);
+                        }
+                    }
+                    Some(nix::dir::Type::Directory) => {
+                        if let Ok(opened) = open_dir_at(&dir, &name) {
+                            stack.push((Arc::new(opened), child));
+                        }
+                    }
+                    Some(nix::dir::Type::File) => {
+                        if files.len() == max_files {
+                            truncated = true;
+                            break 'walk;
+                        }
+                        files.push(child);
+                    }
+                    // A FIFO with no writer blocks forever, and a device is not a file the
+                    // tools read; an unclassifiable entry is neither descended nor collected.
+                    _ => {}
+                }
+            }
+        }
+
+        files.sort();
+        ReadableWalk { files, truncated }
+    }
+
+    /// Where a symlink found in a walk resolves, if the granted set still covers it.
+    ///
+    /// Records its own refusal and returns `None`: a walk has no caller to tell, so the
+    /// trail is the whole report, and a link into a moved root recorded as merely out of
+    /// bounds would hide the substitution.
+    fn walked_link(&self, link: &Path) -> Option<PathBuf> {
+        let resolved = link.canonicalize().ok()?;
+
+        // The link's own spelling answers first: inside the confirm-to-walk window the
+        // entries are the substitute's, so a resolved reason is one it chose.
+        let placement = match moved_root(link, &self.readable) {
+            Some(moved) => Containment::Outside(Some(moved)),
+            None => contains(&resolved, &self.readable),
+        };
+
+        if let Containment::Outside(moved) = placement {
+            let reason = moved.map_or(Access::Read.outside(), |_| ROOT_REPLACED);
+            crate::AuditEvent::denied(
+                Access::Read.operation(),
+                &link.display().to_string(),
+                reason,
+            )
+            .emit();
+            return None;
+        }
+
+        resolved.is_file().then_some(resolved)
     }
 
     /// Permit writing `path`, returning its resolved location. The target need not exist,
@@ -654,19 +768,30 @@ fn listing_by_path(entries: std::fs::ReadDir) -> std::io::Result<Listing> {
         .map(|entries| Listing { entries })
 }
 
-/// Read every entry of the directory `dir` holds open, dropping `.` and `..`.
-///
-/// `DT_UNKNOWN` is why the `fstatat` is here and not a tidier `map`: not every filesystem
-/// reports an entry's type in the `dirent` — XFS without `ftype=1`, and some network
-/// filesystems — and `std::fs::DirEntry::file_type` quietly `lstat`s in that case. Without
-/// the same fallback `ls` would stop marking directories on those hosts.
+/// Read every entry of the directory `dir` holds open, as a [`Listing`].
 fn listing(dir: OwnedFd) -> std::io::Result<Listing> {
     use std::os::unix::ffi::OsStrExt;
 
+    let entries = entries_at(dir)?
+        .into_iter()
+        .map(|(name, kind)| Listed {
+            name: std::ffi::OsStr::from_bytes(&name).to_owned(),
+            directory: kind == Some(nix::dir::Type::Directory),
+        })
+        .collect();
+
+    Ok(Listing { entries })
+}
+
+/// Every entry of the directory `dir` holds open, with its type, dropping `.` and `..`.
+///
+/// Two passes, because the `fstatat` the second needs borrows the directory that `iter`
+/// borrows mutably: names and whatever the `dirent` carried first, then the unknowns.
+/// `None` out means the type could not be established at all, which every caller reads as
+/// neither a directory to descend nor a file to collect — the safe answer for both.
+fn entries_at(dir: OwnedFd) -> std::io::Result<Vec<(Vec<u8>, Option<nix::dir::Type>)>> {
     let mut dir = nix::dir::Dir::from_fd(dir)?;
 
-    // Two passes, because the `fstatat` below needs the directory that `iter` borrows
-    // mutably: names and whatever the `dirent` knew first, then the unknowns.
     let mut entries = Vec::new();
     for entry in dir.iter() {
         let entry = entry?;
@@ -677,39 +802,52 @@ fn listing(dir: OwnedFd) -> std::io::Result<Listing> {
         entries.push((name, entry.file_type()));
     }
 
-    let entries = entries
+    Ok(entries
         .into_iter()
-        .map(|(name, kind)| {
-            let directory = match kind {
-                Some(kind) => kind == nix::dir::Type::Directory,
-                None => stat_is_dir(&dir, &name),
-            };
-
-            Listed {
-                name: std::ffi::OsStr::from_bytes(&name).to_owned(),
-                directory,
+        .map(|(name, kind)| match kind {
+            Some(kind) => (name, Some(kind)),
+            None => {
+                let kind = stat_kind(&dir, &name);
+                (name, kind)
             }
         })
-        .collect();
-
-    Ok(Listing { entries })
+        .collect())
 }
 
-/// Whether `name` under `dir` is a directory, following no link to find out.
+/// The type of `name` under `dir`, following no link to find out.
 ///
-/// The `DT_UNKNOWN` fallback. An entry whose type cannot be read at all reads as not a
-/// directory: the flag marks what may be descended into, so the safe answer is no.
-fn stat_is_dir(dir: &nix::dir::Dir, name: &[u8]) -> bool {
-    let Ok(name) = std::ffi::CString::new(name) else {
-        return false;
-    };
-
-    nix::sys::stat::fstatat(
+/// The `DT_UNKNOWN` fallback, which `std::fs::DirEntry::file_type` performs for free and
+/// `nix`'s does not: without it a filesystem that reports no type in the `dirent` — XFS
+/// without `ftype=1`, some network filesystems — leaves every entry unclassified.
+fn stat_kind(dir: &nix::dir::Dir, name: &[u8]) -> Option<nix::dir::Type> {
+    let name = std::ffi::CString::new(name).ok()?;
+    let at = nix::sys::stat::fstatat(
         dir,
         name.as_c_str(),
         nix::fcntl::AtFlags::AT_SYMLINK_NOFOLLOW,
     )
-    .is_ok_and(|at| at.st_mode & libc::S_IFMT == libc::S_IFDIR)
+    .ok()?;
+
+    match at.st_mode & libc::S_IFMT {
+        libc::S_IFDIR => Some(nix::dir::Type::Directory),
+        libc::S_IFREG => Some(nix::dir::Type::File),
+        libc::S_IFLNK => Some(nix::dir::Type::Symlink),
+        _ => None,
+    }
+}
+
+/// Open the single component `name` as a directory beneath `parent`.
+///
+/// One component, so the resolve flags have nothing to traverse: they are here because a
+/// `name` that became a symlink to a directory must refuse rather than be descended, which
+/// is the same rule the walk's own symlink test states for the entries it can classify.
+fn open_dir_at(parent: &OwnedFd, name: &[u8]) -> std::io::Result<OwnedFd> {
+    let name = std::ffi::CString::new(name).map_err(std::io::Error::other)?;
+    let how = OpenHow::new()
+        .flags(OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC)
+        .resolve(BENEATH);
+
+    nix::fcntl::openat2(parent, name.as_c_str(), how).map_err(std::io::Error::from)
 }
 
 /// Where `resolved` sits relative to a set of granted roots.
