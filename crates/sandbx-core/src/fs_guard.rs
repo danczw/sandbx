@@ -85,10 +85,7 @@ impl FsGuard {
             // Once per grant, then shared: a `ReadExecute` grant feeds `readable` alone, but
             // a path granted read *and* write is two entries here and so two descriptors —
             // policy-level duplication, not this loop's to collapse.
-            let dir = beneath
-                .then(|| open_root(granted.path()))
-                .flatten()
-                .map(Arc::new);
+            let dir = beneath.then(|| open_root(granted)).flatten().map(Arc::new);
             let root = Root {
                 vetted: granted.clone(),
                 dir,
@@ -302,12 +299,21 @@ impl FsGuard {
         let permitted = self.permit_read(root)?;
 
         if let Some(rooted) = &permitted.root {
-            let walked = self.walk_beneath(rooted, &permitted.resolved, max_files);
-            // The one record for the whole walk, as below: a rooted descent refuses
-            // nothing a by-path one would not, so it reports the same success.
-            crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
-                .emit();
-            return Ok(walked);
+            // Through `record`, not an unconditional `allowed`: the rooted descent refuses
+            // one thing a by-path one cannot — a component renamed out from under the root
+            // between the check and the walk root's own open — and recording that as a
+            // successful read of an empty tree would hide the substitution this closes.
+            let top = beneath(
+                rooted,
+                &permitted.resolved,
+                OFlag::O_RDONLY | OFlag::O_DIRECTORY,
+                nix::sys::stat::Mode::empty(),
+            );
+
+            let top = record(top, Access::Read, requested, names_nothing)
+                .map_err(|source| classify(source, requested))?;
+
+            return Ok(self.walk_beneath(top, &permitted.resolved, max_files));
         }
 
         let root = permitted.resolved;
@@ -396,27 +402,34 @@ impl FsGuard {
     /// leaves the granted set, which is the concealment rule's and not this descent's, and
     /// the files it yields are opened later through [`open_read`](Self::open_read), rooted
     /// there.
-    fn walk_beneath(&self, rooted: &Rooted, resolved: &Path, max_files: usize) -> ReadableWalk {
+    fn walk_beneath(&self, top: OwnedFd, at: &Path, max_files: usize) -> ReadableWalk {
         use std::os::unix::ffi::OsStrExt;
 
         let mut files = Vec::new();
         let mut truncated = false;
 
-        let Ok(top) = beneath(
-            rooted,
-            resolved,
-            OFlag::O_RDONLY | OFlag::O_DIRECTORY,
-            nix::sys::stat::Mode::empty(),
-        ) else {
-            return ReadableWalk { files, truncated };
-        };
+        // A stack entry costs an `Arc` clone of its *parent*, never a descriptor of its own,
+        // and the child is opened when it is popped. Opening at push time would hold one
+        // descriptor per pending sibling, so a wide tree runs out of them and loses whole
+        // subtrees with nothing marking the result partial — which the by-path stack could
+        // not do, `std::fs::read_dir` holding one directory at a time. Popping bounds the
+        // live set by the tree's depth instead: siblings share one parent handle.
+        let mut stack: Vec<(Arc<OwnedFd>, Option<Vec<u8>>, PathBuf)> =
+            vec![(Arc::new(top), None, at.to_path_buf())];
 
-        let mut stack = vec![(Arc::new(top), resolved.to_path_buf())];
+        'walk: while let Some((parent, name, at)) = stack.pop() {
+            let dir = match name {
+                // The walk root, already open.
+                None => parent,
+                Some(name) => match open_dir_at(&parent, &name) {
+                    Ok(opened) => Arc::new(opened),
+                    // An unreadable subdirectory is skipped, not fatal, as it was by path.
+                    Err(_) => continue,
+                },
+            };
 
-        'walk: while let Some((dir, at)) = stack.pop() {
             // `try_clone` because listing consumes a descriptor and this one is also the
-            // parent its subdirectories are opened beneath. An unreadable directory is
-            // skipped and not fatal, as it was by path.
+            // parent its own subdirectories are opened beneath.
             let Ok(for_listing) = dir.try_clone() else {
                 continue;
             };
@@ -438,9 +451,7 @@ impl FsGuard {
                         }
                     }
                     Some(nix::dir::Type::Directory) => {
-                        if let Ok(opened) = open_dir_at(&dir, &name) {
-                            stack.push((Arc::new(opened), child));
-                        }
+                        stack.push((Arc::clone(&dir), Some(name), child));
                     }
                     Some(nix::dir::Type::File) => {
                         if files.len() == max_files {
@@ -637,13 +648,38 @@ fn nearest_area<'a>(requested: &'a Path, roots: &[Root]) -> (Option<&'a Path>, C
 ///
 /// Through `OpenOptions` rather than `openat2`: a grant is absolute, so there is no
 /// descriptor to resolve it beneath, and `OpenOptions` sets `O_CLOEXEC` itself.
-fn open_root(granted: &Path) -> Option<OwnedFd> {
+fn open_root(granted: &VettedPath) -> Option<OwnedFd> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let opened = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(granted.path())
+        .ok()
+        .map(OwnedFd::from)?;
+
+    // The descriptor is measured against the pin before it is kept, because the open and
+    // the per-access confirmation are two different moments. A granted name holding an
+    // attacker's directory while this runs, restored before the first access, would confirm
+    // against the pin and still resolve every access beneath the substitute — the one way a
+    // held descriptor could be worse than the path it replaced.
+    match ObjectId::of_fd(&opened) {
+        Ok(object) if object == granted.object() => Some(opened),
+        _ => None,
+    }
+}
+
+/// `/` as a bare directory descriptor, for the capability probe alone.
+///
+/// No pin to measure it against, and none wanted: the probe asks what the kernel can do and
+/// not what any grant holds, which is why it is `/` and not one of the policy's roots.
+fn probe_subject() -> Option<OwnedFd> {
     use std::os::unix::fs::OpenOptionsExt;
 
     std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW)
-        .open(granted)
+        .custom_flags(libc::O_PATH | libc::O_DIRECTORY)
+        .open("/")
         .ok()
         .map(OwnedFd::from)
 }
@@ -654,7 +690,7 @@ fn open_root(granted: &Path) -> Option<OwnedFd> {
 /// nothing, and it keeps the answer independent of the policy being built.
 fn resolves_beneath() -> bool {
     resolves_beneath_from(|| {
-        let slash = open_root(Path::new("/")).ok_or(nix::errno::Errno::ENOTDIR)?;
+        let slash = probe_subject().ok_or(nix::errno::Errno::ENOTDIR)?;
         kernel_probe(&slash)
     })
 }
@@ -796,9 +832,11 @@ fn listing(dir: OwnedFd) -> std::io::Result<Listing> {
 fn entries_at(dir: OwnedFd) -> std::io::Result<Vec<(Vec<u8>, Option<nix::dir::Type>)>> {
     let mut dir = nix::dir::Dir::from_fd(dir)?;
 
+    // `flatten`, not `?`: one unreadable `dirent` costs that entry and not the whole
+    // directory, which is what the by-path walk's `entries.flatten()` did. Aborting here
+    // would discard the entries already read and mark nothing partial.
     let mut entries = Vec::new();
-    for entry in dir.iter() {
-        let entry = entry?;
+    for entry in dir.iter().flatten() {
         let name = entry.file_name().to_bytes().to_vec();
         if name == b"." || name == b".." {
             continue;
@@ -1249,7 +1287,7 @@ mod tests {
         }
 
         assert!(
-            resolves_beneath_from(|| open_root(Path::new("/")).ok_or(nix::errno::Errno::ENOTDIR)),
+            resolves_beneath_from(|| probe_subject().ok_or(nix::errno::Errno::ENOTDIR)),
             "a kernel that answers must read as present"
         );
     }
