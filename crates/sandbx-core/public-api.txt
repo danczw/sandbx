@@ -31,6 +31,8 @@ pub sandbx_core::AuditEvent::Allowed::tool: &'a str
 pub sandbx_core::AuditEvent::Degraded
 pub sandbx_core::AuditEvent::Degraded::detail: &'a str
 pub sandbx_core::AuditEvent::Degraded::mechanism: &'a str
+pub sandbx_core::AuditEvent::Degraded::session: &'a str
+pub sandbx_core::AuditEvent::Degraded::spawn: &'a str
 pub sandbx_core::AuditEvent::Denied
 pub sandbx_core::AuditEvent::Denied::reason: &'a str
 pub sandbx_core::AuditEvent::Denied::subject: &'a str
@@ -38,10 +40,15 @@ pub sandbx_core::AuditEvent::Denied::tool: &'a str
 pub sandbx_core::AuditEvent::Exited
 pub sandbx_core::AuditEvent::Exited::code: i32
 pub sandbx_core::AuditEvent::Exited::program: &'a str
+pub sandbx_core::AuditEvent::Exited::session: &'a str
+pub sandbx_core::AuditEvent::Exited::spawn: &'a str
 pub sandbx_core::AuditEvent::Failed
 pub sandbx_core::AuditEvent::Failed::program: &'a str
 pub sandbx_core::AuditEvent::Failed::reason: &'static str
+pub sandbx_core::AuditEvent::Failed::session: &'a str
+pub sandbx_core::AuditEvent::Failed::spawn: &'a str
 pub sandbx_core::AuditEvent::Spawned
+pub sandbx_core::AuditEvent::Spawned::args: &'a str
 pub sandbx_core::AuditEvent::Spawned::dns_names: usize
 pub sandbx_core::AuditEvent::Spawned::dns_over_tcp: bool
 pub sandbx_core::AuditEvent::Spawned::env: usize
@@ -51,17 +58,19 @@ pub sandbx_core::AuditEvent::Spawned::network_ports: usize
 pub sandbx_core::AuditEvent::Spawned::pinned: bool
 pub sandbx_core::AuditEvent::Spawned::program: &'a str
 pub sandbx_core::AuditEvent::Spawned::readable: usize
+pub sandbx_core::AuditEvent::Spawned::session: &'a str
+pub sandbx_core::AuditEvent::Spawned::spawn: &'a str
 pub sandbx_core::AuditEvent::Spawned::unix_sockets: bool
 pub sandbx_core::AuditEvent::Spawned::writable: usize
 impl<'a> sandbx_core::AuditEvent<'a>
 pub fn sandbx_core::AuditEvent<'a>::absent(&'a str, &'a str) -> Self
 pub fn sandbx_core::AuditEvent<'a>::allowed(&'a str, &'a str) -> Self
-pub fn sandbx_core::AuditEvent<'a>::degraded(&'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::degraded(&'a str, core::option::Option<&'a sandbx_core::SpawnId>, core::option::Option<&'a str>, &'a str) -> Self
 pub fn sandbx_core::AuditEvent<'a>::denied(&'a str, &'a str, &'a str) -> Self
 pub fn sandbx_core::AuditEvent<'a>::emit(&self)
-pub fn sandbx_core::AuditEvent<'a>::exited(&'a str, &std::process::ExitStatus) -> Self
-pub fn sandbx_core::AuditEvent<'a>::failed(&'a str, &'static str) -> Self
-pub fn sandbx_core::AuditEvent<'a>::spawned(&'a str, &sandbx_core::SandboxPolicy, bool) -> Self
+pub fn sandbx_core::AuditEvent<'a>::exited(&'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &std::process::ExitStatus) -> Self
+pub fn sandbx_core::AuditEvent<'a>::failed(&'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &'static str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::spawned(&'a str, &'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &sandbx_core::SandboxPolicy, bool) -> Self
 impl<'a> core::clone::Clone for sandbx_core::AuditEvent<'a>
 pub fn sandbx_core::AuditEvent<'a>::clone(&self) -> sandbx_core::AuditEvent<'a>
 impl<'a> core::cmp::Eq for sandbx_core::AuditEvent<'a>
@@ -449,6 +458,7 @@ pub fn sandbx_core::SandboxedCommand::helper(self, impl core::convert::AsRef<std
 pub fn sandbx_core::SandboxedCommand::new(impl core::convert::Into<alloc::string::String>, sandbx_core::SandboxPolicy) -> Self
 pub fn sandbx_core::SandboxedCommand::output(&self) -> core::result::Result<std::process::Output, sandbx_core::SandboxError>
 pub fn sandbx_core::SandboxedCommand::pin_sha256(self, sandbx_core::Sha256Digest) -> Self
+pub fn sandbx_core::SandboxedCommand::session(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn sandbx_core::SandboxedCommand::timeout(self, core::time::Duration) -> Self
 impl core::clone::Clone for sandbx_core::SandboxedCommand
 pub fn sandbx_core::SandboxedCommand::clone(&self) -> sandbx_core::SandboxedCommand
@@ -483,6 +493,25 @@ impl core::marker::Unpin for sandbx_core::Sha256Digest
 impl core::marker::UnsafeUnpin for sandbx_core::Sha256Digest
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Sha256Digest
 impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Sha256Digest
+pub struct sandbx_core::SpawnId(_)
+impl sandbx_core::SpawnId
+pub fn sandbx_core::SpawnId::as_str(&self) -> &str
+pub fn sandbx_core::SpawnId::next() -> Self
+impl core::clone::Clone for sandbx_core::SpawnId
+pub fn sandbx_core::SpawnId::clone(&self) -> sandbx_core::SpawnId
+impl core::cmp::Eq for sandbx_core::SpawnId
+impl core::cmp::PartialEq for sandbx_core::SpawnId
+pub fn sandbx_core::SpawnId::eq(&self, &sandbx_core::SpawnId) -> bool
+impl core::fmt::Debug for sandbx_core::SpawnId
+pub fn sandbx_core::SpawnId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::SpawnId
+impl core::marker::Freeze for sandbx_core::SpawnId
+impl core::marker::Send for sandbx_core::SpawnId
+impl core::marker::Sync for sandbx_core::SpawnId
+impl core::marker::Unpin for sandbx_core::SpawnId
+impl core::marker::UnsafeUnpin for sandbx_core::SpawnId
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SpawnId
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::SpawnId
 pub struct sandbx_core::VettedPath
 impl sandbx_core::VettedPath
 pub fn sandbx_core::VettedPath::object(&self) -> sandbx_core::ObjectId

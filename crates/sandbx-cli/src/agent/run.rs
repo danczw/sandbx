@@ -280,6 +280,14 @@ impl AgentRun {
 
         let session = session::open(self.session())?;
 
+        // Shadowed here rather than built here: the two comments above pin why `ctx`
+        // precedes the terminal and the credential, and a spawn with no session to name
+        // still records its own id (#249).
+        let ctx = match session.as_ref() {
+            Some(open) => ctx.with_session(open.id().to_string()),
+            None => ctx,
+        };
+
         self.drive(
             |request| client.stream_chat(request),
             &ctx,

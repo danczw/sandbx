@@ -4,11 +4,46 @@
 //! reach only those who opted in, and a record matters most where nobody did. Field table,
 //! and why a record names the access and not the verdict: `context/guide-logging.md`.
 
-use crate::{Axis, NetworkPolicy, SandboxPolicy};
+use crate::{Axis, NetworkPolicy, SandboxPolicy, SpawnId};
 
 /// `tracing` target carrying the audit trail, kept apart from ordinary diagnostics so a
 /// subscriber can route it on its own; see `context/guide-logging.md`.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
+
+/// How much of a command's argument list a record carries, in characters.
+///
+/// `sandbx-cli`'s `gate::printable` caps a model-chosen field at the same 512 for the same
+/// reason. Not that function: it reaches `sandbx_text::invisible`, an edge
+/// `crates/sandbx-text/src/lib.rs` refuses this crate.
+const ARGS_CAP: usize = 512;
+
+/// What a record carries where there is no session. Outside a `SessionId`'s `0-9a-z`, so a
+/// reader cannot mistake it for one.
+const SESSION_ABSENT: &str = "-";
+
+/// What a record carries where there is no run — only [`AuditEvent::Degraded`] has one,
+/// `rooted_access` being emitted before anything is spawned. Outside a
+/// [`SpawnId`]'s hex-and-dot spelling for the same reason as [`SESSION_ABSENT`].
+const SPAWN_ABSENT: &str = "-";
+
+/// A command's arguments as one field value, cut to [`ARGS_CAP`] with the cut marked.
+///
+/// The list's own `Debug`, so each argument is quoted and `escape_debug`'d — an argument
+/// holding a space stays one argument, and nothing a model wrote can carry a raw newline or
+/// escape sequence onto the trail. Rendered before it is cut, so a cut can only bisect an
+/// escape sequence and never expose the byte it was hiding. Emitted with `%` in
+/// [`AuditEvent::emit`], which is what keeps the layer from escaping it a second time.
+pub(crate) fn args_field(args: &[String]) -> String {
+    let rendered = format!("{args:?}");
+    let mut out: String = rendered.chars().take(ARGS_CAP).collect();
+
+    // Marked, not silent: a reader who cannot see the whole command still knows so.
+    if rendered.chars().nth(ARGS_CAP).is_some() {
+        out.push('…');
+    }
+
+    out
+}
 
 /// Something the sandbox did, recorded so it can be reviewed afterwards. Emitted at
 /// `INFO`, so it survives the default filter. Metadata only, never a command's output:
@@ -50,6 +85,13 @@ pub enum AuditEvent<'a> {
     Degraded {
         /// Which step did not take effect, as a stable label a trail can be filtered by.
         mechanism: &'a str,
+        /// The run this weakened, or `SPAWN_ABSENT` for a step that belongs to no run —
+        /// `rooted_access` is emitted while the in-process gate is built, before any spawn.
+        /// A degradation falls *between* a spawn and its outcome, so without this the
+        /// middle of a run would still be attributed by position (#249).
+        spawn: &'a str,
+        /// The session this ran under, as in [`Spawned`](Self::Spawned).
+        session: &'a str,
         /// Why it did not, and what holds instead.
         detail: &'a str,
     },
@@ -57,8 +99,19 @@ pub enum AuditEvent<'a> {
     /// A sandboxed process was started, and under what shape of policy. Written before the
     /// exec, so [`Exited`](Self::Exited) or [`Failed`](Self::Failed) is what says it ran.
     Spawned {
+        /// The run this record opens, and that exactly one outcome closes. Unique across
+        /// processes, so two sandbx runs sharing a sink stay separable (#249).
+        spawn: &'a str,
+        /// The session this ran under, or `SESSION_ABSENT` where there is none —
+        /// `sandbox-run` has no session. A sentinel and not an `Option` for the reason
+        /// [`Failed`](Self::Failed) is a variant of its own.
+        session: &'a str,
         /// The program the sandbox is about to become.
         program: &'a str,
+        /// What it was asked to do, cut to `ARGS_CAP`. Here because `program` is
+        /// `/bin/sh` for every `bash` call, so the `-c` string — the command itself — was
+        /// on no record at all (#249).
+        args: &'a str,
         /// How many paths were readable, not which ones.
         readable: usize,
         /// How many paths were writable.
@@ -87,6 +140,10 @@ pub enum AuditEvent<'a> {
 
     /// A sandboxed process ended, and with what status.
     Exited {
+        /// The run this closes, as its [`Spawned`](Self::Spawned) named it.
+        spawn: &'a str,
+        /// The session this ran under, as in [`Spawned`](Self::Spawned).
+        session: &'a str,
         /// The program the spawn record named.
         program: &'a str,
         /// What it ended with, encoded the way a shell does — 128 + n for a signal.
@@ -97,6 +154,10 @@ pub enum AuditEvent<'a> {
     /// [`Exited`](Self::Exited) rather than an absent `code`: `tracing` omits a `None`
     /// field, so one event would vary its own field set.
     Failed {
+        /// The run this closes, as its [`Spawned`](Self::Spawned) named it.
+        spawn: &'a str,
+        /// The session this ran under, as in [`Spawned`](Self::Spawned).
+        session: &'a str,
         /// The program the spawn record named.
         program: &'a str,
         /// Why it has none, as a stable label a trail can be filtered by.
@@ -125,15 +186,41 @@ impl<'a> AuditEvent<'a> {
     }
 
     /// Record a hardening step that did not take effect.
-    pub fn degraded(mechanism: &'a str, detail: &'a str) -> Self {
-        Self::Degraded { mechanism, detail }
+    ///
+    /// `spawn` is an `Option` because one caller has no run to name: `FsGuard::new` reports
+    /// a granted root that lost the directory it was vetted on, which weakens every access
+    /// for the session rather than one spawn.
+    pub fn degraded(
+        mechanism: &'a str,
+        spawn: Option<&'a SpawnId>,
+        session: Option<&'a str>,
+        detail: &'a str,
+    ) -> Self {
+        Self::Degraded {
+            mechanism,
+            spawn: spawn.map_or(SPAWN_ABSENT, SpawnId::as_str),
+            session: session.unwrap_or(SESSION_ABSENT),
+            detail,
+        }
     }
 
     /// Record a spawn, summarising the policy rather than reproducing it. `tracing` needs
     /// static field names, so these cannot be derived from [`Axis::ALL`] the way the
     /// enforcement layers are; the exhaustive match is what makes an added axis a compile
     /// error instead. `pinned` is a parameter because a digest is not policy.
-    pub fn spawned(program: &'a str, policy: &SandboxPolicy, pinned: bool) -> Self {
+    ///
+    /// `session` is an `Option` here and a sentinel on the record: the rule a `None` field
+    /// breaks is about the field set `tracing` emits, not about this signature pretending
+    /// every run has a session. `args` comes pre-rendered from `args_field`, the cap
+    /// belonging to the trail rather than to each caller.
+    pub fn spawned(
+        program: &'a str,
+        args: &'a str,
+        spawn: &'a SpawnId,
+        session: Option<&'a str>,
+        policy: &SandboxPolicy,
+        pinned: bool,
+    ) -> Self {
         let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
         for axis in Axis::ALL {
@@ -152,7 +239,10 @@ impl<'a> AuditEvent<'a> {
         };
 
         Self::Spawned {
+            spawn: spawn.as_str(),
+            session: session.unwrap_or(SESSION_ABSENT),
             program,
+            args,
             readable,
             writable,
             executable,
@@ -169,8 +259,15 @@ impl<'a> AuditEvent<'a> {
     /// Record how a spawned command ended. The code is derived from the status through
     /// [`exit_code`](crate::exit_code) rather than passed in, so the number on the trail is
     /// the one `sandbx` exits with.
-    pub fn exited(program: &'a str, status: &std::process::ExitStatus) -> Self {
+    pub fn exited(
+        program: &'a str,
+        spawn: &'a SpawnId,
+        session: Option<&'a str>,
+        status: &std::process::ExitStatus,
+    ) -> Self {
         Self::Exited {
+            spawn: spawn.as_str(),
+            session: session.unwrap_or(SESSION_ABSENT),
             program,
             code: crate::exit_code(status),
         }
@@ -179,8 +276,18 @@ impl<'a> AuditEvent<'a> {
     /// Record a run that ended without a status, naming what stopped it. Takes the label
     /// and not the error, so this module stays ignorant of `SandboxError`; the call site
     /// passes [`SandboxError::label`](crate::SandboxError::label).
-    pub fn failed(program: &'a str, reason: &'static str) -> Self {
-        Self::Failed { program, reason }
+    pub fn failed(
+        program: &'a str,
+        spawn: &'a SpawnId,
+        session: Option<&'a str>,
+        reason: &'static str,
+    ) -> Self {
+        Self::Failed {
+            spawn: spawn.as_str(),
+            session: session.unwrap_or(SESSION_ABSENT),
+            program,
+            reason,
+        }
     }
 
     /// Emit this event on the audit target. Records nothing unless a subscriber is
@@ -212,14 +319,24 @@ impl<'a> AuditEvent<'a> {
                 subject,
                 reason,
             ),
-            Self::Degraded { mechanism, detail } => tracing::info!(
+            Self::Degraded {
+                mechanism,
+                spawn,
+                session,
+                detail,
+            } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "degraded",
+                spawn,
+                session,
                 mechanism,
                 detail,
             ),
             Self::Spawned {
+                spawn,
+                session,
                 program,
+                args,
                 readable,
                 writable,
                 executable,
@@ -233,7 +350,12 @@ impl<'a> AuditEvent<'a> {
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "spawned",
+                spawn,
+                session,
                 program,
+                // `%`, so the layer renders the list as `args_field` escaped it rather than
+                // escaping every quote and backslash a second time.
+                args = %args,
                 readable,
                 writable,
                 executable,
@@ -245,18 +367,36 @@ impl<'a> AuditEvent<'a> {
                 dns_names,
                 pinned,
             ),
-            Self::Exited { program, code } => tracing::info!(
+            Self::Exited {
+                spawn,
+                session,
+                program,
+                code,
+            } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "exited",
+                spawn,
+                session,
                 program,
                 code,
             ),
-            Self::Failed { program, reason } => tracing::info!(
+            Self::Failed {
+                spawn,
+                session,
+                program,
+                reason,
+            } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "failed",
+                spawn,
+                session,
                 program,
                 reason,
             ),
         }
     }
 }
+
+#[cfg(test)]
+#[path = "audit_tests.rs"]
+mod tests;

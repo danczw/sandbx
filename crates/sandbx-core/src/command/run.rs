@@ -26,6 +26,7 @@ pub struct SandboxedCommand {
     helper: Option<PathBuf>,
     timeout: Option<Duration>,
     pin: Option<Sha256Digest>,
+    session: Option<String>,
 }
 
 /// How often the timed path polls for the child's exit, `std::process` having no timed wait.
@@ -45,6 +46,7 @@ impl SandboxedCommand {
             helper: None,
             timeout: None,
             pin: None,
+            session: None,
         }
     }
 
@@ -82,6 +84,14 @@ impl SandboxedCommand {
     #[must_use]
     pub fn timeout(mut self, limit: Duration) -> Self {
         self.timeout = Some(limit);
+        self
+    }
+
+    /// Name the session this runs under, so a record pairs with a transcript; unset by
+    /// default, which is what `sandbox-run` is — it has no session to name.
+    #[must_use]
+    pub fn session(mut self, id: impl Into<String>) -> Self {
+        self.session = Some(id.into());
         self
     }
 
@@ -141,7 +151,23 @@ impl SandboxedCommand {
         let (helper, argv) = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
 
-        crate::AuditEvent::spawned(&self.program, &self.policy, self.pin.is_some()).emit();
+        // Minted here and not in `new`: this takes `&self`, so one builder can be run more
+        // than once, and two runs are two pairs a reader has to tell apart.
+        let spawn = crate::SpawnId::next();
+        let session = self.session.as_deref();
+        // Not `argv` above, which is the *helper's* — that one carries the encoded policy,
+        // and a shadow here would put it on the trail.
+        let command_args = crate::audit::args_field(&self.args);
+
+        crate::AuditEvent::spawned(
+            &self.program,
+            &command_args,
+            &spawn,
+            session,
+            &self.policy,
+            self.pin.is_some(),
+        )
+        .emit();
 
         let result = match self.timeout {
             None => run_to_completion(&helper, &argv, &self.policy, write_end),
@@ -151,15 +177,21 @@ impl SandboxedCommand {
         // Both paths wait before returning, so nothing drains the pipe while the helper
         // writes it — true on error paths too, since hardening degraded before the command
         // started and holds however the attempt ended.
-        let refused = record_reports(audit);
+        let refused = record_reports(audit, &spawn, session);
 
         // Exactly one of these per `spawned`, nothing between the two emits returning early.
         // The channel outranks the status: a command that never ran exited as the refusing
         // helper.
         match (&result, refused) {
-            (_, Some(refusal)) => crate::AuditEvent::failed(&self.program, refusal.label()),
-            (Ok(output), None) => crate::AuditEvent::exited(&self.program, &output.status),
-            (Err(error), None) => crate::AuditEvent::failed(&self.program, error.label()),
+            (_, Some(refusal)) => {
+                crate::AuditEvent::failed(&self.program, &spawn, session, refusal.label())
+            }
+            (Ok(output), None) => {
+                crate::AuditEvent::exited(&self.program, &spawn, session, &output.status)
+            }
+            (Err(error), None) => {
+                crate::AuditEvent::failed(&self.program, &spawn, session, error.label())
+            }
         }
         .emit();
 
@@ -232,7 +264,15 @@ fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), Sandbox
 /// subscriber. Reads to EOF with the helper already waited on, which is safe only because
 /// `degradation::encode` bounds the records: a channel that outgrew the pipe buffer would
 /// deadlock the run it reports on.
-fn record_reports(mut audit: std::io::PipeReader) -> Option<crate::HelperRefusal> {
+///
+/// `spawn` and `session` name the run each degradation weakened: these records fall between
+/// a spawn and its outcome, so without them the middle of a run is attributed by position
+/// while both ends are named (#249).
+fn record_reports(
+    mut audit: std::io::PipeReader,
+    spawn: &crate::SpawnId,
+    session: Option<&str>,
+) -> Option<crate::HelperRefusal> {
     use std::io::Read;
 
     let mut records = String::new();
@@ -244,7 +284,7 @@ fn record_reports(mut audit: std::io::PipeReader) -> Option<crate::HelperRefusal
     for report in crate::degradation::decode(&records) {
         match report {
             crate::degradation::Report::Degraded(step, detail) => {
-                crate::AuditEvent::degraded(step.label(), detail).emit();
+                crate::AuditEvent::degraded(step.label(), Some(spawn), session, detail).emit();
             }
             crate::degradation::Report::Failed(refusal) => {
                 refused = Some(refusal);
@@ -426,13 +466,102 @@ mod tests {
     /// What `record_reports` makes of a channel, without a helper to write one. The write
     /// end is dropped before the read, which is what makes the read terminate.
     fn reported(channel: &str) -> Option<crate::HelperRefusal> {
+        // A mint of its own: these assert on the refusal `record_reports` returns rather
+        // than on the records it emits.
+        read_channel(channel, &crate::SpawnId::next(), None).0
+    }
+
+    /// `record_reports` over a crafted channel, with whatever it emitted.
+    ///
+    /// Here rather than against a real helper because **whether a run degrades is the
+    /// host's answer**: a kernel that drops the bounding set cleanly emits no `degraded` at
+    /// all, so `audit_channel.rs`'s real-helper tests cannot reach this path on most
+    /// machines and a regression in it would go unmeasured.
+    fn read_channel(
+        channel: &str,
+        spawn: &crate::SpawnId,
+        session: Option<&str>,
+    ) -> (Option<crate::HelperRefusal>, Vec<String>) {
         use std::io::Write;
+        use tracing_subscriber::layer::SubscriberExt;
 
         let (read, mut write) = std::io::pipe().expect("a pipe for the channel");
         write.write_all(channel.as_bytes()).expect("the channel");
         drop(write);
 
-        record_reports(read)
+        let sink = Captured::default();
+        let subscriber = tracing_subscriber::registry().with(sink.clone());
+        let refused =
+            tracing::subscriber::with_default(subscriber, || record_reports(read, spawn, session));
+
+        (refused, sink.0.lock().unwrap().clone())
+    }
+
+    /// Collects audit records as `field=value ` text, emitted on the calling thread so a
+    /// thread-local subscriber sees them.
+    #[derive(Clone, Default)]
+    struct Captured(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if event.metadata().target() != crate::AUDIT_TARGET {
+                return;
+            }
+            let mut visitor = Collect(String::new());
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    struct Collect(String);
+
+    impl tracing::field::Visit for Collect {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!("{}={value:?} ", field.name()));
+        }
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!("{}={value} ", field.name()));
+        }
+    }
+
+    /// A degradation falls between a spawn and its outcome, so the id is the only thing
+    /// tying it to the run it weakened — and these records are emitted after the wait, so
+    /// position says even less about them than it does about the pair (#249).
+    #[test]
+    fn a_degradation_names_the_run_that_weakened() {
+        let run = crate::SpawnId::next();
+        let (refused, lines) = read_channel(
+            "capability_bounding_set\tleft as inherited\n",
+            &run,
+            Some("abc123"),
+        );
+
+        assert_eq!(refused, None, "a degradation is not a refusal");
+        assert_eq!(lines.len(), 1, "one degradation, one record: {lines:?}");
+        let line = &lines[0];
+        assert!(line.contains("decision=degraded"), "got: {line}");
+        assert!(
+            line.contains(&format!("spawn={} ", run.as_str())),
+            "the degradation named another run than the one it weakened: {line}"
+        );
+        assert!(
+            line.contains("session=abc123 "),
+            "the degradation did not reach the transcript its run is stored in: {line}"
+        );
+    }
+
+    /// The anti-vacuity half of the case above: a channel with nothing on it emits nothing,
+    /// so the assertions there are about a record the channel produced.
+    #[test]
+    fn an_empty_channel_emits_no_degradation() {
+        let (refused, lines) = read_channel("", &crate::SpawnId::next(), None);
+
+        assert_eq!(refused, None, "an empty channel refused the run");
+        assert!(lines.is_empty(), "got: {lines:?}");
     }
 
     #[test]

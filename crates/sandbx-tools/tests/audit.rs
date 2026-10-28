@@ -83,3 +83,81 @@ fn the_file_grep_only_measures_is_still_an_access() {
     // record of `big` and pass for the opposite reason.
     assert!(allowed(&small), "the walk read nothing at all: {lines:?}");
 }
+
+/// The session id this context names, as every spawn through it must record.
+const SESSION: &str = "abc123";
+
+/// A context whose spawns fail to start: the helper does not exist, so the pair is a
+/// `spawned` and a `failed` with no kernel and no command ever executed.
+fn spawning_ctx() -> ExecutionContext {
+    ExecutionContext::new(SandboxPolicy::default())
+        .with_session(SESSION)
+        .with_helper("/nonexistent/helper")
+}
+
+/// Run `command` under `ctx`, discarding the refusal the absent helper returns.
+fn bash(command: &str, ctx: &ExecutionContext) {
+    let _ = BuiltinTool::Bash.execute(json!({ "command": command }), ctx);
+}
+
+/// `with_session` to `ExecutionContext` to `SandboxedCommand` to the record, which is the
+/// whole of the plumbing #249 added — and `program` is `/bin/sh` for every `bash` call, so
+/// without `args` the command itself is on no record at all.
+#[test]
+fn a_bash_spawn_records_the_session_and_the_command() {
+    let lines = capture(|| bash("echo hi", &spawning_ctx()));
+
+    assert_eq!(lines.len(), 2, "a spawn and its outcome, got: {lines:?}");
+    for line in &lines {
+        assert!(
+            line.contains(&format!("session={SESSION} ")),
+            "a record did not name the session its context held: {line}"
+        );
+    }
+
+    let spawned = lines
+        .iter()
+        .find(|line| line.contains("decision=spawned"))
+        .unwrap_or_else(|| panic!("no spawn was recorded: {lines:?}"));
+
+    // Both on one record: `program` and `args` are adjacent `&str` parameters, so a
+    // transposition compiles and reads plausibly.
+    assert!(spawned.contains("program=/bin/sh"), "got: {spawned}");
+    assert!(
+        spawned.contains(r#"args=["-c", "echo hi"]"#),
+        "the trail carries `/bin/sh` and not what it was asked to run: {spawned}"
+    );
+}
+
+#[test]
+fn two_bash_calls_take_two_spawn_ids() {
+    let ctx = spawning_ctx();
+    let lines = capture(|| {
+        bash("echo one", &ctx);
+        bash("echo two", &ctx);
+    });
+
+    assert_eq!(
+        lines.len(),
+        4,
+        "two spawns and two outcomes, got: {lines:?}"
+    );
+
+    let ids: std::collections::HashSet<&str> = lines
+        .iter()
+        .map(|line| {
+            let after = line
+                .split_once("spawn=")
+                .unwrap_or_else(|| panic!("no spawn id was recorded: {line}"))
+                .1;
+            after.split_whitespace().next().expect("a non-empty id")
+        })
+        .collect();
+
+    assert_eq!(
+        ids.len(),
+        2,
+        "two calls through one context share an id, so their outcomes cannot be told \
+         apart: {ids:?}"
+    );
+}

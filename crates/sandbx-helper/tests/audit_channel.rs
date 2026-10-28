@@ -159,9 +159,14 @@ fn the_command_cannot_write_the_audit_channel() {
             .allow_write(vetted("/dev/null")),
     );
 
+    // Every record but the spawn's own: `Spawned.args` quotes the command, so this fixture
+    // is on the trail by design (#249) and matching it there would say nothing about where
+    // the *bytes* went. The remaining records are the only ones the channel can forge —
+    // `exited` and `failed` carry no model text, and `failed.reason` comes off a closed set.
     assert!(
         !lines
             .iter()
+            .filter(|line| !line.contains("decision=spawned"))
             .any(|line| line.contains("forged-by-the-command")),
         "the command wrote onto sandbx's audit trail: {lines:?}\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
@@ -196,8 +201,13 @@ fn the_command_inherits_no_other_end_of_the_channel() {
         "the probe never wrote anything, so it proves nothing: {:?}",
         String::from_utf8_lossy(&output.stdout)
     );
+    // Not the spawn record, which quotes the probe script in `args` by design (#249); see
+    // the test above for why the rest are still the whole of what could be forged.
     assert!(
-        !lines.iter().any(|line| line.contains("via-fd-")),
+        !lines
+            .iter()
+            .filter(|line| !line.contains("decision=spawned"))
+            .any(|line| line.contains("via-fd-")),
         "the command inherited a descriptor onto sandbx's audit trail: {lines:?}"
     );
 }
@@ -510,5 +520,55 @@ fn a_substituted_grant_names_itself_on_the_channel() {
         error.to_string().contains(granted_at.to_str().unwrap()),
         "{} did not reach the caller: {error}",
         granted_at.display()
+    );
+}
+
+/// The `spawn=` of one record, which this harness writes unquoted.
+fn spawn_id(line: &str) -> &str {
+    let after = line
+        .split_once("spawn=")
+        .unwrap_or_else(|| panic!("no spawn id was recorded: {line}"))
+        .1;
+
+    after
+        .split_whitespace()
+        .next()
+        .unwrap_or_else(|| panic!("the spawn id is empty: {line}"))
+}
+
+/// A run's records all name that run — the spawn, the terminal record, and whatever
+/// `degraded` the host put between them. The composition is what needs a real helper: the
+/// degradations cross the channel and are emitted after the wait, so nothing but the id
+/// ties one to the spawn it weakened (#249).
+///
+/// Unconditional where `the_bounding_set_degrades_only_on_a_refused_drop` has to branch:
+/// whether this host degrades decides how many records there are, not whether they agree.
+#[test]
+fn every_record_of_one_run_names_that_run() {
+    let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
+
+    assert!(
+        output.status.success(),
+        "the command did not run, so there is no run for the records to name: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        lines.len() >= 2,
+        "a spawn and an outcome at the least: {lines:?}"
+    );
+
+    let ids: std::collections::HashSet<&str> = lines.iter().map(|line| spawn_id(line)).collect();
+    assert_eq!(
+        ids.len(),
+        1,
+        "one run's records name {} runs between them: {lines:?}",
+        ids.len()
+    );
+    // The guard that makes the count above mean something: records all carrying the
+    // no-run sentinel would be one id too, and would tie nothing to anything.
+    assert_ne!(
+        ids.iter().next().copied(),
+        Some("-"),
+        "every record of a real run disclaimed having one: {lines:?}"
     );
 }

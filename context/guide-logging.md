@@ -19,10 +19,10 @@ audit trail   ──► "sandbx::audit"      ──► for whoever asks "what di
 | `Allowed` | `allowed` | `tool`, `subject` |
 | `Absent` | `absent` | `tool`, `subject` |
 | `Denied` | `denied` | `tool`, `subject`, `reason` |
-| `Degraded` | `degraded` | `mechanism`, `detail` |
-| `Spawned` | `spawned` | `program`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env`, `dns_over_tcp`, `dns_names`, `pinned` |
-| `Exited` | `exited` | `program`, `code` |
-| `Failed` | `failed` | `program`, `reason` |
+| `Degraded` | `degraded` | `spawn`, `session`, `mechanism`, `detail` |
+| `Spawned` | `spawned` | `spawn`, `session`, `program`, `args`, `readable`, `writable`, `executable`, `network`, `network_ports`, `unix_sockets`, `env`, `dns_over_tcp`, `dns_names`, `pinned` |
+| `Exited` | `exited` | `spawn`, `session`, `program`, `code` |
+| `Failed` | `failed` | `spawn`, `session`, `program`, `reason` |
 
 **`INFO`, not `DEBUG`** — at `DEBUG` the trail would be absent for everyone who
 did not opt in, which is exactly when a record matters. `tests/audit.rs` pins
@@ -45,13 +45,31 @@ proposition from storing what the file contained; output is where secrets live.
 through an exhaustive `match` on `Axis::ALL`, so a new axis fails to compile
 rather than going silently uncounted (#51).
 
+`Spawned.args` is the one field that carries model-chosen text, and it does not
+breach that rule: the arguments are what the command was *asked* to do, not what
+it produced, so the proposition the rule protects is untouched — and the same
+bytes are on the host in `/proc/<pid>/cmdline` and in the session transcript, so
+the trail adds no reader. It is there because `program` is `/bin/sh` for every
+`bash` call, which left the `-c` string — the command itself — on no record at
+all, and under `tui` drawn only in a pane with no scrollback (#249). **The cost is
+real and is accepted, not argued away:** a credential the model puts on a command
+line now reaches the trail, where before only `program` did.
+
 `Spawned.pinned` is the one field not derived from the policy, a digest not being
 policy (`decision-helper-audit-channel.md`), so `spawned` takes it as a parameter.
 It is there because a matching pin is otherwise invisible: the run proceeds as any
 unpinned run does, and a trail that omitted the boolean could not tell an
 `--pin-sha256` run from one that named no digest at all. The boolean and not the
-digest — the digest crosses on argv already, and a record of fixed width is one a
-filter can rely on (#146).
+digest — the digest crosses on argv already, and a record of bounded width is one
+a filter can rely on (#146).
+
+That clause said *fixed* width until #249, and the change is to the wording rather
+than to #146's conclusion. `Denied.subject` and `Degraded.detail` were always
+variable-length; it was `Spawned` alone that was fixed, and `args` is what ends
+that — bounded instead by `ARGS_CAP`, 512 characters with the cut marked, which is
+`gate::printable`'s cap and reason. Nothing about the pin is reopened: the digest
+is still not recorded, and `--pin-sha256` is *sandbx's* own argv where
+`Spawned.args` is the *command's*.
 
 **Denials always carry a reason.** `Denied.reason` is non-optional; "denied"
 alone is not actionable.
@@ -103,6 +121,23 @@ else. Per run, in order: `spawned`, then zero or more `degraded`, then the one
 terminal record, then the command's own stdout and stderr — which come last
 because `output()` collects the command in full and `SandboxRun::execute`
 forwards the streams only after it returns.
+
+**The sequence is named by `spawn`, not by its position** (#249). A `SpawnId` is
+minted in `output` — per run, so one builder run twice is two — and carries a
+per-process nonce ahead of a counter: a bare counter collides between two sandbx
+processes writing one stderr sink, and a pid is reused by the kernel.
+`sandbx-logging`'s `audit_two_processes.rs` is the test that emits from two, there
+being no single-process shape of that failure. `session` names the transcript
+beside it, or `-` where there is none, since `sandbox-run` has no session and a
+varying field set is one a filter cannot rely on.
+
+**All three of a run's record kinds carry it, the `degraded` between them
+included** — and that middle is the one that needed it most, being the record that
+says the sandbox got *weaker*. It is also emitted after the wait rather than when
+the step failed (below), so its position says even less than the pair's does.
+`rooted_access` is the one `degraded` with no run to name, emitted while the
+in-process gate is built, and it carries `spawn=-` for it: what that step weakens
+is every access for the session rather than one spawn.
 
 `Exited.code` is `exit_code`'s encoding, 128 + n for a signal, so the number on
 the trail is the number `sandbx` exits with rather than a second encoding of the
@@ -218,7 +253,7 @@ so `degraded` and the terminal record are both timestamped after `spawned`. See
 | Missing | Consequence |
 |---|---|
 | emitters outside `sandbx-core` | `tracing` is a dependency of `sandbx-core` alone, so every other crate has zero emission sites by construction. The list of which crates those are is `guide-repo-map.md`'s, and this one went stale three times carrying a copy |
-| session ids | nothing ties a spawn to its outcome but `program`. `SessionId` now exists (`sandbx-session-id`) and reaches no `tracing` field, so a correlation id is buildable rather than built (#249) |
+| a host in the `spawn` id | nothing, for the sink there is. The nonce is `(pid, the instant it was derived)`: it separates processes on one machine and claims nothing across two, so an aggregator merging several hosts cannot rely on it — and a clock stepped backwards breaks even the one-host case (#249) |
 | JSON-lines writer, rotation, `--no-audit` | nothing. No `tracing-appender`. XDG resolution exists but not for a log: `sandbx-session-paths/src/lib.rs` is what a sink would reuse |
 
 Libraries emit and never choose a sink — no emission site touches a file or a

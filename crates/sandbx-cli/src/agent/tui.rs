@@ -63,6 +63,14 @@ impl Tui {
         let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
         let session = session::open(self.run.session())?;
 
+        // Shadowed here rather than built here, as in `AgentRun::execute`: the pane is the
+        // only place a command's text was drawn, so the trail needs the session's id to tie
+        // a spawn to the transcript (#249).
+        let ctx = match session.as_ref() {
+            Some(open) => ctx.with_session(open.id().to_string()),
+            None => ctx,
+        };
+
         self.drive(
             |request| client.stream_chat(request),
             &ctx,
