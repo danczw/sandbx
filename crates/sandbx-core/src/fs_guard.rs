@@ -85,7 +85,24 @@ impl FsGuard {
             // Once per grant, then shared: a `ReadExecute` grant feeds `readable` alone, but
             // a path granted read *and* write is two entries here and so two descriptors —
             // policy-level duplication, not this loop's to collapse.
-            let dir = beneath.then(|| open_root(granted)).flatten().map(Arc::new);
+            let dir = match beneath.then(|| open_root(granted)) {
+                Some(Rooting::Beneath(dir)) => Some(Arc::new(dir)),
+                Some(Rooting::Unpinned) => {
+                    // At `INFO`, like every other degraded step: nothing the agent asked for
+                    // was refused, and the grant is still bounded by the per-access
+                    // confirmation — it has only lost the descriptor that would have made a
+                    // swap unreachable rather than merely refused. Naming the root discloses
+                    // nothing: it is a path the operator granted.
+                    let detail = format!(
+                        "{} did not hold its vetted object when opened; its accesses resolve \
+                         by path, bounded by the per-access confirmation alone",
+                        granted.path().display()
+                    );
+                    crate::AuditEvent::degraded("rooted_access", &detail).emit();
+                    None
+                }
+                Some(Rooting::ByPath) | None => None,
+            };
             let root = Root {
                 vetted: granted.clone(),
                 dir,
@@ -661,7 +678,7 @@ fn nearest_area<'a>(requested: &'a Path, roots: &[Root]) -> (Option<&'a Path>, C
 ///
 /// Through `OpenOptions` rather than `openat2`: a grant is absolute, so there is no
 /// descriptor to resolve it beneath, and `OpenOptions` sets `O_CLOEXEC` itself.
-fn open_root(granted: &VettedPath) -> Option<OwnedFd> {
+fn open_root(granted: &VettedPath) -> Rooting {
     use std::os::unix::fs::OpenOptionsExt;
 
     let opened = std::fs::OpenOptions::new()
@@ -669,7 +686,11 @@ fn open_root(granted: &VettedPath) -> Option<OwnedFd> {
         .custom_flags(libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW)
         .open(granted.path())
         .ok()
-        .map(OwnedFd::from)?;
+        .map(OwnedFd::from);
+
+    let Some(opened) = opened else {
+        return Rooting::ByPath;
+    };
 
     // The descriptor is measured against the pin before it is kept, because the open and
     // the per-access confirmation are two different moments. A granted name holding an
@@ -677,9 +698,28 @@ fn open_root(granted: &VettedPath) -> Option<OwnedFd> {
     // against the pin and still resolve every access beneath the substitute — the one way a
     // held descriptor could be worse than the path it replaced.
     match ObjectId::of_fd(&opened) {
-        Ok(object) if object == granted.object() => Some(opened),
-        _ => None,
+        Ok(object) if object == granted.object() => Rooting::Beneath(opened),
+        Ok(_) => Rooting::Unpinned,
+        // A descriptor that cannot be measured is not one to resolve beneath, but nothing
+        // says the name was substituted either — an `fstat` failing on a handle we hold is
+        // the host's business, not a grant's.
+        Err(_) => Rooting::ByPath,
     }
+}
+
+/// Whether a grant got a descriptor to resolve its accesses beneath, and if not, whether
+/// that is worth telling the operator about.
+enum Rooting {
+    /// Accesses resolve beneath this.
+    Beneath(OwnedFd),
+    /// Nothing to resolve beneath, and nothing suspicious: no `openat2` on this kernel, or
+    /// the grant does not name a directory. Both are properties of the host or the policy,
+    /// which an operator can read off either without being told.
+    ByPath,
+    /// The granted name did not hold its vetted object when the descriptor was opened, so
+    /// there is no descriptor worth keeping. Unlike the two above this is a *substitution*,
+    /// and it costs that root its mitigation for the session — hence a record.
+    Unpinned,
 }
 
 /// `/` as a bare directory descriptor, for the capability probe alone.
