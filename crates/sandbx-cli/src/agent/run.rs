@@ -258,37 +258,45 @@ impl AgentRun {
             return Err(AgentError::EmptyPrompt);
         }
 
-        // Derived before the client, so a refused policy never reads the credential.
-        let policy = self.policy()?;
-        // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
-        // meanwhile would name the model a root the sandbox did not grant.
-        let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
+        // Before the credential and the session: a run with no channel to ask on is
+        // refused, so neither is opened for a turn that will not happen.
+        let terminal = self.terminal()?;
 
         eprintln!(
             "sandbx: tools approved: {}",
             gate::approved_tools(self.allow_tool.as_deref()).join(", ")
         );
 
-        // Before the credential and the session: a run with no channel to ask on is
-        // refused, so neither is opened for a turn that will not happen.
-        let terminal = self.terminal()?;
-
-        // Before the session: the credential chain can fail for want of a key, and a
-        // session opened first would leave a header-only transcript nothing deletes.
-        let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
-
+        // Ahead of the policy, and that is the whole reason this line is here rather than
+        // below it. The context needs the session — it is what the `rooted_access` record
+        // names — and nothing may come between `self.policy()?`, which *vets* each granted
+        // root, and the context, which *pins* it: everything in that window is time an
+        // attacker has to swap a root and force the run onto by-path resolution for good.
+        // Opening a session is a directory create and two writes, and `eprintln!` here can
+        // block outright on a stderr nobody drains, so this is the one call that could not
+        // stay in the middle.
+        //
+        // The cost, taken deliberately: a refused policy below now leaves a header-only
+        // transcript nothing deletes, where before only a missing credential could. A
+        // mistyped `--allow-read` is the commonest failure there is, so that is real — and
+        // it is still only a stray directory, against a window in the sandbox's TOCTOU
+        // guarantee (`guide-sandboxing.md`, *Known gaps*). The credential stays below the
+        // policy regardless, so a refused policy still reads no key.
         let session = session::open(self.session())?;
 
-        // After the session and not before, which is why the policy is derived further up
-        // and held: the guard this builds reports a granted root that lost its descriptor
-        // *as it is built*, so a context constructed earlier would emit that record
-        // disclaiming a session this run has. The ordering above cannot move to meet it —
-        // a session opened before the credential leaves a header-only transcript nothing
-        // deletes — so the context comes last instead (#249).
+        let policy = self.policy()?;
+        // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
+        // meanwhile would name the model a root the sandbox did not grant.
+        let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
+        // Nothing between this and the vet above but that pure formatting: a granted root is
+        // vetted there and pinned here, and the two are adjacent on purpose.
         let ctx = match session.as_ref() {
             Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
             None => ExecutionContext::new(policy),
         };
+
+        // After the policy, so a refused policy never reads the credential.
+        let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
 
         self.drive(
             |request| client.stream_chat(request),

@@ -50,25 +50,27 @@ impl Tui {
         // must not read a credential on the way to finding that out.
         self.drawable(std::io::stdout().is_terminal())?;
 
-        let policy = self.run.policy()?;
-        let system =
-            orientation::system_prompt(&policy, self.run.allow_tool.as_deref(), self.run.system());
-
         let approved = gate::approved_tools(self.run.allow_tool.as_deref()).join(", ");
         // On stderr as well as on the screen: the screen is gone the moment the process
         // ends, and this is the line a redirected log needs most (#224).
         eprintln!("sandbx: tools approved: {approved}");
 
-        let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
+        // Ahead of the policy, for `AgentRun::execute`'s reason and with its trade: nothing
+        // may sit between the vet and the pin, and this call writes a directory and can
+        // block on stderr. The pane being the only place a command's text was drawn is why
+        // this path in particular needs the id on the trail.
         let session = session::open(self.run.session())?;
 
-        // After the session, for `AgentRun::execute`'s reason — the guard reports as it is
-        // built, so a context built before the session names none. The pane being the only
-        // place a command's text was drawn is why this path in particular needs the id.
+        let policy = self.run.policy()?;
+        let system =
+            orientation::system_prompt(&policy, self.run.allow_tool.as_deref(), self.run.system());
+        // Adjacent to the vet above, with only that formatting between them.
         let ctx = match session.as_ref() {
             Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
             None => ExecutionContext::new(policy),
         };
+
+        let client = AnthropicClient::new(sandbx_auth::api_key()?)?;
 
         self.drive(
             |request| client.stream_chat(request),

@@ -210,9 +210,9 @@ impl<'a> AuditEvent<'a> {
 
     /// Record a hardening step that did not take effect.
     ///
-    /// `spawn` is an `Option` because one caller has no run to name: `FsGuard::new` reports
-    /// a granted root that lost the directory it was vetted on, which weakens every access
-    /// for the session rather than one spawn.
+    /// `spawn` is an `Option` because one mechanism has no run to name: building an
+    /// [`FsGuard`](crate::FsGuard) reports a granted root that lost the directory it was
+    /// vetted on, which weakens every access for the session rather than one spawn.
     pub fn degraded(
         mechanism: &'a str,
         spawn: Option<&'a SpawnId>,
