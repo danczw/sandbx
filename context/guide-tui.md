@@ -398,10 +398,12 @@ The accounts written before the screen is entered stay on stderr, where they are
 legible once the screen is given back; #224 covers the seam.
 
 Drawn rather than printed means the verdict is in the pane and nowhere else, and
-the pane has no scrollback. For a `bash` call that is the only place the command's
-text appears at all — the audit trail records `program="/bin/sh"`, not the `-c`
-string — so an interrupted run, or one without `--session`, can leave no record of
-what ran (#249).
+the pane has no scrollback. For a `bash` call that used to mean the command's text
+appeared nowhere else either, the trail recording `program="/bin/sh"` and not the
+`-c` string; #249 put it on the `spawned` record under `args`, with a `spawn` id
+and the session's own, so an interrupted run does leave a record of what ran. What
+the pane is still alone in showing is a command longer than `ARGS_CAP`'s 512
+characters, which the trail cuts and marks.
 
 Both methods still run on the async task, so **neither may wait on the runtime**
 — `decision-approval-gate.md` has why. `tui`'s gate waits on nothing at all: the

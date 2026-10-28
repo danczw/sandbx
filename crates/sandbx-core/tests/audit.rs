@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use sandbx_core::{
     AUDIT_TARGET, Access, AuditEvent, FsGuard, SandboxError, SandboxPolicy, SandboxedCommand,
+    SpawnId,
 };
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
@@ -70,6 +71,20 @@ fn reason(line: &str) -> &str {
     line.split_once("reason=")
         .map(|(_, reason)| reason.trim())
         .unwrap_or_else(|| panic!("no reason was recorded: {line}"))
+}
+
+/// The `spawn=` of one record. This harness writes a `&str` field unquoted, so the id runs
+/// to the next space.
+fn spawn_id(line: &str) -> &str {
+    let after = line
+        .split_once("spawn=")
+        .unwrap_or_else(|| panic!("no spawn id was recorded: {line}"))
+        .1;
+
+    after
+        .split_whitespace()
+        .next()
+        .unwrap_or_else(|| panic!("the spawn id is empty: {line}"))
 }
 
 #[test]
@@ -461,7 +476,7 @@ fn records_the_policy_shape_of_a_spawn() {
         .allow_env("HOME");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy, false).emit();
+        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
     });
 
     let line = &lines[0];
@@ -486,7 +501,7 @@ fn records_how_many_names_may_resolve_not_which() {
         .allow_dns("api.example.com");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy, false).emit();
+        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
     });
 
     let line = &lines[0];
@@ -499,7 +514,15 @@ fn records_how_many_names_may_resolve_not_which() {
 fn records_whether_the_entry_point_was_pinned() {
     for (pinned, recorded) in [(false, "pinned=false"), (true, "pinned=true")] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", &SandboxPolicy::default(), pinned).emit();
+            AuditEvent::spawned(
+                "/bin/cat",
+                "",
+                &SpawnId::next(),
+                None,
+                &SandboxPolicy::default(),
+                pinned,
+            )
+            .emit();
         });
 
         let line = &lines[0];
@@ -512,7 +535,15 @@ fn records_whether_the_entry_point_was_pinned() {
 #[test]
 fn records_that_a_run_was_pinned_and_not_which_digest() {
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &SandboxPolicy::default(), true).emit();
+        AuditEvent::spawned(
+            "/bin/cat",
+            "",
+            &SpawnId::next(),
+            None,
+            &SandboxPolicy::default(),
+            true,
+        )
+        .emit();
     });
 
     let line = &lines[0];
@@ -535,7 +566,7 @@ fn records_whether_a_spawn_set_the_resolver_hint() {
         ),
     ] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", &policy, false).emit();
+            AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
         });
 
         let line = &lines[0];
@@ -552,7 +583,7 @@ fn the_hint_is_not_counted_as_an_allowlisted_name() {
         .hint_dns_over_tcp();
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy, false).emit();
+        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
     });
 
     let line = &lines[0];
@@ -576,7 +607,7 @@ fn records_which_shape_of_network_grant_a_spawn_had() {
         ),
     ] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", &policy, false).emit();
+            AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
         });
 
         let line = &lines[0];
@@ -595,7 +626,7 @@ fn records_how_many_variables_passed_not_which() {
     let policy = SandboxPolicy::default().allow_env("AWS_SECRET_ACCESS_KEY");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", &policy, false).emit();
+        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
     });
 
     let line = &lines[0];
@@ -605,9 +636,12 @@ fn records_how_many_variables_passed_not_which() {
 
 #[test]
 fn records_a_degraded_hardening_step() {
+    let run = SpawnId::next();
     let lines = capture(|| {
         AuditEvent::degraded(
             "userns_identity_map",
+            Some(&run),
+            None,
             "permission denied, running as nobody",
         )
         .emit();
@@ -621,13 +655,52 @@ fn records_a_degraded_hardening_step() {
         "got: {line}"
     );
     assert!(line.contains("running as nobody"), "got: {line}");
+    // A degradation falls between a spawn and its outcome, so naming the run is what keeps
+    // the middle of the sequence from being attributed by position (#249).
+    assert_eq!(
+        spawn_id(line),
+        run.as_str(),
+        "the degradation names another run than the one it weakened: {line}"
+    );
+}
+
+/// `FsGuard::new` is the one `degraded` with no run to name: it is emitted before anything
+/// is spawned, and what it weakens is every access for the session.
+#[test]
+fn a_degradation_outside_a_run_records_the_absence() {
+    let work = tempfile::tempdir().unwrap();
+    let granted = work.path().join("granted");
+    let other = work.path().join("other");
+    std::fs::create_dir(&granted).unwrap();
+    std::fs::create_dir(&other).unwrap();
+
+    let policy = SandboxPolicy::default().allow_read(vetted(&granted));
+    std::fs::remove_dir_all(&granted).unwrap();
+    std::fs::rename(&other, &granted).unwrap();
+
+    let lines = capture(|| {
+        let _ = FsGuard::new(&policy);
+    });
+
+    assert_eq!(lines.len(), 1, "got: {lines:?}");
+    assert!(
+        lines[0].contains("mechanism=rooted_access"),
+        "got: {}",
+        lines[0]
+    );
+    assert_eq!(
+        spawn_id(&lines[0]),
+        "-",
+        "a step belonging to no run named one: {}",
+        lines[0]
+    );
 }
 
 #[test]
 fn records_the_code_a_command_exited_with() {
     for code in [0, 42] {
         let lines = capture(|| {
-            AuditEvent::exited("/bin/true", &status(code << 8)).emit();
+            AuditEvent::exited("/bin/true", &SpawnId::next(), None, &status(code << 8)).emit();
         });
 
         assert_eq!(lines.len(), 1, "expected exactly one audit event");
@@ -642,7 +715,7 @@ fn records_the_code_a_command_exited_with() {
 #[test]
 fn records_a_signal_death_the_way_a_shell_does() {
     let lines = capture(|| {
-        AuditEvent::exited("/bin/sh", &status(libc::SIGKILL)).emit();
+        AuditEvent::exited("/bin/sh", &SpawnId::next(), None, &status(libc::SIGKILL)).emit();
     });
 
     let line = &lines[0];
@@ -662,7 +735,7 @@ fn records_a_timeout_as_a_failed_run() {
     };
 
     let lines = capture(|| {
-        AuditEvent::failed("/bin/sh", killed.label()).emit();
+        AuditEvent::failed("/bin/sh", &SpawnId::next(), None, killed.label()).emit();
     });
 
     let line = &lines[0];
@@ -679,7 +752,7 @@ fn records_a_failure_to_start_under_its_own_reason() {
     };
 
     let lines = capture(|| {
-        AuditEvent::failed("/bin/sh", refused.label()).emit();
+        AuditEvent::failed("/bin/sh", &SpawnId::next(), None, refused.label()).emit();
     });
 
     let line = &lines[0];
@@ -704,7 +777,7 @@ fn an_exec_failure_and_a_spawn_failure_differ() {
     );
 
     let lines = capture(|| {
-        AuditEvent::failed("/nonexistent", missing.label()).emit();
+        AuditEvent::failed("/nonexistent", &SpawnId::next(), None, missing.label()).emit();
     });
 
     assert!(lines[0].contains("reason=exec_failed"), "got: {}", lines[0]);
@@ -718,7 +791,7 @@ fn an_outcome_is_emitted_at_info_not_debug() {
         .with(sink.clone())
         .with(tracing::level_filters::LevelFilter::INFO);
     with_default(subscriber, || {
-        AuditEvent::exited("/bin/true", &status(0)).emit();
+        AuditEvent::exited("/bin/true", &SpawnId::next(), None, &status(0)).emit();
     });
 
     assert_eq!(
@@ -728,20 +801,118 @@ fn an_outcome_is_emitted_at_info_not_debug() {
     );
 }
 
-/// `program` is the only thing tying a spawn to its outcome — there is no correlation
-/// id — so both records must carry it unchanged.
+/// A spawn and its outcome are paired by `spawn` rather than by position or by `program`:
+/// two runs of one program interleave, and a pid is reused (#249). Both still carry
+/// `program`, which is what a reader scans by.
 #[test]
-fn a_spawn_and_its_outcome_name_one_program() {
+fn a_spawn_and_its_outcome_share_one_spawn_id() {
     let lines = capture(|| {
         let _ = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
             .helper("/nonexistent/helper")
             .output();
     });
 
+    assert_eq!(lines.len(), 2, "a spawn and its outcome, got: {lines:?}");
     for line in &lines {
         assert!(line.contains("program=/bin/true"), "got: {line}");
     }
-    assert_eq!(lines.len(), 2, "a spawn and its outcome, got: {lines:?}");
+    // Different decisions, or one record compared against itself would pass.
+    assert!(
+        lines[0].contains("decision=spawned") && lines[1].contains("decision=failed"),
+        "got: {lines:?}"
+    );
+
+    let id = spawn_id(&lines[0]);
+    assert!(!id.is_empty(), "the spawn record named no run: {lines:?}");
+    assert_eq!(
+        id,
+        spawn_id(&lines[1]),
+        "the outcome names another run than the spawn it closes: {lines:?}"
+    );
+}
+
+/// The id is minted in `output` and not in `new`, which takes `&self` — so one builder run
+/// twice is two runs, and a reader has to be able to tell them apart.
+#[test]
+fn two_runs_of_one_command_take_two_spawn_ids() {
+    let command =
+        SandboxedCommand::new("/bin/true", SandboxPolicy::default()).helper("/nonexistent/helper");
+
+    let lines = capture(|| {
+        let _ = command.output();
+        let _ = command.output();
+    });
+
+    assert_eq!(
+        lines.len(),
+        4,
+        "two spawns and two outcomes, got: {lines:?}"
+    );
+
+    let ids: std::collections::HashSet<&str> = lines.iter().map(|line| spawn_id(line)).collect();
+    assert_eq!(
+        ids.len(),
+        2,
+        "one builder run twice emitted one id, so its two runs are indistinguishable: {ids:?}"
+    );
+}
+
+/// `sandbox-run` is the shape with no session to name, and the sentinel is what keeps the
+/// field set from varying between it and `agent-run`.
+#[test]
+fn a_run_with_no_session_records_the_absence() {
+    let lines = capture(|| {
+        let _ = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+            .helper("/nonexistent/helper")
+            .output();
+    });
+
+    assert_eq!(lines.len(), 2, "got: {lines:?}");
+    for line in &lines {
+        assert!(line.contains("session=- "), "got: {line}");
+    }
+}
+
+/// The positive per mechanism: without it, a `session` field hard-coded to the sentinel
+/// would pass the case above.
+#[test]
+fn a_run_under_a_session_records_its_id() {
+    let lines = capture(|| {
+        let _ = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+            .helper("/nonexistent/helper")
+            .session("abc123")
+            .output();
+    });
+
+    assert_eq!(lines.len(), 2, "got: {lines:?}");
+    for line in &lines {
+        assert!(line.contains("session=abc123 "), "got: {line}");
+    }
+}
+
+/// `program` is `/bin/sh` for every `bash` call, so `args` is the only record of what ran.
+/// Both asserted on one line: they are adjacent `&str` parameters, so a transposition
+/// compiles and reads plausibly.
+#[test]
+fn the_spawn_record_carries_the_commands_args() {
+    let lines = capture(|| {
+        let _ = SandboxedCommand::new("/bin/sh", SandboxPolicy::default())
+            .helper("/nonexistent/helper")
+            .arg("-c")
+            .arg("echo hi")
+            .output();
+    });
+
+    let spawned = lines
+        .iter()
+        .find(|line| line.contains("decision=spawned"))
+        .unwrap_or_else(|| panic!("no spawn was recorded: {lines:?}"));
+
+    assert!(spawned.contains("program=/bin/sh"), "got: {spawned}");
+    assert!(
+        spawned.contains(r#"args=["-c", "echo hi"]"#),
+        "the trail names the interpreter and not what it was asked to run: {spawned}"
+    );
 }
 
 #[test]
@@ -767,7 +938,13 @@ fn a_degradation_is_emitted_at_info_not_debug() {
         .with(sink.clone())
         .with(tracing::level_filters::LevelFilter::INFO);
     with_default(subscriber, || {
-        AuditEvent::degraded("capability_bounding_set", "operation not permitted").emit();
+        AuditEvent::degraded(
+            "capability_bounding_set",
+            Some(&SpawnId::next()),
+            None,
+            "operation not permitted",
+        )
+        .emit();
     });
 
     assert_eq!(

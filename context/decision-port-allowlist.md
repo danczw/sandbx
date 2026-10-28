@@ -425,9 +425,10 @@ reads `nsswitch.conf`, the rendered file cannot turn that off, and
 
 What the trail records is a count on `Spawned`, `dns_names`, and no per-name
 record at all. The responder would have had one query per name to report;
-resolution ahead of the spawn has one event, and `Spawned` carries counts and
-not values (`guide-logging.md`, *What is built*) — doubly so here, an internal
-host name being infrastructure rather than a pointer to it.
+resolution ahead of the spawn has one event, and `Spawned` carries counts of what
+the policy granted and not the values (`guide-logging.md`, *What is built*) —
+doubly so here, an internal host name being infrastructure rather than a pointer
+to it.
 
 Two things that have not changed. No label joins `HelperRefusal::ALL`: that set
 is closed around what crosses the helper's audit channel, and nothing about the
@@ -513,9 +514,9 @@ mechanism; the file route makes an unlisted name absent instead, which is a
 third answer and not this one.
 
 **A per-name audit record.** The responder would have had a query to report per
-name. Resolution before the spawn has one event and `Spawned` carries counts, so
-the trail gains `dns_names` and no names — see *A name outside the allowlist is
-absent, not refused*.
+name. Resolution before the spawn has one event and `Spawned` carries counts of
+the policy's grants, so the trail gains `dns_names` and no names — see *A name
+outside the allowlist is absent, not refused*.
 
 **A host field recorded now and enforced later.** The trap the rule above exists
 to close.

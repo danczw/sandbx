@@ -23,6 +23,7 @@ pub struct ExecutionContext {
     helper: Option<std::path::PathBuf>,
     limits: ToolLimits,
     timeout: std::time::Duration,
+    session: Option<String>,
 }
 
 impl ExecutionContext {
@@ -41,6 +42,7 @@ impl ExecutionContext {
             helper: None,
             limits: ToolLimits::default(),
             timeout: DEFAULT_TIMEOUT,
+            session: None,
         }
     }
 
@@ -67,6 +69,17 @@ impl ExecutionContext {
         self
     }
 
+    /// Name the session tool calls run under, so each spawn's records pair with the
+    /// transcript; unset by default, which is what a test and `sandbox-run` are.
+    ///
+    /// A spelling and not a `SessionId`: the type lives in `sandbx-session-id`, and taking
+    /// it would be this crate's second dependency for a value it only passes along.
+    #[must_use]
+    pub fn with_session(mut self, id: impl Into<String>) -> Self {
+        self.session = Some(id.into());
+        self
+    }
+
     /// How much tools may do, and how much they may return.
     pub fn limits(&self) -> &ToolLimits {
         &self.limits
@@ -83,13 +96,16 @@ impl ExecutionContext {
     /// The only route to the policy, and one that spends it rather than lending it
     /// out: an accessor returning `&SandboxPolicy` would let an in-process tool read
     /// the path lists and open files itself, bypassing the TOCTOU-safe handles
-    /// [`FsGuard`] hands back. Timeout and helper are applied here so a second
+    /// [`FsGuard`] hands back. Timeout, helper and session are applied here so a second
     /// spawning built-in cannot forget them.
     #[must_use]
     pub fn sandboxed_command(&self, program: impl Into<String>) -> SandboxedCommand {
         let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);
         if let Some(helper) = &self.helper {
             command = command.helper(helper);
+        }
+        if let Some(session) = &self.session {
+            command = command.session(session);
         }
         command
     }

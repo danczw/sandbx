@@ -23,6 +23,7 @@ mod helper_args;
 mod policy;
 mod resolver;
 mod spawn;
+mod spawn_id;
 
 pub use audit::{AUDIT_TARGET, AuditEvent};
 pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch};
@@ -37,3 +38,4 @@ pub use policy::{
     VettedPath,
 };
 pub use resolver::{RESOLVER_FILES, bound_by_resolver};
+pub use spawn_id::SpawnId;

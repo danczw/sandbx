@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxPolicy, VettedPath};
+use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxPolicy, SpawnId, VettedPath};
 use tracing_subscriber::util::SubscriberInitExt;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
@@ -86,7 +86,9 @@ fn a_spawn_records_the_policy_shape() {
         .allow_unix_sockets()
         .allow_standard_env();
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
+    let output = captured(|| {
+        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+    });
 
     assert!(output.contains(r#"decision="spawned""#), "{output}");
     assert!(output.contains(r#"program="/bin/true""#), "{output}");
@@ -105,7 +107,9 @@ fn a_spawn_records_the_shape_of_a_port_allowlist() {
         .allow_network_port(443)
         .allow_network_port(80);
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
+    let output = captured(|| {
+        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+    });
 
     assert!(output.contains(r#"network="ports""#), "{output}");
     assert!(output.contains("network_ports=2"), "{output}");
@@ -116,7 +120,9 @@ fn a_spawn_records_the_shape_of_a_port_allowlist() {
 fn a_spawn_records_an_unrestricted_network_grant() {
     let policy = SandboxPolicy::default().allow_network();
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
+    let output = captured(|| {
+        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+    });
 
     assert!(output.contains(r#"network="any""#), "{output}");
     assert!(output.contains("network_ports=0"), "{output}");
@@ -127,7 +133,9 @@ fn a_spawn_records_an_unrestricted_network_grant() {
 fn a_spawn_records_the_resolver_hint() {
     let policy = SandboxPolicy::default().hint_dns_over_tcp();
 
-    let output = captured(|| AuditEvent::spawned("/bin/true", &policy, false).emit());
+    let output = captured(|| {
+        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+    });
 
     assert!(output.contains("dns_over_tcp=true"), "{output}");
     assert!(
@@ -141,7 +149,13 @@ fn a_spawn_records_the_resolver_hint() {
 #[test]
 fn a_degraded_hardening_step_reaches_the_output() {
     let output = captured(|| {
-        AuditEvent::degraded("capability_bounding_set", "left as inherited: EPERM").emit()
+        AuditEvent::degraded(
+            "capability_bounding_set",
+            Some(&SpawnId::next()),
+            None,
+            "left as inherited: EPERM",
+        )
+        .emit()
     });
 
     assert!(output.contains(r#"decision="degraded""#), "{output}");
@@ -159,7 +173,8 @@ fn an_exit_records_the_code_it_ended_with() {
     use std::os::unix::process::ExitStatusExt;
 
     let clean = std::process::ExitStatus::from_raw(0);
-    let output = captured(|| AuditEvent::exited("/bin/true", &clean).emit());
+    let output =
+        captured(|| AuditEvent::exited("/bin/true", &SpawnId::next(), None, &clean).emit());
 
     assert!(output.contains(r#"decision="exited""#), "{output}");
     assert!(output.contains(r#"program="/bin/true""#), "{output}");
@@ -169,7 +184,8 @@ fn an_exit_records_the_code_it_ended_with() {
 /// A quoted label rather than prose, which is what a trail can be filtered by.
 #[test]
 fn a_failed_run_records_a_filterable_reason() {
-    let output = captured(|| AuditEvent::failed("/bin/sh", "timeout").emit());
+    let output =
+        captured(|| AuditEvent::failed("/bin/sh", &SpawnId::next(), None, "timeout").emit());
 
     assert!(output.contains(r#"decision="failed""#), "{output}");
     assert!(output.contains(r#"reason="timeout""#), "{output}");
@@ -210,4 +226,73 @@ fn the_output_carries_no_ansi_escapes() {
 
     assert!(!output.is_empty(), "nothing was recorded");
     assert!(!output.contains('\u{1b}'), "{output:?}");
+}
+
+/// The composition, where `audit_tests.rs` covers the rendering alone: a model writes the
+/// `bash` command, so a record carries bytes the model chose. One record stays one line
+/// because `args_field` escapes them and the `%` sigil keeps the layer from escaping its
+/// own escapes — nothing strips anything, and that is what is pinned here.
+#[test]
+fn a_hostile_command_stays_one_escaped_record() {
+    let args = sandbx_core::SandboxedCommand::new("/bin/sh", SandboxPolicy::default())
+        .arg("-c")
+        .arg("echo \u{1b}[2J\nrm -rf /");
+
+    let output = captured(|| {
+        let _ = args.helper("/nonexistent/helper").output();
+    });
+
+    assert_eq!(
+        output.lines().count(),
+        2,
+        "a spawn and its outcome, one line each: {output:?}"
+    );
+    assert!(
+        !output.contains('\u{1b}'),
+        "a terminal escape reached an operator reading stderr: {output:?}"
+    );
+    // The half that makes the two above mean something: dropping the bytes, or the field,
+    // would satisfy both.
+    assert!(
+        output.contains(r"\u{1b}") && output.contains(r"\n"),
+        "the command's bytes were dropped rather than escaped: {output:?}"
+    );
+}
+
+/// `sandbox-run` has no session, and a record whose field set varies is one a filter cannot
+/// rely on — the reason `Failed` is its own variant rather than an `Exited` with no `code`.
+#[test]
+fn a_run_with_no_session_renders_the_sentinel() {
+    let output = captured(|| {
+        AuditEvent::spawned(
+            "/bin/true",
+            "[]",
+            &SpawnId::next(),
+            None,
+            &SandboxPolicy::default(),
+            false,
+        )
+        .emit()
+    });
+
+    assert!(output.contains(r#"session="-""#), "{output}");
+}
+
+/// The positive control for the sentinel: without it, a `session` field hard-coded to `-`
+/// would pass the case above.
+#[test]
+fn a_run_under_a_session_renders_its_id() {
+    let output = captured(|| {
+        AuditEvent::spawned(
+            "/bin/true",
+            "[]",
+            &SpawnId::next(),
+            Some("abc123"),
+            &SandboxPolicy::default(),
+            false,
+        )
+        .emit()
+    });
+
+    assert!(output.contains(r#"session="abc123""#), "{output}");
 }

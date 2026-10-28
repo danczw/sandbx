@@ -120,18 +120,21 @@ Each run records the policy it ran under and how it ended, on stderr:
 
 ```console
 $ sandbx sandbox-run --allow-read /srv -- /bin/true
-2026-10-08T14:01:45.619054Z  INFO sandbx::audit: decision="spawned" program="/bin/true" readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7 dns_over_tcp=false dns_names=0 pinned=false
-2026-10-08T14:01:45.627489Z  INFO sandbx::audit: decision="exited" program="/bin/true" code=0
+2026-10-28T14:33:42.998120Z  INFO sandbx::audit: decision="spawned" spawn="6dbda.18e2b819e4bc3c87.0" session="-" program="/bin/true" args=[] readable=1 writable=0 executable=4 network="denied" network_ports=0 unix_sockets=false env=7 dns_over_tcp=false dns_names=0 pinned=false
+2026-10-28T14:33:43.006933Z  INFO sandbx::audit: decision="exited" spawn="6dbda.18e2b819e4bc3c87.0" session="-" program="/bin/true" code=0
 ```
 
-Two records per run, tied by `program`: one `spawned`, then exactly one of
+Two records per run, tied by `spawn`: one `spawned`, then exactly one of
 `exited` or `failed`. Under `sandbx tui` they arrive on stderr too, held back
 until the screen is given up so they follow the turn rather than interleave with
-it. Four fields do not read the way they look:
+it. Seven fields do not read the way they look:
 
 | field | reads |
 |---|---|
 | `decision="spawned"` | the *intent* to spawn, written before the helper execs — so it appears for a command that then fails to start — carrying the settled policy |
+| `spawn=` | which run this is, unique across processes so several `sandbx` invocations can write one file. Not a pid, which the kernel reuses. `-` on the one `degraded` that belongs to no run, reported while the in-process gate is built |
+| `session=` | the session whose transcript holds this run, or `-` where there is none: `sandbox-run` has no session, and `sandbx agent-run` only with `--session` |
+| `args=` | what the command was asked to do, cut at 512 characters with a `…` where it was cut — so the `-c` string of a `bash` call is on the record, and a longer one only in part |
 | `decision="absent"` | a path naming nothing inside a root you granted — no `reason=`. Outside your roots it is a `denied` like any other, so the trail never says which outside paths exist |
 | `env=` | how many names were *granted*, not how many crossed: a name `sandbx`'s own environment lacks passes nothing |
 | `pinned=` | whether a digest had to match before the exec, not whether it did: a pin that matched leaves no other mark, and a mismatch is already the `reason="pin_mismatch"` record |

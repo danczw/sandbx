@@ -107,7 +107,9 @@ impl FsGuard {
                              confirmation alone",
                             granted.path().display()
                         );
-                        crate::AuditEvent::degraded("rooted_access", &detail).emit();
+                        // No run to name: the guard is built before anything is spawned, and
+                        // this weakens every access for the session rather than one spawn.
+                        crate::AuditEvent::degraded("rooted_access", None, None, &detail).emit();
                         told.push(granted.path().to_path_buf());
                     }
                     None
