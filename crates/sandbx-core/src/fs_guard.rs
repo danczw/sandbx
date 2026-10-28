@@ -1,5 +1,9 @@
-//! The in-process filesystem gate: the policy check, and the accesses it guards. A root
-//! is confirmed against its grant's pin per access: the window is confirmation to open.
+//! The in-process filesystem gate: the policy check, and the accesses it guards. A root is
+//! confirmed against its grant's pin per access, and a permitted access then resolves
+//! beneath a descriptor the guard holds on that root — so the object confirmed and the
+//! object reached are the same one, and the confirmation-to-open window is closed rather
+//! than narrowed. `openat2` is Linux 5.6; below it, and for a grant naming a file rather
+//! than a directory, the access goes by path and the window is confirmation to open (#230).
 //!
 //! One module on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
@@ -285,7 +289,7 @@ impl FsGuard {
     /// block forever; sorted, `read_dir` order being filesystem-dependent. `max_files` bounds
     /// the walk, not the result: it stops at the `max_files + 1`th file,
     /// where trimming afterwards would bound neither time nor memory. The widest confirmation
-    /// window of the six tools: `root` is confirmed once for the whole walk, one record
+    /// window of the five tools: `root` is confirmed once for the whole walk, one record
     /// covering it, and re-confirming per directory would refuse mid-result.
     pub fn walk_readable(
         &self,

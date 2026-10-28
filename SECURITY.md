@@ -183,36 +183,49 @@ architecture the filter gates on.
   `sandbx`. Nothing refuses a derived default in the directory holding the binary,
   so a no-flag run from a user-level install prefix (`~/.cargo/bin`,
   `~/.local/bin`) grants write there; a `/usr`-rooted prefix is refused.
-- **The in-process confirmation is a measurement, not a resolution.** `FsGuard`
-  measures a granted root and then performs the access beneath it, so a
-  substitution landing between the two — of the root, or of a parent directory a
-  walk reopens by path — is granted on the object the confirmation saw. Two swaps,
-  both open: a few syscalls wide for the four single-path tools, five guard calls
-  between them — `edit` confirms twice, `crate::read_file` then `open_write` once
-  the match is known unique. Four of the five confirm then open with `O_NOFOLLOW`;
-  the fifth is `ls`, which has no handle form to open and reads the path again. And
-  the whole traversal for `find` and `grep`, whose walk confirms its root once and
-  then descends — though `grep`'s per-file size test is taken on the handle it is
-  about to read rather than on the path a second time, so the measurement and the
-  read cannot name different files, and it reaches the trail like any other access
-  ([#275](https://github.com/danczw/sandbx/issues/275)).
-  Closing either needs the access to run off a directory descriptor, with
-  `openat2(dirfd, …, RESOLVE_BENEATH)` for every step below it
+- **The in-process confirmation is a measurement, and the access resolves beneath
+  a held descriptor where the kernel allows it.** `FsGuard` opens an
+  `O_PATH | O_DIRECTORY | O_NOFOLLOW` descriptor per granted *directory* and
+  resolves each permitted access beneath it with
+  `openat2(dirfd, …, RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)` — `openat2` being
+  Linux 5.6 — so the object the confirmation measured is the object the access
+  resolves from, by construction, and a substitution landing between the two
+  refuses rather than being granted
   ([#230](https://github.com/danczw/sandbx/issues/230); the `FsGuard` TOCTOU row
   of [context/guide-sandboxing.md](context/guide-sandboxing.md) has the shapes).
-  The bare `check_read` and `check_write` bound nothing after the measurement at
+  Three cases keep the older shape, where the access goes by path and a
+  substitution between the confirmation and the open is granted on the object the
+  confirmation saw: a kernel below 5.6, which has nothing equivalent; a grant
+  naming a *file* rather than a directory, which has no directory to resolve
+  beneath; and a granted name that no longer opens as a directory, where the root
+  open refuses and the grant falls back to its own name. There the window is a few
+  syscalls wide for the four single-path tools — `edit` confirms twice,
+  `crate::read_file` then `open_write` once the match is known unique — and the
+  whole traversal for `find` and `grep`, whose walk confirms its root once and
+  then descends. `grep`'s per-file size test is taken on the handle it is about to
+  read rather than on the path a second time either way, so the measurement and
+  the read cannot name different files, and it reaches the trail like any other
+  access ([#275](https://github.com/danczw/sandbx/issues/275)). The confirmation
+  stays in all four cases: it is the only layer that can refuse a root the
+  operator's name no longer holds. The bare `check_read` and `check_write` bound
+  nothing after the measurement at
   all; no tool uses them. One honest false positive comes with the pin: a
   filesystem with no backing block device takes an anonymous `st_dev`, allocated
   fresh per mount, so a granted tree on a network or autofs mount that remounts
   mid-session starts refusing until the policy is rebuilt.
-- **The pin cannot see a reused inode.** An inode number is free once what held it
+- **The pin cannot see a reused inode, though the access no longer rests on it.**
+  An inode number is free once what held it
   is unlinked, and whether it is reused is the filesystem's business, unspecified
   — on ext4, measured, a directory re-created at the same name got the number back
   every time. So a granted directory *deleted and re-created* can compare equal on
   both layers although nothing the harness judged is left. That is the pin's floor
   rather than a gap in how it is checked: a freed number is no evidence the object
   survived, and telling it from the swap above needs a creation time or a
-  generation number beside the pair. It takes the same write access to the granted
+  generation number beside the pair. Where the access resolves beneath a held
+  descriptor it reaches the object that descriptor holds and not whatever took the
+  name, so the reused number fools the *verdict* rather than the access; in the
+  three cases above, where the access goes by path, it fools both. It takes the
+  same write access to the granted
   root's parent a `rename(2)` substitution does. Figures, and the host they were
   measured on:
   [context/decision-policy.md](context/decision-policy.md#a-grant-names-an-object-not-a-name).

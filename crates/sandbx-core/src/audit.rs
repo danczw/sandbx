@@ -17,7 +17,7 @@ pub const AUDIT_TARGET: &str = "sandbx::audit";
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
     Allowed {
-        /// Who asked: a tool's registry name, or a guard operation such as `open_read`.
+        /// Who asked: a tool's registry name, or a guard's access — `read` or `write`.
         tool: &'a str,
         /// What it acted on — a path, or the program being run.
         subject: &'a str,
