@@ -166,7 +166,7 @@ fn the_command_cannot_write_the_audit_channel() {
     assert!(
         !lines
             .iter()
-            .filter(|line| !line.contains("decision=spawned"))
+            .filter(|line| !line.starts_with("decision=spawned"))
             .any(|line| line.contains("forged-by-the-command")),
         "the command wrote onto sandbx's audit trail: {lines:?}\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
@@ -206,7 +206,7 @@ fn the_command_inherits_no_other_end_of_the_channel() {
     assert!(
         !lines
             .iter()
-            .filter(|line| !line.contains("decision=spawned"))
+            .filter(|line| !line.starts_with("decision=spawned"))
             .any(|line| line.contains("via-fd-")),
         "the command inherited a descriptor onto sandbx's audit trail: {lines:?}"
     );
