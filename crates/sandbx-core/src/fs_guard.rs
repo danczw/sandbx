@@ -299,8 +299,6 @@ impl FsGuard {
         let permitted = self.permit_read(root)?;
 
         if let Some(rooted) = &permitted.root {
-            // Through `record`, not an unconditional `allowed`: the rooted descent refuses
-            // one thing a by-path one cannot — a component renamed out from under the root
             let top = beneath(
                 rooted,
                 &permitted.resolved,
@@ -412,11 +410,6 @@ impl FsGuard {
     }
 
     /// [`walk_readable`](Self::walk_readable)'s descent, by descriptor rather than by path.
-    ///
-    /// The stack holds a *parent* descriptor and a child's name, and the child is opened
-    /// when it is popped rather than when it is pushed. Opening at push time would hold one
-    /// descriptor per pending sibling and run a wide tree into `EMFILE`; popping bounds the
-    /// live set by the tree's depth, which the by-path stack bounded for free.
     ///
     /// The symlink arm stays by path on purpose: it is the verdict deciding whether a link
     /// leaves the granted set, which is the concealment rule's and not this descent's, and
@@ -705,9 +698,6 @@ fn probe_subject() -> Option<OwnedFd> {
 }
 
 /// Whether this kernel resolves beneath a descriptor, asked once per [`FsGuard`].
-///
-/// `/` is the subject: it always exists, it is always a directory, asking about it discloses
-/// nothing, and it keeps the answer independent of the policy being built.
 fn resolves_beneath() -> bool {
     resolves_beneath_from(|| {
         let slash = probe_subject().ok_or(nix::errno::Errno::ENOTDIR)?;
