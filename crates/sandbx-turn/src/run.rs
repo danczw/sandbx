@@ -141,7 +141,7 @@ pub struct TurnLimits {
 
     /// How long one round may spend streaming before the turn is abandoned.
     ///
-    /// Bounds one round's *consumption*, which `sandbx-providers` leaves to a caller: its own
+    /// Bounds one round's *consumption*, which `sandbx-anthropic` leaves to a caller: its own
     /// read timeout resets on every chunk, so a connection kept warm while producing nothing
     /// is not bounded by it. Not a bound on the turn itself: an outer deadline would not help a
     /// tool call either, since `spawn_blocking` cannot be cancelled (#26).

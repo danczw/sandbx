@@ -8,7 +8,7 @@
 //! `context/decision-provider-seam.md`.
 //!
 //! Nothing here speaks a wire format — the vendor's field names, string tables and body
-//! rules are `sandbx-providers`'. What does cross is `reqwest::Error`, which
+//! rules are `sandbx-anthropic`'s. What does cross is `reqwest::Error`, which
 //! [`ProviderError::Transport`] carries so a failed request still says whether DNS or TLS
 //! was what went wrong.
 

@@ -3,10 +3,10 @@
 ## No wrapper crate
 
 This decision spans four crates: `sandbx-prompt` holds what is asked for,
-`sandbx-event` what comes back, `sandbx-providers` the one adapter between them, and
+`sandbx-event` what comes back, `sandbx-anthropic` the one adapter between them, and
 `sandbx-turn` the loop driving it.
 
-No `genai`, no `rig-core` — `sandbx-providers` is hand-rolled `reqwest` + `rustls`.
+No `genai`, no `rig-core` — `sandbx-anthropic` is hand-rolled `reqwest` + `rustls`.
 An early diagram said "wraps `genai`"; the decision not to is the one that held. The
 cost of a wrapper is that every new capability waits on someone else's abstraction,
 and SSE accumulation — the hard part — is where a generic wrapper helps least.
@@ -29,7 +29,7 @@ stream. One adapter plus a test double is two producers of `EventStream` and one
 `Provider` — the alias was always the real seam, and the enum only looked like one.
 
 Since #366 the alias and `ProviderError` are `sandbx-provider`, a crate of their own,
-and `sandbx-providers` depends on it rather than declaring it. That makes the seam
+and `sandbx-anthropic` depends on it rather than declaring it. That makes the seam
 something a consumer can name without an edge to any client: `sandbx-turn` and
 `sandbx-cli` both do, and neither has to reach `AnthropicClient` to spell the
 closure's return type. The two items are inseparable — the alias's `Item` is

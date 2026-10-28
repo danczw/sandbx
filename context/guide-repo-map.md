@@ -26,7 +26,7 @@ sandbx-core      (no internal deps)  ── sandboxing; the only crate allowed t
                         ├──────────────────────┘
                         ├──► sandbx-turn ───┐  turn loop
 sandbx-compact ─────────┤                   │
-sandbx-providers ───────┘                   │
+sandbx-anthropic ───────┘                   │
          └──────────────────────────────────┼──► sandbx-cli   clap, the
 sandbx-approval ────────────────────────────┤                 subcommand bodies,
 sandbx-auth ────────────────────────────────┤                 the turn loop's
@@ -59,7 +59,7 @@ need a node drawn first, for the reason below.
 direct dependencies and this not being one of them. Its two parents are
 `sandbx-grants` and `sandbx-session-bridge`, both drawn as leaves of that bus.
 
-`sandbx-providers` is drawn as a leaf and has stopped being one: `sandbx-event`,
+`sandbx-anthropic` is drawn as a leaf and has stopped being one: `sandbx-event`,
 `sandbx-prompt`, `sandbx-provider` and `sandbx-sse` are its four internal edges
 — the accumulator builds an `AgentEvent` per wire frame, `anthropic/body.rs`
 serializes a `&Prompt`, `stream_chat` returns an `EventStream` and builds every
@@ -80,9 +80,9 @@ so the turn loop reaches no client code in a production build and
 |---|---|---|
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
-| `sandbx-providers` | hand-rolled streaming API clients | event, prompt, provider, sse |
-| `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (core and providers are *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, approval, auth, event, grants, logging, prompt, provider, providers, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
+| `sandbx-anthropic` | the hand-rolled streaming client for one vendor's API | event, prompt, provider, sse |
+| `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (anthropic and core are *dev*-only) |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, anthropic, approval, auth, event, grants, logging, prompt, provider, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |
@@ -137,7 +137,7 @@ into the `sandbx-turn` bundle alone and has had two dependents since #351.
 sandbx's, and `sandbx-tui-input` on nothing at all: the event and text edges the
 diagram used to draw to the drawing side land one step earlier, on the crate that
 folds the events. Both are leaves, so no client code reaches the drawing side at
-all — until #365 the event edge was `sandbx-providers`', and reqwest, rustls and
+all — until #365 the event edge was the client crate's, and reqwest, rustls and
 hyper came with it. `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
 re-export and not an edge of its own — every entry point `sandbx-screen` has
 takes or returns one — which is why `deny.toml` names one parent there and not
@@ -152,9 +152,9 @@ is a crate so that `CARGO_BIN_EXE_sandbx-helper` resolves for the tests that spa
 it, which cargo sets only for a bin of the same package (#328 decision 5, #347).
 
 `sandbx-cli` is the turn loop's only caller outside its own tests. It reaches
-`sandbx-provider`, `sandbx-prompt`, `sandbx-providers` and `sandbx-event`
+`sandbx-provider`, `sandbx-prompt`, `sandbx-anthropic` and `sandbx-event`
 directly rather than through `sandbx-turn`, which re-exports none of the four:
-`agent-run` builds the client, which is `sandbx-providers`', and the first user
+`agent-run` builds the client, which is `sandbx-anthropic`'s, and the first user
 turn, which is `sandbx-prompt`'s; it names the closure's own
 `Result<EventStream, ProviderError>`; and its renderer is a second fold of the
 events the loop hands back.
@@ -297,7 +297,7 @@ tests/            per-tool (find and grep share search), plus registry, limits,
                   scan_limits, spawn
 ```
 
-## `sandbx-providers`
+## `sandbx-anthropic`
 
 ```
 src/lib.rs        re-exports; ensure_crypto_provider_installed
@@ -322,11 +322,11 @@ among its dependencies; the wire payloads are `pub(super)` bar the two error
 envelopes at `pub(crate)`; and `stop_reason` is a private free function, so no
 `StopReason` comes from a wire string outside `anthropic/` (#59) — which the
 enum leaving for `sandbx-event` did not weaken, the string table having stayed.
-The vendor *name* is the one row nothing *contains* — no lint, no containment
-test, no CI grep — and one sibling of `anthropic.rs` carries it: `lib.rs`
-re-exports `AnthropicClient`. The key and its variable's name are
-`sandbx-auth`'s, in its `key.rs`. A grep says which other files name it in doc
-comments only. Per-rule account in
+What the rules confine is the vendor's *vocabulary*, never its name: since #368
+the name is the crate's own, carried by the package, the directory, the baseline,
+`deny.toml` and the `crate:anthropic` label alike, and no lint or grep could
+contain it if one wanted to. The key and its variable's name are
+`sandbx-auth`'s, in its `key.rs`. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-provider`
@@ -347,7 +347,7 @@ reqwest and its HTTP stack travel with the seam. Not the TLS half — this crate
 names no reqwest feature, which is what keeps rustls and `ring` with the one
 crate that opens connections, and its manifest says why that matters. That line
 between the two halves is what the turn loop gained: naming the seam here rather
-than through `sandbx-providers` costs it reqwest and hyper and sheds rustls,
+than through `sandbx-anthropic` costs it reqwest and hyper and sheds rustls,
 `ring`, the four `rustls-*` crates, `tokio-rustls`, `hyper-rustls`, `h2` and
 `secrecy` — so no production build of `sandbx-turn` links TLS or can name the
 type the API key is kept in. Whether the field should be boxed, which would shed

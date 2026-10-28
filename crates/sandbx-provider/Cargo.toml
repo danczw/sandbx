@@ -11,7 +11,7 @@ publish.workspace = true
 # `Transport::source` alone, and it is a public field, so the HTTP stack travels with the
 # seam. `default-features = false` is required, not tidiness: `default` reaches reqwest's
 # `rustls = ["__rustls-aws-lc-rs", ..]`, so the bare form puts aws-lc-rs on the very
-# `rustls v0.23.46` that `sandbx-providers` drives with `ring`. `install_default` is then
+# `rustls v0.23.46` that `sandbx-anthropic` drives with `ring`. `install_default` is then
 # first-wins and that crate's installer a silent no-op — the hazard its own reqwest
 # comment names, reached from here. Naming no feature at all is what keeps rustls out of
 # this tree (#366).
@@ -20,7 +20,7 @@ reqwest = { version = "0.13.5", default-features = false }
 sandbx-event = { path = "../sandbx-event" }
 # `FusedStream`, the bound on the boxed stream. The trait is `futures-core`'s, which is
 # what the baseline renders, so this looks like it should be the narrower edge. It is not
-# worth narrowing: `sandbx-providers`, `sandbx-sse`, `sandbx-turn` and `sandbx-cli` each
+# worth narrowing: `sandbx-anthropic`, `sandbx-sse`, `sandbx-turn` and `sandbx-cli` each
 # declare `futures-util` anyway, so it sheds nothing from any build that exists. Revisit
 # only if this crate becomes a dependency of something light.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }

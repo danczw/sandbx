@@ -1,17 +1,16 @@
-//! Hand-rolled streaming clients against LLM provider APIs.
+//! A hand-rolled streaming client against the Anthropic Messages API.
 //!
-//! The seam is the return type: every client's `stream_chat` hands back
+//! The seam is the return type: `stream_chat` hands back
 //! [`sandbx_provider::EventStream`], so there is no trait or enum over the backends. No
 //! vendor SDK sits between sandbx and the wire format; see
 //! `context/decision-provider-seam.md`.
 //!
-//! Nothing here is vocabulary any more: what a request is made of is
-//! [`sandbx_prompt`]'s, the error a stream can fail with is
-//! [`sandbx_provider::ProviderError`], the events it yields are [`sandbx_event`]'s,
-//! what that text may not carry to a terminal is `sandbx-text`'s, and the framing a
-//! payload arrives in is [`sandbx_sse`]'s. What is left is the vendor boundary —
-//! everything that knows one API's field names, string tables and body rules lives
-//! under `anthropic` — plus the one crypto-provider install (#364, #366, #367).
+//! Nothing here is vocabulary: what a request is made of is [`sandbx_prompt`]'s, the
+//! error a stream can fail with is [`sandbx_provider::ProviderError`], the events it
+//! yields are [`sandbx_event`]'s, what that text may not carry to a terminal is
+//! `sandbx-text`'s, and the framing a payload arrives in is [`sandbx_sse`]'s. What is
+//! left is one vendor's field names, string tables and body rules, under `anthropic`,
+//! plus the one crypto-provider install (#364, #366, #367, #368).
 
 mod anthropic;
 

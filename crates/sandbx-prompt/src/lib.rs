@@ -8,7 +8,7 @@
 //! this the only place an `impl Serialize for Prompt` could be written, and no
 //! dependency here names the trait, so it cannot be written here either. An adapter
 //! must declare a local wrapper and spell every field out, which is what
-//! `sandbx-providers`' `anthropic/body.rs` does (#59, #364).
+//! `sandbx-anthropic`'s `anthropic/body.rs` does (#59, #364).
 
 /// One request for one model turn.
 ///

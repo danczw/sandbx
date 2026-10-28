@@ -32,7 +32,7 @@ keeps the security-bearing code in one place: a renderer that could decide
 anything would be a second place to look for what approved a call. The provider
 half of that is enforced rather than observed since #365: `AgentEvent` is
 `sandbx-event`'s, none of the three has an edge to `sandbx-provider` or
-`sandbx-providers`, and `deny.toml` is what would refuse one.
+`sandbx-anthropic`, and `deny.toml` is what would refuse one.
 
 ```
 sandbx-tui-transcript
