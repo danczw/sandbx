@@ -1156,4 +1156,154 @@ mod tests {
             "got {error:?}"
         );
     }
+    /// Both branches of the rooting decision answer alike. No CI runner is below the 5.6
+    /// `openat2` needs, so the by-path branch is reachable nowhere else — and a fallback no
+    /// suite exercises is a hole every suite passes.
+    #[test]
+    fn both_rootings_answer_alike() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("sub")).unwrap();
+        std::fs::write(root.path().join("sub/deep.txt"), b"deep").unwrap();
+        std::fs::write(root.path().join("top.txt"), b"top").unwrap();
+        let policy = SandboxPolicy::default()
+            .allow_read(VettedPath::vet(root.path()).unwrap())
+            .allow_write(VettedPath::vet(root.path()).unwrap());
+
+        let rooted = FsGuard::with_rooting(&policy, true);
+        let by_path = FsGuard::with_rooting(&policy, false);
+        assert!(
+            rooted.readable[0].dir.is_some() && by_path.readable[0].dir.is_none(),
+            "the two branches must actually differ, or this compares one thing twice"
+        );
+
+        let file = root.path().join("top.txt");
+        for (label, guard) in [("rooted", &rooted), ("by path", &by_path)] {
+            let mut got = String::new();
+            std::io::Read::read_to_string(&mut guard.open_read(&file).unwrap(), &mut got)
+                .unwrap_or_else(|_| panic!("{label} must read"));
+            assert_eq!(got, "top", "{label}");
+        }
+
+        let listing = |guard: &FsGuard| {
+            let mut names: Vec<_> = guard
+                .read_dir(root.path())
+                .unwrap()
+                .unwrap()
+                .entries
+                .into_iter()
+                .map(|entry| (entry.name, entry.directory))
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(listing(&rooted), listing(&by_path));
+
+        assert_eq!(
+            rooted.walk_readable(root.path(), usize::MAX).unwrap().files,
+            by_path
+                .walk_readable(root.path(), usize::MAX)
+                .unwrap()
+                .files,
+        );
+
+        let fresh = root.path().join("made.txt");
+        for guard in [&rooted, &by_path] {
+            std::fs::remove_file(&fresh).ok();
+            std::io::Write::write_all(&mut guard.open_write(&fresh).unwrap(), b"w").unwrap();
+            assert_eq!(std::fs::read_to_string(&fresh).unwrap(), "w");
+        }
+    }
+
+    /// Which errnos are a verdict about `openat2` itself. Only a kernel that does not have
+    /// it, or does not know the resolve flags, turns rooting off; anything else says nothing
+    /// about the call and must leave it on, since disabling it for every root on an
+    /// unrelated errno is a hole both suites pass.
+    #[test]
+    fn the_rooting_decision_reads_only_its_own_errnos() {
+        for errno in [
+            nix::errno::Errno::ENOSYS,
+            nix::errno::Errno::EINVAL,
+            nix::errno::Errno::E2BIG,
+            nix::errno::Errno::EOPNOTSUPP,
+        ] {
+            assert!(
+                !resolves_beneath_from(|| Err(errno)),
+                "{errno:?} means the kernel lacks openat2"
+            );
+        }
+
+        for errno in [
+            nix::errno::Errno::EACCES,
+            nix::errno::Errno::EPERM,
+            nix::errno::Errno::ENOENT,
+            nix::errno::Errno::EMFILE,
+        ] {
+            assert!(
+                resolves_beneath_from(|| Err(errno)),
+                "{errno:?} says nothing about openat2 and must not disable rooting"
+            );
+        }
+
+        assert!(
+            resolves_beneath_from(|| open_root(Path::new("/")).ok_or(nix::errno::Errno::ENOTDIR)),
+            "a kernel that answers must read as present"
+        );
+    }
+
+    /// `EXDEV` is the one thing `RESOLVE_BENEATH` refuses that is not an ordinary failure:
+    /// a `rename(2)` moved a component out from under the root mid-resolution, which is the
+    /// window #230 closes, caught. It must not read as a dangling link.
+    ///
+    /// The mapping and not the race: provoking the rename between the kernel's own
+    /// resolution steps is not something a test can schedule. The errno itself is measured
+    /// out of band — `RESOLVE_BENEATH` answers `EXDEV` for a `..` escape, an absolute path
+    /// and a symlink out, on Linux 6.18.
+    #[test]
+    fn a_resolution_that_left_the_root_is_not_a_dangling_link() {
+        let escaped = std::io::Error::from_raw_os_error(libc::EXDEV);
+        let dangling = std::io::Error::from_raw_os_error(libc::ELOOP);
+
+        assert_eq!(reason(&escaped), ESCAPED);
+        assert_eq!(reason(&dangling), UNRESOLVABLE);
+        assert_ne!(
+            reason(&escaped),
+            reason(&dangling),
+            "an operator counting substitution attempts reads these apart"
+        );
+    }
+
+    /// `OpenHow` zeroes the mode where `OpenOptions` defaults to `0o666`, so a rooted
+    /// `O_CREAT` without an explicit mode creates a file nobody can reopen — and the handle
+    /// already being open hides it from every test that only writes and reads back.
+    #[test]
+    fn a_rooted_create_keeps_the_default_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let policy = SandboxPolicy::default().allow_write(VettedPath::vet(root.path()).unwrap());
+        let guard = FsGuard::with_rooting(&policy, true);
+        assert!(
+            guard.writable[0].dir.is_some(),
+            "this must be the rooted path"
+        );
+
+        let made = root.path().join("made.txt");
+        drop(guard.open_write(&made).unwrap());
+
+        let mode = std::fs::metadata(&made).unwrap().permissions().mode() & 0o777;
+        assert_ne!(mode, 0, "a mode of 0o000 is the zeroed `OpenHow`: {mode:o}");
+        assert_eq!(
+            mode,
+            0o666 & !umask(),
+            "the rooted create must land where `OpenOptions` would: {mode:o}"
+        );
+    }
+
+    /// This process's umask, read by setting it and putting it back — the only way libc
+    /// offers, there being no `getumask`.
+    fn umask() -> u32 {
+        let mode = nix::sys::stat::umask(nix::sys::stat::Mode::empty());
+        nix::sys::stat::umask(mode);
+        mode.bits()
+    }
 }
