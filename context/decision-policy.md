@@ -896,7 +896,11 @@ on every checked path, and a cached confirmation is exactly the window the measu
 exists to shrink — the cost *is* the property. One `O_PATH` open and one `fstat` on a
 directory the kernel has in its dentry cache, against a `canonicalize` of the requested
 path that the same check already pays. `find` and `grep` are the exception worth naming:
-a walk confirms its root once and then traverses, so the window there is the traversal.
+a walk confirms its root once and then traverses, so where the traversal runs by
+path — below Linux 5.6, or under a grant naming a file — the window there is the
+traversal. Above it the walk descends by `openat2` from the confirmed descriptor,
+and the confirmation becomes a verdict about the operator's name rather than a
+guard on the access (#230).
 
 **A reused inode reads as the vetted object.** The pin's floor, and the one cost here
 that is a limit on what the comparison can mean rather than on how it is taken. An
@@ -916,11 +920,14 @@ Worth separating from the attack the pin does close. A `rename(2)` substitution 
 directory that *already exists* at the granted name, and an existing directory cannot
 be holding the vetted number while the vetted object still is — so the pin sees it.
 Delete-then-create is the other order, and the freed number carries no evidence either
-way. Closing it needs a third component beside the pair, a creation time (`statx`'s
+way. Closing it for the *access* needed no third component in the end: the held-root
+descriptor pins the object instead of a number naming it, so what an access reaches is
+what was vetted and a reused number fools nothing — which was the argument for doing
+that one rather than widening the pair, and is what #230 did. Closing it for the
+*verdict* still needs a third component beside the pair, a creation time (`statx`'s
 `STATX_BTIME`, where the filesystem reports one) or a generation number
-(`FS_IOC_GETVERSION`, an ioctl), or else the held-root descriptor that pins the object
-instead of a number naming it — which is the same remedy as the window above, and is
-the argument for doing that one rather than widening the pair.
+(`FS_IOC_GETVERSION`, an ioctl), and that is not worth a filesystem-support matrix for
+the one case now that the access does not rest on it.
 
 **A remount reads as a substitution.** A filesystem with no backing block device takes
 an anonymous `st_dev`, allocated fresh per mount, so a grant on a network or autofs

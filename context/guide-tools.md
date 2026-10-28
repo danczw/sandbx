@@ -75,20 +75,25 @@ because `schema_for!` allocates and so cannot be a `const`.
 ## Paths: handles, not resolved paths
 
 ```rust
-let file = ctx.guard().open_read(path)?;   // O_NOFOLLOW; fails if the leaf became a symlink
+// Resolved beneath the granted root: fails if a component changed since the check.
+let file = ctx.guard().open_read(path)?;
 ```
 
 The guard hands back an **open handle**. A tool that took a resolved path and
 opened it itself would reintroduce the TOCTOU window the handle closes — so no
 tool calls the bare `check_read` or `check_write`. `ls` is the nearest case and
-still takes a handle: `FsGuard::read_dir` hands it a `ReadDir`, though a directory
-read has no `O_NOFOLLOW` form, so that handle closes the window no more than a path
-would.
+still takes a handle: `FsGuard::read_dir` hands it a `Listing`, read off a
+descriptor the guard opened beneath the granted root rather than off the path a
+second time.
 
-Residual gap: a parent-directory swap mid-open, and a granted root swapped in the
-two syscalls between the guard's confirmation of it and the open. Closing either
-needs `openat2(dirfd, …, RESOLVE_BENEATH)` off a held root descriptor rather than a
-path. A `find` or `grep` walk is the widest form, confirming its root once and then
+On Linux 5.6+ and a grant naming a directory, the window is closed rather than
+narrowed: every permitted access resolves with
+`openat2(dirfd, …, RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)` off a descriptor
+`FsGuard::new` holds, so the root the verdict confirmed is the root the access
+resolves from. Residual below 5.6, and for a grant naming a file, which has no
+directory to resolve beneath: a parent-directory swap mid-open, and a granted root
+swapped in the two syscalls between the guard's confirmation of it and the open —
+a `find` or `grep` walk being the widest form, confirming its root once and then
 traversing.
 
 ## The policy is private
