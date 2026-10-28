@@ -207,15 +207,35 @@ impl FsGuard {
     }
 
     /// Read the entries of `path`, refusing anything the policy does not allow. Here and not
-    /// in the caller because the audit target is this crate's alone. It closes no
-    /// check-to-use window that [`check_read`](FsGuard::check_read) leaves open — a directory
-    /// read has no `O_NOFOLLOW` handle form — only the gap to the trail. The outer result is
+    /// in the caller because the audit target is this crate's alone. The outer result is
     /// the policy's, the inner the host's; the caller reports them apart.
-    pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<std::fs::ReadDir>, SandboxError> {
-        let resolved = self.check_read(path)?;
+    ///
+    /// Where the grant holds a descriptor the directory is opened beneath it, so the listing
+    /// comes off the object the check confirmed rather than off a second resolution of the
+    /// path. `O_DIRECTORY` without `O_NOFOLLOW`: the resolve flags already refuse a link, and
+    /// `O_NOFOLLOW` would report one as `ENOTDIR`, which `listed_nothing` reads as a
+    /// directory that is really a file — true of a regular leaf and false of a link.
+    pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<Listing>, SandboxError> {
+        let permitted = self.permit_read(path)?;
+
+        let Some(root) = &permitted.root else {
+            return Ok(record(
+                std::fs::read_dir(&permitted.resolved).and_then(listing_by_path),
+                Access::Read,
+                path,
+                listed_nothing,
+            ));
+        };
+
+        let opened = beneath(
+            root,
+            &permitted.resolved,
+            OFlag::O_RDONLY | OFlag::O_DIRECTORY,
+            nix::sys::stat::Mode::empty(),
+        );
 
         Ok(record(
-            std::fs::read_dir(&resolved),
+            opened.and_then(listing),
             Access::Read,
             path,
             listed_nothing,
@@ -553,6 +573,28 @@ fn resolves_beneath_from(probe: impl FnOnce() -> nix::Result<OwnedFd>) -> bool {
     }
 }
 
+/// What a directory holds, as one listing read off a single descriptor.
+///
+/// Owned rather than an iterator because the entries come from a descriptor opened beneath
+/// a granted root: `std::fs::ReadDir` can only be built from a path, so handing one back
+/// would mean resolving the directory a second time — the window the descriptor closes.
+/// `.` and `..` are not entries here: `readdir(2)` reports both and `std` filters them, so
+/// a listing built off a descriptor has to filter them too or every directory grows two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listing {
+    /// Every entry the directory held, in the order the filesystem reported them.
+    pub entries: Vec<Listed>,
+}
+
+/// One entry of a [`Listing`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    /// The entry's name within its directory, never a path.
+    pub name: std::ffi::OsString,
+    /// Whether the entry is a directory, following no symlink to decide.
+    pub directory: bool,
+}
+
 /// A path the policy allows, and the granted root an access resolves it beneath.
 struct Permitted {
     resolved: PathBuf,
@@ -592,6 +634,82 @@ fn beneath(
         .resolve(BENEATH);
 
     nix::fcntl::openat2(root.dir.as_ref(), rest, how).map_err(std::io::Error::from)
+}
+
+/// The same listing from a `std` iterator, for the grants with no descriptor to read off.
+///
+/// `std` already filters `.` and `..` and already falls back to `lstat` on `DT_UNKNOWN`, so
+/// this is the shorter half: the two branches differ in where the entries come from and
+/// agree on what a [`Listed`] means.
+fn listing_by_path(entries: std::fs::ReadDir) -> std::io::Result<Listing> {
+    entries
+        .map(|entry| {
+            let entry = entry?;
+            Ok(Listed {
+                directory: entry.file_type().is_ok_and(|kind| kind.is_dir()),
+                name: entry.file_name(),
+            })
+        })
+        .collect::<std::io::Result<Vec<_>>>()
+        .map(|entries| Listing { entries })
+}
+
+/// Read every entry of the directory `dir` holds open, dropping `.` and `..`.
+///
+/// `DT_UNKNOWN` is why the `fstatat` is here and not a tidier `map`: not every filesystem
+/// reports an entry's type in the `dirent` — XFS without `ftype=1`, and some network
+/// filesystems — and `std::fs::DirEntry::file_type` quietly `lstat`s in that case. Without
+/// the same fallback `ls` would stop marking directories on those hosts.
+fn listing(dir: OwnedFd) -> std::io::Result<Listing> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut dir = nix::dir::Dir::from_fd(dir)?;
+
+    // Two passes, because the `fstatat` below needs the directory that `iter` borrows
+    // mutably: names and whatever the `dirent` knew first, then the unknowns.
+    let mut entries = Vec::new();
+    for entry in dir.iter() {
+        let entry = entry?;
+        let name = entry.file_name().to_bytes().to_vec();
+        if name == b"." || name == b".." {
+            continue;
+        }
+        entries.push((name, entry.file_type()));
+    }
+
+    let entries = entries
+        .into_iter()
+        .map(|(name, kind)| {
+            let directory = match kind {
+                Some(kind) => kind == nix::dir::Type::Directory,
+                None => stat_is_dir(&dir, &name),
+            };
+
+            Listed {
+                name: std::ffi::OsStr::from_bytes(&name).to_owned(),
+                directory,
+            }
+        })
+        .collect();
+
+    Ok(Listing { entries })
+}
+
+/// Whether `name` under `dir` is a directory, following no link to find out.
+///
+/// The `DT_UNKNOWN` fallback. An entry whose type cannot be read at all reads as not a
+/// directory: the flag marks what may be descended into, so the safe answer is no.
+fn stat_is_dir(dir: &nix::dir::Dir, name: &[u8]) -> bool {
+    let Ok(name) = std::ffi::CString::new(name) else {
+        return false;
+    };
+
+    nix::sys::stat::fstatat(
+        dir,
+        name.as_c_str(),
+        nix::fcntl::AtFlags::AT_SYMLINK_NOFOLLOW,
+    )
+    .is_ok_and(|at| at.st_mode & libc::S_IFMT == libc::S_IFDIR)
 }
 
 /// Where `resolved` sits relative to a set of granted roots.

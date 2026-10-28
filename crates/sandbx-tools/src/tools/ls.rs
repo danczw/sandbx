@@ -22,19 +22,23 @@ pub(crate) struct LsInput {
 /// List a directory's entries, marking directories with a trailing `/` so the model
 /// need not spend a call per entry to find what it can descend into.
 pub(crate) fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let entries = ctx
+    let listing = ctx
         .guard()
         .read_dir(&input.path)
         .map_err(|error| crate::guard_error(&input.path, error))?
         .map_err(|error| crate::failed("list", &input.path, error))?;
 
-    let mut names = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| crate::failed("list", &input.path, error))?;
-        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
-        let name = entry.file_name().to_string_lossy().into_owned();
-        names.push(if is_dir { format!("{name}/") } else { name });
-    }
+    let mut names: Vec<String> = listing
+        .entries
+        .into_iter()
+        .map(|entry| {
+            let name = entry.name.to_string_lossy().into_owned();
+            match entry.directory {
+                true => format!("{name}/"),
+                false => name,
+            }
+        })
+        .collect();
 
     // Readdir order is filesystem-dependent: sort so an unchanged directory does
     // not read differently between calls.
