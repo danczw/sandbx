@@ -301,8 +301,6 @@ impl FsGuard {
         if let Some(rooted) = &permitted.root {
             // Through `record`, not an unconditional `allowed`: the rooted descent refuses
             // one thing a by-path one cannot — a component renamed out from under the root
-            // between the check and the walk root's own open — and recording that as a
-            // successful read of an empty tree would hide the substitution this closes.
             let top = beneath(
                 rooted,
                 &permitted.resolved,
@@ -310,10 +308,32 @@ impl FsGuard {
                 nix::sys::stat::Mode::empty(),
             );
 
-            let top = record(top, Access::Read, requested, names_nothing)
-                .map_err(|source| classify(source, requested))?;
+            // Only `EXDEV` refuses, and only because it is the one refusal a by-path descent
+            // cannot make: a component renamed out from under the root between the check and
+            // this open, which recorded as a successful read of an empty tree would hide the
+            // substitution this closes. Every other failure answers as it did before —
+            // a walk root that is a regular file or unreadable yields no files rather than an
+            // error — so the two descents cannot disagree about anything but the escape.
+            let walked = match top {
+                Ok(top) => self.walk_beneath(top, &permitted.resolved, max_files),
+                Err(source) if source.raw_os_error() == Some(libc::EXDEV) => {
+                    crate::AuditEvent::denied(
+                        Access::Read.operation(),
+                        &requested.display().to_string(),
+                        ESCAPED,
+                    )
+                    .emit();
+                    return Err(classify(source, requested));
+                }
+                Err(_) => ReadableWalk {
+                    files: Vec::new(),
+                    truncated: false,
+                },
+            };
 
-            return Ok(self.walk_beneath(top, &permitted.resolved, max_files));
+            crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
+                .emit();
+            return Ok(walked);
         }
 
         let root = permitted.resolved;
@@ -1253,6 +1273,36 @@ mod tests {
             std::fs::remove_file(&fresh).ok();
             std::io::Write::write_all(&mut guard.open_write(&fresh).unwrap(), b"w").unwrap();
             assert_eq!(std::fs::read_to_string(&fresh).unwrap(), "w");
+        }
+
+        // The shapes a walk root can take that are not a readable directory. These are where
+        // the two descents diverged once — the rooted one propagated the open's errno where
+        // the by-path one skipped the directory and reported no files — and the divergence
+        // showed only here, every other input being a directory that opens.
+        let label = |walked: &Result<ReadableWalk, SandboxError>| match walked {
+            Ok(walk) => format!("ok:{}", walk.files.len()),
+            Err(error) => error.label().to_string(),
+        };
+        for subject in [&file, &root.path().join("sub")] {
+            let unreadable = subject.ends_with("sub");
+            if unreadable {
+                let mut mode = std::fs::metadata(subject).unwrap().permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o000);
+                std::fs::set_permissions(subject, mode).unwrap();
+            }
+
+            assert_eq!(
+                label(&rooted.walk_readable(subject, usize::MAX)),
+                label(&by_path.walk_readable(subject, usize::MAX)),
+                "the two descents must answer alike for {}",
+                subject.display()
+            );
+
+            if unreadable {
+                let mut mode = std::fs::metadata(subject).unwrap().permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
+                std::fs::set_permissions(subject, mode).unwrap();
+            }
         }
     }
 

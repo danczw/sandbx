@@ -197,12 +197,16 @@ architecture the filter gates on.
   substitute
   ([#230](https://github.com/danczw/sandbx/issues/230); the `FsGuard` TOCTOU row
   of [context/guide-sandboxing.md](context/guide-sandboxing.md) has the shapes).
-  Three cases keep the older shape, where the access goes by path and a
+  Four cases keep the older shape, where the access goes by path and a
   substitution between the confirmation and the open is granted on the object the
   confirmation saw: a kernel below 5.6, which has nothing equivalent; a grant
   naming a *file* rather than a directory, which has no directory to resolve
-  beneath; and a granted name that no longer opens as a directory, where the root
-  open refuses and the grant falls back to its own name. There the window is a few
+  beneath; a granted name that no longer opens as a directory, where the root open
+  refuses; and that same pin check failing, which is the ceiling on what this
+  buys — somebody able to swap a granted name during the one open per root at
+  startup degrades that root to the older shape for the session, silently. Never
+  wider than the older shape, and never wider than the policy, but not narrower
+  either. There the window is a few
   syscalls wide for the four single-path tools — `edit` confirms twice,
   `crate::read_file` then `open_write` once the match is known unique — and the
   whole traversal for `find` and `grep`, whose walk confirms its root once and
