@@ -1,7 +1,7 @@
 //! Public contract of [`ProviderError`]: every variant's `Display` renders something
 //! actionable, and `source()` is wired only where a variant carries one.
 //!
-//! `Transport` is tested from `sandbx-providers` instead: building the real
+//! `Transport` is tested from `sandbx-anthropic` instead: building the real
 //! `reqwest::Error` it carries needs a crypto provider installed, and the function that
 //! installs one stayed there (#366).
 

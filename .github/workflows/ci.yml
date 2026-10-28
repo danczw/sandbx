@@ -83,7 +83,7 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      # `ring` arrives via `sandbx-providers` and its build.rs compiles C; the
+      # `ring` arrives via `sandbx-anthropic` and its build.rs compiles C; the
       # `musl-dev` pulled in here is the `<arch>-linux-musl-gcc` cc-rs looks for.
       - name: Install the musl C toolchain
         run: |

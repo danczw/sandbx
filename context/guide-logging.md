@@ -223,7 +223,7 @@ terminal. That part of the design holds; it is the sink that is absent.
 
 ## Secrets
 
-`SecretString` wraps the API key (`secrecy`, in `sandbx-providers`).
+`SecretString` wraps the API key (`secrecy`, in `sandbx-anthropic`).
 
 > **It does implement `Debug`** — printing a redaction, which is the entire
 > reason the key is wrapped in it, and why `AnthropicClient` can derive `Debug`
