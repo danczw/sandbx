@@ -55,6 +55,17 @@ all, and under `tui` drawn only in a pane with no scrollback (#249). **The cost 
 real and is accepted, not argued away:** a credential the model puts on a command
 line now reaches the trail, where before only `program` did.
 
+It is also the one field the layer writes **unquoted**, and the one that can hold
+a bare space, so it is where the grep-not-logfmt nature of this stream starts to
+matter: a command spelling `pinned=true` puts that exact token on the line after
+the real `pinned=false`, and a reader splitting on whitespace into a last-wins map
+would take the model's value. Escaping is what bounds this — no newline, so no
+forged *record*, and no raw quote, so `decision`, `spawn`, `session` and `program`
+cannot be forged at all — and the field is emitted last so a first-match read
+cannot be fooled either. Both halves cannot be closed by ordering, so a structured
+sink (the unbuilt row below) has to quote this field rather than inherit the text
+format's bound.
+
 `Spawned.pinned` is the one field not derived from the policy, a digest not being
 policy (`decision-helper-audit-channel.md`), so `spawned` takes it as a parameter.
 It is there because a matching pin is otherwise invisible: the run proceeds as any

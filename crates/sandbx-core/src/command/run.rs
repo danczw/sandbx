@@ -528,9 +528,8 @@ mod tests {
         }
     }
 
-    /// A degradation falls between a spawn and its outcome, so the id is the only thing
-    /// tying it to the run it weakened — and these records are emitted after the wait, so
-    /// position says even less about them than it does about the pair (#249).
+    /// The id `record_reports` puts on a degradation is the run it weakened; that function's
+    /// own doc has why position cannot stand in for it.
     #[test]
     fn a_degradation_names_the_run_that_weakened() {
         let run = crate::SpawnId::next();

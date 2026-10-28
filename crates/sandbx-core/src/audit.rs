@@ -19,8 +19,14 @@ pub const AUDIT_TARGET: &str = "sandbx::audit";
 /// newline or a quote — so an escape-heavy command is cut well short of 512 of its own
 /// characters. Capping the raw text instead would mean rendering after cutting, and a cut
 /// that landed inside a multi-byte character would then be escaped into visible garbage.
+///
 /// Not `gate::printable` itself: it reaches `sandbx_text::invisible`, an edge
-/// `crates/sandbx-text/src/lib.rs` refuses this crate.
+/// `crates/sandbx-text/src/lib.rs` refuses this crate. Nor is the coverage identical, and
+/// the gap is four codepoints: `escape_debug` escapes everything `is_control` plus the
+/// `Cf` and `Mn` classes — so every bidi override, every zero-width character and the C1
+/// range — but leaves the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0, which are `Lo`
+/// letters. They render as blank width and cannot end the field or start a line, which is
+/// why that is a difference and not a hole.
 const ARGS_CAP: usize = 512;
 
 /// What a record carries where there is no session. Outside a `SessionId`'s `0-9a-z`, so a
@@ -380,9 +386,7 @@ impl<'a> AuditEvent<'a> {
                 dns_over_tcp,
                 dns_names,
                 pinned,
-                // Last, so no field a model could spell can shadow a real one ahead of it;
-                // the variant's own doc has why. `%` so the layer renders the list as
-                // `args_field` escaped it rather than escaping every quote a second time.
+                // Last, and `%` rather than quoted: the variant's own doc has both whys.
                 args = %args,
             ),
             Self::Exited {
