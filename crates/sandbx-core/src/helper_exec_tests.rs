@@ -1,19 +1,20 @@
 use super::*;
+use std::process::ExitStatus;
 
 /// A `wait(2)` status as the kernel encodes one for a process that exited with `code`.
 /// `ExitStatus::from_raw` takes exactly that encoding, so nothing here spawns.
-fn exited(code: i32) -> std::process::ExitStatus {
+fn exited(code: i32) -> ExitStatus {
     use std::os::unix::process::ExitStatusExt;
 
-    std::process::ExitStatus::from_raw(code << 8)
+    ExitStatus::from_raw(code << 8)
 }
 
 /// The same, for a process killed by `signal`. The signal number occupies the low
 /// seven bits, which is why an exit code sits in the byte above them.
-fn killed_by(signal: i32) -> std::process::ExitStatus {
+fn killed_by(signal: i32) -> ExitStatus {
     use std::os::unix::process::ExitStatusExt;
 
-    std::process::ExitStatus::from_raw(signal)
+    ExitStatus::from_raw(signal)
 }
 
 #[test]
@@ -47,7 +48,7 @@ fn a_status_that_is_neither_exit_nor_death_fails() {
 
     // 0x7f in the low byte is `WSTOPPED`; the signal that stopped it sits above,
     // where an exit code would.
-    let stopped = std::process::ExitStatus::from_raw((libc::SIGSTOP << 8) | 0x7f);
+    let stopped = ExitStatus::from_raw((libc::SIGSTOP << 8) | 0x7f);
 
     assert!(
         stopped.code().is_none() && stopped.signal().is_none(),

@@ -8,9 +8,12 @@
 //! One module on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
 
+use std::ffi::{CString, OsStr, OsString};
+use std::fs::{File, OpenOptions, ReadDir};
 use std::os::fd::OwnedFd;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use std::{env, fs, io};
 
 use nix::fcntl::{OFlag, OpenHow, ResolveFlag};
 
@@ -175,7 +178,7 @@ impl FsGuard {
         &self,
         requested: &Path,
         failed: &Path,
-        source: std::io::Error,
+        source: io::Error,
         roots: &[Root],
         access: Access,
     ) -> SandboxError {
@@ -219,12 +222,12 @@ impl FsGuard {
     /// returning a path means re-resolving it, and in between the leaf can be swapped for a
     /// symlink out of the roots. `O_NOFOLLOW` fails such an open with `ELOOP`, but guards the
     /// final component only; a swapped parent needs `openat`-chain resolution.
-    pub fn open_read(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
+    pub fn open_read(&self, path: &Path) -> Result<File, SandboxError> {
         let permitted = self.permit_read(path)?;
 
         let Some(root) = &permitted.root else {
             return open(
-                std::fs::OpenOptions::new().read(true),
+                OpenOptions::new().read(true),
                 &permitted.resolved,
                 path,
                 Access::Read,
@@ -238,13 +241,8 @@ impl FsGuard {
             nix::sys::stat::Mode::empty(),
         );
 
-        record(
-            opened.map(std::fs::File::from),
-            Access::Read,
-            path,
-            names_nothing,
-        )
-        .map_err(|source| classify(source, path))
+        record(opened.map(File::from), Access::Read, path, names_nothing)
+            .map_err(|source| classify(source, path))
     }
 
     /// Read the entries of `path`, refusing anything the policy does not allow. Here and not
@@ -256,12 +254,12 @@ impl FsGuard {
     /// path. `O_DIRECTORY` without `O_NOFOLLOW`: the resolve flags already refuse a link, and
     /// `O_NOFOLLOW` would report one as `ENOTDIR`, which `listed_nothing` reads as a
     /// directory that is really a file — true of a regular leaf and false of a link.
-    pub fn read_dir(&self, path: &Path) -> Result<std::io::Result<Listing>, SandboxError> {
+    pub fn read_dir(&self, path: &Path) -> Result<io::Result<Listing>, SandboxError> {
         let permitted = self.permit_read(path)?;
 
         let Some(root) = &permitted.root else {
             return Ok(record(
-                std::fs::read_dir(&permitted.resolved).and_then(listing_by_path),
+                fs::read_dir(&permitted.resolved).and_then(listing_by_path),
                 Access::Read,
                 path,
                 listed_nothing,
@@ -285,7 +283,7 @@ impl FsGuard {
 
     /// Open `path` for writing, creating or truncating it; closes the check-to-open window
     /// as [`open_read`](FsGuard::open_read) does.
-    pub fn open_write(&self, path: &Path) -> Result<std::fs::File, SandboxError> {
+    pub fn open_write(&self, path: &Path) -> Result<File, SandboxError> {
         let permitted = self.permit_write(path)?;
 
         if let Some(root) = &permitted.root {
@@ -298,21 +296,13 @@ impl FsGuard {
                 nix::sys::stat::Mode::from_bits_truncate(0o666),
             );
 
-            return record(
-                opened.map(std::fs::File::from),
-                Access::Write,
-                path,
-                names_nothing,
-            )
-            .map_err(|source| classify(source, path));
+            return record(opened.map(File::from), Access::Write, path, names_nothing)
+                .map_err(|source| classify(source, path));
         }
 
         let resolved = permitted.resolved;
         open(
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true),
+            OpenOptions::new().write(true).create(true).truncate(true),
             &resolved,
             path,
             Access::Write,
@@ -383,7 +373,7 @@ impl FsGuard {
 
         'walk: while let Some(dir) = stack.pop() {
             // An unreadable subdirectory is skipped, not fatal.
-            let Ok(entries) = std::fs::read_dir(&dir) else {
+            let Ok(entries) = fs::read_dir(&dir) else {
                 continue;
             };
 
@@ -491,7 +481,7 @@ impl FsGuard {
             };
 
             for (name, kind) in entries {
-                let child = at.join(std::ffi::OsStr::from_bytes(&name));
+                let child = at.join(OsStr::from_bytes(&name));
 
                 match kind {
                     Some(nix::dir::Type::Symlink) => {
@@ -645,7 +635,7 @@ const ESCAPED: &str = "resolution left the granted root since the check";
 /// `ELOOP` of a swapped leaf are not, and stay refusals. ENOTDIR and ENAMETOOLONG are as
 /// much a wrong name as ENOENT (#180). By errno because `ErrorKind` has no stable spelling
 /// for ENAMETOOLONG.
-fn names_nothing(source: &std::io::Error) -> bool {
+fn names_nothing(source: &io::Error) -> bool {
     matches!(
         source.raw_os_error(),
         Some(libc::ENOENT | libc::ENOTDIR | libc::ENAMETOOLONG)
@@ -656,7 +646,7 @@ fn names_nothing(source: &std::io::Error) -> bool {
 /// lookup that errno is a component that turned out to be a regular file, so the name
 /// denotes nothing; on an approved `read_dir`'s leaf it is the leaf, which `check_read`
 /// had just resolved — there, and not a directory.
-fn listed_nothing(source: &std::io::Error) -> bool {
+fn listed_nothing(source: &io::Error) -> bool {
     names_nothing(source) && source.raw_os_error() != Some(libc::ENOTDIR)
 }
 
@@ -668,7 +658,7 @@ fn listed_nothing(source: &std::io::Error) -> bool {
 fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
     !requested
         .components()
-        .any(|part| part == std::path::Component::ParentDir)
+        .any(|part| part == Component::ParentDir)
         && requested
             .ancestors()
             .take_while(|step| *step != ancestor)
@@ -705,7 +695,7 @@ fn open_root(granted: &VettedPath) -> Rooting {
     use std::os::unix::fs::OpenOptionsExt;
 
     let open = |flags| {
-        std::fs::OpenOptions::new()
+        OpenOptions::new()
             .read(true)
             .custom_flags(flags)
             .open(granted.path())
@@ -781,7 +771,7 @@ enum Rooting {
 fn probe_subject() -> Option<OwnedFd> {
     use std::os::unix::fs::OpenOptionsExt;
 
-    std::fs::OpenOptions::new()
+    OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_PATH | libc::O_DIRECTORY)
         .open("/")
@@ -846,7 +836,7 @@ pub struct Listing {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listed {
     /// The entry's name within its directory, never a path.
-    pub name: std::ffi::OsString,
+    pub name: OsString,
     /// Whether the entry is a directory, following no symlink to decide.
     pub directory: bool,
 }
@@ -875,7 +865,7 @@ fn beneath(
     resolved: &Path,
     flags: OFlag,
     mode: nix::sys::stat::Mode,
-) -> std::io::Result<OwnedFd> {
+) -> io::Result<OwnedFd> {
     let rest = resolved.strip_prefix(&root.granted).unwrap_or(resolved);
     let rest = match rest.as_os_str().is_empty() {
         true => Path::new("."),
@@ -889,7 +879,7 @@ fn beneath(
         .mode(mode)
         .resolve(BENEATH);
 
-    nix::fcntl::openat2(root.dir.as_ref(), rest, how).map_err(std::io::Error::from)
+    nix::fcntl::openat2(root.dir.as_ref(), rest, how).map_err(io::Error::from)
 }
 
 /// The same listing from a `std` iterator, for the grants with no descriptor to read off.
@@ -897,7 +887,7 @@ fn beneath(
 /// `std` already filters `.` and `..` and already falls back to `lstat` on `DT_UNKNOWN`, so
 /// this is the shorter half: the two branches differ in where the entries come from and
 /// agree on what a [`Listed`] means.
-fn listing_by_path(entries: std::fs::ReadDir) -> std::io::Result<Listing> {
+fn listing_by_path(entries: ReadDir) -> io::Result<Listing> {
     entries
         .map(|entry| {
             let entry = entry?;
@@ -906,18 +896,18 @@ fn listing_by_path(entries: std::fs::ReadDir) -> std::io::Result<Listing> {
                 name: entry.file_name(),
             })
         })
-        .collect::<std::io::Result<Vec<_>>>()
+        .collect::<io::Result<Vec<_>>>()
         .map(|entries| Listing { entries })
 }
 
 /// Read every entry of the directory `dir` holds open, as a [`Listing`].
-fn listing(dir: OwnedFd) -> std::io::Result<Listing> {
+fn listing(dir: OwnedFd) -> io::Result<Listing> {
     use std::os::unix::ffi::OsStrExt;
 
     let entries = entries_at(dir)?
         .into_iter()
         .map(|(name, kind)| Listed {
-            name: std::ffi::OsStr::from_bytes(&name).to_owned(),
+            name: OsStr::from_bytes(&name).to_owned(),
             directory: kind == Some(nix::dir::Type::Directory),
         })
         .collect();
@@ -931,7 +921,7 @@ fn listing(dir: OwnedFd) -> std::io::Result<Listing> {
 /// borrows mutably: names and whatever the `dirent` carried first, then the unknowns.
 /// `None` out means the type could not be established at all, which every caller reads as
 /// neither a directory to descend nor a file to collect — the safe answer for both.
-fn entries_at(dir: OwnedFd) -> std::io::Result<Vec<(Vec<u8>, Option<nix::dir::Type>)>> {
+fn entries_at(dir: OwnedFd) -> io::Result<Vec<(Vec<u8>, Option<nix::dir::Type>)>> {
     let mut dir = nix::dir::Dir::from_fd(dir)?;
 
     // `flatten`, not `?`: one unreadable `dirent` costs that entry and not the whole
@@ -964,7 +954,7 @@ fn entries_at(dir: OwnedFd) -> std::io::Result<Vec<(Vec<u8>, Option<nix::dir::Ty
 /// `nix`'s does not: without it a filesystem that reports no type in the `dirent` — XFS
 /// without `ftype=1`, some network filesystems — leaves every entry unclassified.
 fn stat_kind(dir: &nix::dir::Dir, name: &[u8]) -> Option<nix::dir::Type> {
-    let name = std::ffi::CString::new(name).ok()?;
+    let name = CString::new(name).ok()?;
     let at = nix::sys::stat::fstatat(
         dir,
         name.as_c_str(),
@@ -985,13 +975,13 @@ fn stat_kind(dir: &nix::dir::Dir, name: &[u8]) -> Option<nix::dir::Type> {
 /// One component, so the resolve flags have nothing to traverse: they are here because a
 /// `name` that became a symlink to a directory must refuse rather than be descended, which
 /// is the same rule the walk's own symlink test states for the entries it can classify.
-fn open_dir_at(parent: &OwnedFd, name: &[u8]) -> std::io::Result<OwnedFd> {
-    let name = std::ffi::CString::new(name).map_err(std::io::Error::other)?;
+fn open_dir_at(parent: &OwnedFd, name: &[u8]) -> io::Result<OwnedFd> {
+    let name = CString::new(name).map_err(io::Error::other)?;
     let how = OpenHow::new()
         .flags(OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_CLOEXEC)
         .resolve(BENEATH);
 
-    nix::fcntl::openat2(parent, name.as_c_str(), how).map_err(std::io::Error::from)
+    nix::fcntl::openat2(parent, name.as_c_str(), how).map_err(io::Error::from)
 }
 
 /// Where `resolved` sits relative to a set of granted roots.
@@ -1035,16 +1025,16 @@ fn moved_root(requested: &Path, roots: &[Root]) -> Option<Replacement> {
 fn collapsed(requested: &Path) -> Option<PathBuf> {
     let absolute = match requested.is_absolute() {
         true => requested.to_path_buf(),
-        false => std::env::current_dir().ok()?.join(requested),
+        false => env::current_dir().ok()?.join(requested),
     };
 
     let mut form = PathBuf::new();
     for part in absolute.components() {
         match part {
-            std::path::Component::ParentDir => {
+            Component::ParentDir => {
                 form.pop();
             }
-            std::path::Component::CurDir => {}
+            Component::CurDir => {}
             named => form.push(named),
         }
     }
@@ -1154,11 +1144,11 @@ fn permit(
 /// `listed_nothing` for a directory read — so the record and the error the caller returns
 /// cannot disagree about whether the path was there.
 fn record<T>(
-    outcome: std::io::Result<T>,
+    outcome: io::Result<T>,
     access: Access,
     requested: &Path,
-    absent: fn(&std::io::Error) -> bool,
-) -> std::io::Result<T> {
+    absent: fn(&io::Error) -> bool,
+) -> io::Result<T> {
     let subject = requested.display().to_string();
     let tool = access.operation();
 
@@ -1174,7 +1164,7 @@ fn record<T>(
 /// The `reason=` an access on an approved path carries when it did not happen: `ELOOP` is
 /// the leaf swapped since the check, the one post-gate failure that really is a resolution
 /// failure, the rest having found the path and stopped there.
-fn reason(source: &std::io::Error) -> &'static str {
+fn reason(source: &io::Error) -> &'static str {
     match source.raw_os_error() {
         Some(libc::EXDEV) => ESCAPED,
         Some(libc::ELOOP) => UNRESOLVABLE,
@@ -1187,11 +1177,11 @@ fn reason(source: &std::io::Error) -> &'static str {
 /// proven inside a root by now, so there is nothing left to conceal: a file deleted since
 /// the check is an absence, while `ELOOP` from `O_NOFOLLOW` is the swap.
 fn open(
-    options: &mut std::fs::OpenOptions,
+    options: &mut OpenOptions,
     resolved: &Path,
     requested: &Path,
     access: Access,
-) -> Result<std::fs::File, SandboxError> {
+) -> Result<File, SandboxError> {
     use std::os::unix::fs::OpenOptionsExt;
 
     let opened = options.custom_flags(libc::O_NOFOLLOW).open(resolved);
@@ -1200,7 +1190,7 @@ fn open(
 }
 
 /// Sort an error from an already-approved access into absence or refusal.
-fn classify(source: std::io::Error, requested: &Path) -> SandboxError {
+fn classify(source: io::Error, requested: &Path) -> SandboxError {
     let requested = requested.to_path_buf();
     if names_nothing(&source) {
         SandboxError::NotFound { requested, source }

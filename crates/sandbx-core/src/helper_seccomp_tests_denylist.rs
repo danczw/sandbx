@@ -6,6 +6,8 @@ use super::super::filter::*;
 use super::super::rules::blocked_syscalls;
 use super::bpf::*;
 use crate::SandboxPolicy;
+use std::collections::BTreeSet;
+use std::env;
 
 #[test]
 fn blocked_syscalls_covers_the_whole_denylist() {
@@ -81,7 +83,7 @@ fn inverted_filter(policy: &crate::SandboxPolicy) -> seccompiler::BpfProgram {
         // Swapped: in `deny_with` the first is `Allow`, the second `Errno(errno)`.
         SeccompAction::Errno(libc::EPERM as u32),
         SeccompAction::Allow,
-        std::env::consts::ARCH.try_into().unwrap(),
+        env::consts::ARCH.try_into().unwrap(),
     )
     .unwrap();
 
@@ -175,7 +177,7 @@ fn check_program_is_well_formed(program: seccompiler::BpfProgramRef<'_>) {
          filter: {last:?}"
     );
 
-    let mut verdicts = std::collections::BTreeSet::new();
+    let mut verdicts = BTreeSet::new();
     for (pc, insn) in program.iter().enumerate() {
         assert!(
             KNOWN_OPCODES.contains(&insn.code),
@@ -210,7 +212,7 @@ fn check_program_is_well_formed(program: seccompiler::BpfProgramRef<'_>) {
         }
     }
 
-    let expected = std::collections::BTreeSet::from([ALLOW, EPERM, ENOSYS, KILL]);
+    let expected = BTreeSet::from([ALLOW, EPERM, ENOSYS, KILL]);
     assert!(
         verdicts.is_subset(&expected),
         "the filter can return a verdict it was never asked for: {verdicts:x?}"

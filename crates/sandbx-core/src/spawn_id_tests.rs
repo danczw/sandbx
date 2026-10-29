@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::thread;
 
 use super::*;
 
@@ -29,9 +30,7 @@ fn counter(id: &SpawnId) -> u64 {
 #[test]
 fn concurrent_mints_are_distinct_in_a_process() {
     let handles: Vec<_> = (0..THREADS)
-        .map(|_| {
-            std::thread::spawn(|| (0..PER_THREAD).map(|_| SpawnId::next()).collect::<Vec<_>>())
-        })
+        .map(|_| thread::spawn(|| (0..PER_THREAD).map(|_| SpawnId::next()).collect::<Vec<_>>()))
         .collect();
 
     let minted: Vec<SpawnId> = handles

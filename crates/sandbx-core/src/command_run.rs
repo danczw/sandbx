@@ -5,8 +5,13 @@
 //! One module on purpose: the deadline drives the drain and the drain is
 //! what reads the audit channel, so the three are one supervision sequence.
 
+use std::io::{PipeReader, PipeWriter, Read};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use std::{fs, io, mem, thread};
 
 use crate::{HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
 
@@ -147,7 +152,7 @@ impl SandboxedCommand {
     /// and returns [`SandboxError::TimedOut`]. A helper stage that refused returns
     /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
     /// indistinguishable from the command's own.
-    pub fn output(&self) -> Result<std::process::Output, SandboxError> {
+    pub fn output(&self) -> Result<Output, SandboxError> {
         let (helper, argv) = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
 
@@ -211,7 +216,7 @@ impl SandboxedCommand {
 /// `/proc/<pid>/environ` is readable. Not set in `spawn::command` itself, which the inner
 /// stage also calls to *start* the command: that would `chdir` with the ruleset already
 /// installed, though both stages and the command inherit the directory regardless.
-fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> std::process::Command {
+fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> Command {
     let mut command = crate::spawn::command(helper, policy);
     command.args(argv);
 
@@ -229,10 +234,10 @@ fn run_to_completion(
     helper: &Path,
     argv: &[String],
     policy: &SandboxPolicy,
-    write_end: std::io::PipeWriter,
-) -> Result<std::process::Output, SandboxError> {
+    write_end: PipeWriter,
+) -> Result<Output, SandboxError> {
     let mut command = helper_command(helper, argv, policy);
-    command.stdin(std::process::Stdio::from(write_end));
+    command.stdin(Stdio::from(write_end));
 
     let output = command
         .output()
@@ -252,8 +257,8 @@ fn run_to_completion(
 /// helper's stdin — the one descriptor std can hand a child without `unsafe`, which this
 /// crate forbids. Stage 2 takes it off fd 0 before starting the command, so the command
 /// never holds it (`context/decision-helper-audit-channel.md`).
-fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), SandboxError> {
-    std::io::pipe().map_err(|source| SandboxError::SpawnFailed {
+fn audit_channel() -> Result<(PipeReader, PipeWriter), SandboxError> {
+    io::pipe().map_err(|source| SandboxError::SpawnFailed {
         detail: "could not open a channel for the sandbox helper's audit records",
         source,
     })
@@ -269,7 +274,7 @@ fn audit_channel() -> Result<(std::io::PipeReader, std::io::PipeWriter), Sandbox
 /// a spawn and its outcome, so without them the middle of a run is attributed by position
 /// while both ends are named (#249).
 fn record_reports(
-    mut audit: std::io::PipeReader,
+    mut audit: PipeReader,
     spawn: &crate::SpawnId,
     session: Option<&str>,
 ) -> Option<crate::HelperRefusal> {
@@ -303,8 +308,8 @@ fn run_with_deadline(
     argv: &[String],
     policy: &SandboxPolicy,
     limit: Duration,
-    write_end: std::io::PipeWriter,
-) -> Result<std::process::Output, SandboxError> {
+    write_end: PipeWriter,
+) -> Result<Output, SandboxError> {
     use std::os::unix::process::CommandExt;
     use std::process::Stdio;
 
@@ -339,7 +344,7 @@ fn run_with_deadline(
         match child.try_wait() {
             Ok(Some(status)) => break Ok(Some(status)),
             Ok(None) if Instant::now() >= deadline => break Ok(None),
-            Ok(None) => std::thread::sleep(POLL_INTERVAL),
+            Ok(None) => thread::sleep(POLL_INTERVAL),
             // Broken out and not returned, so the kill below is not skipped: the caller
             // reads the audit channel to an EOF only a dead helper gives.
             Err(source) => break Err(spawn_failed(source)),
@@ -366,7 +371,7 @@ fn run_with_deadline(
 
     settle(&out.0, &err.0);
 
-    Ok(std::process::Output {
+    Ok(Output {
         status,
         stdout: take(&out.1),
         stderr: take(&err.1),
@@ -375,47 +380,36 @@ fn run_with_deadline(
 
 /// Give the pipe readers a [`DRAIN_GRACE`] chance to finish, then stop waiting; output
 /// still in flight past the grace period is dropped.
-fn settle(readers: &std::thread::JoinHandle<()>, more: &std::thread::JoinHandle<()>) {
+fn settle(readers: &JoinHandle<()>, more: &JoinHandle<()>) {
     let until = Instant::now() + DRAIN_GRACE;
     while Instant::now() < until && !(readers.is_finished() && more.is_finished()) {
-        std::thread::sleep(POLL_INTERVAL);
+        thread::sleep(POLL_INTERVAL);
     }
 }
 
 /// Take what a reader has collected so far; bytes a reader that outlived `settle`'s grace
 /// period appends after this are lost either way.
-fn take(buffer: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Vec<u8> {
+fn take(buffer: &Arc<Mutex<Vec<u8>>>) -> Vec<u8> {
     // A panicking reader poisons the lock but leaves the bytes it read intact.
-    std::mem::take(
-        &mut *buffer
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner),
-    )
+    mem::take(&mut *buffer.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 /// Read one pipe on its own thread, into a buffer the caller can take early. Chunked into
 /// a shared buffer rather than `read_to_end`, which holds the bytes inside the thread
 /// until it returns — exactly when an abandoned reader cannot.
 #[allow(clippy::type_complexity)]
-fn drain<R>(
-    pipe: Option<R>,
-) -> (
-    std::thread::JoinHandle<()>,
-    std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-)
+fn drain<R>(pipe: Option<R>) -> (JoinHandle<()>, Arc<Mutex<Vec<u8>>>)
 where
-    R: std::io::Read + Send + 'static,
+    R: Read + Send + 'static,
 {
-    use std::sync::{Arc, Mutex, PoisonError};
-
     let buffer = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&buffer);
 
-    let handle = std::thread::spawn(move || {
+    let handle = thread::spawn(move || {
         let Some(mut pipe) = pipe else { return };
         let mut chunk = [0u8; 8192];
         loop {
-            match std::io::Read::read(&mut pipe, &mut chunk) {
+            match pipe.read(&mut chunk) {
                 Ok(0) | Err(_) => return,
                 Ok(read) => sink
                     .lock()
@@ -451,7 +445,7 @@ const SELF_EXE: &str = "/proc/self/exe";
 /// renamed over the binary cannot redirect the next spawn. The `read_link` only proves
 /// `/proc` is mounted; the link itself is what gets exec'd.
 pub(crate) fn self_exe() -> Result<PathBuf, SandboxError> {
-    std::fs::read_link(SELF_EXE).map_err(|source| SandboxError::SpawnFailed {
+    fs::read_link(SELF_EXE).map_err(|source| SandboxError::SpawnFailed {
         detail: "could not locate the running executable to re-exec as the sandbox helper",
         source,
     })?;

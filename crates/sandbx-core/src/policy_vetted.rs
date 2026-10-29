@@ -6,9 +6,11 @@
 //! the readback in `helper_ruleset_opened.rs` agrees and only the object tells them apart
 //! (#212).
 
+use std::fs::OpenOptions;
 use std::os::fd::AsFd;
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
+use std::{fmt, fs};
 
 use crate::SandboxError;
 
@@ -59,8 +61,8 @@ impl ObjectId {
     }
 }
 
-impl std::fmt::Display for ObjectId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ObjectId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{SEPARATOR}{}", self.dev, self.ino)
     }
 }
@@ -94,7 +96,7 @@ impl VettedPath {
 
         let path = requested.canonicalize().map_err(unpinnable)?;
         // The object `path` names now, following every symlink in it.
-        let metadata = std::fs::metadata(&path).map_err(unpinnable)?;
+        let metadata = fs::metadata(&path).map_err(unpinnable)?;
         let object = ObjectId {
             dev: metadata.dev(),
             ino: metadata.ino(),
@@ -129,7 +131,7 @@ impl VettedPath {
     /// second walk, so the two steps cannot resolve to different objects. No `O_NOFOLLOW`: a
     /// spelling that became a symlink names another object *through* it.
     pub(crate) fn confirm(&self) -> Confirmation {
-        let Ok(opened) = std::fs::OpenOptions::new()
+        let Ok(opened) = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_PATH | libc::O_CLOEXEC)
             .open(&self.path)

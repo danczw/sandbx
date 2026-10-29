@@ -1,4 +1,7 @@
 use super::*;
+use std::fs;
+use std::fs::{File, Permissions};
+use std::path::PathBuf;
 
 /// The empty-input vector from FIPS 180-4, which also fixes the byte order `Display`
 /// emits — a digest reversed would still round-trip through `parse`.
@@ -13,10 +16,11 @@ fn parses_and_renders_the_empty_vector() {
 
 #[test]
 fn hashes_a_file_to_the_known_vector() {
+    use std::io::Write;
     let mut file = tempfile::NamedTempFile::new().expect("a temporary file");
-    std::io::Write::write_all(&mut file, b"abc").expect("write");
+    file.write_all(b"abc").expect("write");
 
-    let mut handle = std::fs::File::open(file.path()).expect("reopen");
+    let mut handle = File::open(file.path()).expect("reopen");
     let digest = Sha256Digest::of_file(&mut handle).expect("hash");
 
     // The "abc" vector from FIPS 180-4.
@@ -55,10 +59,11 @@ fn a_digest_that_is_not_lowercase_hex_is_refused() {
 
 #[test]
 fn two_files_with_the_same_bytes_hash_alike_and_differ_otherwise() {
+    use std::io::Write;
     let hash = |bytes: &[u8]| {
         let mut file = tempfile::NamedTempFile::new().expect("a temporary file");
-        std::io::Write::write_all(&mut file, bytes).expect("write");
-        let mut handle = std::fs::File::open(file.path()).expect("reopen");
+        file.write_all(bytes).expect("write");
+        let mut handle = File::open(file.path()).expect("reopen");
         Sha256Digest::of_file(&mut handle).expect("hash")
     };
 
@@ -69,11 +74,12 @@ fn two_files_with_the_same_bytes_hash_alike_and_differ_otherwise() {
 /// More than one `CHUNK`, so a file read in several passes hashes as one stream.
 #[test]
 fn a_file_larger_than_one_chunk_hashes_as_one_stream() {
+    use std::io::Write;
     let bytes = vec![b'x'; CHUNK * 2 + 1];
 
     let mut file = tempfile::NamedTempFile::new().expect("a temporary file");
-    std::io::Write::write_all(&mut file, &bytes).expect("write");
-    let mut handle = std::fs::File::open(file.path()).expect("reopen");
+    file.write_all(&bytes).expect("write");
+    let mut handle = File::open(file.path()).expect("reopen");
 
     let streamed = Sha256Digest::of_file(&mut handle).expect("hash");
 
@@ -84,12 +90,12 @@ fn a_file_larger_than_one_chunk_hashes_as_one_stream() {
 }
 
 /// A file, and the digest a pin on it would be checked against.
-fn written(contents: &[u8]) -> (tempfile::TempDir, std::path::PathBuf, Sha256Digest) {
+fn written(contents: &[u8]) -> (tempfile::TempDir, PathBuf, Sha256Digest) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let path = dir.path().join("program");
-    std::fs::write(&path, contents).expect("write");
+    fs::write(&path, contents).expect("write");
 
-    let mut file = std::fs::File::open(&path).expect("reopen");
+    let mut file = File::open(&path).expect("reopen");
     let digest = Sha256Digest::of_file(&mut file).expect("hash");
 
     (dir, path, digest)
@@ -125,7 +131,7 @@ fn a_shebang_image_is_refused_rather_than_exec_d() {
 #[test]
 fn a_swapped_script_reports_the_mismatch() {
     let (_dir, path, digest) = written(b"the pinned bytes");
-    std::fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("swap");
+    fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("swap");
 
     let error = open_verified(path.to_str().unwrap(), digest).expect_err("a swap ran");
 
@@ -142,11 +148,11 @@ fn an_unreadable_program_says_the_pin_needs_read() {
     use std::os::unix::fs::PermissionsExt as _;
 
     let (_dir, path, digest) = written(b"\x7fELF");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o111)).expect("chmod");
+    fs::set_permissions(&path, Permissions::from_mode(0o111)).expect("chmod");
 
     // Both branches assert: root reads a mode-111 file, and skipping there would report
     // `ok` for a mapping this never exercised.
-    let readable = std::fs::File::open(&path).is_ok();
+    let readable = File::open(&path).is_ok();
     let result = open_verified(path.to_str().unwrap(), digest);
 
     match readable {

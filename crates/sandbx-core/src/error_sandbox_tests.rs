@@ -1,4 +1,6 @@
 use super::*;
+use std::io;
+use std::time::Duration;
 
 /// Two digests that differ, so a mismatch sample really mismatches. Parsed and not
 /// hashed, so which label a variant carries does not depend on file I/O.
@@ -21,7 +23,7 @@ fn object(token: &str) -> ObjectId {
 /// whether it is a [`HelperRefusal`] — but not to appear in the array itself, which a
 /// variant left out of still compiles, and every test deriving from this skips in silence.
 fn every_variant() -> Vec<SandboxError> {
-    let io = || std::io::Error::other("sample");
+    let io = || io::Error::other("sample");
 
     let all = vec![
         SandboxError::PathNotAllowed {
@@ -35,7 +37,7 @@ fn every_variant() -> Vec<SandboxError> {
         // Not `io()`: the variant is only built behind `fs_guard::names_nothing`.
         SandboxError::NotFound {
             requested: PathBuf::from("/sample"),
-            source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            source: io::Error::from(io::ErrorKind::NotFound),
         },
         SandboxError::BadHelperArgs { detail: "sample" },
         SandboxError::Landlock {
@@ -91,7 +93,7 @@ fn every_variant() -> Vec<SandboxError> {
             program: "/sample".to_string(),
         },
         SandboxError::TimedOut {
-            after: std::time::Duration::from_secs(1),
+            after: Duration::from_secs(1),
         },
         SandboxError::Unsupported { detail: "sample" },
         SandboxError::UnboundedResolution { detail: "sample" },

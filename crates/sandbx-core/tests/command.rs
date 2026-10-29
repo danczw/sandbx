@@ -4,16 +4,20 @@
 //! `CARGO_BIN_EXE_sandbx-helper` resolves (#347).
 
 use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
+use std::ffi::OsString;
+use std::path::Path;
+use std::process::ExitCode;
+use std::{env, fs};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
     sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
-    let root = std::env::temp_dir()
+    let root = env::temp_dir()
         .canonicalize()
         .expect("the temporary directory exists");
     tempfile::Builder::new()
@@ -28,10 +32,10 @@ fn defaults_to_re_executing_this_image_by_inode() {
         .command_line()
         .unwrap();
 
-    assert_eq!(helper, std::path::Path::new("/proc/self/exe"));
+    assert_eq!(helper, Path::new("/proc/self/exe"));
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
 
-    let image = std::fs::metadata(&helper).expect("/proc must be mounted for the re-exec");
+    let image = fs::metadata(&helper).expect("/proc must be mounted for the re-exec");
 
     assert!(
         image.is_file(),
@@ -97,7 +101,7 @@ fn explicit_helper_still_takes_the_dispatch_flag() {
         .command_line()
         .unwrap();
 
-    assert_eq!(helper, std::path::Path::new("/some/helper"));
+    assert_eq!(helper, Path::new("/some/helper"));
     assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
 }
 
@@ -130,49 +134,49 @@ fn the_start_directory_is_not_in_the_command_line() {
 /// `HELPER_FLAG` run would restrict this test process and `exec`.
 #[test]
 fn an_ordinary_invocation_is_not_helper_mode() {
-    let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(std::ffi::OsString::from);
+    let argv = ["sandbx", "sandbox-run", "--", "/bin/true"].map(OsString::from);
     let mut ran = false;
 
     let code = sandbx_core::with_helper_dispatch(argv, || {
         ran = true;
-        std::process::ExitCode::SUCCESS
+        ExitCode::SUCCESS
     });
 
     assert!(ran);
-    assert_eq!(code, std::process::ExitCode::SUCCESS);
+    assert_eq!(code, ExitCode::SUCCESS);
 }
 
 #[test]
 fn an_argv_with_no_arguments_is_not_helper_mode() {
-    for argv in [vec![], vec![std::ffi::OsString::from("sandbx")]] {
+    for argv in [vec![], vec![OsString::from("sandbx")]] {
         let mut ran = false;
 
         let code = sandbx_core::with_helper_dispatch(argv, || {
             ran = true;
-            std::process::ExitCode::SUCCESS
+            ExitCode::SUCCESS
         });
 
         assert!(ran, "a too-short argv must be reported as an ordinary run");
-        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        assert_eq!(code, ExitCode::SUCCESS);
     }
 }
 
 /// An inner stage given no supervisor pid refuses before restricting anything.
 #[test]
 fn a_failed_helper_run_never_runs_the_ordinary_main() {
-    let argv = ["sandbx", sandbx_core::HELPER_INNER_FLAG].map(std::ffi::OsString::from);
+    let argv = ["sandbx", sandbx_core::HELPER_INNER_FLAG].map(OsString::from);
     let mut ran = false;
 
     let code = sandbx_core::with_helper_dispatch(argv, || {
         ran = true;
-        std::process::ExitCode::SUCCESS
+        ExitCode::SUCCESS
     });
 
     assert!(
         !ran,
         "a failed helper run fell through to the ordinary path"
     );
-    assert_eq!(code, std::process::ExitCode::FAILURE);
+    assert_eq!(code, ExitCode::FAILURE);
 }
 
 /// `command_line` and not `output`: this argv is the one an embedder may spawn itself.

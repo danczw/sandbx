@@ -1,4 +1,5 @@
 use super::*;
+use std::{fs, io};
 
 /// A `/proc/pid/stat` line with the executable name substituted in. Long enough to carry
 /// the fields *after* the parent, so a parse landing past field 4 returns a plausible
@@ -108,8 +109,8 @@ fn a_line_that_stops_before_the_parent_yields_nothing() {
 /// parent under `cargo test` and outliving the harness.
 #[test]
 fn the_parse_agrees_with_procfs_under_another_name() {
-    let stat = std::fs::read_to_string("/proc/self/stat").expect("procfs is mounted");
-    let status = std::fs::read_to_string("/proc/self/status").expect("procfs is mounted");
+    let stat = fs::read_to_string("/proc/self/stat").expect("procfs is mounted");
+    let status = fs::read_to_string("/proc/self/status").expect("procfs is mounted");
 
     let named = status
         .lines()
@@ -188,7 +189,7 @@ fn a_refused_map_reports_a_degradation_and_stops() {
         let degraded = map_identity_into_userns_with(1000, 2000, |path, _| {
             attempted.push(path.to_string());
             if path == refused {
-                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+                Err(io::Error::from(io::ErrorKind::PermissionDenied))
             } else {
                 Ok(())
             }

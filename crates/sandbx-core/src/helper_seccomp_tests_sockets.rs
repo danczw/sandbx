@@ -7,6 +7,7 @@ use super::super::filter::*;
 use super::super::rules::blocked_syscalls;
 use super::bpf::*;
 use crate::SandboxPolicy;
+use std::collections::BTreeMap;
 
 /// A policy whose egress is confined to one TCP port, the only state that denies datagrams.
 /// The port itself is irrelevant — Landlock holds the ports, seccomp sees only which *shape*
@@ -601,7 +602,7 @@ fn a_port_list_permits_an_ordinary_send() {
 fn a_conditional_rule_cannot_weaken_an_unconditional_denial() {
     use seccompiler::{SeccompCmpArgLen, SeccompCmpOp, SeccompCondition};
 
-    let mut rules = std::collections::BTreeMap::from([(libc::SYS_socket, Vec::new())]);
+    let mut rules = BTreeMap::from([(libc::SYS_socket, Vec::new())]);
     let condition = SeccompCondition::new(0, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, 1).unwrap();
 
     super::super::rules::deny_when(&mut rules, libc::SYS_socket, vec![condition]).unwrap();

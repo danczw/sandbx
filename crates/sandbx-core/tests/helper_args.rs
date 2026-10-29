@@ -4,10 +4,12 @@
 //! the helper never grants, and one wrongly added becomes one it grants by mistake.
 
 use sandbx_core::{HelperArgs, SandboxPolicy, VettedPath};
+use std::path::Path;
+use std::{env, slice};
 
 /// `path`, pinned to the object it names — the grant crosses as a path *and* an object, so a
 /// round trip is over something the encoding side could measure (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -175,7 +177,7 @@ fn a_port_flag_without_a_port_is_refused() {
     );
     let flag = emitted[0].clone();
 
-    let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+    let refusal = HelperArgs::decode(slice::from_ref(&flag))
         .expect_err("the port flag was accepted with no port after it");
 
     assert!(
@@ -346,7 +348,7 @@ fn every_axis_rejects_a_path_flag_without_its_path() {
 
         // Matched on the reason: this argv also lacks the `--` separator, so
         // `is_err()` alone would pass with the pathless-flag check removed.
-        let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+        let refusal = HelperArgs::decode(slice::from_ref(&flag))
             .expect_err("{flag} was accepted with no path after it");
 
         assert!(
@@ -388,7 +390,7 @@ fn the_wire_carries_the_name_and_not_the_value() {
         args.iter().any(|arg| arg == "CARGO_MANIFEST_DIR"),
         "{args:?}"
     );
-    let value = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let value = env::var("CARGO_MANIFEST_DIR").unwrap();
     assert!(
         !args.iter().any(|arg| arg.contains(&value)),
         "the variable's value reached argv: {args:?}"
@@ -408,7 +410,7 @@ fn an_env_flag_without_a_name_is_rejected() {
 
     // Matched on the reason: this argv also lacks the `--` separator, so
     // `is_err()` alone would pass with the check removed.
-    let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+    let refusal = HelperArgs::decode(slice::from_ref(&flag))
         .expect_err("the env flag was accepted with no name after it");
 
     assert!(
@@ -530,7 +532,7 @@ fn a_name_flag_without_a_name_is_refused() {
 
     // Matched on the reason: this argv also lacks the `--` separator, so `is_err()` alone
     // would pass with the check removed.
-    let refusal = HelperArgs::decode(std::slice::from_ref(&flag))
+    let refusal = HelperArgs::decode(slice::from_ref(&flag))
         .expect_err("the dns name flag was accepted with no name after it");
 
     assert!(

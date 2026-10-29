@@ -4,7 +4,9 @@
 //! No Landlock here — opening a path, reading it back and stat'ing it need no ruleset, so the
 //! one half of the seam that can be tested without a capable kernel is tested without one.
 
+use std::fs;
 use std::os::fd::{AsFd as _, AsRawFd as _};
+use std::os::unix::fs as unix_fs;
 use std::path::Path;
 
 use super::{SandboxError, open_grant};
@@ -35,8 +37,8 @@ fn a_grant_named_through_a_symlink_is_refused() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let real = work.path().join("real");
     let link = work.path().join("link");
-    std::fs::create_dir(&real).expect("a directory to grant");
-    std::os::unix::fs::symlink(&real, &link).expect("a symlink to it");
+    fs::create_dir(&real).expect("a directory to grant");
+    unix_fs::symlink(&real, &link).expect("a symlink to it");
 
     let granted = off_the_wire(&link, &real);
     let error =
@@ -60,9 +62,9 @@ fn a_grant_redirected_after_it_was_resolved_is_refused() {
     let vetted = work.path().join("vetted");
     let elsewhere = work.path().join("elsewhere");
     let link = work.path().join("link");
-    std::fs::create_dir(&vetted).expect("the directory the harness vetted");
-    std::fs::create_dir(&elsewhere).expect("the directory it is redirected to");
-    std::os::unix::fs::symlink(&vetted, &link).expect("a symlink to the vetted one");
+    fs::create_dir(&vetted).expect("the directory the harness vetted");
+    fs::create_dir(&elsewhere).expect("the directory it is redirected to");
+    unix_fs::symlink(&vetted, &link).expect("a symlink to the vetted one");
 
     // What the harness would have granted, having vetted the link while it still pointed at
     // `vetted`: a path with no symlink left in it.
@@ -73,8 +75,8 @@ fn a_grant_redirected_after_it_was_resolved_is_refused() {
         "the grant was not resolved to begin with"
     );
 
-    std::fs::remove_dir_all(&vetted).expect("the vetted directory to go");
-    std::os::unix::fs::symlink(&elsewhere, &vetted).expect("the swap");
+    fs::remove_dir_all(&vetted).expect("the vetted directory to go");
+    unix_fs::symlink(&elsewhere, &vetted).expect("the swap");
 
     let error = open_grant(&RuleTarget::Granted(&granted)).expect_err("a redirected grant");
 
@@ -94,13 +96,13 @@ fn a_grant_renamed_over_after_it_was_vetted_is_refused() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let granted_at = work.path().join("granted");
     let substitute = work.path().join("substitute");
-    std::fs::create_dir(&granted_at).expect("the directory the harness vetted");
-    std::fs::create_dir(&substitute).expect("the directory put in its place");
+    fs::create_dir(&granted_at).expect("the directory the harness vetted");
+    fs::create_dir(&substitute).expect("the directory put in its place");
 
     let granted = VettedPath::vet(&granted_at).expect("the vetted grant");
 
-    std::fs::remove_dir(&granted_at).expect("the vetted directory to go");
-    std::fs::rename(&substitute, &granted_at).expect("the swap");
+    fs::remove_dir(&granted_at).expect("the vetted directory to go");
+    fs::rename(&substitute, &granted_at).expect("the swap");
 
     let error =
         open_grant(&RuleTarget::Granted(&granted)).expect_err("a grant whose object was replaced");
@@ -118,7 +120,7 @@ fn a_grant_renamed_over_after_it_was_vetted_is_refused() {
     let fd = landlock::PathFd::new(&granted_at).expect("the substitute, opened");
     let link = format!("/proc/self/fd/{}", fd.as_fd().as_raw_fd());
     assert_eq!(
-        std::fs::read_link(link).expect("the path it reads back as"),
+        fs::read_link(link).expect("the path it reads back as"),
         granted_at,
         "the substitution changed the spelling, so the readback would have caught it"
     );
@@ -142,11 +144,11 @@ fn an_installed_path_is_not_pinned_to_the_object_under_it() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let named = work.path().join("resolv.conf");
     let substitute = work.path().join("substitute");
-    std::fs::write(&named, b"nameserver 203.0.113.1\n").expect("the file the harness saw");
-    std::fs::write(&substitute, b"nameserver 203.0.113.2\n").expect("the file put in its place");
+    fs::write(&named, b"nameserver 203.0.113.1\n").expect("the file the harness saw");
+    fs::write(&substitute, b"nameserver 203.0.113.2\n").expect("the file put in its place");
 
     let granted = VettedPath::vet(&named).expect("the vetted grant");
-    std::fs::rename(&substitute, &named).expect("the swap");
+    fs::rename(&substitute, &named).expect("the swap");
 
     assert!(
         matches!(
@@ -165,8 +167,8 @@ fn an_installed_path_redirected_is_still_refused() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let real = work.path().join("real.conf");
     let link = work.path().join("link.conf");
-    std::fs::write(&real, b"nameserver 203.0.113.1\n").expect("a file to point at");
-    std::os::unix::fs::symlink(&real, &link).expect("a symlink to it");
+    fs::write(&real, b"nameserver 203.0.113.1\n").expect("a file to point at");
+    unix_fs::symlink(&real, &link).expect("a symlink to it");
 
     let error = open_grant(&installed(&link)).expect_err("a resolver path opening as another");
 

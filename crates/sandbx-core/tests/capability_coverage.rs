@@ -6,9 +6,11 @@
 //! assertion in `enforcement.rs` cannot.
 #![cfg(target_os = "linux")]
 
+use std::fs;
+
 fn kernel_last_cap() -> u8 {
     // Present on every Linux since 2.6.25, so absence is a broken test environment.
-    let raw = std::fs::read_to_string("/proc/sys/kernel/cap_last_cap")
+    let raw = fs::read_to_string("/proc/sys/kernel/cap_last_cap")
         .expect("no /proc/sys/kernel/cap_last_cap — is /proc mounted?");
 
     raw.trim()

@@ -4,6 +4,7 @@
 //! addresses across the argv the command reads. `helper::resolver` installs what this
 //! renders; `context/decision-port-allowlist.md` is why a hosts file and not a DNS responder.
 
+use std::fs;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::Path;
 
@@ -116,7 +117,7 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
         },
         File {
             target: Path::new(NSSWITCH),
-            body: nsswitch_body(&std::fs::read_to_string(NSSWITCH).unwrap_or_default()),
+            body: nsswitch_body(&fs::read_to_string(NSSWITCH).unwrap_or_default()),
             // Absent, glibc uses `hosts: files dns`, so skipping this would leave the `dns`
             // source alive and the bound empty.
             required: true,

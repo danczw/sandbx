@@ -4,7 +4,14 @@
 //! feature rather than debug output: events must be emitted at a level that is on
 //! by default and carry enough to reconstruct a decision.
 
+use std::collections::HashSet;
+use std::fs::Permissions;
+use std::os::unix::fs as unix_fs;
+use std::path::Path;
+use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::{fmt, fs, io};
 
 use sandbx_core::{
     AUDIT_TARGET, Access, AuditEvent, FsGuard, SandboxError, SandboxPolicy, SandboxedCommand,
@@ -14,7 +21,7 @@ use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
     sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -42,7 +49,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
 struct Collect(String);
 
 impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         self.0.push_str(&format!("{}={value:?} ", field.name()));
     }
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
@@ -52,10 +59,10 @@ impl tracing::field::Visit for Collect {
 
 /// A `wait(2)` status with no process to spawn: the exit code sits in the byte above
 /// the signal bits.
-fn status(raw: i32) -> std::process::ExitStatus {
+fn status(raw: i32) -> ExitStatus {
     use std::os::unix::process::ExitStatusExt;
 
-    std::process::ExitStatus::from_raw(raw)
+    ExitStatus::from_raw(raw)
 }
 
 fn capture(f: impl FnOnce()) -> Vec<String> {
@@ -157,7 +164,7 @@ fn an_absence_behind_a_symlink_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let probe = root.path().join("probe");
-    std::os::unix::fs::symlink(elsewhere.path().join("gone.txt"), &probe).unwrap();
+    unix_fs::symlink(elsewhere.path().join("gone.txt"), &probe).unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
@@ -174,7 +181,7 @@ fn an_absence_behind_a_symlink_is_not_an_absence() {
 fn a_check_that_opens_nothing_records_nothing() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("present.txt");
-    std::fs::write(&file, b"x").unwrap();
+    fs::write(&file, b"x").unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
@@ -188,7 +195,7 @@ fn a_check_that_opens_nothing_records_nothing() {
 fn an_opened_file_records_the_access() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("present.txt");
-    std::fs::write(&file, b"x").unwrap();
+    fs::write(&file, b"x").unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
@@ -206,7 +213,7 @@ fn an_opened_file_records_the_access() {
 fn an_access_that_fails_after_the_check_is_a_refusal() {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("not-a-file");
-    std::fs::create_dir(&dir).unwrap();
+    fs::create_dir(&dir).unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_write(vetted(root.path())));
 
     let lines = capture(|| {
@@ -226,9 +233,9 @@ fn an_access_that_fails_after_the_check_is_a_refusal() {
 #[test]
 fn a_walk_records_one_access() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("a.txt"), b"x").unwrap();
-    std::fs::create_dir(root.path().join("sub")).unwrap();
-    std::fs::write(root.path().join("sub").join("b.txt"), b"x").unwrap();
+    fs::write(root.path().join("a.txt"), b"x").unwrap();
+    fs::create_dir(root.path().join("sub")).unwrap();
+    fs::write(root.path().join("sub").join("b.txt"), b"x").unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
@@ -263,7 +270,7 @@ fn a_listed_directory_records_the_access() {
 fn listing_a_regular_file_is_not_an_absence() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("not-a-dir.txt");
-    std::fs::write(&file, b"x").unwrap();
+    fs::write(&file, b"x").unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
@@ -281,15 +288,15 @@ fn a_listing_the_host_refuses_records_a_refusal() {
 
     let root = tempfile::tempdir().unwrap();
     let locked = root.path().join("locked");
-    std::fs::create_dir(&locked).unwrap();
+    fs::create_dir(&locked).unwrap();
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(root.path())));
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    fs::set_permissions(&locked, Permissions::from_mode(0o000)).unwrap();
 
     let lines = capture(|| {
         let _ = guard.read_dir(&locked);
     });
 
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&locked, Permissions::from_mode(0o700)).unwrap();
 
     assert_eq!(lines.len(), 1, "got: {lines:?}");
     assert!(lines[0].contains("decision=denied"), "got: {}", lines[0]);
@@ -356,13 +363,13 @@ fn a_moved_root_records_the_reason_it_returns() {
     let work = tempfile::tempdir().unwrap();
     let granted = work.path().join("granted");
     let other = work.path().join("other");
-    std::fs::create_dir(&granted).unwrap();
-    std::fs::create_dir(&other).unwrap();
-    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
+    fs::create_dir(&granted).unwrap();
+    fs::create_dir(&other).unwrap();
+    fs::write(granted.join("notes.txt"), b"hello").unwrap();
 
     let guard = FsGuard::new(&SandboxPolicy::default().allow_read(vetted(&granted)));
-    std::fs::remove_dir_all(&granted).unwrap();
-    std::fs::rename(&other, &granted).unwrap();
+    fs::remove_dir_all(&granted).unwrap();
+    fs::rename(&other, &granted).unwrap();
 
     let mut error = None;
     let lines = capture(|| error = guard.check_read(&granted.join("notes.txt")).err());
@@ -391,14 +398,14 @@ fn a_link_into_a_moved_root_records_the_swap() {
     let walked = work.path().join("walked");
     let linked = work.path().join("linked");
     let other = work.path().join("other");
-    std::fs::create_dir(&walked).unwrap();
-    std::fs::create_dir(&linked).unwrap();
-    std::fs::create_dir(&other).unwrap();
-    std::fs::write(linked.join("target.txt"), b"hello").unwrap();
+    fs::create_dir(&walked).unwrap();
+    fs::create_dir(&linked).unwrap();
+    fs::create_dir(&other).unwrap();
+    fs::write(linked.join("target.txt"), b"hello").unwrap();
     // The substitute holds the name too, or the link dangles after the swap and the walk
     // drops it for being unresolvable — a refusal for the wrong reason to be asserting on.
-    std::fs::write(other.join("target.txt"), b"planted").unwrap();
-    std::os::unix::fs::symlink(linked.join("target.txt"), walked.join("link")).unwrap();
+    fs::write(other.join("target.txt"), b"planted").unwrap();
+    unix_fs::symlink(linked.join("target.txt"), walked.join("link")).unwrap();
 
     let guard = FsGuard::new(
         &SandboxPolicy::default()
@@ -407,8 +414,8 @@ fn a_link_into_a_moved_root_records_the_swap() {
     );
     // The root the link leads into, not the one being walked: the walk's own root still
     // confirms, so the entry is refused for where it resolves to.
-    std::fs::remove_dir_all(&linked).unwrap();
-    std::fs::rename(&other, &linked).unwrap();
+    fs::remove_dir_all(&linked).unwrap();
+    fs::rename(&other, &linked).unwrap();
 
     let mut walk = None;
     let lines = capture(|| walk = guard.walk_readable(&walked, 16).ok());
@@ -667,15 +674,15 @@ fn records_a_degraded_hardening_step() {
 /// A policy whose granted root has been swapped for another directory, so building a guard
 /// over it reports `rooted_access`. The root is `work`-relative, which keeps the swap and
 /// the grant in one scratch tree.
-fn substituted_root(work: &std::path::Path) -> SandboxPolicy {
+fn substituted_root(work: &Path) -> SandboxPolicy {
     let granted = work.join("granted");
     let other = work.join("other");
-    std::fs::create_dir(&granted).unwrap();
-    std::fs::create_dir(&other).unwrap();
+    fs::create_dir(&granted).unwrap();
+    fs::create_dir(&other).unwrap();
 
     let policy = SandboxPolicy::default().allow_read(vetted(&granted));
-    std::fs::remove_dir_all(&granted).unwrap();
-    std::fs::rename(&other, &granted).unwrap();
+    fs::remove_dir_all(&granted).unwrap();
+    fs::rename(&other, &granted).unwrap();
 
     policy
 }
@@ -774,7 +781,7 @@ fn records_a_signal_death_the_way_a_shell_does() {
 #[test]
 fn records_a_timeout_as_a_failed_run() {
     let killed = SandboxError::TimedOut {
-        after: std::time::Duration::from_secs(1),
+        after: Duration::from_secs(1),
     };
 
     let lines = capture(|| {
@@ -791,7 +798,7 @@ fn records_a_timeout_as_a_failed_run() {
 fn records_a_failure_to_start_under_its_own_reason() {
     let refused = SandboxError::SpawnFailed {
         detail: "could not start the sandbox helper",
-        source: std::io::Error::from(std::io::ErrorKind::NotFound),
+        source: io::Error::from(io::ErrorKind::NotFound),
     };
 
     let lines = capture(|| {
@@ -806,14 +813,14 @@ fn records_a_failure_to_start_under_its_own_reason() {
 #[test]
 fn an_exec_failure_and_a_spawn_failure_differ() {
     let missing = SandboxError::ExecFailed {
-        source: std::io::Error::from(std::io::ErrorKind::NotFound),
+        source: io::Error::from(io::ErrorKind::NotFound),
     };
 
     assert_ne!(
         missing.label(),
         SandboxError::SpawnFailed {
             detail: "could not start the sandbox helper",
-            source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            source: io::Error::from(io::ErrorKind::NotFound),
         }
         .label(),
         "a command that was never executed reads as a helper that never started"
@@ -892,7 +899,7 @@ fn two_runs_of_one_command_take_two_spawn_ids() {
         "two spawns and two outcomes, got: {lines:?}"
     );
 
-    let ids: std::collections::HashSet<&str> = lines.iter().map(|line| spawn_id(line)).collect();
+    let ids: HashSet<&str> = lines.iter().map(|line| spawn_id(line)).collect();
     assert_eq!(
         ids.len(),
         2,
@@ -1008,14 +1015,14 @@ fn a_root_that_lost_its_object_records_the_weakened_access() {
     let work = tempfile::tempdir().unwrap();
     let granted = work.path().join("granted");
     let other = work.path().join("other");
-    std::fs::create_dir(&granted).unwrap();
-    std::fs::create_dir(&other).unwrap();
-    std::fs::write(granted.join("notes.txt"), b"vetted").unwrap();
-    std::fs::write(other.join("notes.txt"), b"planted").unwrap();
+    fs::create_dir(&granted).unwrap();
+    fs::create_dir(&other).unwrap();
+    fs::write(granted.join("notes.txt"), b"vetted").unwrap();
+    fs::write(other.join("notes.txt"), b"planted").unwrap();
 
     let policy = SandboxPolicy::default().allow_read(vetted(&granted));
-    std::fs::remove_dir_all(&granted).unwrap();
-    std::fs::rename(&other, &granted).unwrap();
+    fs::remove_dir_all(&granted).unwrap();
+    fs::rename(&other, &granted).unwrap();
 
     let lines = capture(|| {
         let _ = FsGuard::new(&policy);
@@ -1048,22 +1055,22 @@ fn every_visible_shape_of_substituted_root_records_the_weakened_access() {
         let work = tempfile::tempdir().unwrap();
         let granted = work.path().join("granted");
         let elsewhere = work.path().join("elsewhere");
-        std::fs::create_dir(&granted).unwrap();
-        std::fs::create_dir(&elsewhere).unwrap();
+        fs::create_dir(&granted).unwrap();
+        fs::create_dir(&elsewhere).unwrap();
 
         let policy = SandboxPolicy::default().allow_read(vetted(&granted));
         let aside = work.path().join("aside");
 
         match shape {
             "symlink" => {
-                std::fs::remove_dir_all(&granted).unwrap();
-                std::os::unix::fs::symlink(&elsewhere, &granted).unwrap();
+                fs::remove_dir_all(&granted).unwrap();
+                unix_fs::symlink(&elsewhere, &granted).unwrap();
             }
             // The vetted object is still what the name reaches, but only through a link, so
             // the pin alone cannot see it — the strict open is what refuses this one.
             _ => {
-                std::fs::rename(&granted, &aside).unwrap();
-                std::os::unix::fs::symlink(&aside, &granted).unwrap();
+                fs::rename(&granted, &aside).unwrap();
+                unix_fs::symlink(&aside, &granted).unwrap();
             }
         }
 
@@ -1087,7 +1094,7 @@ fn every_visible_shape_of_substituted_root_records_the_weakened_access() {
 fn a_file_grant_records_nothing_when_the_guard_is_built() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("hosts");
-    std::fs::write(&file, b"127.0.0.1 localhost").unwrap();
+    fs::write(&file, b"127.0.0.1 localhost").unwrap();
     let policy = SandboxPolicy::default().allow_read(vetted(&file));
 
     let lines = capture(|| {
@@ -1105,14 +1112,14 @@ fn a_root_on_two_axes_records_its_weakened_access_once() {
     let work = tempfile::tempdir().unwrap();
     let granted = work.path().join("granted");
     let other = work.path().join("other");
-    std::fs::create_dir(&granted).unwrap();
-    std::fs::create_dir(&other).unwrap();
+    fs::create_dir(&granted).unwrap();
+    fs::create_dir(&other).unwrap();
 
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&granted))
         .allow_write(vetted(&granted));
-    std::fs::remove_dir_all(&granted).unwrap();
-    std::fs::rename(&other, &granted).unwrap();
+    fs::remove_dir_all(&granted).unwrap();
+    fs::rename(&other, &granted).unwrap();
 
     let lines = capture(|| {
         let _ = FsGuard::new(&policy);
@@ -1126,7 +1133,7 @@ fn a_root_on_two_axes_records_its_weakened_access_once() {
 #[test]
 fn an_intact_root_records_nothing_when_the_guard_is_built() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("notes.txt"), b"x").unwrap();
+    fs::write(root.path().join("notes.txt"), b"x").unwrap();
     let policy = SandboxPolicy::default().allow_read(vetted(root.path()));
 
     let lines = capture(|| {

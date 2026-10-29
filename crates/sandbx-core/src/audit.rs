@@ -5,6 +5,7 @@
 //! and why a record names the access and not the verdict: `context/guide-logging.md`.
 
 use crate::{Axis, NetworkPolicy, SandboxPolicy, SpawnId};
+use std::process::ExitStatus;
 
 /// `tracing` target carrying the audit trail, kept apart from ordinary diagnostics so a
 /// subscriber can route it on its own; see `context/guide-logging.md`.
@@ -286,7 +287,7 @@ impl<'a> AuditEvent<'a> {
         program: &'a str,
         spawn: &'a SpawnId,
         session: Option<&'a str>,
-        status: &std::process::ExitStatus,
+        status: &ExitStatus,
     ) -> Self {
         Self::Exited {
             spawn: spawn.as_str(),

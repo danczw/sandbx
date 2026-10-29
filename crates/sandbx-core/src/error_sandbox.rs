@@ -3,7 +3,10 @@
 //! One module on purpose: it is one `Display` arm per variant, and the
 //! list of everything that can refuse a run is only readable in one place.
 
+use std::error::Error;
 use std::path::PathBuf;
+use std::time::Duration;
+use std::{fmt, io};
 
 use crate::ObjectId;
 
@@ -58,7 +61,7 @@ pub enum SandboxError {
         /// The path as the caller supplied it.
         requested: PathBuf,
         /// The underlying resolution failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// A path inside a granted root names no file, so no policy objected to it. Returned
@@ -69,7 +72,7 @@ pub enum SandboxError {
         /// The component that names nothing — the parent, for a write to a missing directory.
         requested: PathBuf,
         /// The underlying failure: ENOENT, ENOTDIR or ENAMETOOLONG.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The helper process was given argv it could not parse. Not parsed best-effort: a
@@ -131,7 +134,7 @@ pub enum SandboxError {
         /// The path as the caller supplied it, which is what they can go and change.
         granted: PathBuf,
         /// Why it could not be resolved and measured.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The syscall filter could not be installed; without it a sandboxed tool could reach
@@ -172,7 +175,7 @@ pub enum SandboxError {
         /// What failed, for the operator to act on.
         detail: &'static str,
         /// The underlying OS failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The supervisor stage could not start the stage below it. Separate from
@@ -182,13 +185,13 @@ pub enum SandboxError {
         /// What failed, for the operator to act on.
         detail: &'static str,
         /// The underlying OS failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The innermost stage could not start the command, so it never ran.
     ExecFailed {
         /// The underlying OS failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The bytes at the program's path are not the ones the caller pinned, so it never ran.
@@ -208,7 +211,7 @@ pub enum SandboxError {
         /// The program as the caller named it.
         program: String,
         /// The underlying OS failure, from the open or from a read.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// A pinned program is a `#!` script, which the pin cannot cover. The kernel hands the
@@ -233,7 +236,7 @@ pub enum SandboxError {
     /// A sandboxed process outran its time limit and was killed.
     TimedOut {
         /// The limit it exceeded.
-        after: std::time::Duration,
+        after: Duration,
     },
 
     /// This kernel cannot enforce a sandbox, returned instead of running unsandboxed. A
@@ -266,8 +269,8 @@ pub enum SandboxError {
     },
 }
 
-impl std::fmt::Display for SandboxError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for SandboxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::PathNotAllowed { requested, access } => {
                 write!(f, "path is {}: {}", access.outside(), requested.display())
@@ -407,8 +410,8 @@ impl std::fmt::Display for SandboxError {
     }
 }
 
-impl std::error::Error for SandboxError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl Error for SandboxError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::PathNotAllowed { .. }
             | Self::Unsupported { .. }

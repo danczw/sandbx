@@ -6,6 +6,7 @@
 //! busy host within one log file's lifetime. So an id is a per-process nonce and a
 //! counter, and the nonce is what the other process cannot reproduce (#249).
 
+use std::process;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -41,7 +42,7 @@ impl SpawnId {
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |since| since.as_nanos());
 
-            format!("{:x}.{nanos:x}", std::process::id())
+            format!("{:x}.{nanos:x}", process::id())
         });
 
         // Relaxed: the property is that no two reads return one value, which `fetch_add`

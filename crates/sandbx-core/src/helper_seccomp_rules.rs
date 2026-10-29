@@ -5,6 +5,7 @@
 //! this returns and installs it.
 
 use crate::SandboxError;
+use std::collections::BTreeMap;
 
 use super::filter::seccomp_failed;
 
@@ -136,7 +137,7 @@ fn arg(
 /// getting weaker because a number was added to [`BLOCKED_SYSCALLS`]. Skipping is fail-closed:
 /// the unconditional denial already covers everything the rule would.
 pub(super) fn deny_when(
-    rules: &mut std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
+    rules: &mut BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
     syscall: libc::c_long,
     conditions: Vec<seccompiler::SeccompCondition>,
 ) -> Result<(), SandboxError> {
@@ -156,7 +157,7 @@ pub(super) fn deny_when(
 /// everything else is allowed.
 pub(super) fn blocked_syscalls(
     policy: &crate::SandboxPolicy,
-) -> Result<std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>, SandboxError> {
+) -> Result<BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>, SandboxError> {
     use std::collections::BTreeMap;
 
     use seccompiler::SeccompCmpOp::{Eq, MaskedEq, Ne};

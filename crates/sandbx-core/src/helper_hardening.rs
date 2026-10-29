@@ -7,6 +7,7 @@
 
 use crate::SandboxError;
 use crate::degradation::Degradation;
+use std::{fmt, fs, io};
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
 ///
@@ -124,7 +125,7 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
                  is still watching it",
     };
 
-    let stat = std::fs::read_to_string("/proc/self/stat").map_err(|_| unreadable)?;
+    let stat = fs::read_to_string("/proc/self/stat").map_err(|_| unreadable)?;
 
     match ppid_from_stat(&stat) {
         Some(parent) if parent == expected => Ok(()),
@@ -205,7 +206,7 @@ fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError>
 /// — is assertable: `PR_CAPBSET_DROP` only fails on a host whose LSM strips `CAP_SETPCAP`
 /// from a fresh user namespace. Generic over the error so a test can refuse without
 /// constructing a `caps` error.
-fn drop_bounding_set<E: std::fmt::Display>(
+fn drop_bounding_set<E: fmt::Display>(
     clear: impl FnOnce() -> Result<(), E>,
 ) -> Option<(Degradation, String)> {
     clear().err().map(|error| {
@@ -227,7 +228,7 @@ pub(super) fn set_no_new_privs() -> Result<(), SandboxError> {
     })
 }
 
-fn hardening_failed(source: impl std::fmt::Display) -> SandboxError {
+fn hardening_failed(source: impl fmt::Display) -> SandboxError {
     SandboxError::ProcessHardening {
         detail: source.to_string(),
     }
@@ -303,7 +304,7 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
 /// Names the failure rather than recording it, for the reason [`prepare_supervisor`]
 /// gives.
 fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)> {
-    map_identity_into_userns_with(uid, gid, |path, contents| std::fs::write(path, contents))
+    map_identity_into_userns_with(uid, gid, |path, contents| fs::write(path, contents))
 }
 
 /// The three writes the map needs, naming the first one `write` refuses.
@@ -314,7 +315,7 @@ fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)>
 fn map_identity_into_userns_with(
     uid: u32,
     gid: u32,
-    mut write: impl FnMut(&str, String) -> std::io::Result<()>,
+    mut write: impl FnMut(&str, String) -> io::Result<()>,
 ) -> Option<(Degradation, String)> {
     // `setgroups` must be denied before an unprivileged `gid_map` write or the kernel rejects
     // it, and a single mapped gid has no supplementary groups anyway.

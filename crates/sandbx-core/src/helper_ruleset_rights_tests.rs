@@ -1,4 +1,6 @@
 use super::*;
+use std::fs;
+use std::os::unix::fs as unix_fs;
 
 /// The branch that decides whether a resolver path gets a rule at all. Untested until now,
 /// and `resolver_paths` reads the host's `/etc`: on a host whose `resolv.conf` is a plain
@@ -9,8 +11,8 @@ fn a_symlink_never_opens_as_itself() {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let real = scratch.path().join("real.conf");
     let link = scratch.path().join("link.conf");
-    std::fs::write(&real, b"nameserver 203.0.113.1\n").expect("a file to point at");
-    std::os::unix::fs::symlink(&real, &link).expect("a symlink to it");
+    fs::write(&real, b"nameserver 203.0.113.1\n").expect("a file to point at");
+    unix_fs::symlink(&real, &link).expect("a symlink to it");
 
     assert!(
         opens_as_itself(&real),
@@ -33,7 +35,7 @@ fn a_symlink_never_opens_as_itself() {
 fn a_dangling_symlink_is_skipped_like_an_absent_path() {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let link = scratch.path().join("dangling.conf");
-    std::os::unix::fs::symlink(scratch.path().join("nothing"), &link).expect("a dead link");
+    unix_fs::symlink(scratch.path().join("nothing"), &link).expect("a dead link");
 
     assert!(
         !opens_as_itself(&link),
