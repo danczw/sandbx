@@ -266,8 +266,10 @@ in-process meaning, and a refusal carries an `Access` so it can name the grant i
 lacked rather than implying none was given.
 
 One per-call-site `#[allow(clippy::disallowed_methods)]` for `Command::new` in
-`src/`, in `spawn::command` — that site, not the whole crate; test files that
-spawn the built binary carry their own. The lint *is* the backstop: a
+production `src/`, in `spawn::command` — that site, not the whole crate;
+`sandbx-helper-fixture` and the test files that spawn the built binary carry
+their own, each spawning the sandbox rather than running under it. The lint *is*
+the backstop: a
 CI grep for `Command::new` would be a second one, but a lint that names the call
 site beats a grep that runs after it. Not `cargo build`, which compiles a stray
 `Command::new` without complaint: `disallowed_methods` is `deny` in the
