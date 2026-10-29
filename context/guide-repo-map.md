@@ -61,9 +61,10 @@ direct dependencies and this not being one of them. Its two parents are
 
 `sandbx-anthropic` is drawn as a leaf and has stopped being one: `sandbx-event`,
 `sandbx-prompt`, `sandbx-provider` and `sandbx-sse` are its four internal edges
-— the accumulator builds an `AgentEvent` per wire frame, `anthropic/body.rs`
+— the accumulator builds an `AgentEvent` per wire frame, `anthropic_body.rs`
 serializes a `&Prompt`, `stream_chat` returns an `EventStream` and builds every
-`ProviderError` on it, and `client.rs` hands the response body to `tokenize`.
+`ProviderError` on it, and `anthropic_client.rs` hands the response body to
+`tokenize`.
 `sandbx-provider` is drawn as a leaf and is not one either, for the first of
 those reasons: the alias's `Item` names an `AgentEvent`. Four of the five arrows
 are undrawn, every target already being a leaf of the bus and four more
@@ -316,29 +317,44 @@ tests/            per-tool (find and grep share search), plus registry, limits,
 
 ## `sandbx-anthropic`
 
+`src/` is flat (#333). A file's name is its module path joined with `_`, so
+`anthropic_wire_payload.rs` is `anthropic::wire::payload` — the nesting the
+directories used to show is in the name, and `#[path]` on each `mod` line keeps
+the module tree itself.
+
 ```
 src/lib.rs        re-exports; ensure_crypto_provider_installed
-   anthropic.rs   the vendor boundary: re-exports AnthropicClient
-      client.rs   AnthropicClient — the request, and the base-URL and
+anthropic.rs      the vendor boundary: re-exports AnthropicClient
+anthropic_client.rs
+                  AnthropicClient — the request, and the base-URL and
                   transport rules that keep the key off the network in cleartext
-      body.rs     Serialize for the Messages body, built from a &Prompt
-      wire/       accumulate.rs, payload.rs + unit tests
+anthropic_body.rs Serialize for the Messages body, built from a &Prompt
+anthropic_wire.rs re-exports event_stream and RawApiErrorEnvelope
+anthropic_wire_accumulate.rs
+                  event_stream — one AgentEvent per wire frame
+anthropic_wire_payload.rs
+                  the Raw* payload shapes, deserialized by their own "type" tag
+anthropic_wire_tests*.rs
+                  unit tests over canned frame sequences: usage, tool_use,
+                  content, lifecycle; plus the frames they share, in
+                  _tests_fixture
 tests/            anthropic_client, crypto_provider, error (Transport alone,
                   which is the one variant needing a crypto provider),
                   live_anthropic (needs `live-anthropic-tests`)
 ```
 
-The tree is the boundary for every vendor *rule*, and for every wire string
-sandbx writes or matches on — the ones it carries verbatim cross as opaque data
-(`sandbx-event`'s `StopReason::Other`, this crate's `ApiError::kind`). The rules
-are compiler-enforced: `Body` is `pub(super)` in a private `mod body` and no
-neutral type derives `Serialize`, so the request shapes cannot be posted to any
-API by accident — which since #364 rests on the orphan rule rather than on this
-crate's own discipline, the shapes being `sandbx-prompt`'s and `serde` not being
-among its dependencies; the wire payloads are `pub(super)` bar the two error
-envelopes at `pub(crate)`; and `stop_reason` is a private free function, so no
-`StopReason` comes from a wire string outside `anthropic/` (#59) — which the
-enum leaving for `sandbx-event` did not weaken, the string table having stayed.
+The `anthropic` module tree is the boundary for every vendor *rule*, and for
+every wire string sandbx writes or matches on — the ones it carries verbatim
+cross as opaque data (`sandbx-event`'s `StopReason::Other`, this crate's
+`ApiError::kind`). The rules are compiler-enforced: `Body` is `pub(super)` in a
+private `mod body` and no neutral type derives `Serialize`, so the request
+shapes cannot be posted to any API by accident — which since #364 rests on the
+orphan rule rather than on this crate's own discipline, the shapes being
+`sandbx-prompt`'s and `serde` not being among its dependencies; the wire
+payloads are `pub(super)` bar the two error envelopes at `pub(crate)`; and
+`stop_reason` is a private free function, so no `StopReason` comes from a wire
+string outside the `anthropic` module (#59) — which the enum leaving for
+`sandbx-event` did not weaken, the string table having stayed.
 What the rules confine is the vendor's *vocabulary*, never its name: since #368
 the name is the crate's own, carried by the package, the directory, the baseline,
 `deny.toml` and the `crate:anthropic` label alike, and no lint or grep could
@@ -423,7 +439,7 @@ verbatim. **`serde` is not a dependency**, and that absence is the mechanism
 rather than a tidiness: with the types declared here, the orphan rule leaves this
 the only crate in which an `impl Serialize for Prompt` could be written, so an
 adapter has to declare a local wrapper and spell every field out. Until #364 the
-same property rested on `anthropic/body.rs` being `pub(super)` within one crate.
+same property rested on `anthropic_body.rs` being `pub(super)` within one crate.
 `PartialEq` and not `Serialize` is also what a test wants to compare. The
 cross-crate account is in
 [decision-provider-seam.md](decision-provider-seam.md).
