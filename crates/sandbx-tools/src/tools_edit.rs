@@ -32,6 +32,8 @@ pub(crate) struct EditInput {
 /// ambiguous match is an error, never a silent no-op — the model otherwise believes
 /// the edit happened.
 pub(crate) fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
+    use std::io::Write;
+
     // Read first, where the read half of the policy check lives, so a write-only
     // grant fails before an error message can disclose content.
     let content = crate::read_file(&input.path, ctx)?;
@@ -53,7 +55,8 @@ pub(crate) fn execute(input: EditInput, ctx: &ExecutionContext) -> Result<ToolOu
         .open_write(&input.path)
         .map_err(|error| crate::guard_error(&input.path, error))?;
 
-    std::io::Write::write_all(&mut target, updated.as_bytes())
+    target
+        .write_all(updated.as_bytes())
         .map_err(|error| crate::failed("write", &input.path, error))?;
 
     Ok(ToolOutput::new(format!("edited {}", input.path.display())))

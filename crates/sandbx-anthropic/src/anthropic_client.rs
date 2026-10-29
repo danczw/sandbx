@@ -4,6 +4,8 @@
 use sandbx_prompt::Prompt;
 use sandbx_provider::{EventStream, ProviderError};
 use secrecy::{ExposeSecret, SecretString};
+use std::net::IpAddr;
+use std::time::Duration;
 
 use crate::ensure_crypto_provider_installed;
 
@@ -134,12 +136,12 @@ fn validate_base_url(base_url: &str) -> Result<Reachability, &'static str> {
 fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderError> {
     ensure_crypto_provider_installed();
     let mut builder = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10))
         // A read timeout, not `.timeout(..)`: the latter bounds the whole streamed
         // body and would kill a long generation, while this bounds inactivity and
         // resets on every chunk. Anthropic sends `ping` frames throughout a turn, so
         // 120s of silence means the connection is gone, not that the model is slow.
-        .read_timeout(std::time::Duration::from_secs(120))
+        .read_timeout(Duration::from_secs(120))
         // reqwest's cross-host redirect scrubbing strips only the headers it knows
         // are credentials — `Authorization`, `Cookie`, `Proxy-Authorization` — never
         // `x-api-key`, so under the default policy a 3xx would replay the key, and
@@ -166,10 +168,7 @@ fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderErr
 /// parsing; `localhost` is matched by name because it does not parse as an IP.
 fn is_loopback_host(host: &str) -> bool {
     let host = host.trim_start_matches('[').trim_end_matches(']');
-    host == "localhost"
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback())
+    host == "localhost" || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 /// 429 becomes [`ProviderError::RateLimited`], every other non-2xx
@@ -186,7 +185,7 @@ async fn map_error_response(
         .get(reqwest::header::RETRY_AFTER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.trim().parse::<u64>().ok())
-        .map(std::time::Duration::from_secs);
+        .map(Duration::from_secs);
 
     let body = response.text().await.unwrap_or_default();
     let (kind, message) = match serde_json::from_str::<wire::RawApiErrorEnvelope>(&body) {

@@ -9,9 +9,12 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
 use serde_json::json;
+use std::fs;
+use std::fs::Permissions;
+use std::path::Path;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -23,7 +26,7 @@ fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
 fn tree(count: usize, body: &str) -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     for i in 0..count {
-        std::fs::write(
+        fs::write(
             root.path().join(format!("f{i}.txt")),
             format!("needle\n{body}"),
         )
@@ -122,12 +125,12 @@ const OVER_THE_CAP: usize = 2 * 1024 * 1024 + 1;
 #[test]
 fn an_oversized_file_is_not_a_file_without_the_match() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(
+    fs::write(
         root.path().join("big.txt"),
         format!("needle\n{}", "x".repeat(OVER_THE_CAP)),
     )
     .unwrap();
-    std::fs::write(root.path().join("small.txt"), b"needle\n").unwrap();
+    fs::write(root.path().join("small.txt"), b"needle\n").unwrap();
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default(),
@@ -161,14 +164,14 @@ fn a_file_the_host_refuses_marks_the_search_partial() {
 
     let root = tempfile::tempdir().unwrap();
     let locked = root.path().join("locked.txt");
-    std::fs::write(&locked, b"needle\n").unwrap();
-    std::fs::write(root.path().join("open.txt"), b"needle\n").unwrap();
+    fs::write(&locked, b"needle\n").unwrap();
+    fs::write(root.path().join("open.txt"), b"needle\n").unwrap();
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
         ToolLimits::default(),
     );
 
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    fs::set_permissions(&locked, Permissions::from_mode(0o000)).unwrap();
     // Probed through `read`, which has no skip arm to hide it: as root the open succeeds
     // and the fixture proves nothing, so that has to fail loudly rather than pass.
     let refused = BuiltinTool::Read.execute(json!({ "path": locked.to_str().unwrap() }), &ctx);
@@ -176,7 +179,7 @@ fn a_file_the_host_refuses_marks_the_search_partial() {
         json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
         &ctx,
     );
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600)).unwrap();
+    fs::set_permissions(&locked, Permissions::from_mode(0o600)).unwrap();
 
     assert!(
         refused.is_err(),

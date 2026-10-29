@@ -3,9 +3,11 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -13,9 +15,9 @@ fn context(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy)
 }
 
-fn file_with(root: &std::path::Path, body: &str) -> std::path::PathBuf {
+fn file_with(root: &Path, body: &str) -> PathBuf {
     let file = root.join("src.txt");
-    std::fs::write(&file, body).unwrap();
+    fs::write(&file, body).unwrap();
     file
 }
 
@@ -37,7 +39,7 @@ fn replaces_a_unique_occurrence() {
         .unwrap();
 
     assert_eq!(
-        std::fs::read_to_string(&file).unwrap(),
+        fs::read_to_string(&file).unwrap(),
         "let x = 42;\nlet y = 2;\n"
     );
 }
@@ -62,7 +64,7 @@ fn refuses_an_ambiguous_match() {
 
     assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
     assert_eq!(
-        std::fs::read_to_string(&file).unwrap(),
+        fs::read_to_string(&file).unwrap(),
         original,
         "file was modified"
     );
@@ -88,7 +90,7 @@ fn refuses_a_missing_match() {
         .unwrap_err();
 
     assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+    assert_eq!(fs::read_to_string(&file).unwrap(), original);
 }
 
 #[test]
@@ -106,7 +108,7 @@ fn read_grant_alone_does_not_permit_editing() {
         .unwrap_err();
 
     assert!(matches!(err, ToolError::Denied { .. }), "got {err:?}");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+    assert_eq!(fs::read_to_string(&file).unwrap(), original);
 }
 
 /// The write handle truncates on open, so opening it before the match is known
@@ -131,7 +133,7 @@ fn a_refused_edit_leaves_the_file_intact() {
             )
             .is_err()
     );
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+    assert_eq!(fs::read_to_string(&file).unwrap(), original);
 
     assert!(
         BuiltinTool::Edit
@@ -142,7 +144,7 @@ fn a_refused_edit_leaves_the_file_intact() {
             .is_err()
     );
     assert_eq!(
-        std::fs::read_to_string(&file).unwrap(),
+        fs::read_to_string(&file).unwrap(),
         original,
         "file was truncated by an edit that failed"
     );

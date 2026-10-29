@@ -29,7 +29,7 @@
 //! compile anywhere else, which the whole workspace already rests on.
 
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 
 use sandbx_core::{HelperArgs, SandboxPolicy, VettedPath};
 
@@ -66,12 +66,7 @@ pub fn allow_probe(policy: SandboxPolicy, probe: &str) -> SandboxPolicy {
 /// Run `program` under `policy` through the helper at `helper`, and hand back what it wrote.
 ///
 /// `helper` is `&Path` rather than `&str` so a policy string cannot be passed by accident.
-pub fn run(
-    helper: &Path,
-    policy: &SandboxPolicy,
-    program: &str,
-    args: &[&str],
-) -> std::process::Output {
+pub fn run(helper: &Path, policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
     run_pinned(helper, policy, program, args, None)
 }
 
@@ -82,7 +77,7 @@ pub fn run_pinned(
     program: &str,
     args: &[&str],
     pin: Option<sandbx_core::Sha256Digest>,
-) -> std::process::Output {
+) -> Output {
     let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
 
     // The one spawn this crate exists to make: `helper` *is* the sandbox, so there is

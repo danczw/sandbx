@@ -7,6 +7,8 @@
 //! code.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
+use std::fmt;
+use std::process::Output;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -39,7 +41,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
 struct Collect(String);
 
 impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         self.0.push_str(&format!("{}={value:?} ", field.name()));
     }
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
@@ -48,7 +50,7 @@ impl tracing::field::Visit for Collect {
 }
 
 /// The result *and* the trail, the record being a claim about the result.
-type Run = (Result<std::process::Output, SandboxError>, Vec<String>);
+type Run = (Result<Output, SandboxError>, Vec<String>);
 
 fn run(command: SandboxedCommand) -> Run {
     let sink = Captured::default();

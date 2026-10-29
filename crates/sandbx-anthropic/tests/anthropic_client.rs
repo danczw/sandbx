@@ -9,6 +9,7 @@ use sandbx_prompt::{
 };
 use sandbx_provider::ProviderError;
 use secrecy::SecretString;
+use std::time::Duration;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -202,7 +203,7 @@ async fn a_429_response_is_reported_as_rate_limited() {
             retry_after,
             message,
         } => {
-            assert_eq!(retry_after, Some(std::time::Duration::from_secs(2)));
+            assert_eq!(retry_after, Some(Duration::from_secs(2)));
             assert_eq!(message, "too many requests");
         }
         other => panic!("expected RateLimited, got {other:?}"),

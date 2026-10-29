@@ -7,7 +7,9 @@ use sandbx_anthropic::ensure_crypto_provider_installed;
 use sandbx_provider::ProviderError;
 
 fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)> {
-    std::error::Error::source(error)
+    use std::error::Error;
+
+    error.source()
 }
 
 /// The one variant carrying an underlying error, the request never having got far

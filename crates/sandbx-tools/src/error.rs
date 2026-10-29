@@ -1,3 +1,6 @@
+use std::fmt;
+use std::time::Duration;
+
 /// Why a tool call did not produce a result.
 ///
 /// Split by the agent's next move: a refusal means "ask for something else", bad
@@ -34,12 +37,12 @@ pub enum ToolError {
         /// What was attempted.
         subject: String,
         /// The limit it exceeded.
-        after: std::time::Duration,
+        after: Duration,
     },
 }
 
-impl std::fmt::Display for ToolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ToolError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Denied { subject, reason } => {
                 write!(f, "refused by the sandbox policy: {subject} ({reason})")

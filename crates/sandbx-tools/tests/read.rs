@@ -7,9 +7,11 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+use std::fs;
+use std::path::Path;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -21,7 +23,7 @@ fn context(policy: SandboxPolicy) -> ExecutionContext {
 fn reads_a_file_inside_an_allowed_root() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("notes.txt");
-    std::fs::write(&file, b"hello from the workspace").unwrap();
+    fs::write(&file, b"hello from the workspace").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Read
@@ -36,7 +38,7 @@ fn refuses_a_path_outside_every_allowed_root() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let secret = elsewhere.path().join("secret.txt");
-    std::fs::write(&secret, b"secret").unwrap();
+    fs::write(&secret, b"secret").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(allowed.path())));
     let err = BuiltinTool::Read
@@ -52,7 +54,7 @@ fn distinguishes_a_missing_file_from_a_refusal() {
     let root = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
     let secret = elsewhere.path().join("secret.txt");
-    std::fs::write(&secret, b"secret").unwrap();
+    fs::write(&secret, b"secret").unwrap();
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let missing = BuiltinTool::Read
@@ -124,7 +126,7 @@ fn advertises_a_schema_matching_its_input() {
 fn an_empty_file_is_reported_as_empty() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("empty.txt");
-    std::fs::write(&file, b"").unwrap();
+    fs::write(&file, b"").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Read
@@ -144,10 +146,10 @@ fn a_substituted_root_reads_back_as_denied() {
     let work = tempfile::tempdir().unwrap();
     let granted = work.path().join("granted");
     let other = work.path().join("other");
-    std::fs::create_dir(&granted).unwrap();
-    std::fs::create_dir(&other).unwrap();
-    std::fs::write(granted.join("notes.txt"), b"hello").unwrap();
-    std::fs::write(other.join("notes.txt"), b"planted").unwrap();
+    fs::create_dir(&granted).unwrap();
+    fs::create_dir(&other).unwrap();
+    fs::write(granted.join("notes.txt"), b"hello").unwrap();
+    fs::write(other.join("notes.txt"), b"planted").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(&granted)));
     let path = granted.join("notes.txt");
@@ -157,8 +159,8 @@ fn a_substituted_root_reads_back_as_denied() {
         "the grant did not read before the substitution"
     );
 
-    std::fs::remove_dir_all(&granted).unwrap();
-    std::fs::rename(&other, &granted).unwrap();
+    fs::remove_dir_all(&granted).unwrap();
+    fs::rename(&other, &granted).unwrap();
 
     let err = BuiltinTool::Read.execute(request, &ctx).unwrap_err();
     let ToolError::Denied { reason, .. } = &err else {

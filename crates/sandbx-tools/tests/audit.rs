@@ -4,7 +4,10 @@
 //! reaching the filesystem beside the guard, which leaves no record at all — so the
 //! assertions here are about the tool, not the guard.
 
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::{fmt, fs};
 
 use sandbx_core::{AUDIT_TARGET, SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -13,7 +16,7 @@ use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -35,7 +38,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
 struct Collect(String);
 
 impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         self.0.push_str(&format!("{}={value:?} ", field.name()));
     }
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
@@ -59,8 +62,8 @@ fn the_file_grep_only_measures_is_still_an_access() {
     let root = tempfile::tempdir().unwrap();
     let big = root.path().join("big.txt");
     let small = root.path().join("small.txt");
-    std::fs::write(&big, "x".repeat(OVER_THE_CAP)).unwrap();
-    std::fs::write(&small, b"needle\n").unwrap();
+    fs::write(&big, "x".repeat(OVER_THE_CAP)).unwrap();
+    fs::write(&small, b"needle\n").unwrap();
     let ctx = ExecutionContext::new(SandboxPolicy::default().allow_read(vetted(root.path())));
 
     let lines = capture(|| {
@@ -72,7 +75,7 @@ fn the_file_grep_only_measures_is_still_an_access() {
             .unwrap();
     });
 
-    let allowed = |path: &std::path::Path| {
+    let allowed = |path: &Path| {
         lines.iter().any(|line| {
             line.contains("decision=allowed") && line.contains(&path.display().to_string())
         })
@@ -142,7 +145,7 @@ fn two_bash_calls_take_two_spawn_ids() {
         "two spawns and two outcomes, got: {lines:?}"
     );
 
-    let ids: std::collections::HashSet<&str> = lines
+    let ids: HashSet<&str> = lines
         .iter()
         .map(|line| {
             let after = line
@@ -170,12 +173,12 @@ fn a_substituted_root_names_the_session_it_weakened() {
     let work = tempfile::tempdir().expect("a scratch tree");
     let granted = work.path().join("granted");
     let other = work.path().join("other");
-    std::fs::create_dir(&granted).expect("a directory to grant");
-    std::fs::create_dir(&other).expect("a directory to swap in");
+    fs::create_dir(&granted).expect("a directory to grant");
+    fs::create_dir(&other).expect("a directory to swap in");
 
     let policy = SandboxPolicy::default().allow_read(vetted(&granted));
-    std::fs::remove_dir_all(&granted).expect("the granted root goes");
-    std::fs::rename(&other, &granted).expect("another takes its name");
+    fs::remove_dir_all(&granted).expect("the granted root goes");
+    fs::rename(&other, &granted).expect("another takes its name");
 
     let lines = capture(|| {
         let _ = ExecutionContext::for_session(policy, SESSION);
@@ -203,7 +206,7 @@ fn a_substituted_root_names_the_session_it_weakened() {
 #[test]
 fn an_intact_root_records_nothing_when_a_context_is_built() {
     let work = tempfile::tempdir().expect("a scratch tree");
-    std::fs::write(work.path().join("notes.txt"), b"x").expect("a file under the root");
+    fs::write(work.path().join("notes.txt"), b"x").expect("a file under the root");
     let policy = SandboxPolicy::default().allow_read(vetted(work.path()));
 
     let lines = capture(|| {

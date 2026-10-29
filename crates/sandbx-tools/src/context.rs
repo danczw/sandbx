@@ -1,4 +1,6 @@
 use sandbx_core::{FsGuard, SandboxPolicy, SandboxedCommand};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::ToolLimits;
 
@@ -6,7 +8,7 @@ use crate::ToolLimits;
 ///
 /// The tighter end, since too long silently fails to catch the wedge this exists
 /// for. The known pressure point is a cold `cargo build` on a large workspace.
-pub const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// What a tool is allowed to touch, and the machinery for enforcing it.
 ///
@@ -20,9 +22,9 @@ pub const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 pub struct ExecutionContext {
     guard: FsGuard,
     policy: SandboxPolicy,
-    helper: Option<std::path::PathBuf>,
+    helper: Option<PathBuf>,
     limits: ToolLimits,
-    timeout: std::time::Duration,
+    timeout: Duration,
     session: Option<String>,
 }
 
@@ -74,7 +76,7 @@ impl ExecutionContext {
     /// binary, which the default assumes calls `sandbx_core::with_helper_dispatch`
     /// at startup — the shipped `sandbx` does, a test harness does not.
     #[must_use]
-    pub fn with_helper(mut self, path: impl AsRef<std::path::Path>) -> Self {
+    pub fn with_helper(mut self, path: impl AsRef<Path>) -> Self {
         self.helper = Some(path.as_ref().to_path_buf());
         self
     }
@@ -88,7 +90,7 @@ impl ExecutionContext {
 
     /// Bound how long a tool's command may run, instead of [`DEFAULT_TIMEOUT`].
     #[must_use]
-    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }

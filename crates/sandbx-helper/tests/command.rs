@@ -10,16 +10,19 @@
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use sandbx_core::{SandboxPolicy, SandboxedCommand};
+use std::path::Path;
+use std::time::{Duration, Instant};
+use std::{env, fs, thread};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
     sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
-    let root = std::env::temp_dir()
+    let root = env::temp_dir()
         .canonicalize()
         .expect("the temporary directory exists");
     tempfile::Builder::new()
@@ -32,7 +35,7 @@ fn scratch() -> tempfile::TempDir {
 fn runs_a_command_under_the_policy() {
     let dir = scratch();
     let file = dir.path().join("readable.txt");
-    std::fs::write(&file, b"visible").unwrap();
+    fs::write(&file, b"visible").unwrap();
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
@@ -85,7 +88,7 @@ fn starts_the_command_in_a_granted_root() {
 fn refuses_a_path_the_policy_omits() {
     let dir = scratch();
     let secret = dir.path().join("secret.txt");
-    std::fs::write(&secret, b"secret").unwrap();
+    fs::write(&secret, b"secret").unwrap();
 
     let policy = SandboxPolicy::default().allow_system_executables();
 
@@ -112,7 +115,7 @@ fn refuses_a_path_the_policy_omits() {
 /// eventually, is still a hang.
 #[test]
 fn a_command_that_outruns_its_timeout_is_killed() {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
 
     let result = SandboxedCommand::new(
         "/bin/sh",
@@ -121,7 +124,7 @@ fn a_command_that_outruns_its_timeout_is_killed() {
     .arg("-c")
     .arg("sleep 30")
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_millis(200))
+    .timeout(Duration::from_millis(200))
     .output();
 
     let elapsed = started.elapsed();
@@ -131,7 +134,7 @@ fn a_command_that_outruns_its_timeout_is_killed() {
         "expected a timeout, got: {result:?}"
     );
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "returned an error but only after {elapsed:?} — the caller was still blocked"
     );
 }
@@ -142,7 +145,7 @@ fn a_command_that_outruns_its_timeout_is_killed() {
 /// does not grant, so the shell would bail out before forking anything.
 #[test]
 fn a_backgrounded_grandchild_frees_the_call() {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
 
     let result = SandboxedCommand::new(
         "/bin/sh",
@@ -151,7 +154,7 @@ fn a_backgrounded_grandchild_frees_the_call() {
     .arg("-c")
     .arg("sleep 30 | cat")
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_millis(200))
+    .timeout(Duration::from_millis(200))
     .output();
 
     let elapsed = started.elapsed();
@@ -161,7 +164,7 @@ fn a_backgrounded_grandchild_frees_the_call() {
         "expected a timeout, got: {result:?}"
     );
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "a backgrounded grandchild kept the call blocked for {elapsed:?}"
     );
 }
@@ -174,7 +177,7 @@ fn a_command_within_its_timeout_still_succeeds() {
     )
     .arg("done")
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_secs(30))
+    .timeout(Duration::from_secs(30))
     .output()
     .expect("a fast command must not time out");
 
@@ -204,7 +207,7 @@ fn without_a_timeout_a_command_runs_to_completion() {
 fn a_command_killed_by_a_signal_reports_signalled() {
     use std::os::unix::process::ExitStatusExt;
 
-    let faulting = std::path::Path::new("/usr/bin/python3");
+    let faulting = Path::new("/usr/bin/python3");
     if !faulting.exists() {
         // Skipped, not failed: without an interpreter to fault there is nothing on this
         // host to observe.
@@ -219,7 +222,7 @@ fn a_command_killed_by_a_signal_reports_signalled() {
     .arg("-c")
     .arg("import ctypes; ctypes.string_at(0)")
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_secs(30))
+    .timeout(Duration::from_secs(30))
     .output()
     .expect("a crashing command is still a command that ran");
 
@@ -242,7 +245,7 @@ fn a_command_exit_code_survives_the_relay() {
     .arg("-c")
     .arg("exit 42")
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_secs(30))
+    .timeout(Duration::from_secs(30))
     .output()
     .unwrap();
 
@@ -258,7 +261,7 @@ fn a_command_exit_code_survives_the_relay() {
 fn a_backgrounded_descendant_dies_with_the_command() {
     let dir = scratch();
     let canary = dir.path().join("canary");
-    let started = std::time::Instant::now();
+    let started = Instant::now();
 
     let output = SandboxedCommand::new(
         "/bin/sh",
@@ -276,7 +279,7 @@ fn a_backgrounded_descendant_dies_with_the_command() {
         canary.display()
     ))
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_secs(30))
+    .timeout(Duration::from_secs(30))
     .output()
     .expect("the command itself succeeded, so this must not be an error");
 
@@ -289,11 +292,11 @@ fn a_backgrounded_descendant_dies_with_the_command() {
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "started");
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "a descendant held the call open for {elapsed:?}"
     );
 
-    std::thread::sleep(std::time::Duration::from_secs(4));
+    thread::sleep(Duration::from_secs(4));
     assert!(
         !canary.exists(),
         "a backgrounded descendant outlived the command and kept running"
@@ -306,7 +309,7 @@ fn a_backgrounded_descendant_dies_with_the_command() {
 /// regression costs a slow test instead of a hung suite.
 #[test]
 fn without_a_timeout_a_descendant_does_not_block() {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
 
     let output = SandboxedCommand::new(
         "/bin/sh",
@@ -326,7 +329,7 @@ fn without_a_timeout_a_descendant_does_not_block() {
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "started");
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "a descendant held the untimed call open for {elapsed:?}"
     );
 }
@@ -340,7 +343,7 @@ fn without_a_timeout_a_descendant_does_not_block() {
 fn a_descendant_that_leaves_the_group_is_still_killed() {
     let dir = scratch();
     let canary = dir.path().join("canary");
-    let started = std::time::Instant::now();
+    let started = Instant::now();
 
     let result = SandboxedCommand::new(
         "/bin/sh",
@@ -356,7 +359,7 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
         canary.display()
     ))
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_millis(200))
+    .timeout(Duration::from_millis(200))
     .output();
 
     let elapsed = started.elapsed();
@@ -366,11 +369,11 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
         "expected a timeout, got: {result:?}"
     );
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "a setsid escapee held the call open for {elapsed:?}"
     );
 
-    std::thread::sleep(std::time::Duration::from_secs(4));
+    thread::sleep(Duration::from_secs(4));
     assert!(
         !canary.exists(),
         "a setsid descendant escaped the kill and outlived the tool call"
@@ -383,7 +386,7 @@ fn a_command_that_sheds_its_lifetime_still_dies() {
     let probe = env!("CARGO_BIN_EXE_sandbx-orphan-probe");
     let dir = scratch();
     let (report, canary) = (dir.path().join("report"), dir.path().join("canary"));
-    let parent = std::path::Path::new(probe).parent();
+    let parent = Path::new(probe).parent();
 
     let result = SandboxedCommand::new(
         probe,
@@ -395,7 +398,7 @@ fn a_command_that_sheds_its_lifetime_still_dies() {
     .arg(report.display().to_string())
     .arg(canary.display().to_string())
     .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
-    .timeout(std::time::Duration::from_secs(2))
+    .timeout(Duration::from_secs(2))
     .output();
 
     assert!(
@@ -403,14 +406,14 @@ fn a_command_that_sheds_its_lifetime_still_dies() {
         "expected a timeout, got: {result:?}"
     );
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    thread::sleep(Duration::from_secs(5));
     assert!(
         !canary.exists(),
         "a command that left the group and execed from a thread outlived the call"
     );
 
     // The re-exec'd image reporting is what tells a kill apart from a probe that never ran.
-    let started = std::fs::read_to_string(&report).expect("the probe re-exec'd and reported");
+    let started = fs::read_to_string(&report).expect("the probe re-exec'd and reported");
     assert!(started.starts_with("STARTED"), "got: {started}");
 }
 
@@ -420,7 +423,7 @@ fn a_killed_supervisor_takes_an_untimed_command_with_it() {
     let probe = env!("CARGO_BIN_EXE_sandbx-orphan-probe");
     let dir = scratch();
     let (report, canary) = (dir.path().join("report"), dir.path().join("canary"));
-    let parent = std::path::Path::new(probe).parent();
+    let parent = Path::new(probe).parent();
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
@@ -430,21 +433,21 @@ fn a_killed_supervisor_takes_an_untimed_command_with_it() {
         .arg(report.display().to_string())
         .arg(canary.display().to_string())
         .helper(env!("CARGO_BIN_EXE_sandbx-helper"));
-    let call = std::thread::spawn(move || command.output());
+    let call = thread::spawn(move || command.output());
 
     // The probe's report is what says the command is past its `exec` from a thread.
-    let started = std::time::Instant::now();
-    while !report.exists() && started.elapsed() < std::time::Duration::from_secs(10) {
-        std::thread::sleep(std::time::Duration::from_millis(20));
+    let started = Instant::now();
+    while !report.exists() && started.elapsed() < Duration::from_secs(10) {
+        thread::sleep(Duration::from_millis(20));
     }
     assert!(report.exists(), "the probe never reported");
 
     let marker = canary.display().to_string();
-    let supervisor = std::fs::read_dir("/proc")
+    let supervisor = fs::read_dir("/proc")
         .expect("/proc is mounted")
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<i32>().ok())
         .find(|pid| {
-            let argv = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+            let argv = fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
             let argv: Vec<_> = argv.split(|byte| *byte == 0).collect();
             argv.get(1) == Some(&sandbx_core::HELPER_FLAG.as_bytes())
                 && argv.contains(&marker.as_bytes())
@@ -461,7 +464,7 @@ fn a_killed_supervisor_takes_an_untimed_command_with_it() {
         .join()
         .expect("the call returns once the supervisor is gone");
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    thread::sleep(Duration::from_secs(5));
     assert!(
         !canary.exists(),
         "a command that shed its own lifetime outlived a killed supervisor"

@@ -5,7 +5,11 @@
 //! the filesystem half, and states the kernel floor both files run on.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
+use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
 use std::path::Path;
+use std::process::Output;
+use std::time::Duration;
+use std::{fs, thread};
 
 use sandbx_core::SandboxPolicy;
 use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
@@ -16,7 +20,7 @@ fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
 
-fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
     sandbx_helper_fixture::run(helper(), policy, program, args)
 }
 
@@ -27,8 +31,8 @@ fn granting_network_does_not_grant_unix_sockets() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("host.sock");
 
-    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-    let accepting = std::thread::spawn(move || {
+    let listener = UnixListener::bind(&socket).unwrap();
+    let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
             use std::io::Write;
             let _ = stream.write_all(b"HOST-SIDE-SECRET");
@@ -42,7 +46,7 @@ fn granting_network_does_not_grant_unix_sockets() {
     );
     let output = run(&policy, probe, &[socket.to_str().unwrap()]);
 
-    let _ = std::os::unix::net::UnixStream::connect(&socket);
+    let _ = UnixStream::connect(&socket);
     let _ = accepting.join();
 
     assert!(
@@ -62,8 +66,8 @@ fn an_explicit_unix_grant_permits_the_connection() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("host.sock");
 
-    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-    let accepting = std::thread::spawn(move || {
+    let listener = UnixListener::bind(&socket).unwrap();
+    let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
             use std::io::Write;
             let _ = stream.write_all(b"HOST-SIDE-SECRET");
@@ -82,7 +86,7 @@ fn an_explicit_unix_grant_permits_the_connection() {
     .allow_write(vetted(dir.path()));
     let output = run(&policy, probe, &[socket.to_str().unwrap()]);
 
-    let _ = std::os::unix::net::UnixStream::connect(&socket);
+    let _ = UnixStream::connect(&socket);
     let _ = accepting.join();
 
     assert!(
@@ -100,8 +104,8 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("host.sock");
 
-    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-    let accepting = std::thread::spawn(move || {
+    let listener = UnixListener::bind(&socket).unwrap();
+    let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
             use std::io::Write;
             let _ = stream.write_all(b"HOST-SIDE-SECRET");
@@ -114,7 +118,7 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
     let output = run(&policy, probe, &[socket.to_str().unwrap()]);
 
     // Unblock the accept thread whether or not the connect got through.
-    let _ = std::os::unix::net::UnixStream::connect(&socket);
+    let _ = UnixStream::connect(&socket);
     let _ = accepting.join();
 
     assert!(
@@ -136,8 +140,8 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
 fn a_socketpair_cannot_reach_a_pathname_socket() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("host.sock");
-    let host = std::os::unix::net::UnixDatagram::bind(&socket).unwrap();
-    host.set_read_timeout(Some(std::time::Duration::from_millis(500)))
+    let host = UnixDatagram::bind(&socket).unwrap();
+    host.set_read_timeout(Some(Duration::from_millis(500)))
         .unwrap();
 
     let probe = env!("CARGO_BIN_EXE_sandbx-socketpair-probe");
@@ -162,9 +166,8 @@ fn a_socketpair_cannot_reach_a_pathname_socket() {
 fn an_explicit_unix_grant_permits_a_socketpair_datagram() {
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("host.sock");
-    let host = std::os::unix::net::UnixDatagram::bind(&socket).unwrap();
-    host.set_read_timeout(Some(std::time::Duration::from_secs(5)))
-        .unwrap();
+    let host = UnixDatagram::bind(&socket).unwrap();
+    host.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
 
     let probe = env!("CARGO_BIN_EXE_sandbx-socketpair-probe");
     // Granted for V9, as in the connect test above: at V8 the filesystem policy conditions
@@ -279,7 +282,7 @@ fn pidfd_getfd_is_denied() {
 /// permits it, the filter must be what refuses.
 #[test]
 fn userfaultfd_denial_rests_on_the_list_not_a_probe() {
-    let sysctl = std::fs::read_to_string("/proc/sys/vm/unprivileged_userfaultfd")
+    let sysctl = fs::read_to_string("/proc/sys/vm/unprivileged_userfaultfd")
         .map(|raw| raw.trim().to_string())
         .unwrap_or_default();
 

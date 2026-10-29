@@ -7,9 +7,13 @@
 
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::ExecutionContext;
+use std::fs;
+use std::path::Path;
+use std::process::Output;
+use std::time::{Duration, Instant};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -18,7 +22,7 @@ fn context(policy: SandboxPolicy) -> ExecutionContext {
     ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper"))
 }
 
-fn rendered(output: &std::process::Output) -> String {
+fn rendered(output: &Output) -> String {
     format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -30,7 +34,7 @@ fn rendered(output: &std::process::Output) -> String {
 fn a_command_from_the_seam_is_confined_by_the_policy() {
     let dir = tempfile::tempdir().unwrap();
     let secret = dir.path().join("secret.txt");
-    std::fs::write(&secret, b"SECRET-CONTENTS").unwrap();
+    fs::write(&secret, b"SECRET-CONTENTS").unwrap();
 
     // dir is not granted.
     let ctx = context(SandboxPolicy::default().allow_system_executables());
@@ -55,7 +59,7 @@ fn a_command_from_the_seam_reaches_a_granted_path() {
     // Resolved here as well as at the vet, because the command below names this spelling and
     // has to land inside the granted tree; `$TMPDIR` is a symlink on some hosts.
     let root = dir.path().canonicalize().unwrap();
-    std::fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
+    fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
 
     let ctx = context(
         SandboxPolicy::default()
@@ -79,9 +83,9 @@ fn a_command_from_the_seam_reaches_a_granted_path() {
 #[test]
 fn the_seam_carries_the_context_timeout() {
     let ctx = context(SandboxPolicy::default().allow_system_executables())
-        .with_timeout(std::time::Duration::from_millis(200));
+        .with_timeout(Duration::from_millis(200));
 
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let error = ctx
         .sandboxed_command("/bin/sh")
         .arg("-c")
@@ -95,7 +99,7 @@ fn the_seam_carries_the_context_timeout() {
         "expected a timeout, got: {error:?}"
     );
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "the call stayed blocked for {elapsed:?}"
     );
 }
