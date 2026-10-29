@@ -7,6 +7,7 @@
 
 use std::io::{self, Stdout, Write};
 use std::os::fd::{AsFd, OwnedFd};
+use std::panic;
 use std::panic::AssertUnwindSafe;
 
 use ratatui::Terminal;
@@ -40,8 +41,8 @@ impl Screen {
         // First, before anything fallible, so a panic in `take_terminal` is covered too.
         // `try_restore` and not `restore`: inside a hook its `eprintln!` to the descriptor
         // that just died would be a panic while panicking, which aborts (#264).
-        let reported = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |panicked| {
+        let reported = panic::take_hook();
+        panic::set_hook(Box::new(move |panicked| {
             let _ = ratatui::try_restore();
             reported(panicked);
         }));
@@ -242,7 +243,7 @@ impl Drop for Screen {
             // is the same panic from inside this `Drop`. Contained rather than prevented:
             // `show_cursor` clears the flag `Drop` reads only once the backend accepted it,
             // which a dead one never will.
-            let _ = std::panic::catch_unwind(AssertUnwindSafe(move || drop(terminal)));
+            let _ = panic::catch_unwind(AssertUnwindSafe(move || drop(terminal)));
         }
     }
 }

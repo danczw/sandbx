@@ -31,6 +31,7 @@
 //! `Turn` literal into all three roots — is the duplication this crate exists to remove.
 
 use std::collections::VecDeque;
+use std::path::Path;
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
@@ -106,7 +107,7 @@ pub fn ctx(policy: SandboxPolicy) -> ExecutionContext {
 }
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-pub fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+pub fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
     sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 

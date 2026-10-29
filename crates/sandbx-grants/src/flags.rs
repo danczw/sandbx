@@ -3,6 +3,8 @@
 //! `Grants`' doc comments are rendered `--help` text, not commentary: each field's is
 //! the flag's own help line.
 
+use std::env;
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy, VettedPath};
@@ -154,7 +156,7 @@ fn host_name(value: &str) -> Result<String, String> {
                 .to_string(),
         );
     }
-    if value.parse::<std::net::IpAddr>().is_ok() {
+    if value.parse::<IpAddr>().is_ok() {
         return Err(format!(
             "{value} is an address, not a name, so there is nothing to resolve: \
              --allow-dns bounds which names resolve, while --allow-network PORT is what \
@@ -230,7 +232,7 @@ impl Grants {
             .allow_system_executables()
             .allow_standard_env();
 
-        let owned = owned_paths(&|name| std::env::var_os(name));
+        let owned = owned_paths(&|name| env::var_os(name));
 
         if !self.paths_given() {
             // Inside the branch: a run that typed its own flags never depends on `HOME`.
@@ -248,7 +250,7 @@ impl Grants {
                 // default, which is why a flag bypassed all of them.
                 // Granted as vetted, not as spelled: left relative, the helper would resolve
                 // it itself, against its own directory and whatever links point at by then (#205).
-                let typed = absolute(path, &std::env::current_dir)?;
+                let typed = absolute(path, &env::current_dir)?;
                 // Judged as vetted, so what is refused or granted is what is pinned; a path
                 // naming nothing is judged too, so reaching an owned path outranks the vet.
                 let vetted = VettedPath::vet(&typed);

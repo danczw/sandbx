@@ -4,7 +4,8 @@
 //! Append-only because `withheld` indexes the history, exact only while nothing moves a
 //! prefix, so every operation reads the whole file or writes to its end.
 
-use std::fs::{DirBuilder, File};
+use std::fs::{DirBuilder, File, Permissions};
+use std::io;
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -174,7 +175,7 @@ impl SessionStore {
         // `fchmod` on the descriptor just stat'd, not `chmod` by path, so the directory
         // narrowed is the one vetted.
         directory
-            .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
+            .set_permissions(Permissions::from_mode(DIR_OWNER_ONLY))
             .map_err(|source| SessionError::Io {
                 path: self.root.clone(),
                 source,
@@ -296,7 +297,7 @@ impl Session {
             // Mapped to `Io`, not its own variant: nothing a record holds can fail to serialize.
             serde_json::to_writer(&mut lines, record).map_err(|error| SessionError::Io {
                 path: self.path.clone(),
-                source: std::io::Error::other(error),
+                source: io::Error::other(error),
             })?;
             lines.push(b'\n');
         }

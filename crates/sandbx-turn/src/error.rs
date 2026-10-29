@@ -1,4 +1,6 @@
 use sandbx_provider::ProviderError;
+use std::fmt;
+use std::time::Duration;
 
 /// Why a turn did not finish.
 ///
@@ -31,7 +33,7 @@ pub enum TurnError {
     /// well succeed.
     TimedOut {
         /// The bound it exceeded.
-        after: std::time::Duration,
+        after: Duration,
     },
 
     /// A tool's blocking task did not return a result.
@@ -45,8 +47,8 @@ pub enum TurnError {
     },
 }
 
-impl std::fmt::Display for TurnError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TurnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Provider(error) => write!(f, "provider failed: {error}"),
             Self::StreamEndedWithoutStop => {

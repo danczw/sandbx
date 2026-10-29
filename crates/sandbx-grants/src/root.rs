@@ -6,6 +6,7 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::{env, io};
 
 use sandbx_core::{SandboxError, VettedPath};
 
@@ -287,7 +288,7 @@ pub(crate) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<Own
 /// owned path (#203).
 pub(crate) fn absolute(
     granted: &Path,
-    cwd: &impl Fn() -> std::io::Result<PathBuf>,
+    cwd: &impl Fn() -> io::Result<PathBuf>,
 ) -> Result<PathBuf, PolicyError> {
     if granted.is_absolute() {
         return Ok(granted.to_path_buf());
@@ -379,7 +380,7 @@ pub(crate) fn current_root(
     granted: &[VettedPath],
     owned: &[OwnedPath],
 ) -> Result<VettedPath, PolicyError> {
-    let cwd = std::env::current_dir().map_err(|source| PolicyError::Unavailable {
+    let cwd = env::current_dir().map_err(|source| PolicyError::Unavailable {
         detail: "could not read the working directory to derive a policy from",
         source,
     })?;
@@ -389,11 +390,11 @@ pub(crate) fn current_root(
         detail: "could not resolve the working directory to derive a policy from",
         source: match error {
             SandboxError::GrantUnpinnable { source, .. } => source,
-            other => std::io::Error::other(other),
+            other => io::Error::other(other),
         },
     })?;
 
-    let homes = named_homes(std::env::var_os("HOME").as_deref().map(Path::new));
+    let homes = named_homes(env::var_os("HOME").as_deref().map(Path::new));
 
     vetted_root(&ResolvedPath::from(&cwd), &homes, granted, owned)?;
 

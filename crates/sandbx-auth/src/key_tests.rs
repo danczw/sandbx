@@ -2,7 +2,7 @@ use super::{ENV_VAR, FILE, Source, config_file, read_key, resolve};
 use crate::{AuthError, store};
 use secrecy::{ExposeSecret, SecretString};
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Against a literal: `SECURITY.md`, the README and `--help` name it in prose that
 /// cannot follow a rename.
@@ -27,7 +27,7 @@ fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {
 
 /// A credential file holding `key`, through [`store::store`] rather than `fs::write`
 /// so the fixture carries the modes [`resolve`] insists on and not the `tempdir`'s own.
-fn stored_key(dir: &std::path::Path, key: &str) {
+fn stored_key(dir: &Path, key: &str) {
     store::store(&dir.join(FILE), &SecretString::from(key.to_string())).unwrap();
 }
 

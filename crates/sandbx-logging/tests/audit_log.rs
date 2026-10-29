@@ -3,13 +3,17 @@
 //! These drive the real subscriber from `sandbx_logging` over an in-memory sink, so
 //! the filter is pinned without spawning the binary or capturing a file descriptor.
 
+use std::io;
+use std::io::Write;
+use std::path::Path;
+use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
 
 use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxPolicy, SpawnId, VettedPath};
 use tracing_subscriber::util::SubscriberInitExt;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -27,13 +31,13 @@ impl Sink {
     }
 }
 
-impl std::io::Write for Sink {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+impl Write for Sink {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.lock().unwrap().extend_from_slice(buf);
         Ok(buf.len())
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -172,7 +176,7 @@ fn a_degraded_hardening_step_reaches_the_output() {
 fn an_exit_records_the_code_it_ended_with() {
     use std::os::unix::process::ExitStatusExt;
 
-    let clean = std::process::ExitStatus::from_raw(0);
+    let clean = ExitStatus::from_raw(0);
     let output =
         captured(|| AuditEvent::exited("/bin/true", &SpawnId::next(), None, &clean).emit());
 

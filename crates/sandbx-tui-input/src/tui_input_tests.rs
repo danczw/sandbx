@@ -1,13 +1,12 @@
-use std::io::Write;
-
-use sandbx_pty_fixture::pty;
-
 use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use std::io;
+use sandbx_pty_fixture::pty;
+use std::io::Write;
 use std::os::fd::AsFd;
-use std::time::Duration;
+use std::task::{Context, Waker};
+use std::time::{Duration, Instant};
+use std::{io, pin};
 use tokio::sync::watch;
 
 fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
@@ -18,8 +17,8 @@ fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
 /// test is that `press` answers from the value the channel already holds rather than from
 /// a notification — which is exactly one poll with a waker nothing can call.
 fn ready(future: impl Future<Output = ()>) -> bool {
-    let mut future = std::pin::pin!(future);
-    let mut polling = std::task::Context::from_waker(std::task::Waker::noop());
+    let mut future = pin::pin!(future);
+    let mut polling = Context::from_waker(Waker::noop());
 
     future.as_mut().poll(&mut polling).is_ready()
 }
@@ -125,7 +124,7 @@ fn pending_input_does_not_wake_the_watch() {
     wait_readable(&slave);
 
     let wait = Duration::from_millis(50);
-    let polled = std::time::Instant::now();
+    let polled = Instant::now();
     let gone = hung_up(
         slave.as_fd(),
         slave.as_fd(),

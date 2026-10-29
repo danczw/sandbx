@@ -6,6 +6,7 @@
 use std::ffi::OsString;
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
+use std::{env, io};
 
 use secrecy::SecretString;
 
@@ -68,12 +69,12 @@ enum Action {
 impl Auth {
     /// Run the subcommand, reporting what it did on stderr and never the key.
     pub fn execute(&self) -> Result<i32, AuthError> {
-        let lookup = |name: &str| std::env::var_os(name);
+        let lookup = |name: &str| env::var_os(name);
 
         match self.action {
             Action::Login => {
                 let path = config_file(&lookup)?;
-                let stdin = std::io::stdin();
+                let stdin = io::stdin();
                 let key = read_key(stdin.lock(), stdin.is_terminal())?;
                 store::store(&path, &key)?;
                 eprintln!("sandbx: key stored in {}", path.display());
@@ -121,7 +122,7 @@ enum Source {
 
 /// The key `agent-run` authenticates with, from whichever source has one.
 pub fn api_key() -> Result<SecretString, AuthError> {
-    resolve(&|name| std::env::var_os(name)).map(|(key, _)| key)
+    resolve(&|name| env::var_os(name)).map(|(key, _)| key)
 }
 
 /// The key and the source that answered, environment first.

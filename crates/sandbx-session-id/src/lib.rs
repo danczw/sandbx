@@ -1,11 +1,13 @@
 //! A session's name, and the one rule that makes it safe to put in a path.
 //!
 //! The inner `String` is private and there are exactly two constructors, so every
-//! `SessionId` is a spelling [`FromStr`](std::str::FromStr) accepts — which is what lets
+//! `SessionId` is a spelling [`FromStr`] accepts — which is what lets
 //! the store join one to a directory unchecked. `from_clock` is the half the type does not
 //! enforce, skipping the parser; what makes its output legal is that `base36` draws every
 //! digit from `ALPHABET` and never returns an empty string. A test pins the composition.
 
+use std::fmt;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sandbx_session_error::SessionError;
@@ -46,7 +48,7 @@ pub fn clock_millis() -> Result<u64, SessionError> {
     u64::try_from(elapsed.as_millis()).map_err(|_| SessionError::Clock)
 }
 
-impl std::str::FromStr for SessionId {
+impl FromStr for SessionId {
     type Err = SessionError;
 
     /// Accepts one to 32 characters of `0-9` and `a-z`, and nothing else.
@@ -75,8 +77,8 @@ impl std::str::FromStr for SessionId {
     }
 }
 
-impl std::fmt::Display for SessionId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }

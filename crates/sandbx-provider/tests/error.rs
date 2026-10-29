@@ -6,6 +6,7 @@
 //! installs one stayed there (#366).
 
 use sandbx_provider::ProviderError;
+use std::time::Duration;
 
 fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)> {
     std::error::Error::source(error)
@@ -45,7 +46,7 @@ fn api_error_without_a_status_still_reports_the_body() {
 #[test]
 fn rate_limited_reports_the_retry_after_when_present() {
     let error = ProviderError::RateLimited {
-        retry_after: Some(std::time::Duration::from_secs(2)),
+        retry_after: Some(Duration::from_secs(2)),
         message: "too many requests".to_string(),
     };
 

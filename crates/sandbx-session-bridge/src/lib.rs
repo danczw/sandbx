@@ -19,6 +19,7 @@ use sandbx_session_id::SessionId;
 use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
 use sandbx_session_paths::sessions_directory;
 use sandbx_session_store::{Session, SessionStore};
+use std::env;
 
 /// What `--session` asked for.
 #[derive(Debug, Clone, Copy)]
@@ -88,7 +89,7 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
 /// `var_os` is read here and not injected, unlike in `sandbx-session-paths` itself: this is
 /// the one place that wants the real environment, and a test drives the store directly.
 fn store() -> Result<SessionStore, SessionError> {
-    sessions_directory(&|name| std::env::var_os(name)).map(SessionStore::new)
+    sessions_directory(&|name| env::var_os(name)).map(SessionStore::new)
 }
 
 /// A stored conversation, in the shape a request carries it.

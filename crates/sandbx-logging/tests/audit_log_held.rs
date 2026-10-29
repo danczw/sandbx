@@ -16,6 +16,7 @@
 // `Command::new` here spawns this test binary, never a command that bypasses the sandbox.
 #![allow(clippy::disallowed_methods)]
 
+use std::env;
 use std::process::Command;
 
 use sandbx_core::AuditEvent;
@@ -31,11 +32,11 @@ const RELEASED: &str = "mark: the guard has dropped";
 /// A record emitted under a hold reaches stderr, once, after the hold ends.
 #[test]
 fn a_record_emitted_under_a_hold_reaches_stderr_when_the_hold_ends() {
-    if std::env::var_os(CHILD).is_some() {
+    if env::var_os(CHILD).is_some() {
         return held_run();
     }
 
-    let exe = std::env::current_exe().expect("the test binary should know its own path");
+    let exe = env::current_exe().expect("the test binary should know its own path");
     let output = Command::new(exe)
         .args([
             "--nocapture",

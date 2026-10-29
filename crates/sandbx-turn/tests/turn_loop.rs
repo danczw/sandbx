@@ -10,6 +10,9 @@ use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_provider::EventStream;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{TurnError, TurnLimits, TurnStop, run_turn};
+use std::path::Path;
+use std::time::Duration;
+use std::{fs, iter};
 
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
@@ -352,7 +355,7 @@ async fn a_tool_result_is_fed_into_the_next_round() {
     .unwrap()
     .messages;
 
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
+    assert_eq!(fs::read_to_string(&file).unwrap(), "written");
 
     assert_eq!(
         messages,
@@ -675,7 +678,7 @@ async fn the_gate_sees_a_call_before_it_runs() {
         vec![(BuiltinTool::Write, "call_1".to_string(), input)]
     );
     assert_eq!(gate.settled, ["write:ran"]);
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
+    assert_eq!(fs::read_to_string(&file).unwrap(), "written");
 }
 
 /// A gate decides about tools, and an unresolved name is not one.
@@ -971,8 +974,8 @@ fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
 }
 
 /// Exactly as many rounds as the cap allows: an endless supply would hide the dependency.
-fn asking_forever(root: &std::path::Path) -> Script {
-    Script::new(std::iter::repeat_n(
+fn asking_forever(root: &Path) -> Script {
+    Script::new(iter::repeat_n(
         vec![
             call("ls", serde_json::json!({ "path": root.to_str().unwrap() })),
             stop(StopReason::ToolUse),
@@ -1058,7 +1061,7 @@ fn stalled() -> EventStream {
 async fn a_round_that_never_finishes_streaming_times_out() {
     let mut stalling = turn(&[], &[]);
     stalling.limits = TurnLimits {
-        stream_timeout: std::time::Duration::from_secs(30),
+        stream_timeout: Duration::from_secs(30),
         ..TurnLimits::default()
     };
 
@@ -1073,7 +1076,7 @@ async fn a_round_that_never_finishes_streaming_times_out() {
     .expect_err("a stream that never finishes must not hold the turn open");
 
     assert!(
-        matches!(error, TurnError::TimedOut { after } if after == std::time::Duration::from_secs(30)),
+        matches!(error, TurnError::TimedOut { after } if after == Duration::from_secs(30)),
         "got {error:?}"
     );
 }
@@ -1084,7 +1087,7 @@ async fn a_round_that_never_finishes_streaming_times_out() {
 fn the_default_stream_bound_is_the_documented_one() {
     assert_eq!(
         TurnLimits::default().stream_timeout,
-        std::time::Duration::from_secs(300)
+        Duration::from_secs(300)
     );
 }
 

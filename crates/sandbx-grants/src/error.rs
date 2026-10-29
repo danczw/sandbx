@@ -1,6 +1,7 @@
 //! What stops a subcommand before there is a policy to run under.
 
 use std::path::PathBuf;
+use std::{fmt, io};
 
 use sandbx_core::SandboxError;
 
@@ -25,7 +26,7 @@ pub enum PolicyError {
         /// What could not be read, for the operator to act on.
         detail: &'static str,
         /// The underlying OS failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The working directory is the home directory, or holds it.
@@ -96,7 +97,7 @@ pub enum PolicyError {
         /// The path as the flag gave it.
         granted: PathBuf,
         /// Why the working directory could not be read.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// A path flag named something that could not be pinned to the object it names, so the
@@ -162,8 +163,8 @@ pub enum PolicyError {
     },
 }
 
-impl std::fmt::Display for PolicyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PolicyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unavailable { detail, source } => write!(f, "{detail}: {source} — {ADVICE}"),
             Self::HomeParent { cwd } => write!(

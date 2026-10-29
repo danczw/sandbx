@@ -10,6 +10,7 @@ use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
+use std::time::Duration;
 
 use crate::TurnError;
 use crate::accumulate::accumulate;
@@ -145,7 +146,7 @@ pub struct TurnLimits {
     /// read timeout resets on every chunk, so a connection kept warm while producing nothing
     /// is not bounded by it. Not a bound on the turn itself: an outer deadline would not help a
     /// tool call either, since `spawn_blocking` cannot be cancelled (#26).
-    pub stream_timeout: std::time::Duration,
+    pub stream_timeout: Duration,
 
     /// Whether to withhold the oldest history from a request that has outgrown a budget,
     /// and how much to keep.
@@ -161,7 +162,7 @@ impl Default for TurnLimits {
         Self {
             max_rounds: 8,
             // The pressure point is a long extended-thinking generation.
-            stream_timeout: std::time::Duration::from_secs(300),
+            stream_timeout: Duration::from_secs(300),
             compaction: None,
         }
     }

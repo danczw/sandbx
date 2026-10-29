@@ -6,6 +6,8 @@
 use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 use sandbx_session_store::SessionStore;
+use std::fs;
+use std::path::PathBuf;
 
 fn store() -> (tempfile::TempDir, SessionStore) {
     let root = tempfile::tempdir().unwrap();
@@ -27,7 +29,7 @@ fn exchange(ask: &str, reply: &str) -> Vec<Message> {
 }
 
 /// One session with one turn in it, and the path it was written to.
-fn spoken_to(store: &SessionStore) -> (sandbx_session_id::SessionId, std::path::PathBuf) {
+fn spoken_to(store: &SessionStore) -> (sandbx_session_id::SessionId, PathBuf) {
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -46,8 +48,8 @@ fn a_torn_final_line_is_dropped() {
     let (_root, store) = store();
     let (id, path) = spoken_to(&store);
 
-    let whole = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, format!("{whole}{{\"type\":\"mes")).unwrap();
+    let whole = fs::read_to_string(&path).unwrap();
+    fs::write(&path, format!("{whole}{{\"type\":\"mes")).unwrap();
 
     let resumed = store.resume(&id).unwrap();
 
@@ -60,7 +62,7 @@ fn a_transcript_of_nothing_but_a_torn_line_is_refused() {
     let (_root, store) = store();
     let (id, path) = spoken_to(&store);
 
-    std::fs::write(&path, "{\"type\":\"hea").unwrap();
+    fs::write(&path, "{\"type\":\"hea").unwrap();
 
     let err = store.resume(&id).unwrap_err();
 
@@ -79,13 +81,13 @@ fn an_interior_pair_of_user_turns_is_refused() {
 
     // Appended so the history still ends on the model: only a check over the whole
     // history sees the break.
-    let mut body = std::fs::read_to_string(&path).unwrap();
+    let mut body = fs::read_to_string(&path).unwrap();
     for role in ["user", "user", "assistant"] {
         body.push_str(&format!(
             "{{\"type\":\"message\",\"role\":\"{role}\",\"content\":[]}}\n"
         ));
     }
-    std::fs::write(&path, body).unwrap();
+    fs::write(&path, body).unwrap();
 
     let err = store.resume(&id).unwrap_err();
 

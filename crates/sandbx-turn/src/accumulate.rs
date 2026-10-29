@@ -8,6 +8,7 @@ use sandbx_compact::PromptUsage;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::ContentBlock;
 use sandbx_provider::EventStream;
+use std::mem;
 
 use crate::TurnError;
 
@@ -90,7 +91,7 @@ where
 fn flush(pending: &mut String, blocks: &mut Vec<ContentBlock>) {
     if !pending.is_empty() {
         blocks.push(ContentBlock::Text {
-            text: std::mem::take(pending),
+            text: mem::take(pending),
         });
     }
 }
