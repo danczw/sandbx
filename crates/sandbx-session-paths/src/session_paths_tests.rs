@@ -1,4 +1,7 @@
-use super::*;
+use super::sessions_directory;
+use sandbx_session_error::SessionError;
+use std::ffi::OsString;
+use std::path::PathBuf;
 
 /// An environment of the pairs given, and nothing else.
 fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {

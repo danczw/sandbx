@@ -2,8 +2,8 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sandbx_event::AgentEvent;
 
-use super::*;
-
+use super::{GUTTER, GUTTER_MARK, Hint, draw};
+use crate::transcript::Transcript;
 /// Render `transcript` at that size and read the cells back as rows of text.
 fn rows(transcript: &Transcript, hint: Hint, width: u16, height: u16) -> Vec<String> {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend");

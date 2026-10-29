@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
-use super::*;
-
+use super::{SessionId, base36};
 #[test]
 fn base36_is_the_shortest_lowercase_spelling() {
     assert_eq!(base36(0), "0");

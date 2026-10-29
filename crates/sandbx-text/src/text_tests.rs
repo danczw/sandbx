@@ -1,4 +1,4 @@
-use super::*;
+use super::invisible;
 
 /// Every single arm, and *both* endpoints of every range, as literals rather than read
 /// off the table: one fixture per range pins only the end it names, so narrowing
