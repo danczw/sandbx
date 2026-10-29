@@ -104,8 +104,8 @@ name = "sandbx-provider"
 #
 # #367 was an append and not the re-point the sentence here predicted: taking the SSE
 # framing out added `sandbx-sse`, which builds `MalformedEvent` and `Transport`, without
-# removing the donor's own edge — `anthropic_client.rs` still names both items and
-# `anthropic_wire_accumulate.rs` names `ProviderError`. #368 then settled the other half
+# removing the donor's own edge — `anthropic_client.rs` names `Transport` and
+# `anthropic_wire_accumulate.rs` names `MalformedEvent`. #368 then settled the other half
 # as a re-point and not a removal, for that same reason: renaming the donor moved the
 # edge, it did not end it (#366, #367).
 wrappers = ["sandbx-anthropic", "sandbx-cli", "sandbx-sse", "sandbx-turn"]
