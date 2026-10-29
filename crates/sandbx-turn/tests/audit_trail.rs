@@ -12,9 +12,7 @@ use sandbx_prompt::ContentBlock;
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::run_turn;
 
-mod support;
-
-use support::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
+use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// An in-memory stand-in for stderr.
 ///

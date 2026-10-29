@@ -1,0 +1,30 @@
+pub mod sandbx_turn_fixture
+pub struct sandbx_turn_fixture::AllowAll
+impl sandbx_approval::CallGate for sandbx_turn_fixture::AllowAll
+pub fn sandbx_turn_fixture::AllowAll::approve(&mut self, sandbx_approval::ToolCall<'_>) -> sandbx_approval::ApprovalDecision
+pub fn sandbx_turn_fixture::AllowAll::settled(&mut self, sandbx_approval::Settled<'_>)
+impl core::marker::Freeze for sandbx_turn_fixture::AllowAll
+impl core::marker::Send for sandbx_turn_fixture::AllowAll
+impl core::marker::Sync for sandbx_turn_fixture::AllowAll
+impl core::marker::Unpin for sandbx_turn_fixture::AllowAll
+impl core::marker::UnsafeUnpin for sandbx_turn_fixture::AllowAll
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn_fixture::AllowAll
+impl core::panic::unwind_safe::UnwindSafe for sandbx_turn_fixture::AllowAll
+pub struct sandbx_turn_fixture::Script
+pub sandbx_turn_fixture::Script::sent: alloc::vec::Vec<sandbx_prompt::Prompt>
+impl sandbx_turn_fixture::Script
+pub fn sandbx_turn_fixture::Script::new(impl core::iter::traits::collect::IntoIterator<Item = alloc::vec::Vec<sandbx_event::AgentEvent>>) -> Self
+pub async fn sandbx_turn_fixture::Script::open(&mut self, sandbx_prompt::Prompt) -> core::result::Result<sandbx_provider::EventStream, sandbx_provider::ProviderError>
+impl core::marker::Freeze for sandbx_turn_fixture::Script
+impl core::marker::Send for sandbx_turn_fixture::Script
+impl core::marker::Sync for sandbx_turn_fixture::Script
+impl core::marker::Unpin for sandbx_turn_fixture::Script
+impl core::marker::UnsafeUnpin for sandbx_turn_fixture::Script
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn_fixture::Script
+impl core::panic::unwind_safe::UnwindSafe for sandbx_turn_fixture::Script
+pub fn sandbx_turn_fixture::call(&str, serde_json::value::Value) -> sandbx_event::AgentEvent
+pub fn sandbx_turn_fixture::ctx(sandbx_core::policy::sandbox::SandboxPolicy) -> sandbx_tools::context::ExecutionContext
+pub fn sandbx_turn_fixture::stop(sandbx_event::StopReason) -> sandbx_event::AgentEvent
+pub fn sandbx_turn_fixture::text(&str) -> sandbx_event::AgentEvent
+pub fn sandbx_turn_fixture::turn<'a>(&'a [sandbx_prompt::RequestMessage], &'a [sandbx_tools::builtin::BuiltinTool]) -> sandbx_turn::run::Turn<'a>
+pub fn sandbx_turn_fixture::vetted(impl core::convert::AsRef<std::path::Path>) -> sandbx_core::policy::vetted::VettedPath
