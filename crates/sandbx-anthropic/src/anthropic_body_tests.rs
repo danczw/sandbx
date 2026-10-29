@@ -2,6 +2,7 @@ use super::Body;
 use sandbx_prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,
 };
+
 fn prompt() -> Prompt {
     Prompt {
         model: "claude-sonnet-5".to_string(),
