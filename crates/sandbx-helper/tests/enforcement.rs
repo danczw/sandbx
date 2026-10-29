@@ -28,6 +28,16 @@ fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Ou
     sandbx_helper_fixture::run(helper(), policy, program, args)
 }
 
+/// [`run`], with the program's bytes named as well.
+fn run_pinned(
+    policy: &SandboxPolicy,
+    program: &str,
+    args: &[&str],
+    pin: Option<sandbx_core::Sha256Digest>,
+) -> std::process::Output {
+    sandbx_helper_fixture::run_pinned(helper(), policy, program, args, pin)
+}
+
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
@@ -1030,8 +1040,7 @@ fn a_matching_pin_runs_the_program() {
     std::fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
-    let output = sandbx_helper_fixture::run_pinned(
-        helper(),
+    let output = run_pinned(
         &policy,
         program.to_str().unwrap(),
         &[],
@@ -1057,13 +1066,7 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
     std::fs::copy("/bin/id", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
-    let output = sandbx_helper_fixture::run_pinned(
-        helper(),
-        &policy,
-        program.to_str().unwrap(),
-        &[],
-        Some(pinned),
-    );
+    let output = run_pinned(&policy, program.to_str().unwrap(), &[], Some(pinned));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -1091,8 +1094,7 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
     std::fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
-    let output = sandbx_helper_fixture::run_pinned(
-        helper(),
+    let output = run_pinned(
         &policy,
         program.to_str().unwrap(),
         &[],
@@ -1120,8 +1122,7 @@ fn a_pinned_script_is_refused_rather_than_exec_d() {
     .unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
-    let refused = sandbx_helper_fixture::run_pinned(
-        helper(),
+    let refused = run_pinned(
         &policy,
         program.to_str().unwrap(),
         &[],
@@ -1152,8 +1153,7 @@ fn a_pinned_script_is_refused_rather_than_exec_d() {
 #[test]
 fn a_pinned_program_keeps_the_name_it_was_given() {
     let policy = runtime_paths(SandboxPolicy::default());
-    let output = sandbx_helper_fixture::run_pinned(
-        helper(),
+    let output = run_pinned(
         &policy,
         "/bin/sh",
         &["-c", "echo $0"],

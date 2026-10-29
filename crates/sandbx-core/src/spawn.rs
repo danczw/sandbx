@@ -15,8 +15,9 @@ use crate::SandboxPolicy;
 /// through the supervisor's `/proc/<pid>/cmdline`; an imposed value rides the policy,
 /// being a constant.
 pub(crate) fn command(program: impl AsRef<OsStr>, policy: &SandboxPolicy) -> std::process::Command {
-    // The only `Command::new` in any crate's `src/`; tests that spawn the binary carry
-    // their own allow. See `clippy.toml`.
+    // The only `Command::new` in production code. `sandbx-helper-fixture` holds the one
+    // other site in a `src/`, spawning the sandbox helper itself, and the tests that
+    // drive the built binary carry their own allow. See `clippy.toml`.
     #[allow(clippy::disallowed_methods)]
     let mut command = std::process::Command::new(program);
 

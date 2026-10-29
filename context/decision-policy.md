@@ -561,9 +561,12 @@ test able to tell. Four hand-written obligations, each individually unobservable
 and a fifth spawn site added later would have inherited the harness's whole
 environment rather than nothing — failing *open*.
 
-**One factory.** `spawn::command` is the only `Command::new` in any crate's `src/`,
-and carries the only `#[allow(clippy::disallowed_methods)]` there; the tests that
-drive the built binary carry their own. Two properties fall out
+**One factory.** `spawn::command` is the only `Command::new` in production code,
+and carries the only `#[allow(clippy::disallowed_methods)]` in a crate that ships.
+The two exceptions spawn the sandbox rather than running inside it, so there is
+nothing for the factory to narrow: `sandbx-helper-fixture`, which starts the
+helper and deliberately clears nothing, for the reason given above; and the tests
+that drive the built binary, which carry their own. Two properties fall out
 that no amount of per-site discipline gave:
 
 - There is one line to delete, and deleting it fails 24 enforcement tests. The

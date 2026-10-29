@@ -1,14 +1,20 @@
 //! What every part of the enforcement suite needs to start a sandboxed command.
 //!
-//! A dev-dependency only: nothing links this into a build that ships. It is a crate
-//! rather than a `#[cfg(test)]` module because four test roots drive the same fixture and
-//! a `#[cfg(test)]` item is invisible across a crate boundary (#344).
+//! A dev-dependency only: nothing links this into a build that ships.
 //!
-//! A `#[cfg(feature = ..)]` export from `sandbx-helper` instead would diverge between the
-//! two builds — on in the rlib `--all-targets` builds, off in the release build — so
-//! production code naming the fixture would pass clippy and the whole suite and fail
-//! first at release. `context/guide-ci.md` records that for a *self* dev-dependency;
-//! feature unification makes the cross-crate case the same one.
+//! The alternative is what this replaces — `sandbx-helper/tests/support/mod.rs`, declared
+//! `mod support;` by each of four roots in the same package, which worked. Two things
+//! make a crate better. A test root declaring a non-test submodule is what #333 set out
+//! to end, the `mod` line being indistinguishable from one naming a test file. And
+//! `dead_code` is per test target, so every item had to sit in the intersection all four
+//! roots use or warn in the ones that did not: compiled once with a public surface, that
+//! constraint is gone and the last paragraph here is what it cost instead.
+//!
+//! A `#[cfg(feature = ..)]` export from `sandbx-helper` would have kept one package at
+//! the price of a surface that diverges between builds — on in the rlib `--all-targets`
+//! builds, off in the release build — so production code naming the fixture would pass
+//! clippy and the whole suite and fail first at release. `context/guide-ci.md` records
+//! that for a *self* dev-dependency; feature unification makes this case the same one.
 //!
 //! The helper binary is a **parameter** and not an `env!`, which is what made this
 //! movable at all: `CARGO_BIN_EXE_sandbx-helper` is set only for a target of the package

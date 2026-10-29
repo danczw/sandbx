@@ -427,7 +427,7 @@ filter the new image installs has a say. So it is enforced by *not passing it*
 SandboxPolicy { env: Vec<String> }        names only, never values
         │
         └──► spawn::command(program, &policy) -> Command
-                 Command::new(program)                     the only one in the workspace
+                 Command::new(program)                     the only one that ships
                  env_clear()
                  envs(allowed_env ∩ live environment)      unset name ⇒ absent
                  envs(imposed_env)                         constants, and the last word
@@ -447,8 +447,10 @@ sandbx ──► helper stage 1 ──► stage 2 ──► the command
 ```
 
 `clippy.toml` bans `std::process::Command::new` workspace-wide, and
-`spawn::command` holds the single `#[allow]` for it — so a fifth spawn site does not
-compile unless it goes through the narrowing. The first three keep a secret out of a
+`spawn::command` holds the only `#[allow]` for it in code that ships — so a fifth
+spawn site does not compile unless it goes through the narrowing or says in an
+`#[allow]` of its own why it is spawning the sandbox and not running under it, as
+`sandbx-helper-fixture` does. The first three keep a secret out of a
 helper's `/proc/<pid>/environ` for the seconds it lives; the last decides what the
 real command can read out of its own. Stage 1 narrowing on the way in is why a
 helper invoked **directly**, with no `sandbx` above it, is sanitised rather than
