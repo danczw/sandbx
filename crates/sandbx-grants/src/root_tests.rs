@@ -105,9 +105,14 @@
 //! two lookups themselves, `getcwd` and `var_os("HOME")`; `sandbx-cli`'s `tests/cwd_policy.rs`
 //! covers what it can of them by setting `HOME` on the spawned binary.
 
-use sandbx_core::SandboxPolicy;
-
-use super::*;
+use super::{
+    Homes, OwnedPath, ResolvedPath, absolute, named_homes, owned_paths, reaches_owned, resolved,
+    vetted_root,
+};
+use crate::PolicyError;
+use sandbx_core::{SandboxPolicy, VettedPath};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 /// What every run may already execute, which `policy()` passes from the live policy.
 fn granted() -> Vec<VettedPath> {

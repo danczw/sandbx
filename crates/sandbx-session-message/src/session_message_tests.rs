@@ -1,4 +1,4 @@
-use super::*;
+use super::{Content, Message, Role};
 
 #[test]
 fn a_message_line_is_the_shape_the_api_takes() {

@@ -5,7 +5,12 @@ use std::rc::Rc;
 use nix::errno::Errno;
 use sandbx_pty_fixture::{WINDOW, pty};
 
-use super::*;
+use super::{Measured, cleared};
+use ratatui::Terminal;
+use sandbx_tui_transcript::{Hint, Transcript, draw};
+use std::io;
+use std::io::Write;
+use std::os::fd::AsFd;
 
 /// A pty slave, counting the writes that reach it: a draw that was attempted wrote.
 struct Counted {

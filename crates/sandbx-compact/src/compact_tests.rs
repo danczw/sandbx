@@ -4,7 +4,8 @@
 //! `sandbx-turn`'s `tests/turn_compaction.rs` covers the wiring instead: that a measurement
 //! reaches the trigger and that what reaches the API is a conversation it would accept.
 
-use super::*;
+use super::{PromptUsage, opens_a_request, over_budget, plan_cut};
+use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 
 /// A human prose turn: the only shape that is a legal cut point.
 fn user_text(text: &str) -> RequestMessage {

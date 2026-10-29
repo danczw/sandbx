@@ -1,4 +1,7 @@
-use super::*;
+use super::{Entry, Kind, Transcript, forgeable, printable};
+use crate::view::GUTTER_MARK;
+use sandbx_event::AgentEvent;
+use sandbx_text::invisible;
 
 const PROMPT: &str = "what is here?";
 

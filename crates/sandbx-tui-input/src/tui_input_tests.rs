@@ -2,7 +2,13 @@ use std::io::Write;
 
 use sandbx_pty_fixture::pty;
 
-use super::*;
+use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use std::io;
+use std::os::fd::AsFd;
+use std::time::Duration;
+use tokio::sync::watch;
 
 fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(code, modifiers)

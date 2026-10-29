@@ -1,9 +1,9 @@
-use std::path::Path;
-
-use sandbx_core::VettedPath;
-
+use super::super::root::owned_paths;
 use super::super::root::tests::{env, reaches};
-use super::*;
+use super::Grants;
+use crate::PolicyError;
+use sandbx_core::{Axis, VettedPath};
+use std::path::{Path, PathBuf};
 
 fn bare() -> Grants {
     Grants {
