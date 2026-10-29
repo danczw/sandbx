@@ -5,8 +5,11 @@
 //! `/etc/hosts`, so no test needs a network and no denial is a run that was offline anyway.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
+use std::process::Output;
+use std::thread::JoinHandle;
+use std::{fs, thread};
 
 use sandbx_core::SandboxPolicy;
 use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
@@ -17,7 +20,7 @@ fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
 
-fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
     sandbx_helper_fixture::run(helper(), policy, program, args)
 }
 
@@ -40,12 +43,12 @@ fn host_forbids_the_mounts() -> bool {
     // The restriction covers *unprivileged* userns only, so root holds `CAP_SYS_ADMIN` in the
     // new namespace regardless — skipping under `sudo cargo test` would lose coverage on the
     // one host that has it. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
-    let root = std::fs::metadata("/proc/self")
+    let root = fs::metadata("/proc/self")
         .map(|proc_self| proc_self.uid() == 0)
         .unwrap_or(false);
 
     let restricted = !root
-        && std::fs::read_to_string(USERNS_RESTRICTION)
+        && fs::read_to_string(USERNS_RESTRICTION)
             .is_ok_and(|value| value.trim().parse::<u32>().is_ok_and(|flag| flag != 0));
 
     if restricted {
@@ -62,8 +65,8 @@ fn host_forbids_the_mounts() -> bool {
 /// A name this host resolves with no nameserver, and a listener on the address it resolves
 /// to. Derived, not written down — the one such name on a developer machine is the
 /// machine's own hostname, and hard-coding either would pass on one host and fail on the next.
-fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::JoinHandle<()>) {
-    let hosts = std::fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
+fn local_listener(payload: &'static str) -> (String, SocketAddr, JoinHandle<()>) {
+    let hosts = fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
 
     let bound = hosts
         .lines()
@@ -88,7 +91,7 @@ fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::Jo
          that resolves without a nameserver and the denials below would be vacuous",
     );
 
-    let accepting = std::thread::spawn(move || {
+    let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
             use std::io::Write;
             let _ = stream.write_all(payload.as_bytes());
@@ -99,12 +102,12 @@ fn local_listener(payload: &'static str) -> (String, SocketAddr, std::thread::Jo
 }
 
 /// Unblock a listener thread nothing connected to, so the test does not leak it.
-fn drain(address: SocketAddr, accepting: std::thread::JoinHandle<()>) {
-    let _ = std::net::TcpStream::connect(address);
+fn drain(address: SocketAddr, accepting: JoinHandle<()>) {
+    let _ = TcpStream::connect(address);
     let _ = accepting.join();
 }
 
-fn probe(policy: SandboxPolicy, args: &[&str]) -> std::process::Output {
+fn probe(policy: SandboxPolicy, args: &[&str]) -> Output {
     let probe = env!("CARGO_BIN_EXE_sandbx-resolver-probe");
     let policy = allow_probe(runtime_paths(policy), probe);
 
@@ -312,7 +315,7 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
 
     // Resolution is all that may be bounded: a `passwd` or `group` line reaching `systemd`,
     // `sss` or LDAP is how a command resolves its own uid to a name.
-    let host = std::fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
+    let host = fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
     let kept = host
         .lines()
         .filter(|line| !line.trim_start().starts_with('#') && line.contains(':'))
@@ -352,7 +355,7 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
 
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let writable = scratch.path().join("writable");
-    std::fs::write(&writable, b"").expect("an empty file to append to");
+    fs::write(&writable, b"").expect("an empty file to append to");
 
     let policy = SandboxPolicy::default()
         .allow_dns(&name)
@@ -385,7 +388,7 @@ fn the_host_etc_survives_a_bounded_run() {
     let (name, address, accepting) = local_listener("UNUSED");
     drain(address, accepting);
 
-    let before = std::fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+    let before = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
 
     let policy = SandboxPolicy::default()
         .allow_dns(&name)
@@ -393,7 +396,7 @@ fn the_host_etc_survives_a_bounded_run() {
         .allow_network_port(address.port());
     let output = probe(policy, &["write", "/etc/hosts"]);
 
-    let after = std::fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+    let after = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert_eq!(
@@ -445,7 +448,7 @@ fn a_run_without_the_flag_resolves_as_it_did_before() {
     );
     assert_eq!(
         String::from_utf8_lossy(&hosts.stdout),
-        std::fs::read_to_string("/etc/hosts").expect("the host's hosts file"),
+        fs::read_to_string("/etc/hosts").expect("the host's hosts file"),
         "a run with no --allow-dns reads a hosts file that is not the host's"
     );
 }

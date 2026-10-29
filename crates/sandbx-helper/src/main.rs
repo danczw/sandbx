@@ -4,13 +4,16 @@
 //! stage ([`sandbx_core::HELPER_INNER_FLAG`]) describes. Standalone so the enforcement path
 //! tests end-to-end; a shipped sandbx re-execs into [`sandbx_core::with_helper_dispatch`] instead.
 
-fn main() -> std::process::ExitCode {
+use std::env;
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
     // This binary has no ordinary mode, so "not helper mode" is a usage error.
-    sandbx_core::with_helper_dispatch(std::env::args_os(), || {
+    sandbx_core::with_helper_dispatch(env::args_os(), || {
         eprintln!(
             "sandbx-helper: expected {} as the first argument",
             sandbx_core::HELPER_FLAG
         );
-        std::process::ExitCode::FAILURE
+        ExitCode::FAILURE
     })
 }

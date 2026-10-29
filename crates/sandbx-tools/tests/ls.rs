@@ -3,9 +3,12 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+use std::fs;
+use std::fs::Permissions;
+use std::path::Path;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -16,8 +19,8 @@ fn context(policy: SandboxPolicy) -> ExecutionContext {
 #[test]
 fn lists_entries_of_an_allowed_directory() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("a.txt"), b"a").unwrap();
-    std::fs::create_dir(root.path().join("sub")).unwrap();
+    fs::write(root.path().join("a.txt"), b"a").unwrap();
+    fs::create_dir(root.path().join("sub")).unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Ls
@@ -32,8 +35,8 @@ fn lists_entries_of_an_allowed_directory() {
 #[test]
 fn distinguishes_directories_from_files() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("a.txt"), b"a").unwrap();
-    std::fs::create_dir(root.path().join("sub")).unwrap();
+    fs::write(root.path().join("a.txt"), b"a").unwrap();
+    fs::create_dir(root.path().join("sub")).unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let out = BuiltinTool::Ls
@@ -69,7 +72,7 @@ fn a_missing_directory_in_a_grant_is_a_failure() {
 fn a_file_where_a_directory_was_asked_for_is_a_failure() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("notes.txt");
-    std::fs::write(&file, b"x").unwrap();
+    fs::write(&file, b"x").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let err = BuiltinTool::Ls
@@ -90,14 +93,14 @@ fn a_directory_the_host_will_not_read_is_a_failure() {
 
     let root = tempfile::tempdir().unwrap();
     let locked = root.path().join("locked");
-    std::fs::create_dir(&locked).unwrap();
+    fs::create_dir(&locked).unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    fs::set_permissions(&locked, Permissions::from_mode(0o000)).unwrap();
     let err = BuiltinTool::Ls
         .execute(json!({ "path": locked.to_str().unwrap() }), &ctx)
         .unwrap_err();
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&locked, Permissions::from_mode(0o700)).unwrap();
 
     assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
 }
@@ -106,7 +109,7 @@ fn a_directory_the_host_will_not_read_is_a_failure() {
 fn refuses_a_directory_outside_every_allowed_root() {
     let allowed = tempfile::tempdir().unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
-    std::fs::write(elsewhere.path().join("secret.txt"), b"s").unwrap();
+    fs::write(elsewhere.path().join("secret.txt"), b"s").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(allowed.path())));
     let err = BuiltinTool::Ls

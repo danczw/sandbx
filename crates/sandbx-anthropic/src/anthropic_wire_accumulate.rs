@@ -5,6 +5,8 @@
 //! or an `Err` if it never arrives.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::mem;
+use std::pin::Pin;
 
 use futures_util::Stream;
 use sandbx_event::{AgentEvent, StopReason};
@@ -63,7 +65,7 @@ pub(crate) fn event_stream(
 }
 
 struct WireState<S> {
-    raw: std::pin::Pin<Box<S>>,
+    raw: Pin<Box<S>>,
     /// Keyed by block index. A `BTreeMap`, not a `HashMap`: blocks still open when the
     /// turn ends flush in index order, which a randomized iteration order would make
     /// unreproducible.
@@ -109,7 +111,7 @@ impl<S> WireState<S> {
             output_tokens,
             cache_creation_input_tokens,
             cache_read_input_tokens,
-        } = std::mem::take(&mut self.usage);
+        } = mem::take(&mut self.usage);
         self.pending.push_back(Ok(AgentEvent::Usage {
             input_tokens,
             output_tokens,
@@ -127,7 +129,7 @@ impl<S> WireState<S> {
     /// is incomplete, so flushing would put a `MalformedEvent` ahead of the honest
     /// [`ProviderError::StreamEndedUnexpectedly`].
     fn flush_open_blocks(&mut self) {
-        for (index, block) in std::mem::take(&mut self.blocks) {
+        for (index, block) in mem::take(&mut self.blocks) {
             if let Some(event) = closed_block_event(index, block) {
                 self.pending.push_back(event);
             }

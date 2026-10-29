@@ -6,7 +6,11 @@
 //! binds itself. No external network is needed.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::process::Output;
+use std::thread;
+use std::thread::JoinHandle;
 
 use sandbx_core::SandboxPolicy;
 use sandbx_helper_fixture::{allow_probe, runtime_paths};
@@ -17,17 +21,17 @@ fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
 
-fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
     sandbx_helper_fixture::run(helper(), policy, program, args)
 }
 
 /// A listener on an ephemeral loopback port, answering one connection with `payload`. The
 /// probe prints what it read, so a test can assert the bytes and not the exit status alone.
-fn listener(payload: &'static str) -> (u16, std::thread::JoinHandle<()>) {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+fn listener(payload: &'static str) -> (u16, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    let accepting = std::thread::spawn(move || {
+    let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
             use std::io::Write;
             let _ = stream.write_all(payload.as_bytes());
@@ -38,12 +42,12 @@ fn listener(payload: &'static str) -> (u16, std::thread::JoinHandle<()>) {
 }
 
 /// Unblock a listener thread nothing connected to, so the test does not leak it.
-fn drain(port: u16, accepting: std::thread::JoinHandle<()>) {
-    let _ = std::net::TcpStream::connect(("127.0.0.1", port));
+fn drain(port: u16, accepting: JoinHandle<()>) {
+    let _ = TcpStream::connect(("127.0.0.1", port));
     let _ = accepting.join();
 }
 
-fn probe(policy: SandboxPolicy, transport: &str, port: u16) -> std::process::Output {
+fn probe(policy: SandboxPolicy, transport: &str, port: u16) -> Output {
     let probe = env!("CARGO_BIN_EXE_sandbx-egress-probe");
     let policy = allow_probe(runtime_paths(policy), probe);
 

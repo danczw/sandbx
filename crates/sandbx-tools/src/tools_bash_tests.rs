@@ -1,6 +1,9 @@
 use sandbx_core::{HelperRefusal, SandboxError};
+use std::io;
+use std::time::Duration;
 
-use super::*;
+use super::sandbox_error;
+use crate::ToolError;
 
 const COMMAND: &str = "ls /tmp";
 
@@ -122,7 +125,7 @@ fn a_sandbox_that_would_not_start_is_not_a_denial() {
         COMMAND,
         SandboxError::SpawnFailed {
             detail: "could not start the sandbox helper",
-            source: std::io::Error::other("sample"),
+            source: io::Error::other("sample"),
         },
     );
 
@@ -139,7 +142,7 @@ fn a_timeout_names_the_command_that_ran() {
     let error = sandbox_error(
         COMMAND,
         SandboxError::TimedOut {
-            after: std::time::Duration::from_secs(1),
+            after: Duration::from_secs(1),
         },
     );
 

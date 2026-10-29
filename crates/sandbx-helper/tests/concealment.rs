@@ -10,6 +10,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::{fs, io};
 
 /// A variable the probe carries, so a successful read is identifiable and not merely non-empty.
 const MARKER: (&str, &str) = (
@@ -58,11 +59,11 @@ fn a_concealed_process_hides_its_environment_from_its_parent() {
 
     expect_word(&mut stdout, "STARTED");
 
-    let before = std::fs::read(environ_of(&child));
+    let before = fs::read(environ_of(&child));
     // A host that already hides procfs from a parent — `hidepid`, a locked-down container —
     // leaves nothing for the flag to take away, and a pass here would prove nothing.
     if let Err(error) = &before {
-        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
         eprintln!("skipped: this host hides a child's procfs entry from its parent already");
         stop(&mut child);
         return;
@@ -77,13 +78,13 @@ fn a_concealed_process_hides_its_environment_from_its_parent() {
     writeln!(stdin, "conceal").expect("the probe should still be listening");
     expect_word(&mut stdout, "CONCEALED");
 
-    let after = std::fs::read(environ_of(&child));
+    let after = fs::read(environ_of(&child));
     stop(&mut child);
 
     let error = after.expect_err("the concealed probe's environment was still readable");
     assert_eq!(
         error.kind(),
-        std::io::ErrorKind::PermissionDenied,
+        io::ErrorKind::PermissionDenied,
         "the read failed for a reason other than the kernel refusing it"
     );
 }

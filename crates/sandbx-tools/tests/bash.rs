@@ -8,9 +8,12 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+use std::fs;
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -70,7 +73,7 @@ fn a_sandbox_that_would_not_apply_is_not_a_command_that_failed() {
 fn the_command_is_confined_by_the_policy() {
     let secret_dir = tempfile::tempdir().unwrap();
     let secret = secret_dir.path().join("secret.txt");
-    std::fs::write(&secret, b"SECRET-CONTENTS").unwrap();
+    fs::write(&secret, b"SECRET-CONTENTS").unwrap();
 
     // secret_dir is not granted.
     let ctx = context(SandboxPolicy::default().allow_system_executables());
@@ -96,7 +99,7 @@ fn granted_paths_are_reachable() {
     // Resolved here as well as at the vet, because the command below names this spelling and
     // has to land inside the granted tree; `$TMPDIR` is a symlink on some hosts.
     let root = dir.path().canonicalize().unwrap();
-    std::fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
+    fs::write(root.join("visible.txt"), b"VISIBLE").unwrap();
 
     let ctx = context(
         SandboxPolicy::default()
@@ -132,10 +135,10 @@ fn output_is_bounded() {
 
 #[test]
 fn a_command_that_outruns_the_timeout_says_so() {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
 
     let ctx = context(SandboxPolicy::default().allow_system_executables())
-        .with_timeout(std::time::Duration::from_millis(200));
+        .with_timeout(Duration::from_millis(200));
     let result = BuiltinTool::Bash.execute(json!({ "command": "sleep 30" }), &ctx);
 
     let elapsed = started.elapsed();
@@ -145,7 +148,7 @@ fn a_command_that_outruns_the_timeout_says_so() {
         "expected a timeout, got: {result:?}"
     );
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
+        elapsed < Duration::from_secs(5),
         "the tool call stayed blocked for {elapsed:?}"
     );
 }

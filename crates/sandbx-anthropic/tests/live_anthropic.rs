@@ -10,12 +10,13 @@
 use futures_util::StreamExt;
 use sandbx_anthropic::AnthropicClient;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role};
+use std::env;
 
 #[tokio::test]
 async fn streams_a_real_response_from_the_anthropic_api() {
     // Blank counts as unset, as it does in the CLI: an empty key would only come back as
     // an opaque 401.
-    let key = std::env::var("ANTHROPIC_API_KEY")
+    let key = env::var("ANTHROPIC_API_KEY")
         .ok()
         .map(|key| key.trim().to_owned())
         .filter(|key| !key.is_empty())

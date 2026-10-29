@@ -2,6 +2,7 @@
 //! calls back with.
 
 use sandbx_tools::{BuiltinTool, RiskLevel};
+use std::collections::BTreeMap;
 
 /// Exhaustive by construction: a variant missing from `ALL` fails here, not at
 /// runtime in front of a model.
@@ -137,7 +138,7 @@ fn the_risk_levels_order_least_to_most() {
 /// is testable is distinctness, which catches a copy from a neighbour.
 #[test]
 fn every_tool_describes_itself_distinctly() {
-    let mut seen = std::collections::BTreeMap::new();
+    let mut seen = BTreeMap::new();
 
     for tool in BuiltinTool::ALL {
         let description = tool.description();

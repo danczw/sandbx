@@ -10,7 +10,13 @@
 // to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
+use std::collections::HashSet;
+use std::fs::File;
+use std::os::unix::fs as unix_fs;
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
+use std::{env, fmt, fs, io};
 
 use sandbx_core::{
     AUDIT_TARGET, HelperArgs, HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand,
@@ -19,14 +25,14 @@ use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
     sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
-    let root = std::env::temp_dir()
+    let root = env::temp_dir()
         .canonicalize()
         .expect("the temporary directory exists");
     tempfile::Builder::new()
@@ -59,7 +65,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
 struct Collect(String);
 
 impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         self.0.push_str(&format!("{}={value:?} ", field.name()));
     }
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
@@ -75,7 +81,7 @@ fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
 }
 
 /// Run `script` under `sh` in a real sandbox, with the trail captured.
-fn sandboxed(script: &str, policy: SandboxPolicy) -> (std::process::Output, Vec<String>) {
+fn sandboxed(script: &str, policy: SandboxPolicy) -> (Output, Vec<String>) {
     let (result, lines) = capture(|| {
         SandboxedCommand::new("/bin/sh", policy)
             .arg("-c")
@@ -97,11 +103,11 @@ fn bounding_set_is_droppable() -> bool {
 
     // The restriction covers *unprivileged* userns only, so root holds `CAP_SETPCAP` in the
     // new namespace regardless. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
-    let root = std::fs::metadata("/proc/self")
+    let root = fs::metadata("/proc/self")
         .map(|proc_self| proc_self.uid() == 0)
         .unwrap_or(false);
 
-    root || std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+    root || fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
         .map(|value| value.trim() != "1")
         .unwrap_or(true)
 }
@@ -221,9 +227,9 @@ fn the_command_inherits_no_other_end_of_the_channel() {
 fn a_refusal_before_the_exec_names_itself_on_the_channel() {
     use std::io::Read;
 
-    let (mut channel, write_end) = std::io::pipe().expect("a channel for the helper");
+    let (mut channel, write_end) = io::pipe().expect("a channel for the helper");
 
-    let mut helper = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
+    let mut helper = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
     helper
         .env_clear()
         .args([sandbx_core::HELPER_INNER_FLAG, "1", "--sandbx-audit-stdin"])
@@ -233,7 +239,7 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
             &[],
             None,
         ))
-        .stdin(std::process::Stdio::from(write_end));
+        .stdin(Stdio::from(write_end));
 
     let output = helper.output().expect("helper should start");
 
@@ -270,16 +276,16 @@ fn a_refusal_before_the_exec_names_itself_on_the_channel() {
 fn stage_1_names_its_own_refusal_on_the_channel() {
     use std::io::Read;
 
-    let (mut channel, write_end) = std::io::pipe().expect("a channel for the helper");
+    let (mut channel, write_end) = io::pipe().expect("a channel for the helper");
 
-    let mut helper = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
+    let mut helper = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"));
     helper
         .args([
             sandbx_core::HELPER_FLAG,
             "--sandbx-audit-stdin",
             "--not-a-flag",
         ])
-        .stdin(std::process::Stdio::from(write_end));
+        .stdin(Stdio::from(write_end));
 
     let output = helper.output().expect("helper should start");
 
@@ -380,11 +386,11 @@ fn every_record_names_a_real_mechanism_once() {
 fn a_pin_refusal_names_itself_on_the_channel() {
     let dir = scratch();
     let program = dir.path().join("tool");
-    std::fs::copy("/bin/true", &program).unwrap();
+    fs::copy("/bin/true", &program).unwrap();
 
-    let mut file = std::fs::File::open(&program).expect("readable");
+    let mut file = File::open(&program).expect("readable");
     let pinned = sandbx_core::Sha256Digest::of_file(&mut file).expect("hash");
-    std::fs::copy("/bin/false", &program).unwrap();
+    fs::copy("/bin/false", &program).unwrap();
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
@@ -430,15 +436,15 @@ fn a_redirected_grant_names_itself_on_the_channel() {
     let dir = scratch();
     let granted_at = dir.path().join("work");
     let elsewhere = dir.path().join("elsewhere");
-    std::fs::create_dir(&granted_at).unwrap();
-    std::fs::create_dir(&elsewhere).unwrap();
+    fs::create_dir(&granted_at).unwrap();
+    fs::create_dir(&elsewhere).unwrap();
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
         .allow_read(vetted(&granted_at));
 
-    std::fs::remove_dir(&granted_at).unwrap();
-    std::os::unix::fs::symlink(&elsewhere, &granted_at).unwrap();
+    fs::remove_dir(&granted_at).unwrap();
+    unix_fs::symlink(&elsewhere, &granted_at).unwrap();
 
     let (result, lines) = capture(|| {
         SandboxedCommand::new("/bin/true", policy)
@@ -482,15 +488,15 @@ fn a_substituted_grant_names_itself_on_the_channel() {
     let dir = scratch();
     let granted_at = dir.path().join("work");
     let substitute = dir.path().join("substitute");
-    std::fs::create_dir(&granted_at).unwrap();
-    std::fs::create_dir(&substitute).unwrap();
+    fs::create_dir(&granted_at).unwrap();
+    fs::create_dir(&substitute).unwrap();
 
     let policy = SandboxPolicy::default()
         .allow_system_executables()
         .allow_read(vetted(&granted_at));
 
-    std::fs::remove_dir(&granted_at).unwrap();
-    std::fs::rename(&substitute, &granted_at).unwrap();
+    fs::remove_dir(&granted_at).unwrap();
+    fs::rename(&substitute, &granted_at).unwrap();
 
     let (result, lines) = capture(|| {
         SandboxedCommand::new("/bin/true", policy)
@@ -557,7 +563,7 @@ fn every_record_of_one_run_names_that_run() {
         "a spawn and an outcome at the least: {lines:?}"
     );
 
-    let ids: std::collections::HashSet<&str> = lines.iter().map(|line| spawn_id(line)).collect();
+    let ids: HashSet<&str> = lines.iter().map(|line| spawn_id(line)).collect();
     assert_eq!(
         ids.len(),
         1,

@@ -9,8 +9,11 @@
 // to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
+use std::fs::{File, Permissions};
+use std::os::unix::fs as unix_fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
+use std::{env, fs, process};
 
 use sandbx_core::{HelperArgs, SandboxPolicy};
 
@@ -22,7 +25,7 @@ fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
 
-fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
     sandbx_helper_fixture::run(helper(), policy, program, args)
 }
 
@@ -31,14 +34,14 @@ fn run_pinned(
     program: &str,
     args: &[&str],
     pin: Option<sandbx_core::Sha256Digest>,
-) -> std::process::Output {
+) -> Output {
     sandbx_helper_fixture::run_pinned(helper(), policy, program, args, pin)
 }
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
 fn scratch() -> tempfile::TempDir {
-    let root = std::env::temp_dir()
+    let root = env::temp_dir()
         .canonicalize()
         .expect("the temporary directory exists");
     tempfile::Builder::new()
@@ -52,7 +55,7 @@ fn scratch() -> tempfile::TempDir {
 fn allowed_path_can_be_read() {
     let dir = scratch();
     let file = dir.path().join("readable.txt");
-    std::fs::write(&file, b"visible").unwrap();
+    fs::write(&file, b"visible").unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run(&policy, "/bin/cat", &[file.to_str().unwrap()]);
@@ -69,7 +72,7 @@ fn allowed_path_can_be_read() {
 fn unallowed_path_cannot_be_read() {
     let dir = scratch();
     let secret = dir.path().join("secret.txt");
-    std::fs::write(&secret, b"secret").unwrap();
+    fs::write(&secret, b"secret").unwrap();
 
     // The temp dir is not granted.
     let policy = runtime_paths(SandboxPolicy::default());
@@ -89,7 +92,7 @@ fn unallowed_path_cannot_be_read() {
 fn read_only_grant_cannot_write() {
     let dir = scratch();
     let file = dir.path().join("readonly.txt");
-    std::fs::write(&file, b"original").unwrap();
+    fs::write(&file, b"original").unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run(
@@ -100,7 +103,7 @@ fn read_only_grant_cannot_write() {
 
     assert!(!output.status.success(), "wrote to a read-only grant");
     assert_eq!(
-        std::fs::read_to_string(&file).unwrap(),
+        fs::read_to_string(&file).unwrap(),
         "original",
         "file was modified despite a read-only grant"
     );
@@ -123,7 +126,7 @@ fn write_grant_can_write() {
         "writing to an allowed path failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(std::fs::read_to_string(&created).unwrap(), "written\n");
+    assert_eq!(fs::read_to_string(&created).unwrap(), "written\n");
 }
 
 #[test]
@@ -205,7 +208,7 @@ fn the_inner_stage_refuses_an_unnarrowed_environment() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .arg(sandbx_core::HELPER_INNER_FLAG)
-        .arg(std::process::id().to_string())
+        .arg(process::id().to_string())
         .args(HelperArgs::encode(&policy, "/bin/touch", &args, None))
         .env("SANDBX_SHOULD_NOT_SURVIVE", "leaked-abc123")
         .output()
@@ -305,7 +308,7 @@ init=$(cat "/proc/$2/environ") && echo INIT-READ || echo INIT-REFUSED"#;
 #[test]
 fn the_command_cannot_signal_outside_its_namespace() {
     let policy = runtime_paths(SandboxPolicy::default());
-    let ours = std::process::id();
+    let ours = process::id();
     let output = run(&policy, "/bin/sh", &["-c", &format!("kill -0 {ours}")]);
 
     assert!(
@@ -409,11 +412,11 @@ fn bounding_set_is_droppable() -> bool {
 
     // The restriction covers *unprivileged* userns only, so root holds `CAP_SETPCAP` in the
     // new namespace regardless. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
-    let root = std::fs::metadata("/proc/self")
+    let root = fs::metadata("/proc/self")
         .map(|proc_self| proc_self.uid() == 0)
         .unwrap_or(false);
 
-    root || std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+    root || fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
         .map(|value| value.trim() != "1")
         .unwrap_or(true)
 }
@@ -496,8 +499,8 @@ fn the_bounding_set_is_cleared_or_left_inherited() {
 
     // This process is the helper's parent, so its bounding set is the one the helper
     // inherits.
-    let host = std::fs::read_to_string("/proc/self/status")
-        .expect("could not read this process's own status");
+    let host =
+        fs::read_to_string("/proc/self/status").expect("could not read this process's own status");
 
     assert_eq!(
         sandboxed,
@@ -540,7 +543,7 @@ fn core_dumps_are_disabled() {
 fn truncate_on_read_only_grant_is_denied() {
     let dir = scratch();
     let victim = dir.path().join("victim.txt");
-    std::fs::write(&victim, b"original contents").unwrap();
+    fs::write(&victim, b"original contents").unwrap();
 
     let probe = env!("CARGO_BIN_EXE_sandbx-truncate-probe");
     let policy = allow_probe(
@@ -551,7 +554,7 @@ fn truncate_on_read_only_grant_is_denied() {
 
     assert!(!output.status.success(), "truncated a read-only grant");
     assert_eq!(
-        std::fs::read_to_string(&victim).unwrap(),
+        fs::read_to_string(&victim).unwrap(),
         "original contents",
         "file was truncated despite a read-only grant"
     );
@@ -561,7 +564,7 @@ fn truncate_on_read_only_grant_is_denied() {
 fn truncate_on_ungranted_path_is_denied() {
     let dir = scratch();
     let victim = dir.path().join("victim.txt");
-    std::fs::write(&victim, b"original contents").unwrap();
+    fs::write(&victim, b"original contents").unwrap();
 
     // `dir` is not granted.
     let probe = env!("CARGO_BIN_EXE_sandbx-truncate-probe");
@@ -570,7 +573,7 @@ fn truncate_on_ungranted_path_is_denied() {
 
     assert!(!output.status.success(), "truncated an ungranted path");
     assert_eq!(
-        std::fs::read_to_string(&victim).unwrap(),
+        fs::read_to_string(&victim).unwrap(),
         "original contents",
         "ungranted file was truncated"
     );
@@ -580,7 +583,7 @@ fn truncate_on_ungranted_path_is_denied() {
 fn truncate_on_write_grant_is_permitted() {
     let dir = scratch();
     let target = dir.path().join("scratch.txt");
-    std::fs::write(&target, b"original contents").unwrap();
+    fs::write(&target, b"original contents").unwrap();
 
     let probe = env!("CARGO_BIN_EXE_sandbx-truncate-probe");
     let policy = allow_probe(
@@ -594,7 +597,7 @@ fn truncate_on_write_grant_is_permitted() {
         "truncate was refused on a writable grant: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
+    assert_eq!(fs::read_to_string(&target).unwrap(), "");
 }
 
 /// The resolved spelling is the one both layers agree about; the link is refused, not
@@ -605,10 +608,10 @@ fn truncate_on_write_grant_is_permitted() {
 fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     let real = scratch();
     let staging = scratch();
-    std::fs::write(real.path().join("s.txt"), b"target-side").unwrap();
+    fs::write(real.path().join("s.txt"), b"target-side").unwrap();
 
     let link = staging.path().join("granted");
-    std::os::unix::fs::symlink(real.path(), &link).unwrap();
+    unix_fs::symlink(real.path(), &link).unwrap();
 
     let target = real.path().canonicalize().unwrap();
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(&target));
@@ -664,10 +667,10 @@ fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
     let staging = scratch();
     let granted_at = staging.path().join("granted");
     let substitute = staging.path().join("substitute");
-    std::fs::create_dir(&granted_at).unwrap();
-    std::fs::create_dir(&substitute).unwrap();
-    std::fs::write(granted_at.join("s.txt"), b"vetted-side").unwrap();
-    std::fs::write(substitute.join("s.txt"), b"substituted").unwrap();
+    fs::create_dir(&granted_at).unwrap();
+    fs::create_dir(&substitute).unwrap();
+    fs::write(granted_at.join("s.txt"), b"vetted-side").unwrap();
+    fs::write(substitute.join("s.txt"), b"substituted").unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(&granted_at));
     let readable = granted_at.join("s.txt");
@@ -682,8 +685,8 @@ fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
         String::from_utf8_lossy(&before.stderr)
     );
 
-    std::fs::remove_dir_all(&granted_at).unwrap();
-    std::fs::rename(&substitute, &granted_at).unwrap();
+    fs::remove_dir_all(&granted_at).unwrap();
+    fs::rename(&substitute, &granted_at).unwrap();
 
     let after = run(&policy, "/bin/cat", &[readable.to_str().unwrap()]);
     let stderr = String::from_utf8_lossy(&after.stderr);
@@ -707,7 +710,7 @@ fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
 fn an_execute_grant_reads_the_same_in_both_layers() {
     let dir = scratch();
     let file = dir.path().join("data.txt");
-    std::fs::write(&file, b"exec-axis-readable").unwrap();
+    fs::write(&file, b"exec-axis-readable").unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
 
@@ -733,7 +736,7 @@ fn an_execute_grant_reads_the_same_in_both_layers() {
 fn a_write_grant_does_not_make_files_readable() {
     let dir = scratch();
     let secret = dir.path().join("dropped.txt");
-    std::fs::write(&secret, b"WRITE-ONLY-SECRET").unwrap();
+    fs::write(&secret, b"WRITE-ONLY-SECRET").unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_write(vetted(dir.path()));
 
@@ -757,7 +760,7 @@ fn a_write_grant_does_not_make_files_readable() {
 fn a_read_grant_does_not_make_files_executable() {
     let dir = scratch();
     let program = dir.path().join("true");
-    std::fs::copy("/bin/true", &program).unwrap();
+    fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run(&policy, program.to_str().unwrap(), &[]);
@@ -773,7 +776,7 @@ fn a_read_grant_does_not_make_files_executable() {
 fn a_read_execute_grant_does_make_files_executable() {
     let dir = scratch();
     let program = dir.path().join("true");
-    std::fs::copy("/bin/true", &program).unwrap();
+    fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let output = run(&policy, program.to_str().unwrap(), &[]);
@@ -834,7 +837,7 @@ fn the_command_sees_a_consistent_real_uid() {
     // std exposes no getuid and nix's `user` feature is not worth pulling in for one test.
     let host_value = |args: &[&str]| {
         String::from_utf8(
-            std::process::Command::new("/usr/bin/id")
+            Command::new("/usr/bin/id")
                 .args(args)
                 .output()
                 .unwrap()
@@ -845,7 +848,7 @@ fn the_command_sees_a_consistent_real_uid() {
         .to_string()
     };
     let real = host_value(&["-u"]);
-    let overflow = std::fs::read_to_string("/proc/sys/kernel/overflowuid")
+    let overflow = fs::read_to_string("/proc/sys/kernel/overflowuid")
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "65534".to_string());
 
@@ -894,7 +897,7 @@ fn a_variable_the_policy_omits_never_reaches_it() {
 /// environment wholesale and ignored the allowlist.
 #[test]
 fn a_granted_variable_reaches_it_with_its_value() {
-    let expected = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets this for a test");
+    let expected = env::var("CARGO_MANIFEST_DIR").expect("cargo sets this for a test");
     let policy = runtime_paths(SandboxPolicy::default()).allow_env("CARGO_MANIFEST_DIR");
 
     let output = run(&policy, "/usr/bin/env", &[]);
@@ -1023,8 +1026,8 @@ fn granting_what_the_harness_lacks_passes_nothing() {
     );
 }
 
-fn digest_of(path: &std::path::Path) -> sandbx_core::Sha256Digest {
-    let mut file = std::fs::File::open(path).expect("the program should be readable");
+fn digest_of(path: &Path) -> sandbx_core::Sha256Digest {
+    let mut file = File::open(path).expect("the program should be readable");
 
     sandbx_core::Sha256Digest::of_file(&mut file).expect("hash")
 }
@@ -1034,7 +1037,7 @@ fn digest_of(path: &std::path::Path) -> sandbx_core::Sha256Digest {
 fn a_matching_pin_runs_the_program() {
     let dir = scratch();
     let program = dir.path().join("tool");
-    std::fs::copy("/bin/true", &program).unwrap();
+    fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let output = run_pinned(
@@ -1057,10 +1060,10 @@ fn a_matching_pin_runs_the_program() {
 fn a_binary_swapped_behind_its_pin_is_refused() {
     let dir = scratch();
     let program = dir.path().join("tool");
-    std::fs::copy("/bin/true", &program).unwrap();
+    fs::copy("/bin/true", &program).unwrap();
     let pinned = digest_of(&program);
 
-    std::fs::copy("/bin/id", &program).unwrap();
+    fs::copy("/bin/id", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let output = run_pinned(&policy, program.to_str().unwrap(), &[], Some(pinned));
@@ -1088,7 +1091,7 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
 fn a_pin_grants_no_execute_a_read_grant_withheld() {
     let dir = scratch();
     let program = dir.path().join("tool");
-    std::fs::copy("/bin/true", &program).unwrap();
+    fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
     let output = run_pinned(
@@ -1109,14 +1112,12 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
 /// pinned bytes and runs unpinned, so this is the script refusal, not a mismatch.
 #[test]
 fn a_pinned_script_is_refused_rather_than_exec_d() {
+    use std::os::unix::fs::PermissionsExt;
+
     let dir = scratch();
     let program = dir.path().join("script");
-    std::fs::write(&program, "#!/bin/sh\necho SCRIPT_RAN\n").unwrap();
-    std::fs::set_permissions(
-        &program,
-        std::os::unix::fs::PermissionsExt::from_mode(0o755),
-    )
-    .unwrap();
+    fs::write(&program, "#!/bin/sh\necho SCRIPT_RAN\n").unwrap();
+    fs::set_permissions(&program, Permissions::from_mode(0o755)).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
     let refused = run_pinned(
@@ -1154,7 +1155,7 @@ fn a_pinned_program_keeps_the_name_it_was_given() {
         &policy,
         "/bin/sh",
         &["-c", "echo $0"],
-        Some(digest_of(std::path::Path::new("/bin/sh"))),
+        Some(digest_of(Path::new("/bin/sh"))),
     );
 
     assert_eq!(

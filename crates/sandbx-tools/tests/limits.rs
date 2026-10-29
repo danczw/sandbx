@@ -8,9 +8,11 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};
 use serde_json::json;
+use std::fs;
+use std::path::Path;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -22,7 +24,7 @@ fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
 fn tree_with_matches(count: usize) -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     for i in 0..count {
-        std::fs::write(root.path().join(format!("f{i}.txt")), "needle\n").unwrap();
+        fs::write(root.path().join(format!("f{i}.txt")), "needle\n").unwrap();
     }
     root
 }
@@ -149,7 +151,7 @@ fn ls_caps_and_marks() {
 fn read_caps_by_bytes_and_marks() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("big.txt");
-    std::fs::write(&file, "x".repeat(10_000)).unwrap();
+    fs::write(&file, "x".repeat(10_000)).unwrap();
 
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
@@ -176,7 +178,7 @@ fn read_caps_by_bytes_and_marks() {
 fn read_does_not_mark_a_file_that_fits() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("small.txt");
-    std::fs::write(&file, "short").unwrap();
+    fs::write(&file, "short").unwrap();
 
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),
@@ -195,7 +197,7 @@ fn read_truncates_on_a_character_boundary() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("wide.txt");
     // Three-byte characters, so most byte offsets land mid-character.
-    std::fs::write(&file, "日".repeat(1000)).unwrap();
+    fs::write(&file, "日".repeat(1000)).unwrap();
 
     let ctx = context(
         SandboxPolicy::default().allow_read(vetted(root.path())),

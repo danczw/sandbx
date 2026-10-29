@@ -3,9 +3,12 @@
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 use serde_json::json;
+use std::fs;
+use std::os::unix::fs as unix_fs;
+use std::path::Path;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -26,7 +29,7 @@ fn creates_a_file_inside_an_allowed_root() {
         )
         .unwrap();
 
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "written");
+    assert_eq!(fs::read_to_string(&file).unwrap(), "written");
 }
 
 #[test]
@@ -85,7 +88,7 @@ fn a_missing_parent_outside_a_grant_is_denied() {
 fn read_grant_does_not_permit_writing() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("notes.txt");
-    std::fs::write(&file, b"original").unwrap();
+    fs::write(&file, b"original").unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
     let err = BuiltinTool::Write
@@ -96,7 +99,7 @@ fn read_grant_does_not_permit_writing() {
         .unwrap_err();
 
     assert!(matches!(err, ToolError::Denied { .. }), "got {err:?}");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "original");
+    assert_eq!(fs::read_to_string(&file).unwrap(), "original");
 }
 
 /// The agent can plant symlinks in any writable root, so following one would land a
@@ -109,7 +112,7 @@ fn refuses_to_write_through_a_symlink_leaf() {
     let outside = elsewhere.path().join("authorized_keys");
 
     let link = root.path().join("innocent.txt");
-    std::os::unix::fs::symlink(&outside, &link).unwrap();
+    unix_fs::symlink(&outside, &link).unwrap();
 
     let ctx = context(SandboxPolicy::default().allow_write(vetted(root.path())));
     let err = BuiltinTool::Write

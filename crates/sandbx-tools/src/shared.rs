@@ -1,6 +1,8 @@
 //! What the tool modules reach for: the guard-checked reads, the two shapes an error
 //! takes, and the bounded rendering of a result list.
 
+use std::fmt;
+use std::fs::File;
 use std::path::Path;
 
 use crate::{ExecutionContext, ToolError, ToolOutput};
@@ -35,7 +37,7 @@ pub(crate) fn guard_error(path: &Path, error: sandbx_core::SandboxError) -> Tool
 
 /// Turn a failed filesystem operation into the form the model sees. `verb` names
 /// what was attempted (`read /etc/hosts`, `list /tmp`), not the syscall.
-pub(crate) fn failed(verb: &str, path: &Path, error: impl std::fmt::Display) -> ToolError {
+pub(crate) fn failed(verb: &str, path: &Path, error: impl fmt::Display) -> ToolError {
     ToolError::Failed {
         subject: format!("{verb} {}", path.display()),
         detail: error.to_string(),
@@ -72,9 +74,11 @@ pub(crate) fn read_capped(path: &Path, ctx: &ExecutionContext, max: u64) -> Opti
 }
 
 /// Read an open handle to a `String`, the path being for the error only.
-fn slurp(mut file: std::fs::File, path: &Path) -> Result<String, ToolError> {
+fn slurp(mut file: File, path: &Path) -> Result<String, ToolError> {
+    use std::io::Read;
+
     let mut content = String::new();
-    std::io::Read::read_to_string(&mut file, &mut content)
+    file.read_to_string(&mut content)
         .map_err(|error| failed("read", path, error))?;
     Ok(content)
 }

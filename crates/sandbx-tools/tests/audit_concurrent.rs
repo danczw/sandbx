@@ -12,6 +12,7 @@
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use std::{fmt, thread};
 
 use sandbx_core::{AUDIT_TARGET, SandboxPolicy};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
@@ -39,7 +40,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
 struct Collect(String);
 
 impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         self.0.push_str(&format!("{}={value:?} ", field.name()));
     }
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
@@ -77,7 +78,7 @@ fn concurrent_calls_keep_their_records_apart() {
             // Cloned per thread, as `sandbx-turn` clones it per call to cross
             // `spawn_blocking`'s `'static` boundary.
             let ctx = ctx.clone();
-            std::thread::spawn(move || {
+            thread::spawn(move || {
                 let _ = BuiltinTool::Bash.execute(json!({ "command": command }), &ctx);
             })
         })
