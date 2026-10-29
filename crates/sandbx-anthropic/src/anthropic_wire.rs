@@ -4,10 +4,14 @@
 //! Each `data:` payload is deserialized by its own `"type"` tag; the `event:` line
 //! only restates that tag, so it is ignored.
 
+#[path = "anthropic_wire_accumulate.rs"]
 mod accumulate;
+#[path = "anthropic_wire_payload.rs"]
 mod payload;
-#[cfg(test)]
-mod tests;
 
 pub(crate) use accumulate::event_stream;
 pub(crate) use payload::RawApiErrorEnvelope;
+
+#[cfg(test)]
+#[path = "anthropic_wire_tests.rs"]
+mod tests;
