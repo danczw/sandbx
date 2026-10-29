@@ -133,7 +133,7 @@ paid for with nobody at the other end, and the process exited 0, so an
 unattended caller read a vanished operator as success.
 
 **The trigger is the CLI's; the mechanism cannot be.** Distinguishing a channel
-failure from an operator's `n` is `prompt.rs`'s alone — it is the only layer that
+failure from an operator's `n` is `agent_prompt.rs`'s alone — it is the only layer that
 can tell them apart without guessing at intent, and `--allow-tool`'s own refusal
 stays a `Deny` because a tool no flag approved is a decision. But a CLI-confined
 fix has no lever on the cost: `Deny` is recoverable by design, so the round loop

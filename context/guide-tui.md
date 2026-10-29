@@ -74,19 +74,20 @@ the directional isolates render *nothing* and reorder what follows them, so a
 line can display as a different line — in the same pane, and the same `sandbx: `
 grammar, as the gate's account of what a tool did. The same denylist therefore
 applies at the cell too: `sandbx_text::invisible`, one table, which
-`gate.rs` reads for the line sink and the transcript reads for the cell. It is a
-denylist because `char` has no predicate for the category, so a new Unicode
-version can outgrow it silently — and it has one owner, so a character added to
-it reaches both sinks. What is shared is the hazard; each sink keeps its own
-replacement, there being no one answer to what to put in a cell versus a line.
+`agent_gate.rs` reads for the line sink and the transcript reads for the cell.
+It is a denylist because `char` has no predicate for the category, so a new
+Unicode version can outgrow it silently — and it has one owner, so a character
+added to it reaches both sinks. What is shared is the hazard; each sink keeps
+its own replacement, there being no one answer to what to put in a cell versus
+a line.
 
 One more character cannot reach a cell, and it is sandbx's own: the gutter the
 view draws at the start of every row it wrote. See below.
 
-Replaced rather than dropped, for `gate.rs`'s reason: dropped, a hostile string
-reads as plausible prose. The per-call line is stripped twice over — once by
-`gate::line`, once at the cell — and stripping is idempotent, so the layers
-compose.
+Replaced rather than dropped, for `agent_gate.rs`'s reason: dropped, a hostile
+string reads as plausible prose. The per-call line is stripped twice over —
+once by `gate::line`, once at the cell — and stripping is idempotent, so the
+layers compose.
 
 ### One pane holds both voices, so a row says which it is
 
