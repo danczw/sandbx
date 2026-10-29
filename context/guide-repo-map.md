@@ -160,10 +160,11 @@ turn, which is `sandbx-prompt`'s; it names the closure's own
 `Result<EventStream, ProviderError>`; and its renderer is a second fold of the
 events the loop hands back.
 
-A module's unit tests sit in a `*_tests.rs` beside it (#333), and the trees
-below name one only where it holds something a reader would otherwise go
-looking for. Every other module has one; `grep -rn 'mod tests {' crates/*/src`
-returning nothing is what makes that true rather than usual.
+Where a module has unit tests they sit in a `*_tests.rs` beside it rather than
+inline (#333) — `grep -rn 'mod tests {' crates/*/src` returning nothing is the
+whole of what that convention claims. Most modules have none, their coverage
+being a test under the crate's own `tests/` instead. The trees below name a
+sibling only where it holds something a reader would otherwise go looking for.
 
 ## `sandbx-core`
 
@@ -768,7 +769,11 @@ src/lib.rs      re-exports Grants and PolicyError — and holds what a no-flag r
                 path flag is vetted against, including the refusal of a grant
                 reaching a path sandbx owns (unit-testable without a
                 sandbox-capable kernel); vetted_root's /// is why it refuses
-                rather than narrowing, and root::tests' //! the mutation check
+                rather than narrowing
+   root_tests.rs
+                the mutation check, in its //! — each mutation run rather than
+                reasoned about; pub(super) so flags_tests.rs reaches env and
+                reaches
    error.rs     PolicyError, and the one ADVICE every derived-default refusal
                 appends
 ```
