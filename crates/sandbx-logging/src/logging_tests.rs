@@ -1,5 +1,6 @@
 use super::{Audit, HELD, hold};
 use std::io::Write;
+use std::panic;
 use std::sync::{Mutex, PoisonError};
 
 /// Serialises these tests: `HELD` is process-global, so two at once would read each
@@ -37,13 +38,13 @@ fn a_hold_buffers_the_trail_and_releases_it_once() {
 fn a_poisoned_lock_still_takes_a_record() {
     let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
 
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let panicked = std::panic::catch_unwind(|| {
+    let hook = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
+    let panicked = panic::catch_unwind(|| {
         let _poison = HELD.lock().unwrap_or_else(PoisonError::into_inner);
         panic!("poison it");
     });
-    std::panic::set_hook(hook);
+    panic::set_hook(hook);
 
     assert!(panicked.is_err(), "the panic did not reach the lock");
     assert!(HELD.is_poisoned(), "the lock was not poisoned");

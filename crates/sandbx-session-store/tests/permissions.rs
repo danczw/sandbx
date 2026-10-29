@@ -4,7 +4,9 @@
 //! only read resumes and reports. A foreign owner is refused too, but no test here drives
 //! that arm, which needs a second uid.
 
+use std::fs;
 use std::fs::Permissions;
+use std::os::unix::fs as unix_fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -19,11 +21,11 @@ fn store() -> (tempfile::TempDir, SessionStore) {
 }
 
 fn mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    fs::metadata(path).unwrap().permissions().mode() & 0o7777
 }
 
 fn chmod(path: &Path, mode: u32) {
-    std::fs::set_permissions(path, Permissions::from_mode(mode)).unwrap();
+    fs::set_permissions(path, Permissions::from_mode(mode)).unwrap();
 }
 
 fn exchange() -> Vec<Message> {
@@ -72,7 +74,7 @@ fn the_sessions_directory_is_owner_only() {
 #[test]
 fn a_directory_that_already_existed_wide_is_narrowed() {
     let (_root, store) = store();
-    std::fs::create_dir_all(store.root()).unwrap();
+    fs::create_dir_all(store.root()).unwrap();
     chmod(store.root(), 0o777);
 
     // `DirBuilderExt::mode` is ignored for a directory that already exists, so without an
@@ -146,10 +148,10 @@ fn a_symlinked_transcript_is_refused() {
     let path = store.root().join(format!("{id}.jsonl"));
 
     let elsewhere = root.path().join("elsewhere");
-    std::fs::create_dir(&elsewhere).unwrap();
+    fs::create_dir(&elsewhere).unwrap();
     let target = elsewhere.join("planted.jsonl");
-    std::fs::rename(&path, &target).unwrap();
-    std::os::unix::fs::symlink(&target, &path).unwrap();
+    fs::rename(&path, &target).unwrap();
+    unix_fs::symlink(&target, &path).unwrap();
     chmod(&elsewhere, 0o757);
 
     let err = store.resume(&id).unwrap_err();
@@ -163,9 +165,9 @@ fn a_symlinked_transcript_is_refused() {
 fn a_symlinked_root_is_refused_not_narrowed() {
     let root = tempfile::tempdir().unwrap();
     let shared = root.path().join("shared");
-    std::fs::create_dir(&shared).unwrap();
+    fs::create_dir(&shared).unwrap();
     chmod(&shared, 0o755);
-    std::os::unix::fs::symlink(&shared, root.path().join("sessions")).unwrap();
+    unix_fs::symlink(&shared, root.path().join("sessions")).unwrap();
 
     let store = SessionStore::new(root.path().join("sessions"));
     let err = store.create().unwrap_err();

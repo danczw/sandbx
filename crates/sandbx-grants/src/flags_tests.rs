@@ -3,6 +3,8 @@ use super::super::root::tests::{env, reaches};
 use super::Grants;
 use crate::PolicyError;
 use sandbx_core::{Axis, VettedPath};
+use std::env;
+use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
 fn bare() -> Grants {
@@ -97,7 +99,7 @@ fn a_relative_grant_reaches_the_policy_absolute() {
     grants.allow_read.push(PathBuf::from("src"));
 
     let policy = grants.policy().expect("the flags describe a policy");
-    let expected = std::env::current_dir()
+    let expected = env::current_dir()
         .expect("a readable working directory")
         .join("src")
         .canonicalize()
@@ -117,7 +119,7 @@ fn a_grant_through_a_symlink_reaches_the_policy_resolved() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let real = work.path().canonicalize().expect("a resolved directory");
     let link = work.path().join("link");
-    std::os::unix::fs::symlink(&real, &link).expect("a symlink to it");
+    unix_fs::symlink(&real, &link).expect("a symlink to it");
 
     let mut grants = bare();
     grants.allow_write.push(link);

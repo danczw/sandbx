@@ -9,6 +9,7 @@ use std::io::{self, IsTerminal};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::sync::Arc;
 use std::time::Duration;
+use std::{future, thread};
 
 use nix::errno::Errno;
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
@@ -66,10 +67,10 @@ impl Keys {
             let watching = Arc::clone(&sender);
             let out = io::stdout();
             // `as_fd` inside the closure, never across the spawn, which needs `'static`.
-            std::thread::spawn(move || hangup(&watching, watched.as_fd(), out.as_fd()));
+            thread::spawn(move || hangup(&watching, watched.as_fd(), out.as_fd()));
 
             let out = io::stdout();
-            std::thread::spawn(move || read(&sender, tty.as_fd(), out.as_fd(), &mut Crossterm));
+            thread::spawn(move || read(&sender, tty.as_fd(), out.as_fd(), &mut Crossterm));
         }
 
         Self { seen }
@@ -85,7 +86,7 @@ impl Keys {
             }
 
             if self.seen.changed().await.is_err() {
-                std::future::pending::<()>().await;
+                future::pending::<()>().await;
             }
         }
     }

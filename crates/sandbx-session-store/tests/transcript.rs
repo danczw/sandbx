@@ -1,5 +1,6 @@
 //! Public contract of [`SessionStore`]: what a transcript holds, and what it refuses.
 
+use std::fs;
 use std::str::FromStr;
 
 use sandbx_session_error::SessionError;
@@ -121,7 +122,7 @@ fn a_second_turn_appends_and_moves_nothing() {
         })
         .unwrap();
 
-    let before = std::fs::read(session.path()).unwrap();
+    let before = fs::read(session.path()).unwrap();
     session
         .append(CompletedTurn {
             messages: &exchange("second", "two"),
@@ -129,7 +130,7 @@ fn a_second_turn_appends_and_moves_nothing() {
             withheld: 0,
         })
         .unwrap();
-    let after = std::fs::read(session.path()).unwrap();
+    let after = fs::read(session.path()).unwrap();
 
     // Byte-identical prefix, not merely the same messages: `withheld` indexes the
     // history, so a rewrite that moved a prefix would move what it counts.
@@ -183,7 +184,7 @@ fn a_turn_reporting_nothing_keeps_the_figure() {
 fn a_turn_with_no_reply_is_refused_not_written() {
     let (_root, store) = store();
     let mut session = store.create().unwrap();
-    let before = std::fs::read(session.path()).unwrap();
+    let before = fs::read(session.path()).unwrap();
 
     // A prompt with nothing answering it. Not the message-less turn, which leaves the
     // last role where it was and so keeps its accounting line — see
@@ -197,7 +198,7 @@ fn a_turn_with_no_reply_is_refused_not_written() {
         .unwrap_err();
 
     assert!(matches!(err, SessionError::IncompleteTurn), "got {err:?}");
-    assert_eq!(std::fs::read(session.path()).unwrap(), before);
+    assert_eq!(fs::read(session.path()).unwrap(), before);
 }
 
 /// The round trip is the assertion: a batch `append` takes and `resume` refuses bricks
@@ -315,7 +316,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
             withheld: 0,
         })
         .unwrap();
-    let before = std::fs::read(session.path()).unwrap();
+    let before = fs::read(session.path()).unwrap();
 
     // Settled and alternating on its own, but joins a stored assistant message to another.
     let joined = session
@@ -347,7 +348,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
         matches!(inside, SessionError::DisorderedTurn),
         "got {inside:?}"
     );
-    assert_eq!(std::fs::read(session.path()).unwrap(), before);
+    assert_eq!(fs::read(session.path()).unwrap(), before);
 
     // The point of refusing before the write: what `append` turned away, `resume` still
     // reads.
@@ -393,13 +394,13 @@ fn a_transcript_opening_on_a_reply_is_refused() {
     let path = session.path().to_owned();
 
     // After the header, so the stored exchange is pushed behind a reply to nothing.
-    let body = std::fs::read_to_string(&path).unwrap();
+    let body = fs::read_to_string(&path).unwrap();
     let mut lines: Vec<&str> = body.lines().collect();
     lines.insert(
         1,
         "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}",
     );
-    std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+    fs::write(&path, lines.join("\n") + "\n").unwrap();
 
     let err = store.resume(&id).unwrap_err();
 
@@ -469,7 +470,7 @@ fn a_future_version_is_refused_not_guessed() {
     let (_root, store) = store();
     let id = store.create().unwrap().id().clone();
     let path = store.root().join(format!("{id}.jsonl"));
-    std::fs::write(
+    fs::write(
         &path,
         format!("{{\"type\":\"header\",\"version\":2,\"id\":\"{id}\",\"created_at_millis\":0}}\n"),
     )
@@ -488,7 +489,7 @@ fn a_transcript_without_a_header_is_refused() {
     let (_root, store) = store();
     let id = store.create().unwrap().id().clone();
     let path = store.root().join(format!("{id}.jsonl"));
-    std::fs::write(
+    fs::write(
         &path,
         "{\"type\":\"message\",\"role\":\"user\",\"content\":[]}\n",
     )
@@ -518,8 +519,8 @@ fn an_unparsable_line_names_the_line_it_is_on() {
 
     // Header, two messages, accounting, then a fifth line that is not a record. Newline-
     // terminated, so it is not the tolerated torn append of `recovery.rs`.
-    let whole = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, format!("{whole}{{\"type\":\"mes\n")).unwrap();
+    let whole = fs::read_to_string(&path).unwrap();
+    fs::write(&path, format!("{whole}{{\"type\":\"mes\n")).unwrap();
 
     let err = store.resume(&id).unwrap_err();
 
@@ -543,9 +544,9 @@ fn a_transcript_ending_on_a_user_turn_is_refused() {
     let id = session.id().clone();
     let path = session.path().to_owned();
 
-    let mut body = std::fs::read_to_string(&path).unwrap();
+    let mut body = fs::read_to_string(&path).unwrap();
     body.push_str("{\"type\":\"message\",\"role\":\"user\",\"content\":[]}\n");
-    std::fs::write(&path, body).unwrap();
+    fs::write(&path, body).unwrap();
 
     let err = store.resume(&id).unwrap_err();
 

@@ -12,12 +12,16 @@
 //! [`ProviderError::Transport`] carries so a failed request still says whether DNS or TLS
 //! was what went wrong.
 
+use std::fmt;
+use std::pin::Pin;
+use std::time::Duration;
+
 /// The event stream every provider client returns: owned, boxed, and fused.
 ///
 /// Boxed because each backend's stream is a different concrete type. `FusedStream`
 /// because the `unfold` under it panics if polled past `None`; `Send` so the turn
 /// built on it can be `tokio::spawn`ed.
-pub type EventStream = std::pin::Pin<
+pub type EventStream = Pin<
     Box<
         dyn futures_util::stream::FusedStream<
                 Item = Result<sandbx_event::AgentEvent, ProviderError>,
@@ -61,7 +65,7 @@ pub enum ProviderError {
     /// The API answered 429.
     RateLimited {
         /// From `Retry-After`, if the API said.
-        retry_after: Option<std::time::Duration>,
+        retry_after: Option<Duration>,
         /// The vendor's human-readable message.
         message: String,
     },
@@ -79,8 +83,8 @@ pub enum ProviderError {
     StreamEndedUnexpectedly,
 }
 
-impl std::fmt::Display for ProviderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidBaseUrl { base_url, reason } => {
                 write!(f, "invalid base URL {base_url:?}: {reason}")

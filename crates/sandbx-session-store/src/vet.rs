@@ -5,6 +5,7 @@
 //! refuses and which only reports stays with the sequence that applies it.
 
 use std::fs::{File, OpenOptions};
+use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
@@ -42,7 +43,7 @@ const NO_FOLLOW: OFlag = OFlag::O_NOFOLLOW;
 ///
 /// By errno, not `ErrorKind::FilesystemLoop`, which is unstable. `ELOOP` from these
 /// opens can only be the leaf, every component above it having been followed.
-pub(crate) fn opening(path: &Path, source: std::io::Error) -> SessionError {
+pub(crate) fn opening(path: &Path, source: io::Error) -> SessionError {
     let path = path.to_owned();
     if source.raw_os_error() == Some(nix::errno::Errno::ELOOP as i32) {
         return SessionError::Symlink { path };

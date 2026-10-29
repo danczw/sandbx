@@ -12,6 +12,7 @@
 //! and no more.
 
 use std::path::PathBuf;
+use std::{fmt, io};
 
 /// Why a session could not be named, read, or written.
 #[derive(Debug)]
@@ -130,12 +131,12 @@ pub enum SessionError {
         /// What was being read or written.
         path: PathBuf,
         /// The underlying failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 }
 
-impl std::fmt::Display for SessionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for SessionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoStateHome => write!(
                 f,

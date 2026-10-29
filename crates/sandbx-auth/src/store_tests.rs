@@ -1,6 +1,9 @@
 use super::{DIR_OWNER_ONLY, OWNER_ONLY, Shared, TABLE, discard, read, store, stored};
 use crate::AuthError;
 use secrecy::{ExposeSecret, SecretString};
+use std::fs;
+use std::fs::Permissions;
+use std::os::unix::fs as unix_fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -8,14 +11,14 @@ use std::path::Path;
 /// [`read`] refuses, so a fixture left at it would test the directory check instead.
 fn write_at(path: &Path, text: &str, mode: u32) {
     let dir = path.parent().unwrap();
-    std::fs::create_dir_all(dir).unwrap();
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(DIR_OWNER_ONLY)).unwrap();
-    std::fs::write(path, text).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+    fs::create_dir_all(dir).unwrap();
+    fs::set_permissions(dir, Permissions::from_mode(DIR_OWNER_ONLY)).unwrap();
+    fs::write(path, text).unwrap();
+    fs::set_permissions(path, Permissions::from_mode(mode)).unwrap();
 }
 
 fn mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    fs::metadata(path).unwrap().permissions().mode() & 0o7777
 }
 
 #[test]
@@ -139,8 +142,8 @@ fn a_rewrite_leaves_the_mode_owner_only() {
 fn store_narrows_a_directory_it_did_not_create() {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("sandbx");
-    std::fs::create_dir_all(&config).unwrap();
-    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o755)).unwrap();
+    fs::create_dir_all(&config).unwrap();
+    fs::set_permissions(&config, Permissions::from_mode(0o755)).unwrap();
 
     store(
         &config.join("credentials.toml"),
@@ -157,11 +160,11 @@ fn a_shared_directory_is_refused_even_at_mode_600() {
     let config = dir.path().join("sandbx");
     let path = config.join("credentials.toml");
     write_at(&path, "[anthropic]\napi_key = \"k\"\n", 0o600);
-    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o757)).unwrap();
+    fs::set_permissions(&config, Permissions::from_mode(0o757)).unwrap();
 
     let refused = matches!(stored(&path), Err(AuthError::DirPermissions { .. }));
     // Restored before the assert, or `TempDir::drop` cannot clean up after a failure.
-    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&config, Permissions::from_mode(0o700)).unwrap();
 
     assert!(
         refused,
@@ -176,20 +179,20 @@ fn a_symlink_is_vetted_where_it_points_not_where_it_sits() {
     let shared = dir.path().join("shared");
     let target = shared.join("credentials.toml");
     write_at(&target, "[anthropic]\napi_key = \"k\"\n", 0o600);
-    std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o757)).unwrap();
+    fs::set_permissions(&shared, Permissions::from_mode(0o757)).unwrap();
 
     let link = dir.path().join("sandbx/credentials.toml");
-    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
-    std::fs::set_permissions(
+    fs::create_dir_all(link.parent().unwrap()).unwrap();
+    fs::set_permissions(
         link.parent().unwrap(),
-        std::fs::Permissions::from_mode(DIR_OWNER_ONLY),
+        Permissions::from_mode(DIR_OWNER_ONLY),
     )
     .unwrap();
-    std::os::unix::fs::symlink(&target, &link).unwrap();
+    unix_fs::symlink(&target, &link).unwrap();
 
     let refused = matches!(stored(&link), Err(AuthError::DirPermissions { .. }));
     // Restored before the assert, or `TempDir::drop` cannot clean up after a failure.
-    std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&shared, Permissions::from_mode(0o700)).unwrap();
 
     assert!(
         refused,

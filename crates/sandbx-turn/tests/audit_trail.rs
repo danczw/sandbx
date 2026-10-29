@@ -11,6 +11,10 @@ use sandbx_event::StopReason;
 use sandbx_prompt::ContentBlock;
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::run_turn;
+use std::io;
+use std::io::Write;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
@@ -19,15 +23,15 @@ use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted}
 /// Cloneable over a shared buffer because the applicable `MakeWriter` impl is the one for
 /// `Fn() -> impl io::Write`, and the test still has to read back what its writers wrote.
 #[derive(Clone, Default)]
-struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+struct Sink(Arc<Mutex<Vec<u8>>>);
 
-impl std::io::Write for Sink {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+impl Write for Sink {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.lock().unwrap().extend_from_slice(buf);
         Ok(buf.len())
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -41,7 +45,7 @@ async fn a_model_issued_call_records_its_access() {
     let missing = root.path().join("nope");
     let ctx = ctx(SandboxPolicy::default().allow_read(vetted(root.path())));
 
-    let listing = |path: &std::path::Path| {
+    let listing = |path: &Path| {
         vec![
             call("ls", serde_json::json!({ "path": path.to_str().unwrap() })),
             stop(StopReason::ToolUse),

@@ -21,6 +21,7 @@
 use std::collections::HashSet;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::{env, io};
 
 use sandbx_core::{AUDIT_TARGET, SandboxPolicy, SandboxedCommand};
 
@@ -53,12 +54,12 @@ fn nonce(id: &str) -> &str {
 
 #[test]
 fn two_processes_never_mint_the_same_spawn_id() {
-    if std::env::var_os(CHILD).is_some() {
+    if env::var_os(CHILD).is_some() {
         return child_run();
     }
 
-    let (mut reader, writer) = std::io::pipe().expect("a pipe for the shared sink");
-    let exe = std::env::current_exe().expect("the test binary should know its own path");
+    let (mut reader, writer) = io::pipe().expect("a pipe for the shared sink");
+    let exe = env::current_exe().expect("the test binary should know its own path");
 
     let mut children: Vec<_> = (0..CHILDREN)
         .map(|_| {

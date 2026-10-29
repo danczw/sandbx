@@ -4,6 +4,7 @@
 //! newtype variants that would not are constructed explicitly anyway.
 
 use std::path::PathBuf;
+use std::{fmt, io};
 
 /// Appended to every [`AuthError`] about a missing credential, so refusals do not diverge.
 const AUTH_ADVICE: &str = "run `sandbx auth login` or export ANTHROPIC_API_KEY";
@@ -55,14 +56,14 @@ pub enum AuthError {
         /// What was being operated on.
         path: PathBuf,
         /// The underlying OS failure.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The rendered file could not be built.
     Encode(toml::ser::Error),
 
     /// The key could not be read from stdin.
-    Stdin(std::io::Error),
+    Stdin(io::Error),
 
     /// `auth login` was asked to read a key from a terminal.
     TtyInput,
@@ -71,8 +72,8 @@ pub enum AuthError {
     BlankKey,
 }
 
-impl std::fmt::Display for AuthError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AuthError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoCredential { path } => write!(
                 f,

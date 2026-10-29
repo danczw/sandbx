@@ -3,9 +3,11 @@
 //! [`crate::key`] owns which source answers; this owns what is on disk, and the ordering
 //! the `0600` guarantee depends on.
 
+use std::fs::{DirBuilder, File, Permissions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::Path;
+use std::{fs, io};
 
 use secrecy::{ExposeSecret, SecretString};
 
@@ -58,9 +60,9 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
         source,
     };
 
-    let mut file = match std::fs::File::open(path) {
+    let mut file = match File::open(path) {
         Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(source) => return Err(io(source)),
     };
 
@@ -76,7 +78,7 @@ fn read(path: &Path, shared: Shared) -> Result<Option<toml::Table>, AuthError> {
 
         // Canonicalised: `path.parent()` is lexical, so a symlinked `credentials.toml`
         // would have the link's directory vetted and the key's never looked at.
-        let resolved = std::fs::canonicalize(path).map_err(io)?;
+        let resolved = fs::canonicalize(path).map_err(io)?;
 
         if let Some(dir) = resolved.parent() {
             let dir_mode = dir_mode_of(dir)?;
@@ -107,7 +109,7 @@ fn dir_mode_of(dir: &Path) -> Result<u32, AuthError> {
         source,
     };
 
-    Ok(std::fs::File::open(dir)
+    Ok(File::open(dir)
         .map_err(io)?
         .metadata()
         .map_err(io)?
@@ -171,7 +173,7 @@ pub(crate) fn discard(path: &Path) -> Result<bool, AuthError> {
     }
 
     if table.is_empty() {
-        std::fs::remove_file(path).map_err(|source| AuthError::Io {
+        fs::remove_file(path).map_err(|source| AuthError::Io {
             path: path.to_path_buf(),
             source,
         })?;
@@ -196,7 +198,7 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
         source,
     };
 
-    std::fs::DirBuilder::new()
+    DirBuilder::new()
         .recursive(true)
         .mode(DIR_OWNER_ONLY)
         .create(dir)
@@ -204,9 +206,9 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
 
     // A separate call, through one descriptor reused for the fsync below: `DirBuilder::mode`
     // is masked by the umask, and a no-op entirely when the directory already exists.
-    let handle = std::fs::File::open(dir).map_err(dir_io)?;
+    let handle = File::open(dir).map_err(dir_io)?;
     handle
-        .set_permissions(std::fs::Permissions::from_mode(DIR_OWNER_ONLY))
+        .set_permissions(Permissions::from_mode(DIR_OWNER_ONLY))
         .map_err(dir_io)?;
 
     let io = |source| AuthError::Io {
@@ -218,7 +220,7 @@ fn write(path: &Path, table: &toml::Table) -> Result<(), AuthError> {
     // `NamedTempFile` is 0600 on unix, but this file's guarantee is not a dependency's to
     // make.
     temp.as_file()
-        .set_permissions(std::fs::Permissions::from_mode(OWNER_ONLY))
+        .set_permissions(Permissions::from_mode(OWNER_ONLY))
         .map_err(io)?;
     temp.write_all(text.as_bytes()).map_err(io)?;
     // Before the rename, not after: ext4 journals the rename ahead of the data, so a crash

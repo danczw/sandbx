@@ -112,7 +112,9 @@ use super::{
 use crate::PolicyError;
 use sandbx_core::{SandboxPolicy, VettedPath};
 use std::ffi::OsString;
+use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
+use std::{env, fs, io};
 
 /// What every run may already execute, which `policy()` passes from the live policy.
 fn granted() -> Vec<VettedPath> {
@@ -183,15 +185,15 @@ fn owned_under(home: &str) -> Vec<OwnedPath> {
 /// is what a flag actually gets compared in.
 pub(crate) fn reaches(granted: impl AsRef<Path>, owned: &[OwnedPath]) -> bool {
     let granted = resolved(
-        &absolute(granted.as_ref(), &std::env::current_dir).expect("a readable working directory"),
+        &absolute(granted.as_ref(), &env::current_dir).expect("a readable working directory"),
     );
 
     reaches_owned(&granted, owned).is_some()
 }
 
 /// A working directory nothing can read, for the one spelling that needs one.
-fn no_cwd() -> impl Fn() -> std::io::Result<PathBuf> {
-    || Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+fn no_cwd() -> impl Fn() -> io::Result<PathBuf> {
+    || Err(io::Error::from(io::ErrorKind::NotFound))
 }
 
 #[test]
@@ -427,8 +429,8 @@ fn a_symlinked_home_names_both_forms() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let real = directory.path().join("var-home");
     let link = directory.path().join("home");
-    std::fs::create_dir(&real).expect("a home to link to");
-    std::os::unix::fs::symlink(&real, &link).expect("a symlinked home");
+    fs::create_dir(&real).expect("a home to link to");
+    unix_fs::symlink(&real, &link).expect("a symlinked home");
 
     let named = named_homes(Some(&link));
 
@@ -629,7 +631,7 @@ fn a_relative_grant_is_resolved_before_comparing() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let home = directory.path().canonicalize().expect("a resolved home");
     let config = home.join(".config").join("sandbx");
-    std::fs::create_dir_all(&config).expect("a config directory to stand in");
+    fs::create_dir_all(&config).expect("a config directory to stand in");
 
     let owned = owned_paths(&env(&[("HOME", home.to_str().expect("a UTF-8 home"))]));
     let relative = config.join("..").join("sandbx");
@@ -645,7 +647,7 @@ fn a_relative_grant_is_resolved_before_comparing() {
 /// it, so joining the cwd is the only thing that can.
 #[test]
 fn a_relative_grant_resolves_before_it_exists() {
-    let cwd = std::env::current_dir().expect("a test runs from a real directory");
+    let cwd = env::current_dir().expect("a test runs from a real directory");
     let owned = vec![OwnedPath {
         path: cwd.join("nothing-stored-yet/sandbx/sessions"),
         holds: "the session transcripts a resumed run replays to the model",
@@ -696,8 +698,8 @@ fn a_symlinked_home_still_refuses_an_owned_root() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let real = directory.path().join("var-home");
     let link = directory.path().join("home");
-    std::fs::create_dir_all(real.join(".config").join("sandbx")).expect("a real home");
-    std::os::unix::fs::symlink(&real, &link).expect("a symlinked home");
+    fs::create_dir_all(real.join(".config").join("sandbx")).expect("a real home");
+    unix_fs::symlink(&real, &link).expect("a symlinked home");
 
     // Owned under the link, granted through the real path: two strings, one directory.
     let owned = owned_paths(&env(&[("HOME", link.to_str().expect("a UTF-8 home"))]));
