@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    DETAIL_LIMIT, Degradation, RECORD_LIMIT, Report, SEPARATOR, decode, encode, encode_refusal,
+};
 
 /// Only the degradations in `channel`, for a test that is about those alone.
 fn degraded(channel: &str) -> Vec<(Degradation, &str)> {

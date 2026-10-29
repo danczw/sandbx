@@ -1,8 +1,8 @@
 //! `clone`'s namespace flags and `clone3`, the routes to a namespace that are not `unshare`.
 
-use super::super::filter::*;
+use super::super::filter::{clone3_filter, compiled_filter};
 use super::super::rules::NAMESPACE_CLONE_FLAGS;
-use super::bpf::*;
+use super::bpf::{ALLOW, ENOSYS, EPERM, verdict, verdict_with_args};
 use crate::SandboxPolicy;
 
 /// The verdict for `clone(flags, …)`.

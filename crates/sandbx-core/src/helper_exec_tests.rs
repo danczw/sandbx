@@ -1,4 +1,4 @@
-use super::*;
+use super::exit_code;
 use std::process::ExitStatus;
 
 /// A `wait(2)` status as the kernel encodes one for a process that exited with `code`.

@@ -1,4 +1,4 @@
-use super::*;
+use super::record_reports;
 use std::sync::{Arc, Mutex};
 use std::{fmt, io};
 

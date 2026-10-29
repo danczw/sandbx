@@ -1,8 +1,8 @@
 //! The architecture gates: a foreign ABI, and on x86_64 the x32 one that shares this
 //! architecture's audit value.
 
-use super::super::filter::*;
-use super::bpf::*;
+use super::super::filter::{X32_SYSCALL_BIT, compiled_filter, x32_gate};
+use super::bpf::{ALLOW, AUDIT_ARCH, JEQ_K, KILL, verdict, verdict_from_arch};
 use crate::SandboxPolicy;
 
 /// x32 syscalls reach the kernel with [`X32_SYSCALL_BIT`] set in `nr`, under the same

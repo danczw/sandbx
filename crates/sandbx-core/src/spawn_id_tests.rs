@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::thread;
 
-use super::*;
+use super::SpawnId;
 
 /// How many threads and mints each the concurrency case uses.
 const THREADS: usize = 8;
