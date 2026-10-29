@@ -16,8 +16,10 @@ use ratatui::buffer::Cell;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::{Position, Rect, Size};
-pub use sandbx_tui_transcript::Transcript;
 use sandbx_tui_transcript::{Hint, draw};
+
+/// Re-exported, not left to the caller: every entry point here takes or returns one (#352).
+pub use sandbx_tui_transcript::Transcript;
 
 /// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
 pub struct Screen {
