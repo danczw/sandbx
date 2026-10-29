@@ -58,7 +58,7 @@ there are:
   half below: `serde` is not among that crate's dependencies, so the orphan rule
   leaves it the only place such an impl could be written at all. What was a
   discipline inside one crate is now a thing the compiler refuses.
-- `anthropic/body.rs` owns the whole body: the key names, the omissions (`system`
+- `anthropic_body.rs` owns the whole body: the key names, the omissions (`system`
   absent rather than null, `tools` dropped when empty, `tool_choice` only alongside
   them), and `stream: true`. Every one of its seven `Serialize` impls is on a local
   wrapper, which the orphan rule now requires rather than merely permitting — so an
@@ -67,7 +67,7 @@ there are:
   token is the narrower of the two guarantees now, and the one that would survive the
   types moving back.
 - `StopReason` is a neutral enum with `Other(String)`; the string table is a
-  free `stop_reason` in `anthropic/wire/`. Since #365 the two are in different
+  free `stop_reason` in `anthropic::wire`. Since #365 the two are in different
   crates — the enum is `sandbx-event`'s, the table stayed — which states the seam
   rather than weakening it: the only crate that can turn a wire string into a
   `StopReason` is the one that holds no public way to do it. `sandbx-turn` names

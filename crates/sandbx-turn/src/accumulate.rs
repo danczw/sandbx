@@ -23,7 +23,7 @@ pub(super) struct Round {
 /// The counts are last-one-wins rather than summed: Anthropic restates them cumulatively on
 /// every `message_delta`, so adding them up would multiply the figure. Depends on `Usage`
 /// arriving before `Stop`, since the `Stop` arm returns and anything behind it is never
-/// seen. `sandbx-anthropic`'s `anthropic/wire/tests/usage.rs` pins that order; the
+/// seen. `sandbx-anthropic`'s `anthropic_wire_tests_usage.rs` pins that order; the
 /// failure would be silent, the counts always `None` and compaction never firing.
 pub(super) async fn accumulate<O>(
     stream: &mut EventStream,

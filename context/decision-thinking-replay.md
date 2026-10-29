@@ -74,7 +74,7 @@ is the last edge before the file, and cheap to hold.
 
 `Prompt::thinking` is `Option<Thinking>` with one variant, `Visible`, for
 `ToolChoice`'s reason: an absent field already means the provider's default.
-`anthropic/body.rs` maps `Some(Visible)` to
+`anthropic_body.rs` maps `Some(Visible)` to
 `{"type": "adaptive", "display": "summarized"}` and omits the field otherwise.
 
 Two limits are the operator's to know, and the `--show-thinking` flag's doc says
