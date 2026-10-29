@@ -215,24 +215,16 @@ fn every_prose_copy_of_the_floor_is_current() {
     let kernel_only: &[&str] = &[BASELINE_KERNEL];
 
     for (name, text, wanted) in [
-        (
-            "SECURITY.md",
-            include_str!("../../../../../../SECURITY.md"),
-            both,
-        ),
-        (
-            "README.md",
-            include_str!("../../../../../../README.md"),
-            kernel_only,
-        ),
+        ("SECURITY.md", include_str!("../../../SECURITY.md"), both),
+        ("README.md", include_str!("../../../README.md"), kernel_only),
         (
             ".github/workflows/ci.yml",
-            include_str!("../../../../../../.github/workflows/ci.yml"),
+            include_str!("../../../.github/workflows/ci.yml"),
             both,
         ),
         (
             "sandbx-core/Cargo.toml",
-            include_str!("../../../../Cargo.toml"),
+            include_str!("../Cargo.toml"),
             both,
         ),
         (
@@ -241,26 +233,26 @@ fn every_prose_copy_of_the_floor_is_current() {
             // enforce — harmless while `publish = false`, and the reason a packaged
             // `sandbx-core` would not build.
             "sandbx-helper/tests/enforcement.rs",
-            include_str!("../../../../../sandbx-helper/tests/enforcement.rs"),
+            include_str!("../../sandbx-helper/tests/enforcement.rs"),
             both,
         ),
         // `sandbx-helper`'s manifest states the floor too, its `sandbox-integration`
         // forwarding to the feature above (#347).
         (
             "sandbx-helper/Cargo.toml",
-            include_str!("../../../../../sandbx-helper/Cargo.toml"),
+            include_str!("../../sandbx-helper/Cargo.toml"),
             both,
         ),
         // The only two of 24 `context/` files stating the floor: a file that never names it
         // cannot drift from it, and each one added is another way for a trim to break this build.
         (
             "context/guide-sandboxing.md",
-            include_str!("../../../../../../context/guide-sandboxing.md"),
+            include_str!("../../../context/guide-sandboxing.md"),
             both,
         ),
         (
             "context/decision-port-allowlist.md",
-            include_str!("../../../../../../context/decision-port-allowlist.md"),
+            include_str!("../../../context/decision-port-allowlist.md"),
             variant_form,
         ),
     ] {
