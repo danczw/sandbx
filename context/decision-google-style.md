@@ -35,20 +35,6 @@ Read the allowance and you will conclude the crate may be split as soon as someo
 finds a tidier boundary. Read this and you will not — the boundary *is* the
 visibility, and there is no tidier one.
 
-## `use super::*` in a test module that moved to a file
-
-The guide permits `use super::*` only in an *inline* module, and inline is what it
-assumes elsewhere too: its leaf-module rule names `mod test` as a submodule a leaf
-may have, so a file holding code and its tests breaks nothing. Every test module
-here is a sibling file instead — `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`
-— so on a literal reading each one owes an explicit import list.
-
-A test module in a file is the inline module with the braces replaced by a path
-attribute; nothing about what it may reach changed. Naming every private item it
-touches is churn that grows with the file and tells a reader nothing the `#[path]`
-line did not. The exception is what the flat layout costs, and it is cheaper than the
-alternative — keeping tests inline in order to stay literal.
-
 ## `catch_unwind` in the TUI: a deviation, not yet an exception
 
 `crates/sandbx-screen/src/lib.rs:245` calls `catch_unwind`. The guide allows it as
