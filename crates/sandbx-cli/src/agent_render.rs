@@ -5,6 +5,7 @@
 //! policies or sessions.
 
 use std::io::Write;
+use std::{io, mem};
 
 use sandbx_event::AgentEvent;
 use sandbx_text::invisible;
@@ -68,7 +69,7 @@ pub(super) struct Render<W, E> {
     renders: bool,
 
     /// The first write that failed, kept because `observe` has no way to end the turn.
-    failed: Option<std::io::Error>,
+    failed: Option<io::Error>,
 }
 
 impl<W: Write, E: Write> Render<W, E> {
@@ -116,7 +117,7 @@ impl<W: Write, E: Write> Render<W, E> {
 
     /// Terminate a part-written line of reasoning, so nothing continues it.
     fn end_thinking_line(&mut self) {
-        if std::mem::take(&mut self.thinking_mid_line) {
+        if mem::take(&mut self.thinking_mid_line) {
             self.put(b"\n");
         }
     }
@@ -147,7 +148,7 @@ impl<W: Write, E: Write> Render<W, E> {
                 if !delta.is_empty() {
                     self.end_thinking_line();
                 }
-                if !delta.is_empty() && std::mem::take(&mut self.separating) {
+                if !delta.is_empty() && mem::take(&mut self.separating) {
                     // Two newlines from mid-line, one from a line already terminated.
                     self.write(if self.mid_line { b"\n\n" } else { b"\n" });
                 }

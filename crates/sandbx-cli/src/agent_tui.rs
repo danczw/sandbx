@@ -48,7 +48,7 @@ impl Tui {
 
         // Before the policy: neither refusal needs one, and a run that cannot be drawn
         // must not read a credential on the way to finding that out.
-        self.drawable(std::io::stdout().is_terminal())?;
+        self.drawable(io::stdout().is_terminal())?;
 
         let approved = gate::approved_tools(self.run.allow_tool.as_deref()).join(", ");
         // On stderr as well as on the screen: the screen is gone the moment the process

@@ -1,4 +1,10 @@
-use super::*;
+use super::super::prompt::Operator;
+use super::{
+    ArgvGate, SUBJECT_CAP, approved_tools, approves, asks_about_anything, printable, report,
+    stripped, tool_name,
+};
+use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
+use sandbx_tools::{BuiltinTool, ToolError};
 
 use clap::Parser;
 

@@ -1,6 +1,7 @@
 //! What stops `sandbx hash`.
 
 use std::path::PathBuf;
+use std::{fmt, io};
 
 /// Why `sandbx hash` printed no digest.
 ///
@@ -9,11 +10,11 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub struct HashError {
     pub(crate) path: PathBuf,
-    pub(crate) source: std::io::Error,
+    pub(crate) source: io::Error,
 }
 
-impl std::fmt::Display for HashError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for HashError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "could not hash {}: {}", self.path.display(), self.source)
     }
 }

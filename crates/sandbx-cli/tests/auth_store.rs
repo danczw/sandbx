@@ -7,6 +7,8 @@
 // workspace ban exists to stop code executing around the sandbox.
 #![allow(clippy::disallowed_methods)]
 
+use std::fs;
+use std::fs::Permissions;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -70,7 +72,7 @@ fn credentials(config: &Path) -> PathBuf {
 }
 
 fn mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path)
+    fs::metadata(path)
         .unwrap_or_else(|error| panic!("{} should exist: {error}", path.display()))
         .permissions()
         .mode()
@@ -182,7 +184,7 @@ fn a_second_login_replaces_the_key_and_keeps_the_mode() {
 
     let path = credentials(config.path());
     assert_eq!(mode_of(&path), 0o600);
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
     assert!(text.contains("second") && !text.contains("first"), "{text}");
 }
 
@@ -193,7 +195,7 @@ fn a_group_readable_file_is_refused_with_the_fix() {
     auth(config.path(), "login", Some("sk-ant-test"));
 
     let path = credentials(config.path());
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    fs::set_permissions(&path, Permissions::from_mode(0o640)).unwrap();
 
     let run = auth(config.path(), "status", None);
 
@@ -212,10 +214,10 @@ fn a_refusal_and_an_absent_key_exit_differently() {
     auth(config.path(), "login", Some("sk-ant-test"));
 
     let path = credentials(config.path());
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    fs::set_permissions(&path, Permissions::from_mode(0o640)).unwrap();
     let refused = auth(config.path(), "status", None);
 
-    std::fs::remove_file(&path).unwrap();
+    fs::remove_file(&path).unwrap();
     let absent = auth(config.path(), "status", None);
 
     assert_eq!(absent.code, Some(1), "{}", absent.stdout);
@@ -229,7 +231,7 @@ fn logout_removes_a_key_from_a_file_status_would_refuse() {
     auth(config.path(), "login", Some("sk-ant-test"));
 
     let path = credentials(config.path());
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
 
     let run = auth(config.path(), "logout", None);
 
@@ -244,9 +246,9 @@ fn a_credential_in_a_shared_directory_is_refused() {
     auth(config.path(), "login", Some("sk-ant-test"));
 
     let dir = credentials(config.path()).parent().unwrap().to_path_buf();
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o757)).unwrap();
+    fs::set_permissions(&dir, Permissions::from_mode(0o757)).unwrap();
     let run = auth(config.path(), "status", None);
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&dir, Permissions::from_mode(0o700)).unwrap();
 
     assert_eq!(run.code, Some(2), "{}{}", run.stdout, run.stderr);
     assert!(
@@ -261,14 +263,10 @@ fn a_credential_in_a_shared_directory_is_refused() {
 fn a_malformed_file_is_reported_without_quoting_the_key() {
     let config = tempfile::tempdir().unwrap();
     let path = credentials(config.path());
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::set_permissions(
-        path.parent().unwrap(),
-        std::fs::Permissions::from_mode(0o700),
-    )
-    .unwrap();
-    std::fs::write(&path, "[anthropic]\napi_key = sk-ant-secret\n").unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::set_permissions(path.parent().unwrap(), Permissions::from_mode(0o700)).unwrap();
+    fs::write(&path, "[anthropic]\napi_key = sk-ant-secret\n").unwrap();
+    fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
 
     let run = auth(config.path(), "status", None);
 
@@ -295,13 +293,13 @@ fn login_refuses_an_empty_stdin() {
 fn login_keeps_a_table_it_did_not_write() {
     let config = tempfile::tempdir().unwrap();
     let path = credentials(config.path());
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, "[other]\nkey = \"keep\"\n").unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, "[other]\nkey = \"keep\"\n").unwrap();
+    fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
 
     auth(config.path(), "login", Some("sk-ant-test"));
 
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
     assert!(
         text.contains("[other]"),
         "login dropped a table it does not know: {text}"

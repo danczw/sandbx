@@ -1,4 +1,10 @@
-use super::*;
+use super::{CLOSED, Consent, Operator, RESET, Terminal, UNCLEARED, account};
+use sandbx_approval::{ApprovalDecision, ToolCall};
+use sandbx_tools::BuiltinTool;
+use std::fs::File;
+use std::io::Write;
+use std::os::fd::AsFd;
+use std::{io, thread};
 
 use std::io::{Cursor, Read};
 use std::sync::{Arc, Mutex};
@@ -20,12 +26,12 @@ impl Sink {
 }
 
 impl Write for Sink {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.lock().unwrap().extend_from_slice(buf);
         Ok(buf.len())
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -194,11 +200,11 @@ fn a_question_that_could_not_be_written_aborts() {
     struct Closed;
 
     impl Write for Closed {
-        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(io::ErrorKind::BrokenPipe))
         }
 
-        fn flush(&mut self) -> std::io::Result<()> {
+        fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
     }
@@ -254,7 +260,7 @@ fn an_escape_sequence_in_a_path_cannot_rewrite_the_question() {
 ///
 /// Not a sleep: a pty queues a written line from a workqueue, and a drain that ran before
 /// it was queued would leave the test asserting nothing.
-fn wait_readable(fd: &impl std::os::fd::AsFd) {
+fn wait_readable(fd: &impl AsFd) {
     use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 
     let mut fds = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
@@ -294,7 +300,7 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
     let input = serde_json::json!({ "path": "/work/out.rs" });
     let asking = &mut terminal;
 
-    let decision = std::thread::scope(|scope| {
+    let decision = thread::scope(|scope| {
         let asked = scope.spawn(move || {
             asking.ask(ToolCall {
                 tool: BuiltinTool::Write,

@@ -4,6 +4,8 @@
 //! behind that, live in libraries — `sandbx_cli` and `sandbx-grants`.
 
 use std::io::Write;
+use std::process::ExitCode;
+use std::{env, fmt, io};
 
 use clap::Parser;
 use clap::error::ErrorKind;
@@ -17,10 +19,10 @@ use sandbx_cli::{Cli, Command};
 /// cut short" without grepping stderr (#265).
 const USAGE: u8 = 64;
 
-fn main() -> std::process::ExitCode {
+fn main() -> ExitCode {
     // Must precede argument parsing: `SandboxedCommand` re-execs this binary as its
     // helper, which restricts itself and runs the target command instead of falling through.
-    sandbx_core::with_helper_dispatch(std::env::args_os(), || {
+    sandbx_core::with_helper_dispatch(env::args_os(), || {
         // Inside the closure, not above: in helper mode this process shares the sandboxed
         // command's stderr, which is forwarded verbatim, so a subscriber above would leak into
         // it. Helper mode has none; its hardening reports degradations over a pipe instead.
@@ -36,7 +38,7 @@ fn main() -> std::process::ExitCode {
                 // Ignored: clap routes help and version to stdout and a refusal to
                 // stderr, and a caller that closed the one it asked for already knows.
                 let _ = error.print();
-                return std::process::ExitCode::from(usage_code(error.kind()));
+                return ExitCode::from(usage_code(error.kind()));
             }
         };
         let failure = failure_code(&command);
@@ -45,7 +47,7 @@ fn main() -> std::process::ExitCode {
         // parsing so a refusal exits with the subcommand's code, and nothing has spawned yet.
         if let Err(error) = sandbx_core::conceal_process_state() {
             eprintln!("sandbx: {error}");
-            return std::process::ExitCode::from(failure);
+            return ExitCode::from(failure);
         }
 
         match command {
@@ -95,9 +97,9 @@ fn failure_code(command: &Command) -> u8 {
 ///
 /// `failure` is the code an `Err` exits with, which a subcommand reserving 1 for an answer
 /// of its own has to move off.
-fn report(result: Result<i32, impl std::fmt::Display>, failure: u8) -> std::process::ExitCode {
+fn report(result: Result<i32, impl fmt::Display>, failure: u8) -> ExitCode {
     match result {
-        Ok(code) => std::process::ExitCode::from(u8::try_from(code).unwrap_or(failure)),
+        Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(failure)),
         Err(error) => {
             // `writeln!` and not `eprintln!`: under `tui` a hung-up screen leaves stderr
             // the same dead descriptor, where the macro's failed write panics and the
@@ -105,8 +107,8 @@ fn report(result: Result<i32, impl std::fmt::Display>, failure: u8) -> std::proc
             // `eprintln!`s above keep theirs — they run before any screen exists, so
             // stderr there is the one the operator started the process with, not one
             // sandbx took and lost.
-            let _ = writeln!(std::io::stderr(), "sandbx: {error}");
-            std::process::ExitCode::from(failure)
+            let _ = writeln!(io::stderr(), "sandbx: {error}");
+            ExitCode::from(failure)
         }
     }
 }

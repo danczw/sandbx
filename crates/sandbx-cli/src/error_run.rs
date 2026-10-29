@@ -1,6 +1,7 @@
 //! What stops `sandbox-run`.
 
 use sandbx_core::SandboxError;
+use std::fmt;
 
 use sandbx_grants::PolicyError;
 
@@ -29,8 +30,8 @@ impl From<SandboxError> for SandboxRunError {
     }
 }
 
-impl std::fmt::Display for SandboxRunError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for SandboxRunError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Policy(error) => write!(f, "{error}"),
             Self::Sandbox(error) => write!(f, "{error}"),

@@ -5,6 +5,7 @@
 //! why once per run is still the default.
 
 use std::fs::File;
+use std::io;
 use std::io::{BufRead, BufReader, ErrorKind, IsTerminal, Write};
 
 use sandbx_approval::{ApprovalDecision, ToolCall};
@@ -167,7 +168,7 @@ pub(super) fn account(renders: bool, line: &str) -> String {
 /// A failed write is dropped: this is already the last sink the line has, and raising would
 /// cost the turn the exit 3 it still owes its caller (#218).
 pub(super) fn to_stderr(line: &str) {
-    let mut err = std::io::stderr();
+    let mut err = io::stderr();
     let _ = err.write_all(account(err.is_terminal(), line).as_bytes());
 }
 
@@ -191,7 +192,7 @@ pub(super) trait Operator {
 ///
 /// `F` is where an account goes when the terminal refuses it: stderr in a run, and a field
 /// rather than a call so a test can read back what reached it (#223).
-pub(super) struct Terminal<F = std::io::Stderr> {
+pub(super) struct Terminal<F = io::Stderr> {
     input: BufReader<File>,
     /// The same device duplicated: the question is written where it is answered.
     out: File,
@@ -201,7 +202,7 @@ pub(super) struct Terminal<F = std::io::Stderr> {
     renders: bool,
 }
 
-impl Terminal<std::io::Stderr> {
+impl Terminal<io::Stderr> {
     /// Open the controlling terminal.
     ///
     /// # Errors
@@ -209,15 +210,15 @@ impl Terminal<std::io::Stderr> {
     /// Fails with `ENXIO` when the process has no controlling terminal — under `setsid`, or
     /// in a job runner. [`APPROVE_CALL`] refuses the run over it rather than quietly
     /// serving the weaker argv answer.
-    pub(super) fn open() -> std::io::Result<Self> {
+    pub(super) fn open() -> io::Result<Self> {
         let tty = File::options().read(true).write(true).open(TTY)?;
 
         Ok(Self {
             input: BufReader::new(tty.try_clone()?),
             out: tty,
             consent: Consent::new(),
-            fallback: std::io::stderr(),
-            renders: std::io::stderr().is_terminal(),
+            fallback: io::stderr(),
+            renders: io::stderr().is_terminal(),
         })
     }
 
@@ -226,13 +227,13 @@ impl Terminal<std::io::Stderr> {
     /// Needed because what the drain clears is the kernel's own input queue, which no
     /// in-memory reader has. [`Terminal::open`] is the only route a run takes.
     #[cfg(test)]
-    pub(super) fn on(device: File) -> std::io::Result<Self> {
+    pub(super) fn on(device: File) -> io::Result<Self> {
         Ok(Self {
             input: BufReader::new(device.try_clone()?),
             out: device,
             consent: Consent::new(),
-            fallback: std::io::stderr(),
-            renders: std::io::stderr().is_terminal(),
+            fallback: io::stderr(),
+            renders: io::stderr().is_terminal(),
         })
     }
 }
