@@ -249,17 +249,17 @@ fn named_homes(home: Option<&Path>) -> Homes {
 /// `path` is absolute: both derivations drop a `$HOME` or `XDG_*` that is not, so this side
 /// of a comparison never needs the working directory.
 #[derive(Debug)]
-pub(super) struct OwnedPath {
-    pub(super) path: PathBuf,
+pub(crate) struct OwnedPath {
+    pub(crate) path: PathBuf,
     /// `&'static str`, so no shape of this can carry a key into a message.
-    pub(super) holds: &'static str,
+    pub(crate) holds: &'static str,
 }
 
 /// The paths sandbx itself owns, below whichever config and state homes are in play.
 ///
 /// A root that cannot be derived is one this host has nowhere to keep, so there is nothing
 /// to reach; `agent-run --session` and `auth login` refuse it on their own account.
-pub(super) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
+pub(crate) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<OwnedPath> {
     let mut owned = Vec::new();
 
     if let Ok(path) = sandbx_session_paths::sessions_directory(lookup) {
@@ -285,7 +285,7 @@ pub(super) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<Own
 /// cannot stand in — its walk bottoms out at the empty path, leaving a relative grant relative.
 /// A cwd that cannot be read refuses rather than standing in as nothing, which would match no
 /// owned path (#203).
-pub(super) fn absolute(
+pub(crate) fn absolute(
     granted: &Path,
     cwd: &impl Fn() -> std::io::Result<PathBuf>,
 ) -> Result<PathBuf, PolicyError> {
@@ -308,10 +308,10 @@ pub(super) fn absolute(
 /// all (#205). Not [`VettedPath`] alone, which canonicalizes and so cannot name a path whose
 /// leaf does not exist yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ResolvedPath(PathBuf);
+pub(crate) struct ResolvedPath(PathBuf);
 
 impl ResolvedPath {
-    pub(super) fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 }
@@ -328,7 +328,7 @@ impl From<&VettedPath> for ResolvedPath {
 /// `canonicalize` needs the whole path to exist, and a credential nobody has stored yet
 /// does not — so comparing canonical forms alone would miss `/home -> /var/home` (Fedora
 /// Silverblue) and let the unresolved spelling through.
-pub(super) fn resolved(path: &Path) -> ResolvedPath {
+pub(crate) fn resolved(path: &Path) -> ResolvedPath {
     for (depth, ancestor) in path.ancestors().enumerate() {
         if let Ok(base) = ancestor.canonicalize() {
             return ResolvedPath(
@@ -352,7 +352,7 @@ pub(super) fn resolved(path: &Path) -> ResolvedPath {
 /// Both spellings, overlapping on purpose: `granted` is the form the policy carries and is
 /// what matches a flag spelled relative or through a symlink, `typed` what still matches where
 /// an entry cannot be canonicalized at all. The names come from `sandbx_core::bound_by_resolver`.
-pub(super) fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
+pub(crate) fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
     sandbx_core::bound_by_resolver(typed) || sandbx_core::bound_by_resolver(granted)
 }
 
@@ -361,7 +361,7 @@ pub(super) fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
 /// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
 /// one naming something inside it both reach it. Both callers pass what they grant: vetting
 /// one spelling and granting another is the window this closes.
-pub(super) fn reaches_owned<'a>(
+pub(crate) fn reaches_owned<'a>(
     granted: &ResolvedPath,
     owned: &'a [OwnedPath],
 ) -> Option<&'a OwnedPath> {
@@ -375,7 +375,7 @@ pub(super) fn reaches_owned<'a>(
 }
 
 /// [`vetted_root`] over this process's own state, and the working directory it judged, vetted.
-pub(super) fn current_root(
+pub(crate) fn current_root(
     granted: &[VettedPath],
     owned: &[OwnedPath],
 ) -> Result<VettedPath, PolicyError> {
@@ -402,4 +402,4 @@ pub(super) fn current_root(
 
 #[cfg(test)]
 #[path = "root_tests.rs"]
-pub(super) mod tests;
+pub(crate) mod tests;

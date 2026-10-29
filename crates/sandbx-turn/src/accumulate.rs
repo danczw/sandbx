@@ -12,10 +12,10 @@ use sandbx_provider::EventStream;
 use crate::TurnError;
 
 /// What one round of streaming came to.
-pub(super) struct Round {
-    pub(super) blocks: Vec<ContentBlock>,
-    pub(super) usage: Option<PromptUsage>,
-    pub(super) reason: StopReason,
+pub(crate) struct Round {
+    pub(crate) blocks: Vec<ContentBlock>,
+    pub(crate) usage: Option<PromptUsage>,
+    pub(crate) reason: StopReason,
 }
 
 /// Drain one stream into the content blocks it describes, keeping its token counts.
@@ -25,7 +25,7 @@ pub(super) struct Round {
 /// arriving before `Stop`, since the `Stop` arm returns and anything behind it is never
 /// seen. `sandbx-anthropic`'s `anthropic_wire_tests_usage.rs` pins that order; the
 /// failure would be silent, the counts always `None` and compaction never firing.
-pub(super) async fn accumulate<O>(
+pub(crate) async fn accumulate<O>(
     stream: &mut EventStream,
     observe: &mut O,
 ) -> Result<Round, TurnError>

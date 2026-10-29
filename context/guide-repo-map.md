@@ -791,7 +791,7 @@ src/lib.rs      re-exports Grants and PolicyError — and holds what a no-flag r
                 rather than narrowing
    root_tests.rs
                 the mutation check, in its //! — each mutation run rather than
-                reasoned about; pub(super) so flags_tests.rs reaches env and
+                reasoned about; pub(crate) so flags_tests.rs reaches env and
                 reaches
    error.rs     PolicyError, and the one ADVICE every derived-default refusal
                 appends

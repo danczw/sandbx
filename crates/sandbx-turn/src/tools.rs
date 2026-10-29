@@ -17,7 +17,7 @@ use crate::TurnError;
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
 /// Every block reports to [`CallGate::settled`], including the two refusals above the
 /// gate, which the gate's own verdict cannot account for.
-pub(super) async fn answer_calls<G>(
+pub(crate) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
     offered: &[BuiltinTool],
@@ -119,12 +119,12 @@ where
 }
 
 /// One round's answers, and whether the gate ended the turn giving them.
-pub(super) struct Answers {
+pub(crate) struct Answers {
     /// One `tool_result` per `tool_use` block, in the order the model asked.
-    pub(super) results: Vec<ContentBlock>,
+    pub(crate) results: Vec<ContentBlock>,
 
     /// Whether an [`ApprovalDecision::Abort`] stopped the round, so no later round runs.
-    pub(super) aborted: bool,
+    pub(crate) aborted: bool,
 }
 
 fn refused(id: &str, content: String) -> ContentBlock {
@@ -139,7 +139,7 @@ fn refused(id: &str, content: String) -> ContentBlock {
 ///
 /// No table of its own: all three fields come from one `SPEC` per tool in `sandbx-tools`,
 /// beside the behaviour they describe.
-pub(super) fn definition(tool: BuiltinTool) -> ToolDefinition {
+pub(crate) fn definition(tool: BuiltinTool) -> ToolDefinition {
     ToolDefinition {
         name: tool.name().to_string(),
         description: tool.description().to_string(),
