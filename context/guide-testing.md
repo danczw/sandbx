@@ -68,9 +68,9 @@ Two things make a negative test real, and the stronger one is executable:
   cannot tell a denial from a helper that never started.
 
 Hard-code the expected value rather than reading it off the thing under test.
-`tools/bash.rs`'s `NOT_RETRYABLE` and `guide-tools.md`'s risk-level test both say
-why: read off the source, the assertion only proves it agrees with itself, and a
-reclassification passes.
+`tools_bash.rs`'s `NOT_RETRYABLE` and `guide-tools.md`'s risk-level test both
+say why: read off the source, the assertion only proves it agrees with itself,
+and a reclassification passes.
 
 A set of negative cases also needs one positive per mechanism, or the mechanism's
 total absence is indistinguishable from it working. `enforcement.rs` grants
