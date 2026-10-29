@@ -40,8 +40,11 @@ name says nothing about what it holds. A `lib.rs` takes the crate's own name —
 `main_tests.rs`. `sandbx-cli` is why the two differ: it has both roots, so
 naming either after the crate would leave the other with no name to take.
 
-`use super::*` in that sibling module is a recorded departure from the guide, not an
-oversight; `decision-google-style.md` says why.
+The sibling imports what it uses by name. `use super::*` was a recorded
+departure until phase 5 of #328 replaced all 49 of them, so there is no glob
+import left in the workspace and nothing in `decision-google-style.md` excusing
+one. An import block that grows with the file is what the rule costs; a reader
+who can see which private items the tests reach is what it buys.
 
 ## What a test has to assert to assert anything
 
