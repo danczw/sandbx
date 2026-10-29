@@ -476,8 +476,8 @@ at all, which the lint says nothing about — is
 `sandbx-helper/tests/enforcement.rs`, which runs
 `/usr/bin/env` through the real helper and reads its stdout — the issue's own
 reproducer, inverted — plus the check in `restrict_and_spawn` that refuses an
-environment an earlier stage should have narrowed. The run goes through the
-suite's `support::run` helper, which spawns the helper *without* clearing anything
+environment an earlier stage should have narrowed. The run goes through
+`sandbx_helper_fixture::run`, which spawns the helper *without* clearing anything
 first, so what it pins is the sandbox doing it on its own. One site to delete, 24
 failures when it goes; *Narrow by construction, at one site* has why.
 

@@ -90,7 +90,8 @@ so the turn loop reaches no client code in a production build and
 | `sandbx-tui-input` | the keys that stop a turn, and what a hangup means | — (pty-fixture is *dev*-only) |
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | event, text |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
-| `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core |
+| `sandbx-helper-fixture` | what the enforcement suite needs to start a sandboxed command, the helper's path passed in | core |
+| `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core (helper-fixture is *dev*-only) |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-session-error` | why a session operation did not happen | — |
 | `sandbx-session-id` | a session's name, and the one rule that makes it safe in a path | session-error |
@@ -146,6 +147,12 @@ two (#352, #353).
 
 `sandbx-pty-fixture` is in no crate's build, which is why it is absent from the
 diagram above; its own `//!` says why it is a crate and not a module (#344).
+
+`sandbx-helper-fixture` is absent for that reason too, and it takes the helper's
+path as an argument rather than naming it: `CARGO_BIN_EXE_sandbx-helper` is set
+only for a target of the package declaring that bin, so the `env!` the module
+used could not survive the move to a crate. Each enforcement root passes what
+its own cargo run gave it (#333).
 
 `sandbx-helper` is absent from it for the same reason and a different one: nothing
 depends on it, and it depends on `sandbx-core` only to re-export its dispatch. It
@@ -272,15 +279,16 @@ and CI's Clippy step.
 ```
 src/main.rs          16 lines: with_helper_dispatch, and a failure message for a
                      run that is not helper mode. Every mechanism it dispatches
-                     into is sandbx-core's helper/ tree
+                     into is sandbx-core's helper_* files
 tests/               audit_channel, audit_outcome (how a real run ends), command
                      (the half that spawns the binary), concealment, enforcement,
                      enforcement_network, enforcement_resolver,
                      enforcement_syscalls
-tests/support/       mod.rs — vetted, runtime_paths, allow_probe, run, run_pinned,
-                     shared by the four enforcement targets; plus 10 [[bin]] probes,
-                     required-features = ["sandbox-integration"] on every one but
-                     concealment_probe, which needs no Landlock ABI
+tests/support/       10 [[bin]] probes, reached by manifest path and declared
+                     by no mod line; required-features =
+                     ["sandbox-integration"] on every one but concealment_probe,
+                     which needs no Landlock ABI. What the four enforcement
+                     targets share is sandbx-helper-fixture (#333)
 ```
 
 No public surface and no `public-api.txt`: a crate with no lib target has
