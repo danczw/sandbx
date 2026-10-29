@@ -53,7 +53,7 @@ fn runs_a_command_under_the_policy() {
 }
 
 /// #191 end-to-end, and through [`SandboxedCommand::output`] because that is the only thing
-/// that applies the start directory — `tests/support` builds the helper argv itself.
+/// that applies the start directory — `sandbx-helper-fixture` builds the helper argv itself.
 #[test]
 fn starts_the_command_in_a_granted_root() {
     let dir = scratch();
