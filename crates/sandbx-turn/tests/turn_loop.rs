@@ -38,7 +38,8 @@ fn result_of(block: &ContentBlock) -> (&str, Option<bool>) {
 /// A gate whose verdict is a closure's, keeping what it was asked and what it was told.
 ///
 /// Lent to `run_turn` as `&mut gate`, so both records survive the turn. Here rather than
-/// in `sandbx-turn-fixture`, which only holds what every root of the suite uses.
+/// in `sandbx-turn-fixture` because this is the only root whose subject is the gate; the
+/// fixture holds what more than one of them needs.
 struct Gate<F> {
     decide: F,
 

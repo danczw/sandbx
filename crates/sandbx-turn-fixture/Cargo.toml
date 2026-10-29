@@ -20,6 +20,11 @@ sandbx-tools = { path = "../sandbx-tools" }
 # one. Cargo permits it because the cycle never exists in the unit graph — `sandbx-turn`'s
 # *test* targets link this crate, which links `sandbx-turn`'s *lib*. `tokio` ↔
 # `tokio-test` is the published precedent. Only `turn` needs it, for the `Turn` literal.
+#
+# **Never add `features` to this line.** Resolver 3 unifies features per package, so a
+# feature asked for here travels the two hops back — turn → fixture → turn — and lands on
+# the one rlib every consumer links. That is `guide-ci.md`'s self-dev-dependency hazard
+# with a crate in the middle, and CI has no release-build job to fail on it.
 sandbx-turn = { path = "../sandbx-turn" }
 # Both at the versions `sandbx-turn` already pins, so cargo-deny's duplicate check stays
 # quiet: one resolved version each across the workspace.

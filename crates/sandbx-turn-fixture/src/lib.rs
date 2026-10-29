@@ -16,9 +16,12 @@
 //! clippy and the whole suite and fail first at release. `context/guide-ci.md` records
 //! that for a *self* dev-dependency; feature unification makes this case the same one.
 //!
-//! The cost is that every item is `pub` and so under `missing_docs`, and that the crate
-//! is compiled by the default `cargo test`, `clippy --all-targets` and `doc` runs.
-//! Both are worth paying: the fixture is now type-checked on every CI job.
+//! The cost is that every item is `pub` and so under `missing_docs`, that the crate is
+//! compiled by the default `cargo test`, `clippy --all-targets` and `doc` runs, and —
+//! the one that is not a gain — that nothing warns when an item goes unused. Per-target
+//! `dead_code` was noise three times over, but it was also the only signal that *every*
+//! root had stopped calling something; a cross-crate `pub` item warns nowhere, so a dead
+//! helper here compiles forever and only `public-api.txt` records that it exists.
 //!
 //! **The dependency cycle is deliberate.** This crate depends on `sandbx-turn` while
 //! `sandbx-turn` dev-depends on it. Cargo permits that because the cycle never exists in

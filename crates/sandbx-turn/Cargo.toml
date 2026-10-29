@@ -25,7 +25,7 @@ workspace = true
 [dev-dependencies]
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "macros", "test-util"] }
 # Dev-only since `compact_tests.rs` left for `sandbx-compact`: nothing under `src/`
-# names it, and the four files under `tests/` build the inputs a scripted turn asks for.
+# names it, and the three files under `tests/` build the inputs a scripted turn asks for.
 serde_json = "1.0.151"
 sandbx-core = { path = "../sandbx-core" }
 # The turn-loop suite's shared fixture, a crate rather than the `tests/support/mod.rs` it
