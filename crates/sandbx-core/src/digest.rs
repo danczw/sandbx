@@ -4,7 +4,6 @@
 //! a stray space. Parsing is the only way in, which leaves the 32-byte length to the type.
 //! What uses one: a pinned entry point, in `helper`.
 
-use std::error::Error;
 use std::fs::File;
 use std::path::PathBuf;
 use std::{fmt, io};
@@ -173,7 +172,7 @@ impl fmt::Display for DigestParseError {
     }
 }
 
-impl Error for DigestParseError {}
+impl std::error::Error for DigestParseError {}
 
 /// One hex character's value.
 fn nibble(byte: u8) -> Result<u8, DigestParseError> {

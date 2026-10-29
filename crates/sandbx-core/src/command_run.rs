@@ -311,7 +311,6 @@ fn run_with_deadline(
     write_end: PipeWriter,
 ) -> Result<Output, SandboxError> {
     use std::os::unix::process::CommandExt;
-    use std::process::Stdio;
 
     let spawn_failed = |source| SandboxError::SpawnFailed {
         detail: "could not start the sandbox helper",
