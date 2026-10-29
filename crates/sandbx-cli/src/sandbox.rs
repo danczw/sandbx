@@ -1,6 +1,9 @@
 //! `sandbox-run`: one command, under the boundary, and what it did.
 
+use std::io;
 use std::io::Write;
+use std::path::Path;
+use std::time::Duration;
 
 use sandbx_core::{NetworkPolicy, SandboxPolicy, SandboxedCommand, Sha256Digest};
 
@@ -126,7 +129,7 @@ impl SandboxRun {
             _ => return Err(PolicyError::RepeatedPin),
         };
 
-        if pin.is_some() && !std::path::Path::new(self.program()).is_absolute() {
+        if pin.is_some() && !Path::new(self.program()).is_absolute() {
             return Err(PolicyError::PinNeedsAbsoluteProgram {
                 program: self.program().to_string(),
             });
@@ -138,8 +141,8 @@ impl SandboxRun {
     /// The `--timeout` seconds as a [`Duration`], or `None` for no limit.
     ///
     /// [`Duration`]: std::time::Duration
-    pub fn timeout(&self) -> Option<std::time::Duration> {
-        self.timeout.map(std::time::Duration::from_secs)
+    pub fn timeout(&self) -> Option<Duration> {
+        self.timeout.map(Duration::from_secs)
     }
 
     /// Run it, forward its output, and report the code to exit with.
@@ -158,8 +161,8 @@ impl SandboxRun {
         let output = command.output()?;
 
         // Interleaving is lost: `output()` runs to completion rather than streaming.
-        let _ = std::io::stdout().write_all(&output.stdout);
-        let _ = std::io::stderr().write_all(&output.stderr);
+        let _ = io::stdout().write_all(&output.stdout);
+        let _ = io::stderr().write_all(&output.stderr);
 
         let code = sandbx_core::exit_code(&output.status);
         // After the command's own stderr, so sandbx's line is the last thing read.

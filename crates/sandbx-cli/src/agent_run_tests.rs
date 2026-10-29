@@ -1,13 +1,22 @@
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::ToolChoice;
+use std::path::Path;
+use std::{fs, future, io};
 
+use super::super::orientation;
+use super::super::prompt::{APPROVE_CALL, Approve, Terminal};
 use super::super::render::tests::{stop, text};
-use super::*;
-
+use super::{AgentRun, Channels, INCOMPLETE, round_cap, session_id};
+use crate::AgentError;
 use clap::Parser;
+use sandbx_core::SandboxPolicy;
+use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
+use sandbx_provider::{EventStream, ProviderError};
+use sandbx_session_store::Session;
+use sandbx_tools::ExecutionContext;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<std::path::Path>) -> sandbx_core::VettedPath {
+fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
     sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -43,7 +52,7 @@ fn approval_is_once_per_run_unless_asked_for_per_call() {
 #[test]
 fn a_run_with_no_terminal_to_ask_on_names_the_flag() {
     let error = AgentError::NoTerminal {
-        source: std::io::Error::from_raw_os_error(6), // ENXIO: no controlling terminal
+        source: io::Error::from_raw_os_error(6), // ENXIO: no controlling terminal
     };
 
     let message = error.to_string();
@@ -134,7 +143,7 @@ fn under(
         |request| {
             sent.push(request);
             let round = rounds.next().expect("one more round was asked for");
-            std::future::ready(Ok(canned(round)))
+            future::ready(Ok(canned(round)))
         },
         &ctx,
         prompt.to_owned(),
@@ -157,7 +166,7 @@ fn failed_round(args: &AgentRun, session: Option<Session>) -> Result<i32, AgentE
 
     runtime().block_on(args.drive(
         |_| {
-            std::future::ready(Err(ProviderError::ApiError {
+            future::ready(Err(ProviderError::ApiError {
                 status: Some(500),
                 kind: "api_error".to_owned(),
                 message: "overloaded".to_owned(),
@@ -197,7 +206,7 @@ fn asked_on(
         |request| {
             sent.push(request);
             let round = rounds.next().expect("one more round was asked for");
-            std::future::ready(Ok(canned(round)))
+            future::ready(Ok(canned(round)))
         },
         &ctx,
         "go".to_owned(),
@@ -224,7 +233,7 @@ fn hung_up() -> Terminal {
 
 /// Two rounds — one asking to write `path`, one that must never be reached — so a
 /// request count of one is evidence none opened rather than evidence the script ran dry.
-fn asking_to_write(path: &std::path::Path) -> Vec<Vec<AgentEvent>> {
+fn asking_to_write(path: &Path) -> Vec<Vec<AgentEvent>> {
     vec![
         vec![
             text("looking"),
@@ -315,7 +324,7 @@ fn a_stored_turn_carries_no_reasoning() {
     code.expect("clean turn");
 
     let path = store.root().join(format!("{}.jsonl", only_session(&store)));
-    let on_disk = std::fs::read_to_string(&path).expect("the transcript exists");
+    let on_disk = fs::read_to_string(&path).expect("the transcript exists");
 
     for token in ["sig-1", "EvgBCkgIBR", "thinking", "weighing it up"] {
         assert!(
@@ -418,12 +427,12 @@ fn the_request_names_the_tools_the_run_approved() {
 fn a_failed_turn_leaves_the_transcript_alone() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
     let (_root, store, session) = new_session();
-    let before = std::fs::read(session.path()).expect("the transcript exists");
+    let before = fs::read(session.path()).expect("the transcript exists");
 
     let error = failed_round(&args, Some(session)).expect_err("a turn that never opened");
 
     assert!(matches!(error, AgentError::Turn(_)), "got {error:?}");
-    let after = std::fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
+    let after = fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
         .expect("the transcript exists");
     // An unanswered prompt would make the next resume send two user turns in a row.
     assert_eq!(after, before);
@@ -445,7 +454,7 @@ fn a_transcript_holds_no_api_key_material() {
     );
     code.expect("clean turn");
 
-    let body = std::fs::read_to_string(&path).expect("the transcript exists");
+    let body = fs::read_to_string(&path).expect("the transcript exists");
     // Both halves present first, so the assertions below are known to be reading the
     // file that holds the conversation.
     assert_eq!(body.matches("sentinel-9f3a").count(), 2, "got {body}");
@@ -564,7 +573,7 @@ fn a_discarded_wrap_up_round_owns_what_it_wrote() {
 
     // The first turn is stored; the round that wrote and then asked for a tool is
     // the one discarded, so its prose reached stdout and nowhere else.
-    let body = std::fs::read_to_string(&path).expect("the transcript exists");
+    let body = fs::read_to_string(&path).expect("the transcript exists");
     assert!(body.contains("looking"), "got {body}");
     assert!(!body.contains("here is what I found"), "got {body}");
     assert!(
@@ -641,7 +650,7 @@ fn a_lost_terminal_still_stores_the_turn() {
     );
     assert_eq!(code.expect("a reported turn"), 3);
 
-    let body = std::fs::read_to_string(&path).expect("the transcript exists");
+    let body = fs::read_to_string(&path).expect("the transcript exists");
     assert!(body.contains("go"), "the prompt was not stored: {body}");
     assert!(body.contains("looking"), "the work was not stored: {body}");
     // The clause both channel reasons share, not either one: which of the drain and
@@ -838,7 +847,7 @@ fn a_prompt_resuming_an_unanswered_call_joins_it() {
 
 /// The id of the one session in `store`.
 fn only_session(store: &sandbx_session_store::SessionStore) -> sandbx_session_id::SessionId {
-    let mut ids: Vec<String> = std::fs::read_dir(store.root())
+    let mut ids: Vec<String> = fs::read_dir(store.root())
         .expect("the store exists")
         .map(|entry| {
             entry

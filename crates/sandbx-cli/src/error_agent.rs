@@ -4,6 +4,7 @@ use sandbx_auth::AuthError;
 use sandbx_provider::ProviderError;
 use sandbx_session_error::SessionError;
 use sandbx_turn::TurnError;
+use std::{fmt, io};
 
 use sandbx_grants::PolicyError;
 
@@ -20,10 +21,10 @@ pub enum AgentError {
     Policy(PolicyError),
 
     /// The runtime the turn needs could not be built.
-    Runtime(std::io::Error),
+    Runtime(io::Error),
 
     /// The answer could not be written out — a closed pipe, most often.
-    Output(std::io::Error),
+    Output(io::Error),
 
     /// No API key could be resolved from the environment or the credential file.
     Credential(AuthError),
@@ -44,12 +45,12 @@ pub enum AgentError {
     ApproveUnderTui,
 
     /// The screen could not be taken, or stopped accepting what was drawn on it.
-    Screen(std::io::Error),
+    Screen(io::Error),
 
     /// `--approve call` was asked for and there is no terminal to ask on.
     NoTerminal {
         /// Opening `/dev/tty`, which is `ENXIO` with no controlling terminal.
-        source: std::io::Error,
+        source: io::Error,
     },
 
     /// The turn itself ended without an answer.
@@ -86,8 +87,8 @@ impl From<TurnError> for AgentError {
     }
 }
 
-impl std::fmt::Display for AgentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AgentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyPrompt => write!(f, "the prompt is empty"),
             Self::Policy(error) => write!(f, "{error}"),

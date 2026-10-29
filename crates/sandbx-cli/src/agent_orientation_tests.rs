@@ -1,4 +1,10 @@
-use super::*;
+use super::super::gate;
+use super::{system_prompt, tools_line};
+use sandbx_core::{SandboxPolicy, VettedPath};
+use sandbx_tools::BuiltinTool;
+use std::fs;
+use std::os::unix::fs as unix_fs;
+use std::path::Path;
 
 use clap::Parser;
 
@@ -92,7 +98,7 @@ fn a_grant_is_named_in_the_form_the_guard_holds() {
     let (work, named) = work();
     // Absolute but not canonical, which `..` makes without a `chdir` a sibling test
     // would race against.
-    std::fs::create_dir(work.path().join("inner")).expect("a nested dir");
+    fs::create_dir(work.path().join("inner")).expect("a nested dir");
     let detour = work.path().join("inner").join("..");
 
     let prompt = derived(&[
@@ -181,10 +187,10 @@ fn a_run_granted_nowhere_to_be_is_told_nothing_about_starting() {
 fn a_grant_that_resolves_to_nothing_is_not_named() {
     let (work, _) = work();
     let gone = work.path().join("granted-then-gone");
-    std::fs::create_dir(&gone).expect("a dir to grant");
+    fs::create_dir(&gone).expect("a dir to grant");
 
     let policy = SandboxPolicy::default().allow_read(vetted(&gone));
-    std::fs::remove_dir(&gone).expect("it goes away before the prompt is built");
+    fs::remove_dir(&gone).expect("it goes away before the prompt is built");
 
     let prompt = granted(policy);
 
@@ -201,12 +207,12 @@ fn a_grant_that_became_a_symlink_is_not_named() {
     let (work, _) = work();
     let root = work.path().join("root");
     let elsewhere = work.path().join("elsewhere");
-    std::fs::create_dir(&root).expect("a dir to grant");
-    std::fs::create_dir(&elsewhere).expect("somewhere for it to point");
+    fs::create_dir(&root).expect("a dir to grant");
+    fs::create_dir(&elsewhere).expect("somewhere for it to point");
 
     let policy = SandboxPolicy::default().allow_read(vetted(&root));
-    std::fs::remove_dir(&root).expect("the granted name to come free");
-    std::os::unix::fs::symlink(&elsewhere, &root).expect("a link at the granted name");
+    fs::remove_dir(&root).expect("the granted name to come free");
+    unix_fs::symlink(&elsewhere, &root).expect("a link at the granted name");
 
     let prompt = granted(policy);
 
@@ -223,12 +229,12 @@ fn a_grant_renamed_over_is_not_named() {
     let (work, _) = work();
     let root = work.path().join("root");
     let other = work.path().join("other");
-    std::fs::create_dir(&root).expect("a dir to grant");
-    std::fs::create_dir(&other).expect("another real directory");
+    fs::create_dir(&root).expect("a dir to grant");
+    fs::create_dir(&other).expect("another real directory");
 
     let policy = SandboxPolicy::default().allow_read(vetted(&root));
-    std::fs::remove_dir(&root).expect("the granted name to come free");
-    std::fs::rename(&other, &root).expect("a substitution at the same name");
+    fs::remove_dir(&root).expect("the granted name to come free");
+    fs::rename(&other, &root).expect("a substitution at the same name");
 
     let prompt = granted(policy);
 

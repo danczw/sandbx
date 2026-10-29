@@ -10,6 +10,7 @@
 //! consumes it. `AgentRun`'s doc comments are rendered `--help` text, not commentary.
 
 use std::io::{IsTerminal, Write};
+use std::{io, slice};
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_core::SandboxPolicy;
@@ -305,9 +306,9 @@ impl AgentRun {
             prompt,
             system,
             Channels {
-                out: std::io::stdout(),
-                err: std::io::stderr(),
-                renders: std::io::stderr().is_terminal(),
+                out: io::stdout(),
+                err: io::stderr(),
+                renders: io::stderr().is_terminal(),
                 terminal,
             },
             session,
@@ -469,7 +470,7 @@ impl AgentRun {
         outcome: TurnOutcome,
         merged: &Merged,
     ) -> Result<(), AgentError> {
-        let mut messages = session::stored_messages(std::slice::from_ref(asked));
+        let mut messages = session::stored_messages(slice::from_ref(asked));
         messages.extend(session::stored_messages(&outcome.messages));
         let turn = CompletedTurn {
             messages: &messages,

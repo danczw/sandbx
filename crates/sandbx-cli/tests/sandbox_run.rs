@@ -5,6 +5,9 @@
 
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use std::{env, fs};
 
 fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
     match Cli::parse_from(argv).command {
@@ -15,8 +18,8 @@ fn sandbox_run(argv: &[&str]) -> sandbx_cli::SandboxRun {
 
 /// The package root, where cargo runs an integration test: neither `$HOME` nor the
 /// filesystem root, so the default derives cleanly here.
-fn cwd() -> std::path::PathBuf {
-    std::env::current_dir()
+fn cwd() -> PathBuf {
+    env::current_dir()
         .expect("a working directory")
         .canonicalize()
         .expect("an openable working directory")
@@ -24,7 +27,7 @@ fn cwd() -> std::path::PathBuf {
 
 /// The paths of a set of grants. Each also carries the object at its path (#212), derived
 /// from the path, so these tests assert over the spelling and the pin follows.
-fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&std::path::Path> {
+fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&Path> {
     granted.iter().map(sandbx_core::VettedPath::path).collect()
 }
 
@@ -34,7 +37,7 @@ fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&std::path::Path> {
 /// fixture cannot grant `/srv` and hope. Rooted at the resolved `$TMPDIR` because vetting
 /// resolves, and the spellings a test compares against are the ones the policy holds.
 fn scratch(names: &[&str]) -> (tempfile::TempDir, Vec<String>) {
-    let root = std::env::temp_dir()
+    let root = env::temp_dir()
         .canonicalize()
         .expect("a resolved temporary directory");
     let dir = tempfile::Builder::new()
@@ -45,7 +48,7 @@ fn scratch(names: &[&str]) -> (tempfile::TempDir, Vec<String>) {
         .iter()
         .map(|name| {
             let path = dir.path().join(name);
-            std::fs::create_dir(&path).expect("a directory to grant");
+            fs::create_dir(&path).expect("a directory to grant");
             path.to_str().expect("utf-8").to_owned()
         })
         .collect();
@@ -223,7 +226,7 @@ fn each_allow_flag_widens_only_its_own_axis() {
     .expect("the flags describe a policy");
 
     assert!(
-        spellings(policy.readable_paths()).contains(&std::path::Path::new(&granted[0])),
+        spellings(policy.readable_paths()).contains(&Path::new(&granted[0])),
         "the requested path was not granted"
     );
     assert!(policy.writable_paths().is_empty(), "read implied write");
@@ -250,14 +253,11 @@ fn allow_flags_repeat_to_grant_several_paths() {
 
     for granted in &dirs[..2] {
         assert!(
-            spellings(policy.readable_paths()).contains(&std::path::Path::new(granted)),
+            spellings(policy.readable_paths()).contains(&Path::new(granted)),
             "{granted} was not granted"
         );
     }
-    assert_eq!(
-        spellings(policy.writable_paths()),
-        [std::path::Path::new(&dirs[2])]
-    );
+    assert_eq!(spellings(policy.writable_paths()), [Path::new(&dirs[2])]);
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn a_missing_command_is_rejected() {
 fn timeout_parses_as_seconds() {
     let args = sandbox_run(&["sandbx", "sandbox-run", "--timeout", "5", "--", "true"]);
 
-    assert_eq!(args.timeout(), Some(std::time::Duration::from_secs(5)));
+    assert_eq!(args.timeout(), Some(Duration::from_secs(5)));
 }
 
 /// No limit, like a plain shell: a default would kill long runs nobody asked to bound.
@@ -478,10 +478,10 @@ fn exec_grants_are_repeatable_and_separate_from_read() {
 
     let executable = spellings(policy.executable_paths());
 
-    assert!(executable.contains(&std::path::Path::new(&dirs[0])));
-    assert!(executable.contains(&std::path::Path::new(&dirs[1])));
+    assert!(executable.contains(&Path::new(&dirs[0])));
+    assert!(executable.contains(&Path::new(&dirs[1])));
     assert!(
-        !executable.contains(&std::path::Path::new(&dirs[2])),
+        !executable.contains(&Path::new(&dirs[2])),
         "a read grant reached the execute axis"
     );
 }
@@ -529,7 +529,7 @@ fn allow_write_also_grants_read_at_the_command_line() {
     .policy()
     .expect("the flags describe a policy");
 
-    let srv = std::path::Path::new(&granted[0]);
+    let srv = Path::new(&granted[0]);
     assert!(
         spellings(policy.writable_paths()).contains(&srv),
         "--allow-write did not grant write"
@@ -546,7 +546,7 @@ fn every_path_flag_grants_only_its_own_axis() {
     use sandbx_core::Axis;
 
     let (_scratch, dirs) = scratch(&["subject"]);
-    let granted = std::path::Path::new(&dirs[0]);
+    let granted = Path::new(&dirs[0]);
 
     for (flag, axis) in [
         ("--allow-read", Axis::Read),
@@ -840,7 +840,7 @@ fn the_name_allowlist_grants_no_path_and_keeps_the_working_directory() {
         !policy
             .readable_paths()
             .iter()
-            .any(|granted| granted.path() == std::path::Path::new("/etc")),
+            .any(|granted| granted.path() == Path::new("/etc")),
         "the flag granted read on /etc, which is what it exists to make unnecessary: {:?}",
         policy.readable_paths()
     );
@@ -899,7 +899,7 @@ fn a_grant_naming_a_file_the_allowlist_replaces_is_refused() {
     for bound in sandbx_core::RESOLVER_FILES {
         // The pair is only looked at after every grant vets, so on a host without the entry —
         // musl leaves no `nsswitch.conf` — the grant refuses as unpinnable first.
-        if std::path::Path::new(bound).canonicalize().is_err() {
+        if Path::new(bound).canonicalize().is_err() {
             continue;
         }
 
@@ -959,7 +959,7 @@ fn a_grant_above_the_bind_is_accepted_beside_the_allowlist() {
         policy
             .readable_paths()
             .iter()
-            .any(|granted| granted.path() == std::path::Path::new("/etc")),
+            .any(|granted| granted.path() == Path::new("/etc")),
         "the directory grant did not survive"
     );
 }

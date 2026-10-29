@@ -1,4 +1,6 @@
-use super::*;
+use super::{SandboxRun, cannot_resolve, pin_digest, resolver_advice};
+use crate::PolicyError;
+use sandbx_core::{SandboxPolicy, Sha256Digest};
 
 fn ported() -> SandboxPolicy {
     SandboxPolicy::default().allow_network_port(443)

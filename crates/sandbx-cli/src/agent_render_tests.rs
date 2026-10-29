@@ -1,6 +1,9 @@
-use sandbx_event::StopReason;
-
-use super::*;
+use super::super::INCOMPLETE;
+use super::{Render, Unfinished};
+use crate::AgentError;
+use sandbx_event::{AgentEvent, StopReason};
+use std::io;
+use std::io::Write;
 
 pub(crate) fn text(delta: &str) -> AgentEvent {
     AgentEvent::Text {
@@ -16,11 +19,11 @@ pub(crate) fn stop(reason: StopReason) -> AgentEvent {
 struct ClosedPipe;
 
 impl Write for ClosedPipe {
-    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-        Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+        Err(io::Error::from(io::ErrorKind::BrokenPipe))
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }

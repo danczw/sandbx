@@ -7,6 +7,8 @@
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
 use sandbx_core::SandboxPolicy;
+use std::env;
+use std::path::Path;
 
 fn agent_run(argv: &[&str]) -> sandbx_cli::AgentRun {
     match Cli::parse_from(argv).command {
@@ -17,14 +19,14 @@ fn agent_run(argv: &[&str]) -> sandbx_cli::AgentRun {
 
 /// The paths of a set of grants. Each also carries the object at its path (#212), derived
 /// from the path, so these tests assert over the spelling and the pin follows.
-fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&std::path::Path> {
+fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&Path> {
     granted.iter().map(sandbx_core::VettedPath::path).collect()
 }
 
 /// A scratch directory to grant, resolved: a flag's path is vetted before it reaches the
 /// policy, so a fixture has to name something, and in the form the policy will hold.
 fn scratch() -> (tempfile::TempDir, String) {
-    let root = std::env::temp_dir()
+    let root = env::temp_dir()
         .canonicalize()
         .expect("a resolved temporary directory");
     let dir = tempfile::Builder::new()
@@ -258,7 +260,7 @@ fn a_write_grant_confers_read_here_too() {
         .expect("the flags describe a policy");
 
     assert!(
-        spellings(policy.readable_paths()).contains(&std::path::Path::new(&granted)),
+        spellings(policy.readable_paths()).contains(&Path::new(&granted)),
         "a tool can rewrite {granted} but not read it back"
     );
 }
@@ -348,7 +350,7 @@ fn flags_after_the_separator_are_part_of_the_prompt() {
                 .expect("the flags describe a policy")
                 .readable_paths()
         )
-        .contains(&std::path::Path::new("/etc")),
+        .contains(&Path::new("/etc")),
         "a grant written inside the prompt widened the policy"
     );
 }

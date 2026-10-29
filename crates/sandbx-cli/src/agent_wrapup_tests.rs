@@ -1,6 +1,6 @@
+use super::merge;
 use sandbx_event::StopReason;
-
-use super::*;
+use sandbx_turn::{TurnOutcome, TurnStop};
 
 fn outcome(stop: TurnStop, round_stop: Option<StopReason>) -> TurnOutcome {
     TurnOutcome {

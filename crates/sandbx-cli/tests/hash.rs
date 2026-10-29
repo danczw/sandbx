@@ -8,6 +8,8 @@
 
 use clap::Parser;
 use sandbx_cli::{Cli, Command};
+use std::fs;
+use std::fs::File;
 
 fn hash(argv: &[&str]) -> sandbx_cli::Hash {
     match Cli::parse_from(argv).command {
@@ -20,7 +22,7 @@ fn hash(argv: &[&str]) -> sandbx_cli::Hash {
 fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let path = dir.path().join("program");
-    std::fs::write(&path, contents).expect("write");
+    fs::write(&path, contents).expect("write");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx"))
         .args(["hash", path.to_str().unwrap()])
@@ -33,7 +35,7 @@ fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let mut file = std::fs::File::open(&path).expect("reopen");
+    let mut file = File::open(&path).expect("reopen");
     let digest = sandbx_core::Sha256Digest::of_file(&mut file).expect("hash");
 
     (String::from_utf8(output.stdout).expect("utf-8"), digest)
