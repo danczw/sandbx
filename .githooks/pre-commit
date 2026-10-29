@@ -4,7 +4,11 @@
 set -e
 
 echo "pre-commit: cargo fmt --check"
-cargo fmt --all -- --check
+# Three of `rustfmt.toml`'s four options are nightly-only, and rustfmt skips an option it
+# cannot set with a `Warning:` and exit 0 — so a stable fmt, or a typo'd option name,
+# passes this gate having enforced nothing. The output is captured to be searched.
+fmt=$(cargo +nightly-2026-09-11 fmt --all -- --check 2>&1) || { printf '%s\n' "$fmt"; exit 1; }
+case "$fmt" in *Warning:*) printf '%s\n' "$fmt"; exit 1 ;; esac
 
 echo "pre-commit: cargo clippy -D warnings"
 cargo clippy --workspace --all-targets -- -D warnings

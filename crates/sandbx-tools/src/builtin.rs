@@ -1,8 +1,7 @@
 //! The closed enum of tools, what one carries — the name and description the model
 //! is told, its schema, the risk the gate reads — and the non-empty text it gets back.
 
-use crate::tools;
-use crate::{ExecutionContext, ToolError};
+use crate::{ExecutionContext, ToolError, tools};
 
 /// What a tool produced, as the model will see it.
 ///

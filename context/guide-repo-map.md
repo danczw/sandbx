@@ -9,6 +9,9 @@ Cargo.toml          workspace manifest + lint table (unsafe_code = "forbid",
                     block and every raw syscall through a vetted wrapper)
 clippy.toml         the disallowed-methods list
 deny.toml           cargo-deny
+rustfmt.toml        the style guide's four options, three of them nightly-only
+.git-blame-ignore-revs
+                    the mechanical sweeps blame skips; opt-in locally
 .githooks/          pre-commit: fmt --check, clippy -D warnings, doc -D warnings;
                     commit-msg: Conventional Commits and a 72-character subject
 .github/            CI and release workflows, their action pins, and dependabot

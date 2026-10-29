@@ -2,9 +2,10 @@
 
 Two halves of one set of checks: `.githooks/` runs before a commit exists,
 `.github/workflows/` runs after a push. They are deliberately not independent —
-`pre-commit` and `ci.yml`'s `Format`, `Clippy` and `Doc` steps are
-byte-identical, so a red CI run is a hook someone skipped rather than a check
-only CI knows about.
+`pre-commit` and `ci.yml`'s `Format`, `Clippy` and `Doc` steps run byte-identical
+commands, so a red CI run is a hook someone skipped rather than a check only CI
+knows about. Identical in the command, not in the envelope: CI spells the doc
+step's variable in an `env:` block and the hook inlines it.
 
 ## The local half
 
@@ -23,13 +24,23 @@ once per clone:
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
-`pre-commit` is `cargo fmt --all -- --check`, then
+`pre-commit` is `cargo +nightly-2026-09-11 fmt --all -- --check`, then
 `cargo clippy --workspace --all-targets -- -D warnings`, then the `Doc` step
 under `RUSTDOCFLAGS: -D warnings`. Not the test suite: a hook that takes minutes
 is a hook people pass `--no-verify` to, and the three together are seconds on a
 warm target dir. The doc build earns its place by being the only one of them that
 reads a doc comment at all — a broken intra-doc link passes fmt and clippy, so
 without it the first thing to notice is CI after the push.
+
+### fmt is the one gate whose exit code is not enough
+
+Three of `rustfmt.toml`'s four options are nightly-only (#334), and rustfmt skips
+an option it cannot set with a `Warning:` on stderr and exit 0 — on stable, or on
+a name with a typo in it. So both halves capture the output and fail on
+`Warning:`, which is the rule below about a glob that matches nothing, applied to
+a gate rather than to a loop. The toolchain is named on the command line in both,
+so a `+toolchain` that goes missing fails rather than falling through: `rustfmt`
+is deliberately not a component of `ci.yml`'s stable step.
 
 `commit-msg` checks the **subject only**; the body is free-form. Eight types
 (`feat fix docs refactor test chore build ci`), the scope and the breaking-change
@@ -192,13 +203,15 @@ Three things to get right:
   nightly-only and its format version changes without notice, so a different
   nightly rewrites every baseline for no change in API.
   `.github/scripts/public-api.sh` sets `RUSTUP_TOOLCHAIN` itself for that reason.
-  The date is written twice — in the script's default and in `ci.yml`'s toolchain
-  step — because `dtolnay/rust-toolchain` cannot read it out of the script. A
-  mismatch is loud rather than silent: the script checks the toolchain is installed
-  and says which one is missing.
-- **The nightly is for rustdoc JSON and nothing else.** Every other job stays on
-  stable, as does every build and test, and the manifest's `rust-version` is
-  untouched. Phase 5's rustfmt is the only other thing that will use it (#328).
+  The date is written four times — in the script's default, in `ci.yml`'s toolchain
+  step for this job, and in the fmt command in `ci.yml` and `.githooks/pre-commit`
+  — because `dtolnay/rust-toolchain` cannot read it out of the script. A mismatch
+  is loud rather than silent: the script checks the toolchain is installed and says
+  which one is missing, and `cargo +nightly-…` fails outright when it is not.
+- **The nightly is for rustdoc JSON and rustfmt, and nothing else.** Every build
+  and test stays on stable, as does every other job, and the manifest's
+  `rust-version` is untouched. rustfmt shares this pin rather than taking its own
+  so that one date moves at a time (#334).
 - **A crate with no lib target is skipped, and a lib target and a committed
   baseline are guarded as a pair.** There is no importable surface to diff, and
   `cargo public-api` errors rather than printing an empty list — which, with the

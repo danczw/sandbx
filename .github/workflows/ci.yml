@@ -34,12 +34,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
-          components: rustfmt, clippy
+          components: clippy
+
+      # Three of `rustfmt.toml`'s options are nightly-only, so fmt alone runs on the
+      # nightly `public-api.sh` pins. Everything else here, and every build, stays on
+      # stable; `rustfmt` is deliberately not a component of the stable step above, so a
+      # fmt step that loses its `+toolchain` fails instead of silently skipping options.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly-2026-09-11
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format
-        run: cargo fmt --all -- --check
+        run: |
+          fmt=$(cargo +nightly-2026-09-11 fmt --all -- --check 2>&1) || { printf '%s\n' "$fmt"; exit 1; }
+          case "$fmt" in *Warning:*) printf '%s\n' "$fmt"; exit 1 ;; esac
 
       # Byte-identical to `.githooks/pre-commit`; keep them so. Default features,
       # so production code reaching a test-only gated item fails here, not at tag time.
