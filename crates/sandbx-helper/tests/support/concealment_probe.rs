@@ -4,30 +4,32 @@
 //! Two stages driven from the parent, because the reader the flag is about is another
 //! process: it has to look both before and after this call to pin the refusal on it.
 
+use std::io;
 use std::io::{BufRead, Write};
+use std::process::ExitCode;
 
-fn main() -> std::process::ExitCode {
-    let mut lines = std::io::stdin().lock().lines();
+fn main() -> ExitCode {
+    let mut lines = io::stdin().lock().lines();
 
     println!("STARTED");
-    if std::io::stdout().flush().is_err() || lines.next().is_none() {
+    if io::stdout().flush().is_err() || lines.next().is_none() {
         eprintln!("CONCEALMENT PROBE FAILED: the parent closed the pipe before asking");
-        return std::process::ExitCode::FAILURE;
+        return ExitCode::FAILURE;
     }
 
     if let Err(error) = sandbx_core::conceal_process_state() {
         eprintln!("CONCEALMENT PROBE FAILED: {error}");
-        return std::process::ExitCode::FAILURE;
+        return ExitCode::FAILURE;
     }
 
     println!("CONCEALED");
-    if std::io::stdout().flush().is_err() {
+    if io::stdout().flush().is_err() {
         eprintln!("CONCEALMENT PROBE FAILED: could not report back");
-        return std::process::ExitCode::FAILURE;
+        return ExitCode::FAILURE;
     }
 
     // Holds rather than exits: a reaped pid has no procfs entry at all, so exiting here would
     // read back as concealment.
     lines.next();
-    std::process::ExitCode::SUCCESS
+    ExitCode::SUCCESS
 }

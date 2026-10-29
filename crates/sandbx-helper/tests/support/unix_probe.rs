@@ -3,24 +3,27 @@
 //! A netns isolates only *abstract* unix sockets; pathname sockets live in the filesystem
 //! and cross it freely, so a policy that denies network can still reach host daemons.
 
+use std::env;
 use std::io::Read;
+use std::os::unix::net::UnixStream;
+use std::process::ExitCode;
 
-fn main() -> std::process::ExitCode {
-    let Some(path) = std::env::args().nth(1) else {
+fn main() -> ExitCode {
+    let Some(path) = env::args().nth(1) else {
         eprintln!("usage: unix-probe <socket-path>");
-        return std::process::ExitCode::FAILURE;
+        return ExitCode::FAILURE;
     };
 
-    match std::os::unix::net::UnixStream::connect(&path) {
+    match UnixStream::connect(&path) {
         Ok(mut stream) => {
             let mut got = String::new();
             let _ = stream.read_to_string(&mut got);
             println!("UNIX CONNECT SUCCEEDED: {got}");
-            std::process::ExitCode::SUCCESS
+            ExitCode::SUCCESS
         }
         Err(error) => {
             eprintln!("UNIX CONNECT DENIED: {error}");
-            std::process::ExitCode::FAILURE
+            ExitCode::FAILURE
         }
     }
 }

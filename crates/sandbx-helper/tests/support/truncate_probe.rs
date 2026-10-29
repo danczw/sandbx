@@ -4,20 +4,23 @@
 //! `open(O_TRUNC)`/`ftruncate`, covered by Landlock's `WriteFile`; only `truncate(2)` on a
 //! path exercises the `Truncate` right.
 
-fn main() -> std::process::ExitCode {
-    let Some(path) = std::env::args().nth(1) else {
+use std::env;
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let Some(path) = env::args().nth(1) else {
         eprintln!("usage: truncate-probe <path>");
-        return std::process::ExitCode::FAILURE;
+        return ExitCode::FAILURE;
     };
 
     match nix::unistd::truncate(path.as_str(), 0) {
         Ok(()) => {
             println!("TRUNCATE SUCCEEDED");
-            std::process::ExitCode::SUCCESS
+            ExitCode::SUCCESS
         }
         Err(errno) => {
             eprintln!("TRUNCATE DENIED: {errno}");
-            std::process::ExitCode::FAILURE
+            ExitCode::FAILURE
         }
     }
 }
