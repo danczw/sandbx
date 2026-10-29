@@ -9,8 +9,7 @@ use std::path::PathBuf;
 
 use secrecy::SecretString;
 
-use crate::AuthError;
-use crate::store;
+use crate::{AuthError, store};
 
 /// Checked before the file, and the one name `agent-run` refuses to `--allow-env`
 /// — see `context/decision-credentials.md`.
