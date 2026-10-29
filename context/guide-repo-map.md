@@ -82,7 +82,7 @@ so the turn loop reaches no client code in a production build and
 | `sandbx-core` | sandboxing. **The only crate allowed to spawn a subprocess** | — |
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-anthropic` | the hand-rolled streaming client for one vendor's API | event, prompt, provider, sse |
-| `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (anthropic and core are *dev*-only) |
+| `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (anthropic, core and turn-fixture are *dev*-only) |
 | `sandbx-cli` | arg parsing and the subcommand bodies | core, anthropic, approval, auth, event, grants, logging, prompt, provider, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
@@ -159,8 +159,8 @@ its own cargo run gave it (#333).
 the crate that dev-depends on it. Cargo permits that because the cycle never
 exists in a unit graph: `sandbx-turn`'s *test* targets link the fixture, which
 links `sandbx-turn`'s *lib*, and `tokio` ↔ `tokio-test` is the published
-precedent. `deny-wrappers.py` cannot see it either, building `child -> {parents}`
-from the declared arrays with no graph walk (#333).
+precedent. Cargo is also what guards it, since a *production* edge back would be
+a `cyclic package dependency` at resolve time — before any lint runs (#333).
 
 `sandbx-helper` is absent from it for the same reason and a different one: nothing
 depends on it, and it depends on `sandbx-core` only to re-export its dispatch. It

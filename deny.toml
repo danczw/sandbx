@@ -74,7 +74,8 @@ name = "sandbx-prompt"
 # carried through `sandbx-turn`, cut by `sandbx-compact`, translated by
 # `sandbx-session-bridge`, and serialized by `sandbx-anthropic` — the last being the only
 # one that can post these types to an API, and the only one that can declare the
-# wrappers to do it (#364).
+# wrappers to do it (#364). `sandbx-turn-fixture` names `Prompt` and `RequestMessage`
+# building the scripted turns, so its edge is direct too (#333).
 wrappers = [
     "sandbx-anthropic",
     "sandbx-cli",
@@ -103,7 +104,8 @@ name = "sandbx-provider"
 # The seam, so every consumer of a client is here and none of them inherits the edge:
 # `sandbx-anthropic` returns an `EventStream` and builds every `ProviderError` on it,
 # `sandbx-turn` names both in `run_turn`'s bound and wraps the error in `TurnError`, and
-# `sandbx-cli` opens the stream itself and converts the error to an `AgentError`.
+# `sandbx-cli` opens the stream itself and converts the error to an `AgentError`, and
+# `sandbx-turn-fixture`'s `Script::open` hands back an `EventStream` of its own (#333).
 #
 # #367 was an append and not the re-point the sentence here predicted: taking the SSE
 # framing out added `sandbx-sse`, which builds `MalformedEvent` and `Transport`, without
@@ -181,10 +183,11 @@ wrappers = ["sandbx-helper"]
 [[bans.deny]]
 name = "sandbx-turn-fixture"
 # The same shape, and one parent again — whose three turn-loop roots drive it. That
-# parent is also this crate's own dependency: the cycle is deliberate and invisible to
-# the script below, which builds `child -> {parents}` from the declared arrays with no
-# graph walk. `sandbx-turn`'s *test* targets link this crate, which links its *lib*, so
-# the cycle never exists in a unit graph (#333).
+# parent is also this crate's own dependency, and the cycle is deliberate:
+# `sandbx-turn`'s *test* targets link this crate, which links its *lib*, so it never
+# exists in a unit graph. Cargo is what guards it — a *production* edge from
+# `sandbx-turn` is a `cyclic package dependency` at resolve time, so no build, clippy or
+# test step survives one. Nothing here rejects a 2-cycle, and nothing needs to (#333).
 wrappers = ["sandbx-turn"]
 
 [[bans.deny]]
@@ -203,8 +206,9 @@ name = "sandbx-event"
 # No parent here inherits the edge through another: `sandbx-provider` names one in
 # `EventStream`, `sandbx-anthropic` builds an event per wire frame, `sandbx-turn` folds a
 # round out of them, `sandbx-tui-transcript` folds the transcript, and `sandbx-cli`'s
-# renderer is a second fold of its own. `sandbx-compact` names `AgentEvent` in a doc
-# comment and has no edge.
+# renderer is a second fold of its own, and `sandbx-turn-fixture` builds the events a
+# scripted round replays (#333). `sandbx-compact` names `AgentEvent` in a doc comment and
+# has no edge.
 wrappers = [
     "sandbx-anthropic",
     "sandbx-cli",
