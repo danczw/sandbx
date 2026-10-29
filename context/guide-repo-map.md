@@ -160,6 +160,11 @@ turn, which is `sandbx-prompt`'s; it names the closure's own
 `Result<EventStream, ProviderError>`; and its renderer is a second fold of the
 events the loop hands back.
 
+A module's unit tests sit in a `*_tests.rs` beside it (#333), and the trees
+below name one only where it holds something a reader would otherwise go
+looking for. Every other module has one; `grep -rn 'mod tests {' crates/*/src`
+returning nothing is what makes that true rather than usual.
+
 ## `sandbx-core`
 
 `src/` is flat (#333). A file's name is its module path joined with `_`, so
