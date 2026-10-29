@@ -66,7 +66,7 @@ So re-measure `git diff --stat origin/main...HEAD` for every pass, compare it ag
 
 A review over the wrong lines is not a pass.
 
-The gate commands are `.githooks/pre-commit`'s, and the doc one is the trap: CI (`ci.yml:68`) and the hook (`.githooks/pre-commit:19`) both run `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --all-features`.
+The gate commands are `.githooks/pre-commit`'s, and the doc one is the trap: CI (`ci.yml:74`) and the hook (`.githooks/pre-commit:19`) both run `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --all-features`.
 Without `--document-private-items` rustdoc does not check links inside private items, so the shorter form exits 0 on a broken link that fails CI — and a moved file's `crate::` links are exactly that class.
 Run the hook's line, after touching every `src/lib.rs` or the answer comes from cache.
 

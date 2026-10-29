@@ -42,6 +42,12 @@ a gate rather than to a loop. The toolchain is named on the command line in both
 so a `+toolchain` that goes missing fails rather than falling through: `rustfmt`
 is deliberately not a component of `ci.yml`'s stable step.
 
+In `ci.yml` the nightly installs *before* stable, and the two cannot be swapped:
+`dtolnay/rust-toolchain` makes what it installs the default, so with nightly last
+every plain `cargo` in the job runs on it and `cargo clippy` fails outright
+(#441). Stable installs last and is therefore the default, and only the one
+`+nightly` fmt command leaves it.
+
 `commit-msg` checks the **subject only**; the body is free-form. Eight types
 (`feat fix docs refactor test chore build ci`), the scope and the breaking-change
 `!` both optional, and a 72-character ceiling. `Merge`, `Revert`, `fixup!`,
