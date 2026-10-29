@@ -157,7 +157,7 @@ fn env_key(lookup: &impl Fn(&str) -> Option<OsString>) -> Option<SecretString> {
 /// `raw` trimmed, or `None` when nothing is left. An unpopulated CI secret is `""`, and
 /// `$(cat key)` keeps a newline `HeaderValue` would reject much later as an opaque
 /// transport error.
-pub(super) fn nonblank(raw: &str) -> Option<SecretString> {
+pub(crate) fn nonblank(raw: &str) -> Option<SecretString> {
     let key = raw.trim();
     (!key.is_empty()).then(|| SecretString::from(key.to_owned()))
 }

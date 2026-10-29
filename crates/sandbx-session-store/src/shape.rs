@@ -11,7 +11,7 @@ use sandbx_session_message::{Content, Message, Role};
 ///
 /// Says nothing about which role comes first: an even-length history opening on the
 /// model's reply alternates and ends settled, so [`opens`] is a condition of its own.
-pub(super) fn alternating(messages: &[Message]) -> bool {
+pub(crate) fn alternating(messages: &[Message]) -> bool {
     messages.windows(2).all(|pair| joins(&pair[0], &pair[1]))
 }
 
@@ -19,13 +19,13 @@ pub(super) fn alternating(messages: &[Message]) -> bool {
 ///
 /// An empty one is true, having no first role yet — [`follows`] is what holds the rule
 /// over the batch that eventually supplies it.
-pub(super) fn opens(messages: &[Message]) -> bool {
+pub(crate) fn opens(messages: &[Message]) -> bool {
     messages.first().map(|message| message.role) != Some(Role::Assistant)
 }
 
 /// True when `batch` can follow `stored` without putting two turns of the same role
 /// together — the one join [`alternating`] cannot see, each half being alternating alone.
-pub(super) fn follows(stored: &[Message], batch: &[Message]) -> bool {
+pub(crate) fn follows(stored: &[Message], batch: &[Message]) -> bool {
     match (stored.last(), batch.first()) {
         (Some(last), Some(first)) => joins(last, first),
         // Empty `stored`: `batch` is the opening, so [`opens`] applies instead.
@@ -40,7 +40,7 @@ pub(super) fn follows(stored: &[Message], batch: &[Message]) -> bool {
 /// Composed beside [`settled`] rather than relaxing it: a caller asking whether a
 /// conversation ended on an answer still means that. Both guards take this one, because
 /// `append` writing a shape `resume` refuses is a session nothing can undo.
-pub(super) fn resumable(messages: &[Message]) -> bool {
+pub(crate) fn resumable(messages: &[Message]) -> bool {
     settled(messages) || messages.last().is_some_and(answers_only)
 }
 
@@ -49,7 +49,7 @@ pub(super) fn resumable(messages: &[Message]) -> bool {
 ///
 /// Empty content is not it: an unanswered call is a block, and a user turn with no blocks
 /// at all is a hand edit either way.
-pub(super) fn answers_only(message: &Message) -> bool {
+pub(crate) fn answers_only(message: &Message) -> bool {
     !message.content.is_empty()
         && message
             .content

@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 use sandbx_session_error::SessionError;
 
 /// The format this build writes, and the only one it reads.
-pub(super) const VERSION: u32 = 1;
+pub(crate) const VERSION: u32 = 1;
 
 /// One line of a transcript, internally tagged: a message line is the message's own
 /// fields plus a `type`, and an unknown `type` fails the parse rather than skipping.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub(super) enum Record {
+pub(crate) enum Record {
     Header(Header),
     Message(Message),
     Turn(Accounting),
@@ -22,17 +22,17 @@ pub(super) enum Record {
 
 /// What the first line of every transcript says about the rest of it.
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct Header {
-    pub(super) version: u32,
-    pub(super) id: String,
-    pub(super) created_at_millis: u64,
+pub(crate) struct Header {
+    pub(crate) version: u32,
+    pub(crate) id: String,
+    pub(crate) created_at_millis: u64,
 }
 
 /// What one turn cost, and what it had to leave out.
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct Accounting {
-    pub(super) observed: Option<Usage>,
-    pub(super) withheld: usize,
+pub(crate) struct Accounting {
+    pub(crate) observed: Option<Usage>,
+    pub(crate) withheld: usize,
 }
 
 /// Replay a transcript into the state the next turn starts from.
@@ -40,7 +40,7 @@ pub(super) struct Accounting {
 /// The accounting fold is what the turn loop does in memory — `observed` keeps the last
 /// figure reported, `withheld` whatever the last turn cut — so a resumed session and a
 /// continued one carry the same numbers.
-pub(super) fn fold(
+pub(crate) fn fold(
     path: &Path,
     body: &str,
 ) -> Result<(Vec<Message>, Option<Usage>, usize), SessionError> {

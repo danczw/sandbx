@@ -34,7 +34,7 @@ enum Shared {
 }
 
 /// The key the file holds, `None` when there is no file or no entry in it.
-pub(super) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
+pub(crate) fn stored(path: &Path) -> Result<Option<SecretString>, AuthError> {
     let Some(table) = read(path, Shared::Refuse)? else {
         return Ok(None);
     };
@@ -126,7 +126,7 @@ fn line_of(text: &str, error: &toml::de::Error) -> usize {
 }
 
 /// Write `key` to the file, keeping every entry this did not write.
-pub(super) fn store(path: &Path, key: &SecretString) -> Result<(), AuthError> {
+pub(crate) fn store(path: &Path, key: &SecretString) -> Result<(), AuthError> {
     // Read before create, so a file whose mode is already too wide is refused rather than
     // silently replaced along with whatever else it held.
     let mut table = read(path, Shared::Refuse)?.unwrap_or_default();
@@ -150,7 +150,7 @@ pub(super) fn store(path: &Path, key: &SecretString) -> Result<(), AuthError> {
 }
 
 /// Drop the stored key, reporting whether there was one, and remove a file left empty.
-pub(super) fn discard(path: &Path) -> Result<bool, AuthError> {
+pub(crate) fn discard(path: &Path) -> Result<bool, AuthError> {
     let Some(mut table) = read(path, Shared::Tolerate)? else {
         return Ok(false);
     };
