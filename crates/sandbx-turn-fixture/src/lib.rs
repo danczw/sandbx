@@ -8,7 +8,7 @@
 //! to end, the `mod` line being indistinguishable from one naming a test file. And
 //! `dead_code` is per test target, so every item had to sit in the intersection all
 //! three roots use or warn in the ones that did not. Compiled once with a public
-//! surface, that constraint is gone; the paragraph below is what it cost instead.
+//! surface, that constraint is gone, at a price set out further down.
 //!
 //! A `#[cfg(feature = ..)]` export from `sandbx-turn` would have kept one package at the
 //! price of a surface that diverges between builds — on in the rlib `--all-targets`

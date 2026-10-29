@@ -16,10 +16,8 @@ sandbx-event = { path = "../sandbx-event" }
 sandbx-prompt = { path = "../sandbx-prompt" }
 sandbx-provider = { path = "../sandbx-provider" }
 sandbx-tools = { path = "../sandbx-tools" }
-# The crate under test, and the cycle is deliberate: `sandbx-turn` dev-depends on this
-# one. Cargo permits it because the cycle never exists in the unit graph — `sandbx-turn`'s
-# *test* targets link this crate, which links `sandbx-turn`'s *lib*. `tokio` ↔
-# `tokio-test` is the published precedent. Only `turn` needs it, for the `Turn` literal.
+# The crate under test. `sandbx-turn` dev-depends on this one, and why that cycle is
+# sound is in `src/lib.rs`'s `//!`. Only `turn` needs the edge, for the `Turn` literal.
 #
 # **Never add `features` to this line.** Resolver 3 unifies features per package, so a
 # feature asked for here travels the two hops back — turn → fixture → turn — and lands on
