@@ -74,8 +74,8 @@ there are:
   the enum in its own public API, as `TurnOutcome::round_stop` (#190), and does
   not re-export it — one path to one type, and that path no longer runs through a
   crate that also hands out `AnthropicClient`. That is the test of the neutrality
-  above, passed because nothing outside `anthropic/` can build one from a wire
-  string.
+  above, passed because nothing outside the `anthropic` module can build one from
+  a wire string.
 - `ProviderError` classifies nothing as retryable. #59 settled that such a
   judgement belongs at the adapter's construction sites, not in shared code
   holding vendor strings; it did not settle that one must exist. No backoff layer

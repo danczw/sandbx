@@ -164,8 +164,9 @@ events the loop hands back.
 
 `src/` is flat (#333). A file's name is its module path joined with `_`, so
 `helper_ruleset_rights.rs` is `helper::ruleset::rights` — the nesting the
-directories used to show is in the name, and `#[path]` on each `mod` line keeps
-the module tree itself.
+directories used to show is in the name, and a `#[path]` on every `mod` line
+whose file moved keeps the module tree itself. A crate root's own `mod` lines
+carry none: a top-level module's name is already its path-join name.
 
 ```
 src/lib.rs        re-exports; Linux-only, refused at compile time
@@ -317,10 +318,8 @@ tests/            per-tool (find and grep share search), plus registry, limits,
 
 ## `sandbx-anthropic`
 
-`src/` is flat (#333). A file's name is its module path joined with `_`, so
-`anthropic_wire_payload.rs` is `anthropic::wire::payload` — the nesting the
-directories used to show is in the name, and `#[path]` on each `mod` line keeps
-the module tree itself.
+Flat, like every `src/` (#333): a file's name is its module path joined with
+`_`, so `anthropic_wire_payload.rs` is `anthropic::wire::payload`.
 
 ```
 src/lib.rs        re-exports; ensure_crypto_provider_installed
@@ -329,6 +328,9 @@ anthropic_client.rs
                   AnthropicClient — the request, and the base-URL and
                   transport rules that keep the key off the network in cleartext
 anthropic_body.rs Serialize for the Messages body, built from a &Prompt
+anthropic_body_tests.rs
+                  unit tests: the per-field body rules, which the two client
+                  tests take as given
 anthropic_wire.rs re-exports event_stream and RawApiErrorEnvelope
 anthropic_wire_accumulate.rs
                   event_stream — one AgentEvent per wire frame
