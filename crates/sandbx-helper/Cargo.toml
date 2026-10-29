@@ -31,9 +31,10 @@ workspace = true
 [dev-dependencies]
 caps = "0.5.6"
 libc = "0.2.189"
-# The enforcement suite's shared fixture. Four roots drive it, and a `#[cfg(test)]` item
-# does not cross a crate boundary; it takes the helper's path as an argument because
-# `CARGO_BIN_EXE_sandbx-helper` is set only for a target of this package (#333).
+# The enforcement suite's shared fixture, a crate rather than the `tests/support/mod.rs`
+# it replaces for the reasons its own `//!` gives. It takes the helper's path as an
+# argument because `CARGO_BIN_EXE_sandbx-helper` is set only for a target of this
+# package (#333).
 sandbx-helper-fixture = { path = "../sandbx-helper-fixture" }
 tempfile = "3.27.0"
 tracing = "0.1.44"

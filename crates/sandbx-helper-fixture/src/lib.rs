@@ -7,8 +7,8 @@
 //! make a crate better. A test root declaring a non-test submodule is what #333 set out
 //! to end, the `mod` line being indistinguishable from one naming a test file. And
 //! `dead_code` is per test target, so every item had to sit in the intersection all four
-//! roots use or warn in the ones that did not: compiled once with a public surface, that
-//! constraint is gone and the last paragraph here is what it cost instead.
+//! roots use or warn in the ones that did not. Compiled once with a public surface, that
+//! constraint is gone; the paragraph below is what it cost instead.
 //!
 //! A `#[cfg(feature = ..)]` export from `sandbx-helper` would have kept one package at
 //! the price of a surface that diverges between builds — on in the rlib `--all-targets`
@@ -21,15 +21,12 @@
 //! declaring that bin, so the same `env!` compiled here would resolve nowhere. Each root
 //! passes the path its own Cargo run gave it (#328 decision 5, #347).
 //!
-//! Ungated, and so compiled by the default `cargo test`, `clippy --all-targets` and `doc`
-//! runs rather than only behind `sandbox-integration` as the module was. That is a net
-//! gain: the fixture is type-checked on every CI job instead of one. It is still
-//! Linux-only, not by a `cfg` of its own but because `sandbx-core` refuses to compile
-//! anywhere else, and the whole workspace already rests on that.
-//!
-//! No item here is pinned to the intersection of what the roots share, as the module's
-//! were. `dead_code` is per test crate, so an item one root did not use warned there;
-//! compiled once with a public surface, that constraint is gone.
+//! The cost is that every item is `pub` and so under `missing_docs`, and that the crate
+//! is compiled by the default `cargo test`, `clippy --all-targets` and `doc` runs rather
+//! than only behind `sandbox-integration` as the module was. Both are worth paying: the
+//! fixture is now type-checked on every CI job instead of one. Ungated deliberately, and
+//! still Linux-only — not by a `cfg` of its own but because `sandbx-core` refuses to
+//! compile anywhere else, which the whole workspace already rests on.
 
 use std::path::Path;
 use std::process::Command;
