@@ -74,7 +74,7 @@ fn every_claimed_syscall_is_actually_denied() {
          BLOCKED_SYSCALLS: {missing:?}. Nothing outside that list denies them, \
          so they are permitted inside the sandbox and the security docs now \
          overstate the boundary. Fix by restoring the entries in \
-         crates/sandbx-core/src/helper/seccomp/rules.rs — or, if the removal was \
+         crates/sandbx-core/src/helper_seccomp_rules.rs — or, if the removal was \
          deliberate, \
          drop the claim from SECURITY.md in the same change."
     );
@@ -96,7 +96,7 @@ fn every_denied_syscall_is_one_the_docs_claim() {
         "these syscall numbers are denied but named by no claim: {unclaimed:?}. Numbers and \
          not names because an unclaimed entry is one nothing here names — each is spelled \
          `libc::SYS_*` in BLOCKED_SYSCALLS, in \
-         crates/sandbx-core/src/helper/seccomp/rules.rs, which is where to read the name off. \
+         crates/sandbx-core/src/helper_seccomp_rules.rs, which is where to read the name off. \
          The boundary is wider than the docs describe, which is how a count in SECURITY.md or \
          context/guide-sandboxing.md goes stale. Fix by adding them to CLAIMED above and to \
          the syscalls row in SECURITY.md."
