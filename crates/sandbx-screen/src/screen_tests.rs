@@ -1,14 +1,16 @@
-use super::{Measured, cleared};
-use nix::errno::Errno;
-use ratatui::Terminal;
-use sandbx_pty_fixture::{WINDOW, pty};
-use sandbx_tui_transcript::{Hint, Transcript, draw};
 use std::cell::Cell as Shared;
 use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::rc::Rc;
+
+use nix::errno::Errno;
+use ratatui::Terminal;
+use sandbx_pty_fixture::{WINDOW, pty};
+use sandbx_tui_transcript::{Hint, Transcript, draw};
+
+use super::{Measured, cleared};
 
 /// A pty slave, counting the writes that reach it: a draw that was attempted wrote.
 struct Counted {

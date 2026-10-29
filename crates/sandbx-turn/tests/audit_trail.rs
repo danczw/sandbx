@@ -6,16 +6,16 @@
 //! installed on the thread that emits. `sandbx_logging` installs globally for the
 //! same reason.
 
-use sandbx_core::SandboxPolicy;
-use sandbx_event::StopReason;
-use sandbx_prompt::ContentBlock;
-use sandbx_tools::BuiltinTool;
-use sandbx_turn::run_turn;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use sandbx_core::SandboxPolicy;
+use sandbx_event::StopReason;
+use sandbx_prompt::ContentBlock;
+use sandbx_tools::BuiltinTool;
+use sandbx_turn::run_turn;
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// An in-memory stand-in for stderr.

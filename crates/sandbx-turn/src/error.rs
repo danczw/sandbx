@@ -1,6 +1,7 @@
-use sandbx_provider::ProviderError;
 use std::fmt;
 use std::time::Duration;
+
+use sandbx_provider::ProviderError;
 
 /// Why a turn did not finish.
 ///

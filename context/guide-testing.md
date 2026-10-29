@@ -41,10 +41,12 @@ name says nothing about what it holds. A `lib.rs` takes the crate's own name —
 naming either after the crate would leave the other with no name to take.
 
 The sibling imports what it uses by name. `use super::*` was a recorded
-departure until phase 5 of #328 replaced all 49 of them, so there is no glob
-import left in the workspace and nothing in `decision-google-style.md` excusing
-one. An import block that grows with the file is what the rule costs; a reader
-who can see which private items the tests reach is what it buys.
+departure until phase 5 of #328 replaced all 41 of them — along with the eight
+globs of a *different* module in `sandbx-core`'s seccomp test files, which the
+departure never covered — so there is no glob import left in the workspace and
+nothing in `decision-google-style.md` excusing one. An import block that grows
+with the file is what the rule costs; a reader who can see which private items
+the tests reach is what it buys.
 
 ## What a test has to assert to assert anything
 

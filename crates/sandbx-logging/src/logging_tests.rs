@@ -1,7 +1,8 @@
-use super::{Audit, HELD, hold};
 use std::io::Write;
 use std::panic;
 use std::sync::{Mutex, PoisonError};
+
+use super::{Audit, HELD, hold};
 
 /// Serialises these tests: `HELD` is process-global, so two at once would read each
 /// other's records.

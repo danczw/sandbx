@@ -12,6 +12,8 @@
 //! `sandbx-turn` that names `PromptUsage`, so folding them back would give `sandbx-cli` a
 //! `sandbx-compact` edge for a type nothing else in it mentions (#351).
 
+use std::env;
+
 use sandbx_compact::PromptUsage;
 use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_session_error::SessionError;
@@ -19,7 +21,6 @@ use sandbx_session_id::SessionId;
 use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
 use sandbx_session_paths::sessions_directory;
 use sandbx_session_store::{Session, SessionStore};
-use std::env;
 
 /// What `--session` asked for.
 #[derive(Debug, Clone, Copy)]

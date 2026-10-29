@@ -37,7 +37,7 @@ visibility, and there is no tidier one.
 
 ## `catch_unwind` in the TUI: a deviation, not yet an exception
 
-`crates/sandbx-screen/src/lib.rs:245` calls `catch_unwind`. The guide allows it as
+`crates/sandbx-screen/src/lib.rs:244` calls `catch_unwind`. The guide allows it as
 defense in depth at an entry point and never as something a property relies on, and
 this call is neither. It sits inside `Screen::drop`, and it stops a panic from
 `Terminal::drop` — an `eprintln!` to a stderr that has hung up — from aborting while
@@ -85,12 +85,15 @@ library rules notwithstanding.
 
 ## What this leaves open
 
-Two of the departures above are consequences of choices taken before any code moved —
-the one larger crate, and tests in sibling files. If either is revisited the departure
-goes with it, so neither is evidence that the guide was wrong about anything.
+The one departure above is a consequence of a choice taken before any code moved —
+the larger crate. If that is revisited the departure goes with it, so it is not
+evidence that the guide was wrong about anything. The sibling-file test layout is the
+same shape and used to be recorded here too; phase 5 of #328 made it cost nothing to
+the guide's import rules, so it is a local preference on #328's decision 4 rather than
+a departure.
 
 The weakness, stated rather than designed around: nothing checks this file against the
-tree. A fourth departure can be introduced and reviewed as ordinary code, because no
+tree. A third departure can be introduced and reviewed as ordinary code, because no
 lint knows what the guide says, and all that stands between a deviation and an
 unrecorded one is a reviewer who has read both. The dependency check and the
 public-API diff narrow that for the two cases where it would cost most — a crate

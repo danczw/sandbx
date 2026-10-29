@@ -1,11 +1,12 @@
+use std::os::unix::fs as unix_fs;
+use std::path::{Path, PathBuf};
+
+use sandbx_core::{Axis, VettedPath};
+
 use super::super::root::owned_paths;
 use super::super::root::tests::{env, reaches};
 use super::Grants;
 use crate::PolicyError;
-use sandbx_core::{Axis, VettedPath};
-use std::env;
-use std::os::unix::fs as unix_fs;
-use std::path::{Path, PathBuf};
 
 fn bare() -> Grants {
     Grants {
@@ -99,7 +100,7 @@ fn a_relative_grant_reaches_the_policy_absolute() {
     grants.allow_read.push(PathBuf::from("src"));
 
     let policy = grants.policy().expect("the flags describe a policy");
-    let expected = env::current_dir()
+    let expected = std::env::current_dir()
         .expect("a readable working directory")
         .join("src")
         .canonicalize()

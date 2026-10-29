@@ -5,8 +5,9 @@
 //! `reqwest::Error` it carries needs a crypto provider installed, and the function that
 //! installs one stayed there (#366).
 
-use sandbx_provider::ProviderError;
 use std::time::Duration;
+
+use sandbx_provider::ProviderError;
 
 fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)> {
     std::error::Error::source(error)

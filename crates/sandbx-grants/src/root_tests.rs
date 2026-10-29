@@ -105,16 +105,18 @@
 //! two lookups themselves, `getcwd` and `var_os("HOME")`; `sandbx-cli`'s `tests/cwd_policy.rs`
 //! covers what it can of them by setting `HOME` on the spawned binary.
 
+use std::ffi::OsString;
+use std::os::unix::fs as unix_fs;
+use std::path::{Path, PathBuf};
+use std::{env, fs, io};
+
+use sandbx_core::{SandboxPolicy, VettedPath};
+
 use super::{
     Homes, OwnedPath, ResolvedPath, absolute, named_homes, owned_paths, reaches_owned, resolved,
     vetted_root,
 };
 use crate::PolicyError;
-use sandbx_core::{SandboxPolicy, VettedPath};
-use std::ffi::OsString;
-use std::os::unix::fs as unix_fs;
-use std::path::{Path, PathBuf};
-use std::{env, fs, io};
 
 /// What every run may already execute, which `policy()` passes from the live policy.
 fn granted() -> Vec<VettedPath> {
@@ -185,7 +187,7 @@ fn owned_under(home: &str) -> Vec<OwnedPath> {
 /// is what a flag actually gets compared in.
 pub(crate) fn reaches(granted: impl AsRef<Path>, owned: &[OwnedPath]) -> bool {
     let granted = resolved(
-        &absolute(granted.as_ref(), &env::current_dir).expect("a readable working directory"),
+        &absolute(granted.as_ref(), &std::env::current_dir).expect("a readable working directory"),
     );
 
     reaches_owned(&granted, owned).is_some()
@@ -647,7 +649,7 @@ fn a_relative_grant_is_resolved_before_comparing() {
 /// it, so joining the cwd is the only thing that can.
 #[test]
 fn a_relative_grant_resolves_before_it_exists() {
-    let cwd = env::current_dir().expect("a test runs from a real directory");
+    let cwd = std::env::current_dir().expect("a test runs from a real directory");
     let owned = vec![OwnedPath {
         path: cwd.join("nothing-stored-yet/sandbx/sessions"),
         holds: "the session transcripts a resumed run replays to the model",

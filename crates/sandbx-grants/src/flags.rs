@@ -9,11 +9,10 @@ use std::path::PathBuf;
 
 use sandbx_core::{Axis, NAMESERVER_PORT, SandboxPolicy, VettedPath};
 
-use crate::PolicyError;
-
 use super::root::{
     ResolvedPath, absolute, bound_by_resolver, current_root, owned_paths, reaches_owned, resolved,
 };
+use crate::PolicyError;
 
 /// The `--allow-…` flags every subcommand that runs something accepts.
 #[derive(Debug, clap::Args)]

@@ -1,8 +1,10 @@
-use super::{ENV_VAR, FILE, Source, config_file, read_key, resolve};
-use crate::{AuthError, store};
-use secrecy::{ExposeSecret, SecretString};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+use secrecy::{ExposeSecret, SecretString};
+
+use super::{ENV_VAR, FILE, Source, config_file, read_key, resolve};
+use crate::{AuthError, store};
 
 /// Against a literal: `SECURITY.md`, the README and `--help` name it in prose that
 /// cannot follow a rename.
