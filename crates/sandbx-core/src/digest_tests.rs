@@ -1,4 +1,4 @@
-use super::*;
+use super::{CHUNK, DigestParseError, HEX_LEN, Sha256Digest, fd_path, open_verified};
 use std::fs;
 use std::fs::{File, Permissions};
 use std::path::PathBuf;

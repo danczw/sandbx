@@ -1,6 +1,11 @@
-use super::*;
+use super::{
+    RESOLV_BODY, RESOLV_CONF, RESOLVER_FILES, bound_by_any, database, files, hosts_body,
+    nsswitch_body,
+};
 use std::fs;
+use std::net::IpAddr;
 use std::os::unix::fs as unix_fs;
+use std::path::Path;
 
 /// Names a hosts file must never resolve, in the shape they would arrive in.
 const UNLISTED: [&str; 2] = ["www.google.com", "metadata.google.internal"];

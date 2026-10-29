@@ -3,9 +3,12 @@
 //! `type`, and a port allowlist adds rules on `socket`'s `domain`, `type` and `protocol` —
 //! plus the `MSG_FASTOPEN` rules on the send syscalls, which belong to the same claim.
 
-use super::super::filter::*;
+use super::super::filter::compiled_filter;
 use super::super::rules::blocked_syscalls;
-use super::bpf::*;
+use super::bpf::{
+    ALLOW, EPERM, protocol_socket_verdict, socket_verdict, socketpair_verdict,
+    typed_socket_verdict, verdict, verdict_with_args,
+};
 use crate::SandboxPolicy;
 use std::collections::BTreeMap;
 

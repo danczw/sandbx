@@ -1,4 +1,4 @@
-use super::*;
+use super::{ARGS_CAP, args_field};
 
 /// `n` arguments of one character, which render as `n` quoted singletons.
 fn singletons(n: usize) -> Vec<String> {

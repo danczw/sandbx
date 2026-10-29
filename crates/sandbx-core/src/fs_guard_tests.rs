@@ -1,6 +1,11 @@
-use super::*;
+use super::{
+    ESCAPED, FsGuard, ReadableWalk, UNRESOLVABLE, collapsed, open, probe_subject, reason,
+    resolves_beneath_from,
+};
+use crate::{Access, SandboxError, SandboxPolicy, VettedPath};
 use std::fs::OpenOptions;
 use std::os::unix::fs as unix_fs;
+use std::path::Path;
 use std::{env, fs, io};
 
 /// The relative arm the public tests cannot reach: `set_current_dir` is process-wide.

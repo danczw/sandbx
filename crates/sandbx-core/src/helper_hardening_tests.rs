@@ -1,4 +1,5 @@
-use super::*;
+use super::{drop_bounding_set, map_identity_into_userns_with, ppid_from_stat};
+use crate::degradation::Degradation;
 use std::{fs, io};
 
 /// A `/proc/pid/stat` line with the executable name substituted in. Long enough to carry

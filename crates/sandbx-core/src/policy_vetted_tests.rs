@@ -1,4 +1,5 @@
-use super::*;
+use super::{Confirmation, ObjectId, VettedPath};
+use crate::SandboxError;
 use std::fs;
 use std::fs::File;
 use std::os::unix::fs as unix_fs;

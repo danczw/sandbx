@@ -2,9 +2,12 @@
 //! kernel would load at all.
 
 use super::super::BLOCKED_SYSCALLS;
-use super::super::filter::*;
+use super::super::filter::{compiled_filter, installed_filters};
 use super::super::rules::blocked_syscalls;
-use super::bpf::*;
+use super::bpf::{
+    ALLOW, ENOSYS, EPERM, JA, JEQ_K, JGE_K, JGT_K, KILL, KNOWN_OPCODES, LD_W_ABS, RET_K,
+    socket_verdict, verdict,
+};
 use crate::SandboxPolicy;
 use std::collections::BTreeSet;
 use std::env;

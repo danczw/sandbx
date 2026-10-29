@@ -1,4 +1,4 @@
-use super::*;
+use super::opens_as_itself;
 use std::fs;
 use std::os::unix::fs as unix_fs;
 
