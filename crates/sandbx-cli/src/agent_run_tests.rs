@@ -1,8 +1,3 @@
-use sandbx_event::{AgentEvent, StopReason};
-use sandbx_prompt::ToolChoice;
-use std::path::Path;
-use std::{fs, future, io};
-
 use super::super::orientation;
 use super::super::prompt::{APPROVE_CALL, Approve, Terminal};
 use super::super::render::tests::{stop, text};
@@ -10,10 +5,13 @@ use super::{AgentRun, Channels, INCOMPLETE, round_cap, session_id};
 use crate::AgentError;
 use clap::Parser;
 use sandbx_core::SandboxPolicy;
-use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
+use sandbx_event::{AgentEvent, StopReason};
+use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_session_store::Session;
 use sandbx_tools::ExecutionContext;
+use std::path::Path;
+use std::{fs, future, io};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
 fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {

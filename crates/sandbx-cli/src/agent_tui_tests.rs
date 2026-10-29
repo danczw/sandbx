@@ -1,12 +1,11 @@
-use clap::Parser;
-use sandbx_turn::TurnError;
-
 use super::super::{INCOMPLETE, NO_CONSENT, gate};
 use super::{Tui, ending, lost, reported};
 use crate::{AgentError, Cli, Command};
+use clap::Parser;
 use sandbx_event::StopReason;
-use sandbx_turn::{TurnOutcome, TurnStop};
+use sandbx_turn::{TurnError, TurnOutcome, TurnStop};
 use std::io;
+
 /// The `tui` invocation `argv` describes, as clap parses it.
 fn tui(argv: &[&str]) -> Tui {
     let cli = Cli::try_parse_from(argv).expect("argv parses");
