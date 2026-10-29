@@ -3,6 +3,10 @@
 //! Driven through the closure seam with `sandbx_turn_fixture::Script`, so the suite
 //! needs no network and no API key.
 
+use std::path::Path;
+use std::time::Duration;
+use std::{fs, iter};
+
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
@@ -10,10 +14,6 @@ use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_provider::EventStream;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{TurnError, TurnLimits, TurnStop, run_turn};
-use std::path::Path;
-use std::time::Duration;
-use std::{fs, iter};
-
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// An assistant turn of prose, the shape most of these end on.

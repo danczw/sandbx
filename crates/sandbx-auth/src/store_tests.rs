@@ -1,11 +1,13 @@
-use super::{DIR_OWNER_ONLY, OWNER_ONLY, Shared, TABLE, discard, read, store, stored};
-use crate::AuthError;
-use secrecy::{ExposeSecret, SecretString};
 use std::fs;
 use std::fs::Permissions;
 use std::os::unix::fs as unix_fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+
+use secrecy::{ExposeSecret, SecretString};
+
+use super::{DIR_OWNER_ONLY, OWNER_ONLY, Shared, TABLE, discard, read, store, stored};
+use crate::AuthError;
 
 /// A credential file at `mode`, in an owner-only directory — `tempdir` is 0755, which
 /// [`read`] refuses, so a fixture left at it would test the directory check instead.

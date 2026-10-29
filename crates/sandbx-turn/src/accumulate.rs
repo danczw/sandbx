@@ -3,12 +3,13 @@
 //! Content comes off the wire as increments, so the blocks here are assembled rather than
 //! received.
 
+use std::mem;
+
 use futures_util::StreamExt;
 use sandbx_compact::PromptUsage;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::ContentBlock;
 use sandbx_provider::EventStream;
-use std::mem;
 
 use crate::TurnError;
 

@@ -1,13 +1,15 @@
-use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
-use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use sandbx_pty_fixture::pty;
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::task::{Context, Waker};
 use std::time::{Duration, Instant};
 use std::{io, pin};
+
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use sandbx_pty_fixture::pty;
 use tokio::sync::watch;
+
+use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
 
 fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(code, modifiers)

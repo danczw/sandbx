@@ -11,7 +11,6 @@ use std::path::Path;
 
 use nix::fcntl::OFlag;
 use nix::sys::stat::Mode;
-
 use sandbx_session_error::SessionError;
 
 /// The mode a transcript is created with.

@@ -4,13 +4,14 @@
 //! One module on purpose: a new way for a turn to stop is one edit to
 //! `TurnStop`, to the loop that chooses it and to the outcome that carries it.
 
+use std::time::Duration;
+
 use sandbx_approval::CallGate;
 use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut};
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::{BuiltinTool, ExecutionContext};
-use std::time::Duration;
 
 use crate::TurnError;
 use crate::accumulate::accumulate;

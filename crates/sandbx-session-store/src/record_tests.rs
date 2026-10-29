@@ -1,7 +1,9 @@
-use super::{Accounting, Header, Record, fold};
+use std::path::Path;
+
 use sandbx_session_error::SessionError;
 use sandbx_session_message::{Content, Message, Role, Usage};
-use std::path::Path;
+
+use super::{Accounting, Header, Record, fold};
 
 #[test]
 fn a_turn_line_carries_its_own_type() {

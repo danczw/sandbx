@@ -1,7 +1,8 @@
-use super::{MAX_EVENT_BYTES, tokenize};
 use bytes::Bytes;
 use futures_util::{StreamExt, stream};
 use sandbx_provider::ProviderError;
+
+use super::{MAX_EVENT_BYTES, tokenize};
 
 async fn tokenize_all(chunks: Vec<&'static [u8]>) -> Vec<Result<String, ProviderError>> {
     let byte_stream = stream::iter(chunks.into_iter().map(|c| Ok(Bytes::from_static(c))));
