@@ -337,6 +337,6 @@ compaction's wiring, including that what reaches the API after a cut is still a
 conversation it would accept, which is asserted on `Script::sent` rather than on
 the return value.
 
-Both drive the loop through the closure seam with the `Script` in
-`tests/support/mod.rs`: one canned round per call, and a record of every request,
-since what a cut changes shows only in what was sent.
+Both drive the loop through the closure seam with `sandbx-turn-fixture`'s `Script`:
+one canned round per call, and a record of every request, since what a cut
+changes shows only in what was sent.

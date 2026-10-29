@@ -91,6 +91,7 @@ so the turn loop reaches no client code in a production build and
 | `sandbx-tui-transcript` | what that screen shows: the event fold, and the layout it is drawn in | event, text |
 | `sandbx-pty-fixture` | a pty pair for tests that drive a real terminal | — |
 | `sandbx-helper-fixture` | what the enforcement suite needs to start a sandboxed command, the helper's path passed in | core |
+| `sandbx-turn-fixture` | what the turn-loop suite drives `run_turn` with: the `Script` double and the request builders | approval, core, event, prompt, provider, tools, turn |
 | `sandbx-helper` | the test-only binary the enforcement suite spawns, and that suite | core (helper-fixture is *dev*-only) |
 | `sandbx-session-message` | the five shapes a transcript line is made of | — |
 | `sandbx-session-error` | why a session operation did not happen | — |
@@ -153,6 +154,13 @@ path as an argument rather than naming it: `CARGO_BIN_EXE_sandbx-helper` is set
 only for a target of the package declaring that bin, so the `env!` the module
 used could not survive the move to a crate. Each enforcement root passes what
 its own cargo run gave it (#333).
+
+`sandbx-turn-fixture` is absent too, and it is the one crate here that depends on
+the crate that dev-depends on it. Cargo permits that because the cycle never
+exists in a unit graph: `sandbx-turn`'s *test* targets link the fixture, which
+links `sandbx-turn`'s *lib*, and `tokio` ↔ `tokio-test` is the published
+precedent. `deny-wrappers.py` cannot see it either, building `child -> {parents}`
+from the declared arrays with no graph walk (#333).
 
 `sandbx-helper` is absent from it for the same reason and a different one: nothing
 depends on it, and it depends on `sandbx-core` only to re-export its dispatch. It
@@ -538,8 +546,8 @@ src/lib.rs    re-exports: TurnError, Turn, TurnLimits, TurnOutcome,
    accumulate.rs  one round's message, rebuilt from deltas
    tools.rs       what is offered, the gate, and the one spawn_blocking site
    error.rs       TurnError
-tests/       turn_loop, turn_compaction, audit_trail,
-             support/mod.rs — the Script double and the request builders
+tests/       turn_loop, turn_compaction, audit_trail — all three driving the
+             loop through sandbx-turn-fixture's Script
 ```
 
 `Compaction` and `PromptUsage` are `sandbx-compact`'s, re-exported here: the
