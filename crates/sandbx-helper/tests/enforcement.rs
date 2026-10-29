@@ -16,19 +16,16 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 
 use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
 
-/// The helper this package's own Cargo run built. `CARGO_BIN_EXE_*` resolves only for a
-/// target of the package declaring the bin, which is why the fixture takes it as an
-/// argument rather than naming it itself.
+/// `CARGO_BIN_EXE_*` resolves only for a target of the package declaring the bin, which
+/// is why the fixture takes this as an argument.
 fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
 
-/// [`sandbx_helper_fixture::run`] with this root's helper, so the call sites read as before.
 fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
     sandbx_helper_fixture::run(helper(), policy, program, args)
 }
 
-/// [`run`], with the program's bytes named as well.
 fn run_pinned(
     policy: &SandboxPolicy,
     program: &str,
