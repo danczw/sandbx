@@ -9,13 +9,24 @@
 // to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
+use std::path::Path;
 use std::process::Command;
 
 use sandbx_core::{HelperArgs, SandboxPolicy};
 
-mod support;
+use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
 
-use support::{allow_probe, run, run_pinned, runtime_paths, vetted};
+/// The helper this package's own Cargo run built. `CARGO_BIN_EXE_*` resolves only for a
+/// target of the package declaring the bin, which is why the fixture takes it as an
+/// argument rather than naming it itself.
+fn helper() -> &'static Path {
+    Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
+}
+
+/// [`sandbx_helper_fixture::run`] with this root's helper, so the call sites read as before.
+fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+    sandbx_helper_fixture::run(helper(), policy, program, args)
+}
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
@@ -1019,7 +1030,8 @@ fn a_matching_pin_runs_the_program() {
     std::fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
-    let output = run_pinned(
+    let output = sandbx_helper_fixture::run_pinned(
+        helper(),
         &policy,
         program.to_str().unwrap(),
         &[],
@@ -1045,7 +1057,13 @@ fn a_binary_swapped_behind_its_pin_is_refused() {
     std::fs::copy("/bin/id", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
-    let output = run_pinned(&policy, program.to_str().unwrap(), &[], Some(pinned));
+    let output = sandbx_helper_fixture::run_pinned(
+        helper(),
+        &policy,
+        program.to_str().unwrap(),
+        &[],
+        Some(pinned),
+    );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -1073,7 +1091,8 @@ fn a_pin_grants_no_execute_a_read_grant_withheld() {
     std::fs::copy("/bin/true", &program).unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read(vetted(dir.path()));
-    let output = run_pinned(
+    let output = sandbx_helper_fixture::run_pinned(
+        helper(),
         &policy,
         program.to_str().unwrap(),
         &[],
@@ -1101,7 +1120,8 @@ fn a_pinned_script_is_refused_rather_than_exec_d() {
     .unwrap();
 
     let policy = runtime_paths(SandboxPolicy::default()).allow_read_execute(vetted(dir.path()));
-    let refused = run_pinned(
+    let refused = sandbx_helper_fixture::run_pinned(
+        helper(),
         &policy,
         program.to_str().unwrap(),
         &[],
@@ -1132,7 +1152,8 @@ fn a_pinned_script_is_refused_rather_than_exec_d() {
 #[test]
 fn a_pinned_program_keeps_the_name_it_was_given() {
     let policy = runtime_paths(SandboxPolicy::default());
-    let output = run_pinned(
+    let output = sandbx_helper_fixture::run_pinned(
+        helper(),
         &policy,
         "/bin/sh",
         &["-c", "echo $0"],

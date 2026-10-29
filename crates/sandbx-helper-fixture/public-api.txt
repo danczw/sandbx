@@ -1,0 +1,6 @@
+pub mod sandbx_helper_fixture
+pub fn sandbx_helper_fixture::allow_probe(sandbx_core::policy::sandbox::SandboxPolicy, &str) -> sandbx_core::policy::sandbox::SandboxPolicy
+pub fn sandbx_helper_fixture::run(&std::path::Path, &sandbx_core::policy::sandbox::SandboxPolicy, &str, &[&str]) -> std::process::Output
+pub fn sandbx_helper_fixture::run_pinned(&std::path::Path, &sandbx_core::policy::sandbox::SandboxPolicy, &str, &[&str], core::option::Option<sandbx_core::digest::Sha256Digest>) -> std::process::Output
+pub fn sandbx_helper_fixture::runtime_paths(sandbx_core::policy::sandbox::SandboxPolicy) -> sandbx_core::policy::sandbox::SandboxPolicy
+pub fn sandbx_helper_fixture::vetted(impl core::convert::AsRef<std::path::Path>) -> sandbx_core::policy::vetted::VettedPath

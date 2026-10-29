@@ -61,6 +61,7 @@ wrappers = [
     "sandbx-cli",
     "sandbx-grants",
     "sandbx-helper",
+    "sandbx-helper-fixture",
     "sandbx-logging",
     "sandbx-tools",
     "sandbx-turn",
@@ -161,6 +162,13 @@ name = "sandbx-tui-transcript"
 # One parent, not three: `sandbx-cli` reaches `Transcript` through `sandbx-screen`'s
 # re-export, and `sandbx-tui-input` has no edge here at all (#352, #354).
 wrappers = ["sandbx-screen"]
+
+[[bans.deny]]
+name = "sandbx-helper-fixture"
+# A dev-dependency edge, so this crate is in nobody's build; the entry is what keeps a
+# production edge from being added without a line here. One parent, whose four
+# enforcement roots drive the same fixture (#333).
+wrappers = ["sandbx-helper"]
 
 [[bans.deny]]
 name = "sandbx-pty-fixture"
