@@ -301,17 +301,22 @@ so.
 
 ## `sandbx-tools`
 
+Flat, like every `src/` (#333): a file's name is its module path joined with
+`_`, so `tools_bash.rs` is `tools::bash`.
+
 ```
 src/lib.rs        re-exports, and the crate-private ones the tool modules reach
-   builtin.rs     BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput,
+builtin.rs        BuiltinTool (closed enum), ALL: [Self; 7], ToolOutput,
                   RiskLevel; ToolSpec, crate-private so a tool's declaration is
                   not a public shape
-   shared.rs      parse, read_file, read_capped, listing, guard_error, failed —
+shared.rs         parse, read_file, read_capped, listing, guard_error, failed —
                   what more than one tool needs
-   context.rs     ExecutionContext, DEFAULT_TIMEOUT — policy is PRIVATE (#56)
-   limits.rs      ToolLimits
-   error.rs       ToolError: Denied | BadInput | Failed | TimedOut
-   tools/         bash, edit, find, grep, ls, read, write — each with its SPEC
+context.rs        ExecutionContext, DEFAULT_TIMEOUT — policy is PRIVATE (#56)
+limits.rs         ToolLimits
+error.rs          ToolError: Denied | BadInput | Failed | TimedOut
+tools.rs          mod lines and the per-tool contract they hold to
+tools_*.rs        bash, edit, find, grep, ls, read, write — each with its SPEC;
+                  tools_bash_tests.rs holds bash's unit tests
 tests/            per-tool (find and grep share search), plus registry, limits,
                   scan_limits, spawn
 ```
