@@ -3,7 +3,7 @@
 //!
 //! Rules are opened in the helper and the policy is judged in the harness, so a `rename(2)`
 //! in between can put one real directory where another was vetted — identical spelling, so
-//! the readback in `helper/ruleset/opened.rs` agrees and only the object tells them apart
+//! the readback in `helper_ruleset_opened.rs` agrees and only the object tells them apart
 //! (#212).
 
 use std::os::fd::AsFd;

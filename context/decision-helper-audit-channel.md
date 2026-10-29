@@ -8,7 +8,7 @@ than being logged where it is found (#95, #96).
 
 ### The problem
 
-`AuditEvent::Degraded` had two emitters, both in `helper/hardening.rs`:
+`AuditEvent::Degraded` had two emitters, both in `helper_hardening.rs`:
 `PR_CAPBSET_DROP` refused, and the uid/gid map unwritten. Both run in helper
 **stage 1**, a re-exec'd child of sandbx.
 
@@ -70,10 +70,10 @@ reads to EOF                     namespace_setup_failed\t  ◄─────┘
   └─ AuditEvent::exited(..) | ::failed(..)
 ```
 
-`hardening.rs` returns `Vec<(Degradation, String)>` instead of emitting;
+`helper_hardening.rs` returns `Vec<(Degradation, String)>` instead of emitting;
 `degradation.rs` owns the format and both ends; `exec_sandboxed` writes its
 degradations or its one refusal and `exec_inner` writes its one refusal;
-`command/run.rs` reads, decodes and emits.
+`command_run.rs` reads, decodes and emits.
 
 **Stage 2 reports any refusal, not only a failed `exec`** (#157). It can also refuse
 a Landlock ruleset the kernel will not take, a seccomp filter that will not install, a
@@ -103,7 +103,7 @@ Both edges of that region are load bearing:
   is `spawn_failed`, which the channel does not admit; keeping it outside means every
   label the write site can produce is one the reader takes, so the writer and the
   reader agree without a second check at the write. The variant is shared with sandbx
-  (`command/run.rs`), so relabelling it there was not an option.
+  (`command_run.rs`), so relabelling it there was not an option.
 
 `inner_stage_failed` is what lets the spawn sit *inside* the region. Stage 1 failing
 to start stage 2 would otherwise be `spawn_failed` too, and that label names no single

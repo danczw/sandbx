@@ -161,67 +161,82 @@ events the loop hands back.
 
 ## `sandbx-core`
 
+`src/` is flat (#333). A file's name is its module path joined with `_`, so
+`helper_ruleset_rights.rs` is `helper::ruleset::rights` — the nesting the
+directories used to show is in the name, and `#[path]` on each `mod` line keeps
+the module tree itself.
+
 ```
-src/lib.rs           re-exports; Linux-only, refused at compile time
-   policy.rs         re-exports
-      policy/sandbox.rs Axis, Grants, SandboxPolicy     ◄── the table
-      policy/vetted.rs  VettedPath, ObjectId — a grant and the object it names
-   fs_guard.rs       in-process path and object enforcement (6 of 7 tools)
-   command.rs        re-exports; dispatch is the host-side helper entry
-      run.rs         SandboxedCommand, the audit pipe, the kill chain
-      dispatch.rs    HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch — the
-                     entry into helper mode
-   helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx each with a
-                     <path> <dev>:<ino> pair, --allow-network, --allow-network-port,
-                     --allow-unix-sockets, --allow-dns-name, --env,
-                     --dns-over-tcp, --pin-sha256
-   resolver.rs       RESOLVER_FILES, bound_by_resolver — the three files a
-                     bounded resolver replaces, rendered with no nameserver
-                     in the loop
-   concealment.rs    conceal_process_state — the one step aimed at sandbx's own
-                     process rather than a sandboxed child's
-   digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
-   audit.rs          AuditEvent, AUDIT_TARGET
-   degradation.rs    the helper's channel to the parent, and its wire format
-   spawn.rs          spawn::command — the one Command::new; env_clear, then
-                     the allowlist and the policy's own constants
-   spawn_id.rs       SpawnId — the per-run id every record of a run carries;
-                     a per-process nonce, not the pid, which is reused
-   error.rs          re-exports
-      sandbox.rs     SandboxError — every refusal and failure, and its label
-      refusal.rs     HelperRefusal — the closed set the channel admits, and
-                     SandboxError::decided_by, the one place the two are mapped
-                     and every variant's label spelled
-   helper/
-      mod.rs         re-exports exit_code, BLOCKED_SYSCALLS, both stages and
-                     AUDIT_STDIN_FLAG
-      exec.rs        the two stages — exec_sandboxed, then exec_inner as the init;
-                     apply() sequences all three mechanisms; exit_code
-      hardening.rs   namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
-      resolver.rs    bound_resolution — the ordered mount sequence that installs
-                     what src/resolver.rs rendered, in stage 1 because stage 2
-                     has no namespace to put it in
-      seccomp.rs     re-exports BLOCKED_SYSCALLS and deny_dangerous_syscalls
-         filter.rs   compiled_filter, clone3_filter, x32_gate,
-                     deny_dangerous_syscalls — how it reaches the kernel
-         rules.rs    BLOCKED_SYSCALLS, blocked_syscalls — what is denied
-         tests/      unit tests: denylist, sockets, namespaces, arch; plus the
-                     eval interpreter they are all read through
-      ruleset/
-         mod.rs      re-exports what `apply` and the tests reach
-         requested.rs
-                     Requested { handled, rules, net }, RequestedNet —
-                     requested, requested_at
-         compat.rs   handled_access, handled_net_access, kernel_probe,
-                     negotiated_abi_from, negotiated_abi, enforcement_verdict
-         opened.rs   open_grant, reads_back — the path opened is the one granted
-         rights.rs   rights_for, fs_rules, net_rules
-         tests/      unit tests: compat, grants, net, opened, rules
-tests/               audit, capability_coverage, command (what an argv encodes
-                     and parses; the half that spawns the helper is
-                     sandbx-helper's), context_docs, denylist, fs_guard,
-                     helper_args, policy — none gated: everything needing a
-                     kernel went with the binary (#347)
+src/lib.rs        re-exports; Linux-only, refused at compile time
+policy.rs         re-exports
+policy_sandbox.rs Axis, Grants, SandboxPolicy          ◄── the table
+policy_vetted.rs  VettedPath, ObjectId — a grant and the object it names
+fs_guard.rs       in-process path and object enforcement (6 of 7 tools)
+command.rs        re-exports; dispatch is the host-side helper entry
+command_run.rs    SandboxedCommand, the audit pipe, the kill chain
+command_dispatch.rs
+                  HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch — the
+                  entry into helper mode
+helper_args.rs    the argv seam: encode/decode, --ro/--rw/--rx each with a
+                  <path> <dev>:<ino> pair, --allow-network, --allow-network-port,
+                  --allow-unix-sockets, --allow-dns-name, --env,
+                  --dns-over-tcp, --pin-sha256
+resolver.rs       RESOLVER_FILES, bound_by_resolver — the three files a
+                  bounded resolver replaces, rendered with no nameserver
+                  in the loop
+concealment.rs    conceal_process_state — the one step aimed at sandbx's own
+                  process rather than a sandboxed child's
+digest.rs         Sha256Digest; open_verified and fd_path, the pinned exec
+audit.rs          AuditEvent, AUDIT_TARGET
+degradation.rs    the helper's channel to the parent, and its wire format
+spawn.rs          spawn::command — the one Command::new; env_clear, then
+                  the allowlist and the policy's own constants
+spawn_id.rs       SpawnId — the per-run id every record of a run carries;
+                  a per-process nonce, not the pid, which is reused
+error.rs          re-exports
+error_sandbox.rs  SandboxError — every refusal and failure, and its label
+error_refusal.rs  HelperRefusal — the closed set the channel admits, and
+                  SandboxError::decided_by, the one place the two are mapped
+                  and every variant's label spelled
+helper.rs         re-exports exit_code, BLOCKED_SYSCALLS, both stages and
+                  AUDIT_STDIN_FLAG
+helper_exec.rs    the two stages — exec_sandboxed, then exec_inner as the init;
+                  apply() sequences all three mechanisms; exit_code
+helper_hardening.rs
+                  namespaces, capsets, rlimits, pdeathsig, ppid_from_stat
+helper_resolver.rs
+                  bound_resolution — the ordered mount sequence that installs
+                  what resolver.rs rendered, in stage 1 because stage 2 has no
+                  namespace to put it in
+helper_seccomp.rs re-exports BLOCKED_SYSCALLS and deny_dangerous_syscalls
+helper_seccomp_filter.rs
+                  compiled_filter, clone3_filter, x32_gate,
+                  deny_dangerous_syscalls — how it reaches the kernel
+helper_seccomp_rules.rs
+                  BLOCKED_SYSCALLS, blocked_syscalls — what is denied
+helper_seccomp_tests*.rs
+                  unit tests: denylist, sockets, namespaces, arch; plus the
+                  eval interpreter they are all read through, in _tests_bpf
+helper_ruleset.rs re-exports what `apply` and the tests reach
+helper_ruleset_requested.rs
+                  Requested { handled, rules, net }, RequestedNet —
+                  requested, requested_at
+helper_ruleset_compat.rs
+                  handled_access, handled_net_access, kernel_probe,
+                  negotiated_abi_from, negotiated_abi, enforcement_verdict
+helper_ruleset_opened.rs
+                  open_grant, reads_back — the path opened is the one granted
+helper_ruleset_rights.rs
+                  rights_for, fs_rules, net_rules
+helper_ruleset_tests*.rs
+                  unit tests: compat, grants, net, opened, rules
+*_tests.rs        every other unit-test module, a `#[path]` sibling of the file
+                  it tests (#328 decision 4)
+tests/            audit, capability_coverage, command (what an argv encodes
+                  and parses; the half that spawns the helper is
+                  sandbx-helper's), context_docs, denylist, fs_guard,
+                  helper_args, policy — none gated: everything needing a
+                  kernel went with the binary (#347)
 ```
 
 Public surface: `AuditEvent`, `AUDIT_TARGET`, `SandboxedCommand`, `HELPER_FLAG`,
