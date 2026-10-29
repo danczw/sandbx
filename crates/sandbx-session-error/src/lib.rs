@@ -2,7 +2,7 @@
 //!
 //! No `From` impls, and do not add one: every wrapped failure is paired with the path
 //! and operation it came from, which a blanket conversion would discard. `sandbx-cli`
-//! decides per call site what a session failure becomes — its `agent/run.rs` reads
+//! decides per call site what a session failure becomes — its `agent_run.rs` reads
 //! `IncompleteTurn` off an append as no error at all.
 //!
 //! Nothing here names a `SessionId`, deliberately: every fallible path in the session

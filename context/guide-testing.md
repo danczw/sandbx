@@ -34,6 +34,12 @@ the crate is what lets it stay that way.
 | drives the crate's public API | `crates/<crate>/tests/<topic>.rs` |
 | needs a sandbox-capable kernel | `crates/sandbx-helper/tests/`, behind `sandbox-integration` |
 
+The sibling is named after the module, except at a crate root, where the file
+name says nothing about what it holds. A `lib.rs` takes the crate's own name —
+`sandbx-compact`'s is `compact_tests.rs` — and a `main.rs` takes
+`main_tests.rs`. `sandbx-cli` is why the two differ: it has both roots, so
+naming either after the crate would leave the other with no name to take.
+
 `use super::*` in that sibling module is a recorded departure from the guide, not an
 oversight; `decision-google-style.md` says why.
 

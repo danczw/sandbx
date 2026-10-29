@@ -677,47 +677,49 @@ rule this crate shares with `sandbx-session-store`.
 
 ## `sandbx-cli`
 
+Flat, like every `src/` (#333): a file's name is its module path joined with
+`_`, so `agent_run.rs` is `agent::run`.
+
 ```
 src/lib.rs      mod lines and re-exports; no code
-   invocation.rs
-                Cli, Command — the clap surface and nothing else
-   sandbox.rs
-   hash.rs      Hash — the one subcommand that confines nothing
-   agent.rs     re-exports AgentRun and Tui, and what the siblings reach
-      run.rs    AgentRun — the turn loop's caller
-      gate.rs   which tools --allow-tool approved, the refusal the rest get,
+invocation.rs   Cli, Command — the clap surface and nothing else
+sandbox.rs
+hash.rs         Hash — the one subcommand that confines nothing
+agent.rs        re-exports AgentRun and Tui, and what the siblings reach
+agent_run.rs    AgentRun — the turn loop's caller
+agent_gate.rs   which tools --allow-tool approved, the refusal the rest get,
                 and the one line per call the operator reads
-      prompt.rs --approve call: the question put on /dev/tty, the three answers
+agent_prompt.rs --approve call: the question put on /dev/tty, the three answers
                 it takes, the verdict that ends the run when it can no longer be
                 asked, and Operator, which carries the per-call line back to the
                 same device
-      orientation.rs
+agent_orientation.rs
                 the approved tools and the roots the model is told about before
                 the first request
-      render.rs the answer on stdout, everything about it on stderr
-      wrapup.rs the second turn a round limit earns, which may call no tool,
+agent_render.rs the answer on stdout, everything about it on stderr
+agent_wrapup.rs the second turn a round limit earns, which may call no tool,
                 and the two outcomes merged into the one a session stores
-      tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
+agent_tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
                 one, and the gate that draws its verdicts instead of printing
                 them                                 ◄── guide-tui.md
-   error.rs     re-exports the three, and is the list of them
-   error/agent.rs
-                AgentError — twelve ways a turn does not finish
-   error/run.rs
-                SandboxRunError — Policy, Sandbox
-   error/hash.rs
-                HashError — a path and an io::Error, no variants
+error.rs        re-exports the three, and is the list of them
+error_agent.rs  AgentError — twelve ways a turn does not finish
+error_run.rs    SandboxRunError — Policy, Sandbox
+error_hash.rs   HashError — a path and an io::Error, no variants
 src/main.rs     helper dispatch, the tokio runtime, exit codes
+*_tests.rs      every unit-test module, a `#[path]` sibling of the file it
+                tests; `main.rs`'s is `main_tests.rs` (#328 decision 4)
 tests/          agent_run, agent_session, auth, auth_store, cwd_policy, hash,
                 name, sandbox_run, usage
 ```
 
 Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,
 `tui`, `hash` and `auth`. `tui` is `agent-run`'s flags, policy and session
-drawn on a screen rather than streamed to stdout, so the two share `gate.rs`,
-`orientation.rs` and `sandbx-session-bridge`, and differ only in where a turn
-is reported. `hash` and `auth` run no sandbox — `hash` reads one file, so a
-digest can be taken before there is a policy to take it under, and `auth` touches
+drawn on a screen rather than streamed to stdout, so the two share
+`agent_gate.rs`, `agent_orientation.rs` and `sandbx-session-bridge`, and differ
+only in where a turn is reported. `hash` and `auth` run no sandbox — `hash` reads
+one file, so a digest can be taken before there is a policy to take it under,
+and `auth` touches
 only the credential file. `auth` is the one subcommand whose body is not here:
 `invocation.rs` holds the variant and `sandbx-auth` everything under it.
 

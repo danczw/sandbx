@@ -60,7 +60,7 @@ before `tool_choice` the empty `tools` list refused such a call above the gate.
 ## Where the nudge goes
 
 The model is told it has no tool calls left as a **suffix on the system prompt**,
-composed in `agent/wrapup.rs`:
+composed in `agent_wrapup.rs`:
 
 - the history ends on a `user(tool_result)`, and a second user message in the
   request is exactly the consecutive-user-turn rejection this whole area is about

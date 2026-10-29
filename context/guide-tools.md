@@ -145,7 +145,7 @@ What separates those from a command that ran and exited non-zero is the
 stringifies the root it could not open — and that includes the two
 `agent-run` withholds from the system prompt on purpose: the
 `allow_system_executables` roots, and a grant that did not canonicalize
-(`agent/orientation.rs`). What keeps it inside the rule below is that no
+(`agent_orientation.rs`). What keeps it inside the rule below is that no
 caller can provoke it: the open fails on an operator-supplied root, the same
 way on every call, so a sequence of probes reads back as one constant rather
 than as a map. The detail is capped at `STDERR_LIMIT`, which is narrower than
