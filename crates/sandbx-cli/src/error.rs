@@ -9,8 +9,11 @@
 //! Only [`run`] and [`agent`] carry `From` impls. [`hash`] wraps errors too, but what wraps
 //! mostly needs a path or `detail` a conversion cannot know.
 
+#[path = "error_agent.rs"]
 mod agent;
+#[path = "error_hash.rs"]
 mod hash;
+#[path = "error_run.rs"]
 mod run;
 
 pub use agent::AgentError;

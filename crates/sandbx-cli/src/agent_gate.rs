@@ -267,5 +267,5 @@ pub(super) fn tool_name(value: &str) -> Result<BuiltinTool, String> {
 }
 
 #[cfg(test)]
-#[path = "gate_tests.rs"]
+#[path = "agent_gate_tests.rs"]
 mod tests;
