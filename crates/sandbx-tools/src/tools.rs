@@ -5,10 +5,17 @@
 //! the constraint that changes how the tool is called, since a model that learns it
 //! from an error has already spent a turn.
 
+#[path = "tools_bash.rs"]
 pub(crate) mod bash;
+#[path = "tools_edit.rs"]
 pub(crate) mod edit;
+#[path = "tools_find.rs"]
 pub(crate) mod find;
+#[path = "tools_grep.rs"]
 pub(crate) mod grep;
+#[path = "tools_ls.rs"]
 pub(crate) mod ls;
+#[path = "tools_read.rs"]
 pub(crate) mod read;
+#[path = "tools_write.rs"]
 pub(crate) mod write;
