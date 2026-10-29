@@ -37,9 +37,10 @@ pub(super) fn compiled_filter(
 /// the two actions below are positional and of the same type, so swapping them yields a
 /// filter that allows the denylist and `EPERM`s everything else. Hence the named bindings.
 ///
-/// `helper_seccomp_tests_denylist.rs` keeps a twin of this with the two actions swapped, which is
-/// what proves those tests would notice. It only mutates the real path as long as this body
-/// does nothing but call `SeccompFilter::new` — if that changes, change the twin.
+/// `helper_seccomp_tests_denylist.rs` keeps a twin of this with the two actions swapped,
+/// which is what proves those tests would notice. It only mutates the real path as long
+/// as this body does nothing but call `SeccompFilter::new` — if that changes, change the
+/// twin.
 pub(super) fn deny_with(
     rules: std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
     errno: libc::c_int,
@@ -155,9 +156,10 @@ pub(super) fn installed_filters(
 /// stage 2 is a fresh `exec` and therefore single-threaded — see
 /// [`exec_inner`](super::super::exec_inner).
 ///
-/// `pub(in crate::helper)` and not `pub(super)` like everything else here: `helper_seccomp.rs`
-/// re-exports this one `pub(super)`, and a re-export cannot widen an item visible only in
-/// `seccomp`. The private `mod filter` is what keeps the reach to `helper` either way.
+/// `pub(in crate::helper)` and not `pub(super)` like everything else here:
+/// `helper_seccomp.rs` re-exports this one `pub(super)`, and a re-export cannot widen an
+/// item visible only in `seccomp`. The private `mod filter` is what keeps the reach to
+/// `helper` either way.
 pub(in crate::helper) fn deny_dangerous_syscalls(
     policy: &crate::SandboxPolicy,
 ) -> Result<(), SandboxError> {
