@@ -279,8 +279,8 @@ mod tests {
         );
     }
 
-    /// Counterpart to `render.rs`'s `no_part_of_the_reasoning_reaches_stdout`: both blocks
-    /// carry replay material.
+    /// Counterpart to `agent_render_tests.rs`'s
+    /// `no_part_of_the_reasoning_reaches_stdout`: both blocks carry replay material.
     #[test]
     fn no_replayable_reasoning_block_is_ever_an_entry() {
         let blocks = [
