@@ -10,3 +10,35 @@
 # (rustfmt, import order, assert messages added with no logic touched), never a
 # commit that also fixed something. A SHA listed here is a SHA whose authorship
 # nobody will find again by blame.
+#
+# Phase 5 of #328, the import and visibility sweeps. Eight of the phase's twenty
+# commits are here. Excluded on purpose, each for the same reason — a reader
+# landing on one of its lines should find it rather than be skipped past it: the
+# four `the code review` commits, which fixed what the sweep got wrong; the two
+# comment passes, which are editorial rather than mechanical; `fix(core): carry
+# the cfg gate onto the de-globbed x32 imports`, an actual bug; and the three
+# `ci:` commits, which changed the gate itself.
+
+# refactor: one spelling for crate-internal visibility, where it is one
+a16549e77f32641b0037c4784f1b0851479b5dc2
+
+# refactor(core): import types, qualify functions by module
+cf261b4527ab8d641705822e114a98f668e2aad8
+
+# refactor(core): name what each test module imports
+d5c5459f556ab43b502ad7f53538be865ade78c4
+
+# refactor(cli): import types, qualify functions, name every glob
+ee3f6ee0dd339237f389c302a2885a3d0b79fd7f
+
+# refactor: import types and qualify functions in four more crates
+c3d58eef80f6479003050f14edff2a8a853dae5e
+
+# refactor: name every item the last seventeen globs imported
+fd67ab5f8cd68385a6d2b7cbd40381ef47a79d87
+
+# refactor: import types and qualify functions in the last twelve crates
+cbf5f1fc33c70d0399a87c17ef67c776e5ddf536
+
+# refactor: sweep the eleven probe binaries, the last inline paths
+0bca2cdcffad7bdfaaff5ad5605972133c4bc150
