@@ -1,8 +1,8 @@
 //! Which tools this run approved, what the model is told about the rest, and the one line
 //! per call an operator reads.
 //!
-//! The report is here and not in `render.rs` because only the gate knows what became of a
-//! call.
+//! The report is here and not in `agent_render.rs` because only the gate knows what
+//! became of a call.
 
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_text::invisible;

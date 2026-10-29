@@ -717,10 +717,10 @@ Lib `sandbx_cli`, bin `sandbx`. Five subcommands: `sandbox-run`, `agent-run`,
 `tui`, `hash` and `auth`. `tui` is `agent-run`'s flags, policy and session
 drawn on a screen rather than streamed to stdout, so the two share
 `agent_gate.rs`, `agent_orientation.rs` and `sandbx-session-bridge`, and differ
-only in where a turn is reported. `hash` and `auth` run no sandbox — `hash` reads
-one file, so a digest can be taken before there is a policy to take it under,
-and `auth` touches
-only the credential file. `auth` is the one subcommand whose body is not here:
+only in where a turn is reported. `hash` and `auth` run no sandbox — `hash`
+reads one file, so a digest can be taken before there is a policy to take it
+under, and `auth` touches only the credential file. `auth` is the one
+subcommand whose body is not here:
 `invocation.rs` holds the variant and `sandbx-auth` everything under it.
 
 `Grants` and `PolicyError` are `sandbx-grants`', re-exported here so
