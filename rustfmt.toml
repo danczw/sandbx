@@ -1,21 +1,18 @@
 # The four rustfmt options the Google Rust style guide names (#328 decision 11c, #334).
-# Three are nightly-only, so both halves of the gate run `cargo +nightly-2026-09-11 fmt`
-# — the nightly `.github/scripts/public-api.sh` already pins — while the build stays on
-# stable. Stable rustfmt does not fail on an option it cannot set: it prints `Warning:`
-# and exits 0, which is why the gate greps for that rather than trusting the exit code.
+# Three are nightly-only, so the gate runs them on the nightly `public-api.sh` already
+# pins while the build stays on stable; `guide-ci.md` has why it greps its own output.
 
-# rustfmt's own default today, set explicitly because the guide names the number and a
-# default is not a promise.
+# rustfmt's own default, set explicitly because the guide names the number and a default
+# is not a promise.
 max_width = 100
 
-# `0xab`, not `0xAB`.
 hex_literal_case = "Lower"
 
-# Inert: the workspace defines no `macro_rules!`. Set now so the first one written is
-# formatted without this file having to change in the same commit.
+# Inert until the workspace defines a `macro_rules!`; set now so the first one written is
+# formatted without this file changing in the same commit.
 format_macro_matchers = true
 
-# One `use` statement per module, so no `::` appears inside a `{}` group. The guide
-# states this as a rule of its own, not as an optional formatting setting, and it is the
-# only one of the four the tree does not already satisfy.
+# One `use` statement per module, so no `::` appears inside a `{}` group. The guide states
+# this one as a rule rather than as an optional formatting setting, which is why it is set
+# on a codebase that could otherwise have skipped the nightly altogether.
 imports_granularity = "Module"

@@ -1,19 +1,20 @@
 #!/bin/sh
-# All three commands are byte-identical to ci.yml's Format, Clippy and Doc steps.
+# The fmt, clippy and doc commands are byte-identical to ci.yml's Format, Clippy and Doc
+# steps.
 
 set -e
 
 echo "pre-commit: cargo fmt --check"
-# `cargo +toolchain` auto-installs a toolchain it does not have, so the check comes first
-# and through `rustup run`, which does not: it exits 1 with the name of what is missing.
-# Without it a fresh clone's first commit stalls for a silent 200MB fetch — the output
-# below is captured, so the download would not even print. `rustfmt`, not `rustc`, so a
-# toolchain present without the component is caught too; same shape as public-api.sh:29.
+# `cargo +toolchain` installs a toolchain it does not have, so the check cannot be the use
+# itself: `rustup run` fails instead, exit 1 naming what is missing, and is asked for
+# `rustfmt` so a toolchain present without the component is caught too (public-api.sh:29).
+# Without it a fresh clone's first commit stalls for a fetch the capture below hides.
 nightly=nightly-2026-09-11
-rustup run "$nightly" rustfmt --version >/dev/null 2>&1 || { echo "::error::$nightly with rustfmt missing: rustup toolchain install $nightly --component rustfmt"; exit 1; }
+rustup run "$nightly" rustfmt --version >/dev/null 2>&1 ||
+    { echo "::error::$nightly missing: rustup toolchain install $nightly --component rustfmt"; exit 1; }
 # Three of `rustfmt.toml`'s four options are nightly-only, and rustfmt skips an option it
 # cannot set with a `Warning:` and exit 0 — so a stable fmt, or a typo'd option name,
-# passes this gate having enforced nothing. The output is captured to be searched.
+# passes this gate having enforced nothing, and the output is captured to be searched.
 fmt=$(cargo "+$nightly" fmt --all -- --check 2>&1) || { printf '%s\n' "$fmt"; exit 1; }
 case "$fmt" in *Warning:*) printf '%s\n' "$fmt"; exit 1 ;; esac
 
