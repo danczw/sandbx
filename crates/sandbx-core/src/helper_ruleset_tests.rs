@@ -6,10 +6,15 @@
 //! All kernel-free — no root, no network namespace, no Landlock-capable host. A live kernel
 //! is `sandbx-helper`'s `tests/enforcement.rs` and `tests/enforcement_syscalls.rs`.
 
+#[path = "helper_ruleset_tests_compat.rs"]
 mod compat;
+#[path = "helper_ruleset_tests_grants.rs"]
 mod grants;
+#[path = "helper_ruleset_tests_net.rs"]
 mod net;
+#[path = "helper_ruleset_tests_opened.rs"]
 mod opened;
+#[path = "helper_ruleset_tests_rules.rs"]
 mod rules;
 
 use crate::{SandboxError, SandboxPolicy};

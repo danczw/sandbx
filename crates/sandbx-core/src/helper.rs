@@ -4,10 +4,15 @@
 //! [`hardening`], [`ruleset`] and [`seccomp`] are the three mechanisms it sequences, and
 //! [`resolver`] the files it installs for them.
 
+#[path = "helper_exec.rs"]
 mod exec;
+#[path = "helper_hardening.rs"]
 mod hardening;
+#[path = "helper_resolver.rs"]
 mod resolver;
+#[path = "helper_ruleset.rs"]
 mod ruleset;
+#[path = "helper_seccomp.rs"]
 mod seccomp;
 
 pub use exec::exit_code;

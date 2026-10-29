@@ -6,13 +6,19 @@
 //! depend on which ABI was negotiated. [`opened`] is the one axis neither covers: which
 //! directory a grant turns out to name. Nothing here restricts this process.
 
+#[path = "helper_ruleset_compat.rs"]
 mod compat;
+#[path = "helper_ruleset_opened.rs"]
 mod opened;
+#[path = "helper_ruleset_requested.rs"]
 mod requested;
+#[path = "helper_ruleset_rights.rs"]
 mod rights;
-#[cfg(test)]
-mod tests;
 
 pub(super) use compat::{enforcement_verdict, landlock_failed};
 pub(super) use opened::open_grant;
 pub(super) use requested::{Requested, RequestedNet, requested};
+
+#[cfg(test)]
+#[path = "helper_ruleset_tests.rs"]
+mod tests;
