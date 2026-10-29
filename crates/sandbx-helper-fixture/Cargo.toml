@@ -1,0 +1,17 @@
+[package]
+name = "sandbx-helper-fixture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The policy a grant is written in, the argv seam it crosses on, and the pin a program's
+# bytes are named by. A real dependency, not a dev-dependency — this crate is the
+# fixture, so a dev-dependency of its own would not reach it.
+sandbx-core = { path = "../sandbx-core" }
+
+[lints]
+workspace = true

@@ -1751,9 +1751,17 @@ dependencies = [
  "libc",
  "nix",
  "sandbx-core",
+ "sandbx-helper-fixture",
  "tempfile",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sandbx-helper-fixture"
+version = "0.1.0-alpha.19"
+dependencies = [
+ "sandbx-core",
 ]
 
 [[package]]

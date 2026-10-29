@@ -6,10 +6,22 @@
 //! binds itself. No external network is needed.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-mod support;
+use std::path::Path;
 
 use sandbx_core::SandboxPolicy;
-use support::{allow_probe, run, runtime_paths};
+use sandbx_helper_fixture::{allow_probe, runtime_paths};
+
+/// The helper this package's own Cargo run built. `CARGO_BIN_EXE_*` resolves only for a
+/// target of the package declaring the bin, which is why the fixture takes it as an
+/// argument rather than naming it itself.
+fn helper() -> &'static Path {
+    Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
+}
+
+/// [`sandbx_helper_fixture::run`] with this root's helper, so the call sites read as before.
+fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> std::process::Output {
+    sandbx_helper_fixture::run(helper(), policy, program, args)
+}
 
 /// A listener on an ephemeral loopback port, answering one connection with `payload`. The
 /// probe prints what it read, so a test can assert the bytes and not the exit status alone.
