@@ -90,7 +90,7 @@ crates and cannot be changed in lockstep with it, while a change inside
 `sandbx-tui-input` has one caller and it is in this repo.
 
 What this does *not* buy is `#[non_exhaustive]`. The guide scopes it to enums other
-teams consume; there are no other teams, and `policy/sandbox.rs` depends on its
+teams consume; there are no other teams, and `policy_sandbox.rs` depends on its
 matches being exhaustive. Adding an axis has to break every match over axes — that compile error is
 the check that a new axis cannot arrive without a row. `#[non_exhaustive]` would turn
 it into a silently-taken wildcard arm, which is the defect `decision-policy.md`

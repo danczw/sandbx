@@ -203,7 +203,7 @@ requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
                                                                  helper/ruleset/requested.rs
 ```
 
-The syscall list is in `helper/seccomp/rules.rs`; `apply` in `helper/exec.rs`.
+The syscall list is in `helper_seccomp_rules.rs`; `apply` in `helper_exec.rs`.
 
 A rule names a `RuleTarget`, not a path: `Granted` carries the object the harness
 vetted and `Installed` is a resolver file bind-mounted in this process, so
@@ -330,7 +330,7 @@ Axis::ReadExecute => (true,  false, true )
 
 | Site | Before | After |
 |---|---|---|
-| `helper/ruleset/rights.rs` | three `if allow_* {}` arms | loop over `Axis::ALL`, rights from `grants()` |
+| `helper_ruleset_rights.rs` | three `if allow_* {}` arms | loop over `Axis::ALL`, rights from `grants()` |
 | `fs_guard.rs` | two hand-built path lists | destructure `grants()` into readable/writable |
 | `helper_args.rs` | three flag spellings, twice (encode + decode) | one `path_flag` match, `axis_for` as reverse lookup |
 | `audit.rs` | three counted fields, hand-maintained | loop + exhaustive `match` |
@@ -381,10 +381,10 @@ Four shapes were rejected, and the first is the one someone will re-propose:
 
 - **Leave `ResolveUnix` unhandled while the flag is set.** The only shape that
   preserves today's behaviour exactly across V8→V9. Fail-open by construction;
-  `compat.rs` forbids precisely that edit; it makes the flag *wider* than
-  documented; and it breaks the probe/apply agreement `compat.rs` keeps
-  policy-independent, so `negotiated_abi` would report V9 while asking for a V8
-  set.
+  `helper_ruleset_compat.rs` forbids precisely that edit; it makes the flag
+  *wider* than documented; and it breaks the probe/apply agreement that file
+  keeps policy-independent, so `negotiated_abi` would report V9 while asking for
+  a V8 set.
 - **Additive only** — leave the write axis alone and confer on the read axes too.
   A strict superset of what shipped, differing only in whether a `--allow-write`
   grant carries the bit with the flag off. Rejected because it gives one bit two
@@ -399,7 +399,7 @@ Four shapes were rejected, and the first is the one someone will re-propose:
 - **A fourth `Axis` row, or a second rule pair on an existing axis.** *What is
   deliberately not a row*, below, rules out a variant whose `Grants` fields are
   meaningless, and an extra pair breaks the one-rule-per-`(axis, path)` invariant
-  `tests/rules.rs` asserts.
+  `helper_ruleset_tests_rules.rs` asserts.
 
 This fixes the instance, not the class: a future write-side right still arrives
 conferred on every `--allow-write` grant.
@@ -1210,7 +1210,7 @@ exposes nothing, and nothing has been spawned yet either way — what the flag h
 to precede is the first sandboxed command, not the first line of `main`.
 
 The flag is set on the harness and nowhere else. The helper does not set it, and
-`helper/hardening.rs` says why: the kernel resets dumpable on every `execve` of
+`helper_hardening.rs` says why: the kernel resets dumpable on every `execve` of
 an ordinary binary, so it would cover only the helper's pre-exec window. That
 same reset is what keeps the sandboxed command unaffected, which is correct — its
 `environ` holds only what `--allow-env` named.

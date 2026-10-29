@@ -51,9 +51,9 @@ expects the answer the break already gives.
 Two things make a negative test real, and the stronger one is executable:
 
 - **Assert the fixture is not vacuous before relying on it.**
-  `helper/seccomp/tests/denylist.rs` asserts `!BLOCKED_SYSCALLS.is_empty()` with
+  `helper_seccomp_tests_denylist.rs` asserts `!BLOCKED_SYSCALLS.is_empty()` with
   "the denylist is empty, so this test is vacuous", and
-  `helper/ruleset/tests/rules.rs` asserts the handled set moves with the ABI
+  `helper_ruleset_tests_rules.rs` asserts the handled set moves with the ABI
   rather than letting the agreement above it hold trivially. A loop over an empty
   set passes; so does an agreement between two things neither of which was
   computed.

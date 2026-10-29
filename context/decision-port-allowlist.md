@@ -265,7 +265,7 @@ Nothing here bounds where a command connects.
 
 ### No kernel mechanism sees a destination
 
-Landlock's network rule is `NetPort::new(port, rights)` (`helper/exec.rs`'s `apply`)
+Landlock's network rule is `NetPort::new(port, rights)` (`helper_exec.rs`'s `apply`)
 and there is no address in that shape. seccomp compares register values, and the
 `sockaddr` carrying the destination is behind a pointer the filter cannot follow
 — at `connect`, at `sendto`, and at every syscall further down the chain, which
@@ -299,7 +299,7 @@ refusal is **enforcement**, a mechanism a program can simply ignore is
 **The listener has no free spelling.** `decision-credentials.md`'s channel
 table applies to this unchanged, because it is the same question asked for a
 secret instead of a destination: loopback TCP means `--allow-network <port>`,
-which drops `CLONE_NEWNET` (`helper/hardening.rs`'s `isolate`) and puts the
+which drops `CLONE_NEWNET` (`helper_hardening.rs`'s `isolate`) and puts the
 command in the host's netns; a unix socket means `--allow-unix-sockets`, one
 boolean covering every pathname socket the filesystem policy reaches
 (`SandboxPolicy::allow_unix_sockets`); stdin and stdout are spent on the
@@ -341,7 +341,7 @@ of one.
 
 Under a port allowlist seccomp already denies UDP and raw sockets, so
 `getaddrinfo` can reach neither a UDP nameserver nor `AF_NETLINK`
-(`helper/seccomp/rules.rs`'s `blocked_syscalls`, under `confine_to_tcp`). The
+(`helper_seccomp_rules.rs`'s `blocked_syscalls`, under `confine_to_tcp`). The
 one transport left is TCP, on a port the operator names. Hold the only thing
 that can answer there and a name outside the allowlist has nowhere else to be
 asked: the enforcement is positional, the same shape as the credential refusal,
@@ -473,7 +473,7 @@ re-derive it.
 
 **No host field may enter `SandboxPolicy` before something enforces it, and no
 name allowlist either.** The type is read as the record of what was granted
-(`policy/sandbox.rs`), so a field nothing honours tells its next reader that a grant
+(`policy_sandbox.rs`), so a field nothing honours tells its next reader that a grant
 is respected. This is the rule that kept #42 to per-port, and it is the same rule
 `decision-credentials.md` states for a credential placeholder, under the
 same heading. An intermediate step, if one is wanted, is a separate opt-in type
@@ -497,7 +497,7 @@ specified, and unbuildable unprivileged. Three measurements, on an ordinary
 desktop kernel with no sandbx in the way:
 
 - a port allowlist sets `allows_network()`, so `isolate` keeps the host netns
-  (`helper/hardening.rs`), and an unprivileged `bind(127.0.0.1:53)`
+  (`helper_hardening.rs`), and an unprivileged `bind(127.0.0.1:53)`
   there is `EPERM` — `net.ipv4.ip_unprivileged_port_start` is 1024;
 - inside a netns sandbx owns, the same bind succeeds and the netns has no route
   out, so a name it resolves is unreachable and nothing is gained;
