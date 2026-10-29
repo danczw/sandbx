@@ -10,9 +10,7 @@ use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 
-mod support;
-
-use support::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
+use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// Large enough to put any test over the budgets used below.
 fn measured(input: u32) -> AgentEvent {

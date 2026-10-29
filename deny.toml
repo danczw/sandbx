@@ -65,6 +65,7 @@ wrappers = [
     "sandbx-logging",
     "sandbx-tools",
     "sandbx-turn",
+    "sandbx-turn-fixture",
 ]
 
 [[bans.deny]]
@@ -80,6 +81,7 @@ wrappers = [
     "sandbx-compact",
     "sandbx-session-bridge",
     "sandbx-turn",
+    "sandbx-turn-fixture",
 ]
 
 [[bans.deny]]
@@ -109,7 +111,13 @@ name = "sandbx-provider"
 # `anthropic_wire_accumulate.rs` names `MalformedEvent`. #368 then settled the other half
 # as a re-point and not a removal, for that same reason: renaming the donor moved the
 # edge, it did not end it (#366, #367).
-wrappers = ["sandbx-anthropic", "sandbx-cli", "sandbx-sse", "sandbx-turn"]
+wrappers = [
+    "sandbx-anthropic",
+    "sandbx-cli",
+    "sandbx-sse",
+    "sandbx-turn",
+    "sandbx-turn-fixture",
+]
 
 [[bans.deny]]
 name = "sandbx-sse"
@@ -120,11 +128,11 @@ wrappers = ["sandbx-anthropic"]
 
 [[bans.deny]]
 name = "sandbx-tools"
-wrappers = ["sandbx-approval", "sandbx-cli", "sandbx-turn"]
+wrappers = ["sandbx-approval", "sandbx-cli", "sandbx-turn", "sandbx-turn-fixture"]
 
 [[bans.deny]]
 name = "sandbx-turn"
-wrappers = ["sandbx-cli"]
+wrappers = ["sandbx-cli", "sandbx-turn-fixture"]
 
 [[bans.deny]]
 name = "sandbx-auth"
@@ -171,6 +179,15 @@ name = "sandbx-helper-fixture"
 wrappers = ["sandbx-helper"]
 
 [[bans.deny]]
+name = "sandbx-turn-fixture"
+# The same shape, and one parent again — whose three turn-loop roots drive it. That
+# parent is also this crate's own dependency: the cycle is deliberate and invisible to
+# the script below, which builds `child -> {parents}` from the declared arrays with no
+# graph walk. `sandbx-turn`'s *test* targets link this crate, which links its *lib*, so
+# the cycle never exists in a unit graph (#333).
+wrappers = ["sandbx-turn"]
+
+[[bans.deny]]
 name = "sandbx-pty-fixture"
 # A dev-dependency edge, so this crate is in nobody's build; the entry is what keeps a
 # production edge from being added without a line here. Two parents, each driving a pty:
@@ -194,11 +211,12 @@ wrappers = [
     "sandbx-provider",
     "sandbx-tui-transcript",
     "sandbx-turn",
+    "sandbx-turn-fixture",
 ]
 
 [[bans.deny]]
 name = "sandbx-approval"
-wrappers = ["sandbx-cli", "sandbx-turn"]
+wrappers = ["sandbx-cli", "sandbx-turn", "sandbx-turn-fixture"]
 
 [[bans.deny]]
 name = "sandbx-session-error"

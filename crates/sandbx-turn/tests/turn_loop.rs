@@ -1,7 +1,7 @@
 //! Public contract of `run_turn`: what one streamed turn becomes.
 //!
-//! Driven through the closure seam with `support::Script`, so the suite needs no network
-//! and no API key.
+//! Driven through the closure seam with `sandbx_turn_fixture::Script`, so the suite
+//! needs no network and no API key.
 
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
@@ -11,9 +11,7 @@ use sandbx_provider::EventStream;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{TurnError, TurnLimits, TurnStop, run_turn};
 
-mod support;
-
-use support::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
+use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// An assistant turn of prose, the shape most of these end on.
 fn replied(text: &str) -> RequestMessage {
@@ -40,7 +38,7 @@ fn result_of(block: &ContentBlock) -> (&str, Option<bool>) {
 /// A gate whose verdict is a closure's, keeping what it was asked and what it was told.
 ///
 /// Lent to `run_turn` as `&mut gate`, so both records survive the turn. Here rather than
-/// in `support`, which only holds what both halves of the suite use.
+/// in `sandbx-turn-fixture`, which only holds what every root of the suite uses.
 struct Gate<F> {
     decide: F,
 

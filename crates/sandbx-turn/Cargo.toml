@@ -28,6 +28,10 @@ tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"
 # names it, and the four files under `tests/` build the inputs a scripted turn asks for.
 serde_json = "1.0.151"
 sandbx-core = { path = "../sandbx-core" }
+# The turn-loop suite's shared fixture, a crate rather than the `tests/support/mod.rs` it
+# replaces for the reasons its own `//!` gives. The cycle — it depends on this crate —
+# never exists in the unit graph: these *test* targets link it, and it links this *lib*.
+sandbx-turn-fixture = { path = "../sandbx-turn-fixture" }
 # Dev-only since #366 took `EventStream` and `ProviderError`: #364 had already taken the
 # request shapes, so nothing under `src/` names this crate at all and the one reference
 # left is `turn_loop.rs`'s spawnability pin, which types a field as an `AnthropicClient`.

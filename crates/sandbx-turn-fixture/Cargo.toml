@@ -1,0 +1,30 @@
+[package]
+name = "sandbx-turn-fixture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# What a scripted turn is made of. Real dependencies, not dev-dependencies — this crate
+# is the fixture, so a dev-dependency of its own would not reach it.
+sandbx-approval = { path = "../sandbx-approval" }
+sandbx-core = { path = "../sandbx-core" }
+sandbx-event = { path = "../sandbx-event" }
+sandbx-prompt = { path = "../sandbx-prompt" }
+sandbx-provider = { path = "../sandbx-provider" }
+sandbx-tools = { path = "../sandbx-tools" }
+# The crate under test, and the cycle is deliberate: `sandbx-turn` dev-depends on this
+# one. Cargo permits it because the cycle never exists in the unit graph — `sandbx-turn`'s
+# *test* targets link this crate, which links `sandbx-turn`'s *lib*. `tokio` ↔
+# `tokio-test` is the published precedent. Only `turn` needs it, for the `Turn` literal.
+sandbx-turn = { path = "../sandbx-turn" }
+# Both at the versions `sandbx-turn` already pins, so cargo-deny's duplicate check stays
+# quiet: one resolved version each across the workspace.
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+serde_json = "1.0.151"
+
+[lints]
+workspace = true

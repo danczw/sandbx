@@ -1926,11 +1926,27 @@ dependencies = [
  "sandbx-prompt",
  "sandbx-provider",
  "sandbx-tools",
+ "sandbx-turn-fixture",
  "serde_json",
  "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sandbx-turn-fixture"
+version = "0.1.0-alpha.19"
+dependencies = [
+ "futures-util",
+ "sandbx-approval",
+ "sandbx-core",
+ "sandbx-event",
+ "sandbx-prompt",
+ "sandbx-provider",
+ "sandbx-tools",
+ "sandbx-turn",
+ "serde_json",
 ]
 
 [[package]]
