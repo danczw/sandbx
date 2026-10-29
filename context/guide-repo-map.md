@@ -156,11 +156,9 @@ used could not survive the move to a crate. Each enforcement root passes what
 its own cargo run gave it (#333).
 
 `sandbx-turn-fixture` is absent too, and it is the one crate here that depends on
-the crate that dev-depends on it. Cargo permits that because the cycle never
-exists in a unit graph: `sandbx-turn`'s *test* targets link the fixture, which
-links `sandbx-turn`'s *lib*, and `tokio` ↔ `tokio-test` is the published
-precedent. Cargo is also what guards it, since a *production* edge back would be
-a `cyclic package dependency` at resolve time — before any lint runs (#333).
+the crate that dev-depends on it. That cycle is deliberate and cargo is what
+guards it: a *production* edge back is a `cyclic package dependency` at resolve
+time, before any lint runs. Its `//!` has why it is sound (#333).
 
 `sandbx-helper` is absent from it for the same reason and a different one: nothing
 depends on it, and it depends on `sandbx-core` only to re-export its dispatch. It
