@@ -30,9 +30,10 @@ jobs:
           persist-credentials: false
 
       # Three of `rustfmt.toml`'s options are nightly-only, so fmt alone runs on the
-      # nightly `public-api.sh` pins. `rustfmt` is deliberately not a component of the
-      # stable step below, so a fmt step that loses its `+toolchain` fails instead of
-      # silently skipping options.
+      # nightly `public-api.sh` pins. `rustfmt` is left off the stable step below for
+      # tidiness only -- it is not what catches a fmt command that loses its
+      # `+toolchain`, since the runner image already carries stable's rustfmt. The
+      # `Warning:` line in the step below is what catches that.
       #
       # It installs *before* stable, and that order cannot be swapped: the action makes
       # what it installs the default, so with nightly last every plain `cargo` below runs
@@ -55,7 +56,9 @@ jobs:
 
       - name: Format
         run: |
-          fmt=$(cargo +nightly-2026-09-11 fmt --all -- --check 2>&1) || { printf '%s\n' "$fmt"; exit 1; }
+          nightly=nightly-2026-09-11
+          rustup run "$nightly" rustfmt --version >/dev/null 2>&1 || { echo "::error::$nightly with rustfmt missing: rustup toolchain install $nightly --component rustfmt"; exit 1; }
+          fmt=$(cargo "+$nightly" fmt --all -- --check 2>&1) || { printf '%s\n' "$fmt"; exit 1; }
           case "$fmt" in *Warning:*) printf '%s\n' "$fmt"; exit 1 ;; esac
 
       # Byte-identical to `.githooks/pre-commit`; keep them so. Default features,

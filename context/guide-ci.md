@@ -38,9 +38,18 @@ Three of `rustfmt.toml`'s four options are nightly-only (#334), and rustfmt skip
 an option it cannot set with a `Warning:` on stderr and exit 0 — on stable, or on
 a name with a typo in it. So both halves capture the output and fail on
 `Warning:`, which is the rule below about a glob that matches nothing, applied to
-a gate rather than to a loop. The toolchain is named on the command line in both,
-so a `+toolchain` that goes missing fails rather than falling through: `rustfmt`
-is deliberately not a component of `ci.yml`'s stable step.
+a gate rather than to a loop. That line is also what catches a fmt command that
+has lost its `+toolchain`: stable's rustfmt is on the runner image either way, so
+leaving `rustfmt` off `ci.yml`'s stable step does not stop the fall-through — it
+only keeps the step honest about what it needs.
+
+**`cargo +toolchain` installs a toolchain it does not have**, silently and
+without being asked, so the toolchain cannot be checked by using it. Both halves
+check first through `rustup run`, which does not auto-install and exits 1 naming
+what is missing — and ask it for `rustfmt` rather than `rustc`, so a toolchain
+present without the component is caught too. Without that check a fresh clone's
+first commit stalls for a 200MB fetch that the captured output would not even
+print.
 
 In `ci.yml` the nightly installs *before* stable, and the two cannot be swapped:
 `dtolnay/rust-toolchain` makes what it installs the default, so with nightly last
@@ -211,9 +220,12 @@ Three things to get right:
   `.github/scripts/public-api.sh` sets `RUSTUP_TOOLCHAIN` itself for that reason.
   The date is written four times — in the script's default, in `ci.yml`'s toolchain
   step for this job, and in the fmt command in `ci.yml` and `.githooks/pre-commit`
-  — because `dtolnay/rust-toolchain` cannot read it out of the script. A mismatch
-  is loud rather than silent: the script checks the toolchain is installed and says
-  which one is missing, and `cargo +nightly-…` fails outright when it is not.
+  — because `dtolnay/rust-toolchain` cannot read it out of the script. Each of the
+  three that is used to run something checks first, through `rustup run`, and says
+  which toolchain is missing; none of them relies on `cargo +nightly-…` failing,
+  because that form installs what it is asked for instead. What stays unchecked is
+  the four agreeing with each other: a bump that updates three of them leaves two
+  dates live and nothing red to show it.
 - **The nightly is for rustdoc JSON and rustfmt, and nothing else.** Every build
   and test stays on stable, as does every other job, and the manifest's
   `rust-version` is untouched. rustfmt shares this pin rather than taking its own
