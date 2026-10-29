@@ -7,4 +7,7 @@ __pycache__/
 /local/
 /.git-commit-msg
 /.env
-/.claude/worktrees/
+# Agent scratch: worktrees, and the throwaway scripts written beside them. Narrowed to
+# `/.claude/` and not `.claude/` so a crate of that name would still be tracked. A bare
+# `git add -A` swept a local tool in here twice during #333 before this line existed.
+/.claude/
