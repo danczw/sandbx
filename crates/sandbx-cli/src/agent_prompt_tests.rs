@@ -2,12 +2,10 @@ use super::{CLOSED, Consent, Operator, RESET, Terminal, UNCLEARED, account};
 use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_tools::BuiltinTool;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Cursor, Read, Write};
 use std::os::fd::AsFd;
-use std::{io, thread};
-
-use std::io::{Cursor, Read};
 use std::sync::{Arc, Mutex};
+use std::{io, thread};
 
 /// The account every assertion below is written against.
 const ACCOUNT: &str = "sandbx: write /work/out.rs — ran";
