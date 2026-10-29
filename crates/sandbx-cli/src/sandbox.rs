@@ -139,8 +139,6 @@ impl SandboxRun {
     }
 
     /// The `--timeout` seconds as a [`Duration`], or `None` for no limit.
-    ///
-    /// [`Duration`]: std::time::Duration
     pub fn timeout(&self) -> Option<Duration> {
         self.timeout.map(Duration::from_secs)
     }
