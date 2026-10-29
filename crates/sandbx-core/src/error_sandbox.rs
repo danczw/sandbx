@@ -3,7 +3,6 @@
 //! One module on purpose: it is one `Display` arm per variant, and the
 //! list of everything that can refuse a run is only readable in one place.
 
-use std::error::Error;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{fmt, io};
@@ -410,8 +409,8 @@ impl fmt::Display for SandboxError {
     }
 }
 
-impl Error for SandboxError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl std::error::Error for SandboxError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::PathNotAllowed { .. }
             | Self::Unsupported { .. }

@@ -1,6 +1,5 @@
-use super::super::refusal::HelperRefusal;
 use super::{Access, SandboxError};
-use crate::ObjectId;
+use crate::{HelperRefusal, ObjectId};
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;

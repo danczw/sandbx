@@ -158,8 +158,6 @@ pub(super) fn deny_when(
 pub(super) fn blocked_syscalls(
     policy: &crate::SandboxPolicy,
 ) -> Result<BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>, SandboxError> {
-    use std::collections::BTreeMap;
-
     use seccompiler::SeccompCmpOp::{Eq, MaskedEq, Ne};
 
     let mut rules = BLOCKED_SYSCALLS
