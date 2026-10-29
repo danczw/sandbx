@@ -29,21 +29,27 @@ jobs:
         with:
           persist-credentials: false
 
+      # Three of `rustfmt.toml`'s options are nightly-only, so fmt alone runs on the
+      # nightly `public-api.sh` pins. `rustfmt` is deliberately not a component of the
+      # stable step below, so a fmt step that loses its `+toolchain` fails instead of
+      # silently skipping options.
+      #
+      # It installs *before* stable, and that order cannot be swapped: the action makes
+      # what it installs the default, so with nightly last every plain `cargo` below runs
+      # on it -- `cargo clippy` failed with `'cargo-clippy' is not installed for the
+      # toolchain 'nightly-2026-09-11'` (#441). Stable installs last, so it is the
+      # default and only the `+nightly` fmt command leaves it.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly-2026-09-11
+          components: rustfmt
+
       # `v1`, not `stable`: the `stable` branch is regenerated as master plus one
       # commit, so a SHA pinned from it is reachable from no ref and never bumps.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
           components: clippy
-
-      # Three of `rustfmt.toml`'s options are nightly-only, so fmt alone runs on the
-      # nightly `public-api.sh` pins. Everything else here, and every build, stays on
-      # stable; `rustfmt` is deliberately not a component of the stable step above, so a
-      # fmt step that loses its `+toolchain` fails instead of silently skipping options.
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: nightly-2026-09-11
-          components: rustfmt
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
