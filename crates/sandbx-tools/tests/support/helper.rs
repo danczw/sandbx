@@ -4,10 +4,13 @@
 //! [`sandbx_core::HELPER_FLAG`], which assumes that binary calls
 //! [`sandbx_core::with_helper_dispatch`] first; a test harness does not.
 
-fn main() -> std::process::ExitCode {
+use std::env;
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
     // Must come first: in helper mode this returns only if the helper failed.
-    sandbx_core::with_helper_dispatch(std::env::args_os(), || {
+    sandbx_core::with_helper_dispatch(env::args_os(), || {
         eprintln!("this binary only runs in sandbox helper mode");
-        std::process::ExitCode::FAILURE
+        ExitCode::FAILURE
     })
 }

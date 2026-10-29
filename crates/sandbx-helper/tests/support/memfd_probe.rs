@@ -4,15 +4,17 @@
 //! syscall must be refused. The raw errno is printed, so the caller can assert `EPERM`
 //! rather than any failure.
 
-fn main() -> std::process::ExitCode {
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
     match nix::sys::memfd::memfd_create("sandbx-probe", nix::sys::memfd::MFdFlags::MFD_CLOEXEC) {
         Ok(_) => {
             println!("SUCCEEDED");
-            std::process::ExitCode::SUCCESS
+            ExitCode::SUCCESS
         }
         Err(errno) => {
             println!("{}", errno as i32);
-            std::process::ExitCode::FAILURE
+            ExitCode::FAILURE
         }
     }
 }
