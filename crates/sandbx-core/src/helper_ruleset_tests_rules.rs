@@ -6,6 +6,8 @@
 
 use super::{AccessFs, BASELINE_ABI, LATEST_ABI, SandboxPolicy, requested_at};
 use crate::VettedPath;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Keep the returned handle bound for the whole test: dropping it deletes the directory,
 /// and `fs_rules` would then take its regular-file branch.
@@ -15,19 +17,19 @@ fn tempdir() -> tempfile::TempDir {
 
 /// The directory's own resolved path, which is what a grant on it carries — `vet` resolves,
 /// so a spelling reaching `/tmp` through a symlink is not the one the rules are keyed by.
-fn root(dir: &tempfile::TempDir) -> std::path::PathBuf {
+fn root(dir: &tempfile::TempDir) -> PathBuf {
     dir.path().canonicalize().unwrap()
 }
 
 /// A regular file, since files and directories take different rights.
-fn plain_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
+fn plain_file(dir: &tempfile::TempDir) -> PathBuf {
     let file = root(dir).join("plain.txt");
-    std::fs::write(&file, b"x").unwrap();
+    fs::write(&file, b"x").unwrap();
     file
 }
 
 /// `path`, pinned to the object it names — the only shape a grant takes.
-fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
+fn vetted(path: impl AsRef<Path>) -> VettedPath {
     VettedPath::vet(path).expect("an existing path to pin the grant to")
 }
 
@@ -35,11 +37,7 @@ fn vetted(path: impl AsRef<std::path::Path>) -> VettedPath {
 ///
 /// Keyed by both, because one path may be granted on several axes as separate rules.
 /// Insists on exactly one match, so a test cannot assert against a duplicate grant.
-fn rule(
-    policy: &SandboxPolicy,
-    axis: crate::Axis,
-    path: &std::path::Path,
-) -> landlock::BitFlags<AccessFs> {
+fn rule(policy: &SandboxPolicy, axis: crate::Axis, path: &Path) -> landlock::BitFlags<AccessFs> {
     let matches: Vec<_> = requested_at(policy, LATEST_ABI)
         .rules
         .into_iter()
@@ -62,11 +60,7 @@ fn rule(
 /// Matches on the path as spelled, where the kernel merges per inode — so two grants reaching
 /// one inode by different spellings (`/usr/bin` and `/usr/bin/`) are unioned there and counted
 /// apart here. Fine for the tests below, which name one path one way.
-fn union(
-    policy: &SandboxPolicy,
-    path: &std::path::Path,
-    abi: landlock::ABI,
-) -> landlock::BitFlags<AccessFs> {
+fn union(policy: &SandboxPolicy, path: &Path, abi: landlock::ABI) -> landlock::BitFlags<AccessFs> {
     requested_at(policy, abi)
         .rules
         .into_iter()

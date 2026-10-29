@@ -7,6 +7,8 @@
 //! installed filter.
 
 use crate::SandboxError;
+use std::collections::BTreeMap;
+use std::{env, fmt};
 
 use super::rules::blocked_syscalls;
 
@@ -42,7 +44,7 @@ pub(super) fn compiled_filter(
 /// as this body does nothing but call `SeccompFilter::new` — if that changes, change the
 /// twin.
 pub(super) fn deny_with(
-    rules: std::collections::BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
+    rules: BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
     errno: libc::c_int,
 ) -> Result<seccompiler::BpfProgram, SandboxError> {
     use seccompiler::{SeccompAction, SeccompFilter};
@@ -56,7 +58,7 @@ pub(super) fn deny_with(
         rules,
         unlisted,
         listed,
-        std::env::consts::ARCH.try_into().map_err(seccomp_failed)?,
+        env::consts::ARCH.try_into().map_err(seccomp_failed)?,
     )
     .map_err(seccomp_failed)?;
 
@@ -71,7 +73,7 @@ pub(super) fn deny_with(
 /// routing it through the filtered `clone`.
 pub(super) fn clone3_filter() -> Result<seccompiler::BpfProgram, SandboxError> {
     deny_with(
-        std::collections::BTreeMap::from([(libc::SYS_clone3, Vec::new())]),
+        BTreeMap::from([(libc::SYS_clone3, Vec::new())]),
         libc::ENOSYS,
     )
 }
@@ -170,7 +172,7 @@ pub(in crate::helper) fn deny_dangerous_syscalls(
     Ok(())
 }
 
-pub(super) fn seccomp_failed(source: impl std::fmt::Display) -> SandboxError {
+pub(super) fn seccomp_failed(source: impl fmt::Display) -> SandboxError {
     SandboxError::Seccomp {
         detail: source.to_string(),
     }

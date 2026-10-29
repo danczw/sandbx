@@ -1,4 +1,6 @@
 use super::*;
+use std::fs;
+use std::os::unix::fs as unix_fs;
 
 /// Names a hosts file must never resolve, in the shape they would arrive in.
 const UNLISTED: [&str; 2] = ["www.google.com", "metadata.google.internal"];
@@ -204,8 +206,8 @@ fn a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on() {
     let dir = tempfile::tempdir().expect("a directory to link within");
     let target = dir.path().join("stub-resolv.conf");
     let link = dir.path().join("resolv.conf");
-    std::fs::write(&target, "options attempts:1\n").expect("a file to link to");
-    std::os::unix::fs::symlink(&target, &link).expect("a link to the file");
+    fs::write(&target, "options attempts:1\n").expect("a file to link to");
+    unix_fs::symlink(&target, &link).expect("a link to the file");
 
     // Resolved, as every caller's path arrives: a grant carries what `vet` canonicalized.
     let target = target.canonicalize().expect("the link's target to resolve");

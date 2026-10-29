@@ -6,6 +6,7 @@
 //! [`super::rights`]'s business.
 
 use crate::SandboxError;
+use std::fmt;
 
 /// The Landlock ABI floor [`apply`](crate::helper::exec::apply) refuses to run below, and the
 /// ceiling it negotiates up to.
@@ -163,7 +164,7 @@ pub(in crate::helper) fn enforcement_verdict(
     }
 }
 
-pub(in crate::helper) fn landlock_failed(source: impl std::fmt::Display) -> SandboxError {
+pub(in crate::helper) fn landlock_failed(source: impl fmt::Display) -> SandboxError {
     // Carry the kernel's own reason: "refused" alone leaves no clue which path or access
     // right it objected to.
     SandboxError::Landlock {

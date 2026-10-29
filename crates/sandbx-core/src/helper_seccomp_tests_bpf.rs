@@ -1,6 +1,8 @@
 //! The `eval` interpreter every test in this directory reads its filter through, the
 //! `seccomp_data` word model it evaluates against, and its own tests.
 
+use std::array;
+
 // The verdicts this filter can produce, taken from `libc` and not from
 // `u32::from(SeccompAction::…)`, which would leave expected and actual sharing a source.
 pub(super) const ALLOW: u32 = libc::SECCOMP_RET_ALLOW;
@@ -375,7 +377,7 @@ fn eval_refuses_an_opcode_it_does_not_implement() {
 /// 64-bit store to the right *pair* in the wrong order would otherwise pass.
 #[test]
 fn seccomp_data_puts_each_field_where_the_kernel_does() {
-    let args = std::array::from_fn::<u64, 6, _>(|i| {
+    let args = array::from_fn::<u64, 6, _>(|i| {
         let i = i as u64;
         (0x2000_0000 | i) << 32 | (0x1000_0000 | i)
     });

@@ -4,6 +4,7 @@
 //! return `Infallible` on success and every arm below is exhaustive.
 
 use std::ffi::OsString;
+use std::process::ExitCode;
 
 /// Argument that marks a process as running in helper mode; the host binary checks for it
 /// before doing anything else and hands off to [`with_helper_dispatch`].
@@ -27,10 +28,10 @@ pub(crate) const HELPER_FAILURE_PREFIX: &str = "sandbx: sandbox helper failed: "
 /// in `main`, before any threads start; it cannot enforce that. A failure exits non-zero;
 /// one while waiting on the inner stage may follow the command running, restricted.
 #[must_use = "a helper run that failed must exit non-zero"]
-pub fn with_helper_dispatch<I, F>(argv: I, ordinary_main: F) -> std::process::ExitCode
+pub fn with_helper_dispatch<I, F>(argv: I, ordinary_main: F) -> ExitCode
 where
     I: IntoIterator<Item = OsString>,
-    F: FnOnce() -> std::process::ExitCode,
+    F: FnOnce() -> ExitCode,
 {
     let argv: Vec<String> = argv
         .into_iter()
@@ -52,5 +53,5 @@ where
         _ => return ordinary_main(),
     };
     eprintln!("{HELPER_FAILURE_PREFIX}{error}");
-    std::process::ExitCode::FAILURE
+    ExitCode::FAILURE
 }

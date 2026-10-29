@@ -1,6 +1,7 @@
 //! Public contract of [`SandboxPolicy`].
 
 use std::ffi::OsStr;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use sandbx_core::{NetworkPolicy, SandboxPolicy, VettedPath};
@@ -75,7 +76,7 @@ fn system_executables_grants_what_a_command_needs() {
     let policy = SandboxPolicy::default().allow_system_executables();
 
     for expected in ["/usr", "/bin", "/lib"] {
-        let Ok(path) = std::path::Path::new(expected).canonicalize() else {
+        let Ok(path) = Path::new(expected).canonicalize() else {
             continue;
         };
         assert!(
@@ -411,7 +412,7 @@ fn granted_paths_yields_each_grant_in_axis_order() {
     let (_dir, root) = scratch();
     let at = |name: &str| {
         let path = root.join(name);
-        std::fs::create_dir(&path).expect("a directory to grant");
+        fs::create_dir(&path).expect("a directory to grant");
         path
     };
     let (a, b, c, d) = (at("a"), at("b"), at("c"), at("d"));
@@ -516,8 +517,8 @@ fn two_roots() -> (tempfile::TempDir, PathBuf, PathBuf) {
     let (dir, root) = scratch();
     let first = root.join("first");
     let second = root.join("second");
-    std::fs::create_dir(&first).expect("the first root");
-    std::fs::create_dir(&second).expect("the second root");
+    fs::create_dir(&first).expect("the first root");
+    fs::create_dir(&second).expect("the second root");
 
     (dir, first, second)
 }
@@ -550,7 +551,7 @@ fn a_read_only_policy_starts_in_its_first_readable_root() {
 fn a_grant_naming_a_file_is_not_somewhere_to_start() {
     let (_dir, first, second) = two_roots();
     let file = first.join("drop.txt");
-    std::fs::write(&file, b"x").expect("a file to grant");
+    fs::write(&file, b"x").expect("a file to grant");
 
     let policy = SandboxPolicy::default()
         .allow_write(vetted(&file))

@@ -1,9 +1,12 @@
 use super::*;
+use std::fs::OpenOptions;
+use std::os::unix::fs as unix_fs;
+use std::{env, fs, io};
 
 /// The relative arm the public tests cannot reach: `set_current_dir` is process-wide.
 #[test]
 fn a_relative_spelling_collapses_against_the_working_directory() {
-    let here = std::env::current_dir().expect("a working directory");
+    let here = env::current_dir().expect("a working directory");
 
     assert_eq!(
         collapsed(Path::new("granted/notes.txt")).expect("a working directory"),
@@ -38,13 +41,7 @@ fn an_absent_approved_path_opens_as_not_found() {
     let root = tempfile::tempdir().unwrap();
     let gone = root.path().join("deleted-after-the-check");
 
-    let error = open(
-        std::fs::OpenOptions::new().read(true),
-        &gone,
-        &gone,
-        Access::Read,
-    )
-    .unwrap_err();
+    let error = open(OpenOptions::new().read(true), &gone, &gone, Access::Read).unwrap_err();
 
     assert!(
         matches!(error, SandboxError::NotFound { .. }),
@@ -58,17 +55,11 @@ fn an_absent_approved_path_opens_as_not_found() {
 fn a_swapped_leaf_opens_as_unresolvable() {
     let root = tempfile::tempdir().unwrap();
     let target = root.path().join("target.txt");
-    std::fs::write(&target, b"x").unwrap();
+    fs::write(&target, b"x").unwrap();
     let link = root.path().join("swapped");
-    std::os::unix::fs::symlink(&target, &link).unwrap();
+    unix_fs::symlink(&target, &link).unwrap();
 
-    let error = open(
-        std::fs::OpenOptions::new().read(true),
-        &link,
-        &link,
-        Access::Read,
-    )
-    .unwrap_err();
+    let error = open(OpenOptions::new().read(true), &link, &link, Access::Read).unwrap_err();
 
     assert!(
         matches!(error, SandboxError::Unresolvable { .. }),
@@ -80,10 +71,12 @@ fn a_swapped_leaf_opens_as_unresolvable() {
 /// suite exercises is a hole every suite passes.
 #[test]
 fn both_rootings_answer_alike() {
+    use std::io::{Read, Write};
+    use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
-    std::fs::create_dir(root.path().join("sub")).unwrap();
-    std::fs::write(root.path().join("sub/deep.txt"), b"deep").unwrap();
-    std::fs::write(root.path().join("top.txt"), b"top").unwrap();
+    fs::create_dir(root.path().join("sub")).unwrap();
+    fs::write(root.path().join("sub/deep.txt"), b"deep").unwrap();
+    fs::write(root.path().join("top.txt"), b"top").unwrap();
     let policy = SandboxPolicy::default()
         .allow_read(VettedPath::vet(root.path()).unwrap())
         .allow_write(VettedPath::vet(root.path()).unwrap());
@@ -98,7 +91,10 @@ fn both_rootings_answer_alike() {
     let file = root.path().join("top.txt");
     for (label, guard) in [("rooted", &rooted), ("by path", &by_path)] {
         let mut got = String::new();
-        std::io::Read::read_to_string(&mut guard.open_read(&file).unwrap(), &mut got)
+        guard
+            .open_read(&file)
+            .unwrap()
+            .read_to_string(&mut got)
             .unwrap_or_else(|_| panic!("{label} must read"));
         assert_eq!(got, "top", "{label}");
     }
@@ -127,9 +123,9 @@ fn both_rootings_answer_alike() {
 
     let fresh = root.path().join("made.txt");
     for guard in [&rooted, &by_path] {
-        std::fs::remove_file(&fresh).ok();
-        std::io::Write::write_all(&mut guard.open_write(&fresh).unwrap(), b"w").unwrap();
-        assert_eq!(std::fs::read_to_string(&fresh).unwrap(), "w");
+        fs::remove_file(&fresh).ok();
+        guard.open_write(&fresh).unwrap().write_all(b"w").unwrap();
+        assert_eq!(fs::read_to_string(&fresh).unwrap(), "w");
     }
 
     // The shapes a walk root can take that are not a readable directory. These are where
@@ -143,9 +139,9 @@ fn both_rootings_answer_alike() {
     for subject in [&file, &root.path().join("sub")] {
         let unreadable = subject.ends_with("sub");
         if unreadable {
-            let mut mode = std::fs::metadata(subject).unwrap().permissions();
-            std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o000);
-            std::fs::set_permissions(subject, mode).unwrap();
+            let mut mode = fs::metadata(subject).unwrap().permissions();
+            mode.set_mode(0o000);
+            fs::set_permissions(subject, mode).unwrap();
         }
 
         assert_eq!(
@@ -156,9 +152,9 @@ fn both_rootings_answer_alike() {
         );
 
         if unreadable {
-            let mut mode = std::fs::metadata(subject).unwrap().permissions();
-            std::os::unix::fs::PermissionsExt::set_mode(&mut mode, 0o755);
-            std::fs::set_permissions(subject, mode).unwrap();
+            let mut mode = fs::metadata(subject).unwrap().permissions();
+            mode.set_mode(0o755);
+            fs::set_permissions(subject, mode).unwrap();
         }
     }
 }
@@ -209,8 +205,8 @@ fn the_rooting_decision_reads_only_its_own_errnos() {
 /// and a symlink out, on Linux 6.18.
 #[test]
 fn a_resolution_that_left_the_root_is_not_a_dangling_link() {
-    let escaped = std::io::Error::from_raw_os_error(libc::EXDEV);
-    let dangling = std::io::Error::from_raw_os_error(libc::ELOOP);
+    let escaped = io::Error::from_raw_os_error(libc::EXDEV);
+    let dangling = io::Error::from_raw_os_error(libc::ELOOP);
 
     assert_eq!(reason(&escaped), ESCAPED);
     assert_eq!(reason(&dangling), UNRESOLVABLE);
@@ -239,7 +235,7 @@ fn a_rooted_create_keeps_the_default_mode() {
     let made = root.path().join("made.txt");
     drop(guard.open_write(&made).unwrap());
 
-    let mode = std::fs::metadata(&made).unwrap().permissions().mode() & 0o777;
+    let mode = fs::metadata(&made).unwrap().permissions().mode() & 0o777;
     assert_ne!(mode, 0, "a mode of 0o000 is the zeroed `OpenHow`: {mode:o}");
     assert_eq!(
         mode,

@@ -5,6 +5,7 @@
 //! because there is no workspace-wide test target to put them in.
 
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const TAXONOMY: [&str; 2] = ["guide-", "decision-"];
@@ -22,7 +23,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn entries(dir: &Path) -> impl Iterator<Item = PathBuf> {
-    std::fs::read_dir(dir)
+    fs::read_dir(dir)
         .unwrap_or_else(|error| panic!("{} is readable: {error}", dir.display()))
         .map(|entry| entry.expect("a readable directory entry").path())
 }
@@ -104,7 +105,7 @@ fn every_doc_a_citation_names_exists() {
     let mut cited = 0usize;
     let mut missing = Vec::new();
     for file in &files {
-        let text = std::fs::read_to_string(file)
+        let text = fs::read_to_string(file)
             .unwrap_or_else(|error| panic!("{} is readable: {error}", file.display()));
         for name in doc_names(&text) {
             if !file.ends_with(file!()) {
@@ -133,7 +134,7 @@ fn the_reading_order_names_every_doc() {
     const HEADING: &str = "## Reading order";
 
     let root = repo_root();
-    let map = std::fs::read_to_string(root.join("context/guide-repo-map.md"))
+    let map = fs::read_to_string(root.join("context/guide-repo-map.md"))
         .expect("guide-repo-map.md is readable");
 
     // Heading-anchored: a trim moves line numbers. The order is the last section, so the

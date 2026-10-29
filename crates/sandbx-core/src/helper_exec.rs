@@ -14,6 +14,11 @@ use super::ruleset::{
     Requested, RequestedNet, enforcement_verdict, landlock_failed, open_grant, requested,
 };
 use super::seccomp::deny_dangerous_syscalls;
+use std::convert::Infallible;
+use std::fs::File;
+use std::path::PathBuf;
+use std::process::{Child, ExitStatus};
+use std::{env, fmt, io, process};
 
 use crate::{HelperArgs, SandboxError};
 
@@ -45,13 +50,13 @@ fn report(records: &str) {
         return;
     }
 
-    let Ok(channel) = std::io::stdin().as_fd().try_clone_to_owned() else {
+    let Ok(channel) = io::stdin().as_fd().try_clone_to_owned() else {
         return;
     };
 
     // One `write_all` for the whole batch: a short write would split a record across
     // two, and the parent skips a line it cannot parse.
-    let _ = std::fs::File::from(channel).write_all(records.as_bytes());
+    let _ = File::from(channel).write_all(records.as_bytes());
 }
 
 /// Narrow this process into the supervisor and start the stage below it, or say why it
@@ -62,10 +67,10 @@ fn report(records: &str) {
 /// channel, and every refusal inside here is a
 /// [`HelperRefusal`](crate::HelperRefusal), so nothing it returns is dropped unreported.
 fn start_inner_stage(
-    exe: std::path::PathBuf,
+    exe: PathBuf,
     argv: &[String],
     audit_on_stdin: bool,
-) -> Result<std::process::Child, SandboxError> {
+) -> Result<Child, SandboxError> {
     // Decoded for this stage's own use: the unshare flags depend on whether the policy
     // grants network. The argv is passed on verbatim — a re-encode would be a second chance
     // for the policy to drift on its way to the stage that enforces it.
@@ -89,7 +94,7 @@ fn start_inner_stage(
         .arg(crate::HELPER_INNER_FLAG)
         // So the inner stage can confirm we are still here before it hands control
         // to the command. Host numbering, which is what it reads back from `/proc`.
-        .arg(std::process::id().to_string());
+        .arg(process::id().to_string());
 
     // Handed down rather than nulled here: a command that could not be `exec`ed is a fact
     // only the stage below has, so taking fd 0 away is its job — see `claim_audit_channel`.
@@ -127,7 +132,7 @@ fn start_inner_stage(
 /// On success this never returns: it exits with whatever the command exited with. Any
 /// return is an error, and the caller must exit non-zero rather than fall through to
 /// running the command unrestricted.
-pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<Infallible, SandboxError> {
     // Split off before `decode`, which refuses a flag it does not recognise. Not part of
     // the policy grammar, for the reason the supervisor pid is not (see `exec_inner`): it
     // describes how to report, not what the command may do.
@@ -170,7 +175,7 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<std::convert::Infallible
 /// the kill chain's `SIGKILL`. A raise of `SIGPIPE`, `SIGSEGV` or `SIGBUS` returns instead —
 /// Rust's runtime ignores or handles them, and resetting needs `sigaction`, which is `unsafe`
 /// — so those fall back to the numbered form.
-fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, SandboxError> {
+fn relay(status: ExitStatus) -> Result<Infallible, SandboxError> {
     use std::os::unix::process::ExitStatusExt;
 
     // Re-raised before the numbered form, so a signalled status stays signalled. When the
@@ -183,7 +188,7 @@ fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, S
         let _ = nix::sys::signal::raise(signal);
     }
 
-    std::process::exit(exit_code(&status))
+    process::exit(exit_code(&status))
 }
 
 /// Translate a child's fate into an exit code, the way a shell does.
@@ -192,7 +197,7 @@ fn relay(status: std::process::ExitStatus) -> Result<std::convert::Infallible, S
 /// there would say "succeeded" about a process seccomp shot. A status that is neither is
 /// refused with 1 rather than given an invented success. Lives beside `relay`, so
 /// `sandbx-cli` reports the same number without deriving it again.
-pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
+pub fn exit_code(status: &ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
 
     status
@@ -212,7 +217,7 @@ pub fn exit_code(status: &std::process::ExitStatus) -> i32 {
 /// On success this never returns: it exits as the command did. Any return is an error, and
 /// the caller must exit non-zero rather than fall through to running the command
 /// unrestricted.
-pub(crate) fn exec_inner(argv: &[String]) -> Result<std::convert::Infallible, SandboxError> {
+pub(crate) fn exec_inner(argv: &[String]) -> Result<Infallible, SandboxError> {
     // A positional token ahead of the policy, not part of it: `HelperArgs` describes what
     // the command may do, this who is watching. Apart, the policy grammar and its
     // round-trip stay untouched and a caller reaching `exec_inner` directly cannot pass a
@@ -279,7 +284,7 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::
     //
     // `permits_env` and not `allowed_env`: it is the predicate `spawn::command` builds
     // from, so a variable the policy *imposes* cannot refuse the run.
-    if std::env::vars_os().any(|(name, _)| !request.policy.permits_env(&name)) {
+    if env::vars_os().any(|(name, _)| !request.policy.permits_env(&name)) {
         return Err(SandboxError::ProcessHardening {
             detail: "the inner stage inherited a variable the policy does not permit; \
                      an earlier stage did not narrow the environment"
@@ -337,19 +342,19 @@ fn reap_until(command: nix::unistd::Pid) -> ! {
     let status = loop {
         match wait() {
             Ok(WaitStatus::Exited(pid, code)) if pid == command => {
-                break std::process::ExitStatus::from_raw((code & 0xff) << 8);
+                break ExitStatus::from_raw((code & 0xff) << 8);
             }
             Ok(WaitStatus::Signaled(pid, signal, _)) if pid == command => {
-                break std::process::ExitStatus::from_raw(signal as i32);
+                break ExitStatus::from_raw(signal as i32);
             }
             Ok(_) | Err(nix::errno::Errno::EINTR) => {}
             // No child left to wait for is no command left to report on: exit, which takes
             // the namespace down with it.
-            Err(_) => break std::process::ExitStatus::from_raw(1 << 8),
+            Err(_) => break ExitStatus::from_raw(1 << 8),
         }
     };
 
-    std::process::exit(exit_code(&status))
+    process::exit(exit_code(&status))
 }
 
 /// Take the audit channel out of the stdin slot, leaving the command a null one.
@@ -361,25 +366,25 @@ fn reap_until(command: nix::unistd::Pid) -> ! {
 /// `the_command_inherits_no_other_end_of_the_channel` the duplicate.
 ///
 /// Fails closed — starting the command with the channel still on fd 0 is the worse outcome.
-fn claim_audit_channel() -> Result<std::fs::File, SandboxError> {
+fn claim_audit_channel() -> Result<File, SandboxError> {
     use std::os::fd::AsFd;
 
-    let refused = |step: &str, source: &dyn std::fmt::Display| SandboxError::ProcessHardening {
+    let refused = |step: &str, source: &dyn fmt::Display| SandboxError::ProcessHardening {
         detail: format!("{step}: {source}"),
     };
 
-    let channel = std::io::stdin()
+    let channel = io::stdin()
         .as_fd()
         .try_clone_to_owned()
         .map_err(|source| refused("could not take the audit channel off stdin", &source))?;
 
-    let null = std::fs::File::open("/dev/null")
+    let null = File::open("/dev/null")
         .map_err(|source| refused("could not open /dev/null for the command", &source))?;
 
     nix::unistd::dup2_stdin(&null)
         .map_err(|source| refused("could not put /dev/null in the stdin slot", &source))?;
 
-    Ok(std::fs::File::from(channel))
+    Ok(File::from(channel))
 }
 
 /// `pub(super)` with no caller outside this module: as a private item of `helper` it was

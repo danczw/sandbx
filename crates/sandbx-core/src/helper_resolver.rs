@@ -5,8 +5,11 @@
 //! unshared `CLONE_NEWNS` and before stage 2 exists, so the command inherits the mounts and
 //! `mount(2)` is not yet denied; stage 2 could not, `apply` having no namespace to put them in.
 
+use std::fs::{DirBuilder, OpenOptions};
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, fs, process};
 
 use nix::mount::{MsFlags, mount};
 
@@ -93,7 +96,7 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
         true => Err(absent(file.target)),
     };
 
-    let Ok(target) = std::fs::symlink_metadata(file.target) else {
+    let Ok(target) = fs::symlink_metadata(file.target) else {
         return absent_target(file);
     };
 
@@ -198,7 +201,7 @@ fn write_body(path: &Path, body: &str) -> Result<(), SandboxError> {
         detail: "could not write the files that bound resolution",
     };
 
-    std::fs::OpenOptions::new()
+    OpenOptions::new()
         .write(true)
         // `create_new`, so a planted symlink is a refusal rather than a write through it.
         .create_new(true)
@@ -219,15 +222,15 @@ fn write_body(path: &Path, body: &str) -> Result<(), SandboxError> {
 /// Created rather than opened, so a name already taken is a refusal, and named for the clock
 /// as well as this process, so a predictable name is not one a local user can plant first.
 fn source_dir() -> Result<PathBuf, SandboxError> {
-    let path = std::env::temp_dir().join(format!(
+    let path = env::temp_dir().join(format!(
         "sandbx-resolver-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.subsec_nanos())
     ));
 
-    std::fs::DirBuilder::new()
+    DirBuilder::new()
         .mode(SOURCE_DIR_MODE)
         .create(&path)
         .map_err(|_| SandboxError::NamespaceSetupFailed {
@@ -243,7 +246,7 @@ fn source_dir() -> Result<PathBuf, SandboxError> {
     )
     .map_err(|_| {
         // The one path out that `bound_resolution`'s `remove_source` does not cover.
-        let _ = std::fs::remove_dir(&path);
+        let _ = fs::remove_dir(&path);
 
         SandboxError::NamespaceSetupFailed {
             detail: "could not mount a tmpfs to write the files that bound resolution into",
@@ -260,5 +263,5 @@ fn source_dir() -> Result<PathBuf, SandboxError> {
 /// them. Best-effort, a failure leaving an empty 0700 directory and nothing the policy claims.
 fn remove_source(source: &Path) {
     let _ = nix::mount::umount2(source, nix::mount::MntFlags::MNT_DETACH);
-    let _ = std::fs::remove_dir(source);
+    let _ = fs::remove_dir(source);
 }

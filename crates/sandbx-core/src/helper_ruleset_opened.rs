@@ -5,6 +5,7 @@
 //! told about would be different ones (#205). A `rename(2)` does the same without a symlink,
 //! leaving the spelling identical, so the two questions are asked separately (#212).
 
+use std::fs;
 use std::os::fd::{AsFd, AsRawFd};
 use std::path::PathBuf;
 
@@ -73,7 +74,7 @@ fn reads_back(fd: &PathFd) -> Result<PathBuf, SandboxError> {
 
     // Not `GrantRedirected`, which would claim to know where the grant went: a sandbox whose
     // rules cannot be confirmed is one this kernel will not enforce, so it refuses as that.
-    std::fs::read_link(&link).map_err(|_| SandboxError::Unsupported {
+    fs::read_link(&link).map_err(|_| SandboxError::Unsupported {
         detail: "a granted path could not be read back through /proc/self/fd, so it cannot be \
                  confirmed to be the path that was opened",
     })

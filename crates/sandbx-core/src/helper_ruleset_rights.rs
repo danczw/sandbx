@@ -4,6 +4,8 @@
 //! Kernel-independent — the ABI arrives as a parameter, negotiated by [`super::compat`] — and
 //! so assertable without root, a network namespace or a Landlock-capable kernel.
 
+use std::path::Path;
+
 /// The Landlock rights an axis grants on a target, narrowed to what that target can carry.
 ///
 /// Derived from [`Axis::grants`], so a new axis needs no edit here — a literal list of
@@ -80,12 +82,12 @@ pub(in crate::helper) enum RuleTarget<'policy> {
     Granted(&'policy crate::VettedPath),
 
     /// A resolver file sandbx bind-mounted over, which no grant names.
-    Installed(&'static std::path::Path),
+    Installed(&'static Path),
 }
 
 impl RuleTarget<'_> {
     /// The path to open, whichever it is.
-    pub(in crate::helper) fn path(&self) -> &std::path::Path {
+    pub(in crate::helper) fn path(&self) -> &Path {
         match self {
             Self::Granted(granted) => granted.path(),
             Self::Installed(path) => path,
@@ -123,8 +125,7 @@ pub(super) fn fs_rules(
 )> {
     // Annotated, the paths being `&'static`: chaining them onto a borrow of the policy would
     // otherwise have inference demand the policy live as long.
-    let resolver: Vec<(crate::Axis, &std::path::Path)> =
-        resolver_paths(policy.bounds_resolution()).collect();
+    let resolver: Vec<(crate::Axis, &Path)> = resolver_paths(policy.bounds_resolution()).collect();
     let unix = unix_socket_rights(policy.allows_unix_sockets(), abi);
 
     policy
@@ -174,12 +175,12 @@ fn unix_socket_rights(granted: bool, abi: landlock::ABI) -> landlock::BitFlags<l
 /// [`SandboxPolicy::allow_system_executables`].
 ///
 /// [`SandboxPolicy::allow_system_executables`]: crate::SandboxPolicy::allow_system_executables
-fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static std::path::Path)> {
+fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static Path)> {
     bounded
         .then_some(crate::RESOLVER_FILES)
         .into_iter()
         .flatten()
-        .map(std::path::Path::new)
+        .map(Path::new)
         .filter(|path| opens_as_itself(path))
         .map(|path| (crate::Axis::Read, path))
 }
@@ -199,7 +200,7 @@ fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static 
 /// *other* grants reach the resolved path reading sandbx's body rather than the host's. With
 /// no such grant it reads nothing there, and the bound rests on `nsswitch.conf` for glibc and
 /// the port allowlist for musl.
-fn opens_as_itself(path: &std::path::Path) -> bool {
+fn opens_as_itself(path: &Path) -> bool {
     path.symlink_metadata().is_ok_and(|at| !at.is_symlink())
 }
 

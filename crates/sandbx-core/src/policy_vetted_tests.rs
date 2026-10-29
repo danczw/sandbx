@@ -1,4 +1,7 @@
 use super::*;
+use std::fs;
+use std::fs::File;
+use std::os::unix::fs as unix_fs;
 
 /// Every pin `encode` emits has to be one `decode` accepts, the wire form being the whole
 /// of what the helper is told.
@@ -35,8 +38,8 @@ fn vetting_resolves_the_path_it_pins() {
     let real = work.path().canonicalize().expect("a resolved directory");
     let link = real.join("link");
     let target = real.join("target");
-    std::fs::create_dir(&target).expect("a directory to link to");
-    std::os::unix::fs::symlink(&target, &link).expect("a symlink to it");
+    fs::create_dir(&target).expect("a directory to link to");
+    unix_fs::symlink(&target, &link).expect("a symlink to it");
 
     let vetted = VettedPath::vet(&link).expect("a symlink to a directory that exists");
 
@@ -59,11 +62,11 @@ fn a_renamed_directory_is_a_different_object() {
     let root = work.path().canonicalize().expect("a resolved directory");
     let granted = root.join("granted");
     let other = root.join("other");
-    std::fs::create_dir(&granted).expect("the directory to vet");
-    std::fs::create_dir(&other).expect("the directory to substitute");
+    fs::create_dir(&granted).expect("the directory to vet");
+    fs::create_dir(&other).expect("the directory to substitute");
 
     let vetted = VettedPath::vet(&granted).expect("a directory that exists");
-    std::fs::rename(&other, &granted).expect("a substitution at the same name");
+    fs::rename(&other, &granted).expect("a substitution at the same name");
 
     let replaced = VettedPath::vet(&granted).expect("the substituted directory");
 
@@ -98,7 +101,7 @@ fn a_path_naming_nothing_cannot_be_vetted() {
 fn a_descriptor_names_the_object_its_path_did() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let vetted = VettedPath::vet(work.path()).expect("a temporary directory to vet");
-    let opened = std::fs::File::open(vetted.path()).expect("a directory to open");
+    let opened = File::open(vetted.path()).expect("a directory to open");
 
     assert_eq!(
         ObjectId::of_fd(&opened).expect("a descriptor on an open directory"),
@@ -127,12 +130,12 @@ fn confirming_a_renamed_over_path_names_it() {
     let root = work.path().canonicalize().expect("a resolved directory");
     let granted = root.join("granted");
     let other = root.join("other");
-    std::fs::create_dir(&granted).expect("the directory to vet");
-    std::fs::create_dir(&other).expect("the directory to substitute");
+    fs::create_dir(&granted).expect("the directory to vet");
+    fs::create_dir(&other).expect("the directory to substitute");
 
     let vetted = VettedPath::vet(&granted).expect("a directory that exists");
     let substitute = VettedPath::vet(&other).expect("the directory to substitute");
-    std::fs::rename(&other, &granted).expect("a substitution at the same name");
+    fs::rename(&other, &granted).expect("a substitution at the same name");
 
     assert_eq!(
         vetted.confirm(),
@@ -146,10 +149,10 @@ fn confirming_a_renamed_over_path_names_it() {
 fn confirming_a_path_that_is_gone() {
     let work = tempfile::tempdir().expect("a temporary directory");
     let granted = work.path().join("granted");
-    std::fs::create_dir(&granted).expect("the directory to vet");
+    fs::create_dir(&granted).expect("the directory to vet");
 
     let vetted = VettedPath::vet(&granted).expect("a directory that exists");
-    std::fs::remove_dir(&granted).expect("the grant to be removed under it");
+    fs::remove_dir(&granted).expect("the grant to be removed under it");
 
     assert_eq!(
         vetted.confirm(),

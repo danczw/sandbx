@@ -4,7 +4,10 @@
 //! a stray space. Parsing is the only way in, which leaves the 32-byte length to the type.
 //! What uses one: a pinned entry point, in `helper`.
 
-use std::fmt;
+use std::error::Error;
+use std::fs::File;
+use std::path::PathBuf;
+use std::{fmt, io};
 
 /// How many hex characters spell one.
 const HEX_LEN: usize = 64;
@@ -41,7 +44,7 @@ impl Sha256Digest {
     /// Hash an already-open file. Takes the handle and never a path: the caller hashes and
     /// then runs this descriptor, and re-opening by path between the two is the swap the pin
     /// exists to catch. Reads from wherever the handle is positioned, so it is `&mut`.
-    pub fn of_file(file: &mut std::fs::File) -> std::io::Result<Self> {
+    pub fn of_file(file: &mut File) -> io::Result<Self> {
         use sha2::Digest as _;
         use std::io::Read as _;
 
@@ -53,7 +56,7 @@ impl Sha256Digest {
                 Ok(0) => break,
                 Ok(read) => read,
                 // A signal between chunks is not a different file; std does not retry.
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 Err(error) => return Err(error),
             };
             hasher.update(&buffer[..read]);
@@ -71,13 +74,13 @@ impl Sha256Digest {
 pub(crate) fn open_verified(
     program: &str,
     expected: Sha256Digest,
-) -> Result<std::fs::File, crate::SandboxError> {
+) -> Result<File, crate::SandboxError> {
     let unreadable = |source| crate::SandboxError::PinUnreadable {
         program: program.to_string(),
         source,
     };
 
-    let mut file = std::fs::File::open(program).map_err(unreadable)?;
+    let mut file = File::open(program).map_err(unreadable)?;
 
     let actual = Sha256Digest::of_file(&mut file).map_err(unreadable)?;
 
@@ -103,7 +106,7 @@ pub(crate) fn open_verified(
 /// Would the kernel hand this image to an interpreter rather than run it? `binfmt_script`
 /// substitutes the path sandbx exec'd for the script's own, and that path names a
 /// descriptor closed by then — so the interpreter cannot open it.
-fn starts_with_shebang(file: &mut std::fs::File) -> std::io::Result<bool> {
+fn starts_with_shebang(file: &mut File) -> io::Result<bool> {
     use std::io::{Read as _, Seek as _, SeekFrom};
 
     file.seek(SeekFrom::Start(0))?;
@@ -114,7 +117,7 @@ fn starts_with_shebang(file: &mut std::fs::File) -> std::io::Result<bool> {
         match file.read(&mut magic[read..]) {
             Ok(0) => return Ok(false),
             Ok(n) => read += n,
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
         }
     }
@@ -125,10 +128,10 @@ fn starts_with_shebang(file: &mut std::fs::File) -> std::io::Result<bool> {
 /// The path that execs `file` itself rather than whatever its name now points at.
 /// Landlock dereferences this magic link, so the exec is still checked against the real
 /// path and a pinned run needs no grant on `/proc`.
-pub(crate) fn fd_path(file: &std::fs::File) -> std::path::PathBuf {
+pub(crate) fn fd_path(file: &File) -> PathBuf {
     use std::os::fd::{AsFd, AsRawFd};
 
-    std::path::PathBuf::from(format!("/proc/self/fd/{}", file.as_fd().as_raw_fd()))
+    PathBuf::from(format!("/proc/self/fd/{}", file.as_fd().as_raw_fd()))
 }
 
 impl fmt::Display for Sha256Digest {
@@ -170,7 +173,7 @@ impl fmt::Display for DigestParseError {
     }
 }
 
-impl std::error::Error for DigestParseError {}
+impl Error for DigestParseError {}
 
 /// One hex character's value.
 fn nibble(byte: u8) -> Result<u8, DigestParseError> {

@@ -5,6 +5,8 @@
 //! protocol. [`SandboxPolicy::unbounded_resolution`]'s refusal is re-made here for that reason.
 
 use crate::{Axis, NetworkPolicy, ObjectId, SandboxError, SandboxPolicy, Sha256Digest, VettedPath};
+use std::path::Path;
+use std::slice;
 
 const FLAG_NET: &str = "--allow-network";
 /// Introduces one allowlisted TCP port, and takes exactly one value. Its own flag rather
@@ -49,7 +51,7 @@ fn axis_for(flag: &str) -> Option<Axis> {
 }
 
 fn next_arg<'a>(
-    rest: &mut std::slice::Iter<'a, String>,
+    rest: &mut slice::Iter<'a, String>,
     detail: &'static str,
 ) -> Result<&'a String, SandboxError> {
     rest.next().ok_or(SandboxError::BadHelperArgs { detail })
@@ -215,7 +217,7 @@ impl HelperArgs {
         // A pin means the helper opens the file itself, resolving the name instead of libc —
         // a bare name resolved against the policy's own `PATH` could hash one file and
         // `execve` another.
-        if pin.is_some() && !std::path::Path::new(&program).is_absolute() {
+        if pin.is_some() && !Path::new(&program).is_absolute() {
             return Err(SandboxError::BadHelperArgs {
                 detail: "a pinned program that is not an absolute path",
             });

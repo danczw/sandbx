@@ -1,4 +1,6 @@
 use super::*;
+use std::sync::{Arc, Mutex};
+use std::{fmt, io};
 
 /// What `record_reports` makes of a channel, without a helper to write one. The write
 /// end is dropped before the read, which is what makes the read terminate.
@@ -22,7 +24,7 @@ fn read_channel(
     use std::io::Write;
     use tracing_subscriber::layer::SubscriberExt;
 
-    let (read, mut write) = std::io::pipe().expect("a pipe for the channel");
+    let (read, mut write) = io::pipe().expect("a pipe for the channel");
     write.write_all(channel.as_bytes()).expect("the channel");
     drop(write);
 
@@ -37,7 +39,7 @@ fn read_channel(
 /// Collects audit records as `field=value ` text, emitted on the calling thread so a
 /// thread-local subscriber sees them.
 #[derive(Clone, Default)]
-struct Captured(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+struct Captured(Arc<Mutex<Vec<String>>>);
 
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
@@ -53,7 +55,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
 struct Collect(String);
 
 impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         self.0.push_str(&format!("{}={value:?} ", field.name()));
     }
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
