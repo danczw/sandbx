@@ -17,10 +17,9 @@ use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::{Position, Rect, Size};
 use sandbx_tui_transcript::{Hint, draw};
 
-/// With it: [`Transcript::new`] takes one.
-pub use sandbx_tui_transcript::Reasoning;
-/// Re-exported, not left to the caller: every entry point here takes or returns one (#352).
-pub use sandbx_tui_transcript::Transcript;
+/// Re-exported, not left to the caller: every entry point here takes or returns a
+/// [`Transcript`], and building one takes a [`Reasoning`] (#352).
+pub use sandbx_tui_transcript::{Reasoning, Transcript};
 
 /// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
 pub struct Screen {

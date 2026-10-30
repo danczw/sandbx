@@ -2,6 +2,7 @@ use super::super::{Device, INCOMPLETE};
 use super::{Answer, Render, Unfinished};
 use crate::AgentError;
 use sandbx_event::{AgentEvent, StopReason};
+use sandbx_screen::Reasoning;
 use std::io;
 use std::io::Write;
 
@@ -66,8 +67,8 @@ fn no_part_of_the_reasoning_reaches_stdout() {
         stop(StopReason::EndTurn),
     ];
 
-    for show in [false, true] {
-        let mut render = captured().showing_thinking(show);
+    for reasoning in [Reasoning::Hidden, Reasoning::Shown] {
+        let mut render = captured().showing_thinking(reasoning);
         for event in &events {
             render.event(event);
         }
@@ -76,15 +77,19 @@ fn no_part_of_the_reasoning_reaches_stdout() {
         assert_eq!(
             String::from_utf8(render.out).expect("utf-8"),
             "the answer\n",
-            "--show-thinking={show}"
+            "{reasoning:?}"
         );
         // The replayable block and the redacted one carry a signature nothing may
         // write, so the delta is the whole of what stderr may hold.
         let reasoned = String::from_utf8(render.err).expect("utf-8");
         assert_eq!(
             reasoned,
-            if show { "weighing it up\n" } else { "" },
-            "--show-thinking={show}"
+            if reasoning == Reasoning::Shown {
+                "weighing it up\n"
+            } else {
+                ""
+            },
+            "{reasoning:?}"
         );
         assert_eq!(code.expect("clean turn"), 0);
     }
@@ -94,7 +99,7 @@ fn no_part_of_the_reasoning_reaches_stdout() {
 /// the answer appended to it and its own newline arrive after.
 #[test]
 fn the_answer_does_not_continue_a_reasoning_line() {
-    let mut render = captured().showing_thinking(true);
+    let mut render = captured().showing_thinking(Reasoning::Shown);
     render.event(&AgentEvent::Thinking {
         delta: "weighing it up".to_string(),
     });
@@ -219,7 +224,7 @@ fn a_turn_that_lost_its_operator_exits_three() {
 /// `finish` owes the newline — then the lost operator ahead of the bound it outranks.
 #[test]
 fn what_a_turn_is_told_is_whole_lines_in_order() {
-    let mut render = captured().showing_thinking(true);
+    let mut render = captured().showing_thinking(Reasoning::Shown);
     render.event(&AgentEvent::Thinking {
         delta: "weighing it up".to_string(),
     });
@@ -248,7 +253,7 @@ fn what_a_turn_is_told_is_whole_lines_in_order() {
 
 /// Everything stderr received from `deltas` under `--show-thinking`.
 fn reasoned(deltas: &[&str]) -> String {
-    let mut render = captured().showing_thinking(true);
+    let mut render = captured().showing_thinking(Reasoning::Shown);
     for delta in deltas {
         render.event(&AgentEvent::Thinking {
             delta: (*delta).to_string(),

@@ -10,16 +10,16 @@ use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
-use sandbx_event::StopReason;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
-use sandbx_screen::{Reasoning, Screen, Transcript};
+use sandbx_screen::{Screen, Transcript};
 use sandbx_session_bridge as session;
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
+use super::render::Answer;
 use super::{AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
 
@@ -120,12 +120,7 @@ impl Tui {
         approved: &str,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
-        let reasoning = if self.run.show_thinking {
-            Reasoning::Shown
-        } else {
-            Reasoning::Hidden
-        };
-        let mut transcript = Transcript::new(&prompt, reasoning);
+        let mut transcript = Transcript::new(&prompt, self.run.reasoning());
         transcript.note(&format!("sandbx: tools approved: {approved}"));
 
         let asked = RequestMessage {
@@ -332,7 +327,7 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
 
     // Read whatever the stop was: the round carrying the reply can be cut at `--max-tokens`
     // on its own, which is an answer stopping mid-sentence and must not exit 0.
-    if outcome.round_stop == Some(StopReason::MaxTokens) {
+    if Answer::of(outcome.round_stop.as_ref()) == Answer::Truncated {
         account.push(
             "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
              model's own end of turn"
