@@ -94,9 +94,9 @@ fn an_answer_cut_at_max_tokens_exits_two_whatever_the_stop_was() {
 
     // The cut does not lower a code already chosen, and it adds its own line to a turn
     // that met both bounds.
-    let (code, account) = ending(&outcome(TurnStop::GateAborted, cut()));
+    let (code, said) = ending(&outcome(TurnStop::GateAborted, cut()));
     assert_eq!(code, NO_CONSENT);
-    assert_eq!(account.len(), 2, "{account:?}");
+    assert_eq!(said.len(), 2, "{said:?}");
 
     // Non-vacuous: the same stop with a round that was not cut exits 0, so the code
     // above is the cut and not the fixture.
@@ -117,11 +117,11 @@ fn a_stop_that_is_not_an_answer_says_why() {
     ];
 
     for stop in &stops {
-        let (code, account) = ending(stop);
+        let (code, said) = ending(stop);
         assert_ne!(code, 0, "{stop:?}");
         assert!(
-            account.iter().all(|line| line.starts_with("sandbx: ")),
-            "{account:?}"
+            said.iter().all(|line| line.starts_with("sandbx: ")),
+            "{said:?}"
         );
     }
 }
@@ -158,10 +158,10 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
 fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
     assert!(matches!(reported(Ok(NO_CONSENT), None, &[lost()]), Ok(3)));
 
-    let account = lost();
-    assert!(account.starts_with("sandbx: "), "{account}");
-    assert!(account.contains("terminal went away"), "{account}");
-    assert!(!account.contains("interrupted"), "{account}");
+    let said = lost();
+    assert!(said.starts_with("sandbx: "), "{said}");
+    assert!(said.contains("terminal went away"), "{said}");
+    assert!(!said.contains("interrupted"), "{said}");
 }
 
 /// The flattened flags are the same flags: one `--allow-tool` cannot approve two

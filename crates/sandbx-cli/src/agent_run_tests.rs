@@ -456,8 +456,8 @@ fn a_transcript_holds_no_api_key_material() {
     // Both halves present first, so the assertions below are known to be reading the
     // file that holds the conversation.
     assert_eq!(body.matches("sentinel-9f3a").count(), 2, "got {body}");
-    for secret in ["x-api-key", "authorization", "sk-ant-"] {
-        assert!(!body.contains(secret), "{secret} reached {path:?}");
+    for needle in ["x-api-key", "authorization", "sk-ant-"] {
+        assert!(!body.contains(needle), "{needle} reached {path:?}");
     }
     assert_eq!(
         store
