@@ -83,7 +83,8 @@ fn slurp(mut file: File, path: &Path) -> Result<String, ToolError> {
     Ok(content)
 }
 
-/// Whether a search covered everything it was asked to, or gave up part-way.
+/// Whether a search covered everything it was asked to, or left some of it unsearched: a
+/// walk cut short, or a file skipped on the way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Scan {
     Complete,
@@ -103,9 +104,9 @@ impl Scan {
 
 /// Render a list of results, bounded, distinguishing "none" from empty output.
 ///
-/// [`Scan::StoppedEarly`]'s marker is appended after the entry cap is applied, not before: a marker
-/// inside the list is a line the cap can trim away, which would leave a partial
-/// search looking complete.
+/// [`Scan::StoppedEarly`]'s marker is appended after the entry cap is applied, not
+/// before: a marker inside the list is a line the cap can trim away, which would leave a
+/// partial search looking complete.
 pub(crate) fn listing(lines: Vec<String>, ctx: &ExecutionContext, scan: Scan) -> ToolOutput {
     if lines.is_empty() && scan == Scan::Complete {
         return ToolOutput::new("no matches".to_string());

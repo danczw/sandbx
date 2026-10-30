@@ -39,7 +39,7 @@ pub enum Reasoning {
 pub struct Transcript {
     entries: Vec<Entry>,
 
-    /// Whether reasoning was asked for; the API sends the delta regardless of this flag.
+    /// Whether reasoning was asked for; the API sends the delta regardless.
     reasoning: Reasoning,
 
     /// Rounds seen, counted from `Stop`: no event carries the turn's own bound.

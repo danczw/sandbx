@@ -14,9 +14,9 @@ use std::{io, slice};
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_core::SandboxPolicy;
-use sandbx_event::StopReason;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
+use sandbx_screen::Reasoning;
 use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
@@ -187,6 +187,15 @@ pub struct AgentRun {
 }
 
 impl AgentRun {
+    /// `--show-thinking`, as the two renderers take it.
+    pub(super) fn reasoning(&self) -> Reasoning {
+        if self.show_thinking {
+            Reasoning::Shown
+        } else {
+            Reasoning::Hidden
+        }
+    }
+
     /// The policy these flags describe.
     ///
     /// The credential refusal is first: decidable from argv alone, and a
@@ -396,7 +405,7 @@ impl AgentRun {
         };
 
         let mut render = Render::with(channels.out, channels.err)
-            .showing_thinking(self.show_thinking)
+            .showing_thinking(self.reasoning())
             .rendering(channels.err_device);
         let outcome = run_turn(
             &mut open,
@@ -435,14 +444,9 @@ impl AgentRun {
 
         // The outcome's figure, not the stream's: on `Discarded` that's the first turn's,
         // the wrap-up round's text not being an answer.
-        let answer = if outcome
-            .as_ref()
-            .is_ok_and(|outcome| matches!(outcome.round_stop, Some(StopReason::MaxTokens)))
-        {
-            Answer::Truncated
-        } else {
-            Answer::Whole
-        };
+        let answer = outcome.as_ref().map_or(Answer::Whole, |outcome| {
+            Answer::of(outcome.round_stop.as_ref())
+        });
 
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.

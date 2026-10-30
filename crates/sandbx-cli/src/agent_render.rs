@@ -7,7 +7,8 @@
 use std::io::Write;
 use std::{io, mem};
 
-use sandbx_event::AgentEvent;
+use sandbx_event::{AgentEvent, StopReason};
+use sandbx_screen::Reasoning;
 use sandbx_text::invisible;
 
 use super::prompt::{APPROVE_CALL, account};
@@ -19,6 +20,17 @@ use crate::AgentError;
 pub(super) enum Answer {
     Whole,
     Truncated,
+}
+
+impl Answer {
+    /// Read off the stop of the round carrying the reply, whatever ended the turn.
+    pub(super) fn of(round_stop: Option<&StopReason>) -> Self {
+        if matches!(round_stop, Some(StopReason::MaxTokens)) {
+            Self::Truncated
+        } else {
+            Self::Whole
+        }
+    }
 }
 
 /// How a turn ended short of a finished answer, which no event reports.
@@ -66,7 +78,7 @@ pub(super) struct Render<W, E> {
     /// Whether reasoning was asked for. Off unless
     /// [`crate::agent::AgentRun::show_thinking`] set it, so a summary streamed unasked is
     /// dropped here rather than put in front of an operator who did not want it.
-    show_thinking: bool,
+    reasoning: Reasoning,
 
     /// Whether stderr is part-way through a line of reasoning, so the round's own stderr
     /// lines do not continue one.
@@ -88,7 +100,7 @@ impl<W: Write, E: Write> Render<W, E> {
             wrote: false,
             separating: false,
             after_gap: false,
-            show_thinking: false,
+            reasoning: Reasoning::Hidden,
             thinking_mid_line: false,
             err_device: Device::Redirected,
             failed: None,
@@ -104,8 +116,8 @@ impl<W: Write, E: Write> Render<W, E> {
 
     /// Let the model's reasoning through to stderr.
     #[must_use]
-    pub(super) fn showing_thinking(mut self, show: bool) -> Self {
-        self.show_thinking = show;
+    pub(super) fn showing_thinking(mut self, reasoning: Reasoning) -> Self {
+        self.reasoning = reasoning;
         self
     }
 
@@ -170,7 +182,7 @@ impl<W: Write, E: Write> Render<W, E> {
             AgentEvent::Thinking { delta } => {
                 // Stripped, being model-chosen: a delta could otherwise hide or erase the
                 // lines after it, the gate's verdicts among them (#239).
-                if self.show_thinking && !delta.is_empty() {
+                if self.reasoning == Reasoning::Shown && !delta.is_empty() {
                     self.put(inert(delta).as_bytes());
                     self.thinking_mid_line = !delta.ends_with('\n');
                 }
