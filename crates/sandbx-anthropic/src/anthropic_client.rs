@@ -82,7 +82,7 @@ impl AnthropicClient {
             .await
             .map_err(|source| ProviderError::Transport {
                 detail: "sending request".to_string(),
-                source,
+                source: Box::new(source),
             })?;
 
         let status = response.status();
@@ -156,7 +156,7 @@ fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderErr
 
     builder.build().map_err(|source| ProviderError::Transport {
         detail: "building HTTP client".to_string(),
-        source,
+        source: Box::new(source),
     })
 }
 

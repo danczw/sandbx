@@ -15,7 +15,7 @@ pub sandbx_provider::ProviderError::RateLimited::retry_after: core::option::Opti
 pub sandbx_provider::ProviderError::StreamEndedUnexpectedly
 pub sandbx_provider::ProviderError::Transport
 pub sandbx_provider::ProviderError::Transport::detail: alloc::string::String
-pub sandbx_provider::ProviderError::Transport::source: reqwest::error::Error
+pub sandbx_provider::ProviderError::Transport::source: alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>
 impl core::error::Error for sandbx_provider::ProviderError
 pub fn sandbx_provider::ProviderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for sandbx_provider::ProviderError

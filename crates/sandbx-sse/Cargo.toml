@@ -13,10 +13,12 @@ bytes = "1"
 # `Stream` and `StreamExt` to drive the input, `unfold` to carry the buffer across
 # polls, and `FusedStream` as the stated return bound.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
-# `reqwest::Result` is the input stream's item, so the error half is a
-# `reqwest::Error` — the type `ProviderError::Transport` carries. Naming no feature is
-# what keeps rustls out of this tree; `sandbx-provider/Cargo.toml` records why the bare
-# form would put aws-lc-rs on the rustls the client crate drives with `ring` (#366).
+# `reqwest::Result` is the input stream's item; its error is boxed into `Transport`.
+# `default-features = false` is required, not tidiness: `default` reaches reqwest's
+# `rustls = ["__rustls-aws-lc-rs", ..]`, so the bare form puts aws-lc-rs on the very
+# `rustls` that `sandbx-anthropic` drives with `ring`. `install_default` is then
+# first-wins and that crate's installer a silent no-op — the hazard its own reqwest
+# comment names, reached from here (#366).
 reqwest = { version = "0.13.5", default-features = false }
 # `ProviderError` alone, and only two of its variants: a frame that could not be decoded
 # is `MalformedEvent`, a stream that failed under one is `Transport`. Not `EventStream` —

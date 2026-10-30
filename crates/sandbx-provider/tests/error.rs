@@ -1,16 +1,33 @@
 //! Public contract of [`ProviderError`]: every variant's `Display` renders something
 //! actionable, and `source()` is wired only where a variant carries one.
-//!
-//! `Transport` is tested from `sandbx-anthropic` instead: building the real
-//! `reqwest::Error` it carries needs a crypto provider installed, and the function that
-//! installs one stayed there (#366).
 
+use std::io;
 use std::time::Duration;
 
 use sandbx_provider::ProviderError;
 
 fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)> {
     std::error::Error::source(error)
+}
+
+/// The one variant carrying an underlying error, the request never having got far
+/// enough for a status code or vendor body. The client's message is what tells DNS
+/// from TLS, so it has to survive both ways out.
+#[test]
+fn transport_renders_and_exposes_its_source() {
+    let error = ProviderError::Transport {
+        detail: "sending request".to_string(),
+        source: Box::new(io::Error::other("dns lookup failed")),
+    };
+
+    let rendered = error.to_string();
+    assert!(rendered.contains("sending request"));
+    assert!(rendered.contains("dns lookup failed"));
+    let source = source_of(&error).expect("Transport must expose its source");
+    assert!(
+        source.downcast_ref::<io::Error>().is_some(),
+        "the source must be the client's own error, not a wrapper around it"
+    );
 }
 
 #[test]
