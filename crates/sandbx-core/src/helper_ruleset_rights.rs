@@ -63,15 +63,28 @@ pub(super) fn rights_for(
 
     match target {
         Inode::Dir => rights,
-        Inode::File => rights & AccessFs::from_file(abi),
+        Inode::NonDir => rights & AccessFs::from_file(abi),
     }
 }
 
-/// What a rule's target is, as far as [`rights_for`] cares: a directory, or anything else.
+/// What a rule's target is, as far as [`rights_for`] cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Inode {
+    /// A directory, carrying the directory-only rights.
     Dir,
-    File,
+    /// Anything `is_dir()` does not call a directory: a regular file, a socket, a device,
+    /// and a path it could not stat.
+    NonDir,
+}
+
+impl Inode {
+    fn of(path: &Path) -> Self {
+        if path.is_dir() {
+            Self::Dir
+        } else {
+            Self::NonDir
+        }
+    }
 }
 
 /// What a rule names: a grant the harness judged, or a path this process installed itself.
@@ -147,12 +160,7 @@ pub(super) fn fs_rules(
         .map(|(axis, target, conferred)| {
             // After the `from_file` narrowing, which does not re-widen it: `ResolveUnix` is in
             // landlock's `ACCESS_FILE`, so a rule naming a socket inode directly keeps the bit.
-            let inode = if target.path().is_dir() {
-                Inode::Dir
-            } else {
-                Inode::File
-            };
-            let rights = rights_for(axis, inode, abi) | conferred;
+            let rights = rights_for(axis, Inode::of(target.path()), abi) | conferred;
             (axis, target, rights)
         })
         .collect()

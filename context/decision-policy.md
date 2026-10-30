@@ -408,7 +408,7 @@ columns now read identical, so a new bit on any axis shows up as the two ends of
 the range disagreeing.
 
 Narrowed once more by target kind: a non-directory intersects `from_file(abi)`.
-So the real mapping is `axis × Inode × abi`, and the ABI is a negotiated
+So the real mapping is `axis × target kind × abi`, and the ABI is a negotiated
 parameter, not ambient.
 
 ### The mutation check: a row flipped

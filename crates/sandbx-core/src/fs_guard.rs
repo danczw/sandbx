@@ -779,8 +779,9 @@ fn probe_subject() -> Option<OwnedFd> {
         .map(OwnedFd::from)
 }
 
-/// Whether this kernel has `openat2` with the resolve flags [`FsGuard`] roots its accesses
-/// with.
+/// What the probe said of this kernel's `openat2` with the resolve flags [`FsGuard`] roots
+/// its accesses with. `Present` is "not shown absent", not a measured yes: only the errnos
+/// [`openat2_support_from`] names are a capability verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Openat2 {
     /// Accesses resolve beneath a descriptor held on their root.

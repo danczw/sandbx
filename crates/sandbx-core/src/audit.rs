@@ -39,15 +39,24 @@ const SESSION_ABSENT: &str = "-";
 /// [`SpawnId`]'s hex-and-dot spelling for the same reason as [`SESSION_ABSENT`].
 const SPAWN_ABSENT: &str = "-";
 
-/// Whether the program [`AuditEvent::spawned`] records had to match a digest before the
-/// exec.
+/// Whether the program [`AuditEvent::spawned`] records has to match a digest before the
+/// exec. Not whether it did: the record is written before the helper hashes anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pinning {
     /// A digest set by [`SandboxedCommand::pin_sha256`](crate::SandboxedCommand::pin_sha256)
-    /// was checked.
+    /// is to be matched.
     Pinned,
-    /// The program ran unchecked.
+    /// Nothing is matched.
     Unpinned,
+}
+
+impl Pinning {
+    pub(crate) fn of(pin: Option<&crate::Sha256Digest>) -> Self {
+        match pin {
+            Some(_) => Self::Pinned,
+            None => Self::Unpinned,
+        }
+    }
 }
 
 /// A command's arguments as one field value, cut to [`ARGS_CAP`] with the cut marked.

@@ -342,6 +342,27 @@ fn a_run_under_a_session_renders_its_id() {
     assert!(output.contains(r#"session="abc123""#), "{output}");
 }
 
+/// Through the builder rather than [`AuditEvent::spawned`] directly: the pin becomes the
+/// field in `SandboxedCommand::output`, the one place the two could be swapped.
+#[test]
+fn a_run_is_recorded_as_pinned_only_when_it_is() {
+    let digest = sandbx_core::Sha256Digest::parse(&"0".repeat(64)).expect("64 hex characters");
+    let unpinned = sandbx_core::SandboxedCommand::new("/bin/true", SandboxPolicy::default());
+    let pinned = unpinned.clone().pin_sha256(digest);
+
+    for (command, recorded) in [(unpinned, "pinned=false"), (pinned, "pinned=true")] {
+        let output = captured(|| {
+            let _ = command.helper("/nonexistent/helper").output();
+        });
+
+        let spawned = output
+            .lines()
+            .find(|line| line.contains(r#"decision="spawned""#))
+            .unwrap_or_else(|| panic!("no spawn was recorded: {output}"));
+        assert!(spawned.contains(recorded), "expected {recorded}: {spawned}");
+    }
+}
+
 /// `args` is the one field the layer renders unquoted, so it is last on the record. Ahead
 /// of the policy fields, a command spelling `readable=99` would shadow the real field of
 /// that name for any reader taking the first match, and an odd number of quotes in it
