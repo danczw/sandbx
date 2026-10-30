@@ -5,7 +5,7 @@
 //! Not configurable: the audit trail is not opt-in diagnostics.
 
 use std::io::{self, Write};
-use std::sync::{Mutex, PoisonError};
+use std::sync::Mutex;
 
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt;
@@ -47,18 +47,19 @@ pub fn init() -> Result<(), tracing_subscriber::util::TryInitError> {
 /// The records written while a screen owned the terminal, or `None` while stderr is clear.
 ///
 /// Process-global: `tracing` takes one subscriber for the whole process, installed before
-/// the subcommand is known, so its writer cannot take an argument.
+/// the subcommand is known, so its writer cannot take an argument. Never poisoned: no
+/// critical section on it can panic, short of an allocation failure, which aborts.
 static HELD: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+
+const UNPOISONED: &str = "no critical section on `HELD` can panic";
 
 /// Where a record goes: stderr, unless [`hold`] is in force.
 #[derive(Clone, Copy)]
 pub struct Audit;
 
 impl Write for Audit {
-    /// A poisoned lock writes to stderr rather than dropping the record: the trail is the
-    /// one output that is not opt-in, so a corrupted screen is the lesser loss.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut held = HELD.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut held = HELD.lock().expect(UNPOISONED);
 
         match held.as_mut() {
             Some(held) => {
@@ -88,7 +89,7 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 /// would land in the pane and be lost with it. Not reentrant: a second `hold` discards
 /// the first's records, so there is one caller.
 pub fn hold() -> Held {
-    *HELD.lock().unwrap_or_else(PoisonError::into_inner) = Some(Vec::new());
+    *HELD.lock().expect(UNPOISONED) = Some(Vec::new());
     Held(())
 }
 
@@ -101,11 +102,7 @@ pub struct Held(());
 impl Drop for Held {
     /// `Drop`, not a method: a panic unwinding past the screen must still leave the trail.
     fn drop(&mut self) {
-        let records = HELD
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take()
-            .unwrap_or_default();
+        let records = HELD.lock().expect(UNPOISONED).take().unwrap_or_default();
 
         // Ignored: there is nowhere left to report a stderr that stopped taking writes,
         // and this runs on an unwinding path as well as a returning one.

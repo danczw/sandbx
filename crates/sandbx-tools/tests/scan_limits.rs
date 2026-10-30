@@ -24,13 +24,13 @@ fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
 
 /// A tree of `count` files, each holding `body` and one match.
 fn tree(count: usize, body: &str) -> tempfile::TempDir {
-    let root = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().expect("a temp dir");
     for i in 0..count {
         fs::write(
             root.path().join(format!("f{i}.txt")),
             format!("needle\n{body}"),
         )
-        .unwrap();
+        .expect("a matching file");
     }
     root
 }

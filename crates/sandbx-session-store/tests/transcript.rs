@@ -9,7 +9,7 @@ use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 use sandbx_session_store::SessionStore;
 
 fn store() -> (tempfile::TempDir, SessionStore) {
-    let root = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().expect("a temp dir");
     let store = SessionStore::new(root.path().join("sessions"));
     (root, store)
 }

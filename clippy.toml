@@ -27,3 +27,6 @@ disallowed-methods = [
     { path = "ratatui::crossterm::terminal::size", reason = "Measured, which reads the window off the descriptor it draws to and never forks" },
     { path = "ratatui::backend::CrosstermBackend::new", reason = "Measured::new, whose size never forks tput" },
 ]
+
+# `unwrap_used` is for production code; a test's panic is its assertion.
+allow-unwrap-in-tests = true

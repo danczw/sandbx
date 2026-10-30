@@ -6,7 +6,7 @@
 //! instead of written to stderr, which the alternate screen does not redirect (#224).
 
 use std::io::{self, IsTerminal, Write};
-use std::sync::{Mutex, PoisonError};
+use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
@@ -187,8 +187,11 @@ impl Tui {
             }
         };
 
-        // The borrows the two seams held end with the future above.
-        let mut pane = pane.into_inner().unwrap_or_else(PoisonError::into_inner);
+        // The borrows the two seams held end with the future above. Every paint ran on this
+        // task, so one that panicked would have unwound past here already.
+        let mut pane = pane
+            .into_inner()
+            .expect("a paint that panicked unwinds past this frame");
 
         let (code, outcome, account) = match outcome {
             Err(Stopped::Pressed) => (

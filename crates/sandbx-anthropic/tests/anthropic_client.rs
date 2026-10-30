@@ -15,11 +15,11 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn client_for(server: &MockServer) -> AnthropicClient {
     AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
-        .unwrap()
+        .expect("the default base URL is https")
         // wiremock binds loopback, which `with_base_url` allows over plain http so
         // this needs no TLS mock.
         .with_base_url(server.uri())
-        .unwrap()
+        .expect("loopback http is allowed")
 }
 
 fn a_request() -> Prompt {

@@ -31,7 +31,10 @@ struct Captured(Arc<Mutex<Vec<String>>>);
 
 impl Captured {
     fn lines(&self) -> Vec<String> {
-        self.0.lock().unwrap().clone()
+        self.0
+            .lock()
+            .expect("the sink is held only to copy or push")
+            .clone()
     }
 }
 
@@ -42,7 +45,10 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
         }
         let mut visitor = Collect(String::new());
         event.record(&mut visitor);
-        self.0.lock().unwrap().push(visitor.0);
+        self.0
+            .lock()
+            .expect("the sink is held only to copy or push")
+            .push(visitor.0);
     }
 }
 
@@ -677,12 +683,12 @@ fn records_a_degraded_hardening_step() {
 fn substituted_root(work: &Path) -> SandboxPolicy {
     let granted = work.join("granted");
     let other = work.join("other");
-    fs::create_dir(&granted).unwrap();
-    fs::create_dir(&other).unwrap();
+    fs::create_dir(&granted).expect("the granted directory");
+    fs::create_dir(&other).expect("the substitute directory");
 
     let policy = SandboxPolicy::default().allow_read(vetted(&granted));
-    fs::remove_dir_all(&granted).unwrap();
-    fs::rename(&other, &granted).unwrap();
+    fs::remove_dir_all(&granted).expect("the granted directory goes");
+    fs::rename(&other, &granted).expect("the substitute takes its name");
 
     policy
 }

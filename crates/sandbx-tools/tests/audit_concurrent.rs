@@ -33,7 +33,10 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
         }
         let mut visitor = Collect(String::new());
         event.record(&mut visitor);
-        self.0.lock().unwrap().push(visitor.0);
+        self.0
+            .lock()
+            .expect("the sink is held only to push")
+            .push(visitor.0);
     }
 }
 

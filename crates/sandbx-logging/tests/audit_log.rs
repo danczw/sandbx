@@ -27,13 +27,22 @@ struct Sink(Arc<Mutex<Vec<u8>>>);
 
 impl Sink {
     fn contents(&self) -> String {
-        String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        String::from_utf8(
+            self.0
+                .lock()
+                .expect("the sink is held only to copy or append")
+                .clone(),
+        )
+        .expect("the trail is UTF-8")
     }
 }
 
 impl Write for Sink {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        self.0
+            .lock()
+            .expect("the sink is held only to copy or append")
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
 

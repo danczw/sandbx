@@ -11,7 +11,7 @@ use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 use sandbx_session_store::SessionStore;
 
 fn store() -> (tempfile::TempDir, SessionStore) {
-    let root = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().expect("a temp dir");
     let store = SessionStore::new(root.path().join("sessions"));
     (root, store)
 }
@@ -31,14 +31,14 @@ fn exchange(ask: &str, reply: &str) -> Vec<Message> {
 
 /// One session with one turn in it, and the path it was written to.
 fn spoken_to(store: &SessionStore) -> (sandbx_session_id::SessionId, PathBuf) {
-    let mut session = store.create().unwrap();
+    let mut session = store.create().expect("a session is created");
     session
         .append(CompletedTurn {
             messages: &exchange("a", "1"),
             observed: None,
             withheld: 0,
         })
-        .unwrap();
+        .expect("the turn is appended");
 
     (session.id().clone(), session.path().to_owned())
 }
