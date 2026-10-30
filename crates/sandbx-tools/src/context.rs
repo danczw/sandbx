@@ -50,8 +50,8 @@ impl ExecutionContext {
     /// emitted a record disclaiming one. The caller therefore has to hold a session before
     /// it builds a context — `sandbx-cli` opens one ahead of deriving the policy, since
     /// nothing may come between that derivation and this call (#249).
-    pub fn for_session(policy: SandboxPolicy, session: impl Into<String>) -> Self {
-        Self::build(policy, Some(session.into()))
+    pub fn for_session(policy: SandboxPolicy, session: String) -> Self {
+        Self::build(policy, Some(session))
     }
 
     /// Both constructors, so the guard cannot be built one way on one path.
@@ -114,7 +114,7 @@ impl ExecutionContext {
     /// [`FsGuard`] hands back. Timeout, helper and session are applied here so a second
     /// spawning built-in cannot forget them.
     #[must_use]
-    pub fn sandboxed_command(&self, program: impl Into<String>) -> SandboxedCommand {
+    pub fn sandboxed_command(&self, program: &str) -> SandboxedCommand {
         let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);
         if let Some(helper) = &self.helper {
             command = command.helper(helper);

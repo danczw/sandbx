@@ -16,8 +16,7 @@ pub struct ToolOutput {
 
 impl ToolOutput {
     /// Wrap text for the model, reporting an empty result instead of sending it.
-    pub fn new(content: impl Into<String>) -> Self {
-        let mut content = content.into();
+    pub fn new(mut content: String) -> Self {
         if content.trim().is_empty() {
             content = EMPTY_OUTPUT.to_string();
         }

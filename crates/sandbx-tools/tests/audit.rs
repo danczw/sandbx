@@ -93,7 +93,7 @@ const SESSION: &str = "abc123";
 /// A context whose spawns fail to start: the helper does not exist, so the pair is a
 /// `spawned` and a `failed` with no kernel and no command ever executed.
 fn spawning_ctx() -> ExecutionContext {
-    ExecutionContext::for_session(SandboxPolicy::default(), SESSION)
+    ExecutionContext::for_session(SandboxPolicy::default(), SESSION.to_string())
         .with_helper("/nonexistent/helper")
 }
 
@@ -181,7 +181,7 @@ fn a_substituted_root_names_the_session_it_weakened() {
     fs::rename(&other, &granted).expect("another takes its name");
 
     let lines = capture(|| {
-        let _ = ExecutionContext::for_session(policy, SESSION);
+        let _ = ExecutionContext::for_session(policy, SESSION.to_string());
     });
 
     assert_eq!(
@@ -210,7 +210,7 @@ fn an_intact_root_records_nothing_when_a_context_is_built() {
     let policy = SandboxPolicy::default().allow_read(vetted(work.path()));
 
     let lines = capture(|| {
-        let _ = ExecutionContext::for_session(policy, SESSION);
+        let _ = ExecutionContext::for_session(policy, SESSION.to_string());
     });
 
     assert!(

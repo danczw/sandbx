@@ -90,9 +90,9 @@ pub fn sandbx_cli::AgentRun::max_rounds(&self) -> usize
 pub fn sandbx_cli::AgentRun::max_tokens(&self) -> u32
 pub fn sandbx_cli::AgentRun::model(&self) -> &str
 pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_grants::error::PolicyError>
-pub fn sandbx_cli::AgentRun::prompt(&self) -> alloc::string::String
 pub fn sandbx_cli::AgentRun::session(&self) -> sandbx_session_bridge::SessionChoice<'_>
 pub fn sandbx_cli::AgentRun::system(&self) -> core::option::Option<&str>
+pub fn sandbx_cli::AgentRun::to_prompt(&self) -> alloc::string::String
 impl clap_builder::derive::Args for sandbx_cli::AgentRun
 pub fn sandbx_cli::AgentRun::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
 pub fn sandbx_cli::AgentRun::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
