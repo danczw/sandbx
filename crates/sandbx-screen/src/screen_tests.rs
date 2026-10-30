@@ -108,8 +108,8 @@ fn hidden_then_hung_up() -> Terminal<Measured<Counted>> {
     terminal
 }
 
-/// Exception C's fix: a quiet backend shows the cursor, so `Terminal::drop` has nothing to
-/// `eprintln!` and no panic is left for `Screen::drop` to contain.
+/// A quiet backend shows the cursor a hangup refuses, which is what clears the flag
+/// `Terminal::drop` reads before it `eprintln!`s.
 #[test]
 fn a_quiet_terminal_shows_a_cursor_it_cannot() {
     let mut terminal = hidden_then_hung_up();
