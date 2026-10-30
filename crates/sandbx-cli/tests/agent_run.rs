@@ -327,7 +327,7 @@ fn no_system_text_is_added_unless_asked_for() {
 #[test]
 fn the_prompt_keeps_its_words_in_order() {
     assert_eq!(
-        agent_run(&["sandbx", "agent-run", "--", "what", "is", "in", "/srv?"]).prompt(),
+        agent_run(&["sandbx", "agent-run", "--", "what", "is", "in", "/srv?"]).to_prompt(),
         "what is in /srv?"
     );
 }
@@ -343,7 +343,7 @@ fn flags_after_the_separator_are_part_of_the_prompt() {
         "/etc",
     ]);
 
-    assert_eq!(args.prompt(), "explain --allow-read /etc");
+    assert_eq!(args.to_prompt(), "explain --allow-read /etc");
     assert!(
         !spellings(
             args.policy()

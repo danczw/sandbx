@@ -236,7 +236,7 @@ impl AgentRun {
     ///
     /// Cannot panic: `required = true` on a `last` argument means clap rejects an empty
     /// prompt first.
-    pub fn prompt(&self) -> String {
+    pub fn to_prompt(&self) -> String {
         self.prompt.join(" ")
     }
 
@@ -252,7 +252,7 @@ impl AgentRun {
     /// here: it goes back to the model as a failed result, which is what lets it try
     /// something the policy allows.
     pub async fn execute(&self) -> Result<i32, AgentError> {
-        let prompt = self.prompt();
+        let prompt = self.to_prompt();
         // The API rejects an empty text block with a 400, so letting it through buys a
         // round trip to be told what was knowable before it.
         if prompt.trim().is_empty() {

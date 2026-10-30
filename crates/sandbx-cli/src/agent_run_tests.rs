@@ -30,7 +30,7 @@ fn agent_run(argv: &[&str]) -> AgentRun {
 fn a_misplaced_separator_leaves_the_flag_a_prompt() {
     let args = agent_run(&["sandbx", "agent-run", "--allow-tool", "--", "write", "it"]);
 
-    assert_eq!(args.prompt(), "write it");
+    assert_eq!(args.to_prompt(), "write it");
 }
 
 #[test]
@@ -267,7 +267,7 @@ fn the_prompt_is_the_whole_request_history() {
 
     let (sent, written, code) = one_round(
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![text("etc"), stop(StopReason::EndTurn)],
         None,
     );
@@ -355,7 +355,7 @@ fn a_resumed_history_precedes_the_new_prompt() {
 
     let (sent, _, code) = one_round(
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![text("the second answer"), stop(StopReason::EndTurn)],
         Some(store.resume(&id).expect("the session resumes")),
     );
@@ -385,7 +385,7 @@ fn the_request_carries_the_granted_root_as_system() {
             .allow_read(vetted(work.path()))
             .allow_write(vetted(work.path())),
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![vec![text("ok"), stop(StopReason::EndTurn)]],
         None,
     );
@@ -407,7 +407,7 @@ fn the_request_names_the_tools_the_run_approved() {
 
     let (sent, _, code) = one_round(
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![text("ok"), stop(StopReason::EndTurn)],
         None,
     );
@@ -476,7 +476,7 @@ fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
 
     let (_, _, code) = one_round(
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![stop(StopReason::MaxTokens)],
         Some(session),
     );
@@ -502,7 +502,7 @@ fn a_truncated_answer_exits_incomplete() {
 
     let (_, out, code) = one_round(
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![text("half a sen"), stop(StopReason::MaxTokens)],
         None,
     );
@@ -530,7 +530,7 @@ fn capped(args: &AgentRun, wrap_up: Vec<AgentEvent>, session: Option<Session>) -
     under(
         SandboxPolicy::default(),
         args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![asking_for_ls(), wrap_up],
         session,
     )
@@ -735,7 +735,7 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
     let (sent, written, code) = under(
         SandboxPolicy::default(),
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![asking_for_ls()],
         Some(session),
     );
@@ -809,7 +809,7 @@ fn a_prompt_resuming_an_unanswered_call_joins_it() {
     under(
         SandboxPolicy::default(),
         &capping,
-        &capping.prompt(),
+        &capping.to_prompt(),
         vec![asking_for_ls()],
         Some(session),
     )
@@ -818,7 +818,7 @@ fn a_prompt_resuming_an_unanswered_call_joins_it() {
 
     let (sent, _, code) = one_round(
         &args,
-        &args.prompt(),
+        &args.to_prompt(),
         vec![text("nothing"), stop(StopReason::EndTurn)],
         Some(store.resume(&only_session(&store)).expect("it resumes")),
     );

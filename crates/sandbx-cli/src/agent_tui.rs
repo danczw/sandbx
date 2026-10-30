@@ -41,7 +41,7 @@ impl Tui {
     /// else, including before the credential is read. The rest are
     /// [`AgentRun::execute`]'s, plus [`AgentError::Screen`].
     pub async fn execute(&self) -> Result<i32, AgentError> {
-        let prompt = self.run.prompt();
+        let prompt = self.run.to_prompt();
         if prompt.trim().is_empty() {
             return Err(AgentError::EmptyPrompt);
         }

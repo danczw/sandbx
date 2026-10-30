@@ -384,7 +384,7 @@ async fn a_redirect_is_not_followed() {
 fn a_cleartext_base_url_is_rejected() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
 
-    let error = match client.with_base_url("http://gateway.internal.example") {
+    let error = match client.with_base_url("http://gateway.internal.example".to_string()) {
         Ok(_) => panic!("http:// to a non-loopback host must be rejected"),
         Err(error) => error,
     };
@@ -401,7 +401,7 @@ fn a_cleartext_base_url_is_rejected() {
 fn an_https_base_url_loses_its_trailing_slash() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
         .unwrap()
-        .with_base_url("https://gateway.internal.example/")
+        .with_base_url("https://gateway.internal.example/".to_string())
         .expect("https:// must be accepted");
 
     assert!(
@@ -415,7 +415,9 @@ fn a_non_http_base_url_scheme_is_rejected() {
     let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string())).unwrap();
 
     assert!(
-        client.with_base_url("file:///etc/passwd").is_err(),
+        client
+            .with_base_url("file:///etc/passwd".to_string())
+            .is_err(),
         "only https:// (or loopback http://) may carry the API key"
     );
 }
@@ -433,7 +435,7 @@ fn a_query_fragment_or_credentials_is_rejected() {
         "https://user:pw@gateway.example",
     ] {
         assert!(
-            client.clone().with_base_url(base_url).is_err(),
+            client.clone().with_base_url(base_url.to_string()).is_err(),
             "{base_url} must be rejected: appending /v1/messages would not preserve it"
         );
     }
@@ -452,7 +454,7 @@ fn every_loopback_spelling_is_accepted_cleartext() {
         "http://[::1]:8080",
     ] {
         assert!(
-            client.clone().with_base_url(base_url).is_ok(),
+            client.clone().with_base_url(base_url.to_string()).is_ok(),
             "{base_url} is loopback and must be allowed for a local mock server"
         );
     }

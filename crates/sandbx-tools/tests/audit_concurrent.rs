@@ -69,7 +69,7 @@ fn concurrent_calls_keep_their_records_apart() {
 
     // The helper does not exist, so each call is a `spawned` and a `failed` with no kernel
     // and no command ever executed.
-    let ctx = ExecutionContext::for_session(SandboxPolicy::default(), SESSION)
+    let ctx = ExecutionContext::for_session(SandboxPolicy::default(), SESSION.to_string())
         .with_helper("/nonexistent/helper");
 
     let threads: Vec<_> = ["echo one", "echo two"]

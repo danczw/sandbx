@@ -72,5 +72,5 @@ fn a_session_flag_in_the_prompt_is_prompt_text() {
     let args = agent_run(&["sandbx", "agent-run", "--", "--session", "mux5s96i"]);
 
     assert!(matches!(args.session(), SessionChoice::Off));
-    assert_eq!(args.prompt(), "--session mux5s96i");
+    assert_eq!(args.to_prompt(), "--session mux5s96i");
 }

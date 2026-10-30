@@ -51,7 +51,7 @@ pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOu
         // The command chooses how much it prints: uncapped, `cat` on a large file
         // returns every byte of it.
         return Ok(ToolOutput::new(
-            ctx.limits().take_bytes(combine(&stdout, &stderr)),
+            ctx.limits().truncate_bytes(combine(&stdout, &stderr)),
         ));
     }
 
@@ -64,7 +64,7 @@ pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOu
                 .status
                 .code()
                 .map_or_else(|| "signal".to_string(), |c| c.to_string()),
-            ctx.limits().take_bytes(combine(&stdout, &stderr))
+            ctx.limits().truncate_bytes(combine(&stdout, &stderr))
         ),
     })
 }

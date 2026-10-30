@@ -94,10 +94,10 @@ pub(crate) fn listing(
     stopped_early: bool,
 ) -> ToolOutput {
     if lines.is_empty() && !stopped_early {
-        return ToolOutput::new("no matches");
+        return ToolOutput::new("no matches".to_string());
     }
 
-    let mut rendered = ctx.limits().take_entries(lines);
+    let mut rendered = ctx.limits().truncate_entries(lines);
     if stopped_early {
         rendered.push(PARTIAL_SEARCH.to_string());
     }

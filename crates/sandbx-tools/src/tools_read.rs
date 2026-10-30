@@ -26,5 +26,5 @@ pub(crate) struct ReadInput {
 pub(crate) fn execute(input: ReadInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let content = crate::read_file(&input.path, ctx)?;
 
-    Ok(ToolOutput::new(ctx.limits().take_bytes(content)))
+    Ok(ToolOutput::new(ctx.limits().truncate_bytes(content)))
 }

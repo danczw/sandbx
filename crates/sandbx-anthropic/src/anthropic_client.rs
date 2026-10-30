@@ -33,7 +33,7 @@ impl AnthropicClient {
     /// Builds a client against [`DEFAULT_BASE_URL`](Self::DEFAULT_BASE_URL). Makes no
     /// network call, so every failure is local.
     pub fn new(api_key: SecretString) -> Result<Self, ProviderError> {
-        Self::configured(api_key, Self::DEFAULT_BASE_URL)
+        Self::configured(api_key, Self::DEFAULT_BASE_URL.to_string())
     }
 
     /// Overrides the base URL; public, not `#[cfg(test)]`-gated, because it is also
@@ -43,17 +43,13 @@ impl AnthropicClient {
     /// request carries the API key in `x-api-key`; `http://` to a loopback host is
     /// the one exception, for a local mock server. A trailing `/` is trimmed, so no
     /// doubled slash reaches `/v1/messages`.
-    pub fn with_base_url(self, base_url: impl Into<String>) -> Result<Self, ProviderError> {
+    pub fn with_base_url(self, base_url: String) -> Result<Self, ProviderError> {
         Self::configured(self.api_key, base_url)
     }
 
     /// The one construction path: the URL is validated, and the HTTP client built to
     /// match where it points.
-    fn configured(
-        api_key: SecretString,
-        base_url: impl Into<String>,
-    ) -> Result<Self, ProviderError> {
-        let base_url = base_url.into();
+    fn configured(api_key: SecretString, base_url: String) -> Result<Self, ProviderError> {
         let trimmed = base_url.trim_end_matches('/');
         let reachability = match validate_base_url(trimmed) {
             // Reported untrimmed: the operator should see the URL they gave.
