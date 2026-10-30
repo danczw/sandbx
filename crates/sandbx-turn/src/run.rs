@@ -19,8 +19,7 @@ use crate::tools::{Answers, answer_calls, definition};
 
 /// What to ask the model for. Borrows the history, which [`run_turn`] never appends to.
 ///
-/// No `Default`: an empty model and a zero cap would be a request no provider accepts,
-/// built without complaint.
+/// No `Default`, for [`Prompt`]'s reason.
 #[derive(Clone)]
 pub struct Turn<'a> {
     /// The model to ask. A freeform string, as [`Prompt`] takes it.

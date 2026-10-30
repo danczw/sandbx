@@ -50,7 +50,7 @@ impl ToolLimits {
     ///
     /// The count, not a bare "truncated": a model that knows it saw 200 of 4000
     /// matches can narrow its search.
-    pub(crate) fn truncate_entries(&self, mut lines: Vec<String>) -> Vec<String> {
+    pub(crate) fn cap_entries(&self, mut lines: Vec<String>) -> Vec<String> {
         let total = lines.len();
         if total > self.max_entries {
             lines.truncate(self.max_entries);
@@ -63,7 +63,7 @@ impl ToolLimits {
     }
 
     /// Trim `content` to the byte cap, reporting how much was dropped.
-    pub(crate) fn truncate_bytes(&self, mut content: String) -> String {
+    pub(crate) fn cap_bytes(&self, mut content: String) -> String {
         if content.len() > self.max_bytes {
             // Cutting at a byte offset can land mid-character; back up to a boundary.
             let mut end = self.max_bytes;

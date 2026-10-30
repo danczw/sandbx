@@ -35,7 +35,7 @@ pub(crate) struct BashInput {
 /// parsing — is what bounds the damage.
 pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
     let command = ctx
-        .sandboxed_command("/bin/sh")
+        .sandboxed_command("/bin/sh".to_string())
         .arg("-c")
         .arg(&input.command);
 
@@ -51,7 +51,7 @@ pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOu
         // The command chooses how much it prints: uncapped, `cat` on a large file
         // returns every byte of it.
         return Ok(ToolOutput::new(
-            ctx.limits().truncate_bytes(combine(&stdout, &stderr)),
+            ctx.limits().cap_bytes(combine(&stdout, &stderr)),
         ));
     }
 
@@ -64,7 +64,7 @@ pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOu
                 .status
                 .code()
                 .map_or_else(|| "signal".to_string(), |c| c.to_string()),
-            ctx.limits().truncate_bytes(combine(&stdout, &stderr))
+            ctx.limits().cap_bytes(combine(&stdout, &stderr))
         ),
     })
 }

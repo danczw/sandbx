@@ -94,7 +94,7 @@ const SESSION: &str = "abc123";
 /// `spawned` and a `failed` with no kernel and no command ever executed.
 fn spawning_ctx() -> ExecutionContext {
     ExecutionContext::for_session(SandboxPolicy::default(), SESSION.to_string())
-        .with_helper("/nonexistent/helper")
+        .with_helper("/nonexistent/helper".into())
 }
 
 /// Run `command` under `ctx`, discarding the refusal the absent helper returns.

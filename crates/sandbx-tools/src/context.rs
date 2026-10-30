@@ -1,5 +1,5 @@
 use sandbx_core::{FsGuard, SandboxPolicy, SandboxedCommand};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::ToolLimits;
@@ -76,8 +76,8 @@ impl ExecutionContext {
     /// binary, which the default assumes calls `sandbx_core::with_helper_dispatch`
     /// at startup — the shipped `sandbx` does, a test harness does not.
     #[must_use]
-    pub fn with_helper(mut self, path: impl AsRef<Path>) -> Self {
-        self.helper = Some(path.as_ref().to_path_buf());
+    pub fn with_helper(mut self, path: PathBuf) -> Self {
+        self.helper = Some(path);
         self
     }
 
@@ -114,7 +114,7 @@ impl ExecutionContext {
     /// [`FsGuard`] hands back. Timeout, helper and session are applied here so a second
     /// spawning built-in cannot forget them.
     #[must_use]
-    pub fn sandboxed_command(&self, program: &str) -> SandboxedCommand {
+    pub fn sandboxed_command(&self, program: String) -> SandboxedCommand {
         let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);
         if let Some(helper) = &self.helper {
             command = command.helper(helper);

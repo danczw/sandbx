@@ -19,7 +19,7 @@ fn vetted(path: impl AsRef<Path>) -> VettedPath {
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     // The test harness does not dispatch helper mode; point at a binary that does.
-    ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper"))
+    ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper").into())
 }
 
 #[test]

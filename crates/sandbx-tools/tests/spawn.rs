@@ -19,7 +19,7 @@ fn vetted(path: impl AsRef<Path>) -> VettedPath {
 
 fn context(policy: SandboxPolicy) -> ExecutionContext {
     // The test harness does not dispatch helper mode; point at a binary that does.
-    ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper"))
+    ExecutionContext::new(policy).with_helper(env!("CARGO_BIN_EXE_sandbx-tools-test-helper").into())
 }
 
 fn rendered(output: &Output) -> String {
@@ -39,7 +39,7 @@ fn a_command_from_the_seam_is_confined_by_the_policy() {
     // dir is not granted.
     let ctx = context(SandboxPolicy::default().allow_system_executables());
     let output = ctx
-        .sandboxed_command("/bin/sh")
+        .sandboxed_command("/bin/sh".to_string())
         .arg("-c")
         .arg(format!("cat {}", secret.display()))
         .output()
@@ -67,7 +67,7 @@ fn a_command_from_the_seam_reaches_a_granted_path() {
             .allow_read(vetted(&root)),
     );
     let output = ctx
-        .sandboxed_command("/bin/sh")
+        .sandboxed_command("/bin/sh".to_string())
         .arg("-c")
         .arg(format!("cat {}/visible.txt", root.display()))
         .output()
@@ -87,7 +87,7 @@ fn the_seam_carries_the_context_timeout() {
 
     let started = Instant::now();
     let error = ctx
-        .sandboxed_command("/bin/sh")
+        .sandboxed_command("/bin/sh".to_string())
         .arg("-c")
         .arg("sleep 30")
         .output()

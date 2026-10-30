@@ -97,7 +97,7 @@ pub(crate) fn listing(
         return ToolOutput::new("no matches".to_string());
     }
 
-    let mut rendered = ctx.limits().truncate_entries(lines);
+    let mut rendered = ctx.limits().cap_entries(lines);
     if stopped_early {
         rendered.push(PARTIAL_SEARCH.to_string());
     }
