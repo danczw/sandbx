@@ -9,16 +9,8 @@ publish.workspace = true
 
 [dependencies]
 # No default features: `all-widgets`, `macros` and `underline-color` buy nothing
-# here. `crossterm` is the backend `Measured` wraps.
-#
-# This pin and `sandbx-tui-input`'s must move together, and nothing enforces it: the
-# reader lock `Keys` holds and the raw-mode flag `try_restore` reads are crossterm
-# *globals*, so two resolved crossterms give two of each and the exclusion
-# `Screen::finish` relies on stops holding. `deny.toml` has
-# `multiple-versions = "warn"`, so that divergence does not fail the build (#352).
-ratatui = { version = "=0.30.2", default-features = false, features = [
-  "crossterm",
-] }
+# here. `crossterm` is the backend `Measured` wraps. The pin is the workspace's (#352).
+ratatui = { workspace = true, features = ["crossterm"] }
 # Never named in code: pinned only because `Screen::drop` relies on the body of
 # `Terminal::drop`, which lives here and which ratatui's own caret `0.1.2` lets move.
 # A bump re-reads that `Drop`: `Measured`'s quiet flag covers its `show_cursor` alone.

@@ -9,15 +9,8 @@ publish.workspace = true
 
 [dependencies]
 # No default features, and no widget ever drawn here: `crossterm` is only for the
-# `event` re-export the key reader reads through.
-#
-# This pin and `sandbx-screen`'s must move together, and nothing enforces it: the
-# reader lock `Keys` takes is crossterm's one global, and it only excludes the
-# screen's cursor queries while both crates resolve to the same `crossterm`.
-# `sandbx-screen`'s manifest has the full argument (#352).
-ratatui = { version = "=0.30.2", default-features = false, features = [
-  "crossterm",
-] }
+# `event` re-export the key reader reads through. The pin is the workspace's (#352).
+ratatui = { workspace = true, features = ["crossterm"] }
 # `poll` alone: the key reader gates every call into crossterm on a `poll`, which is
 # the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
 # spins on the zero-byte read behind it (#264).

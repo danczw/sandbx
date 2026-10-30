@@ -16,6 +16,17 @@ repository = "https://github.com/danczw/sandbx"
 # registry wildcard.
 publish = false
 
+# One entry because `sandbx-screen` and `sandbx-tui-input` must resolve one
+# `crossterm`: the reader lock `Keys` holds and the raw-mode flag `try_restore`
+# reads are its globals, so two copies give two of each and the exclusion
+# `Screen::finish` relies on stops holding (#352). `deny.toml` only warns on
+# that. A bump here moves all three users; one can leave only by dropping
+# `workspace = true`. Exact because `sandbx-screen` copies `init.rs:397-403`
+# and `sandbx-tui-transcript` uses an `unstable-` feature. Defaults are off
+# here because a member cannot turn off what this table turns on.
+[workspace.dependencies]
+ratatui = { version = "=0.30.2", default-features = false }
+
 # `sandbx-core` opts in too: the one site that spawns carries its own `#[allow]`,
 # which is narrower than exempting the crate.
 [workspace.lints.rust]
