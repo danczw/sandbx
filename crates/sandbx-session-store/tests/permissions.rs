@@ -15,17 +15,21 @@ use sandbx_session_message::{CompletedTurn, Content, Message, Role};
 use sandbx_session_store::SessionStore;
 
 fn store() -> (tempfile::TempDir, SessionStore) {
-    let root = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().expect("a temp dir");
     let store = SessionStore::new(root.path().join("sessions"));
     (root, store)
 }
 
 fn mode_of(path: &Path) -> u32 {
-    fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    fs::metadata(path)
+        .expect("the path exists")
+        .permissions()
+        .mode()
+        & 0o7777
 }
 
 fn chmod(path: &Path, mode: u32) {
-    fs::set_permissions(path, Permissions::from_mode(mode)).unwrap();
+    fs::set_permissions(path, Permissions::from_mode(mode)).expect("the test owns the path");
 }
 
 fn exchange() -> Vec<Message> {
@@ -42,14 +46,14 @@ fn exchange() -> Vec<Message> {
 
 /// One session with one turn in it.
 fn spoken_to(store: &SessionStore) -> sandbx_session_id::SessionId {
-    let mut session = store.create().unwrap();
+    let mut session = store.create().expect("a session is created");
     session
         .append(CompletedTurn {
             messages: &exchange(),
             observed: None,
             withheld: 0,
         })
-        .unwrap();
+        .expect("the turn is appended");
     session.id().clone()
 }
 

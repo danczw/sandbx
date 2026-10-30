@@ -31,7 +31,10 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
         }
         let mut visitor = Collect(String::new());
         event.record(&mut visitor);
-        self.0.lock().unwrap().push(visitor.0);
+        self.0
+            .lock()
+            .expect("the sink is held only to copy or push")
+            .push(visitor.0);
     }
 }
 
@@ -50,7 +53,10 @@ fn capture(f: impl FnOnce()) -> Vec<String> {
     let sink = Captured::default();
     let subscriber = tracing_subscriber::registry().with(sink.clone());
     with_default(subscriber, f);
-    sink.0.lock().unwrap().clone()
+    sink.0
+        .lock()
+        .expect("the sink is held only to copy or push")
+        .clone()
 }
 
 /// One byte past `MAX_FILE_BYTES`, which is 2 MiB in `grep` and not a knob.

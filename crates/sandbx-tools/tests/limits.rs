@@ -22,9 +22,9 @@ fn context(policy: SandboxPolicy, limits: ToolLimits) -> ExecutionContext {
 
 /// A tree with `count` files, each containing one match.
 fn tree_with_matches(count: usize) -> tempfile::TempDir {
-    let root = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().expect("a temp dir");
     for i in 0..count {
-        fs::write(root.path().join(format!("f{i}.txt")), "needle\n").unwrap();
+        fs::write(root.path().join(format!("f{i}.txt")), "needle\n").expect("a matching file");
     }
     root
 }

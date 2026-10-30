@@ -8,7 +8,7 @@
 use std::io::{PipeReader, PipeWriter, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use std::{fs, io, mem, thread};
@@ -386,11 +386,14 @@ fn settle(readers: &JoinHandle<()>, more: &JoinHandle<()>) {
     }
 }
 
+/// A reader holds its buffer only to extend it, which cannot panic short of an allocation
+/// failure, and that aborts.
+const UNPOISONED: &str = "a reader holds its buffer only to extend it";
+
 /// Take what a reader has collected so far; bytes a reader that outlived `settle`'s grace
 /// period appends after this are lost either way.
 fn take(buffer: &Arc<Mutex<Vec<u8>>>) -> Vec<u8> {
-    // A panicking reader poisons the lock but leaves the bytes it read intact.
-    mem::take(&mut *buffer.lock().unwrap_or_else(PoisonError::into_inner))
+    mem::take(&mut *buffer.lock().expect(UNPOISONED))
 }
 
 /// Read one pipe on its own thread, into a buffer the caller can take early. Chunked into
@@ -412,7 +415,7 @@ where
                 Ok(0) | Err(_) => return,
                 Ok(read) => sink
                     .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
+                    .expect(UNPOISONED)
                     .extend_from_slice(&chunk[..read]),
             }
         }

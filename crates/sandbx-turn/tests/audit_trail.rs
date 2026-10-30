@@ -27,7 +27,10 @@ struct Sink(Arc<Mutex<Vec<u8>>>);
 
 impl Write for Sink {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        self.0
+            .lock()
+            .expect("the sink is held only to append")
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
 

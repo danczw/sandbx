@@ -17,7 +17,7 @@ fn context(policy: SandboxPolicy) -> ExecutionContext {
 
 fn file_with(root: &Path, body: &str) -> PathBuf {
     let file = root.join("src.txt");
-    fs::write(&file, body).unwrap();
+    fs::write(&file, body).expect("the fixture file");
     file
 }
 

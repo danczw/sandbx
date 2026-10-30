@@ -25,7 +25,7 @@ fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
     fs::write(&path, contents).expect("write");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_sandbx"))
-        .args(["hash", path.to_str().unwrap()])
+        .args(["hash", path.to_str().expect("a temp path is UTF-8")])
         .output()
         .expect("sandbx should run");
 

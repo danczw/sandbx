@@ -977,7 +977,10 @@ fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
 fn asking_forever(root: &Path) -> Script {
     Script::new(iter::repeat_n(
         vec![
-            call("ls", serde_json::json!({ "path": root.to_str().unwrap() })),
+            call(
+                "ls",
+                serde_json::json!({ "path": root.to_str().expect("a temp path is UTF-8") }),
+            ),
             stop(StopReason::ToolUse),
         ],
         3,
