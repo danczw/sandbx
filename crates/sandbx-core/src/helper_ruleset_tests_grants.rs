@@ -41,7 +41,7 @@ fn rights_for_narrows_a_regular_file() {
     for axis in crate::Axis::ALL {
         let grants = axis.grants();
         let on_dir = rights_for(axis, Inode::Dir, LATEST_ABI);
-        let on_file = rights_for(axis, Inode::File, LATEST_ABI);
+        let on_file = rights_for(axis, Inode::NonDir, LATEST_ABI);
 
         // An intersection, so a file can never hold more than the directory case.
         assert!(
@@ -95,7 +95,7 @@ fn rights_for_narrows_a_regular_file() {
 /// [`Axis::grants`]: crate::Axis::grants
 #[test]
 fn a_read_grant_never_carries_execute() {
-    for target in [Inode::Dir, Inode::File] {
+    for target in [Inode::Dir, Inode::NonDir] {
         let rights = rights_for(crate::Axis::Read, target, LATEST_ABI);
         assert!(
             !rights.contains(AccessFs::Execute),
@@ -205,7 +205,7 @@ fn no_axis_confers_the_unix_socket_right() {
     );
 
     for axis in crate::Axis::ALL {
-        for target in [Inode::Dir, Inode::File] {
+        for target in [Inode::Dir, Inode::NonDir] {
             let rights = rights_for(axis, target, LATEST_ABI);
 
             assert!(
