@@ -298,6 +298,8 @@ fn reported(
 /// bounds can cut one turn: `--max-rounds` ends the turn and `--max-tokens` ends a round
 /// inside it.
 fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
+    // Not `account`: CodeQL's `rust/cleartext-logging` reads that name as a credential and
+    // flags every assert that prints this list (#461). Rename back once it stops matching.
     let mut said = Vec::new();
 
     let code = match &outcome.stop {
