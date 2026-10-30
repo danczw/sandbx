@@ -38,12 +38,12 @@ fn cannot_resolve(policy: &SandboxPolicy) -> bool {
 /// Names both answers, except where `--allow-unix-sockets` is already held — that pair is
 /// refused by `PolicyError::DnsWithUnixSockets`, and advice pointing at a refused answer is
 /// worse than naming only one.
-fn resolver_advice(cannot_resolve: bool, unix_sockets: bool, code: i32) -> Option<&'static str> {
-    if !cannot_resolve || code == 0 {
+fn resolver_advice(policy: &SandboxPolicy, code: i32) -> Option<&'static str> {
+    if !cannot_resolve(policy) || code == 0 {
         return None;
     }
 
-    Some(if unix_sockets {
+    Some(if policy.allows_unix_sockets() {
         "this port allowlist denies UDP and does not name TCP 53, so a name cannot \
          resolve. If that was the failure, add --dns-over-tcp --allow-network 53 \
          --allow-read /etc, remembering that a path flag replaces the working-directory \
@@ -147,9 +147,8 @@ impl SandboxRun {
     pub fn execute(&self) -> Result<i32, SandboxRunError> {
         let policy = self.policy()?;
         let pin = self.pin()?;
-        let unresolvable = cannot_resolve(&policy);
-        let unix_sockets = policy.allows_unix_sockets();
-        let mut command = SandboxedCommand::new(self.program(), policy).args(self.arguments());
+        let mut command =
+            SandboxedCommand::new(self.program(), policy.clone()).args(self.arguments());
         if let Some(limit) = self.timeout() {
             command = command.timeout(limit);
         }
@@ -164,7 +163,7 @@ impl SandboxRun {
 
         let code = sandbx_core::exit_code(&output.status);
         // After the command's own stderr, so sandbx's line is the last thing read.
-        if let Some(advice) = resolver_advice(unresolvable, unix_sockets, code) {
+        if let Some(advice) = resolver_advice(&policy, code) {
             eprintln!("sandbx: {advice}");
         }
 

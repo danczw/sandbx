@@ -30,3 +30,21 @@ pub(crate) use prompt::APPROVE_CALL;
 use prompt::{Approve, Terminal};
 use render::Render;
 use run::{INCOMPLETE, NO_CONSENT};
+
+/// Whether a stream reaches a terminal: what decides both that an SGR escape renders on it
+/// and that a screen can be drawn on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Device {
+    Terminal,
+    Redirected,
+}
+
+impl Device {
+    fn of(stream: &impl std::io::IsTerminal) -> Self {
+        if stream.is_terminal() {
+            Self::Terminal
+        } else {
+            Self::Redirected
+        }
+    }
+}

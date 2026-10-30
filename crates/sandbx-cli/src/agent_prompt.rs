@@ -6,12 +6,12 @@
 
 use std::fs::File;
 use std::io;
-use std::io::{BufRead, BufReader, ErrorKind, IsTerminal, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 
 use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_tools::{BuiltinTool, RiskLevel};
 
-use super::gate;
+use super::{Device, gate};
 
 /// The device the question is asked on.
 ///
@@ -159,8 +159,12 @@ fn abort(reason: &str) -> ApprovalDecision {
 /// `RESET` only where it renders: `2> run.log` would carry the escape into the log.
 /// Formatted whole: `write_fmt`'s syscall per piece leaves the model's own stream a window
 /// between the reset and the line it covers.
-pub(super) fn account(renders: bool, line: &str) -> String {
-    format!("{}{line}\n", if renders { RESET } else { "" })
+pub(super) fn account(sink: Device, line: &str) -> String {
+    let reset = match sink {
+        Device::Terminal => RESET,
+        Device::Redirected => "",
+    };
+    format!("{reset}{line}\n")
 }
 
 /// Write one account of a call to stderr.
@@ -169,7 +173,7 @@ pub(super) fn account(renders: bool, line: &str) -> String {
 /// cost the turn the exit 3 it still owes its caller (#218).
 pub(super) fn to_stderr(line: &str) {
     let mut err = io::stderr();
-    let _ = err.write_all(account(err.is_terminal(), line).as_bytes());
+    let _ = err.write_all(account(Device::of(&err), line).as_bytes());
 }
 
 /// The operator, as the gate reaches them: asked about a call, then told what became of
@@ -199,7 +203,7 @@ pub(super) struct Terminal<F = io::Stderr> {
     consent: Consent,
     fallback: F,
     /// Whether `fallback` renders an SGR escape.
-    renders: bool,
+    fallback_device: Device,
 }
 
 impl Terminal<io::Stderr> {
@@ -218,7 +222,7 @@ impl Terminal<io::Stderr> {
             out: tty,
             consent: Consent::new(),
             fallback: io::stderr(),
-            renders: io::stderr().is_terminal(),
+            fallback_device: Device::of(&io::stderr()),
         })
     }
 
@@ -233,7 +237,7 @@ impl Terminal<io::Stderr> {
             out: device,
             consent: Consent::new(),
             fallback: io::stderr(),
-            renders: io::stderr().is_terminal(),
+            fallback_device: Device::of(&io::stderr()),
         })
     }
 }
@@ -261,13 +265,13 @@ impl<F> Terminal<F> {
 
     /// The same terminal with its fallback somewhere a test can read back.
     #[cfg(test)]
-    pub(super) fn falls_back_to<G>(self, fallback: G, renders: bool) -> Terminal<G> {
+    pub(super) fn falls_back_to<G>(self, fallback: G, device: Device) -> Terminal<G> {
         Terminal {
             input: self.input,
             out: self.out,
             consent: self.consent,
             fallback,
-            renders,
+            fallback_device: device,
         }
     }
 }
@@ -291,10 +295,14 @@ impl<F: Write> Operator for Terminal<F> {
     fn report(&mut self, line: &str) {
         // Per `RESET`, the account as much as the question. Unconditional here, where the
         // fallback's is not: this device is a terminal by construction.
-        if self.out.write_all(account(true, line).as_bytes()).is_err() {
+        if self
+            .out
+            .write_all(account(Device::Terminal, line).as_bytes())
+            .is_err()
+        {
             // Unlike a question, a dropped account reaches nobody — and the last call of a
             // run has no later question whose own failure would stand in for it (#218).
-            let text = account(self.renders, line);
+            let text = account(self.fallback_device, line);
             let _ = self.fallback.write_all(text.as_bytes());
         }
     }

@@ -11,8 +11,15 @@ use sandbx_event::AgentEvent;
 use sandbx_text::invisible;
 
 use super::prompt::{APPROVE_CALL, account};
-use super::{INCOMPLETE, NO_CONSENT};
+use super::{Device, INCOMPLETE, NO_CONSENT};
 use crate::AgentError;
+
+/// Whether the answer was cut off at `--max-tokens`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Answer {
+    Whole,
+    Truncated,
+}
 
 /// How a turn ended short of a finished answer, which no event reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,7 +73,7 @@ pub(super) struct Render<W, E> {
     thinking_mid_line: bool,
 
     /// Whether stderr renders an SGR escape.
-    renders: bool,
+    err_device: Device,
 
     /// The first write that failed, kept because `observe` has no way to end the turn.
     failed: Option<io::Error>,
@@ -83,15 +90,15 @@ impl<W: Write, E: Write> Render<W, E> {
             after_gap: false,
             show_thinking: false,
             thinking_mid_line: false,
-            renders: false,
+            err_device: Device::Redirected,
             failed: None,
         }
     }
 
     /// Reset the rendition before each line about the answer, `err` being a terminal.
     #[must_use]
-    pub(super) fn rendering(mut self, renders: bool) -> Self {
-        self.renders = renders;
+    pub(super) fn rendering(mut self, err: Device) -> Self {
+        self.err_device = err;
         self
     }
 
@@ -135,7 +142,7 @@ impl<W: Write, E: Write> Render<W, E> {
     /// Written once, so a line cannot interleave with the reasoning deltas reaching the
     /// same device.
     fn note(&mut self, line: &str) {
-        self.put(account(self.renders, line).as_bytes());
+        self.put(account(self.err_device, line).as_bytes());
     }
 
     /// Put one event where it belongs.
@@ -189,7 +196,7 @@ impl<W: Write, E: Write> Render<W, E> {
     /// Close the answer off, and report what the way it ended means for the exit code.
     ///
     /// `ending` is `Some` for a turn that ran out of rounds or lost its operator;
-    /// `truncated` is passed in rather than inferred here, so a caller with no renderer
+    /// `answer` is passed in rather than inferred here, so a caller with no renderer
     /// sees the same figure. Both bounds are named when both were hit: a summary cut off
     /// at `max_tokens` reads as a whole one otherwise, and which *bound* ended the turn
     /// does not change the code — the three cap variants all exit [`INCOMPLETE`], the
@@ -198,7 +205,7 @@ impl<W: Write, E: Write> Render<W, E> {
     pub(super) fn finish(
         &mut self,
         ending: Option<Unfinished>,
-        truncated: bool,
+        answer: Answer,
     ) -> Result<i32, AgentError> {
         // Again here, for the round that never reached a `Stop` — a stream error or the
         // per-round timeout — whose report is the next thing on stderr.
@@ -224,7 +231,7 @@ impl<W: Write, E: Write> Render<W, E> {
             return Err(AgentError::Output(error));
         }
 
-        if truncated {
+        if answer == Answer::Truncated {
             // Otherwise a truncated answer reads as a complete one.
             self.note("sandbx: answer truncated at --max-tokens");
         }
@@ -254,7 +261,7 @@ impl<W: Write, E: Write> Render<W, E> {
         // the operator is the one a caller cannot find out any other way.
         Ok(if ending == Some(Unfinished::Aborted) {
             NO_CONSENT
-        } else if ending.is_some() || truncated {
+        } else if ending.is_some() || answer == Answer::Truncated {
             INCOMPLETE
         } else {
             0

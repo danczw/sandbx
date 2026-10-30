@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use secrecy::{ExposeSecret, SecretString};
 
-use super::{ENV_VAR, FILE, Source, config_file, read_key, resolve};
+use super::{Device, ENV_VAR, FILE, Source, config_file, read_key, resolve};
 use crate::{AuthError, store};
 
 /// Against a literal: `SECURITY.md`, the README and `--help` name it in prose that
@@ -151,14 +151,14 @@ fn no_source_reports_the_path_it_looked_in() {
 
 #[test]
 fn read_key_takes_a_piped_key() {
-    let key = read_key(&b"sk-ant-test\n"[..], false).unwrap();
+    let key = read_key(&b"sk-ant-test\n"[..], Device::Redirected).unwrap();
     assert_eq!(key.expose_secret(), "sk-ant-test");
 }
 
 #[test]
 fn read_key_refuses_a_tty_rather_than_prompting() {
     assert!(matches!(
-        read_key(&b"sk-ant-test"[..], true),
+        read_key(&b"sk-ant-test"[..], Device::Terminal),
         Err(AuthError::TtyInput)
     ));
 }
@@ -166,7 +166,7 @@ fn read_key_refuses_a_tty_rather_than_prompting() {
 #[test]
 fn read_key_refuses_an_empty_stdin() {
     assert!(matches!(
-        read_key(&b""[..], false),
+        read_key(&b""[..], Device::Redirected),
         Err(AuthError::BlankKey)
     ));
 }
@@ -174,7 +174,7 @@ fn read_key_refuses_an_empty_stdin() {
 #[test]
 fn read_key_refuses_whitespace_alone() {
     assert!(matches!(
-        read_key(&b" \n\t"[..], false),
+        read_key(&b" \n\t"[..], Device::Redirected),
         Err(AuthError::BlankKey)
     ));
 }

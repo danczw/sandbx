@@ -1,5 +1,5 @@
-use super::super::INCOMPLETE;
-use super::{Render, Unfinished};
+use super::super::{Device, INCOMPLETE};
+use super::{Answer, Render, Unfinished};
 use crate::AgentError;
 use sandbx_event::{AgentEvent, StopReason};
 use std::io;
@@ -42,7 +42,7 @@ fn rendered(events: &[AgentEvent]) -> (String, Result<i32, AgentError>) {
         render.event(event);
     }
 
-    let code = render.finish(None, false);
+    let code = render.finish(None, Answer::Whole);
     (String::from_utf8(render.out).expect("utf-8"), code)
 }
 
@@ -71,7 +71,7 @@ fn no_part_of_the_reasoning_reaches_stdout() {
         for event in &events {
             render.event(event);
         }
-        let code = render.finish(None, false);
+        let code = render.finish(None, Answer::Whole);
 
         assert_eq!(
             String::from_utf8(render.out).expect("utf-8"),
@@ -150,7 +150,9 @@ fn the_exit_code_comes_from_the_outcome_not_a_stop() {
 
     let mut render = captured();
     render.event(&stop(StopReason::EndTurn));
-    let told = render.finish(None, true).expect("truncated turn");
+    let told = render
+        .finish(None, Answer::Truncated)
+        .expect("truncated turn");
     assert_eq!(told, INCOMPLETE);
 }
 
@@ -169,12 +171,14 @@ fn a_turn_out_of_rounds_is_always_incomplete() {
 
         // A summary is prose on stdout, not a complete turn: the cap still cut the
         // tool work off, so a script reading the status sees the same thing.
-        let code = render.finish(Some(capped), false).expect("a reported turn");
+        let code = render
+            .finish(Some(capped), Answer::Whole)
+            .expect("a reported turn");
         assert_eq!(code, INCOMPLETE, "got {code} for {capped:?}");
     }
 
     assert_eq!(
-        captured().finish(None, false).expect("clean turn"),
+        captured().finish(None, Answer::Whole).expect("clean turn"),
         0,
         "a turn with rounds to spare should still exit 0"
     );
@@ -184,28 +188,28 @@ fn a_turn_out_of_rounds_is_always_incomplete() {
 /// only prove the module agrees with itself.
 #[test]
 fn a_turn_that_lost_its_operator_exits_three() {
-    let abandoned = |events: &[AgentEvent], truncated: bool| {
+    let abandoned = |events: &[AgentEvent], answer: Answer| {
         let mut render = captured();
         for event in events {
             render.event(event);
         }
         render
-            .finish(Some(Unfinished::Aborted), truncated)
+            .finish(Some(Unfinished::Aborted), answer)
             .expect("a reported turn")
     };
 
     assert_eq!(
-        abandoned(&[text("looking"), stop(StopReason::ToolUse)], false),
+        abandoned(&[text("looking"), stop(StopReason::ToolUse)], Answer::Whole),
         3
     );
     // A truncated answer from a run whose operator went away is still that run: the
     // bound is recoverable by raising a flag, and the lost operator is not.
-    assert_eq!(abandoned(&[], true), 3);
+    assert_eq!(abandoned(&[], Answer::Truncated), 3);
 
-    assert_eq!(captured().finish(None, false).expect("clean"), 0);
+    assert_eq!(captured().finish(None, Answer::Whole).expect("clean"), 0);
     assert_eq!(
         captured()
-            .finish(Some(Unfinished::CutShort(3)), false)
+            .finish(Some(Unfinished::CutShort(3)), Answer::Whole)
             .expect("capped"),
         2
     );
@@ -221,7 +225,7 @@ fn what_a_turn_is_told_is_whole_lines_in_order() {
     });
 
     let code = render
-        .finish(Some(Unfinished::Aborted), true)
+        .finish(Some(Unfinished::Aborted), Answer::Truncated)
         .expect("a reported turn");
     assert_eq!(code, 3);
 
@@ -275,13 +279,21 @@ fn reasoning_that_renders_is_left_alone() {
 /// into a redirected stderr, which would carry the escape into the log.
 #[test]
 fn a_line_about_the_answer_resets_only_where_it_renders() {
-    for (renders, told) in [
-        (true, "\x1b[0msandbx: answer truncated at --max-tokens\n"),
-        (false, "sandbx: answer truncated at --max-tokens\n"),
+    for (err, told) in [
+        (
+            Device::Terminal,
+            "\x1b[0msandbx: answer truncated at --max-tokens\n",
+        ),
+        (
+            Device::Redirected,
+            "sandbx: answer truncated at --max-tokens\n",
+        ),
     ] {
-        let mut render = captured().rendering(renders);
+        let mut render = captured().rendering(err);
         render.event(&text("hidden\x1b[8m"));
-        render.finish(None, true).expect("truncated turn");
+        render
+            .finish(None, Answer::Truncated)
+            .expect("truncated turn");
 
         assert_eq!(String::from_utf8(render.err).expect("utf-8"), told);
     }
@@ -300,7 +312,7 @@ fn across_the_cap(before: &[AgentEvent], after: &[AgentEvent]) -> String {
     }
 
     render
-        .finish(Some(Unfinished::Summarised(1)), false)
+        .finish(Some(Unfinished::Summarised(1)), Answer::Whole)
         .expect("rendered");
     String::from_utf8(render.out).expect("utf-8")
 }
@@ -368,7 +380,7 @@ fn a_turn_nothing_can_read_is_reported_not_swallowed() {
     render.event(&stop(StopReason::EndTurn));
 
     assert!(matches!(
-        render.finish(None, false),
+        render.finish(None, Answer::Whole),
         Err(AgentError::Output(_))
     ));
 }
@@ -382,7 +394,7 @@ fn a_broken_stdout_outranks_the_lost_operator() {
     render.event(&text("looking"));
 
     assert!(matches!(
-        render.finish(Some(Unfinished::Aborted), false),
+        render.finish(Some(Unfinished::Aborted), Answer::Whole),
         Err(AgentError::Output(_))
     ));
 
