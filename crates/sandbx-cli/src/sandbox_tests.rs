@@ -97,7 +97,7 @@ fn a_digest_the_wire_could_not_carry_is_refused() {
 /// Includes the clause that a path flag replaces the working-directory default.
 #[test]
 fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
-    let advice = resolver_advice(true, false, 6).expect("a failure with no way to resolve");
+    let advice = resolver_advice(&ported(), 6).expect("a failure with no way to resolve");
 
     assert!(advice.contains("--allow-dns NAME"), "got: {advice}");
     assert!(advice.contains("--dns-over-tcp"), "got: {advice}");
@@ -111,12 +111,19 @@ fn a_failed_unresolvable_run_advises_every_flag_it_needs() {
 
 #[test]
 fn a_successful_run_is_silent() {
-    assert_eq!(resolver_advice(true, false, 0), None);
+    assert_eq!(resolver_advice(&ported(), 0), None);
+}
+
+/// The control for the cases around it: a failure is not advised where a name can resolve.
+#[test]
+fn a_failed_run_that_could_resolve_is_not_advised() {
+    assert_eq!(resolver_advice(&ported().allow_network_port(53), 6), None);
 }
 
 #[test]
 fn a_run_holding_unix_sockets_is_not_advised_to_add_a_name_allowlist() {
-    let advice = resolver_advice(true, true, 6).expect("a failure with no way to resolve");
+    let advice = resolver_advice(&ported().allow_unix_sockets(), 6)
+        .expect("a failure with no way to resolve");
 
     assert!(
         !advice.contains("add --allow-dns"),

@@ -26,12 +26,21 @@ pub(crate) struct Entry {
     pub(crate) text: String,
 }
 
+/// Whether the model's reasoning is drawn, which only the operator's flag decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reasoning {
+    /// Drawn as it streams, apart from the answer.
+    Shown,
+    /// Dropped as it arrives.
+    Hidden,
+}
+
 /// One turn as the screen shows it.
 pub struct Transcript {
     entries: Vec<Entry>,
 
     /// Whether reasoning was asked for; the API sends the delta regardless of this flag.
-    show_thinking: bool,
+    reasoning: Reasoning,
 
     /// Rounds seen, counted from `Stop`: no event carries the turn's own bound.
     rounds: usize,
@@ -45,13 +54,13 @@ pub struct Transcript {
 
 impl Transcript {
     /// Start one on the prompt that opened it.
-    pub fn new(prompt: &str, show_thinking: bool) -> Self {
+    pub fn new(prompt: &str, reasoning: Reasoning) -> Self {
         Self {
             entries: vec![Entry {
                 kind: Kind::Prompt,
                 text: printable(prompt),
             }],
-            show_thinking,
+            reasoning,
             rounds: 0,
             tokens: (None, None),
         }
@@ -62,7 +71,7 @@ impl Transcript {
     pub fn event(&mut self, event: &AgentEvent) {
         match event {
             AgentEvent::Text { delta } => self.append(delta, Kind::Answer),
-            AgentEvent::Thinking { delta } if self.show_thinking => {
+            AgentEvent::Thinking { delta } if self.reasoning == Reasoning::Shown => {
                 self.append(delta, Kind::Reasoning);
             }
             AgentEvent::Stop { .. } => self.rounds += 1,

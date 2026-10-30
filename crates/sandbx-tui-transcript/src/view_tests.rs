@@ -3,7 +3,7 @@ use ratatui::backend::TestBackend;
 use sandbx_event::AgentEvent;
 
 use super::{GUTTER, GUTTER_MARK, Hint, draw};
-use crate::transcript::Transcript;
+use crate::transcript::{Reasoning, Transcript};
 
 /// Render `transcript` at that size and read the cells back as rows of text.
 fn rows(transcript: &Transcript, hint: Hint, width: u16, height: u16) -> Vec<String> {
@@ -25,7 +25,7 @@ fn rows(transcript: &Transcript, hint: Hint, width: u16, height: u16) -> Vec<Str
 }
 
 fn turn(answer: &str) -> Transcript {
-    let mut transcript = Transcript::new("what is here?", false);
+    let mut transcript = Transcript::new("what is here?", Reasoning::Hidden);
     transcript.event(&AgentEvent::Text {
         delta: answer.to_string(),
     });

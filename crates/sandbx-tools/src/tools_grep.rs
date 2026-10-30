@@ -41,7 +41,7 @@ pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOu
 
     let mut hits = Vec::new();
     let mut scanned = 0usize;
-    let mut stopped_early = walk.truncated;
+    let mut scan = crate::Scan::of(&walk);
 
     // Nothing is sorted afterwards: `walk_readable` returns files sorted and lines
     // are visited ascending. Sorting the rendered lines would put `:10` before `:2`.
@@ -49,7 +49,7 @@ pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOu
         // Before the read, so the budget bounds what is read rather than noticing
         // once it is spent. A file skipped below is not charged for.
         if scanned >= ctx.limits().max_bytes_scanned {
-            stopped_early = true;
+            scan = crate::Scan::StoppedEarly;
             break;
         }
 
@@ -57,7 +57,7 @@ pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOu
         // Over the cap, not text, or refused: one rule, the caller's move being the
         // same. An unmarked skip reads as a file with no match in it (#274).
         let Some(content) = crate::read_capped(&file, ctx, MAX_FILE_BYTES) else {
-            stopped_early = true;
+            scan = crate::Scan::StoppedEarly;
             continue;
         };
         scanned += content.len();
@@ -73,5 +73,5 @@ pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOu
         );
     }
 
-    Ok(crate::listing(hits, ctx, stopped_early))
+    Ok(crate::listing(hits, ctx, scan))
 }

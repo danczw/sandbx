@@ -8,7 +8,7 @@ use std::rc::Rc;
 use nix::errno::Errno;
 use ratatui::Terminal;
 use sandbx_pty_fixture::{WINDOW, pty};
-use sandbx_tui_transcript::{Hint, Transcript, draw};
+use sandbx_tui_transcript::{Hint, Reasoning, Transcript, draw};
 
 use super::{Measured, cleared};
 
@@ -61,7 +61,7 @@ fn assert_unmeasured(failed: io::Result<()>) {
 #[test]
 fn a_hung_up_terminal_is_not_drawn_on() {
     let (master, mut terminal, writes) = screen();
-    let transcript = Transcript::new("a prompt", false);
+    let transcript = Transcript::new("a prompt", Reasoning::Hidden);
     drop(master);
 
     let drawn = terminal.draw(|frame| draw(frame, &transcript, Hint::Running));
@@ -85,7 +85,7 @@ fn a_hung_up_terminal_is_not_cleared() {
 #[test]
 fn a_live_terminal_is_drawn_at_its_own_size() {
     let (_master, mut terminal, writes) = screen();
-    let transcript = Transcript::new("a prompt", false);
+    let transcript = Transcript::new("a prompt", Reasoning::Hidden);
 
     let size = terminal.size().expect("a live pty is measured");
     assert_eq!((size.width, size.height), WINDOW);
@@ -100,7 +100,7 @@ fn a_live_terminal_is_drawn_at_its_own_size() {
 /// A terminal whose cursor a draw hid, then hung up: what `Terminal::drop` finds.
 fn hidden_then_hung_up() -> Terminal<Measured<Counted>> {
     let (master, mut terminal, _writes) = screen();
-    let transcript = Transcript::new("a prompt", false);
+    let transcript = Transcript::new("a prompt", Reasoning::Hidden);
     terminal
         .draw(|frame| draw(frame, &transcript, Hint::Running))
         .expect("a live pty is drawn on");

@@ -1,4 +1,5 @@
 pub mod sandbx_screen
+pub use sandbx_screen::Reasoning
 pub use sandbx_screen::Transcript
 pub struct sandbx_screen::Screen
 impl sandbx_screen::Screen

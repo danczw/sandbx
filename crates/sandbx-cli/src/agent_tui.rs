@@ -5,7 +5,7 @@
 //! refused rather than downgraded (#225), and the per-call account is drawn on the screen
 //! instead of written to stderr, which the alternate screen does not redirect (#224).
 
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, Write};
 use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
@@ -13,14 +13,14 @@ use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_event::StopReason;
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
-use sandbx_screen::{Screen, Transcript};
+use sandbx_screen::{Reasoning, Screen, Transcript};
 use sandbx_session_bridge as session;
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
-use super::{AgentRun, Approve, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
+use super::{AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
 
 /// `sandbx tui [--allow-…] -- <prompt>`
@@ -48,7 +48,7 @@ impl Tui {
 
         // Before the policy: neither refusal needs one, and a run that cannot be drawn
         // must not read a credential on the way to finding that out.
-        self.drawable(io::stdout().is_terminal())?;
+        self.drawable(Device::of(&io::stdout()))?;
 
         let approved = gate::approved_tools(self.run.allow_tool.as_deref()).join(", ");
         // On stderr as well as on the screen: the screen is gone the moment the process
@@ -95,11 +95,11 @@ impl Tui {
     /// [`AgentError::ApproveUnderTui`] first, being the more specific: a piped run that also
     /// asked to be asked per call has two things wrong with it, and only one of them is
     /// about this subcommand.
-    fn drawable(&self, terminal: bool) -> Result<(), AgentError> {
+    fn drawable(&self, stdout: Device) -> Result<(), AgentError> {
         if matches!(self.run.approve, Approve::Call) {
             return Err(AgentError::ApproveUnderTui);
         }
-        if !terminal {
+        if stdout == Device::Redirected {
             return Err(AgentError::NotATerminal);
         }
 
@@ -120,7 +120,12 @@ impl Tui {
         approved: &str,
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
-        let mut transcript = Transcript::new(&prompt, self.run.show_thinking);
+        let reasoning = if self.run.show_thinking {
+            Reasoning::Shown
+        } else {
+            Reasoning::Hidden
+        };
+        let mut transcript = Transcript::new(&prompt, reasoning);
         transcript.note(&format!("sandbx: tools approved: {approved}"));
 
         let asked = RequestMessage {

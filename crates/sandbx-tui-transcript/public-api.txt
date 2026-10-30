@@ -18,10 +18,29 @@ impl core::marker::Unpin for sandbx_tui_transcript::Hint
 impl core::marker::UnsafeUnpin for sandbx_tui_transcript::Hint
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Hint
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Hint
+pub enum sandbx_tui_transcript::Reasoning
+pub sandbx_tui_transcript::Reasoning::Hidden
+pub sandbx_tui_transcript::Reasoning::Shown
+impl core::clone::Clone for sandbx_tui_transcript::Reasoning
+pub fn sandbx_tui_transcript::Reasoning::clone(&self) -> sandbx_tui_transcript::Reasoning
+impl core::cmp::Eq for sandbx_tui_transcript::Reasoning
+impl core::cmp::PartialEq for sandbx_tui_transcript::Reasoning
+pub fn sandbx_tui_transcript::Reasoning::eq(&self, &sandbx_tui_transcript::Reasoning) -> bool
+impl core::fmt::Debug for sandbx_tui_transcript::Reasoning
+pub fn sandbx_tui_transcript::Reasoning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_tui_transcript::Reasoning
+impl core::marker::StructuralPartialEq for sandbx_tui_transcript::Reasoning
+impl core::marker::Freeze for sandbx_tui_transcript::Reasoning
+impl core::marker::Send for sandbx_tui_transcript::Reasoning
+impl core::marker::Sync for sandbx_tui_transcript::Reasoning
+impl core::marker::Unpin for sandbx_tui_transcript::Reasoning
+impl core::marker::UnsafeUnpin for sandbx_tui_transcript::Reasoning
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Reasoning
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Reasoning
 pub struct sandbx_tui_transcript::Transcript
 impl sandbx_tui_transcript::Transcript
 pub fn sandbx_tui_transcript::Transcript::event(&mut self, &sandbx_event::AgentEvent)
-pub fn sandbx_tui_transcript::Transcript::new(&str, bool) -> Self
+pub fn sandbx_tui_transcript::Transcript::new(&str, sandbx_tui_transcript::Reasoning) -> Self
 pub fn sandbx_tui_transcript::Transcript::note(&mut self, &str)
 impl core::marker::Freeze for sandbx_tui_transcript::Transcript
 impl core::marker::Send for sandbx_tui_transcript::Transcript

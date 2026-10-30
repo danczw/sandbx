@@ -12,5 +12,5 @@
 mod transcript;
 mod view;
 
-pub use transcript::Transcript;
+pub use transcript::{Reasoning, Transcript};
 pub use view::{Hint, draw};

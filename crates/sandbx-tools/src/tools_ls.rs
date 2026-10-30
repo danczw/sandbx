@@ -45,5 +45,5 @@ pub(crate) fn execute(input: LsInput, ctx: &ExecutionContext) -> Result<ToolOutp
     names.sort();
 
     // Never partial: `ls` reads one directory, so there is no walk to cut off.
-    Ok(crate::listing(names, ctx, false))
+    Ok(crate::listing(names, ctx, crate::Scan::Complete))
 }

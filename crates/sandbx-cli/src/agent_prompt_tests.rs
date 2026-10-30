@@ -1,3 +1,4 @@
+use super::super::Device;
 use super::{CLOSED, Consent, Operator, RESET, Terminal, UNCLEARED, account};
 use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_tools::BuiltinTool;
@@ -427,7 +428,7 @@ fn an_account_a_terminal_refused_still_lands() {
     let sink = Sink::default();
     let mut terminal = Terminal::on(slave)
         .expect("the terminal")
-        .falls_back_to(sink.clone(), false);
+        .falls_back_to(sink.clone(), Device::Redirected);
 
     terminal.report(ACCOUNT);
 
@@ -449,7 +450,7 @@ fn an_account_a_terminal_took_reaches_no_fallback() {
     let sink = Sink::default();
     let mut terminal = Terminal::on(slave)
         .expect("the terminal")
-        .falls_back_to(sink.clone(), false);
+        .falls_back_to(sink.clone(), Device::Redirected);
 
     terminal.report(ACCOUNT);
 
@@ -483,11 +484,11 @@ fn an_account_resets_only_where_that_renders() {
     // The escape spelled out rather than read off `RESET`: read off it, the assertion only
     // proves the account agrees with whatever the constant became.
     assert_eq!(
-        account(true, ACCOUNT),
+        account(Device::Terminal, ACCOUNT),
         "\x1b[0msandbx: write /work/out.rs — ran\n"
     );
     assert_eq!(
-        account(false, ACCOUNT),
+        account(Device::Redirected, ACCOUNT),
         "sandbx: write /work/out.rs — ran\n"
     );
 }

@@ -9,7 +9,7 @@
 //! and `wrapup`, and what is left is the argv surface and the one sequence that
 //! consumes it. `AgentRun`'s doc comments are rendered `--help` text, not commentary.
 
-use std::io::{IsTerminal, Write};
+use std::io::Write;
 use std::{io, slice};
 
 use sandbx_anthropic::AnthropicClient;
@@ -29,8 +29,8 @@ use crate::{AgentError, Grants, PolicyError};
 
 use super::gate::{self, tool_name};
 use super::prompt::{APPROVE_CALL, Approve, Terminal};
-use super::render::{Render, Unfinished};
-use super::{orientation, wrapup};
+use super::render::{Answer, Render, Unfinished};
+use super::{Device, orientation, wrapup};
 
 /// The model asked when `--model` is not given.
 ///
@@ -66,7 +66,7 @@ struct Channels<W, E> {
     err: E,
 
     /// Whether `err` renders an SGR escape. Not read off `err`, which a test fakes.
-    renders: bool,
+    err_device: Device,
 
     /// The controlling terminal, `Some` only under `--approve call`. No suite here opens
     /// the real device ([`Terminal::open`]), nor the stderr an account falls back to.
@@ -305,7 +305,7 @@ impl AgentRun {
             Channels {
                 out: io::stdout(),
                 err: io::stderr(),
-                renders: io::stderr().is_terminal(),
+                err_device: Device::of(&io::stderr()),
                 terminal,
             },
             session,
@@ -397,7 +397,7 @@ impl AgentRun {
 
         let mut render = Render::with(channels.out, channels.err)
             .showing_thinking(self.show_thinking)
-            .rendering(channels.renders);
+            .rendering(channels.err_device);
         let outcome = run_turn(
             &mut open,
             turn.clone(),
@@ -435,13 +435,18 @@ impl AgentRun {
 
         // The outcome's figure, not the stream's: on `Discarded` that's the first turn's,
         // the wrap-up round's text not being an answer.
-        let truncated = outcome
+        let answer = if outcome
             .as_ref()
-            .is_ok_and(|outcome| matches!(outcome.round_stop, Some(StopReason::MaxTokens)));
+            .is_ok_and(|outcome| matches!(outcome.round_stop, Some(StopReason::MaxTokens)))
+        {
+            Answer::Truncated
+        } else {
+            Answer::Whole
+        };
 
         // Closed before the turn's own error is propagated: a turn that died mid-stream
         // has already written part of an answer, and left the line it was on open.
-        let code = render.finish(ending, truncated);
+        let code = render.finish(ending, answer);
         // Before the append: a `TurnError` discards the turn's own messages, and a prompt
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;

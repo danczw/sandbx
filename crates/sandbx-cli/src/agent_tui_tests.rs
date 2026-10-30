@@ -1,4 +1,4 @@
-use super::super::{INCOMPLETE, NO_CONSENT, gate};
+use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
 use super::{Tui, ending, lost, reported};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
@@ -23,8 +23,11 @@ fn a_stdout_that_is_not_a_terminal_is_refused() {
 
     // Non-vacuous: the same invocation with a terminal is allowed, so the refusal
     // below is the pipe and not something else about the flags.
-    assert!(tui.drawable(true).is_ok());
-    assert!(matches!(tui.drawable(false), Err(AgentError::NotATerminal)));
+    assert!(tui.drawable(Device::Terminal).is_ok());
+    assert!(matches!(
+        tui.drawable(Device::Redirected),
+        Err(AgentError::NotATerminal)
+    ));
 }
 
 /// Refused and not downgraded to the argv answer: a flag that asks for a narrower
@@ -42,10 +45,10 @@ fn approve_call_is_refused_whether_or_not_there_is_a_terminal() {
         "what is here?",
     ]);
 
-    for terminal in [false, true] {
+    for stdout in [Device::Redirected, Device::Terminal] {
         assert!(
-            matches!(tui.drawable(terminal), Err(AgentError::ApproveUnderTui)),
-            "terminal={terminal}"
+            matches!(tui.drawable(stdout), Err(AgentError::ApproveUnderTui)),
+            "{stdout:?}"
         );
     }
 }

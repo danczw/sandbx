@@ -18,4 +18,4 @@ pub use error::ToolError;
 pub use limits::ToolLimits;
 
 pub(crate) use builtin::ToolSpec;
-pub(crate) use shared::{failed, guard_error, listing, parse, read_capped, read_file};
+pub(crate) use shared::{Scan, failed, guard_error, listing, parse, read_capped, read_file};

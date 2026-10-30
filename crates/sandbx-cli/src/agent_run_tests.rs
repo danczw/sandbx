@@ -1,6 +1,6 @@
-use super::super::orientation;
 use super::super::prompt::{APPROVE_CALL, Approve, Terminal};
 use super::super::render::tests::{stop, text};
+use super::super::{Device, orientation};
 use super::{AgentRun, Channels, INCOMPLETE, round_cap, session_id};
 use crate::AgentError;
 use clap::Parser;
@@ -149,7 +149,7 @@ fn under(
         Channels {
             out: &mut out,
             err: Vec::new(),
-            renders: false,
+            err_device: Device::Redirected,
             terminal: None,
         },
         session,
@@ -176,7 +176,7 @@ fn failed_round(args: &AgentRun, session: Option<Session>) -> Result<i32, AgentE
         Channels {
             out: Vec::new(),
             err: Vec::new(),
-            renders: false,
+            err_device: Device::Redirected,
             terminal: None,
         },
         session,
@@ -212,7 +212,7 @@ fn asked_on(
         Channels {
             out: &mut out,
             err: Vec::new(),
-            renders: false,
+            err_device: Device::Redirected,
             terminal: Some(terminal),
         },
         session,

@@ -83,22 +83,36 @@ fn slurp(mut file: File, path: &Path) -> Result<String, ToolError> {
     Ok(content)
 }
 
+/// Whether a search covered everything it was asked to, or gave up part-way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Scan {
+    Complete,
+    StoppedEarly,
+}
+
+impl Scan {
+    /// How far the walk itself got, before anything the caller skips on top.
+    pub(crate) fn of(walk: &sandbx_core::ReadableWalk) -> Self {
+        if walk.truncated {
+            Self::StoppedEarly
+        } else {
+            Self::Complete
+        }
+    }
+}
+
 /// Render a list of results, bounded, distinguishing "none" from empty output.
 ///
-/// `stopped_early` is appended after the entry cap is applied, not before: a marker
+/// [`Scan::StoppedEarly`]'s marker is appended after the entry cap is applied, not before: a marker
 /// inside the list is a line the cap can trim away, which would leave a partial
 /// search looking complete.
-pub(crate) fn listing(
-    lines: Vec<String>,
-    ctx: &ExecutionContext,
-    stopped_early: bool,
-) -> ToolOutput {
-    if lines.is_empty() && !stopped_early {
+pub(crate) fn listing(lines: Vec<String>, ctx: &ExecutionContext, scan: Scan) -> ToolOutput {
+    if lines.is_empty() && scan == Scan::Complete {
         return ToolOutput::new("no matches".to_string());
     }
 
     let mut rendered = ctx.limits().cap_entries(lines);
-    if stopped_early {
+    if scan == Scan::StoppedEarly {
         rendered.push(PARTIAL_SEARCH.to_string());
     }
 

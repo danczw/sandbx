@@ -75,7 +75,12 @@ impl Auth {
             Action::Login => {
                 let path = config_file(&lookup)?;
                 let stdin = io::stdin();
-                let key = read_key(stdin.lock(), stdin.is_terminal())?;
+                let device = if stdin.is_terminal() {
+                    Device::Terminal
+                } else {
+                    Device::Redirected
+                };
+                let key = read_key(stdin.lock(), device)?;
                 store::store(&path, &key)?;
                 eprintln!("sandbx: key stored in {}", path.display());
                 Ok(0)
@@ -178,9 +183,16 @@ pub fn config_file(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf
     Ok(home.join(".config").join(FILE))
 }
 
+/// Whether stdin is a terminal, which [`read_key`] refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Device {
+    Terminal,
+    Redirected,
+}
+
 /// The key from `input` through [`nonblank`], refusing a tty rather than prompting for it.
-fn read_key(mut input: impl Read, tty: bool) -> Result<SecretString, AuthError> {
-    if tty {
+fn read_key(mut input: impl Read, stdin: Device) -> Result<SecretString, AuthError> {
+    if stdin == Device::Terminal {
         return Err(AuthError::TtyInput);
     }
 
