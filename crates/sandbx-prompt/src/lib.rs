@@ -13,9 +13,10 @@
 /// One request for one model turn.
 ///
 /// `Clone` is part of the contract, here and down the whole tree, because
-/// `stream_chat` takes the prompt by value and a retry needs a second copy. No `Default`:
-/// an empty model and a zero cap would be a request no provider accepts, built without
-/// complaint.
+/// `stream_chat` takes the prompt by value and a retry needs a second copy.
+///
+/// No `Default`: `..Default::default()` would let a caller forget the model and the cap
+/// and still compile.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Prompt {
     /// A freeform string, not an enum: new model IDs ship regularly.

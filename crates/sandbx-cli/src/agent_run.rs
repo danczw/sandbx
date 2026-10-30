@@ -233,9 +233,6 @@ impl AgentRun {
     }
 
     /// The prompt, as one string.
-    ///
-    /// Cannot panic: `required = true` on a `last` argument means clap rejects an empty
-    /// prompt first.
     pub fn to_prompt(&self) -> String {
         self.prompt.join(" ")
     }

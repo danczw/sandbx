@@ -85,8 +85,8 @@ pub fn sandbx_tools::ExecutionContext::for_session(sandbx_core::policy::sandbox:
 pub fn sandbx_tools::ExecutionContext::guard(&self) -> &sandbx_core::fs_guard::FsGuard
 pub fn sandbx_tools::ExecutionContext::limits(&self) -> &sandbx_tools::ToolLimits
 pub fn sandbx_tools::ExecutionContext::new(sandbx_core::policy::sandbox::SandboxPolicy) -> Self
-pub fn sandbx_tools::ExecutionContext::sandboxed_command(&self, &str) -> sandbx_core::command::run::SandboxedCommand
-pub fn sandbx_tools::ExecutionContext::with_helper(self, impl core::convert::AsRef<std::path::Path>) -> Self
+pub fn sandbx_tools::ExecutionContext::sandboxed_command(&self, alloc::string::String) -> sandbx_core::command::run::SandboxedCommand
+pub fn sandbx_tools::ExecutionContext::with_helper(self, std::path::PathBuf) -> Self
 pub fn sandbx_tools::ExecutionContext::with_limits(self, sandbx_tools::ToolLimits) -> Self
 pub fn sandbx_tools::ExecutionContext::with_timeout(self, core::time::Duration) -> Self
 impl core::clone::Clone for sandbx_tools::ExecutionContext
