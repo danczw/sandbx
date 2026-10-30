@@ -1,6 +1,6 @@
 use super::{
-    ESCAPED, FsGuard, ReadableWalk, UNRESOLVABLE, collapsed, open, probe_subject, reason,
-    resolves_beneath_from,
+    ESCAPED, FsGuard, Openat2, ReadableWalk, UNRESOLVABLE, collapsed, open, openat2_support_from,
+    probe_subject, reason,
 };
 use crate::{Access, SandboxError, SandboxPolicy, VettedPath};
 use std::fs::OpenOptions;
@@ -86,8 +86,8 @@ fn both_rootings_answer_alike() {
         .allow_read(VettedPath::vet(root.path()).unwrap())
         .allow_write(VettedPath::vet(root.path()).unwrap());
 
-    let rooted = FsGuard::with_rooting(&policy, None, true);
-    let by_path = FsGuard::with_rooting(&policy, None, false);
+    let rooted = FsGuard::with_rooting(&policy, None, Openat2::Present);
+    let by_path = FsGuard::with_rooting(&policy, None, Openat2::Absent);
     assert!(
         rooted.readable[0].dir.is_some() && by_path.readable[0].dir.is_none(),
         "the two branches must actually differ, or this compares one thing twice"
@@ -176,8 +176,9 @@ fn the_rooting_decision_reads_only_its_own_errnos() {
         nix::errno::Errno::E2BIG,
         nix::errno::Errno::EOPNOTSUPP,
     ] {
-        assert!(
-            !resolves_beneath_from(|| Err(errno)),
+        assert_eq!(
+            openat2_support_from(|| Err(errno)),
+            Openat2::Absent,
             "{errno:?} means the kernel lacks openat2"
         );
     }
@@ -188,14 +189,16 @@ fn the_rooting_decision_reads_only_its_own_errnos() {
         nix::errno::Errno::ENOENT,
         nix::errno::Errno::EMFILE,
     ] {
-        assert!(
-            resolves_beneath_from(|| Err(errno)),
+        assert_eq!(
+            openat2_support_from(|| Err(errno)),
+            Openat2::Present,
             "{errno:?} says nothing about openat2 and must not disable rooting"
         );
     }
 
-    assert!(
-        resolves_beneath_from(|| probe_subject().ok_or(nix::errno::Errno::ENOTDIR)),
+    assert_eq!(
+        openat2_support_from(|| probe_subject().ok_or(nix::errno::Errno::ENOTDIR)),
+        Openat2::Present,
         "a kernel that answers must read as present"
     );
 }
@@ -231,7 +234,7 @@ fn a_rooted_create_keeps_the_default_mode() {
 
     let root = tempfile::tempdir().unwrap();
     let policy = SandboxPolicy::default().allow_write(VettedPath::vet(root.path()).unwrap());
-    let guard = FsGuard::with_rooting(&policy, None, true);
+    let guard = FsGuard::with_rooting(&policy, None, Openat2::Present);
     assert!(
         guard.writable[0].dir.is_some(),
         "this must be the rooted path"

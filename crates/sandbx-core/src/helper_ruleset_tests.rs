@@ -26,4 +26,4 @@ use super::compat::{
 };
 use super::opened::open_grant;
 use super::requested::requested_at;
-use super::rights::rights_for;
+use super::rights::{Inode, rights_for};

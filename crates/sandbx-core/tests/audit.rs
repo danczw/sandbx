@@ -14,8 +14,8 @@ use std::time::Duration;
 use std::{fmt, fs, io};
 
 use sandbx_core::{
-    AUDIT_TARGET, Access, AuditEvent, FsGuard, SandboxError, SandboxPolicy, SandboxedCommand,
-    SpawnId,
+    AUDIT_TARGET, Access, AuditEvent, FsGuard, Pinning, SandboxError, SandboxPolicy,
+    SandboxedCommand, SpawnId,
 };
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
@@ -489,7 +489,15 @@ fn records_the_policy_shape_of_a_spawn() {
         .allow_env("HOME");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
+        AuditEvent::spawned(
+            "/bin/cat",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit();
     });
 
     let line = &lines[0];
@@ -514,7 +522,15 @@ fn records_how_many_names_may_resolve_not_which() {
         .allow_dns("api.example.com");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
+        AuditEvent::spawned(
+            "/bin/cat",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit();
     });
 
     let line = &lines[0];
@@ -525,7 +541,10 @@ fn records_how_many_names_may_resolve_not_which() {
 /// A matching pin leaves no other mark: the run succeeds exactly as an unpinned one does.
 #[test]
 fn records_whether_the_entry_point_was_pinned() {
-    for (pinned, recorded) in [(false, "pinned=false"), (true, "pinned=true")] {
+    for (pin, recorded) in [
+        (Pinning::Unpinned, "pinned=false"),
+        (Pinning::Pinned, "pinned=true"),
+    ] {
         let lines = capture(|| {
             AuditEvent::spawned(
                 "/bin/cat",
@@ -533,7 +552,7 @@ fn records_whether_the_entry_point_was_pinned() {
                 &SpawnId::next(),
                 None,
                 &SandboxPolicy::default(),
-                pinned,
+                pin,
             )
             .emit();
         });
@@ -554,7 +573,7 @@ fn records_that_a_run_was_pinned_and_not_which_digest() {
             &SpawnId::next(),
             None,
             &SandboxPolicy::default(),
-            true,
+            Pinning::Pinned,
         )
         .emit();
     });
@@ -579,7 +598,15 @@ fn records_whether_a_spawn_set_the_resolver_hint() {
         ),
     ] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
+            AuditEvent::spawned(
+                "/bin/cat",
+                "",
+                &SpawnId::next(),
+                None,
+                &policy,
+                Pinning::Unpinned,
+            )
+            .emit();
         });
 
         let line = &lines[0];
@@ -596,7 +623,15 @@ fn the_hint_is_not_counted_as_an_allowlisted_name() {
         .hint_dns_over_tcp();
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
+        AuditEvent::spawned(
+            "/bin/cat",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit();
     });
 
     let line = &lines[0];
@@ -620,7 +655,15 @@ fn records_which_shape_of_network_grant_a_spawn_had() {
         ),
     ] {
         let lines = capture(|| {
-            AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
+            AuditEvent::spawned(
+                "/bin/cat",
+                "",
+                &SpawnId::next(),
+                None,
+                &policy,
+                Pinning::Unpinned,
+            )
+            .emit();
         });
 
         let line = &lines[0];
@@ -639,7 +682,15 @@ fn records_how_many_variables_passed_not_which() {
     let policy = SandboxPolicy::default().allow_env("AWS_SECRET_ACCESS_KEY");
 
     let lines = capture(|| {
-        AuditEvent::spawned("/bin/cat", "", &SpawnId::next(), None, &policy, false).emit();
+        AuditEvent::spawned(
+            "/bin/cat",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit();
     });
 
     let line = &lines[0];

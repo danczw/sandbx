@@ -39,6 +39,17 @@ const SESSION_ABSENT: &str = "-";
 /// [`SpawnId`]'s hex-and-dot spelling for the same reason as [`SESSION_ABSENT`].
 const SPAWN_ABSENT: &str = "-";
 
+/// Whether the program [`AuditEvent::spawned`] records had to match a digest before the
+/// exec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pinning {
+    /// A digest set by [`SandboxedCommand::pin_sha256`](crate::SandboxedCommand::pin_sha256)
+    /// was checked.
+    Pinned,
+    /// The program ran unchecked.
+    Unpinned,
+}
+
 /// A command's arguments as one field value, cut to [`ARGS_CAP`] with the cut marked.
 ///
 /// The list's own `Debug`, so each argument is quoted and `escape_debug`'d — an argument
@@ -231,7 +242,7 @@ impl<'a> AuditEvent<'a> {
     /// Record a spawn, summarising the policy rather than reproducing it. `tracing` needs
     /// static field names, so these cannot be derived from [`Axis::ALL`] the way the
     /// enforcement layers are; the exhaustive match is what makes an added axis a compile
-    /// error instead. `pinned` is a parameter because a digest is not policy.
+    /// error instead. `pin` is a parameter because a digest is not policy.
     ///
     /// `session` is an `Option` here and a sentinel on the record: the rule a `None` field
     /// breaks is about the field set `tracing` emits, not about this signature pretending
@@ -243,7 +254,7 @@ impl<'a> AuditEvent<'a> {
         spawn: &'a SpawnId,
         session: Option<&'a str>,
         policy: &SandboxPolicy,
-        pinned: bool,
+        pin: Pinning,
     ) -> Self {
         let (mut readable, mut writable, mut executable) = (0, 0, 0);
 
@@ -275,7 +286,7 @@ impl<'a> AuditEvent<'a> {
             env: policy.allowed_env().len(),
             dns_over_tcp: policy.hints_dns_over_tcp(),
             dns_names: policy.allowed_dns_names().len(),
-            pinned,
+            pinned: pin == Pinning::Pinned,
             args,
         }
     }

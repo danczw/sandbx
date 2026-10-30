@@ -69,7 +69,7 @@ impl FsGuard {
     /// refused by the check, nothing resolving inside a path that does not resolve, so
     /// there is nothing for construction to refuse and the surviving grants still work.
     pub fn new(policy: &SandboxPolicy) -> Self {
-        Self::with_rooting(policy, None, resolves_beneath())
+        Self::with_rooting(policy, None, openat2_support())
     }
 
     /// [`new`](Self::new), naming the session whose accesses this guard will bound.
@@ -79,14 +79,14 @@ impl FsGuard {
     /// written *here*: a guard built first and told its session afterwards has already
     /// reported, so the setter shape cannot be made correct (#249).
     pub fn for_session(policy: &SandboxPolicy, session: &str) -> Self {
-        Self::with_rooting(policy, Some(session), resolves_beneath())
+        Self::with_rooting(policy, Some(session), openat2_support())
     }
 
     /// [`new`](Self::new), with the kernel's answer supplied rather than asked.
     ///
     /// Split so the fallback is reachable from a test: no CI runner is below the 5.6 that
     /// `openat2` needs, so the by-path branch is otherwise exercised nowhere.
-    fn with_rooting(policy: &SandboxPolicy, session: Option<&str>, beneath: bool) -> Self {
+    fn with_rooting(policy: &SandboxPolicy, session: Option<&str>, kernel: Openat2) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
         // One record per *root*, not per grant entry. `granted_paths` yields a path once per
@@ -105,7 +105,7 @@ impl FsGuard {
             // One open per grant entry, then shared: a path granted on two axes is two
             // entries here and so two descriptors — policy-level duplication, not this
             // loop's to collapse.
-            let dir = match beneath.then(|| open_root(granted)) {
+            let dir = match (kernel == Openat2::Present).then(|| open_root(granted)) {
                 Some(Rooting::Beneath(dir)) => Some(Arc::new(dir)),
                 Some(Rooting::Unpinned) => {
                     // At `INFO`, like every other degraded step: nothing the agent asked for
@@ -779,9 +779,19 @@ fn probe_subject() -> Option<OwnedFd> {
         .map(OwnedFd::from)
 }
 
+/// Whether this kernel has `openat2` with the resolve flags [`FsGuard`] roots its accesses
+/// with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Openat2 {
+    /// Accesses resolve beneath a descriptor held on their root.
+    Present,
+    /// Accesses resolve by path, bounded by the per-access confirmation alone.
+    Absent,
+}
+
 /// Whether this kernel resolves beneath a descriptor, asked once per [`FsGuard`].
-fn resolves_beneath() -> bool {
-    resolves_beneath_from(|| {
+fn openat2_support() -> Openat2 {
+    openat2_support_from(|| {
         let slash = probe_subject().ok_or(nix::errno::Errno::ENOTDIR)?;
         kernel_probe(&slash)
     })
@@ -806,16 +816,16 @@ fn kernel_probe(dir: &OwnedFd) -> nix::Result<OwnedFd> {
 /// anything else — `EACCES` on `/`, say — says nothing about `openat2` and must leave
 /// rooting on, since switching it off for every root on an unrelated errno is a hole both
 /// test suites would pass.
-fn resolves_beneath_from(probe: impl FnOnce() -> nix::Result<OwnedFd>) -> bool {
+fn openat2_support_from(probe: impl FnOnce() -> nix::Result<OwnedFd>) -> Openat2 {
     match probe() {
-        Ok(_) => true,
+        Ok(_) => Openat2::Present,
         Err(
             nix::errno::Errno::ENOSYS
             | nix::errno::Errno::EINVAL
             | nix::errno::Errno::E2BIG
             | nix::errno::Errno::EOPNOTSUPP,
-        ) => false,
-        Err(_) => true,
+        ) => Openat2::Absent,
+        Err(_) => Openat2::Present,
     }
 }
 

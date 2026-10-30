@@ -34,7 +34,7 @@ use std::path::Path;
 /// [`Axis::grants`]: crate::Axis::grants
 pub(super) fn rights_for(
     axis: crate::Axis,
-    target_is_dir: bool,
+    target: Inode,
     abi: landlock::ABI,
 ) -> landlock::BitFlags<landlock::AccessFs> {
     use landlock::{Access, AccessFs};
@@ -61,11 +61,17 @@ pub(super) fn rights_for(
         rights |= AccessFs::Execute;
     }
 
-    if target_is_dir {
-        rights
-    } else {
-        rights & AccessFs::from_file(abi)
+    match target {
+        Inode::Dir => rights,
+        Inode::File => rights & AccessFs::from_file(abi),
     }
+}
+
+/// What a rule's target is, as far as [`rights_for`] cares: a directory, or anything else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Inode {
+    Dir,
+    File,
 }
 
 /// What a rule names: a grant the harness judged, or a path this process installed itself.
@@ -141,7 +147,12 @@ pub(super) fn fs_rules(
         .map(|(axis, target, conferred)| {
             // After the `from_file` narrowing, which does not re-widen it: `ResolveUnix` is in
             // landlock's `ACCESS_FILE`, so a rule naming a socket inode directly keeps the bit.
-            let rights = rights_for(axis, target.path().is_dir(), abi) | conferred;
+            let inode = if target.path().is_dir() {
+                Inode::Dir
+            } else {
+                Inode::File
+            };
+            let rights = rights_for(axis, inode, abi) | conferred;
             (axis, target, rights)
         })
         .collect()

@@ -170,7 +170,11 @@ impl SandboxedCommand {
             &spawn,
             session,
             &self.policy,
-            self.pin.is_some(),
+            if self.pin.is_some() {
+                crate::Pinning::Pinned
+            } else {
+                crate::Pinning::Unpinned
+            },
         )
         .emit();
 

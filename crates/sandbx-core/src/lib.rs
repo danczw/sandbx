@@ -25,7 +25,7 @@ mod resolver;
 mod spawn;
 mod spawn_id;
 
-pub use audit::{AUDIT_TARGET, AuditEvent};
+pub use audit::{AUDIT_TARGET, AuditEvent, Pinning};
 pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch};
 pub use concealment::conceal_process_state;
 pub use digest::{DigestParseError, Sha256Digest};

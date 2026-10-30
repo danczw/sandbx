@@ -9,7 +9,7 @@ use std::path::Path;
 use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
 
-use sandbx_core::{AUDIT_TARGET, AuditEvent, SandboxPolicy, SpawnId, VettedPath};
+use sandbx_core::{AUDIT_TARGET, AuditEvent, Pinning, SandboxPolicy, SpawnId, VettedPath};
 use tracing_subscriber::util::SubscriberInitExt;
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
@@ -100,7 +100,15 @@ fn a_spawn_records_the_policy_shape() {
         .allow_standard_env();
 
     let output = captured(|| {
-        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+        AuditEvent::spawned(
+            "/bin/true",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit()
     });
 
     assert!(output.contains(r#"decision="spawned""#), "{output}");
@@ -121,7 +129,15 @@ fn a_spawn_records_the_shape_of_a_port_allowlist() {
         .allow_network_port(80);
 
     let output = captured(|| {
-        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+        AuditEvent::spawned(
+            "/bin/true",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit()
     });
 
     assert!(output.contains(r#"network="ports""#), "{output}");
@@ -134,7 +150,15 @@ fn a_spawn_records_an_unrestricted_network_grant() {
     let policy = SandboxPolicy::default().allow_network();
 
     let output = captured(|| {
-        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+        AuditEvent::spawned(
+            "/bin/true",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit()
     });
 
     assert!(output.contains(r#"network="any""#), "{output}");
@@ -147,7 +171,15 @@ fn a_spawn_records_the_resolver_hint() {
     let policy = SandboxPolicy::default().hint_dns_over_tcp();
 
     let output = captured(|| {
-        AuditEvent::spawned("/bin/true", "", &SpawnId::next(), None, &policy, false).emit()
+        AuditEvent::spawned(
+            "/bin/true",
+            "",
+            &SpawnId::next(),
+            None,
+            &policy,
+            Pinning::Unpinned,
+        )
+        .emit()
     });
 
     assert!(output.contains("dns_over_tcp=true"), "{output}");
@@ -283,7 +315,7 @@ fn a_run_with_no_session_renders_the_sentinel() {
             &SpawnId::next(),
             None,
             &SandboxPolicy::default(),
-            false,
+            Pinning::Unpinned,
         )
         .emit()
     });
@@ -302,7 +334,7 @@ fn a_run_under_a_session_renders_its_id() {
             &SpawnId::next(),
             Some("abc123"),
             &SandboxPolicy::default(),
-            false,
+            Pinning::Unpinned,
         )
         .emit()
     });
