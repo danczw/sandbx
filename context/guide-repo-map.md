@@ -399,7 +399,7 @@ contain it if one wanted to. The key and its variable's name are
 ```
 src/lib.rs        EventStream (boxed FusedStream) — the provider seam;
                   ProviderError — why a call produced no usable stream
-tests/            error (every variant but Transport)
+tests/            error (every variant)
 ```
 
 The seam, and the whole of it: there is no provider trait and no provider enum,
@@ -407,17 +407,13 @@ so a client is anything whose `stream_chat` returns an `EventStream`. The two
 items are one crate because neither is nameable without the other: the alias's
 `Item` is a `Result<AgentEvent, ProviderError>`.
 
-Not a light crate: `Transport` carries a `reqwest::Error` as a public field, so
-reqwest and its HTTP stack travel with the seam. Not the TLS half — this crate
-names no reqwest feature, which is what keeps rustls and `ring` with the one
-crate that opens connections, and its manifest says why that matters. That line
-between the two halves is what the turn loop gained: naming the seam here rather
-than through `sandbx-anthropic` costs it reqwest and hyper and sheds rustls,
-`ring`, the four `rustls-*` crates, `tokio-rustls`, `hyper-rustls`, `h2` and
-`secrecy` — so no production build of `sandbx-turn` links TLS or can name the
-type the API key is kept in. Whether the field should be boxed, which would shed
-the rest, is a code change and so a separate question from the move; it is a box
-on #335. Per-rule account in
+A light crate, and the box is why: `Transport` carries its source as a
+`Box<dyn Error + Send + Sync>`, not a `reqwest::Error`, so no HTTP type crosses
+the seam. A concrete field would put reqwest, hyper, `url` and the `icu_*`
+crates back under everything that names it — measured when it was boxed (#335),
+this crate's normal tree went 72 → 12 packages and `sandbx-turn`'s 104 → 54, so
+no production build of the turn loop links an HTTP client, TLS, or the type the
+API key is kept in. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-sse`
@@ -437,8 +433,8 @@ any particular API puts in `data:`, so a second provider can reuse it as long as
 its payloads name their own type. One workspace dependency, `sandbx-provider`,
 and it is `ProviderError`'s `MalformedEvent` and `Transport` variants alone —
 not `EventStream`, framing yielding strings rather than events. The reqwest edge
-is `Transport`'s field type reached through that one, and the manifest names no
-reqwest feature, which is what keeps rustls out of this tree (#366, #367).
+is `tokenize`'s own input type, and the manifest names no reqwest feature, which
+is what keeps rustls out of this tree (#366, #367).
 
 ## `sandbx-event`
 

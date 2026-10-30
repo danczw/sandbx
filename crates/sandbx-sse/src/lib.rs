@@ -114,7 +114,7 @@ where
                 return Some((
                     Err(ProviderError::Transport {
                         detail: "reading response stream".to_string(),
-                        source,
+                        source: Box::new(source),
                     }),
                     ended(state),
                 ));

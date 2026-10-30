@@ -8,9 +8,9 @@
 //! `context/decision-provider-seam.md`.
 //!
 //! Nothing here speaks a wire format — the vendor's field names, string tables and body
-//! rules are `sandbx-anthropic`'s. What does cross is `reqwest::Error`, which
-//! [`ProviderError::Transport`] carries so a failed request still says whether DNS or TLS
-//! was what went wrong.
+//! rules are `sandbx-anthropic`'s — and no HTTP type crosses either:
+//! [`ProviderError::Transport`] boxes its source rather than naming `reqwest::Error`, so
+//! a crate that only names the seam does not link reqwest and hyper to do it (#335).
 
 use std::fmt;
 use std::pin::Pin;
@@ -47,8 +47,8 @@ pub enum ProviderError {
     Transport {
         /// What was being attempted, for the operator to act on.
         detail: String,
-        /// The reqwest message, which separates a DNS failure from a TLS one.
-        source: reqwest::Error,
+        /// The client's own error, whose message separates a DNS failure from a TLS one.
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     /// The API answered with a non-2xx status other than a rate limit, or sent an
@@ -116,7 +116,7 @@ impl fmt::Display for ProviderError {
 impl std::error::Error for ProviderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Transport { source, .. } => Some(source),
+            Self::Transport { source, .. } => Some(source.as_ref()),
             Self::InvalidBaseUrl { .. }
             | Self::ApiError { .. }
             | Self::RateLimited { .. }
