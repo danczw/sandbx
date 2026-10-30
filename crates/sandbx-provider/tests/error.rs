@@ -11,18 +11,17 @@ fn source_of(error: &ProviderError) -> Option<&(dyn std::error::Error + 'static)
 }
 
 /// The one variant carrying an underlying error, the request never having got far
-/// enough for a status code or vendor body. The client's message is what tells DNS
-/// from TLS, so it has to survive both ways out.
+/// enough for a status code or vendor body.
 #[test]
 fn transport_renders_and_exposes_its_source() {
     let error = ProviderError::Transport {
         detail: "sending request".to_string(),
-        source: Box::new(io::Error::other("dns lookup failed")),
+        source: Box::new(io::Error::other("connection refused")),
     };
 
     let rendered = error.to_string();
     assert!(rendered.contains("sending request"));
-    assert!(rendered.contains("dns lookup failed"));
+    assert!(rendered.contains("connection refused"));
     let source = source_of(&error).expect("Transport must expose its source");
     assert!(
         source.downcast_ref::<io::Error>().is_some(),

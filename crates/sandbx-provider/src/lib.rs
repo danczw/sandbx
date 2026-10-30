@@ -47,7 +47,8 @@ pub enum ProviderError {
     Transport {
         /// What was being attempted, for the operator to act on.
         detail: String,
-        /// The client's own error, whose message separates a DNS failure from a TLS one.
+        /// The client's own error. Its `source()` chain, not its message, is what
+        /// separates a DNS failure from a TLS one.
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 

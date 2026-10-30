@@ -370,8 +370,7 @@ anthropic_wire_tests*.rs
                   unit tests over canned frame sequences: usage, tool_use,
                   content, lifecycle; plus the frames they share, in
                   _tests_fixture
-tests/            anthropic_client, crypto_provider, error (Transport alone,
-                  which is the one variant needing a crypto provider),
+tests/            anthropic_client, crypto_provider,
                   live_anthropic (needs `live-anthropic-tests`)
 ```
 
@@ -412,8 +411,8 @@ A light crate, and the box is why: `Transport` carries its source as a
 the seam. A concrete field would put reqwest, hyper, `url` and the `icu_*`
 crates back under everything that names it — measured when it was boxed (#335),
 this crate's normal tree went 72 → 12 packages and `sandbx-turn`'s 104 → 54, so
-no production build of the turn loop links an HTTP client, TLS, or the type the
-API key is kept in. Per-rule account in
+`sandbx-turn` links no HTTP client, no TLS, and not the type the API key is kept
+in. Per-rule account in
 [decision-provider-seam.md](decision-provider-seam.md).
 
 ## `sandbx-sse`
