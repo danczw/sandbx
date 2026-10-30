@@ -176,6 +176,36 @@ async fn a_full_turn_produces_the_expected_event_sequence() {
     );
 }
 
+/// The source is boxed at the seam, so only this test would notice a wrapper or a
+/// stringified error taking the place of reqwest's own, and with it `is_connect`.
+#[tokio::test]
+async fn a_refused_connection_is_transport_with_reqwests_error_as_source() {
+    // Not a dropped `MockServer`: wiremock pools them, so its port keeps answering.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a loopback port");
+    let base_url = format!("http://{}", listener.local_addr().expect("a bound address"));
+    drop(listener);
+    let client = AnthropicClient::new(SecretString::from("sk-ant-test".to_string()))
+        .expect("the default base URL is https")
+        .with_base_url(base_url)
+        .expect("loopback http is allowed");
+
+    let error = match client.stream_chat(a_request()).await {
+        Ok(_) => panic!("nothing listens on the port, so there is no stream"),
+        Err(error) => error,
+    };
+
+    let ProviderError::Transport { source, .. } = &error else {
+        panic!("expected Transport, got {error:?}");
+    };
+    let source = source
+        .downcast_ref::<reqwest::Error>()
+        .expect("the source must be reqwest's own error, unwrapped");
+    assert!(
+        source.is_connect(),
+        "expected a connect error, got {source:?}"
+    );
+}
+
 #[tokio::test]
 async fn a_429_response_is_reported_as_rate_limited() {
     let server = MockServer::start().await;

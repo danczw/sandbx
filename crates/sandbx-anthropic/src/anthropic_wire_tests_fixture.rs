@@ -19,7 +19,7 @@ pub(super) async fn events(
         .await
 }
 
-/// `ProviderError` cannot derive `PartialEq` — it wraps an opaque `reqwest::Error` —
+/// `ProviderError` cannot derive `PartialEq` — `Transport` boxes a `dyn Error` —
 /// so a `Vec<Result<..>>` is not comparable and an all-success run unwraps first.
 pub(super) async fn ok_events(frames: Vec<Result<String, ProviderError>>) -> Vec<AgentEvent> {
     events(frames)
