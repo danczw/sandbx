@@ -1804,6 +1804,7 @@ version = "0.1.0-alpha.21"
 dependencies = [
  "nix",
  "ratatui",
+ "ratatui-core",
  "rustix",
  "sandbx-pty-fixture",
  "sandbx-tui-transcript",
