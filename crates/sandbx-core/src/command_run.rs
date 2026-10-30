@@ -386,8 +386,7 @@ fn settle(readers: &JoinHandle<()>, more: &JoinHandle<()>) {
     }
 }
 
-/// A reader holds its buffer only to extend it, which cannot panic short of an allocation
-/// failure, and that aborts.
+/// Holds short of an allocation failure, which aborts rather than unwinds.
 const UNPOISONED: &str = "a reader holds its buffer only to extend it";
 
 /// Take what a reader has collected so far; bytes a reader that outlived `settle`'s grace
@@ -413,10 +412,12 @@ where
         loop {
             match pipe.read(&mut chunk) {
                 Ok(0) | Err(_) => return,
-                Ok(read) => sink
-                    .lock()
-                    .expect(UNPOISONED)
-                    .extend_from_slice(&chunk[..read]),
+                Ok(read) => {
+                    // Sliced before the lock, so a `read` overstating its count panics
+                    // with the buffer unheld.
+                    let bytes = &chunk[..read];
+                    sink.lock().expect(UNPOISONED).extend_from_slice(bytes);
+                }
             }
         }
     });
