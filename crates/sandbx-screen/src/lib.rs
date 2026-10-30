@@ -134,8 +134,8 @@ pub(crate) struct Measured<W: Write> {
     /// A dup of the drawn descriptor: ratatui hides the writer, and a hangup reaches every dup.
     out: OwnedFd,
     /// Set as the screen goes, so a cursor that cannot be shown reads as shown. Not always: a
-    /// frame that set a cursor would reach `show_cursor` from a draw, whose failure is
-    /// `failed`'s.
+    /// frame that set a cursor would reach `show_cursor` from a draw, and that failure belongs
+    /// in `failed`.
     quiet: bool,
 }
 

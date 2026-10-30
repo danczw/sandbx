@@ -19,9 +19,9 @@ publish.workspace = true
 ratatui = { version = "=0.30.2", default-features = false, features = [
   "crossterm",
 ] }
-# Never named in code: pinned only because `Screen::drop` relies on `Terminal::drop`'s body,
-# which lives here and which ratatui's own caret `0.1.2` lets move. A bump re-reads
-# `terminal.rs`'s `Drop`: `Measured`'s quiet flag covers its `show_cursor` and nothing else.
+# Never named in code: pinned only because `Screen::drop` relies on the body of
+# `Terminal::drop`, which lives here and which ratatui's own caret `0.1.2` lets move.
+# A bump re-reads that `Drop`: `Measured`'s quiet flag covers its `show_cursor` alone.
 ratatui-core = { version = "=0.1.2", default-features = false }
 # `termios` alone, for `tcgetwinsize`: the screen measures its own window, crossterm's
 # `terminal::size` forking `tput` when the measurement fails (#269). nix has no safe
