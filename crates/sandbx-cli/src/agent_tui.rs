@@ -298,13 +298,13 @@ fn reported(
 /// bounds can cut one turn: `--max-rounds` ends the turn and `--max-tokens` ends a round
 /// inside it.
 fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
-    let mut account = Vec::new();
+    let mut said = Vec::new();
 
     let code = match &outcome.stop {
         // Ahead of the bounds, as `Render::finish` has it: one turn can hit `--max-rounds`
         // and lose its operator, and only the second is unrecoverable.
         TurnStop::GateAborted => {
-            account.push(
+            said.push(
                 "sandbx: the gate could no longer be asked, so the turn stopped where it \
                  was asked. That call and every call behind it were refused, and nothing \
                  further was sent"
@@ -313,7 +313,7 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
             NO_CONSENT
         }
         TurnStop::RoundLimit { rounds } => {
-            account.push(format!(
+            said.push(format!(
                 "sandbx: out of rounds after {rounds}. No wrap-up round is sent under \
                  `tui`, so the answer ends on tool work"
             ));
@@ -328,7 +328,7 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
     // Read whatever the stop was: the round carrying the reply can be cut at `--max-tokens`
     // on its own, which is an answer stopping mid-sentence and must not exit 0.
     if Answer::of(outcome.round_stop.as_ref()) == Answer::Truncated {
-        account.push(
+        said.push(
             "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
              model's own end of turn"
                 .to_string(),
@@ -336,10 +336,10 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
 
         // Never over a code already chosen: a turn can lose its operator and be cut in the
         // same round, and the cut is the recoverable one.
-        return (if code == 0 { INCOMPLETE } else { code }, account);
+        return (if code == 0 { INCOMPLETE } else { code }, said);
     }
 
-    (code, account)
+    (code, said)
 }
 
 /// Change the transcript and redraw, or do nothing at all.
