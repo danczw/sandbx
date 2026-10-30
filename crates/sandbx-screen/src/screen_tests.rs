@@ -96,3 +96,40 @@ fn a_live_terminal_is_drawn_at_its_own_size() {
         .expect("a live pty is drawn on");
     assert!(writes.get() > 0, "nothing reached a live pty");
 }
+
+/// A terminal whose cursor a draw hid, then hung up: what `Terminal::drop` finds.
+fn hidden_then_hung_up() -> Terminal<Measured<Counted>> {
+    let (master, mut terminal, _writes) = screen();
+    let transcript = Transcript::new("a prompt", false);
+    terminal
+        .draw(|frame| draw(frame, &transcript, Hint::Running))
+        .expect("a live pty is drawn on");
+    drop(master);
+    terminal
+}
+
+/// Exception C's fix: a quiet backend shows the cursor, so `Terminal::drop` has nothing to
+/// `eprintln!` and no panic is left for `Screen::drop` to contain.
+#[test]
+fn a_quiet_terminal_shows_a_cursor_it_cannot() {
+    let mut terminal = hidden_then_hung_up();
+    terminal.backend_mut().quiet = true;
+
+    terminal
+        .show_cursor()
+        .expect("a quiet backend reported the failed write");
+}
+
+/// The pair: the hung-up pty does refuse the write, so the one above is the flag.
+#[test]
+fn a_hung_up_terminal_cannot_show_its_cursor() {
+    let mut terminal = hidden_then_hung_up();
+
+    let error = terminal
+        .show_cursor()
+        .expect_err("a hung-up pty accepted the cursor");
+    assert_eq!(error.raw_os_error(), Some(Errno::EIO as i32), "{error}");
+
+    // Quieted before the drop, or this test's own `Terminal::drop` prints the failure.
+    terminal.backend_mut().quiet = true;
+}
