@@ -8,7 +8,6 @@
 use std::io::{self, Stdout, Write};
 use std::os::fd::{AsFd, OwnedFd};
 use std::panic;
-use std::panic::AssertUnwindSafe;
 
 use ratatui::Terminal;
 use ratatui::backend::{Backend, ClearType, CrosstermBackend, WindowSize};
@@ -23,9 +22,7 @@ pub use sandbx_tui_transcript::Transcript;
 
 /// The alternate screen one turn is drawn on, and its transcript; restored when this drops.
 pub struct Screen {
-    /// `Option` only so [`Screen::drop`] can take it: `Terminal`'s own `Drop` can panic,
-    /// and containing that needs the value moved rather than borrowed.
-    terminal: Option<Terminal<Measured<Stdout>>>,
+    terminal: Terminal<Measured<Stdout>>,
 
     /// The first draw failure, `observe` having nowhere to return one. The first and not the
     /// last: a closed stdout fails once per event, and the last says only that it was gone.
@@ -54,17 +51,10 @@ impl Screen {
         })?;
 
         Ok(Self {
-            terminal: Some(terminal),
+            terminal,
             failed: None,
             transcript,
         })
-    }
-
-    /// The terminal, which a live `Screen` always holds — only [`Screen::drop`] takes it.
-    fn terminal(&mut self) -> &mut Terminal<Measured<Stdout>> {
-        self.terminal
-            .as_mut()
-            .expect("a screen holds its terminal until it drops")
     }
 
     /// Apply `change` to the transcript, then repaint while the turn still runs. The change
@@ -87,7 +77,7 @@ impl Screen {
             return;
         }
 
-        match cleared(self.terminal()) {
+        match cleared(&mut self.terminal) {
             Ok(()) => self.draw(Hint::Done),
             Err(error) => self.failed = Some(error),
         }
@@ -98,12 +88,10 @@ impl Screen {
             return;
         }
 
-        // The field, not `terminal()`, which borrows all of `self` and the transcript with it.
-        let terminal = self
+        let drawn = self
             .terminal
-            .as_mut()
-            .expect("a screen holds its terminal until it drops");
-        if let Err(error) = terminal.draw(|frame| draw(frame, &self.transcript, hint)) {
+            .draw(|frame| draw(frame, &self.transcript, hint));
+        if let Err(error) = drawn {
             self.failed = Some(error);
         }
     }
@@ -145,6 +133,9 @@ pub(crate) struct Measured<W: Write> {
     backend: CrosstermBackend<W>,
     /// A dup of the drawn descriptor: ratatui hides the writer, and a hangup reaches every dup.
     out: OwnedFd,
+    /// Set by [`Screen::drop`] alone, so a cursor that cannot be shown reads as shown. Not
+    /// always: `show_cursor` is on the draw path too, where a failure must reach `failed`.
+    quiet: bool,
 }
 
 impl<W: Write> Measured<W> {
@@ -159,7 +150,11 @@ impl<W: Write> Measured<W> {
         #[allow(clippy::disallowed_methods)]
         let backend = CrosstermBackend::new(writer);
 
-        Ok(Self { backend, out })
+        Ok(Self {
+            backend,
+            out,
+            quiet: false,
+        })
     }
 
     /// `TIOCGWINSZ` on the descriptor drawn to, and its error as it came: no `tput` behind
@@ -187,8 +182,13 @@ impl<W: Write> Backend for Measured<W> {
         self.backend.hide_cursor()
     }
 
+    /// `Terminal::show_cursor` clears the flag `Terminal::drop` reads only on `Ok`, and that
+    /// `Drop` `eprintln!`s on `Err`. Once quiet nothing reads the cursor again.
     fn show_cursor(&mut self) -> io::Result<()> {
-        self.backend.show_cursor()
+        match self.backend.show_cursor() {
+            Err(_) if self.quiet => Ok(()),
+            shown => shown,
+        }
     }
 
     fn get_cursor_position(&mut self) -> io::Result<Position> {
@@ -233,18 +233,12 @@ impl Drop for Screen {
     ///
     /// `try_restore` and not `restore`: `restore` reports a failed `tcsetattr` with
     /// `eprintln!` to the descriptor that just died, and that panic inside an unwinding
-    /// `Drop` aborts (#264).
+    /// `Drop` aborts (#264). `Terminal::drop`, which runs next, has the same `eprintln!` for
+    /// a cursor it cannot show; quieting `Measured` first is what keeps it from reaching it.
     fn drop(&mut self) {
         // Ignored: there is nothing left to report a terminal that stopped answering to.
         let _ = ratatui::try_restore();
-
-        if let Some(terminal) = self.terminal.take() {
-            // `Terminal::drop` `eprintln!`s when it cannot show the cursor a draw hid, which
-            // is the same panic from inside this `Drop`. Contained rather than prevented:
-            // `show_cursor` clears the flag `Drop` reads only once the backend accepted it,
-            // which a dead one never will.
-            let _ = panic::catch_unwind(AssertUnwindSafe(move || drop(terminal)));
-        }
+        self.terminal.backend_mut().quiet = true;
     }
 }
 

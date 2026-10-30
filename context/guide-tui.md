@@ -182,9 +182,11 @@ then `101`, then the code the turn earned:
   hook that cannot write cannot panic while panicking.
 - **`Terminal`'s own `Drop`.** It shows the cursor if a draw hid it and
   `eprintln!`s when it cannot, and `show_cursor` clears the flag it reads only
-  once the backend accepted the write — which a dead one never does. So the panic
-  cannot be prevented from here, only contained: `Screen::drop` drops the terminal
-  inside a `catch_unwind`, which is the whole reason the field is an `Option`.
+  once the backend accepted the write — which a dead one never does. The backend
+  is sandbx's own `Measured`, so `Screen::drop` quiets it first: a failed
+  `show_cursor` then reports success, the flag clears, and `Drop` has nothing to
+  print. Only while quiet, because `show_cursor` is on the draw path too, where a
+  failure must still reach the screen's `failed`.
 - **`main`'s `report`.** Its `eprintln!` for a failed run is on the hangup path:
   `tui` returns, the screen is already gone, and the write panics with the code
   still unreported. `writeln!` and an ignored error. The two `eprintln!`s above it

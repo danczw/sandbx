@@ -35,24 +35,6 @@ Read the allowance and you will conclude the crate may be split as soon as someo
 finds a tidier boundary. Read this and you will not — the boundary *is* the
 visibility, and there is no tidier one.
 
-## `catch_unwind` in the TUI: a deviation, not yet an exception
-
-`crates/sandbx-screen/src/lib.rs:244` calls `catch_unwind`. The guide allows it as
-defense in depth at an entry point and never as something a property relies on, and
-this call is neither. It sits inside `Screen::drop`, and it stops a panic from
-`Terminal::drop` — an `eprintln!` to a stderr that has hung up — from aborting while
-the process is already unwinding, which loses the turn's earned exit code and the
-audit trail it still held (#264).
-
-So the mechanism *is* relied on, which is the part the guide refuses. It will not
-become an exception: phase 6 (#335) removes the need, and this section goes with the
-call. The backend ratatui fails to write through is `Measured`, which is sandbx's own
-type — so `Measured::show_cursor` can report success where the write failed, which
-clears the flag `Terminal::drop` reads and leaves it with nothing to report. #335
-holds the mechanism and the two alternatives that look right and are not.
-
-Until that lands it is a known deviation with an issue against it, not a silence.
-
 ## What the grace rule costs
 
 Existing code is exempt from a rule until the phase that fixes it has landed; new and
