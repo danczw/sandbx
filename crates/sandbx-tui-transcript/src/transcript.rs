@@ -26,7 +26,7 @@ pub(crate) struct Entry {
     pub(crate) text: String,
 }
 
-/// Whether the model's reasoning is drawn, which only the operator's flag decides.
+/// Whether the model's reasoning is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reasoning {
     /// Drawn as it streams, apart from the answer.
