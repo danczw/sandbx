@@ -8,7 +8,7 @@
 //! `context/decision-provider-seam.md`.
 //!
 //! Nothing here speaks a wire format — the vendor's field names, string tables and body
-//! rules are `sandbx-anthropic`'s — and no HTTP type crosses either:
+//! rules are `sandbx-anthropic`'s, and no HTTP type crosses the seam:
 //! [`ProviderError::Transport`] boxes its source rather than naming `reqwest::Error`, so
 //! a crate that only names the seam does not link reqwest and hyper to do it (#335).
 
