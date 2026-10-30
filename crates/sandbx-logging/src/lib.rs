@@ -48,7 +48,9 @@ pub fn init() -> Result<(), tracing_subscriber::util::TryInitError> {
 ///
 /// Process-global: `tracing` takes one subscriber for the whole process, installed before
 /// the subcommand is known, so its writer cannot take an argument. Never poisoned: no
-/// critical section on it can panic, short of an allocation failure, which aborts.
+/// critical section on it can panic, short of an allocation failure, which aborts. Keep
+/// it so: [`Held`]'s `Drop` runs while unwinding, where a poisoned lock aborts and loses
+/// every held record.
 static HELD: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
 const UNPOISONED: &str = "no critical section on `HELD` can panic";

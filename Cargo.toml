@@ -47,6 +47,7 @@ unnameable_types = "warn"
 [workspace.lints.clippy]
 # Method list: clippy.toml.
 disallowed_methods = "deny"
-# Decision 11a: a panic is for a bug, and `expect` says which invariant broke. Tests
-# are exempt in clippy.toml.
+# #328 decision 11a: a panic is for a bug, and `expect` says which invariant broke.
+# `#[test]` fns and `#[cfg(test)]` modules are exempt (clippy.toml); a helper in
+# `tests/*.rs` is not.
 unwrap_used = "warn"

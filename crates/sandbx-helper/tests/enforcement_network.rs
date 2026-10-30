@@ -28,8 +28,11 @@ fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
 /// A listener on an ephemeral loopback port, answering one connection with `payload`. The
 /// probe prints what it read, so a test can assert the bytes and not the exit status alone.
 fn listener(payload: &'static str) -> (u16, JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let port = listener
+        .local_addr()
+        .expect("a bound listener has an address")
+        .port();
 
     let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {

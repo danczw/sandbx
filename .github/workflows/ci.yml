@@ -102,6 +102,7 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+          components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # `ring` arrives via `sandbx-anthropic` and its build.rs compiles C; the
@@ -120,6 +121,11 @@ jobs:
           echo "landlock LSM: $(cat /sys/kernel/security/lsm 2>/dev/null || echo unknown)"
           echo "unprivileged_userns_clone: $(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo unset)"
           echo "apparmor userns restriction: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo unset)"
+
+      # `test`'s Clippy runs default features, so no gated target reaches it; this
+      # one lints them, on a build this job makes anyway.
+      - name: Clippy (sandbox enforcement)
+        run: cargo clippy --workspace --all-targets --features sandbox-integration -- -D warnings
 
       - name: Test (sandbox enforcement)
         run: cargo test --workspace --features sandbox-integration

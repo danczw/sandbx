@@ -28,5 +28,6 @@ disallowed-methods = [
     { path = "ratatui::backend::CrosstermBackend::new", reason = "Measured::new, whose size never forks tput" },
 ]
 
-# `unwrap_used` is for production code; a test's panic is its assertion.
+# Covers `#[test]` fns and `#[cfg(test)]` modules only, not a plain helper fn in
+# `tests/*.rs`.
 allow-unwrap-in-tests = true

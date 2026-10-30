@@ -75,7 +75,7 @@ Two things fall out of that pattern that are easy to trip over:
 | job | what it proves |
 |---|---|
 | `test` | fmt, clippy, the default-feature suite, and rustdoc |
-| `sandbox (x86_64)`, `sandbox (aarch64)` | the enforcement suite on a real kernel, gnu then the published musl triple |
+| `sandbox (x86_64)`, `sandbox (aarch64)` | clippy over the gated targets, then the enforcement suite on a real kernel, gnu then the published musl triple |
 | `msrv` | the suite still builds at the floor the manifest states |
 | `notes` | the manifest's version has a notes file, and every `v*.md` is within budget |
 | `api-diff` | every crate with a public surface has a committed baseline, and every widening of it has a line there |
