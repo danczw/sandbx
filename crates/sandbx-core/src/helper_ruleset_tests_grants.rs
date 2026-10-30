@@ -1,7 +1,7 @@
 //! What one axis confers, over `Axis::ALL` and over both target kinds. No filesystem and
 //! no policy involved — [`rights_for`](super::rights_for) is pure.
 
-use super::{AccessFs, BASELINE_ABI, LATEST_ABI, rights_for};
+use super::{AccessFs, BASELINE_ABI, Inode, LATEST_ABI, rights_for};
 
 /// Stated over `Axis::ALL`, so an axis whose rights are never derived — a flag that
 /// round-trips while granting nothing — fails here. The tests below pin today's three
@@ -10,7 +10,7 @@ use super::{AccessFs, BASELINE_ABI, LATEST_ABI, rights_for};
 fn rights_follow_the_axis_table() {
     for axis in crate::Axis::ALL {
         let grants = axis.grants();
-        let rights = rights_for(axis, true, LATEST_ABI);
+        let rights = rights_for(axis, Inode::Dir, LATEST_ABI);
 
         assert!(
             !rights.is_empty(),
@@ -40,8 +40,8 @@ fn rights_follow_the_axis_table() {
 fn rights_for_narrows_a_regular_file() {
     for axis in crate::Axis::ALL {
         let grants = axis.grants();
-        let on_dir = rights_for(axis, true, LATEST_ABI);
-        let on_file = rights_for(axis, false, LATEST_ABI);
+        let on_dir = rights_for(axis, Inode::Dir, LATEST_ABI);
+        let on_file = rights_for(axis, Inode::File, LATEST_ABI);
 
         // An intersection, so a file can never hold more than the directory case.
         assert!(
@@ -95,11 +95,11 @@ fn rights_for_narrows_a_regular_file() {
 /// [`Axis::grants`]: crate::Axis::grants
 #[test]
 fn a_read_grant_never_carries_execute() {
-    for target_is_dir in [true, false] {
-        let rights = rights_for(crate::Axis::Read, target_is_dir, LATEST_ABI);
+    for target in [Inode::Dir, Inode::File] {
+        let rights = rights_for(crate::Axis::Read, target, LATEST_ABI);
         assert!(
             !rights.contains(AccessFs::Execute),
-            "a read grant handed out Execute (target_is_dir={target_is_dir})"
+            "a read grant handed out Execute on a {target:?}"
         );
         assert!(rights.contains(AccessFs::ReadFile));
     }
@@ -107,7 +107,7 @@ fn a_read_grant_never_carries_execute() {
 
 #[test]
 fn only_the_execute_axis_carries_execute() {
-    let rights = rights_for(crate::Axis::ReadExecute, true, LATEST_ABI);
+    let rights = rights_for(crate::Axis::ReadExecute, Inode::Dir, LATEST_ABI);
     assert!(rights.contains(AccessFs::Execute));
     // Read comes with it by design — see `SandboxPolicy::executable_paths`.
     assert!(rights.contains(AccessFs::ReadFile));
@@ -163,12 +163,12 @@ fn each_axis_confers_exactly_the_documented_set() {
 
     for (axis, at_baseline, at_latest) in expected {
         assert_eq!(
-            rights_for(axis, true, BASELINE_ABI),
+            rights_for(axis, Inode::Dir, BASELINE_ABI),
             at_baseline,
             "{axis:?} changed shape at the ABI floor; every grant on it moved too"
         );
         assert_eq!(
-            rights_for(axis, true, LATEST_ABI),
+            rights_for(axis, Inode::Dir, LATEST_ABI),
             at_latest,
             "{axis:?} changed shape at the ABI ceiling; every grant on it moved too"
         );
@@ -180,7 +180,7 @@ fn each_axis_confers_exactly_the_documented_set() {
 /// where `FsGuard` refuses it. See `rights_for`.
 #[test]
 fn a_write_grant_carries_neither_read_nor_execute() {
-    let rights = rights_for(crate::Axis::Write, true, LATEST_ABI);
+    let rights = rights_for(crate::Axis::Write, Inode::Dir, LATEST_ABI);
     assert!(rights.contains(AccessFs::WriteFile));
     assert!(
         !rights.contains(AccessFs::ReadFile) && !rights.contains(AccessFs::ReadDir),
@@ -205,18 +205,17 @@ fn no_axis_confers_the_unix_socket_right() {
     );
 
     for axis in crate::Axis::ALL {
-        for target_is_dir in [true, false] {
-            let rights = rights_for(axis, target_is_dir, LATEST_ABI);
+        for target in [Inode::Dir, Inode::File] {
+            let rights = rights_for(axis, target, LATEST_ABI);
 
             assert!(
                 !rights.contains(AccessFs::ResolveUnix),
-                "{axis:?} confers `ResolveUnix` on a {} target, so a grant dials sockets \
-                 beneath it with the flag unset",
-                if target_is_dir { "directory" } else { "file" }
+                "{axis:?} confers `ResolveUnix` on a {target:?}, so a grant dials sockets \
+                 beneath it with the flag unset"
             );
         }
     }
 
     // The subtraction took one bit and not the set it was carved out of.
-    assert!(rights_for(crate::Axis::Write, true, LATEST_ABI).contains(AccessFs::WriteFile));
+    assert!(rights_for(crate::Axis::Write, Inode::Dir, LATEST_ABI).contains(AccessFs::WriteFile));
 }

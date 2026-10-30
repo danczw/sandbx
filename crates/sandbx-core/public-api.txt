@@ -70,7 +70,7 @@ pub fn sandbx_core::AuditEvent<'a>::denied(&'a str, &'a str, &'a str) -> Self
 pub fn sandbx_core::AuditEvent<'a>::emit(&self)
 pub fn sandbx_core::AuditEvent<'a>::exited(&'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &std::process::ExitStatus) -> Self
 pub fn sandbx_core::AuditEvent<'a>::failed(&'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &'static str) -> Self
-pub fn sandbx_core::AuditEvent<'a>::spawned(&'a str, &'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &sandbx_core::SandboxPolicy, bool) -> Self
+pub fn sandbx_core::AuditEvent<'a>::spawned(&'a str, &'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &sandbx_core::SandboxPolicy, sandbx_core::Pinning) -> Self
 impl<'a> core::clone::Clone for sandbx_core::AuditEvent<'a>
 pub fn sandbx_core::AuditEvent<'a>::clone(&self) -> sandbx_core::AuditEvent<'a>
 impl<'a> core::cmp::Eq for sandbx_core::AuditEvent<'a>
@@ -187,6 +187,25 @@ impl core::marker::Unpin for sandbx_core::NetworkPolicy
 impl core::marker::UnsafeUnpin for sandbx_core::NetworkPolicy
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::NetworkPolicy
 impl core::panic::unwind_safe::UnwindSafe for sandbx_core::NetworkPolicy
+pub enum sandbx_core::Pinning
+pub sandbx_core::Pinning::Pinned
+pub sandbx_core::Pinning::Unpinned
+impl core::clone::Clone for sandbx_core::Pinning
+pub fn sandbx_core::Pinning::clone(&self) -> sandbx_core::Pinning
+impl core::cmp::Eq for sandbx_core::Pinning
+impl core::cmp::PartialEq for sandbx_core::Pinning
+pub fn sandbx_core::Pinning::eq(&self, &sandbx_core::Pinning) -> bool
+impl core::fmt::Debug for sandbx_core::Pinning
+pub fn sandbx_core::Pinning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_core::Pinning
+impl core::marker::StructuralPartialEq for sandbx_core::Pinning
+impl core::marker::Freeze for sandbx_core::Pinning
+impl core::marker::Send for sandbx_core::Pinning
+impl core::marker::Sync for sandbx_core::Pinning
+impl core::marker::Unpin for sandbx_core::Pinning
+impl core::marker::UnsafeUnpin for sandbx_core::Pinning
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Pinning
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Pinning
 pub enum sandbx_core::SandboxError
 pub sandbx_core::SandboxError::BadHelperArgs
 pub sandbx_core::SandboxError::BadHelperArgs::detail: &'static str
