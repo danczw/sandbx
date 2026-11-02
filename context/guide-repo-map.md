@@ -86,7 +86,7 @@ so the turn loop reaches no client code in a production build and
 | `sandbx-tools` | the seven built-ins, each confined by core | core |
 | `sandbx-anthropic` | the hand-rolled streaming client for one vendor's API | event, prompt, provider, sse |
 | `sandbx-turn` | the turn loop | approval, compact, event, prompt, provider, tools (anthropic, core and turn-fixture are *dev*-only) |
-| `sandbx-cli` | arg parsing and the subcommand bodies | core, anthropic, approval, auth, event, grants, logging, prompt, provider, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn |
+| `sandbx-cli` | arg parsing and the subcommand bodies | core, anthropic, approval, auth, event, grants, logging, prompt, provider, screen, session-bridge, session-error, session-id, session-message, session-store, text, tools, tui-input, turn (pty-fixture is *dev*-only) |
 | `sandbx-logging` | the one `tracing` subscriber, and the hold the screen takes | core |
 | `sandbx-session-store` | the on-disk transcript: append-only JSONL under whatever root it is handed | session-error, session-id, session-message |
 | `sandbx-screen` | the screen one turn is drawn on, and putting the terminal back | tui-transcript (pty-fixture is *dev*-only) |

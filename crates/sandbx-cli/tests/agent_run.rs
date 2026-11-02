@@ -25,7 +25,7 @@ fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&Path> {
 
 /// A scratch directory to grant, resolved: a flag's path is vetted before it reaches the
 /// policy, so a fixture has to name something, and in the form the policy will hold.
-fn scratch() -> (tempfile::TempDir, String) {
+fn scratch() -> Scratch {
     let root = env::temp_dir()
         .canonicalize()
         .expect("a resolved temporary directory");
@@ -34,7 +34,13 @@ fn scratch() -> (tempfile::TempDir, String) {
         .expect("a temporary directory");
     let named = dir.path().to_str().expect("utf-8").to_owned();
 
-    (dir, named)
+    Scratch { dir, named }
+}
+
+/// What [`scratch`] made: the directory, which has to outlive the test, and its spelling.
+struct Scratch {
+    dir: tempfile::TempDir,
+    named: String,
 }
 
 #[test]
@@ -254,7 +260,10 @@ fn the_refusal_lands_before_the_policy_is_derived() {
 
 #[test]
 fn a_write_grant_confers_read_here_too() {
-    let (_scratch, granted) = scratch();
+    let Scratch {
+        dir: _scratch,
+        named: granted,
+    } = scratch();
     let policy = agent_run(&["sandbx", "agent-run", "--allow-write", &granted, "--", "go"])
         .policy()
         .expect("the flags describe a policy");

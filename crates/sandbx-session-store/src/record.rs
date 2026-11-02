@@ -29,17 +29,25 @@ pub(crate) struct Header {
 }
 
 /// What one turn cost, and what it had to leave out.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct Accounting {
     pub(crate) observed: Option<Usage>,
     pub(crate) withheld: usize,
 }
 
+impl Accounting {
+    /// Fold one turn's figures in: `observed` keeps the last figure reported, `withheld`
+    /// whatever the last turn cut. The one copy of the rule, which [`fold`] replays and
+    /// `Session::append` applies, so a resumed session and a continued one agree.
+    pub(crate) fn absorb(&mut self, turn: Self) {
+        self.observed = turn.observed.or(self.observed);
+        self.withheld = turn.withheld;
+    }
+}
+
 /// Replay a transcript into the state the next turn starts from.
 ///
-/// The accounting fold is what the turn loop does in memory — `observed` keeps the last
-/// figure reported, `withheld` whatever the last turn cut — so a resumed session and a
-/// continued one carry the same numbers.
+/// The accounting is folded by [`Accounting::absorb`], as a session in memory folds it.
 pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
     if body.is_empty() {
         return Err(SessionError::MissingHeader {
@@ -49,8 +57,7 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
 
     let path = path.to_owned();
     let mut messages = Vec::new();
-    let mut observed = None;
-    let mut withheld = 0;
+    let mut accounting = Accounting::default();
     let mut headed = false;
 
     // No newline after the last line means an append that did not finish, and dropping
@@ -89,10 +96,7 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
                 return Err(SessionError::MissingHeader { path });
             }
             (_, Record::Message(message)) => messages.push(message),
-            (_, Record::Turn(accounting)) => {
-                observed = accounting.observed.or(observed);
-                withheld = accounting.withheld;
-            }
+            (_, Record::Turn(turn)) => accounting.absorb(turn),
             // Its version was read above; nothing else a second header carries would
             // change what is replayed.
             (_, Record::Header(_)) => {}
@@ -106,7 +110,7 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
 
     Ok(Replayed {
         messages,
-        accounting: Accounting { observed, withheld },
+        accounting,
     })
 }
 

@@ -1,7 +1,7 @@
 //! A pty pair for tests that drive a real terminal, and the window it opens with.
 //!
 //! A dev-dependency only: nothing links this into a build that ships. It is a crate
-//! rather than a `#[cfg(test)]` module because two crates drive the same fixture and a
+//! rather than a `#[cfg(test)]` module because several crates drive the same fixture and a
 //! `#[cfg(test)]` item is invisible across a crate boundary (#344).
 //!
 //! A `#[cfg(feature = ..)]` export from one of them instead would diverge between the two
@@ -33,7 +33,7 @@ pub struct Window {
 /// The two ends of a [`pty`].
 #[derive(Debug)]
 pub struct Pty {
-    /// The side a test writes the operator's keys to; dropping it hangs up `slave`.
+    /// The side a test types into and reads the output from; dropping it hangs up `slave`.
     pub master: File,
     /// The side handed to the code under test as its terminal.
     pub slave: File,
@@ -42,7 +42,9 @@ pub struct Pty {
 /// A pty pair, and no controlling terminal: closing the master is then a hangup on the
 /// slave rather than a `SIGHUP` that kills the test binary.
 ///
-/// Echo off, so what the slave reads is only what the master wrote.
+/// Echo off, so what the slave reads is only what the master wrote. `ONLCR` off with it:
+/// the line discipline would turn a written `\n` into `\r\n` on the way out, which an
+/// exact assertion cannot allow for.
 pub fn pty() -> Pty {
     use nix::pty::Winsize;
     use nix::sys::termios;
@@ -57,6 +59,7 @@ pub fn pty() -> Pty {
 
     let mut attrs = termios::tcgetattr(&pair.slave).expect("the pty's termios");
     attrs.local_flags.remove(termios::LocalFlags::ECHO);
+    attrs.output_flags.remove(termios::OutputFlags::ONLCR);
     termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
 
     Pty {

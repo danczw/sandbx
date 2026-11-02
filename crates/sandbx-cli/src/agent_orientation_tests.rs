@@ -15,7 +15,7 @@ fn vetted(path: impl AsRef<Path>) -> VettedPath {
 
 /// A directory that exists, an unresolvable grant being named by neither the guard nor
 /// the prompt, and its canonical name, which is the form the prompt holds.
-fn work() -> (tempfile::TempDir, String) {
+fn work() -> Work {
     let dir = tempfile::tempdir().expect("a temp dir");
     let named = dir
         .path()
@@ -23,7 +23,13 @@ fn work() -> (tempfile::TempDir, String) {
         .expect("it exists")
         .display()
         .to_string();
-    (dir, named)
+    Work { dir, named }
+}
+
+/// What [`work`] made: the directory, which has to outlive the test, and its name.
+struct Work {
+    dir: tempfile::TempDir,
+    named: String,
 }
 
 /// The prompt a default run sends. Never `None`: four of the seven tools are always
@@ -52,7 +58,7 @@ fn derived(argv: &[&str]) -> String {
 
 #[test]
 fn the_prompt_names_a_granted_root_and_its_access() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let prompt = granted(
         SandboxPolicy::default()
             .allow_read(vetted(work.path()))
@@ -69,7 +75,7 @@ fn the_prompt_names_a_granted_root_and_its_access() {
 /// grant the run does not hold.
 #[test]
 fn a_root_granted_read_and_write_is_named_once_each() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let path = work.path().to_str().expect("utf-8");
 
     let prompt = derived(&[
@@ -95,7 +101,7 @@ fn a_root_granted_read_and_write_is_named_once_each() {
 /// vetted paths, which resolve at the vet, so the flag is where the two forms differ.
 #[test]
 fn a_grant_is_named_in_the_form_the_guard_holds() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     // Absolute but not canonical, which `..` makes without a `chdir` a sibling test
     // would race against.
     fs::create_dir(work.path().join("inner")).expect("a nested dir");
@@ -124,7 +130,7 @@ fn a_grant_is_named_in_the_form_the_guard_holds() {
 /// directory the spawn doesn't use is the refusal #191 is about, reported as orientation.
 #[test]
 fn the_prompt_names_where_a_command_starts() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let policy = SandboxPolicy::default()
         .allow_read(vetted("/etc"))
         .allow_write(vetted(work.path()));
@@ -149,7 +155,7 @@ fn the_prompt_names_where_a_command_starts() {
 /// which calls every path it did not name refused.
 #[test]
 fn a_start_directory_the_roots_leave_out_is_not_named() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let policy = SandboxPolicy::default()
         .allow_read(vetted("/usr"))
         .allow_read(vetted(work.path()));
@@ -172,7 +178,7 @@ fn a_start_directory_the_roots_leave_out_is_not_named() {
 /// root is named all the same, or the clause would be absent for having nothing to say.
 #[test]
 fn a_run_granted_nowhere_to_be_is_told_nothing_about_starting() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let prompt = granted(SandboxPolicy::default().allow_read_execute(vetted(work.path())));
 
     assert!(prompt.contains(&format!("{named} (run)")), "got {prompt:?}");
@@ -185,7 +191,7 @@ fn a_run_granted_nowhere_to_be_is_told_nothing_about_starting() {
 /// carries the object it was vetted against (#212).
 #[test]
 fn a_grant_that_resolves_to_nothing_is_not_named() {
-    let (work, _) = work();
+    let Work { dir: work, .. } = work();
     let gone = work.path().join("granted-then-gone");
     fs::create_dir(&gone).expect("a dir to grant");
 
@@ -204,7 +210,7 @@ fn a_grant_that_resolves_to_nothing_is_not_named() {
 /// Naming it would send the model at a root the guard refuses every path under (#212).
 #[test]
 fn a_grant_that_became_a_symlink_is_not_named() {
-    let (work, _) = work();
+    let Work { dir: work, .. } = work();
     let root = work.path().join("root");
     let elsewhere = work.path().join("elsewhere");
     fs::create_dir(&root).expect("a dir to grant");
@@ -226,7 +232,7 @@ fn a_grant_that_became_a_symlink_is_not_named() {
 /// The spelling cannot tell this one: a root renamed over still resolves to itself.
 #[test]
 fn a_grant_renamed_over_is_not_named() {
-    let (work, _) = work();
+    let Work { dir: work, .. } = work();
     let root = work.path().join("root");
     let other = work.path().join("other");
     fs::create_dir(&root).expect("a dir to grant");
@@ -247,7 +253,7 @@ fn a_grant_renamed_over_is_not_named() {
 
 #[test]
 fn a_read_only_root_is_never_named_as_writable() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let prompt = granted(SandboxPolicy::default().allow_read(vetted(work.path())));
 
     assert!(
@@ -272,7 +278,7 @@ fn the_system_binaries_stay_out_of_the_prompt() {
 /// may decline a command the sandbox would have let start.
 #[test]
 fn the_sentence_admits_the_system_binaries_exist() {
-    let (work, _) = work();
+    let Work { dir: work, .. } = work();
     let prompt = granted(SandboxPolicy::default().allow_read(vetted(work.path())));
 
     assert!(prompt.contains("system binaries"), "got {prompt:?}");
@@ -309,7 +315,7 @@ fn an_approved_tool_joins_the_named_set() {
 /// A bare `--allow-tool` refuses nothing, so a sentence about the rest describes no run.
 #[test]
 fn no_tool_is_named_when_every_tool_is_approved() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let prompt = system_prompt(
         &SandboxPolicy::default().allow_read(vetted(work.path())),
         Some(&[]),
@@ -341,7 +347,7 @@ fn the_prompt_never_names_the_flag_to_the_model() {
 
 #[test]
 fn the_roots_sit_between_the_tools_and_the_operator() {
-    let (work, named) = work();
+    let Work { dir: work, named } = work();
     let prompt = system_prompt(
         &SandboxPolicy::default().allow_read(vetted(work.path())),
         None,

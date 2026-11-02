@@ -72,8 +72,7 @@ impl SessionStore {
                         path,
                         file,
                         messages: Vec::new(),
-                        observed: None,
-                        withheld: 0,
+                        accounting: Accounting::default(),
                         shared_read: false,
                     };
                     let header = Record::Header(Header {
@@ -137,7 +136,7 @@ impl SessionStore {
 
         let Replayed {
             messages,
-            accounting: Accounting { observed, withheld },
+            accounting,
         } = fold(&path, &body)?;
         // The whole history, not just its end: a hand-edited file can hold an illegal pair
         // of user turns anywhere, or open on the model's reply.
@@ -157,8 +156,7 @@ impl SessionStore {
             path,
             file,
             messages,
-            observed,
-            withheld,
+            accounting,
             shared_read,
         })
     }
@@ -209,8 +207,7 @@ pub struct Session {
     path: PathBuf,
     file: File,
     messages: Vec<Message>,
-    observed: Option<Usage>,
-    withheld: usize,
+    accounting: Accounting,
     shared_read: bool,
 }
 
@@ -236,13 +233,13 @@ impl Session {
     /// What the provider last counted the prompt at, if any turn said.
     #[must_use]
     pub fn observed(&self) -> Option<Usage> {
-        self.observed
+        self.accounting.observed
     }
 
     /// How many leading messages the last turn left out to make the request fit.
     #[must_use]
     pub fn withheld(&self) -> usize {
-        self.withheld
+        self.accounting.withheld
     }
 
     /// True when the conversation breaks off on tool calls the model never answered,
@@ -284,16 +281,16 @@ impl Session {
             .collect();
         // Its own record, never folded onto a message line: a round that produced no
         // content still reports what the prompt cost and has no message to hang it on.
-        records.push(Record::Turn(Accounting {
+        let accounting = Accounting {
             observed: turn.observed,
             withheld: turn.withheld,
-        }));
+        };
+        records.push(Record::Turn(accounting));
 
         self.write(&records)?;
 
         self.messages.extend(turn.messages.iter().cloned());
-        self.observed = turn.observed.or(self.observed);
-        self.withheld = turn.withheld;
+        self.accounting.absorb(accounting);
 
         Ok(())
     }

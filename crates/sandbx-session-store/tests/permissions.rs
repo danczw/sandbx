@@ -14,10 +14,16 @@ use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role};
 use sandbx_session_store::SessionStore;
 
-fn store() -> (tempfile::TempDir, SessionStore) {
+fn store() -> Store {
     let root = tempfile::tempdir().expect("a temp dir");
     let store = SessionStore::new(root.path().join("sessions"));
-    (root, store)
+    Store { root, store }
+}
+
+/// What [`store`] made, under the directory that has to outlive it.
+struct Store {
+    root: tempfile::TempDir,
+    store: SessionStore,
 }
 
 fn mode_of(path: &Path) -> u32 {
@@ -59,7 +65,7 @@ fn spoken_to(store: &SessionStore) -> sandbx_session_id::SessionId {
 
 #[test]
 fn a_new_transcript_is_unwritable_to_others() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let session = store.create().unwrap();
 
     // Not `mode == 0o600`: `OpenOptionsExt::mode` is masked by the umask, which can only
@@ -69,7 +75,7 @@ fn a_new_transcript_is_unwritable_to_others() {
 
 #[test]
 fn the_sessions_directory_is_owner_only() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     store.create().unwrap();
 
     assert_eq!(mode_of(store.root()) & 0o077, 0);
@@ -77,7 +83,7 @@ fn the_sessions_directory_is_owner_only() {
 
 #[test]
 fn a_directory_that_already_existed_wide_is_narrowed() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     fs::create_dir_all(store.root()).unwrap();
     chmod(store.root(), 0o777);
 
@@ -90,7 +96,7 @@ fn a_directory_that_already_existed_wide_is_narrowed() {
 
 #[test]
 fn a_writable_transcript_is_refused() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let id = spoken_to(&store);
     let path = store.root().join(format!("{id}.jsonl"));
     chmod(&path, 0o622);
@@ -105,7 +111,7 @@ fn a_writable_transcript_is_refused() {
 
 #[test]
 fn a_writable_directory_is_refused() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let id = spoken_to(&store);
     chmod(store.root(), 0o722);
 
@@ -123,7 +129,7 @@ fn a_writable_directory_is_refused() {
 
 #[test]
 fn a_readable_transcript_resumes_and_reports() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let id = spoken_to(&store);
     let path = store.root().join(format!("{id}.jsonl"));
     chmod(&path, 0o644);
@@ -136,7 +142,7 @@ fn a_readable_transcript_resumes_and_reports() {
 
 #[test]
 fn an_owner_only_transcript_reports_nothing() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let id = spoken_to(&store);
     chmod(&store.root().join(format!("{id}.jsonl")), 0o600);
 
@@ -147,7 +153,7 @@ fn an_owner_only_transcript_reports_nothing() {
 /// and owner come from a target the check never looks at.
 #[test]
 fn a_symlinked_transcript_is_refused() {
-    let (root, store) = store();
+    let Store { root, store } = store();
     let id = spoken_to(&store);
     let path = store.root().join(format!("{id}.jsonl"));
 
