@@ -403,8 +403,8 @@ fn a_grant_lands_only_on_its_own_axis() {
     }
 }
 
-/// Every consumer iterates `granted_paths`: a pair dropped here is a permission
-/// silently withheld, and a pair invented is one silently added.
+/// Every consumer iterates `granted_paths`: a grant dropped here is a permission
+/// silently withheld, and a grant invented is one silently added.
 #[test]
 fn granted_paths_yields_each_grant_in_axis_order() {
     use sandbx_core::{Axis, GrantedPath};

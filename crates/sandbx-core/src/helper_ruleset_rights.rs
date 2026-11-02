@@ -114,9 +114,8 @@ impl RuleTarget<'_> {
     }
 }
 
-/// The Landlock rules [`apply`](crate::helper::exec::apply) will install, as
-/// `(axis, path, rights)`,
-/// one per grant, ordered after [`SandboxPolicy::granted_paths`].
+/// The Landlock rules [`apply`](crate::helper::exec::apply) will install, one per grant,
+/// ordered after [`SandboxPolicy::granted_paths`].
 ///
 /// Adds just the one probe [`rights_for`] needs, whether the target is a directory.
 /// `is_dir()` reports `false` for every error it meets, which would silently drop
@@ -144,21 +143,23 @@ pub(super) fn fs_rules(policy: &crate::SandboxPolicy, abi: landlock::ABI) -> Vec
         .granted_paths()
         // On the grants and not on `Installed`, which is a bind mount of sandbx's own file
         // that no grant names — the flag is documented as covering the paths it granted.
-        .map(|crate::GrantedPath { axis, granted }| FsRule {
-            axis,
-            target: RuleTarget::Granted(granted),
-            rights: unix,
-        })
-        .chain(resolver.into_iter().map(|path| FsRule {
-            axis: crate::Axis::Read,
-            target: RuleTarget::Installed(path),
-            rights: landlock::BitFlags::EMPTY,
+        .map(|crate::GrantedPath { axis, granted }| (axis, RuleTarget::Granted(granted), unix))
+        .chain(resolver.into_iter().map(|path| {
+            (
+                crate::Axis::Read,
+                RuleTarget::Installed(path),
+                landlock::BitFlags::EMPTY,
+            )
         }))
-        .map(|rule| {
+        .map(|(axis, target, conferred)| {
             // After the `from_file` narrowing, which does not re-widen it: `ResolveUnix` is in
             // landlock's `ACCESS_FILE`, so a rule naming a socket inode directly keeps the bit.
-            let rights = rights_for(rule.axis, Inode::of(rule.target.path()), abi) | rule.rights;
-            FsRule { rights, ..rule }
+            let rights = rights_for(axis, Inode::of(target.path()), abi) | conferred;
+            FsRule {
+                axis,
+                target,
+                rights,
+            }
         })
         .collect()
 }
@@ -166,6 +167,11 @@ pub(super) fn fs_rules(policy: &crate::SandboxPolicy, abi: landlock::ABI) -> Vec
 /// One Landlock rule: the axis it was granted on, the path to open, and the rights the kernel
 /// is told for it.
 pub(in crate::helper) struct FsRule<'policy> {
+    /// Read only by the tests that assert the mapping, for the reason [`fs_rules`] gives.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the kernel is told the rights alone")
+    )]
     pub(in crate::helper) axis: crate::Axis,
     pub(in crate::helper) target: RuleTarget<'policy>,
     pub(in crate::helper) rights: landlock::BitFlags<landlock::AccessFs>,
