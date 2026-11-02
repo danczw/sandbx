@@ -38,9 +38,21 @@ impl Serialize for Body<'_> {
         if let Some(system) = system {
             map.serialize_entry("system", system)?;
         }
-        map.serialize_entry("messages", &Seq(messages, MessageBody))?;
+        map.serialize_entry(
+            "messages",
+            &Seq {
+                items: messages,
+                shape: MessageBody,
+            },
+        )?;
         if !tools.is_empty() {
-            map.serialize_entry("tools", &Seq(tools, ToolBody))?;
+            map.serialize_entry(
+                "tools",
+                &Seq {
+                    items: tools,
+                    shape: ToolBody,
+                },
+            )?;
         }
         // Only alongside `tools`: the API rejects a choice over tools that were not
         // defined, so an empty list with a choice set is a request it refuses.
@@ -57,11 +69,14 @@ impl Serialize for Body<'_> {
 }
 
 /// A slice, each element serialized through the wire shape `W`.
-struct Seq<'a, T, W>(&'a [T], fn(&'a T) -> W);
+struct Seq<'a, T, W> {
+    items: &'a [T],
+    shape: fn(&'a T) -> W,
+}
 
 impl<'a, T, W: Serialize> Serialize for Seq<'a, T, W> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(self.0.iter().map(self.1))
+        serializer.collect_seq(self.items.iter().map(self.shape))
     }
 }
 
@@ -77,7 +92,13 @@ impl Serialize for MessageBody<'_> {
 
         let mut map = serializer.serialize_map(Some(2))?;
         map.serialize_entry("role", role)?;
-        map.serialize_entry("content", &Seq(content, BlockBody))?;
+        map.serialize_entry(
+            "content",
+            &Seq {
+                items: content,
+                shape: BlockBody,
+            },
+        )?;
         map.end()
     }
 }

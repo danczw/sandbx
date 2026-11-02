@@ -92,11 +92,17 @@ impl Auth {
             }
 
             Action::Status => match resolve(&lookup) {
-                Ok((_, Source::Env)) => {
+                Ok(Resolved {
+                    source: Source::Env,
+                    ..
+                }) => {
                     println!("authenticated from the environment: {ENV_VAR}");
                     Ok(0)
                 }
-                Ok((_, Source::File(path))) => {
+                Ok(Resolved {
+                    source: Source::File(path),
+                    ..
+                }) => {
                     println!("authenticated from {}", path.display());
                     Ok(0)
                 }
@@ -108,6 +114,13 @@ impl Auth {
             },
         }
     }
+}
+
+/// A key, and the source that answered with it.
+#[derive(Debug)]
+struct Resolved {
+    key: SecretString,
+    source: Source,
 }
 
 /// Which source answered.
@@ -122,7 +135,7 @@ enum Source {
 
 /// The key `agent-run` authenticates with, from whichever source has one.
 pub fn api_key() -> Result<SecretString, AuthError> {
-    resolve(&|name| env::var_os(name)).map(|(key, _)| key)
+    resolve(&|name| env::var_os(name)).map(|resolved| resolved.key)
 }
 
 /// The key and the source that answered, environment first.
@@ -131,16 +144,20 @@ pub fn api_key() -> Result<SecretString, AuthError> {
 /// works on a host with no config home for [`config_file`] to name. The lookup is injected
 /// because `set_var` is an `unsafe fn` under edition 2024 and the workspace forbids
 /// `unsafe_code` in test binaries too, so a test cannot drive a real environment.
-fn resolve(
-    lookup: &impl Fn(&str) -> Option<OsString>,
-) -> Result<(SecretString, Source), AuthError> {
+fn resolve(lookup: &impl Fn(&str) -> Option<OsString>) -> Result<Resolved, AuthError> {
     if let Some(key) = env_key(lookup) {
-        return Ok((key, Source::Env));
+        return Ok(Resolved {
+            key,
+            source: Source::Env,
+        });
     }
 
     let path = config_file(lookup)?;
     match store::stored(&path)? {
-        Some(key) => Ok((key, Source::File(path))),
+        Some(key) => Ok(Resolved {
+            key,
+            source: Source::File(path),
+        }),
         None => Err(AuthError::NoCredential { path }),
     }
 }

@@ -40,10 +40,7 @@ pub(crate) struct Accounting {
 /// The accounting fold is what the turn loop does in memory — `observed` keeps the last
 /// figure reported, `withheld` whatever the last turn cut — so a resumed session and a
 /// continued one carry the same numbers.
-pub(crate) fn fold(
-    path: &Path,
-    body: &str,
-) -> Result<(Vec<Message>, Option<Usage>, usize), SessionError> {
+pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
     if body.is_empty() {
         return Err(SessionError::MissingHeader {
             path: path.to_owned(),
@@ -107,7 +104,18 @@ pub(crate) fn fold(
         return Err(SessionError::MissingHeader { path });
     }
 
-    Ok((messages, observed, withheld))
+    Ok(Replayed {
+        messages,
+        accounting: Accounting { observed, withheld },
+    })
+}
+
+/// What [`fold`] replays a transcript into.
+#[derive(Debug)]
+pub(crate) struct Replayed {
+    pub(crate) messages: Vec<Message>,
+    /// The accounting the next turn starts from.
+    pub(crate) accounting: Accounting,
 }
 
 #[cfg(test)]

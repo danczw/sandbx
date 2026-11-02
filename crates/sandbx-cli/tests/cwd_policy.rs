@@ -13,29 +13,46 @@ use std::process::Command;
 /// The package root: cargo's own cwd for a test, and what the home cases pretend is `$HOME`.
 const PACKAGE: &str = env!("CARGO_MANIFEST_DIR");
 
-/// What each subcommand takes after `--`: a command to run, or a prompt to ask.
-const SANDBOX_RUN: (&str, &str) = ("sandbox-run", "true");
-const AGENT_RUN: (&str, &str) = ("agent-run", "hello");
+const SANDBOX_RUN: Subcommand = Subcommand {
+    name: "sandbox-run",
+    tail: "true",
+};
+const AGENT_RUN: Subcommand = Subcommand {
+    name: "agent-run",
+    tail: "hello",
+};
+
+/// A subcommand, and what it takes after `--`: a command to run, or a prompt to ask.
+#[derive(Clone, Copy)]
+struct Subcommand {
+    name: &'static str,
+    tail: &'static str,
+}
+
+/// Whether a run succeeded, and its stderr.
+struct Ran {
+    ok: bool,
+    stderr: String,
+}
 
 /// Whether `sandbox-run` succeeded from `cwd` with `HOME` set to `home`, and its stderr.
-fn run(cwd: &str, home: &str, flags: &[&str]) -> (bool, String) {
+fn run(cwd: &str, home: &str, flags: &[&str]) -> Ran {
     spawn(SANDBOX_RUN, cwd, flags, |command| command.env("HOME", home))
 }
 
 /// [`run`], but with `HOME` removed from the child's environment entirely.
-fn run_without_home(cwd: &str, flags: &[&str]) -> (bool, String) {
+fn run_without_home(cwd: &str, flags: &[&str]) -> Ran {
     spawn(SANDBOX_RUN, cwd, flags, |command| {
         command.env_remove("HOME")
     })
 }
 
 fn spawn(
-    subcommand: (&str, &str),
+    Subcommand { name, tail }: Subcommand,
     cwd: &str,
     flags: &[&str],
     environment: impl FnOnce(&mut Command) -> &mut Command,
-) -> (bool, String) {
-    let (name, tail) = subcommand;
+) -> Ran {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sandbx"));
     command
         .arg(name)
@@ -47,15 +64,15 @@ fn spawn(
         .output()
         .expect("sandbx should start");
 
-    (
-        output.status.success(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    )
+    Ran {
+        ok: output.status.success(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
 }
 
 #[test]
 fn refuses_to_run_from_the_filesystem_root() {
-    let (ok, stderr) = run("/", PACKAGE, &[]);
+    let Ran { ok, stderr } = run("/", PACKAGE, &[]);
 
     assert!(!ok, "a no-flag run from / was allowed: {stderr}");
     assert!(
@@ -68,7 +85,7 @@ fn refuses_to_run_from_the_filesystem_root() {
 /// dotfile, and for `agent-run` that is a prompt injection's blast radius.
 #[test]
 fn refuses_to_run_from_the_home_directory() {
-    let (ok, stderr) = run(PACKAGE, PACKAGE, &[]);
+    let Ran { ok, stderr } = run(PACKAGE, PACKAGE, &[]);
 
     assert!(!ok, "a no-flag run from $HOME was allowed: {stderr}");
     assert!(
@@ -88,7 +105,7 @@ fn refuses_to_run_from_home_whatever_home_names() {
         run("/home", "/var/lib/svc", &[]),
     ];
 
-    for (ok, stderr) in cases {
+    for Ran { ok, stderr } in cases {
         assert!(!ok, "a no-flag run from /home was allowed: {stderr}");
         assert!(
             stderr.contains("where home directories live"),
@@ -103,7 +120,7 @@ fn refuses_to_run_from_home_whatever_home_names() {
 #[test]
 fn refuses_to_run_from_the_system_binaries() {
     for cwd in ["/usr", "/bin", "/usr/lib"] {
-        let (ok, stderr) = run(cwd, PACKAGE, &[]);
+        let Ran { ok, stderr } = run(cwd, PACKAGE, &[]);
 
         assert!(!ok, "a no-flag run from {cwd} was allowed: {stderr}");
         assert!(
@@ -117,7 +134,7 @@ fn refuses_to_run_from_the_system_binaries() {
 /// ordinary directory.
 #[test]
 fn an_unset_home_still_runs_from_a_project() {
-    let (_, stderr) = run_without_home(PACKAGE, &[]);
+    let Ran { stderr, .. } = run_without_home(PACKAGE, &[]);
 
     assert!(
         !stderr.contains("refusing to derive"),
@@ -130,7 +147,7 @@ fn an_unset_home_still_runs_from_a_project() {
 fn an_unresolvable_home_still_runs_from_a_project() {
     // Outside `PACKAGE`, or the cwd would hold this home and be refused for that instead.
     let missing = format!("{}/no-such-home", env!("CARGO_TARGET_TMPDIR"));
-    let (_, stderr) = run(PACKAGE, &missing, &[]);
+    let Ran { stderr, .. } = run(PACKAGE, &missing, &[]);
 
     assert!(
         !stderr.contains("refusing to derive"),
@@ -142,7 +159,7 @@ fn an_unresolvable_home_still_runs_from_a_project() {
 /// which is the sandbox suite's question.
 #[test]
 fn a_path_flag_runs_from_the_home_directory() {
-    let (_, stderr) = run(PACKAGE, PACKAGE, &["--allow-read", "/usr"]);
+    let Ran { stderr, .. } = run(PACKAGE, PACKAGE, &["--allow-read", "/usr"]);
 
     assert!(
         !stderr.contains("refusing to derive"),
@@ -175,13 +192,9 @@ fn under(home: &str) -> impl FnOnce(&mut Command) -> &mut Command + use<'_> {
 fn a_grant_reaching_an_owned_path_is_refused_on_both() {
     let home = unstored_home();
 
-    for (name, tail) in [SANDBOX_RUN, AGENT_RUN] {
-        let (ok, stderr) = spawn(
-            (name, tail),
-            PACKAGE,
-            &["--allow-read", &home],
-            under(&home),
-        );
+    for subcommand in [SANDBOX_RUN, AGENT_RUN] {
+        let name = subcommand.name;
+        let Ran { ok, stderr } = spawn(subcommand, PACKAGE, &["--allow-read", &home], under(&home));
 
         assert!(
             !ok,
@@ -206,7 +219,7 @@ fn naming_the_credential_file_itself_is_refused() {
     let home = unstored_home();
     let file = format!("{home}/.config/sandbx/credentials.toml");
 
-    let (ok, stderr) = spawn(
+    let Ran { ok, stderr } = spawn(
         SANDBOX_RUN,
         PACKAGE,
         &["--allow-write", &file],
@@ -226,7 +239,7 @@ fn naming_the_credential_file_itself_is_refused() {
 /// An exported key changes nothing, and the message naming the variable must not quote it.
 #[test]
 fn an_exported_credential_is_refused_too() {
-    let (ok, stderr) = spawn(
+    let Ran { ok, stderr } = spawn(
         AGENT_RUN,
         PACKAGE,
         &["--allow-env", "ANTHROPIC_API_KEY"],
@@ -252,7 +265,7 @@ fn an_exported_credential_is_refused_too() {
 /// over the key anyway.
 #[test]
 fn the_credential_refusal_outranks_the_home_directory_refusal() {
-    let (ok, stderr) = spawn(
+    let Ran { ok, stderr } = spawn(
         AGENT_RUN,
         PACKAGE,
         &["--allow-env", "ANTHROPIC_API_KEY"],

@@ -39,12 +39,7 @@ impl Write for Sink {
 ///
 /// A fresh `Cursor` per call, so a `consent` that asks again when it should not reaches
 /// an immediate end of input and aborts — which is visible as the wrong verdict.
-fn ask(
-    consent: &mut Consent,
-    tool: BuiltinTool,
-    path: &str,
-    typed: &str,
-) -> (ApprovalDecision, String) {
+fn ask(consent: &mut Consent, tool: BuiltinTool, path: &str, typed: &str) -> Exchange {
     let input = serde_json::json!({ "path": path });
     let mut typed = Cursor::new(typed.as_bytes());
     let mut seen = Vec::new();
@@ -59,17 +54,26 @@ fn ask(
         &mut seen,
     );
 
-    (decision, String::from_utf8(seen).expect("utf-8"))
+    Exchange {
+        decision,
+        seen: String::from_utf8(seen).expect("utf-8"),
+    }
+}
+
+/// What [`ask`] got back: the verdict, and everything the operator was shown.
+struct Exchange {
+    decision: ApprovalDecision,
+    seen: String,
 }
 
 /// One exchange on a consent with nothing already granted.
-fn once(tool: BuiltinTool, path: &str, typed: &str) -> (ApprovalDecision, String) {
+fn once(tool: BuiltinTool, path: &str, typed: &str) -> Exchange {
     ask(&mut Consent::new(), tool, path, typed)
 }
 
 #[test]
 fn the_question_names_the_tool_what_it_does_and_the_arguments() {
-    let (decision, seen) = once(BuiltinTool::Write, "/work/out.rs", "y\n");
+    let Exchange { decision, seen } = once(BuiltinTool::Write, "/work/out.rs", "y\n");
 
     assert_eq!(decision, ApprovalDecision::Allow);
     assert!(seen.contains("write /work/out.rs"), "got {seen:?}");
@@ -104,7 +108,7 @@ fn a_command_is_quoted_back_before_it_runs() {
 /// round advising a flag that changes nothing.
 #[test]
 fn a_refusal_offers_the_model_no_flag() {
-    let (decision, _) = once(BuiltinTool::Write, "/work/out.rs", "n\n");
+    let Exchange { decision, .. } = once(BuiltinTool::Write, "/work/out.rs", "n\n");
 
     let ApprovalDecision::Deny { reason } = decision else {
         panic!("a refused call was approved");
@@ -119,16 +123,23 @@ fn a_refusal_offers_the_model_no_flag() {
 fn all_is_remembered_for_that_tool_and_for_no_other() {
     let mut consent = Consent::new();
 
-    let (first, _) = ask(&mut consent, BuiltinTool::Write, "/work/a", "a\n");
+    let Exchange {
+        decision: first, ..
+    } = ask(&mut consent, BuiltinTool::Write, "/work/a", "a\n");
     assert_eq!(first, ApprovalDecision::Allow);
 
     // Nothing typed: a second question would hit the end of input and end the turn, so
     // `Allow` here is the evidence that none was asked.
-    let (second, seen) = ask(&mut consent, BuiltinTool::Write, "/work/b", "");
+    let Exchange {
+        decision: second,
+        seen,
+    } = ask(&mut consent, BuiltinTool::Write, "/work/b", "");
     assert_eq!(second, ApprovalDecision::Allow);
     assert_eq!(seen, "", "a blanket-approved tool was asked about again");
 
-    let (other, _) = ask(&mut consent, BuiltinTool::Bash, "/work/c", "");
+    let Exchange {
+        decision: other, ..
+    } = ask(&mut consent, BuiltinTool::Bash, "/work/c", "");
     assert!(
         matches!(other, ApprovalDecision::Abort { .. }),
         "an `a` for write carried over to bash: {other:?}"
@@ -139,7 +150,7 @@ fn all_is_remembered_for_that_tool_and_for_no_other() {
 /// trains an operator to retype blind.
 #[test]
 fn an_unrecognised_answer_is_asked_again() {
-    let (decision, seen) = once(BuiltinTool::Write, "/work/out.rs", "maybe\ny\n");
+    let Exchange { decision, seen } = once(BuiltinTool::Write, "/work/out.rs", "maybe\ny\n");
 
     assert_eq!(decision, ApprovalDecision::Allow);
     assert_eq!(
@@ -153,7 +164,7 @@ fn an_unrecognised_answer_is_asked_again() {
 /// call — nor any call behind it, there being nothing left to ask.
 #[test]
 fn an_end_of_input_ends_the_turn() {
-    let (decision, _) = once(BuiltinTool::Bash, "/work/out.rs", "");
+    let Exchange { decision, .. } = once(BuiltinTool::Bash, "/work/out.rs", "");
 
     let ApprovalDecision::Abort { reason } = decision else {
         panic!("a call was approved or merely refused by an operator who typed nothing");
@@ -244,7 +255,7 @@ fn an_escape_sequence_in_a_path_cannot_rewrite_the_question() {
         "the fixture carries no control character, so this asserts nothing"
     );
 
-    let (_, seen) = once(BuiltinTool::Write, hostile, "n\n");
+    let Exchange { seen, .. } = once(BuiltinTool::Write, hostile, "n\n");
 
     assert!(
         !seen.chars().any(|c| c.is_control() && c != '\n'),
@@ -272,7 +283,7 @@ fn wait_readable(fd: &impl AsFd) {
 ///
 /// `ONLCR` off with it: the line discipline translates a written `\n` into `\r\n` on the
 /// way out, which an exact assertion cannot allow for.
-pub(crate) fn pty() -> (File, File) {
+pub(crate) fn pty() -> Pty {
     use nix::sys::termios;
 
     let pair = nix::pty::openpty(None, None).expect("a pty pair");
@@ -282,14 +293,25 @@ pub(crate) fn pty() -> (File, File) {
     attrs.output_flags.remove(termios::OutputFlags::ONLCR);
     termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
 
-    (File::from(pair.master), File::from(pair.slave))
+    Pty {
+        master: File::from(pair.master),
+        slave: File::from(pair.slave),
+    }
+}
+
+/// The two ends of a [`pty`].
+pub(crate) struct Pty {
+    /// The side a test types into and reads sandbx's output from.
+    pub(crate) master: File,
+    /// The side sandbx is handed as its terminal.
+    pub(crate) slave: File,
 }
 
 /// Over a real terminal because what the drain clears is the kernel's input queue: a `y`
 /// typed at a counterfeit question is not read as the answer to the real one.
 #[test]
 fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
-    let (mut master, slave) = pty();
+    let Pty { mut master, slave } = pty();
 
     writeln!(master, "y").expect("the typed line");
     // Queued before the drain runs, or the drain is not what the verdict below shows.
@@ -329,7 +351,7 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
 /// before #218 — is what the discriminant rules out.
 #[test]
 fn a_terminal_that_hung_up_aborts_without_blocking() {
-    let (master, slave) = pty();
+    let Pty { master, slave } = pty();
     drop(master);
 
     let mut terminal = Terminal::on(slave).expect("the terminal");
@@ -379,8 +401,12 @@ fn a_terminal_that_cannot_be_cleared_aborts() {
 /// cannot be asked refuses every call there will be.
 #[test]
 fn a_refusal_is_not_a_lost_channel() {
-    let (refused, _) = once(BuiltinTool::Write, "/work/out.rs", "n\n");
-    let (closed, _) = once(BuiltinTool::Write, "/work/out.rs", "");
+    let Exchange {
+        decision: refused, ..
+    } = once(BuiltinTool::Write, "/work/out.rs", "n\n");
+    let Exchange {
+        decision: closed, ..
+    } = once(BuiltinTool::Write, "/work/out.rs", "");
 
     assert!(
         matches!(refused, ApprovalDecision::Deny { .. }),
@@ -396,7 +422,7 @@ fn a_refusal_is_not_a_lost_channel() {
 /// this same device, and a concealing SGR left in it would hide the one record of what ran.
 #[test]
 fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
-    let (mut master, slave) = pty();
+    let Pty { mut master, slave } = pty();
     let mut terminal = Terminal::on(slave).expect("the terminal");
 
     terminal.report(ACCOUNT);
@@ -422,7 +448,7 @@ fn the_account_of_a_call_is_written_from_a_known_graphic_rendition() {
 /// record of what ran — so it reaches the fallback rather than nobody (#223).
 #[test]
 fn an_account_a_terminal_refused_still_lands() {
-    let (master, slave) = pty();
+    let Pty { master, slave } = pty();
     drop(master);
 
     let sink = Sink::default();
@@ -445,7 +471,7 @@ fn an_account_a_terminal_refused_still_lands() {
 /// stderr as well, where an operator reading a redirect would see every line twice.
 #[test]
 fn an_account_a_terminal_took_reaches_no_fallback() {
-    let (mut master, slave) = pty();
+    let Pty { mut master, slave } = pty();
 
     let sink = Sink::default();
     let mut terminal = Terminal::on(slave)

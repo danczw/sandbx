@@ -14,21 +14,42 @@
 
 use std::fs::File;
 
-/// The window every [`pty`] opens with, `(columns, rows)`: no terminal's default, so a
-/// size read off anything but the pty under test does not match it.
-pub const WINDOW: (u16, u16) = (33, 7);
+/// The window every [`pty`] opens with: no terminal's default, so a size read off anything
+/// but the pty under test does not match it.
+pub const WINDOW: Window = Window {
+    columns: 33,
+    rows: 7,
+};
+
+/// A terminal window's size, in cells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Window {
+    /// Its width.
+    pub columns: u16,
+    /// Its height.
+    pub rows: u16,
+}
+
+/// The two ends of a [`pty`].
+#[derive(Debug)]
+pub struct Pty {
+    /// The side a test writes the operator's keys to; dropping it hangs up `slave`.
+    pub master: File,
+    /// The side handed to the code under test as its terminal.
+    pub slave: File,
+}
 
 /// A pty pair, and no controlling terminal: closing the master is then a hangup on the
 /// slave rather than a `SIGHUP` that kills the test binary.
 ///
 /// Echo off, so what the slave reads is only what the master wrote.
-pub fn pty() -> (File, File) {
+pub fn pty() -> Pty {
     use nix::pty::Winsize;
     use nix::sys::termios;
 
     let window = Winsize {
-        ws_col: WINDOW.0,
-        ws_row: WINDOW.1,
+        ws_col: WINDOW.columns,
+        ws_row: WINDOW.rows,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
@@ -38,5 +59,8 @@ pub fn pty() -> (File, File) {
     attrs.local_flags.remove(termios::LocalFlags::ECHO);
     termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
 
-    (File::from(pair.master), File::from(pair.slave))
+    Pty {
+        master: File::from(pair.master),
+        slave: File::from(pair.slave),
+    }
 }

@@ -15,7 +15,7 @@ use sandbx_session_error::SessionError;
 use sandbx_session_id::{SessionId, clock_millis};
 use sandbx_session_message::{CompletedTurn, Message, Usage};
 
-use crate::record::{Accounting, Header, Record, VERSION, fold};
+use crate::record::{Accounting, Header, Record, Replayed, VERSION, fold};
 use crate::shape::{alternating, answers_only, follows, opens, resumable};
 use crate::vet::{
     DIR_OWNER_ONLY, DIR_SHARED_BITS, READABLE_BITS, WRITABLE_BITS, open_at, open_nofollow,
@@ -63,7 +63,7 @@ impl SessionStore {
 
         for attempt in 0..ATTEMPTS {
             let id = SessionId::from_clock(attempt)?;
-            let (name, path) = self.transcript(&id);
+            let TranscriptPath { name, path } = self.transcript(&id);
 
             match open_at(&directory, &name, &path, create) {
                 Ok(file) => {
@@ -103,7 +103,7 @@ impl SessionStore {
     /// and uid come from the open descriptor, and the transcript is opened through the
     /// root's, so the file and directory vetted are the ones read.
     pub fn resume(&self, id: &SessionId) -> Result<Session, SessionError> {
-        let (name, path) = self.transcript(id);
+        let TranscriptPath { name, path } = self.transcript(id);
 
         // A missing root or transcript is no session by that id, which is what was asked.
         let absent = |error| match error {
@@ -135,7 +135,10 @@ impl SessionStore {
                 source,
             })?;
 
-        let (messages, observed, withheld) = fold(&path, &body)?;
+        let Replayed {
+            messages,
+            accounting: Accounting { observed, withheld },
+        } = fold(&path, &body)?;
         // The whole history, not just its end: a hand-edited file can hold an illegal pair
         // of user turns anywhere, or open on the model's reply.
         if !messages.is_empty() {
@@ -186,11 +189,17 @@ impl SessionStore {
     /// The transcript an id names, in the root and as a path. No check of its own: a
     /// [`SessionId`]'s field is private in `sandbx-session-id`, so nothing here can spell
     /// one its allowlist would refuse.
-    fn transcript(&self, id: &SessionId) -> (String, PathBuf) {
+    fn transcript(&self, id: &SessionId) -> TranscriptPath {
         let name = format!("{id}.jsonl");
         let path = self.root.join(&name);
-        (name, path)
+        TranscriptPath { name, path }
     }
+}
+
+/// A transcript's file name within the root, and its full path.
+struct TranscriptPath {
+    name: String,
+    path: PathBuf,
 }
 
 /// One session, open for appending.

@@ -139,7 +139,7 @@ fn verdict(argv: &[&str], tool: BuiltinTool, input: &serde_json::Value) -> Appro
 
 /// The verdict for one call under one argv, with an operator giving `answer`, and how
 /// many times that operator was asked.
-fn asked(argv: &[&str], tool: BuiltinTool, answer: ApprovalDecision) -> (ApprovalDecision, usize) {
+fn asked(argv: &[&str], tool: BuiltinTool, answer: ApprovalDecision) -> Verdict {
     let allowed = allowed(argv);
     let input = serde_json::json!({ "path": "/work/out.rs" });
     let mut gate = ArgvGate::new(allowed.as_deref(), Some(Asked::new(answer)));
@@ -150,10 +150,16 @@ fn asked(argv: &[&str], tool: BuiltinTool, answer: ApprovalDecision) -> (Approva
         input: &input,
     });
 
-    (
+    Verdict {
         decision,
-        gate.terminal.expect("the channel is still there").count,
-    )
+        count: gate.terminal.expect("the channel is still there").count,
+    }
+}
+
+/// What [`asked`] saw: the verdict, and how many times the operator was asked.
+struct Verdict {
+    decision: ApprovalDecision,
+    count: usize,
 }
 
 /// Both directions on one channel: stderr is as redirectable as stdout, so reading the
@@ -200,7 +206,7 @@ fn the_flag_asks_about_nothing_until_argv_approves_something() {
 /// would teach an operator to answer `y` to everything.
 #[test]
 fn a_tool_argv_never_approved_is_refused_without_asking() {
-    let (decision, count) = asked(
+    let Verdict { decision, count } = asked(
         &["sandbx", "agent-run", "--", "go"],
         BuiltinTool::Bash,
         ApprovalDecision::Allow,
@@ -219,7 +225,7 @@ fn a_tool_argv_never_approved_is_refused_without_asking() {
 /// Twenty prompts in one turn is what #165 describes; a `read` has no answer worth taking.
 #[test]
 fn a_read_only_call_is_not_asked_about() {
-    let (decision, count) = asked(
+    let Verdict { decision, count } = asked(
         &["sandbx", "agent-run", "--approve", "call", "--", "go"],
         BuiltinTool::Grep,
         ApprovalDecision::Deny {
@@ -240,12 +246,18 @@ fn an_operator_can_refuse_what_argv_approved() {
         reason: "the operator refused this call".to_owned(),
     };
 
-    let (denied, asked_once) = asked(argv, BuiltinTool::Write, refusal.clone());
+    let Verdict {
+        decision: denied,
+        count: asked_once,
+    } = asked(argv, BuiltinTool::Write, refusal.clone());
     assert_eq!(denied, refusal);
     assert_eq!(asked_once, 1, "the call was decided without the operator");
 
     // The same argv with a `y`, so the refusal above is the operator's and not the flag's.
-    let (allowed, asked_again) = asked(argv, BuiltinTool::Write, ApprovalDecision::Allow);
+    let Verdict {
+        decision: allowed,
+        count: asked_again,
+    } = asked(argv, BuiltinTool::Write, ApprovalDecision::Allow);
     assert_eq!(allowed, ApprovalDecision::Allow);
     assert_eq!(asked_again, 1);
 }

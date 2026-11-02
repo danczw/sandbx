@@ -9,7 +9,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::transcript::{Kind, Transcript};
+use crate::transcript::{Kind, Tokens, Transcript};
 
 /// The character that says sandbx wrote a row, and that no entry's text may draw. Not
 /// ASCII: `|` or `>` is plausible in prose, and stripping either would mangle shell
@@ -100,7 +100,7 @@ fn status(transcript: &Transcript, hint: Hint) -> Paragraph<'static> {
 
     // Each is absent until reported, never a zero: `0 in` would read as a turn that sent
     // nothing rather than one whose count hasn't arrived yet.
-    let (input, output) = transcript.tokens();
+    let Tokens { input, output } = transcript.tokens();
     let spend: Vec<String> = [
         input.map(|n| format!("{n} in")),
         output.map(|n| format!("{n} out")),

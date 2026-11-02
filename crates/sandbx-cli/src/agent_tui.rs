@@ -208,7 +208,10 @@ impl Tui {
             // one nobody watched, and that is not the recoverable stop an interrupt is.
             Err(Stopped::Gone) => (Ok(NO_CONSENT), None, vec![lost()]),
             Ok(Ok(outcome)) => {
-                let (code, account) = ending(&outcome);
+                let Ending {
+                    code,
+                    said: account,
+                } = ending(&outcome);
                 (Ok(code), Some(outcome), account)
             }
             Ok(Err(error)) => {
@@ -297,7 +300,7 @@ fn reported(
 /// but the code tells a caller the operator went away. A list and not a line, because two
 /// bounds can cut one turn: `--max-rounds` ends the turn and `--max-tokens` ends a round
 /// inside it.
-fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
+fn ending(outcome: &TurnOutcome) -> Ending {
     // Not `account`: CodeQL's `rust/cleartext-logging` reads that name as a credential and
     // flags every assert that prints this list (#461). Rename back once it stops matching.
     let mut said = Vec::new();
@@ -338,10 +341,22 @@ fn ending(outcome: &TurnOutcome) -> (i32, Vec<String>) {
 
         // Never over a code already chosen: a turn can lose its operator and be cut in the
         // same round, and the cut is the recoverable one.
-        return (if code == 0 { INCOMPLETE } else { code }, said);
+        return Ending {
+            code: if code == 0 { INCOMPLETE } else { code },
+            said,
+        };
     }
 
-    (code, said)
+    Ending { code, said }
+}
+
+/// What [`ending`] makes of a finished turn.
+#[derive(Debug, PartialEq, Eq)]
+struct Ending {
+    code: i32,
+    /// Every line accounting for `code`, in the order they are drawn. Named as [`ending`]'s
+    /// local is, for the reason given there.
+    said: Vec<String>,
 }
 
 /// Change the transcript and redraw, or do nothing at all.
