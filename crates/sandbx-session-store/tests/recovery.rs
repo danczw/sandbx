@@ -3,6 +3,8 @@
 //! Apart from `transcript.rs`, which pins the format's own rules: here the file is
 //! already damaged or the turn already odd.
 
+mod common;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -10,17 +12,7 @@ use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 use sandbx_session_store::SessionStore;
 
-fn store() -> Store {
-    let root = tempfile::tempdir().expect("a temp dir");
-    let store = SessionStore::new(root.path().join("sessions"));
-    Store { _root: root, store }
-}
-
-/// A store, and the directory its root sits in, which has to outlive the store.
-struct Store {
-    _root: tempfile::TempDir,
-    store: SessionStore,
-}
+use common::store;
 
 fn said(role: Role, text: &str) -> Message {
     Message {

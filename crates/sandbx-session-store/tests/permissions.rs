@@ -4,6 +4,8 @@
 //! only read resumes and reports. A foreign owner is refused too, but no test here drives
 //! that arm, which needs a second uid.
 
+mod common;
+
 use std::fs;
 use std::fs::Permissions;
 use std::os::unix::fs as unix_fs;
@@ -14,17 +16,7 @@ use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role};
 use sandbx_session_store::SessionStore;
 
-fn store() -> Store {
-    let root = tempfile::tempdir().expect("a temp dir");
-    let store = SessionStore::new(root.path().join("sessions"));
-    Store { root, store }
-}
-
-/// A store, and the directory its root sits in, which has to outlive the store.
-struct Store {
-    root: tempfile::TempDir,
-    store: SessionStore,
-}
+use common::{Store, store};
 
 fn mode_of(path: &Path) -> u32 {
     fs::metadata(path)
