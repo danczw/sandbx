@@ -34,12 +34,13 @@ fn scratch() -> Scratch {
         .expect("a temporary directory");
     let named = dir.path().to_str().expect("utf-8").to_owned();
 
-    Scratch { dir, named }
+    Scratch { _dir: dir, named }
 }
 
-/// What [`scratch`] made: the directory, which has to outlive the test, and its spelling.
+/// What [`scratch`] made: its spelling, and the directory, which has to outlive every use
+/// of it.
 struct Scratch {
-    dir: tempfile::TempDir,
+    _dir: tempfile::TempDir,
     named: String,
 }
 
@@ -260,10 +261,8 @@ fn the_refusal_lands_before_the_policy_is_derived() {
 
 #[test]
 fn a_write_grant_confers_read_here_too() {
-    let Scratch {
-        dir: _scratch,
-        named: granted,
-    } = scratch();
+    let scratch = scratch();
+    let granted = scratch.named;
     let policy = agent_run(&["sandbx", "agent-run", "--allow-write", &granted, "--", "go"])
         .policy()
         .expect("the flags describe a policy");

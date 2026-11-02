@@ -53,13 +53,13 @@ fn scratch(names: &[&str]) -> Scratch {
         })
         .collect();
 
-    Scratch { dir, made }
+    Scratch { _dir: dir, made }
 }
 
-/// What [`scratch`] made: the root, which has to outlive the test, and each directory's
-/// spelling.
+/// What [`scratch`] made: each directory's spelling, and the root, which has to outlive
+/// every use of them.
 struct Scratch {
-    dir: tempfile::TempDir,
+    _dir: tempfile::TempDir,
     made: Vec<String>,
 }
 
@@ -171,10 +171,8 @@ fn a_path_flag_moves_where_the_command_starts() {
 /// working directory.
 #[test]
 fn a_path_flag_replaces_the_working_directory() {
-    let Scratch {
-        dir: _scratch,
-        made: granted,
-    } = scratch(&["srv"]);
+    let scratch = scratch(&["srv"]);
+    let granted = scratch.made;
 
     for flag in ["--allow-read", "--allow-write", "--allow-exec"] {
         let policy = sandbox_run(&["sandbx", "sandbox-run", flag, &granted[0], "--", "true"])
@@ -223,10 +221,8 @@ fn the_default_root_is_not_executable() {
 
 #[test]
 fn each_allow_flag_widens_only_its_own_axis() {
-    let Scratch {
-        dir: _scratch,
-        made: granted,
-    } = scratch(&["srv"]);
+    let scratch = scratch(&["srv"]);
+    let granted = scratch.made;
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -248,10 +244,8 @@ fn each_allow_flag_widens_only_its_own_axis() {
 
 #[test]
 fn allow_flags_repeat_to_grant_several_paths() {
-    let Scratch {
-        dir: _scratch,
-        made: dirs,
-    } = scratch(&["a", "b", "c"]);
+    let scratch = scratch(&["a", "b", "c"]);
+    let dirs = scratch.made;
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -476,10 +470,8 @@ fn unix_sockets_are_opt_in() {
 /// onto the execute axis would silently widen it.
 #[test]
 fn exec_grants_are_repeatable_and_separate_from_read() {
-    let Scratch {
-        dir: _scratch,
-        made: dirs,
-    } = scratch(&["one", "two", "data"]);
+    let scratch = scratch(&["one", "two", "data"]);
+    let dirs = scratch.made;
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -507,10 +499,8 @@ fn exec_grants_are_repeatable_and_separate_from_read() {
 
 #[test]
 fn nothing_user_supplied_is_executable_by_default() {
-    let Scratch {
-        dir: _scratch,
-        made: granted,
-    } = scratch(&["srv"]);
+    let scratch = scratch(&["srv"]);
+    let granted = scratch.made;
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -539,10 +529,8 @@ fn nothing_user_supplied_is_executable_by_default() {
 /// let a tool write a tree it cannot `cat` back.
 #[test]
 fn allow_write_also_grants_read_at_the_command_line() {
-    let Scratch {
-        dir: _scratch,
-        made: granted,
-    } = scratch(&["srv"]);
+    let scratch = scratch(&["srv"]);
+    let granted = scratch.made;
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -570,10 +558,8 @@ fn allow_write_also_grants_read_at_the_command_line() {
 fn every_path_flag_grants_only_its_own_axis() {
     use sandbx_core::Axis;
 
-    let Scratch {
-        dir: _scratch,
-        made: dirs,
-    } = scratch(&["subject"]);
+    let scratch = scratch(&["subject"]);
+    let dirs = scratch.made;
     let granted = Path::new(&dirs[0]);
 
     for (flag, axis) in [

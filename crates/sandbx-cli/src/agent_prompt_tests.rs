@@ -1,11 +1,10 @@
 use super::super::Device;
 use super::{CLOSED, Consent, Operator, RESET, Terminal, UNCLEARED, account};
 use sandbx_approval::{ApprovalDecision, ToolCall};
-use sandbx_pty_fixture::{Pty, pty};
+use sandbx_pty_fixture::{Pty, pty, wait_readable};
 use sandbx_tools::BuiltinTool;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
-use std::os::fd::AsFd;
 use std::sync::{Arc, Mutex};
 use std::{io, thread};
 
@@ -265,19 +264,6 @@ fn an_escape_sequence_in_a_path_cannot_rewrite_the_question() {
     assert!(seen.contains("write /work/a"), "got {seen:?}");
     // One question, so the injected second one cannot be the one being answered.
     assert_eq!(seen.matches("allow it?").count(), 1, "got {seen:?}");
-}
-
-/// Wait for `fd` to carry something, or fail the test.
-///
-/// Not a sleep: a pty queues a written line from a workqueue, and a drain that ran before
-/// it was queued would leave the test asserting nothing.
-fn wait_readable(fd: &impl AsFd) {
-    use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
-
-    let mut fds = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
-    let ready = poll(&mut fds, PollTimeout::from(5_000u16)).expect("poll");
-
-    assert_eq!(ready, 1, "the pty queued nothing within five seconds");
 }
 
 /// Over a real terminal because what the drain clears is the kernel's input queue: a `y`

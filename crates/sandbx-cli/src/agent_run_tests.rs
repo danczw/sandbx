@@ -268,7 +268,7 @@ fn new_session() -> NewSession {
     let store = sandbx_session_store::SessionStore::new(root.path().join("sessions"));
     let session = store.create().expect("a new session");
     NewSession {
-        root,
+        _root: root,
         store,
         session,
     }
@@ -276,7 +276,7 @@ fn new_session() -> NewSession {
 
 /// What [`new_session`] made, under the directory that has to outlive it.
 struct NewSession {
-    root: tempfile::TempDir,
+    _root: tempfile::TempDir,
     store: sandbx_session_store::SessionStore,
     session: Session,
 }
@@ -322,11 +322,9 @@ fn show_thinking_asks_for_it_and_nothing_else_does() {
 #[test]
 fn a_stored_turn_carries_no_reasoning() {
     let args = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
 
     let Driven { code, .. } = one_round(
         &args,
@@ -367,11 +365,9 @@ fn a_stored_turn_carries_no_reasoning() {
 #[test]
 fn a_resumed_history_precedes_the_new_prompt() {
     let args = agent_run(&["sandbx", "agent-run", "--", "and the second?"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
     let id = {
         let Driven { code, .. } = one_round(
             &args,
@@ -456,11 +452,9 @@ fn the_request_names_the_tools_the_run_approved() {
 #[test]
 fn a_failed_turn_leaves_the_transcript_alone() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
     let before = fs::read(session.path()).expect("the transcript exists");
 
     let error = failed_round(&args, Some(session)).expect_err("a turn that never opened");
@@ -477,11 +471,9 @@ fn a_failed_turn_leaves_the_transcript_alone() {
 #[test]
 fn a_transcript_holds_no_api_key_material() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
     let path = session.path().to_owned();
 
     let Driven { code, .. } = one_round(
@@ -512,11 +504,9 @@ fn a_transcript_holds_no_api_key_material() {
 #[test]
 fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
 
     let Driven { code, .. } = one_round(
         &args,
@@ -606,11 +596,9 @@ fn stranding_text() -> Vec<AgentEvent> {
 #[test]
 fn a_discarded_wrap_up_round_owns_what_it_wrote() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
     let path = session.path().to_owned();
 
     let Driven {
@@ -694,11 +682,9 @@ fn a_lost_terminal_still_stores_the_turn() {
     let policy = SandboxPolicy::default()
         .allow_read(vetted(root.path()))
         .allow_write(vetted(root.path()));
-    let NewSession {
-        root: _store_root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
     let path = session.path().to_owned();
 
     let Driven { code, .. } = asked_on(
@@ -796,11 +782,9 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
         "--",
         "go",
     ]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
 
     let Driven {
         sent,
@@ -831,11 +815,9 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
 #[test]
 fn a_turn_out_of_rounds_is_stored_and_resumable() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
 
     let Driven { code, .. } = capped(&args, summarising(), Some(session));
     assert_eq!(code.expect("a reported turn"), INCOMPLETE);
@@ -853,11 +835,9 @@ fn a_turn_out_of_rounds_is_stored_and_resumable() {
 #[test]
 fn a_failed_wrap_up_round_costs_the_turn_nothing() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
 
     // A round with no events at all ends without a `Stop`, which is the wrap-up
     // round failing without a provider that can be made to fail.
@@ -882,11 +862,9 @@ fn a_failed_wrap_up_round_costs_the_turn_nothing() {
 #[test]
 fn a_prompt_resuming_an_unanswered_call_joins_it() {
     let args = agent_run(&["sandbx", "agent-run", "--", "what did you find?"]);
-    let NewSession {
-        root: _root,
-        store,
-        session,
-    } = new_session();
+    let fixture = new_session();
+    let store = fixture.store;
+    let session = fixture.session;
     let capping = agent_run(&[
         "sandbx",
         "agent-run",

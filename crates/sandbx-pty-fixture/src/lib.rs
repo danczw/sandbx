@@ -13,6 +13,7 @@
 //! `--all-features` does not record it.
 
 use std::fs::File;
+use std::os::fd::AsFd;
 
 /// The window every [`pty`] opens with: no terminal's default, so a size read off anything
 /// but the pty under test does not match it.
@@ -42,9 +43,8 @@ pub struct Pty {
 /// A pty pair, and no controlling terminal: closing the master is then a hangup on the
 /// slave rather than a `SIGHUP` that kills the test binary.
 ///
-/// Echo off, so what the slave reads is only what the master wrote. `ONLCR` off with it:
-/// the line discipline would turn a written `\n` into `\r\n` on the way out, which an
-/// exact assertion cannot allow for.
+/// Echo off, so what the slave reads is only what the master wrote; `ONLCR` off, so what
+/// the master reads is only what the slave wrote, a `\n` not becoming `\r\n` on the way.
 pub fn pty() -> Pty {
     use nix::pty::Winsize;
     use nix::sys::termios;
@@ -66,4 +66,17 @@ pub fn pty() -> Pty {
         master: File::from(pair.master),
         slave: File::from(pair.slave),
     }
+}
+
+/// Wait for `fd` to carry something, or fail the test.
+///
+/// Not a sleep: a pty queues a written line from a workqueue, and a read that ran before
+/// it was queued would leave the test asserting nothing.
+pub fn wait_readable(fd: &impl AsFd) {
+    use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+
+    let mut watched = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
+    let ready = poll(&mut watched, PollTimeout::from(5_000u16)).expect("poll");
+
+    assert_eq!(ready, 1, "the pty queued nothing within five seconds");
 }
