@@ -15,11 +15,17 @@ fn vetted(path: impl AsRef<Path>) -> VettedPath {
 
 /// A directory to grant, resolved — `vet` resolves, so a host reaching its temporary
 /// directory through a symlink would otherwise pin a path these tests never spelled.
-fn scratch() -> (tempfile::TempDir, PathBuf) {
+fn scratch() -> Scratch {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let root = dir.path().canonicalize().expect("its resolved path");
 
-    (dir, root)
+    Scratch { dir, root }
+}
+
+/// What [`scratch`] made: the directory, which has to outlive the test, and its resolved path.
+struct Scratch {
+    dir: tempfile::TempDir,
+    root: PathBuf,
 }
 
 /// What a policy granted on `axis`, as paths — the grants also carry an object, which only
@@ -106,7 +112,7 @@ fn system_executables_grants_no_write_or_network() {
 /// separation has to be made here.
 #[test]
 fn read_and_write_grants_do_not_confer_execute() {
-    let (_dir, root) = scratch();
+    let Scratch { dir: _dir, root } = scratch();
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&root))
         .allow_write(vetted(&root));
@@ -119,7 +125,7 @@ fn read_and_write_grants_do_not_confer_execute() {
 
 #[test]
 fn read_execute_grants_both_axes_deliberately() {
-    let (_dir, root) = scratch();
+    let Scratch { dir: _dir, root } = scratch();
     let policy = SandboxPolicy::default().allow_read_execute(vetted(&root));
 
     assert_eq!(
@@ -149,7 +155,7 @@ fn system_executables_skips_paths_this_system_lacks() {
 
 #[test]
 fn system_executables_keeps_what_was_already_granted() {
-    let (_dir, root) = scratch();
+    let Scratch { dir: _dir, root } = scratch();
     let policy = SandboxPolicy::default()
         .allow_write(vetted(&root))
         .allow_system_executables();
@@ -268,7 +274,7 @@ fn granting_a_variable_widens_nothing_else() {
 
 #[test]
 fn granting_a_path_passes_no_variable() {
-    let (_dir, root) = scratch();
+    let Scratch { dir: _dir, root } = scratch();
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&root))
         .allow_system_executables();
@@ -383,7 +389,10 @@ fn axis_grants_are_the_documented_three_way_claim() {
 fn a_grant_lands_only_on_its_own_axis() {
     use sandbx_core::Axis;
 
-    let (_dir, granted) = scratch();
+    let Scratch {
+        dir: _dir,
+        root: granted,
+    } = scratch();
 
     for axis in Axis::ALL {
         let policy = SandboxPolicy::default().grant(axis, vetted(&granted));
@@ -409,7 +418,7 @@ fn a_grant_lands_only_on_its_own_axis() {
 fn granted_paths_yields_each_grant_in_axis_order() {
     use sandbx_core::{Axis, GrantedPath};
 
-    let (_dir, root) = scratch();
+    let Scratch { dir: _dir, root } = scratch();
     let at = |name: &str| {
         let path = root.join(name);
         fs::create_dir(&path).expect("a directory to grant");
@@ -514,7 +523,7 @@ fn an_unhinted_policy_permits_no_resolver_variable() {
 
 /// Two directories that exist, since a start directory is one a `chdir` would reach.
 fn two_roots() -> TwoRoots {
-    let (dir, root) = scratch();
+    let Scratch { dir, root } = scratch();
     let first = root.join("first");
     let second = root.join("second");
     fs::create_dir(&first).expect("the first root");

@@ -24,10 +24,10 @@ const DETAIL_LIMIT: usize = 256;
 const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
 
 /// What the helper reported on the channel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Report<'a> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Report {
     /// A hardening step that did not take effect, and why.
-    Degraded { step: Degradation, detail: &'a str },
+    Degraded(Degraded),
 
     /// A helper stage refused rather than reaching the command. On the channel because the
     /// stage's non-zero exit is relayed on the command's behalf, so it would otherwise read
@@ -80,11 +80,13 @@ impl Degradation {
     }
 }
 
-/// A hardening step that did not take effect, and why, as the helper reports it.
+/// A hardening step that did not take effect, and why: what the helper encodes, and what
+/// the parent decodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Degraded {
     pub(crate) step: Degradation,
-    /// Built from an errno, hence owned.
+    /// Owned at both ends: built from an errno, and copied off a channel of at most
+    /// [`RECORD_LIMIT`] lines, once per run.
     pub(crate) detail: String,
 }
 
@@ -118,13 +120,16 @@ pub(crate) fn encode_refusal(refusal: crate::HelperRefusal) -> String {
 /// line rather than failing the run, this being the reporting path for a sandbox that
 /// already carried on. No label reaches the trail unvalidated, hence the two closed sets
 /// below; they must stay disjoint, or the lookup order decides what one means.
-pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
+pub(crate) fn decode(channel: &str) -> Vec<Report> {
     channel
         .lines()
         .filter_map(|line| {
             let (label, detail) = line.split_once(SEPARATOR)?;
             if let Some(step) = Degradation::from_label(label) {
-                return Some(Report::Degraded { step, detail });
+                return Some(Report::Degraded(Degraded {
+                    step,
+                    detail: detail.to_owned(),
+                }));
             }
             Some(Report::Failed(crate::HelperRefusal::from_label(label)?))
         })

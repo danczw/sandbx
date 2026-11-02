@@ -297,8 +297,8 @@ fn record_reports(
     let mut refused = None;
     for report in crate::degradation::decode(&records) {
         match report {
-            crate::degradation::Report::Degraded { step, detail } => {
-                crate::AuditEvent::degraded(step.label(), Some(spawn), session, detail).emit();
+            crate::degradation::Report::Degraded(crate::degradation::Degraded { step, detail }) => {
+                crate::AuditEvent::degraded(step.label(), Some(spawn), session, &detail).emit();
             }
             crate::degradation::Report::Failed(refusal) => {
                 refused = Some(refusal);
