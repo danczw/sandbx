@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use nix::errno::Errno;
 use ratatui::Terminal;
-use sandbx_pty_fixture::{Pty, WINDOW, pty};
+use sandbx_pty_fixture::{Pty, WINDOW, Window, pty};
 use sandbx_tui_transcript::{Hint, Reasoning, Transcript, draw};
 
 use super::{Measured, cleared};
@@ -112,7 +112,11 @@ fn a_live_terminal_is_drawn_at_its_own_size() {
     let transcript = Transcript::new("a prompt", Reasoning::Hidden);
 
     let size = terminal.size().expect("a live pty is measured");
-    assert_eq!((size.width, size.height), (WINDOW.columns, WINDOW.rows));
+    let window = Window {
+        columns: size.width,
+        rows: size.height,
+    };
+    assert_eq!(window, WINDOW);
 
     cleared(&mut terminal).expect("a live pty is cleared");
     terminal

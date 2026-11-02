@@ -208,11 +208,8 @@ impl Tui {
             // one nobody watched, and that is not the recoverable stop an interrupt is.
             Err(Stopped::Gone) => (Ok(NO_CONSENT), None, vec![lost()]),
             Ok(Ok(outcome)) => {
-                let Ending {
-                    code,
-                    said: account,
-                } = ending(&outcome);
-                (Ok(code), Some(outcome), account)
+                let Ending { code, said } = ending(&outcome);
+                (Ok(code), Some(outcome), said)
             }
             Ok(Err(error)) => {
                 // Drawn before it is returned: the operator reads the reason on the screen

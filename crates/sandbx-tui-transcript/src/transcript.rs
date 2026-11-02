@@ -55,9 +55,7 @@ pub struct Transcript {
 /// The last token counts reported for a turn's requests.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Tokens {
-    /// The prompt's.
     pub(crate) input: Option<u32>,
-    /// The output's.
     pub(crate) output: Option<u32>,
 }
 
