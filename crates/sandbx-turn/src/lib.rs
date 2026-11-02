@@ -15,6 +15,6 @@ mod tools;
 
 pub use error::TurnError;
 pub use run::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
-// Not dead: `Turn::observed` and `TurnOutcome::usage` are public fields of these types, and
-// this is how a consumer outside the workspace names them (#356).
+// Not dead: `TurnLimits::compaction`, `Turn::observed` and `TurnOutcome::usage` are public
+// fields of these types, and this is how a consumer outside the workspace names them (#356).
 pub use sandbx_compact::{Compaction, PromptUsage};

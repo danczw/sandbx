@@ -1,7 +1,7 @@
 # sandbx
 
 A security-first AI coding agent harness.
-`ls crates/` is the crate list and each crate's `//!` says what it owns; `deny.toml` says which crate may depend on which; the version is in the workspace `Cargo.toml`.
+`ls crates/` is the crate list; the version is in the workspace `Cargo.toml`.
 
 Where to look, and where to put something new:
 

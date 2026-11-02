@@ -23,12 +23,11 @@ mod tests;
 ```
 
 It stays compiled into the crate, which is the point: it reaches private items.
-`grep -rn 'mod tests {' crates/*/src` returning nothing is the whole of what
-this convention claims.
 `crates/*/tests/` is a separate crate and sees only the public surface, so a unit test
 cannot move there without widening the API to suit it. **Never make that trade** — a
 module is private so that its internals are not an API, and keeping its tests inside
-the crate is what lets it stay that way.
+the crate is what lets it stay that way. `grep -rn 'mod tests {' crates/*/src`
+returning nothing is the whole of what this convention claims.
 
 | Test | Home |
 |---|---|
