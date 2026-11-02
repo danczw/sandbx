@@ -8,10 +8,7 @@ fn degraded(channel: &str) -> Vec<Degraded> {
     decode(channel)
         .into_iter()
         .filter_map(|report| match report {
-            Report::Degraded { step, detail } => Some(Degraded {
-                step,
-                detail: detail.to_owned(),
-            }),
+            Report::Degraded(degraded) => Some(degraded),
             Report::Failed(_) => None,
         })
         .collect()
@@ -72,10 +69,10 @@ fn a_malformed_line_keeps_the_records_around_it() {
 
     assert_eq!(
         decode(&channel),
-        vec![Report::Degraded {
+        vec![Report::Degraded(Degraded {
             step: Degradation::CapabilityBoundingSet,
-            detail: "left as inherited"
-        }],
+            detail: "left as inherited".to_owned(),
+        })],
         "a surviving record was dropped with the malformed ones"
     );
 }
