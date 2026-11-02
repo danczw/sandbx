@@ -29,13 +29,23 @@ fn replied(text: &str) -> RequestMessage {
 /// A `tool_result`'s answer and verdict, for the assertions whose subject is one.
 ///
 /// Panics on anything else: a scripted tool call produces one, so another block is a bug.
-fn result_of(block: &ContentBlock) -> (&str, Option<bool>) {
+fn result_of(block: &ContentBlock) -> Answered<'_> {
     match block {
         ContentBlock::ToolResult {
             content, is_error, ..
-        } => (content, *is_error),
+        } => Answered {
+            content,
+            is_error: *is_error,
+        },
         other => panic!("not a tool_result: {other:?}"),
     }
+}
+
+/// What [`result_of`] reads off a `tool_result`.
+#[derive(Debug, PartialEq, Eq)]
+struct Answered<'a> {
+    content: &'a str,
+    is_error: Option<bool>,
 }
 
 /// A gate whose verdict is a closure's, keeping what it was asked and what it was told.
@@ -83,7 +93,7 @@ impl<F: FnMut(ToolCall<'_>) -> ApprovalDecision> CallGate for Gate<F> {
 }
 
 /// The single `tool_result` block a scripted call produced.
-fn tool_error(messages: &[RequestMessage]) -> (&str, Option<bool>) {
+fn tool_error(messages: &[RequestMessage]) -> Answered<'_> {
     result_of(&messages[1].content[0])
 }
 
@@ -459,7 +469,7 @@ async fn a_refused_tool_call_is_an_error_to_the_model() {
 
     assert!(!outside.exists(), "the write must not have happened");
 
-    let (content, is_error) = tool_error(&messages);
+    let Answered { content, is_error } = tool_error(&messages);
     assert_eq!(is_error, Some(true));
     assert!(
         content.contains("refused by the sandbox policy"),
@@ -501,7 +511,7 @@ async fn bad_tool_arguments_are_reported_as_an_error() {
     .unwrap()
     .messages;
 
-    let (content, is_error) = tool_error(&messages);
+    let Answered { content, is_error } = tool_error(&messages);
     assert_eq!(is_error, Some(true));
     assert!(
         content.contains("invalid tool arguments"),
@@ -529,7 +539,7 @@ async fn an_unknown_tool_name_does_not_end_the_turn() {
     .unwrap()
     .messages;
 
-    let (content, is_error) = tool_error(&messages);
+    let Answered { content, is_error } = tool_error(&messages);
     assert_eq!(is_error, Some(true));
     assert!(content.contains("rm"), "got {content:?}");
     assert_eq!(messages.len(), 3, "the turn should have carried on");
@@ -572,7 +582,10 @@ async fn a_denied_call_never_reaches_the_tool() {
 
     assert_eq!(
         tool_error(&messages),
-        ("write is not approved for this run", Some(true))
+        Answered {
+            content: "write is not approved for this run",
+            is_error: Some(true)
+        }
     );
     assert_eq!(
         gate.settled,
@@ -640,7 +653,7 @@ async fn a_denial_never_ends_the_turn() {
 
     // The second call's result: the same gate, asked again, let this one through.
     let listed = result_of(&messages[3].content[0]);
-    assert_eq!(listed.1, None, "got {listed:?}");
+    assert_eq!(listed.is_error, None, "got {listed:?}");
 }
 
 /// Before, not alongside: `spawn_blocking` cannot be cancelled, so a late decision would
@@ -708,7 +721,7 @@ async fn an_unknown_name_never_reaches_the_gate() {
     // The refusal still reaches the gate as a settled call, which is the record #169
     // found missing.
     assert_eq!(gate.settled, ["rm:unknown"]);
-    assert_eq!(tool_error(&messages).1, Some(true));
+    assert_eq!(tool_error(&messages).is_error, Some(true));
 }
 
 /// `from_name` resolves against every built-in, so resolving alone would let an
@@ -750,7 +763,7 @@ async fn an_un_offered_tool_never_reaches_the_gate() {
     );
     assert_eq!(gate.settled, ["write:not-offered"]);
     assert!(!file.exists(), "an un-offered call must not have run");
-    assert_eq!(tool_error(&messages).1, Some(true));
+    assert_eq!(tool_error(&messages).is_error, Some(true));
 }
 
 /// Each answer needs its own `tool_use_id`, or the model reads the refusal as belonging
@@ -869,7 +882,13 @@ async fn an_abort_ends_the_turn_where_a_deny_goes_on() {
     // The replayable shape a session stores: the assistant turn, then the results.
     assert_eq!(aborted.messages.len(), 2);
     assert_eq!(aborted.messages[1].role, Role::User);
-    assert_eq!(tool_error(&aborted.messages), (reason, Some(true)));
+    assert_eq!(
+        tool_error(&aborted.messages),
+        Answered {
+            content: reason,
+            is_error: Some(true)
+        }
+    );
 
     let mut script = Script::new(rounds());
     let denied = run_turn(
@@ -958,9 +977,9 @@ async fn the_calls_after_an_abort_are_answered_not_run() {
     assert_eq!(results.len(), 3, "got {results:?}");
     // The `ls` consented to before the abort stands: an abort narrows what follows it, it
     // does not retract what already ran.
-    assert_eq!(result_of(&results[0]).1, None);
+    assert_eq!(result_of(&results[0]).is_error, None);
     for behind in &results[1..] {
-        assert_eq!(result_of(behind).1, Some(true));
+        assert_eq!(result_of(behind).is_error, Some(true));
     }
 }
 

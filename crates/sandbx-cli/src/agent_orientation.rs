@@ -74,9 +74,9 @@ fn roots_line(roots: &[String], start: Option<&Path>) -> String {
 ///
 /// The system binaries every run gets are left out, being a host map in a transcript. One
 /// entry per path and not per grant, the derived default granting read and write on one root.
-fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
+fn work_roots(policy: &SandboxPolicy) -> Vec<WorkRoot> {
     let system = spellings(&SandboxPolicy::default().allow_system_executables());
-    let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
+    let mut roots: Vec<WorkRoot> = Vec::new();
 
     for GrantedPath { axis, vetted } in policy.granted_paths() {
         // Re-vetted only as a test, never named: the guard compares the grant whole, so a root
@@ -96,23 +96,32 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
             Axis::ReadExecute => "run",
         };
 
-        match roots.iter_mut().find(|(known, _)| *known == path) {
+        match roots.iter_mut().find(|known| known.path == path) {
             // `--allow-read X --allow-write X` grants read twice, `Grants::policy` adding
             // it to every write, and `(read, read, write)` reads as a second grant.
-            Some((_, held)) if !held.contains(&access) => held.push(access),
+            Some(held) if !held.access.contains(&access) => held.access.push(access),
             Some(_) => {}
-            None => roots.push((path, vec![access])),
+            None => roots.push(WorkRoot {
+                path,
+                access: vec![access],
+            }),
         }
     }
 
     roots
 }
 
+/// One root [`work_roots`] names, and the access it carries, as the sentence words it.
+struct WorkRoot {
+    path: PathBuf,
+    access: Vec<&'static str>,
+}
+
 /// [`work_roots`] as the sentence spells them.
-fn named(roots: &[(PathBuf, Vec<&str>)]) -> Vec<String> {
+fn named(roots: &[WorkRoot]) -> Vec<String> {
     roots
         .iter()
-        .map(|(path, access)| format!("{} ({})", path.display(), access.join(", ")))
+        .map(|root| format!("{} ({})", root.path.display(), root.access.join(", ")))
         .collect()
 }
 
@@ -121,13 +130,10 @@ fn named(roots: &[(PathBuf, Vec<&str>)]) -> Vec<String> {
 /// Both spellings come off the same grants, so the two cannot name one directory two ways.
 /// Dropped when absent from the list: under `--allow-read /usr --allow-read /work` a command
 /// starts in the system binaries, which the sentence leaves out and calls refused.
-fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<PathBuf> {
+fn start_root(policy: &SandboxPolicy, roots: &[WorkRoot]) -> Option<PathBuf> {
     let start = policy.working_root()?.to_path_buf();
 
-    roots
-        .iter()
-        .any(|(named, _)| *named == start)
-        .then_some(start)
+    roots.iter().any(|root| root.path == start).then_some(start)
 }
 
 /// Every path `policy` grants, in the form the guard compares against.

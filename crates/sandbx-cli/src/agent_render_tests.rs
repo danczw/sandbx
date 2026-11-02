@@ -37,14 +37,23 @@ fn captured() -> Render<Vec<u8>, Vec<u8>> {
 }
 
 /// Everything stdout received, and what the turn would have exited with.
-fn rendered(events: &[AgentEvent]) -> (String, Result<i32, AgentError>) {
+fn rendered(events: &[AgentEvent]) -> Rendered {
     let mut render = captured();
     for event in events {
         render.event(event);
     }
 
     let code = render.finish(None, Answer::Whole);
-    (String::from_utf8(render.out).expect("utf-8"), code)
+    Rendered {
+        written: String::from_utf8(render.out).expect("utf-8"),
+        code,
+    }
+}
+
+/// What [`rendered`] got back: everything stdout received, and the exit code.
+struct Rendered {
+    written: String,
+    code: Result<i32, AgentError>,
 }
 
 /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Both halves
@@ -121,7 +130,7 @@ fn the_answer_does_not_continue_a_reasoning_line() {
 /// reasoning on stderr must not count as having written one.
 #[test]
 fn reasoning_alone_is_not_an_answer() {
-    let (written, code) = rendered(&[
+    let Rendered { written, code } = rendered(&[
         AgentEvent::Thinking {
             delta: "weighing it up".to_string(),
         },
@@ -134,7 +143,7 @@ fn reasoning_alone_is_not_an_answer() {
 
 #[test]
 fn a_rounds_stop_does_not_terminate_the_answer() {
-    let (written, code) = rendered(&[
+    let Rendered { written, code } = rendered(&[
         text("looking"),
         stop(StopReason::ToolUse),
         text(" — found it"),
@@ -150,7 +159,9 @@ fn a_rounds_stop_does_not_terminate_the_answer() {
 /// a renderer fed a `max_tokens` round and told nothing still exits clean.
 #[test]
 fn the_exit_code_comes_from_the_outcome_not_a_stop() {
-    let (_, unreported) = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
+    let Rendered {
+        code: unreported, ..
+    } = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
     assert_eq!(unreported.expect("clean turn"), 0);
 
     let mut render = captured();
@@ -356,25 +367,25 @@ fn a_gap_with_nothing_either_side_is_never_written() {
 #[test]
 fn an_answer_cut_short_mid_line_is_still_terminated() {
     // No `Stop` at all: the shape of a turn that died mid-stream.
-    let (written, _) = rendered(&[text("partial answ")]);
+    let Rendered { written, .. } = rendered(&[text("partial answ")]);
     assert_eq!(written, "partial answ\n");
 }
 
 #[test]
 fn a_terminated_answer_is_not_terminated_twice() {
-    let (written, _) = rendered(&[text("hi\n"), stop(StopReason::EndTurn)]);
+    let Rendered { written, .. } = rendered(&[text("hi\n"), stop(StopReason::EndTurn)]);
     assert_eq!(written, "hi\n");
 }
 
 #[test]
 fn an_empty_delta_leaves_the_line_where_it_was() {
-    let (written, _) = rendered(&[text("hi\n"), text(""), stop(StopReason::EndTurn)]);
+    let Rendered { written, .. } = rendered(&[text("hi\n"), text(""), stop(StopReason::EndTurn)]);
     assert_eq!(written, "hi\n");
 }
 
 #[test]
 fn a_turn_that_wrote_nothing_adds_no_newline() {
-    let (written, _) = rendered(&[stop(StopReason::EndTurn)]);
+    let Rendered { written, .. } = rendered(&[stop(StopReason::EndTurn)]);
     assert_eq!(written, "");
 }
 

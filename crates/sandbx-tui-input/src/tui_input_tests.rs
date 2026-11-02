@@ -6,7 +6,7 @@ use std::{io, pin};
 
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use sandbx_pty_fixture::pty;
+use sandbx_pty_fixture::{Pty, pty};
 use tokio::sync::watch;
 
 use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
@@ -90,13 +90,19 @@ fn a_hangup_stops_the_turn_and_a_keypress_outranks_it() {
 fn a_hung_up_terminal_is_seen_and_a_live_one_is_not() {
     let asked = PollFlags::POLLIN;
 
-    let (master, dead) = pty();
+    let Pty {
+        master,
+        slave: dead,
+    } = pty();
     drop(master);
     assert!(hung_up(dead.as_fd(), dead.as_fd(), asked, PollTimeout::ZERO).expect("poll"));
 
     // Non-vacuous: a live pty answers no, so the answer above is the hangup and not the
     // call. Bounded rather than blocking, a quiet pty never satisfying `POLLIN`.
-    let (_master, live) = pty();
+    let Pty {
+        master: _master,
+        slave: live,
+    } = pty();
     let wait = PollTimeout::from(50u16);
     assert!(!hung_up(live.as_fd(), live.as_fd(), asked, wait).expect("poll"));
 }
@@ -105,7 +111,7 @@ fn a_hung_up_terminal_is_seen_and_a_live_one_is_not() {
 /// so only the flags tell a terminal with something to say from one with nothing left.
 #[test]
 fn pending_input_is_not_a_hangup() {
-    let (mut master, slave) = pty();
+    let Pty { mut master, slave } = pty();
     writeln!(master, "x").expect("the typed line");
     // Queued before the poll runs, or this asserts nothing about pending input.
     wait_readable(&slave);
@@ -121,7 +127,7 @@ fn pending_input_is_not_a_hangup() {
 /// at once, and a slow machine only waits longer.
 #[test]
 fn pending_input_does_not_wake_the_watch() {
-    let (mut master, slave) = pty();
+    let Pty { mut master, slave } = pty();
     writeln!(master, "x").expect("the typed line");
     wait_readable(&slave);
 
@@ -145,8 +151,14 @@ fn pending_input_does_not_wake_the_watch() {
 /// that died is as unwatched as a keyboard that did.
 #[test]
 fn a_hangup_on_the_screens_descriptor_alone_is_seen() {
-    let (_master, live) = pty();
-    let (master, dead) = pty();
+    let Pty {
+        master: _master,
+        slave: live,
+    } = pty();
+    let Pty {
+        master,
+        slave: dead,
+    } = pty();
     drop(master);
 
     let (sender, seen) = watch::channel(Seen::default());
@@ -169,7 +181,10 @@ fn a_reader_on_a_hung_up_terminal_enters_no_source() {
         }
     }
 
-    let (master, dead) = pty();
+    let Pty {
+        master,
+        slave: dead,
+    } = pty();
     drop(master);
     let (sender, seen) = watch::channel(Seen::default());
 
@@ -201,7 +216,10 @@ fn a_reader_on_a_live_terminal_reads_its_source() {
         }
     }
 
-    let (_master, live) = pty();
+    let Pty {
+        master: _master,
+        slave: live,
+    } = pty();
     let (sender, seen) = watch::channel(Seen::default());
     let mut source = Typed::default();
 

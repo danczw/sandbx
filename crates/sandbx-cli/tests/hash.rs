@@ -19,7 +19,7 @@ fn hash(argv: &[&str]) -> sandbx_cli::Hash {
 }
 
 /// What the subcommand wrote to stdout, and the library's digest for the same bytes.
-fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
+fn printed(contents: &[u8]) -> Printed {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let path = dir.path().join("program");
     fs::write(&path, contents).expect("write");
@@ -38,14 +38,23 @@ fn printed(contents: &[u8]) -> (String, sandbx_core::Sha256Digest) {
     let mut file = File::open(&path).expect("reopen");
     let digest = sandbx_core::Sha256Digest::of_file(&mut file).expect("hash");
 
-    (String::from_utf8(output.stdout).expect("utf-8"), digest)
+    Printed {
+        stdout: String::from_utf8(output.stdout).expect("utf-8"),
+        digest,
+    }
+}
+
+/// What [`printed`] compares.
+struct Printed {
+    stdout: String,
+    digest: sandbx_core::Sha256Digest,
 }
 
 /// The exact bytes: a prefix, a different case or a second field all break
 /// `--pin-sha256 "$(sandbx hash …)"`.
 #[test]
 fn the_printed_digest_is_the_one_the_flag_accepts() {
-    let (stdout, digest) = printed(b"pinned bytes");
+    let Printed { stdout, digest } = printed(b"pinned bytes");
 
     assert_eq!(stdout, format!("{digest}\n"));
     assert_eq!(

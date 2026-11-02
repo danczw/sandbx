@@ -49,7 +49,16 @@ pub struct Transcript {
     /// Held per field because the API omits either independently: a reported zero is a
     /// figure, and an absence must not take a shown one back off the screen. Not a sum:
     /// each is one request's, as `TurnOutcome::usage` is.
-    tokens: (Option<u32>, Option<u32>),
+    tokens: Tokens,
+}
+
+/// The last token counts reported for a turn's requests.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Tokens {
+    /// The prompt's.
+    pub(crate) input: Option<u32>,
+    /// The output's.
+    pub(crate) output: Option<u32>,
 }
 
 impl Transcript {
@@ -62,7 +71,7 @@ impl Transcript {
             }],
             reasoning,
             rounds: 0,
-            tokens: (None, None),
+            tokens: Tokens::default(),
         }
     }
 
@@ -80,8 +89,8 @@ impl Transcript {
                 output_tokens,
                 ..
             } => {
-                self.tokens.0 = input_tokens.or(self.tokens.0);
-                self.tokens.1 = output_tokens.or(self.tokens.1);
+                self.tokens.input = input_tokens.or(self.tokens.input);
+                self.tokens.output = output_tokens.or(self.tokens.output);
             }
             AgentEvent::Thinking { .. }
             | AgentEvent::ToolCallRequested { .. }
@@ -111,7 +120,7 @@ impl Transcript {
         self.rounds
     }
 
-    pub(crate) fn tokens(&self) -> (Option<u32>, Option<u32>) {
+    pub(crate) fn tokens(&self) -> Tokens {
         self.tokens
     }
 

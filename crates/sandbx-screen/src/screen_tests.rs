@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use nix::errno::Errno;
 use ratatui::Terminal;
-use sandbx_pty_fixture::{WINDOW, pty};
+use sandbx_pty_fixture::{Pty, WINDOW, pty};
 use sandbx_tui_transcript::{Hint, Reasoning, Transcript, draw};
 
 use super::{Measured, cleared};
@@ -35,10 +35,9 @@ impl AsFd for Counted {
     }
 }
 
-/// A terminal over a live pty, taken as `Screen::enter` takes stdout; the master whose
-/// drop hangs it up; and the count of writes that reached it.
-fn screen() -> (File, Terminal<Measured<Counted>>, Rc<Shared<usize>>) {
-    let (master, slave) = pty();
+/// A terminal over a live pty, taken as `Screen::enter` takes stdout.
+fn screen() -> Fixture {
+    let Pty { master, slave } = pty();
     let writes = Rc::default();
     let counted = Counted {
         pty: slave,
@@ -48,7 +47,20 @@ fn screen() -> (File, Terminal<Measured<Counted>>, Rc<Shared<usize>>) {
     let measured = Measured::new(counted).expect("a duplicate of the pty");
     let terminal = Terminal::new(measured).expect("a live pty is measured");
 
-    (master, terminal, writes)
+    Fixture {
+        master,
+        terminal,
+        writes,
+    }
+}
+
+/// What [`screen`] set up.
+struct Fixture {
+    /// The pty's master, whose drop hangs the terminal up.
+    master: File,
+    terminal: Terminal<Measured<Counted>>,
+    /// How many writes reached the pty.
+    writes: Rc<Shared<usize>>,
 }
 
 /// The pty's own `EIO` and not a size from anywhere else, `tput`'s included.
@@ -60,7 +72,11 @@ fn assert_unmeasured(failed: io::Result<()>) {
 /// The whole of #269: a draw on a hung-up terminal fails at the size, before it writes.
 #[test]
 fn a_hung_up_terminal_is_not_drawn_on() {
-    let (master, mut terminal, writes) = screen();
+    let Fixture {
+        master,
+        mut terminal,
+        writes,
+    } = screen();
     let transcript = Transcript::new("a prompt", Reasoning::Hidden);
     drop(master);
 
@@ -73,7 +89,11 @@ fn a_hung_up_terminal_is_not_drawn_on() {
 /// And `finish`'s clear, which asks for the size itself rather than through a draw.
 #[test]
 fn a_hung_up_terminal_is_not_cleared() {
-    let (master, mut terminal, writes) = screen();
+    let Fixture {
+        master,
+        mut terminal,
+        writes,
+    } = screen();
     drop(master);
 
     assert_unmeasured(cleared(&mut terminal));
@@ -84,11 +104,15 @@ fn a_hung_up_terminal_is_not_cleared() {
 /// so the two above are the hangup and not a backend that refuses everything.
 #[test]
 fn a_live_terminal_is_drawn_at_its_own_size() {
-    let (_master, mut terminal, writes) = screen();
+    let Fixture {
+        master: _master,
+        mut terminal,
+        writes,
+    } = screen();
     let transcript = Transcript::new("a prompt", Reasoning::Hidden);
 
     let size = terminal.size().expect("a live pty is measured");
-    assert_eq!((size.width, size.height), WINDOW);
+    assert_eq!((size.width, size.height), (WINDOW.columns, WINDOW.rows));
 
     cleared(&mut terminal).expect("a live pty is cleared");
     terminal
@@ -99,7 +123,11 @@ fn a_live_terminal_is_drawn_at_its_own_size() {
 
 /// A terminal whose cursor a draw hid, then hung up: what `Terminal::drop` finds.
 fn hidden_then_hung_up() -> Terminal<Measured<Counted>> {
-    let (master, mut terminal, _writes) = screen();
+    let Fixture {
+        master,
+        mut terminal,
+        writes: _writes,
+    } = screen();
     let transcript = Transcript::new("a prompt", Reasoning::Hidden);
     terminal
         .draw(|frame| draw(frame, &transcript, Hint::Running))

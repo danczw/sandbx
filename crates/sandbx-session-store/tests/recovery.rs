@@ -30,7 +30,7 @@ fn exchange(ask: &str, reply: &str) -> Vec<Message> {
 }
 
 /// One session with one turn in it, and the path it was written to.
-fn spoken_to(store: &SessionStore) -> (sandbx_session_id::SessionId, PathBuf) {
+fn spoken_to(store: &SessionStore) -> Spoken {
     let mut session = store.create().expect("a session is created");
     session
         .append(CompletedTurn {
@@ -40,14 +40,23 @@ fn spoken_to(store: &SessionStore) -> (sandbx_session_id::SessionId, PathBuf) {
         })
         .expect("the turn is appended");
 
-    (session.id().clone(), session.path().to_owned())
+    Spoken {
+        id: session.id().clone(),
+        path: session.path().to_owned(),
+    }
+}
+
+/// The session [`spoken_to`] made.
+struct Spoken {
+    id: sandbx_session_id::SessionId,
+    path: PathBuf,
 }
 
 /// ENOSPC part-way through an append, which refusing would let cost the conversation.
 #[test]
 fn a_torn_final_line_is_dropped() {
     let (_root, store) = store();
-    let (id, path) = spoken_to(&store);
+    let Spoken { id, path } = spoken_to(&store);
 
     let whole = fs::read_to_string(&path).unwrap();
     fs::write(&path, format!("{whole}{{\"type\":\"mes")).unwrap();
@@ -61,7 +70,7 @@ fn a_torn_final_line_is_dropped() {
 #[test]
 fn a_transcript_of_nothing_but_a_torn_line_is_refused() {
     let (_root, store) = store();
-    let (id, path) = spoken_to(&store);
+    let Spoken { id, path } = spoken_to(&store);
 
     fs::write(&path, "{\"type\":\"hea").unwrap();
 
@@ -78,7 +87,7 @@ fn a_transcript_of_nothing_but_a_torn_line_is_refused() {
 #[test]
 fn an_interior_pair_of_user_turns_is_refused() {
     let (_root, store) = store();
-    let (id, path) = spoken_to(&store);
+    let Spoken { id, path } = spoken_to(&store);
 
     // Appended so the history still ends on the model: only a check over the whole
     // history sees the break.

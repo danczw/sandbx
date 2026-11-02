@@ -1,7 +1,7 @@
 use sandbx_event::AgentEvent;
 use sandbx_text::invisible;
 
-use super::{Entry, Kind, Reasoning, Transcript, forgeable, printable};
+use super::{Entry, Kind, Reasoning, Tokens, Transcript, forgeable, printable};
 use crate::view::GUTTER_MARK;
 
 const PROMPT: &str = "what is here?";
@@ -327,10 +327,8 @@ fn usage(input_tokens: Option<u32>, output_tokens: Option<u32>) -> AgentEvent {
 #[test]
 fn rounds_are_counted_from_stops_and_usage_is_the_last_reported() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
-    assert_eq!(
-        (transcript.rounds(), transcript.tokens()),
-        (0, (None, None))
-    );
+    assert_eq!(transcript.rounds(), 0);
+    assert_eq!(transcript.tokens(), Tokens::default());
 
     for reason in [
         sandbx_event::StopReason::ToolUse,
@@ -338,12 +336,18 @@ fn rounds_are_counted_from_stops_and_usage_is_the_last_reported() {
     ] {
         transcript.event(&AgentEvent::Stop { reason });
     }
-    for tokens in [(900, 32), (1200, 64)] {
-        transcript.event(&usage(Some(tokens.0), Some(tokens.1)));
+    for (input, output) in [(900, 32), (1200, 64)] {
+        transcript.event(&usage(Some(input), Some(output)));
     }
 
     assert_eq!(transcript.rounds(), 2);
-    assert_eq!(transcript.tokens(), (Some(1200), Some(64)));
+    assert_eq!(
+        transcript.tokens(),
+        Tokens {
+            input: Some(1200),
+            output: Some(64)
+        }
+    );
 }
 
 #[test]
@@ -351,10 +355,22 @@ fn an_unreported_count_is_not_a_reported_zero() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.event(&usage(Some(900), None));
 
-    assert_eq!(transcript.tokens(), (Some(900), None));
+    assert_eq!(
+        transcript.tokens(),
+        Tokens {
+            input: Some(900),
+            output: None
+        }
+    );
 
     transcript.event(&usage(Some(900), Some(0)));
-    assert_eq!(transcript.tokens(), (Some(900), Some(0)));
+    assert_eq!(
+        transcript.tokens(),
+        Tokens {
+            input: Some(900),
+            output: Some(0)
+        }
+    );
 }
 
 #[test]
@@ -363,5 +379,11 @@ fn a_count_a_later_round_omits_keeps_the_figure_it_had() {
     transcript.event(&usage(Some(900), Some(32)));
     transcript.event(&usage(None, Some(64)));
 
-    assert_eq!(transcript.tokens(), (Some(900), Some(64)));
+    assert_eq!(
+        transcript.tokens(),
+        Tokens {
+            input: Some(900),
+            output: Some(64)
+        }
+    );
 }

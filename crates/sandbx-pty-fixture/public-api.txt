@@ -1,3 +1,34 @@
 pub mod sandbx_pty_fixture
-pub const sandbx_pty_fixture::WINDOW: (u16, u16)
-pub fn sandbx_pty_fixture::pty() -> (std::fs::File, std::fs::File)
+pub struct sandbx_pty_fixture::Pty
+pub sandbx_pty_fixture::Pty::master: std::fs::File
+pub sandbx_pty_fixture::Pty::slave: std::fs::File
+impl core::fmt::Debug for sandbx_pty_fixture::Pty
+pub fn sandbx_pty_fixture::Pty::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_pty_fixture::Pty
+impl core::marker::Send for sandbx_pty_fixture::Pty
+impl core::marker::Sync for sandbx_pty_fixture::Pty
+impl core::marker::Unpin for sandbx_pty_fixture::Pty
+impl core::marker::UnsafeUnpin for sandbx_pty_fixture::Pty
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_pty_fixture::Pty
+impl core::panic::unwind_safe::UnwindSafe for sandbx_pty_fixture::Pty
+pub struct sandbx_pty_fixture::Window
+pub sandbx_pty_fixture::Window::columns: u16
+pub sandbx_pty_fixture::Window::rows: u16
+impl core::clone::Clone for sandbx_pty_fixture::Window
+pub fn sandbx_pty_fixture::Window::clone(&self) -> sandbx_pty_fixture::Window
+impl core::cmp::Eq for sandbx_pty_fixture::Window
+impl core::cmp::PartialEq for sandbx_pty_fixture::Window
+pub fn sandbx_pty_fixture::Window::eq(&self, &sandbx_pty_fixture::Window) -> bool
+impl core::fmt::Debug for sandbx_pty_fixture::Window
+pub fn sandbx_pty_fixture::Window::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_pty_fixture::Window
+impl core::marker::StructuralPartialEq for sandbx_pty_fixture::Window
+impl core::marker::Freeze for sandbx_pty_fixture::Window
+impl core::marker::Send for sandbx_pty_fixture::Window
+impl core::marker::Sync for sandbx_pty_fixture::Window
+impl core::marker::Unpin for sandbx_pty_fixture::Window
+impl core::marker::UnsafeUnpin for sandbx_pty_fixture::Window
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_pty_fixture::Window
+impl core::panic::unwind_safe::UnwindSafe for sandbx_pty_fixture::Window
+pub const sandbx_pty_fixture::WINDOW: sandbx_pty_fixture::Window
+pub fn sandbx_pty_fixture::pty() -> sandbx_pty_fixture::Pty

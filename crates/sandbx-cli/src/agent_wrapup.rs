@@ -59,7 +59,7 @@ pub(super) async fn run<W: Write, E: Write>(
     turn: Turn<'_>,
     first: TurnOutcome,
     render: &mut Render<W, E>,
-) -> (TurnOutcome, bool) {
+) -> WrapUp {
     let mut continued = turn.history.to_vec();
     continued.extend(first.messages.iter().cloned());
 
@@ -94,7 +94,10 @@ pub(super) async fn run<W: Write, E: Write>(
         // into exit 1 with its text already written.
         Err(error) => {
             eprintln!("sandbx: the wrap-up request failed: {error}");
-            (first, false)
+            WrapUp {
+                outcome: first,
+                summarised: false,
+            }
         }
         // Either leaves the batch on an unanswered `tool_result`: `first` stands, and prose
         // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
@@ -108,10 +111,24 @@ pub(super) async fn run<W: Write, E: Write>(
                     "asked for a tool instead of answering"
                 }
             );
-            (first, false)
+            WrapUp {
+                outcome: first,
+                summarised: false,
+            }
         }
-        Ok(second) => (merge(first, second), true),
+        Ok(second) => WrapUp {
+            outcome: merge(first, second),
+            summarised: true,
+        },
     }
+}
+
+/// What [`run`] leaves the turn as.
+pub(super) struct WrapUp {
+    /// The turn to store: `first` alone, or merged with the round that answered.
+    pub(super) outcome: TurnOutcome,
+    /// Whether the wrap-up round answered.
+    pub(super) summarised: bool,
 }
 
 /// The two turns as the one turn a caller stores.

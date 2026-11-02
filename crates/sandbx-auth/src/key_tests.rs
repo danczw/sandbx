@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use secrecy::{ExposeSecret, SecretString};
 
-use super::{Device, ENV_VAR, FILE, Source, config_file, read_key, resolve};
+use super::{Device, ENV_VAR, FILE, Resolved, Source, config_file, read_key, resolve};
 use crate::{AuthError, store};
 
 /// Against a literal: `SECURITY.md`, the README and `--help` name it in prose that
@@ -79,7 +79,7 @@ fn the_environment_answers_before_the_file() {
     let dir = tempfile::tempdir().unwrap();
     stored_key(dir.path(), "from-file");
 
-    let (key, source) = resolve(&env(&[
+    let Resolved { key, source } = resolve(&env(&[
         ("ANTHROPIC_API_KEY", "from-env"),
         ("XDG_CONFIG_HOME", dir.path().to_str().unwrap()),
     ]))
@@ -94,7 +94,7 @@ fn the_file_answers_when_the_environment_is_unset() {
     let dir = tempfile::tempdir().unwrap();
     stored_key(dir.path(), "from-file");
 
-    let (key, source) =
+    let Resolved { key, source } =
         resolve(&env(&[("XDG_CONFIG_HOME", dir.path().to_str().unwrap())])).unwrap();
 
     assert_eq!(key.expose_secret(), "from-file");
@@ -106,7 +106,7 @@ fn a_blank_environment_value_falls_through_to_the_file() {
     let dir = tempfile::tempdir().unwrap();
     stored_key(dir.path(), "from-file");
 
-    let (key, _) = resolve(&env(&[
+    let Resolved { key, .. } = resolve(&env(&[
         ("ANTHROPIC_API_KEY", "   "),
         ("XDG_CONFIG_HOME", dir.path().to_str().unwrap()),
     ]))
@@ -119,7 +119,7 @@ fn a_blank_environment_value_falls_through_to_the_file() {
 /// `HeaderValue` rejection.
 #[test]
 fn a_padded_environment_value_is_trimmed() {
-    let (key, _) = resolve(&env(&[("ANTHROPIC_API_KEY", "  sk-ant-test\n")])).unwrap();
+    let Resolved { key, .. } = resolve(&env(&[("ANTHROPIC_API_KEY", "  sk-ant-test\n")])).unwrap();
 
     assert_eq!(key.expose_secret(), "sk-ant-test");
 }
@@ -137,7 +137,7 @@ fn a_non_utf8_environment_value_falls_through() {
         _ => None,
     };
 
-    let (key, _) = resolve(&lookup).unwrap();
+    let Resolved { key, .. } = resolve(&lookup).unwrap();
 
     assert_eq!(key.expose_secret(), "from-file");
 }
