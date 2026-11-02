@@ -22,8 +22,8 @@ fn scratch() -> Scratch {
     Scratch { dir, root }
 }
 
-/// What [`scratch`] made: its resolved path, and the directory, which has to outlive every
-/// use of it.
+/// What [`scratch`] made: the directory, which has to outlive every use of its resolved
+/// path, and that path.
 struct Scratch {
     dir: tempfile::TempDir,
     root: PathBuf,
