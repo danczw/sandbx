@@ -51,7 +51,8 @@ allow-wildcard-paths = true
 # of these edges the same way, which is why neither may be added here (#415).
 [[bans.deny]]
 name = "sandbx-core"
-# `sandbx-turn`'s edge is a dev-dependency: `sandbx-core` is not in its build.
+# `sandbx-turn`'s edge is a dev-dependency: `sandbx-core` is not in its build. Its tests
+# drive real tools over a temp dir rather than mocking below the tool boundary.
 # `sandbx-helper`'s is not — the binary is what the enforcement suite spawns, so it
 # links core for real.
 #
@@ -130,6 +131,7 @@ wrappers = ["sandbx-anthropic"]
 
 [[bans.deny]]
 name = "sandbx-tools"
+# `sandbx-approval` for `BuiltinTool` and `ToolError`, which `ToolCall` and `Outcome` carry.
 wrappers = ["sandbx-approval", "sandbx-cli", "sandbx-turn", "sandbx-turn-fixture"]
 
 [[bans.deny]]

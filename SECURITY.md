@@ -197,7 +197,7 @@ architecture the filter gates on.
   substitute
   ([#230](https://github.com/danczw/sandbx/issues/230); the `FsGuard` TOCTOU row
   of [context/guide-sandboxing.md](context/guide-sandboxing.md) has the shapes).
-  Four cases keep the older shape, where the access goes by path and a
+  Three cases keep the older shape, where the access goes by path and a
   substitution between the confirmation and the open is granted on the object the
   confirmation saw: a kernel below 5.6, which has nothing equivalent; a grant
   naming a *file* rather than a directory, which has no directory to resolve
@@ -222,7 +222,7 @@ architecture the filter gates on.
   read rather than on the path a second time either way, so the measurement and
   the read cannot name different files, and it reaches the trail like any other
   access ([#275](https://github.com/danczw/sandbx/issues/275)). The confirmation
-  stays in all four cases: it is the only layer that can refuse a root the
+  stays in all three cases: it is the only layer that can refuse a root the
   operator's name no longer holds. The bare `check_read` and `check_write` bound
   nothing after the measurement at
   all; no tool uses them. One honest false positive comes with the pin: a

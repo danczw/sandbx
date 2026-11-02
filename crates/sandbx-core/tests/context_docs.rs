@@ -1,5 +1,5 @@
 //! Two facts about `context/` that nothing else in the repo can see: a doc name cited from
-//! Rust or from the markdown around it still names a file, and `guide-repo-map.md`'s reading
+//! Rust or from the markdown around it still names a file, and `context/README.md`'s reading
 //! order still names every doc. Neither is about `sandbx-core`. This crate holds them because
 //! it already reaches the repo root for `every_prose_copy_of_the_floor_is_current`, and
 //! because there is no workspace-wide test target to put them in.
@@ -134,14 +134,14 @@ fn the_reading_order_names_every_doc() {
     const HEADING: &str = "## Reading order";
 
     let root = repo_root();
-    let map = fs::read_to_string(root.join("context/guide-repo-map.md"))
-        .expect("guide-repo-map.md is readable");
+    let map =
+        fs::read_to_string(root.join("context/README.md")).expect("context/README.md is readable");
 
-    // Heading-anchored: a trim moves line numbers. The order is the last section, so the
-    // slice runs to EOF — only numbered entries count, or a closing mention reads as indexed.
+    // Heading-anchored: a trim moves line numbers. The slice ends at the next section, and
+    // only numbered entries count, or a closing mention would read as indexed.
     let at = map
         .find(HEADING)
-        .expect("guide-repo-map.md has a reading order");
+        .expect("context/README.md has a reading order");
     let section = &map[at + HEADING.len()..];
     let section = &section[..section.find("\n## ").unwrap_or(section.len())];
     let listed: BTreeSet<&str> = section
