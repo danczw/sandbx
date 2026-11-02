@@ -120,8 +120,8 @@ gets there.
 
 Append-only JSONL, one record per line, never rewritten. `withheld` — how many
 leading messages a turn left out to fit the context window — is an *index* into
-the history (`guide-turn-loop.md`), so it is exact only as long as nothing moves
-a prefix. A store that rewrote the whole conversation on every save would
+the history (`sandbx-compact`'s `//!`), so it is exact only as long as nothing
+moves a prefix. A store that rewrote the whole conversation on every save would
 invalidate every figure it had already written. Merging a run of user turns into
 one request message moves them too, so `Merged` translates in both directions —
 the stored floor into the request's index space, and the figure the turn reports
@@ -163,12 +163,13 @@ API still refuses it.
 
 ### One user turn may end a transcript, and one may follow another
 
-A turn that runs out of rounds ends on the `tool_result` the model never answered,
-and every prefix of it does too — the alternative being a `tool_use` with nothing
-answering it (`guide-turn-loop.md`). Refusing that batch cost the run everything it
-had done: tokens spent, `write` calls landed, `--session` unchanged (#188). So a
-user turn of **nothing but tool results** may end a transcript, and the prompt that
-resumes one may follow it, which is the only legal pair of user turns.
+A turn that runs out of rounds ends on the `tool_result` the model never
+answered, and every prefix of it does too — the alternative being a `tool_use`
+with nothing answering it (`TurnStop::RoundLimit`). Refusing that batch cost the
+run everything it had done: tokens spent, `write` calls landed, `--session`
+unchanged (#188). So a user turn of **nothing but tool results** may end a
+transcript, and the prompt that resumes one may follow it, which is the only
+legal pair of user turns.
 
 It is legal because the pair never reaches the wire: `merge_user_runs` in
 `sandbx-session-bridge` collapses a run of user messages into the one message
@@ -178,7 +179,7 @@ request, not lines in a file, and those stopped being the same thing here.
 Merging is also the one thing `agent-run` does to its history that moves a
 prefix's indices, and `withheld` is an index. So `Merged` carries both spaces: the
 floor goes in translated, and the figure the turn reports comes back out through
-`Merged::unmerged` before it is stored. See `guide-turn-loop.md` for why that
+`Merged::unmerged` before it is stored. `sandbx-compact`'s `//!` has why that
 figure's exactness is load-bearing rather than cosmetic.
 
 Three predicates in `shape.rs` carry the relaxation, and `settled` — "ends

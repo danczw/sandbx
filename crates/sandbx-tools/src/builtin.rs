@@ -54,6 +54,8 @@ pub(crate) struct ToolSpec {
     pub(crate) description: &'static str,
     pub(crate) risk: RiskLevel,
     pub(crate) schema: fn() -> serde_json::Value,
+    /// Parses into the module's own input struct before it executes, so a filesystem path
+    /// that skips the parse is unwritable.
     pub(crate) run: fn(serde_json::Value, &ExecutionContext) -> Result<ToolOutput, ToolError>,
 }
 

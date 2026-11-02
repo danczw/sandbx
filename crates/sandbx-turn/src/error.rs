@@ -8,6 +8,10 @@ use sandbx_provider::ProviderError;
 /// A tool that fails is not an error here: a refused or malformed call goes back to the model
 /// as a `tool_result` marked `is_error`, the turn still healthy. Only a turn-ending failure
 /// reaches this type.
+///
+/// An `Err` carries no [`TurnOutcome`](crate::TurnOutcome), so the turn's `usage`, `withheld`
+/// and `round_stop` go with it, and a caller's threaded figures keep what the last completed
+/// request set.
 #[derive(Debug)]
 pub enum TurnError {
     /// The provider failed, either before the stream opened or partway through it.

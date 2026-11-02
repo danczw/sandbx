@@ -1,8 +1,21 @@
 //! The second turn a round limit earns: no tool may be called, so the reply is prose.
 //!
 //! Its own module because it changes for a different reason than the rest of `agent-run`:
-//! what a turn out of rounds is worth asking next, not what was asked or allowed. See
-//! `context/decision-round-limit-answer.md` for why the request is spent at all.
+//! what a turn out of rounds is worth asking next, not what was asked or allowed.
+//!
+//! The request is spent because the cap otherwise leaves stdout empty in the common case, a
+//! model that opened with a tool call: tokens burnt, edits applied, no answer. Hence on by
+//! default; `--no-wrap-up` costs the answer and not the conversation, the turn being stored
+//! either way (#188, #204, #209).
+//!
+//! The tools stay offered under `ToolChoice::None` rather than emptied: the history replays
+//! the turn's `tool_use` and `tool_result` blocks, which the Messages API refuses without the
+//! definitions they name, so an empty list would 400 on every real run. `tool_choice` bounds
+//! what is asked for, not what runs; [`RefuseAll`] is the bound.
+//!
+//! The exit stays 2. A summary is prose about work that was cut off, not a finished turn, so
+//! a script sees the same status either way, and stderr is what tells the two apart — the
+//! split `--max-tokens` truncation uses.
 
 use std::io::Write;
 

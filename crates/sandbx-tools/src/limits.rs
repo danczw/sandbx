@@ -3,6 +3,12 @@
 /// Output goes straight into the model's context, and the tokens are spent before
 /// `sandbx-turn` sees the result, so an uncapped result cannot be fixed
 /// downstream — it evicts the conversation that explains what the agent was doing.
+///
+/// Two kinds of bound, and they are different propositions. An output bound trims a
+/// complete answer and says how much was cut; an input bound stops the tool looking, and
+/// the answer is incomplete. Conflated, a search that gave up reads the same as one that
+/// found 4,000 matches and showed 200. These are the only bound on the six in-process
+/// tools: no clock reaches them, `ExecutionContext`'s timeout being `bash`'s alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolLimits {
     max_entries: usize,
@@ -10,6 +16,10 @@ pub struct ToolLimits {
     /// Cap on the files a searching tool may visit before giving up.
     pub max_files_scanned: usize,
     /// Cap on the bytes a searching tool may read across a whole search.
+    ///
+    /// Checked before each read, not clamped, so one file can overshoot it; `grep`'s
+    /// `MAX_FILE_BYTES` is what bounds that overshoot. The worst case is this plus 2 MiB, and
+    /// setting this field cannot move the second half.
     pub max_bytes_scanned: usize,
 }
 

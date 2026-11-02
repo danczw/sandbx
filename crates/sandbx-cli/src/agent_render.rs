@@ -152,7 +152,9 @@ impl<W: Write, E: Write> Render<W, E> {
     /// Write one whole line about the answer, from a known rendition per `prompt::RESET`.
     ///
     /// Written once, so a line cannot interleave with the reasoning deltas reaching the
-    /// same device.
+    /// same device. The reset is there because stdout is not stripped — the answer is what a
+    /// pipe asked for — so it can leave an SGR state behind; it restores the rendition, not
+    /// lines the answer already erased.
     fn note(&mut self, line: &str) {
         self.put(account(self.err_device, line).as_bytes());
     }
@@ -297,8 +299,15 @@ impl<W: Write, E: Write> Render<W, E> {
 
 /// `delta` with everything that could rewrite the lines around it replaced with U+FFFD.
 ///
-/// Per character, so it holds across a delta boundary; see
-/// `context/decision-thinking-replay.md`.
+/// Reasoning is model-chosen, and under `--show-thinking` it shares the terminal with the
+/// gate's verdicts: `\x1b[8m` would conceal every one, `\x1b[A\x1b[2K` erase the one before
+/// it (#239). Replaced rather than dropped, for the gate's reason. `\n` and `\t` survive,
+/// reasoning being prose over many lines; uncapped, nothing being consented to on it.
+///
+/// Per character, not per line, so streaming survives it: a delta is a `&str`, so an escape
+/// split across two deltas has its ESC whole in one of them, and what follows is inert text.
+/// Buffering to a newline would cost the stream for nothing. What it leaves: a stripped delta
+/// keeps its newlines, so it can still print a line that reads as sandbx's own.
 fn inert(delta: &str) -> String {
     delta
         .chars()

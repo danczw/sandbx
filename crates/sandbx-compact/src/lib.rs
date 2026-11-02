@@ -4,7 +4,18 @@
 //! No summarisation model, just a bounded window. The API rejects anything but a user-turn
 //! opener — two user turns running, an orphaned `tool_result`, or empty content — so only a
 //! *prefix* drops, onto the new first message, which `opens_a_request` decides; that makes
-//! the legal cut points exactly the human prose turns. See `context/guide-turn-loop.md`.
+//! the legal cut points exactly the human prose turns.
+//!
+//! A caller threads the cut back as a floor (`Turn::withheld`), not the measurement alone.
+//! The measurement is of the request already compacted, so on usage alone the turn after a
+//! successful cut reads under budget and sends the whole, now longer history again:
+//! compaction fires on alternate turns while the uncompacted leg grows without bound. The
+//! count stays exact only because a caller appends to history, which moves no prefix's
+//! indices; `sandbx-session-bridge` translates it across the one rewrite sandbx makes, the
+//! merge of a run of user messages (#188).
+//!
+//! The honest limit of compaction this naive: it sheds whole exchanges, so one enormous
+//! exchange cannot be shed, and the provider's context-length error stays the backstop.
 //!
 //! [`PromptUsage`] is declared here and not beside `Turn::observed`, where it reads as
 //! belonging: the turn depends on compaction and not the reverse, so this is the side of
@@ -88,7 +99,8 @@ pub fn over_budget(observed: Option<PromptUsage>, budget_tokens: u32) -> bool {
 /// cut at or after the target; failing that, the deepest legal cut below it, since shedding
 /// less beats nothing and the next turn re-measures; failing that, `None` — erroring would
 /// turn an opt-in optimisation into a turn-killer, and cutting anyway is certain to be
-/// rejected. Why the floor exists is `context/guide-turn-loop.md`.
+/// rejected. The floor outranks `keep_recent`, the target being the deeper of the two; why
+/// the floor exists is the crate docs.
 pub fn plan_cut(
     history: &[RequestMessage],
     produced: usize,
@@ -132,6 +144,10 @@ pub fn plan_cut(
 /// 2. No `ToolResult` block: its `ToolUse` sits in the withheld `history[cut - 1]`, the
 ///    clause that makes an arbitrary index illegal.
 /// 3. Non-empty content, which only a caller's own history can hold.
+///
+/// The second rules out the prompt resuming a turn that ran out of rounds, which is sent
+/// merged into the results it answers (#188): a session capping on every turn has no cut
+/// point but its first. A cut landing inside that message is #208.
 ///
 /// `cut == 0` is false, so a `Some` from [`plan_cut`] always means something was withheld.
 fn opens_a_request(history: &[RequestMessage], cut: usize) -> bool {

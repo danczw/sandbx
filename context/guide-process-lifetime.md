@@ -119,4 +119,4 @@ A fork bomb still runs unbounded for the length of the call — **cgroups are no
 in place**, and nothing limits process count, memory or CPU.
 
 That is about *spawned processes*. Tool work is bounded separately; see
-`decision-bounding-tool-work.md`.
+`ToolLimits` in `sandbx-tools`.

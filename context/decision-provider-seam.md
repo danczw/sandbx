@@ -97,5 +97,3 @@ timing argument #59 made against doing this early was withdrawn, not satisfied.
 a request shape, and the one place the split above leaves a claim about a provider in
 `sandbx-prompt`; [decision-thinking-replay.md](decision-thinking-replay.md) is why it
 is one variant, and what the loop does with what comes back.
-
-See also [guide-turn-loop.md](guide-turn-loop.md).

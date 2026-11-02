@@ -61,7 +61,7 @@ pub struct Turn<'a> {
     /// `observed = outcome.usage.or(observed)`.
     ///
     /// `None` bounds only the first round, which has to build its request before any
-    /// figure for it exists.
+    /// figure for it exists; a turn handed one compacts on its own round zero.
     pub observed: Option<PromptUsage>,
 
     /// How many of `history`'s oldest messages the previous turn left out of its
@@ -71,8 +71,8 @@ pub struct Turn<'a> {
     /// count no longer names a legal cut point, the one case [`TurnOutcome::withheld`] can
     /// come back smaller. Without it compaction bounds nothing, because
     /// [`observed`](Self::observed) measures the *already compacted* request; see
-    /// `context/guide-turn-loop.md`. Exact only because appending to history does not move
-    /// its prefix's indices.
+    /// [`sandbx_compact`]. Exact only because appending to history does not move its prefix's
+    /// indices.
     pub withheld: usize,
 }
 
@@ -134,6 +134,10 @@ pub enum TurnStop {
 }
 
 /// The bounds one turn runs within.
+///
+/// None of them bounds a turn's total wall-clock time, and no product of them does: the
+/// in-process tools are bounded by work, not time, so a single `read` on a stalled filesystem
+/// is bounded by nothing here.
 #[derive(Debug, Clone, Copy)]
 pub struct TurnLimits {
     /// How many times the model may be asked within one turn.
@@ -157,6 +161,10 @@ pub struct TurnLimits {
     /// Off by default, and the only bound here that is lossy: the others refuse to go on
     /// when hit, where this one quietly sends the model less. `None` means a long enough
     /// conversation eventually dies on the provider's context-length error.
+    ///
+    /// The cut deepens at most once per measured round and never reverses. Each move
+    /// withholds context for good and rewrites the request's cached prefix, a cost taken
+    /// because a turn that cannot shed dies on that error, and a cache write costs less.
     pub compaction: Option<Compaction>,
 }
 
@@ -173,9 +181,9 @@ impl Default for TurnLimits {
 
 /// Run one turn, accumulating its event stream into replayable messages.
 ///
-/// The loop itself is `context/guide-turn-loop.md`. All three closures are generics rather
-/// than `dyn`, which is not `Send` and would make this future unspawnable; `AsyncFnMut`
-/// leaves the future unnamed, so a *generic* wrapper cannot add its own `Send` bound to it.
+/// `open`, `observe` and `gate` are generics rather than `dyn`, which is not `Send` and would
+/// make this future unspawnable; `AsyncFnMut` leaves the future unnamed, so a *generic*
+/// wrapper cannot add its own `Send` bound to it.
 ///
 /// Every event reaches `observe` in arrival order before being accumulated, serving both a
 /// renderer's increments and the replayable form. Re-entry keys off the *presence* of tool

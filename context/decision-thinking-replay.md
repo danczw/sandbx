@@ -1,22 +1,14 @@
 # Decision: a reasoning block is replayed inside its turn and nowhere else
 
-## It was already happening
-
-Extended thinking is **on by default** on every Claude 5 model, with no `thinking`
-field in the request, at `display: "omitted"`. So every assistant turn already
-contained a `thinking` block with an empty text and a real `signature`. sandbx
-parsed the `signature_delta` and discarded it, then replayed the assistant turn
-without the block.
-
-Anthropic's rule is that within a tool-use turn, thinking blocks must be passed
-back complete and unmodified. sandbx broke it on every multi-round turn. It did not
-error, because a mid-turn mismatch degrades silently — the API strips thinking or
-disables it for that request — so the cost was reasoning continuity and a prompt
-cache rewrite on every tool round, with nothing in the output to say so.
-
-That is also why #85's premise ("it cannot be switched on, so the replay path has
-no caller") was false by the time it was read. Observed against the published docs
-on 2026-10-07; a model family that changes the default again changes this note.
+Extended thinking is **on by default** on every Claude 5 model, with no
+`thinking` field in the request, at `display: "omitted"`: every assistant turn
+carries a `thinking` block with an empty text and a real `signature`. Within a
+tool-use turn those blocks must be passed back complete and unmodified, and a
+mid-turn mismatch does not error — the API strips or disables thinking for that
+request — so a broken replay costs reasoning continuity and a prompt cache
+rewrite every tool round, with nothing in the output to say so (#217; it is also
+why #85's premise was false). Observed against the published docs on 2026-10-07;
+a model family that changes the default again changes this note.
 
 ## The prefix rule
 
@@ -40,7 +32,7 @@ on `type == "thinking"` alone drops it and opens exactly that gap.
    turn's `history`. Omitting prior turns' reasoning is explicitly allowed.
 2. **`history` therefore never holds one**, so no cut can strand one.
 3. **A deepened cut strips `produced` once**, and blocks produced afterwards replay
-   against the new prefix. See `guide-turn-loop.md`.
+   against the new prefix (`drop_thinking`, in `sandbx-turn`).
 4. **`sandbx-session-bridge` drops them again** on the way to storage.
 
 The cost, stated rather than designed around: continuity is kept **within** a turn
@@ -74,45 +66,6 @@ is the last edge before the file, and cheap to hold.
 
 `Prompt::thinking` is `Option<Thinking>` with one variant, `Visible`, for
 `ToolChoice`'s reason: an absent field already means the provider's default.
-`anthropic_body.rs` maps `Some(Visible)` to
-`{"type": "adaptive", "display": "summarized"}` and omits the field otherwise.
-
-Two limits are the operator's to know, and the `--show-thinking` flag's doc says
-both: `type: "adaptive"` is a 400 on Claude 4.5 and earlier, so a run that asks for
-reasoning on an old model dies rather than degrading; and what comes back is a
-summary of the reasoning, not the reasoning, which the API does not return.
-Unasked, the field is absent and the stream carries an empty `thinking_delta` and a
-real signature — which is the shape the replay needs and the renderer has nothing
-to show from.
-
-An **unsigned** block — one whose `content_block_stop` arrived with no
-`signature_delta`, or one flushed by a stream that ended early — is dropped rather
-than emitted. It cannot be replayed, so emitting one trades a lost block for a 400
-on the next request.
-
-## A delta reaches the terminal stripped
-
-What the model reasons is model-chosen, and under `--show-thinking` it streams to
-the same terminal as the gate's verdicts and the lines saying how the turn ended.
-A delta ending in `\x1b[8m` would conceal every one of them; one carrying
-`\x1b[A\x1b[2K` would erase the verdict before it (#239). So `Render` replaces each
-control character, and each one `sandbx_text::invisible` names, with U+FFFD —
-the gate's reason for replacing rather than dropping. `\n` and `\t` survive:
-reasoning is prose over many lines. It is not capped, unlike a gate argument:
-nothing is consented to on the strength of it.
-
-The strip is per character, not per line, so streaming survives it. A delta is a
-`&str`, so an escape split across two deltas still has its ESC whole in one of
-them, and what follows the ESC is inert text. Buffering to a newline would have
-cost the stream for no gain.
-
-`agent-run`'s stdout is not stripped — the answer is what a pipe asked for — so it
-can still leave an SGR state behind. Each line `Render` writes about the answer is
-therefore preceded by `RESET` when stderr is a terminal, as the gate's are.
-
-What neither covers: a reset restores the rendition, not lines already erased, so
-the answer can still move the cursor over a verdict; and a stripped delta keeps its
-newlines, so it can still print a line that reads as sandbx's own. Both are the
-cost of sharing the terminal that `decision-approval-gate.md` accepts for the
-answer. The TUI strips the same deltas at the cell, and its gutter marks which rows
-are sandbx's: see `guide-tui.md`.
+What `Visible` maps to, and what it costs on an older model, is
+`anthropic_body.rs`'s and the `--show-thinking` flag's to say. An unsigned block
+is dropped before it is emitted, since replaying one is a 400.

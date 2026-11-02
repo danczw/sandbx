@@ -5,6 +5,10 @@ use std::time::Duration;
 ///
 /// Split by the agent's next move: a refusal means "ask for something else", bad
 /// input "call it correctly", a failure "the operation went wrong".
+///
+/// A `reason` or `detail` reaches the model inside a `tool_result`, which a
+/// prompt-injected model relays, so neither may name a grant the caller does not already
+/// hold: the refusal for a path outside every root stays indistinguishable from any other.
 #[derive(Debug)]
 pub enum ToolError {
     /// The sandbox policy refused the operation.
