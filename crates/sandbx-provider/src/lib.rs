@@ -11,9 +11,6 @@
 //! rules are `sandbx-anthropic`'s, and no HTTP type crosses the seam:
 //! [`ProviderError::Transport`] boxes its source rather than naming `reqwest::Error`, so
 //! a crate that only names the seam does not link reqwest and hyper to do it (#335).
-//! Measured when it was boxed, this crate's normal tree went from 72 packages to 12 and
-//! `sandbx-turn`'s from 104 to 54: the turn loop links no HTTP client, no TLS, and not the
-//! type the key is kept in.
 
 use std::fmt;
 use std::pin::Pin;
