@@ -1054,7 +1054,9 @@ struct Replacement {
 /// on. Lexical, not by nearest resolving ancestor, since a measurement after resolution is
 /// one the substitute chose. Two forms cover what one cannot: `starts_with` compares whole
 /// components, so `root/link/../..` names the root while collapsing out of it, while
-/// `other/../root` matches only once collapsed (`context/decision-policy.md`).
+/// `other/../root` matches only once collapsed (`context/decision-policy.md`). The one
+/// measurement is both the error returned and the reason recorded, so the two cannot
+/// disagree (#212).
 fn moved_root(requested: &Path, roots: &[Root]) -> Option<Replacement> {
     let collapsed = collapsed(requested).filter(|form| form != requested);
 

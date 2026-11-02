@@ -84,8 +84,8 @@ pub(crate) struct Resolved {
     pub(crate) files: [File; 3],
 
     /// How many allowlisted names resolved to no address at all; carried out, not reported
-    /// here, since this runs in the re-exec'd helper. A count, not the names —
-    /// `guide-logging.md` keeps values off the trail.
+    /// here, since this runs in the re-exec'd helper. A count, not the names, as every
+    /// [`AuditEvent::Spawned`](crate::AuditEvent::Spawned) field keeps values off the trail.
     pub(crate) unresolved: usize,
 }
 

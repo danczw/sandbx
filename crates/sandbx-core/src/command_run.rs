@@ -20,9 +20,9 @@ use super::dispatch::HELPER_FLAG;
 /// A command that runs under a [`SandboxPolicy`]; the only sanctioned way for sandbx to
 /// execute anything. A helper restricts itself in two stages, restricting a child directly
 /// needing unsafe work between `fork` and `exec`; the command ends up the child of the init
-/// of a namespace that dies with this call (`context/guide-process-lifetime.md`). The helper
-/// defaults to this executable re-run with [`HELPER_FLAG`] through `/proc/self/exe`, which a
-/// rename over the binary cannot redirect.
+/// of a namespace that dies with this call. The helper defaults to this executable re-run
+/// with [`HELPER_FLAG`] through `/proc/self/exe`, which a rename over the binary cannot
+/// redirect.
 #[derive(Debug, Clone)]
 pub struct SandboxedCommand {
     program: String,
@@ -161,6 +161,13 @@ impl SandboxedCommand {
     /// and returns [`SandboxError::TimedOut`]. A helper stage that refused returns
     /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
     /// indistinguishable from the command's own.
+    ///
+    /// Untimed, nothing kills anything: no process group is made, and namespace teardown is
+    /// the only thing that ends a descendant.
+    ///
+    /// A run is two records (#96): `spawned`, then any `degraded`, then exactly one `exited`
+    /// or `failed`, emitted here and nowhere else. The command's own streams come after,
+    /// this collecting them whole.
     pub fn output(&self) -> Result<Output, SandboxError> {
         let CommandLine { helper, argv } = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
@@ -445,7 +452,7 @@ struct Drained {
 /// SIGKILL a process group, and with it the PID namespace inside it. The group alone is
 /// advisory, a descendant that calls `setsid` leaving it; what makes this unescapable is
 /// that the supervisor stage never leaves this group and the PID namespace is bound to its
-/// lifetime (`context/guide-process-lifetime.md`).
+/// lifetime.
 fn kill_group(group: u32) {
     use nix::sys::signal::{Signal, killpg};
     use nix::unistd::Pid;

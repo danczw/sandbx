@@ -8,7 +8,7 @@
 //!
 //! Its own binary because the subscriber has to be the global one: the threads that emit
 //! are not the thread that asked, and a `set_default` subscriber is thread-local — the test
-//! would capture nothing and pass. `context/guide-logging.md` has the rule.
+//! would capture nothing and pass. `context/guide-testing.md` has the rule.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};

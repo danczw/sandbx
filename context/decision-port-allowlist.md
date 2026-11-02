@@ -426,7 +426,7 @@ reads `nsswitch.conf`, the rendered file cannot turn that off, and
 What the trail records is a count on `Spawned`, `dns_names`, and no per-name
 record at all. The responder would have had one query per name to report;
 resolution ahead of the spawn has one event, and `Spawned` carries counts of what
-the policy granted and not the values (`guide-logging.md`, *What is built*) —
+the policy granted and not the values (`AuditEvent::Spawned`) —
 doubly so here, an internal host name being infrastructure rather than a pointer
 to it.
 

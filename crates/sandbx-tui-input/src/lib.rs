@@ -38,6 +38,11 @@ pub enum Stopped {
     Pressed,
     /// The terminal hung up. Nothing can be drawn and no key can arrive, so the turn is
     /// ended rather than left running unwatched (#264).
+    ///
+    /// Reached only by a hangup that raised no `SIGHUP`: sandbx handles none, so an emulator
+    /// closing the master kills the foreground group at 129 first. `nohup`, `setsid`, an
+    /// orphaned group, `trap '' HUP`, a dying descriptor that is not the controlling
+    /// terminal, or an `openpty` pair that never became one — which is what the tests use.
     Gone,
 }
 
@@ -51,7 +56,9 @@ impl Keys {
     /// Start reading keys, and watching for the terminal going away, on two threads that
     /// outlive the turn: neither `poll` nor `event::read` can be cancelled.
     ///
-    /// Two threads, each covering what the other cannot — `guide-tui.md` has which (#264).
+    /// Two threads, each covering what the other cannot (#264): `read` gates every call into
+    /// crossterm on a `poll`, so a hangup is seen before anything that would spin on it, and
+    /// `hangup` covers the one landing while the reader is already inside crossterm.
     pub fn listen() -> Self {
         let (sender, seen) = watch::channel(Seen::default());
 
@@ -248,7 +255,7 @@ fn hangup(sender: &watch::Sender<Seen>, tty: BorrowedFd<'_>, out: BorrowedFd<'_>
 /// different ptys, and either one dying leaves the turn undrawable.
 ///
 /// `asked` is what the caller wants of `tty` besides a hangup — the two masks are the
-/// mechanism, and `guide-tui.md` has why. Nothing is ever asked of `out`: `POLLIN` would
+/// mechanism, and [`hangup`] has why. Nothing is ever asked of `out`: `POLLIN` would
 /// report input on a standard output nobody reads from and spin the caller's loop.
 fn hung_up(
     tty: BorrowedFd<'_>,

@@ -1,51 +1,15 @@
 # The approval gate
 
 What sits between the model asking for a tool and `sandbx-tools` running it, and
-how much it actually claims. Five decisions, one per section.
+how much it actually claims.
 
 ## A trait, not a closure
 
-```rust
-pub trait CallGate {
-    fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
-    fn settled(&mut self, call: Settled<'_>);
-}
-```
-
-Still `run_turn`'s fifth parameter and still one generic. It was a bare
-`FnMut(ToolCall<'_>) -> ApprovalDecision`; what made it a trait is that a verdict
-is only half of what a gate has to know, the other half being what became of the
-call it approved (#169). Two methods on one type rather than a sixth parameter,
-which a caller could take the verdict from and leave the report behind. The
-alternative was an `ApprovalGate` trait with an `async fn`, which the
-`async_trait` dependency in the original phase-5 sketch existed for; it is absent
-from the workspace and from `Cargo.lock`, and a sync trait keeps it absent.
-
-| | |
-|---|---|
-| Why not `dyn` | `dyn FnMut` is not `Send`, so taking one makes the whole future unspawnable. `observe` is generic for the same reason — see `run_turn` |
-| Why not a new `AgentEvent` | #169 declines one. A settling is not a stream event, and an event would arrive at `observe`, which is the renderer and has no verdict to correlate it against |
-| Why not async | the decision is a caller's, and a caller that needs to await one owns the runtime. An `async` bound here would re-introduce the unnamed-future problem on the gate as well as on `open` |
-| Why both methods required | a defaulted reporter is one a caller acquires silently by omitting it — the argument that already made the gate mandatory. There is no `run_turn_unchecked` |
-| Why `ToolCall` by value | three small fields, one of them `Copy`. A `FnMut(&ToolCall)` bound makes an un-annotated closure hit an HRTB inference edge |
-| Why the gate by value | a caller that keeps its own gate lends it instead: `&mut G` has a blanket impl, so the records survive the turn |
-
-`ToolCall` carries the resolved `BuiltinTool`, the call `id` and the `input` the
-model sent, unparsed. `BuiltinTool::risk()` is reachable from the tool, so a gate
-deciding by category needs nothing else; the `input` is there because a gate blind
-to the arguments could never show an operator what the call would do.
-
-`Settled` carries the same `id` and `input` with an `Outcome` — `Unknown`,
-`NotOffered`, `Denied`, `Ran` or `Errored` — and a `name` that is present even
-when nothing resolved it. Three of the five never reach `approve`, which is why
-the report cannot be built from the verdict. It carries the `input` rather than
-expecting the gate to have remembered the call by id, and `Errored` borrows the
-`ToolError` rather than flattening it: the five arms read differently to an
-operator, and a `Display` string would have to be re-parsed to tell a policy
-refusal from a timeout.
-
-`settled` is not called for the one failure that ends the turn. A panicking tool
-is a `TurnError::ToolPanicked` and the round has no result to report.
+`CallGate`, in `sandbx-approval`: `approve` per resolved call before the spawn,
+and `settled` per `tool_use` block once the call has an outcome. Its docs hold
+why it is a trait and not a closure, why both methods are required, and why it
+is neither `dyn` nor async. What follows is what it claims across the crates
+that ask it and implement it.
 
 ## Asked before the spawn, never racing it
 
@@ -198,8 +162,8 @@ and not written, the alternate screen neither redirecting stderr nor giving it
 back (#224), so a latched screen loses it; and `--session` is off unless asked
 for, so the `tool_result` may not be stored at all. The stderr account and the
 exit code are what survive unconditionally, which is why neither may be taken by
-a failure of the screen. [guide-tui.md](guide-tui.md) states the same where it
-specifies the codes.
+a failure of the screen. `agent_tui.rs`'s `reported` states the same where it
+decides the codes.
 
 All three survive the hangup *because* consent is a third device. With the
 question on `/dev/tty`, stdout and stderr can both be redirected to files
@@ -226,8 +190,8 @@ Three differences follow from there being no question to refuse:
   makes them survive the device that died.
 - **It is detected, not returned.** `--approve call` learns of the hangup from a
   read that failed; `tui` has to go looking, because crossterm answers a hung-up
-  pty with zero bytes forever instead of an error —
-  [guide-tui.md](guide-tui.md) has the mechanism.
+  pty with zero bytes forever instead of an error — `sandbx-tui-input` has the
+  mechanism.
 - **The watched descriptor is not the asked-on one.** Consent is deliberately a
   third device so the account outlives the terminal; `tui` has no third device,
   so the hangup it must notice is on standard output and standard input both.

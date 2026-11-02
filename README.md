@@ -145,8 +145,8 @@ A `failed` record carries in `reason=` what refused the run or cut it short —
 `pin_mismatch` for bytes that are not what was pinned. Read it: each would
 otherwise look like a command that ran and exited 1. The set is exhaustive, from
 `SandboxError::label`; every record kind, the `degraded` of a best-effort
-hardening step included, is in
-[context/guide-logging.md](context/guide-logging.md).
+hardening step included, is documented on `AuditEvent` in
+[crates/sandbx-core/src/audit.rs](crates/sandbx-core/src/audit.rs).
 
 Metadata only, never a command's output, and never on stdout, which is forwarded
 untouched. For the record alone, `2>&1 >/dev/null | grep sandbx::audit`; a plain
@@ -305,7 +305,7 @@ flags and draws that turn on a screen instead of streaming it, where ctrl-c or
 escape ends it mid-flight — storing nothing of that turn and leaving a running
 tool call to finish unseen. It needs a terminal on stdout, so it refuses a piped
 run, and it refuses `--approve call`, whose question wants the terminal the
-screen has taken ([context/guide-tui.md](context/guide-tui.md)):
+screen has taken ([#225](https://github.com/danczw/sandbx/issues/225)):
 
 ```sh
 sandbx tui --allow-tool bash -- "what is in this directory?"

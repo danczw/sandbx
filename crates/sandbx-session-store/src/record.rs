@@ -1,4 +1,12 @@
 //! A line of a transcript, and how a file of them replays into a session.
+//!
+//! Append-only and never rewritten, because `withheld` is an index into the history: a store
+//! that rewrote the conversation on every save would invalidate every figure it had written.
+//!
+//! What a reader does not understand it refuses rather than reads on a best effort, since a
+//! dropped record changes the history the model is shown: an unknown version fails, and so
+//! does an unknown `type`, a line nobody can classify being possibly a message. An unknown
+//! *field* is ignored.
 
 use std::path::Path;
 
@@ -12,6 +20,9 @@ pub(crate) const VERSION: u32 = 1;
 
 /// One line of a transcript, internally tagged: a message line is the message's own
 /// fields plus a `type`, and an unknown `type` fails the parse rather than skipping.
+///
+/// `Turn` is a line of its own rather than a field on the last message because a first round
+/// that produced no content still reports usage, leaving no message to hang it on.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Record {
@@ -39,6 +50,10 @@ impl Accounting {
     /// Fold one turn's figures in: `observed` keeps the last figure reported, `withheld`
     /// whatever the last turn cut. The one copy of the rule, which [`fold`] replays and
     /// `Session::append` applies, so a resumed session and a continued one agree.
+    ///
+    /// Nothing reads these figures while compaction is off, which it is by default. Do not
+    /// delete them as dead weight: they are recoverable only when the turn produces them, and
+    /// a session resumed without them could not tell whether its history fills the window.
     pub(crate) fn absorb(&mut self, turn: Self) {
         self.observed = turn.observed.or(self.observed);
         self.withheld = turn.withheld;
@@ -62,7 +77,8 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
 
     // No newline after the last line means an append that did not finish, and dropping
     // it restores the last consistent state. That line only: an interior line that will
-    // not parse may be a message, so it refuses.
+    // not parse may be a message, so it refuses. Refusing the torn one too, the first cut,
+    // made one interrupted append cost the whole conversation.
     let torn = !body.ends_with('\n');
     let last = body.lines().count().saturating_sub(1);
 

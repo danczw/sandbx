@@ -313,7 +313,7 @@ is an error in `ci.yml`, so the skip cannot go quiet in either direction (#402).
 ```
 src/lib.rs           subscriber, init — the one subscriber and its global
                      install; Audit, the writer behind it; hold and Held, the
-                     buffer the screen takes            ◄── guide-logging.md
+                     buffer the screen takes
 tests/               audit_log (what the filter admits over a closure writer),
                      audit_log_held (the held path end to end, re-execing to
                      read fd 2), audit_log_install (one test, by necessity)
@@ -744,7 +744,7 @@ agent_wrapup.rs the second turn a round limit earns, which may call no tool,
                 and the two outcomes merged into the one a session stores
 agent_tui.rs    Tui — the same turn drawn on a screen, the keypress that ends
                 one, and the gate that draws its verdicts instead of printing
-                them                                 ◄── guide-tui.md
+                them
 error.rs        re-exports the three, and is the list of them
 error_agent.rs  AgentError — twelve ways a turn does not finish
 error_run.rs    SandboxRunError — Policy, Sandbox
@@ -822,30 +822,24 @@ below assumes. The order itself reads as reference rather than as a wall.
 5. `decision-port-allowlist.md` — why a TCP port list costs UDP, what bounding
    egress to a host rather than a port would cost, and why a name allowlist is a
    hosts file and not a responder
-6. `guide-process-lifetime.md` — why nothing sandbx starts outlives the call
-   that started it
-7. `guide-logging.md`, `decision-helper-audit-channel.md` — how a decision is
-   recorded, how one made inside the helper gets out, and why a grant names a
-   path and one flag names bytes instead
-8. `decision-audit-records-access.md` — why a record names the access obtained
-   and not the policy's decision
-9. `decision-provider-seam.md` — why there is no provider trait, and where the
+6. `decision-helper-audit-channel.md` — how a decision made inside the helper
+   gets out, and why a grant names a path and one flag names bytes instead
+7. `decision-provider-seam.md` — why there is no provider trait, and where the
    vendor's vocabulary stops
-10. `decision-approval-gate.md` — what sits between the model and a tool, and
-    how much it claims
-11. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
-    handed none, and the one name that is refused
-12. `decision-on-disk-state.md` — what sandbx writes outside the working
+8. `decision-approval-gate.md` — what sits between the model and a tool, and
+   how much it claims
+9. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
+   handed none, and the one name that is refused
+10. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-13. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+11. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-14. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-15. `guide-testing.md` — what a test has to assert, where it lives, and how long
+12. `guide-testing.md` — what a test has to assert, where it lives, and how long
     its name may be
-16. `guide-ci.md` — what runs before a push, and what runs after
-17. `guide-release-notes.md` — which half of a release body is written by hand,
+13. `guide-ci.md` — what runs before a push, and what runs after
+14. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
-18. `decision-google-style.md` — which style guide the code follows, and where
+15. `decision-google-style.md` — which style guide the code follows, and where
     it departs from it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

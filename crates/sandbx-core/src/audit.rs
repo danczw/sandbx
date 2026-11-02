@@ -1,14 +1,21 @@
 //! The audit trail: what the sandbox did, as `tracing` events on [`AUDIT_TARGET`].
 //!
 //! All seven variants emit at `INFO`, the one property to defend: at `DEBUG` a trail would
-//! reach only those who opted in, and a record matters most where nobody did. Field table,
-//! and why a record names the access and not the verdict: `context/guide-logging.md`.
+//! reach only those who opted in, and a record matters most where nobody did.
+//!
+//! `decision=` records the access, not the verdict (#182, #187): `allowed` means a handle was
+//! obtained, `absent` that the name denoted nothing, `denied` that something refused. The
+//! verdict is cheaper, being what the guard produces natively, but a trail of verdicts cannot
+//! say what the agent saw, and it forecloses `absent` — no policy refuses a path that was
+//! never there. `decision=` is a wire field, where adding a value is additive and removing
+//! one is not, so that was the expensive direction to get wrong. One record per access: a
+//! `grep` leaves one `allowed` for its walk and one per file it opens.
 
 use crate::{Axis, NetworkPolicy, SandboxPolicy, SpawnId};
 use std::process::ExitStatus;
 
 /// `tracing` target carrying the audit trail, kept apart from ordinary diagnostics so a
-/// subscriber can route it on its own; see `context/guide-logging.md`.
+/// subscriber can route it on its own.
 pub const AUDIT_TARGET: &str = "sandbx::audit";
 
 /// How much of a command's argument list a record carries, in characters of the **rendered**
@@ -117,6 +124,8 @@ pub enum AuditEvent<'a> {
     /// rather than intermittently.
     Degraded {
         /// Which step did not take effect, as a stable label a trail can be filtered by.
+        /// Named rather than implied, because the cost depends on which: a bounding set left
+        /// inherited is a weaker sandbox, an unmapped identity costs only uid fidelity.
         mechanism: &'a str,
         /// The run this weakened, or `SPAWN_ABSENT` for a step that belongs to no run —
         /// `rooted_access` is emitted while the in-process gate is built, before any spawn.
@@ -167,7 +176,7 @@ pub enum AuditEvent<'a> {
         /// a name that resolves to nothing is still one the policy permitted.
         dns_names: usize,
         /// Whether a digest had to match before the exec. Not the digest, already in
-        /// `/proc/self/cmdline`; what an auditor cannot recover is that it was checked.
+        /// `/proc/self/cmdline`; what an auditor cannot recover is that it was checked (#146).
         pinned: bool,
         /// What the program was asked to do, cut to `ARGS_CAP`. Here because `program` is
         /// `/bin/sh` for every `bash` call, so the `-c` string — the command itself — was
@@ -178,7 +187,11 @@ pub enum AuditEvent<'a> {
         /// `readable=99 pinned=true` would shadow the real field of that name for anything
         /// parsing first-match, and an odd number of quotes in it would desync a
         /// quote-pairing reader for the rest of the line. Every field it could shadow now
-        /// precedes it.
+        /// precedes it. A last-wins reader is still fooled, which no ordering fixes, so a
+        /// structured sink has to quote this field rather than inherit the text format's bound.
+        ///
+        /// The cost is accepted, not argued away: a credential the model puts on a command line
+        /// now reaches the trail.
         args: &'a str,
     },
 
@@ -204,7 +217,9 @@ pub enum AuditEvent<'a> {
         session: &'a str,
         /// The program the spawn record named.
         program: &'a str,
-        /// Why it has none, as a stable label a trail can be filtered by.
+        /// Why it has none, as a stable label a trail can be filtered by. From
+        /// [`SandboxError::label`](crate::SandboxError::label), whose match is exhaustive, so
+        /// the trail cannot name a reason the error type does not define.
         reason: &'static str,
     },
 }

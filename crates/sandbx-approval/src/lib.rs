@@ -2,7 +2,8 @@
 //! once the call is done with.
 //!
 //! Two methods, both required: the loop knows what became of every call and a caller is the
-//! only thing that can tell an operator. `context/decision-approval-gate.md` has the rest.
+//! only thing that can tell an operator. `context/decision-approval-gate.md` has what the
+//! gate claims across the crates that ask it and implement it.
 //!
 //! A crate and not a module in either of the two that use it, because both would need it:
 //! `sandbx-turn` asks, `sandbx-cli` implements, and whichever held the vocabulary would put
@@ -77,7 +78,8 @@ pub enum Outcome<'a> {
     },
     /// It ran and returned output.
     Ran,
-    /// It ran and the policy or the tool refused it.
+    /// It ran and the policy or the tool refused it. Borrowed, not flattened to its `Display`,
+    /// which would have to be re-parsed to tell a policy refusal from a timeout.
     Errored(&'a ToolError),
 }
 
@@ -89,6 +91,13 @@ pub enum Outcome<'a> {
 /// drives* — a tokio primitive, a channel or lock a task holds, which deadlocks a
 /// current-thread runtime; a descriptor no task feeds is outside that, as `sandbx-cli` asks
 /// per call.
+///
+/// A trait and not a closure because a verdict is half of what a gate has to know, the other
+/// being what became of the call (#169): two methods on one type, not a second parameter a
+/// caller could take the verdict from and leave the report behind. Not a new `AgentEvent`
+/// either (#169), a settling being no stream event and `observe` holding no verdict to match
+/// it to. Not async: a caller that needs to await a decision owns the runtime, and an async
+/// bound would bring the unnamed-future problem to the gate as well as to `open`.
 pub trait CallGate {
     /// Whether this call may run, asked before the tool is spawned and never racing it.
     ///

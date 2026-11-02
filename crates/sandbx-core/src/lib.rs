@@ -3,6 +3,13 @@
 //! default-deny layers (see [`SandboxPolicy`]): [`FsGuard`] checks paths in-process, for
 //! Rust tools that never spawn and so are never seen by the kernel; Landlock, seccomp and
 //! namespaces restrict children, applied by a re-exec'd helper to itself so sandbx is not.
+//!
+//! Nothing the sandbox starts outlives the call that started it (#28). The helper's first
+//! stage unshares a PID namespace, which places only its children, so its second is PID 1
+//! there and stays it: the command is that init's child, and the init's exit is what tears
+//! the namespace down. Two independent paths end the init, never the command — the process
+//! group kill on a timed run, and the parent death signal when stage 1 dies. The command can
+//! shed both from itself, which is why it is not the init.
 
 #[cfg(not(target_os = "linux"))]
 compile_error!(

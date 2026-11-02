@@ -4,6 +4,15 @@
 //! turn is reported and that an operator can end one mid-flight. `--approve call` is
 //! refused rather than downgraded (#225), and the per-call account is drawn on the screen
 //! instead of written to stderr, which the alternate screen does not redirect (#224).
+//!
+//! The drawing crates — `sandbx-tui-transcript`, `sandbx-screen` and `sandbx-tui-input` —
+//! take events and give back keys, and hold no policy, provider, session or gate: a renderer
+//! that could decide anything would be a second place to look for what approved a call.
+//! `deny.toml` refuses them a provider edge (#365).
+//!
+//! Light by intent, each a limit an operator meets: single-shot, the prompt from argv;
+//! auto-follow with no scroll keys, so a line that scrolled off is gone; repainted only on an
+//! event, so the screen is still for a tool call; no wrap-up round (#232).
 
 use std::io::{self, Write};
 use std::sync::Mutex;
@@ -180,7 +189,9 @@ impl Tui {
             );
 
             // The whole of the interrupt: the turn's future is dropped where it stood, so
-            // the loop gains no stop of its own. What that costs is drawn below.
+            // the loop gains no stop of its own. What that costs is drawn below — a running
+            // tool still finishes, and the process waits on it, `Runtime::drop` having no
+            // timeout (#26).
             tokio::select! {
                 outcome = turn => Ok(outcome),
                 stopped = keys.stop() => Err(stopped),
@@ -262,8 +273,11 @@ fn lost() -> String {
 ///
 /// The account again, the pane having gone with the screen and a redirected log needing the
 /// line that says why a run exited 3 rather than 2 (#224). A latched draw failure is one
-/// more line and not the code — `context/guide-tui.md` has why, and why `agent-run` does the
-/// opposite. Apart from `execute` so the precedence is a unit test: `Screen` needs a
+/// more line and not the code: the code answers what the turn did, which a failed draw is
+/// not (#257). `agent-run` does the opposite with a stdout it could not write, that being the
+/// channel the answer came back on. What a latched screen does lose is the answer, drawn
+/// there and nowhere else, so without `--session` such a run exits 0 with it gone (#224).
+/// Apart from `execute` so the precedence is a unit test: `Screen` needs a
 /// terminal no test has, and the latch is private with no setter.
 ///
 /// `writeln!` and not `eprintln!`: when the screen was the terminal that hung up, stderr is
