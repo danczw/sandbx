@@ -196,8 +196,7 @@ negotiated_abi_from(probe: impl FnMut(ABI) -> Result<(), RulesetError>) -> Resul
 negotiated_abi() -> Result<ABI, _>
 enforcement_verdict(status: RulesetStatus) -> Result<(), _>
                                                                       helper_ruleset_compat.rs
-Requested { handled: BitFlags<AccessFs>, rules: [(Axis, RuleTarget, BitFlags<AccessFs>)],
-            net: RequestedNet }
+Requested { handled: BitFlags<AccessFs>, rules: [FsRule], net: RequestedNet }
 RequestedNet::Unhandled | ::Ports { handled, granted: BitFlags<AccessNet>, ports: &[u16] }
 requested_at(policy: &SandboxPolicy, abi: landlock::ABI) -> Requested<'_>
 requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>

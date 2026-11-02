@@ -23,8 +23,7 @@ use std::{fmt, fs, io};
 ///
 /// Names what degraded rather than recording it: this runs in the re-exec'd helper, which
 /// can install no subscriber without writing sandbx's records into the command's output, so
-/// [`exec_sandboxed`](super::exec_sandboxed) reports it on the channel it holds. The detail
-/// is a string because it is built from an errno.
+/// [`exec_sandboxed`](super::exec_sandboxed) reports it on the channel it holds.
 pub(super) fn prepare_supervisor(
     policy: &crate::SandboxPolicy,
 ) -> Result<Vec<Degraded>, SandboxError> {

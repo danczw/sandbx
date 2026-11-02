@@ -16,7 +16,7 @@ fn reported(channel: &str) -> Option<crate::HelperRefusal> {
 /// host's answer**: a kernel that drops the bounding set cleanly emits no `degraded` at
 /// all, so `audit_channel.rs`'s real-helper tests cannot reach this path on most
 /// machines and a regression in it would go unmeasured.
-fn read_channel(channel: &str, spawn: &crate::SpawnId, session: Option<&str>) -> Read {
+fn read_channel(channel: &str, spawn: &crate::SpawnId, session: Option<&str>) -> Reported {
     use std::io::Write;
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -29,14 +29,14 @@ fn read_channel(channel: &str, spawn: &crate::SpawnId, session: Option<&str>) ->
     let refused =
         tracing::subscriber::with_default(subscriber, || record_reports(read, spawn, session));
 
-    Read {
+    Reported {
         refused,
         lines: sink.0.lock().unwrap().clone(),
     }
 }
 
 /// What [`read_channel`] got back: the refusal reported, and the records emitted.
-struct Read {
+struct Reported {
     refused: Option<crate::HelperRefusal>,
     lines: Vec<String>,
 }
@@ -73,7 +73,7 @@ impl tracing::field::Visit for Collect {
 #[test]
 fn a_degradation_names_the_run_that_weakened() {
     let run = crate::SpawnId::next();
-    let Read { refused, lines } = read_channel(
+    let Reported { refused, lines } = read_channel(
         "capability_bounding_set\tleft as inherited\n",
         &run,
         Some("abc123"),
@@ -97,7 +97,7 @@ fn a_degradation_names_the_run_that_weakened() {
 /// so the assertions there are about a record the channel produced.
 #[test]
 fn an_empty_channel_emits_no_degradation() {
-    let Read { refused, lines } = read_channel("", &crate::SpawnId::next(), None);
+    let Reported { refused, lines } = read_channel("", &crate::SpawnId::next(), None);
 
     assert_eq!(refused, None, "an empty channel refused the run");
     assert!(lines.is_empty(), "got: {lines:?}");
