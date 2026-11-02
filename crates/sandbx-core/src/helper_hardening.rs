@@ -6,7 +6,7 @@
 //! Every change is irreversible for the process that makes it, so none may run inside sandbx.
 
 use crate::SandboxError;
-use crate::degradation::Degradation;
+use crate::degradation::{Degradation, Degraded};
 use std::{fmt, fs, io};
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
@@ -27,7 +27,7 @@ use std::{fmt, fs, io};
 /// is a string because it is built from an errno.
 pub(super) fn prepare_supervisor(
     policy: &crate::SandboxPolicy,
-) -> Result<Vec<(Degradation, String)>, SandboxError> {
+) -> Result<Vec<Degraded>, SandboxError> {
     let mut degraded = Vec::new();
 
     // What the bound `hosts` file is built from, so they precede `bound_resolution` below; and
@@ -41,10 +41,10 @@ pub(super) fn prepare_supervisor(
         .map(|resolved| resolved.unresolved)
         .filter(|unresolved| *unresolved > 0)
     {
-        degraded.push((
-            Degradation::UnresolvedDnsName,
-            format!("{count} allowlisted name(s) resolved to no address"),
-        ));
+        degraded.push(Degraded {
+            step: Degradation::UnresolvedDnsName,
+            detail: format!("{count} allowlisted name(s) resolved to no address"),
+        });
     }
 
     degraded.extend(isolate(policy)?);
@@ -177,7 +177,7 @@ fn ppid_from_stat(stat: &str) -> Option<&str> {
 ///
 /// Order matters: the bounding set is dropped *before* the effective set, because
 /// `PR_CAPBSET_DROP` itself requires `CAP_SETPCAP` in the effective set.
-fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError> {
+fn harden_process_state() -> Result<Option<Degraded>, SandboxError> {
     use caps::CapSet;
 
     let degraded = drop_bounding_set(|| caps::clear(None, CapSet::Bounding));
@@ -206,14 +206,10 @@ fn harden_process_state() -> Result<Option<(Degradation, String)>, SandboxError>
 /// — is assertable: `PR_CAPBSET_DROP` only fails on a host whose LSM strips `CAP_SETPCAP`
 /// from a fresh user namespace. Generic over the error so a test can refuse without
 /// constructing a `caps` error.
-fn drop_bounding_set<E: fmt::Display>(
-    clear: impl FnOnce() -> Result<(), E>,
-) -> Option<(Degradation, String)> {
-    clear().err().map(|error| {
-        (
-            Degradation::CapabilityBoundingSet,
-            format!("left as inherited: {error}"),
-        )
+fn drop_bounding_set<E: fmt::Display>(clear: impl FnOnce() -> Result<(), E>) -> Option<Degraded> {
+    clear().err().map(|error| Degraded {
+        step: Degradation::CapabilityBoundingSet,
+        detail: format!("left as inherited: {error}"),
     })
 }
 
@@ -252,7 +248,7 @@ fn hardening_failed(source: impl fmt::Display) -> SandboxError {
 /// One `unshare` for all of them, so there is no window holding some of the isolation and not
 /// the rest. Returns whatever [`map_identity_into_userns`] could not do, for
 /// [`prepare_supervisor`] to pass on to the parent.
-fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)>, SandboxError> {
+fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<Degraded>, SandboxError> {
     use nix::sched::{CloneFlags, unshare};
     use nix::unistd::{getgid, getuid};
 
@@ -303,7 +299,7 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<(Degradation, String)
 ///
 /// Names the failure rather than recording it, for the reason [`prepare_supervisor`]
 /// gives.
-fn map_identity_into_userns(uid: u32, gid: u32) -> Option<(Degradation, String)> {
+fn map_identity_into_userns(uid: u32, gid: u32) -> Option<Degraded> {
     map_identity_into_userns_with(uid, gid, |path, contents| fs::write(path, contents))
 }
 
@@ -316,7 +312,7 @@ fn map_identity_into_userns_with(
     uid: u32,
     gid: u32,
     mut write: impl FnMut(&str, String) -> io::Result<()>,
-) -> Option<(Degradation, String)> {
+) -> Option<Degraded> {
     // `setgroups` must be denied before an unprivileged `gid_map` write or the kernel rejects
     // it, and a single mapped gid has no supplementary groups anyway.
     let maps = [
@@ -329,11 +325,9 @@ fn map_identity_into_userns_with(
     // reject says nothing the first does not.
     maps.into_iter()
         .find_map(|(path, contents)| write(path, contents).err())
-        .map(|error| {
-            (
-                Degradation::UsernsIdentityMap,
-                format!("running as nobody: {error}"),
-            )
+        .map(|error| Degraded {
+            step: Degradation::UsernsIdentityMap,
+            detail: format!("running as nobody: {error}"),
         })
 }
 

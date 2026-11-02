@@ -28,12 +28,8 @@ use super::{compat, rights};
 pub(in crate::helper) struct Requested<'policy> {
     /// Every right the kernel is told to police. See [`compat::handled_access`].
     pub(in crate::helper) handled: landlock::BitFlags<landlock::AccessFs>,
-    /// One rule per grant, as `(axis, path, rights)`. See [`rights::fs_rules`].
-    pub(in crate::helper) rules: Vec<(
-        crate::Axis,
-        rights::RuleTarget<'policy>,
-        landlock::BitFlags<landlock::AccessFs>,
-    )>,
+    /// One rule per grant. See [`rights::fs_rules`].
+    pub(in crate::helper) rules: Vec<rights::FsRule<'policy>>,
     /// What to ask for on the network axis. See [`rights::net_rules`].
     pub(in crate::helper) net: RequestedNet<'policy>,
 }

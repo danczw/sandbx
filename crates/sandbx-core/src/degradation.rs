@@ -27,7 +27,7 @@ const RECORD_LIMIT: usize = Degradation::ALL.len() + 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Report<'a> {
     /// A hardening step that did not take effect, and why.
-    Degraded(Degradation, &'a str),
+    Degraded { step: Degradation, detail: &'a str },
 
     /// A helper stage refused rather than reaching the command. On the channel because the
     /// stage's non-zero exit is relayed on the command's behalf, so it would otherwise read
@@ -80,11 +80,19 @@ impl Degradation {
     }
 }
 
+/// A hardening step that did not take effect, and why, as the helper reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Degraded {
+    pub(crate) step: Degradation,
+    /// Built from an errno, hence owned.
+    pub(crate) detail: String,
+}
+
 /// Render records for the parent to read; empty when nothing degraded.
-pub(crate) fn encode(records: &[(Degradation, String)]) -> String {
+pub(crate) fn encode(records: &[Degraded]) -> String {
     let mut out = String::new();
 
-    for (step, detail) in records {
+    for Degraded { step, detail } in records {
         // Truncated on a character boundary, so the line stays UTF-8 for a `str` decoder.
         let detail: String = detail
             .chars()
@@ -116,7 +124,7 @@ pub(crate) fn decode(channel: &str) -> Vec<Report<'_>> {
         .filter_map(|line| {
             let (label, detail) = line.split_once(SEPARATOR)?;
             if let Some(step) = Degradation::from_label(label) {
-                return Some(Report::Degraded(step, detail));
+                return Some(Report::Degraded { step, detail });
             }
             Some(Report::Failed(crate::HelperRefusal::from_label(label)?))
         })

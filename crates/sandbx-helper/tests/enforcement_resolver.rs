@@ -65,7 +65,7 @@ fn host_forbids_the_mounts() -> bool {
 /// A name this host resolves with no nameserver, and a listener on the address it resolves
 /// to. Derived, not written down — the one such name on a developer machine is the
 /// machine's own hostname, and hard-coding either would pass on one host and fail on the next.
-fn local_listener(payload: &'static str) -> (String, SocketAddr, JoinHandle<()>) {
+fn local_listener(payload: &'static str) -> LocalListener {
     let hosts = fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
 
     let bound = hosts
@@ -98,7 +98,18 @@ fn local_listener(payload: &'static str) -> (String, SocketAddr, JoinHandle<()>)
         }
     });
 
-    (name, address, accepting)
+    LocalListener {
+        name,
+        address,
+        accepting,
+    }
+}
+
+/// What [`local_listener`] found and bound, and the thread answering on it.
+struct LocalListener {
+    name: String,
+    address: SocketAddr,
+    accepting: JoinHandle<()>,
 }
 
 /// Unblock a listener thread nothing connected to, so the test does not leak it.
@@ -152,7 +163,11 @@ fn an_allowlisted_name_resolves_and_is_reached() {
         return;
     }
 
-    let (name, address, accepting) = local_listener("ALLOWLISTED-NAME-ANSWERED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("ALLOWLISTED-NAME-ANSWERED");
 
     let output = probe(
         SandboxPolicy::default()
@@ -182,7 +197,11 @@ fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
         return;
     }
 
-    let (name, address, accepting) = local_listener("SECRET-BEHIND-THE-NAME");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("SECRET-BEHIND-THE-NAME");
 
     // `localhost` as the one allowlisted name: it bounds resolution without bounding it to
     // the name under test.
@@ -219,7 +238,11 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
         return;
     }
 
-    let (name, address, accepting) = local_listener("UNUSED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
     drain(address, accepting);
 
     let output = probe(
@@ -260,7 +283,11 @@ fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
         return;
     }
 
-    let (name, address, accepting) = local_listener("UNUSED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
     drain(address, accepting);
 
     // `/proc` read is the probe's own need, `/proc/self/fd` being where the kernel answers.
@@ -292,7 +319,11 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
         return;
     }
 
-    let (name, address, accepting) = local_listener("UNUSED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
     drain(address, accepting);
 
     let policy = SandboxPolicy::default().allow_dns(&name);
@@ -350,7 +381,11 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
         return;
     }
 
-    let (name, address, accepting) = local_listener("UNUSED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
     drain(address, accepting);
 
     let scratch = tempfile::tempdir().expect("a temporary directory");
@@ -385,7 +420,11 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
 /// assertion anywhere on `helper::resolver`'s `EACCES` path.
 #[test]
 fn the_host_etc_survives_a_bounded_run() {
-    let (name, address, accepting) = local_listener("UNUSED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
     drain(address, accepting);
 
     let before = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
@@ -430,7 +469,11 @@ fn the_host_etc_survives_a_bounded_run() {
 /// a command resolves exactly what it resolved before this existed.
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
-    let (name, address, accepting) = local_listener("UNUSED");
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
     drain(address, accepting);
 
     let policy = SandboxPolicy::default()

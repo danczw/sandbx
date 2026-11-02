@@ -184,7 +184,8 @@ cannot fall through to unrestricted execution.
 
 ```
 rights_for(axis: Axis, target: Inode, abi: landlock::ABI) -> BitFlags<AccessFs>
-fs_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> [(Axis, RuleTarget, BitFlags<AccessFs>)]
+fs_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> [FsRule]
+FsRule { axis: Axis, target: RuleTarget, rights: BitFlags<AccessFs> }
 RuleTarget::Granted(&VettedPath) | ::Installed(&'static Path)   ──► path()
 net_rules(policy: &SandboxPolicy, abi: landlock::ABI) -> RequestedNet<'_>
                                                                       helper_ruleset_rights.rs

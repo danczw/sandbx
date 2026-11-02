@@ -27,7 +27,7 @@ fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
 
 /// A listener on an ephemeral loopback port, answering one connection with `payload`. The
 /// probe prints what it read, so a test can assert the bytes and not the exit status alone.
-fn listener(payload: &'static str) -> (u16, JoinHandle<()>) {
+fn listener(payload: &'static str) -> Listener {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
     let port = listener
         .local_addr()
@@ -41,7 +41,13 @@ fn listener(payload: &'static str) -> (u16, JoinHandle<()>) {
         }
     });
 
-    (port, accepting)
+    Listener { port, accepting }
+}
+
+/// What [`listener`] bound, and the thread answering on it.
+struct Listener {
+    port: u16,
+    accepting: JoinHandle<()>,
 }
 
 /// Unblock a listener thread nothing connected to, so the test does not leak it.
@@ -61,7 +67,7 @@ fn probe(policy: SandboxPolicy, transport: &str, port: u16) -> Output {
 /// that reaches nothing is fail-closed but useless.
 #[test]
 fn an_allowlisted_port_is_reachable() {
-    let (port, accepting) = listener("ALLOWLISTED-PORT-ANSWERED");
+    let Listener { port, accepting } = listener("ALLOWLISTED-PORT-ANSWERED");
 
     let output = probe(
         SandboxPolicy::default().allow_network_port(port),
@@ -87,8 +93,14 @@ fn an_allowlisted_port_is_reachable() {
 /// listeners, one allowlisted, so the refusal cannot be a run with no network at all.
 #[test]
 fn a_port_outside_the_allowlist_is_refused() {
-    let (allowed, allowed_thread) = listener("ALLOWED-PORT");
-    let (denied, denied_thread) = listener("DENIED-PORT-SECRET");
+    let Listener {
+        port: allowed,
+        accepting: allowed_thread,
+    } = listener("ALLOWED-PORT");
+    let Listener {
+        port: denied,
+        accepting: denied_thread,
+    } = listener("DENIED-PORT-SECRET");
 
     let policy = SandboxPolicy::default().allow_network_port(allowed);
     let reached = probe(policy.clone(), "tcp", allowed);
@@ -117,8 +129,14 @@ fn a_port_outside_the_allowlist_is_refused() {
 /// name.
 #[test]
 fn a_bare_network_grant_reaches_both_ports() {
-    let (first, first_thread) = listener("FIRST-PORT");
-    let (second, second_thread) = listener("SECOND-PORT");
+    let Listener {
+        port: first,
+        accepting: first_thread,
+    } = listener("FIRST-PORT");
+    let Listener {
+        port: second,
+        accepting: second_thread,
+    } = listener("SECOND-PORT");
 
     let policy = SandboxPolicy::default().allow_network();
     let to_first = probe(policy.clone(), "tcp", first);
@@ -142,7 +160,7 @@ fn a_bare_network_grant_reaches_both_ports() {
 /// that reaches its TCP port, so this is the datagram refused and not a run with no network.
 #[test]
 fn udp_is_refused_under_a_port_allowlist() {
-    let (port, accepting) = listener("TCP-STILL-WORKS");
+    let Listener { port, accepting } = listener("TCP-STILL-WORKS");
 
     let policy = SandboxPolicy::default().allow_network_port(port);
     let over_tcp = probe(policy.clone(), "tcp", port);
@@ -166,7 +184,7 @@ fn udp_is_refused_under_a_port_allowlist() {
 /// local port asks for, cannot be expressed by a port list and so is refused.
 #[test]
 fn bind_is_confined_to_the_allowlisted_ports() {
-    let (port, accepting) = listener("UNUSED");
+    let Listener { port, accepting } = listener("UNUSED");
     drain(port, accepting);
 
     let policy = SandboxPolicy::default().allow_network_port(port);
@@ -191,7 +209,7 @@ fn bind_is_confined_to_the_allowlisted_ports() {
 /// unrestricted egress still gets datagrams, and `getaddrinfo` still has netlink.
 #[test]
 fn udp_survives_a_bare_network_grant() {
-    let (port, accepting) = listener("UNUSED");
+    let Listener { port, accepting } = listener("UNUSED");
 
     let output = probe(SandboxPolicy::default().allow_network(), "udp", port);
 

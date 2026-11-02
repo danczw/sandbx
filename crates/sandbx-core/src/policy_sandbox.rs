@@ -85,6 +85,15 @@ pub enum NetworkPolicy {
     Ports(Vec<u16>),
 }
 
+/// One grant a [`SandboxPolicy`] holds, as [`SandboxPolicy::granted_paths`] yields it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GrantedPath<'a> {
+    /// The access granted.
+    pub axis: Axis,
+    /// The path it is granted on, as it was vetted.
+    pub granted: &'a VettedPath,
+}
+
 /// What a sandboxed process is allowed to do. Default-deny: construct with
 /// [`SandboxPolicy::default`] and widen, so an unconfigured policy is useless, not open.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -127,12 +136,14 @@ impl SandboxPolicy {
         }
     }
 
-    /// Every grant this policy holds, as `(axis, path)` pairs, in [`Axis::ALL`] order:
-    /// one pair per grant, not per path, so a path granted on two axes appears twice.
-    pub fn granted_paths(&self) -> impl Iterator<Item = (Axis, &VettedPath)> {
-        Axis::ALL
-            .into_iter()
-            .flat_map(move |axis| self.paths(axis).iter().map(move |path| (axis, path)))
+    /// Every grant this policy holds, in [`Axis::ALL`] order: one per grant, not per path,
+    /// so a path granted on two axes appears twice.
+    pub fn granted_paths(&self) -> impl Iterator<Item = GrantedPath<'_>> {
+        Axis::ALL.into_iter().flat_map(move |axis| {
+            self.paths(axis)
+                .iter()
+                .map(move |granted| GrantedPath { axis, granted })
+        })
     }
 
     /// A grant naming a file this policy's own resolver will bind over, or `None` if none
@@ -153,7 +164,7 @@ impl SandboxPolicy {
         }
 
         self.granted_paths()
-            .map(|(_, granted)| granted.path())
+            .map(|grant| grant.granted.path())
             .find(|path| crate::bound_by_resolver(path))
     }
 

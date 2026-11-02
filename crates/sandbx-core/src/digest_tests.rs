@@ -90,7 +90,7 @@ fn a_file_larger_than_one_chunk_hashes_as_one_stream() {
 }
 
 /// A file, and the digest a pin on it would be checked against.
-fn written(contents: &[u8]) -> (tempfile::TempDir, PathBuf, Sha256Digest) {
+fn written(contents: &[u8]) -> Written {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let path = dir.path().join("program");
     fs::write(&path, contents).expect("write");
@@ -98,12 +98,23 @@ fn written(contents: &[u8]) -> (tempfile::TempDir, PathBuf, Sha256Digest) {
     let mut file = File::open(&path).expect("reopen");
     let digest = Sha256Digest::of_file(&mut file).expect("hash");
 
-    (dir, path, digest)
+    Written { dir, path, digest }
+}
+
+/// What [`written`] made, and the directory that has to outlive it.
+struct Written {
+    dir: tempfile::TempDir,
+    path: PathBuf,
+    digest: Sha256Digest,
 }
 
 #[test]
 fn a_matching_image_hands_back_a_descriptor() {
-    let (_dir, path, digest) = written(b"\x7fELF not really, but not a script");
+    let Written {
+        dir: _dir,
+        path,
+        digest,
+    } = written(b"\x7fELF not really, but not a script");
 
     let file = open_verified(path.to_str().unwrap(), digest).expect("the pinned bytes");
 
@@ -116,7 +127,11 @@ fn a_matching_image_hands_back_a_descriptor() {
 
 #[test]
 fn a_shebang_image_is_refused_rather_than_exec_d() {
-    let (_dir, path, digest) = written(b"#!/bin/sh\nexit 0\n");
+    let Written {
+        dir: _dir,
+        path,
+        digest,
+    } = written(b"#!/bin/sh\nexit 0\n");
 
     let error = open_verified(path.to_str().unwrap(), digest).expect_err("a script ran");
 
@@ -130,7 +145,11 @@ fn a_shebang_image_is_refused_rather_than_exec_d() {
 /// not the narrower complaint about what they happen to be.
 #[test]
 fn a_swapped_script_reports_the_mismatch() {
-    let (_dir, path, digest) = written(b"the pinned bytes");
+    let Written {
+        dir: _dir,
+        path,
+        digest,
+    } = written(b"the pinned bytes");
     fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("swap");
 
     let error = open_verified(path.to_str().unwrap(), digest).expect_err("a swap ran");
@@ -147,7 +166,11 @@ fn a_swapped_script_reports_the_mismatch() {
 fn an_unreadable_program_says_the_pin_needs_read() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    let (_dir, path, digest) = written(b"\x7fELF");
+    let Written {
+        dir: _dir,
+        path,
+        digest,
+    } = written(b"\x7fELF");
     fs::set_permissions(&path, Permissions::from_mode(0o111)).expect("chmod");
 
     // Both branches assert: root reads a mode-111 file, and skipping there would report

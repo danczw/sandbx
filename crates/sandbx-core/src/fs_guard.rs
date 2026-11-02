@@ -95,7 +95,7 @@ impl FsGuard {
         // would overcount on the ordinary shape.
         let mut told = Vec::new();
 
-        for (axis, granted) in policy.granted_paths() {
+        for crate::GrantedPath { axis, granted } in policy.granted_paths() {
             let crate::Grants {
                 read,
                 write,
@@ -186,7 +186,10 @@ impl FsGuard {
             return deny(Some(moved), requested, access);
         }
 
-        let (ancestor, granted_area) = nearest_area(requested, roots);
+        let Area {
+            ancestor,
+            granted_area,
+        } = nearest_area(requested, roots);
 
         // The ancestor resolves, so what it reached is the substitute's choice too, and the
         // reason it would name is one the spelling above has already declined to give.
@@ -457,10 +460,13 @@ impl FsGuard {
         // subtrees with nothing marking the result partial — which the by-path stack could
         // not do, `std::fs::read_dir` holding one directory at a time. Popping bounds the
         // live set by the tree's depth instead: siblings share one parent handle.
-        let mut stack: Vec<(Arc<OwnedFd>, Option<Vec<u8>>, PathBuf)> =
-            vec![(Arc::new(top), None, at.to_path_buf())];
+        let mut stack = vec![Pending {
+            parent: Arc::new(top),
+            name: None,
+            at: at.to_path_buf(),
+        }];
 
-        'walk: while let Some((parent, name, at)) = stack.pop() {
+        'walk: while let Some(Pending { parent, name, at }) = stack.pop() {
             let dir = match name {
                 // The walk root, already open.
                 None => parent,
@@ -480,7 +486,7 @@ impl FsGuard {
                 continue;
             };
 
-            for (name, kind) in entries {
+            for Dirent { name, kind } in entries {
                 let child = at.join(OsStr::from_bytes(&name));
 
                 match kind {
@@ -494,7 +500,11 @@ impl FsGuard {
                         }
                     }
                     Some(nix::dir::Type::Directory) => {
-                        stack.push((Arc::clone(&dir), Some(name), child));
+                        stack.push(Pending {
+                            parent: Arc::clone(&dir),
+                            name: Some(name),
+                            at: child,
+                        });
                     }
                     Some(nix::dir::Type::File) => {
                         if files.len() == max_files {
@@ -668,16 +678,30 @@ fn reaches_plainly(requested: &Path, ancestor: &Path) -> bool {
 /// Where the deepest part of `requested` that resolves sits, and which part that was. A
 /// path that does not resolve is judged by its nearest resolving ancestor, so the root
 /// under it is measured here and before any reason the leaf would name.
-fn nearest_area<'a>(requested: &'a Path, roots: &[Root]) -> (Option<&'a Path>, Containment) {
+fn nearest_area<'a>(requested: &'a Path, roots: &[Root]) -> Area<'a> {
     let Some((ancestor, existing)) = requested
         .ancestors()
         .skip(1)
         .find_map(|ancestor| Some((ancestor, ancestor.canonicalize().ok()?)))
     else {
-        return (None, Containment::Outside(None));
+        return Area {
+            ancestor: None,
+            granted_area: Containment::Outside(None),
+        };
     };
 
-    (Some(ancestor), contains(&existing, roots))
+    Area {
+        ancestor: Some(ancestor),
+        granted_area: contains(&existing, roots),
+    }
+}
+
+/// What [`nearest_area`] found.
+struct Area<'a> {
+    /// The deepest ancestor that resolves, `None` when not even `/` does.
+    ancestor: Option<&'a Path>,
+    /// Which root, if any, that ancestor resolves into.
+    granted_area: Containment,
 }
 
 /// Open `granted` as a directory to resolve accesses beneath, or `None` if it is not one.
@@ -917,7 +941,7 @@ fn listing(dir: OwnedFd) -> io::Result<Listing> {
 
     let entries = entries_at(dir)?
         .into_iter()
-        .map(|(name, kind)| Listed {
+        .map(|Dirent { name, kind }| Listed {
             name: OsStr::from_bytes(&name).to_owned(),
             directory: kind == Some(nix::dir::Type::Directory),
         })
@@ -932,7 +956,7 @@ fn listing(dir: OwnedFd) -> io::Result<Listing> {
 /// borrows mutably: names and whatever the `dirent` carried first, then the unknowns.
 /// `None` out means the type could not be established at all, which every caller reads as
 /// neither a directory to descend nor a file to collect — the safe answer for both.
-fn entries_at(dir: OwnedFd) -> io::Result<Vec<(Vec<u8>, Option<nix::dir::Type>)>> {
+fn entries_at(dir: OwnedFd) -> io::Result<Vec<Dirent>> {
     let mut dir = nix::dir::Dir::from_fd(dir)?;
 
     // `flatten`, not `?`: one unreadable `dirent` costs that entry and not the whole
@@ -944,19 +968,33 @@ fn entries_at(dir: OwnedFd) -> io::Result<Vec<(Vec<u8>, Option<nix::dir::Type>)>
         if name == b"." || name == b".." {
             continue;
         }
-        entries.push((name, entry.file_type()));
+        entries.push(Dirent {
+            name,
+            kind: entry.file_type(),
+        });
     }
 
-    Ok(entries
-        .into_iter()
-        .map(|(name, kind)| match kind {
-            Some(kind) => (name, Some(kind)),
-            None => {
-                let kind = stat_kind(&dir, &name);
-                (name, kind)
-            }
-        })
-        .collect())
+    for entry in &mut entries {
+        if entry.kind.is_none() {
+            entry.kind = stat_kind(&dir, &entry.name);
+        }
+    }
+    Ok(entries)
+}
+
+/// A directory the descriptor walk has yet to list.
+struct Pending {
+    /// The directory it is opened beneath, or the walk root itself when `name` is `None`.
+    parent: Arc<OwnedFd>,
+    name: Option<Vec<u8>>,
+    /// Its path, for the results.
+    at: PathBuf,
+}
+
+/// One entry [`entries_at`] read.
+struct Dirent {
+    name: Vec<u8>,
+    kind: Option<nix::dir::Type>,
 }
 
 /// The type of `name` under `dir`, following no link to find out.

@@ -8,5 +8,5 @@ pub(crate) mod dispatch;
 mod run;
 
 pub use dispatch::{HELPER_FLAG, HELPER_INNER_FLAG, with_helper_dispatch};
-pub use run::SandboxedCommand;
 pub(crate) use run::self_exe;
+pub use run::{CommandLine, SandboxedCommand};

@@ -79,16 +79,25 @@ impl tracing::field::Visit for Collect {
     }
 }
 
-fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+/// What a run returned, and the trail it left.
+struct Traced<T> {
+    result: T,
+    lines: Vec<String>,
+}
+
+fn capture<T>(f: impl FnOnce() -> T) -> Traced<T> {
     let sink = Captured::default();
     let subscriber = tracing_subscriber::registry().with(sink.clone());
-    let out = with_default(subscriber, f);
-    (out, sink.lines())
+    let result = with_default(subscriber, f);
+    Traced {
+        result,
+        lines: sink.lines(),
+    }
 }
 
 /// Run `script` under `sh` in a real sandbox, with the trail captured.
-fn sandboxed(script: &str, policy: SandboxPolicy) -> (Output, Vec<String>) {
-    let (result, lines) = capture(|| {
+fn sandboxed(script: &str, policy: SandboxPolicy) -> Traced<Output> {
+    let Traced { result, lines } = capture(|| {
         SandboxedCommand::new("/bin/sh", policy)
             .arg("-c")
             .arg(script)
@@ -96,10 +105,10 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> (Output, Vec<String>) {
             .output()
     });
 
-    (
-        result.expect("the sandboxed command should have run"),
+    Traced {
+        result: result.expect("the sandboxed command should have run"),
         lines,
-    )
+    }
 }
 
 /// Can this machine drop the capability bounding set at all? Repeated from
@@ -123,7 +132,10 @@ fn bounding_set_is_droppable() -> bool {
 /// Both branches assert, since returning early on one reports `ok` without checking anything.
 #[test]
 fn the_bounding_set_degrades_only_on_a_refused_drop() {
-    let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
+    let Traced {
+        result: output,
+        lines,
+    } = sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
     // A command the sandbox refused records no degradation either, so without this the
     // droppable branch passes on a run that never happened.
@@ -161,7 +173,10 @@ fn the_bounding_set_degrades_only_on_a_refused_drop() {
 /// though the sandbox let it through.
 #[test]
 fn the_command_cannot_write_the_audit_channel() {
-    let (output, lines) = sandboxed(
+    let Traced {
+        result: output,
+        lines,
+    } = sandboxed(
         // `|| true` so the command's own exit status does not depend on whether
         // fd 0 accepted the write; this test is about where the bytes went.
         r"printf 'capability_bounding_set\tforged-by-the-command\n' >&0 || true",
@@ -197,7 +212,10 @@ fn the_command_inherits_no_other_end_of_the_channel() {
         .map(|fd| format!(r"printf 'capability_bounding_set\tvia-fd-{fd}\n' >&{fd} || true; "))
         .collect();
 
-    let (output, lines) = sandboxed(
+    let Traced {
+        result: output,
+        lines,
+    } = sandboxed(
         // Trailing `true` so a closed descriptor is not what the run's status reports.
         &format!("{probes}true"),
         SandboxPolicy::default().allow_system_executables(),
@@ -324,7 +342,7 @@ fn stage_1_names_its_own_refusal_on_the_channel() {
 /// the command wrote.
 #[test]
 fn the_commands_own_output_carries_no_audit_records() {
-    let (output, _) = sandboxed(
+    let Traced { result: output, .. } = sandboxed(
         "printf 'to stdout'; printf 'to stderr' >&2",
         SandboxPolicy::default().allow_system_executables(),
     );
@@ -347,7 +365,8 @@ fn the_commands_own_output_carries_no_audit_records() {
 /// timeout and the ordinary path.
 #[test]
 fn every_record_names_a_real_mechanism_once() {
-    let (_, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
+    let Traced { lines, .. } =
+        sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
     let degraded: Vec<_> = lines
         .iter()
@@ -402,7 +421,7 @@ fn a_pin_refusal_names_itself_on_the_channel() {
         .allow_system_executables()
         .allow_read_execute(vetted(dir.path()));
 
-    let (result, lines) = capture(|| {
+    let Traced { result, lines } = capture(|| {
         SandboxedCommand::new(program.to_str().unwrap(), policy)
             .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
             .pin_sha256(pinned)
@@ -452,7 +471,7 @@ fn a_redirected_grant_names_itself_on_the_channel() {
     fs::remove_dir(&granted_at).unwrap();
     unix_fs::symlink(&elsewhere, &granted_at).unwrap();
 
-    let (result, lines) = capture(|| {
+    let Traced { result, lines } = capture(|| {
         SandboxedCommand::new("/bin/true", policy)
             .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
             .output()
@@ -504,7 +523,7 @@ fn a_substituted_grant_names_itself_on_the_channel() {
     fs::remove_dir(&granted_at).unwrap();
     fs::rename(&substitute, &granted_at).unwrap();
 
-    let (result, lines) = capture(|| {
+    let Traced { result, lines } = capture(|| {
         SandboxedCommand::new("/bin/true", policy)
             .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
             .output()
@@ -557,7 +576,10 @@ fn spawn_id(line: &str) -> &str {
 /// whether this host degrades decides how many records there are, not whether they agree.
 #[test]
 fn every_record_of_one_run_names_that_run() {
-    let (output, lines) = sandboxed("true", SandboxPolicy::default().allow_system_executables());
+    let Traced {
+        result: output,
+        lines,
+    } = sandboxed("true", SandboxPolicy::default().allow_system_executables());
 
     assert!(
         output.status.success(),

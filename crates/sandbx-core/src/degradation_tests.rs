@@ -1,13 +1,17 @@
 use super::{
-    DETAIL_LIMIT, Degradation, RECORD_LIMIT, Report, SEPARATOR, decode, encode, encode_refusal,
+    DETAIL_LIMIT, Degradation, Degraded, RECORD_LIMIT, Report, SEPARATOR, decode, encode,
+    encode_refusal,
 };
 
 /// Only the degradations in `channel`, for a test that is about those alone.
-fn degraded(channel: &str) -> Vec<(Degradation, &str)> {
+fn degraded(channel: &str) -> Vec<Degraded> {
     decode(channel)
         .into_iter()
         .filter_map(|report| match report {
-            Report::Degraded(step, detail) => Some((step, detail)),
+            Report::Degraded { step, detail } => Some(Degraded {
+                step,
+                detail: detail.to_owned(),
+            }),
             Report::Failed(_) => None,
         })
         .collect()
@@ -17,16 +21,19 @@ fn degraded(channel: &str) -> Vec<(Degradation, &str)> {
 fn every_step_survives_the_crossing_with_its_detail() {
     let records: Vec<_> = Degradation::ALL
         .into_iter()
-        .map(|step| (step, format!("detail for {}", step.label())))
+        .map(|step| Degraded {
+            step,
+            detail: format!("detail for {}", step.label()),
+        })
         .collect();
 
     let channel = encode(&records);
     let decoded = degraded(&channel);
 
     assert_eq!(decoded.len(), records.len(), "a record was lost");
-    for ((sent, detail), (got, got_detail)) in records.iter().zip(decoded) {
-        assert_eq!(*sent, got, "the step changed in transit");
-        assert_eq!(detail, got_detail, "the detail changed in transit");
+    for (sent, got) in records.iter().zip(decoded) {
+        assert_eq!(sent.step, got.step, "the step changed in transit");
+        assert_eq!(sent.detail, got.detail, "the detail changed in transit");
     }
 }
 
@@ -65,17 +72,20 @@ fn a_malformed_line_keeps_the_records_around_it() {
 
     assert_eq!(
         decode(&channel),
-        vec![Report::Degraded(
-            Degradation::CapabilityBoundingSet,
-            "left as inherited"
-        )],
+        vec![Report::Degraded {
+            step: Degradation::CapabilityBoundingSet,
+            detail: "left as inherited"
+        }],
         "a surviving record was dropped with the malformed ones"
     );
 }
 
 #[test]
 fn a_long_detail_is_capped_rather_than_written_whole() {
-    let encoded = encode(&[(Degradation::UsernsIdentityMap, "x".repeat(10_000))]);
+    let encoded = encode(&[Degraded {
+        step: Degradation::UsernsIdentityMap,
+        detail: "x".repeat(10_000),
+    }]);
 
     assert!(
         encoded.len() < DETAIL_LIMIT * 2,
@@ -86,7 +96,7 @@ fn a_long_detail_is_capped_rather_than_written_whole() {
     let decoded = degraded(&encoded);
     assert_eq!(decoded.len(), 1, "the capped record stopped decoding");
     assert_eq!(
-        decoded[0].0,
+        decoded[0].step,
         Degradation::UsernsIdentityMap,
         "capping lost the mechanism"
     );
@@ -94,26 +104,26 @@ fn a_long_detail_is_capped_rather_than_written_whole() {
 
 #[test]
 fn a_detail_cannot_forge_a_record_boundary() {
-    let encoded = encode(&[(
-        Degradation::UsernsIdentityMap,
-        format!(
+    let encoded = encode(&[Degraded {
+        step: Degradation::UsernsIdentityMap,
+        detail: format!(
             "running as nobody\n{}\tforged",
             Degradation::CapabilityBoundingSet.label()
         ),
-    )]);
+    }]);
 
     let decoded = degraded(&encoded);
 
     assert_eq!(decoded.len(), 1, "a detail split itself into two records");
     assert_eq!(
-        decoded[0].0,
+        decoded[0].step,
         Degradation::UsernsIdentityMap,
         "a forged mechanism displaced the one that reported"
     );
     assert!(
-        !decoded[0].1.contains('\n') && !decoded[0].1.contains(SEPARATOR),
+        !decoded[0].detail.contains('\n') && !decoded[0].detail.contains(SEPARATOR),
         "a separator survived into the detail: {:?}",
-        decoded[0].1
+        decoded[0].detail
     );
 }
 
@@ -168,7 +178,10 @@ fn no_degradation_label_is_also_a_refusal() {
 /// room for the refusal behind them — the worst case either stage can write.
 #[test]
 fn the_record_cap_admits_a_refusal_too() {
-    let mut channel = encode(&Degradation::ALL.map(|step| (step, "degraded".to_string())));
+    let mut channel = encode(&Degradation::ALL.map(|step| Degraded {
+        step,
+        detail: "degraded".to_string(),
+    }));
     channel.push_str(&encode_refusal(crate::HelperRefusal::ProcessHardening));
 
     let decoded = decode(&channel);

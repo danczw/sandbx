@@ -1,9 +1,8 @@
 use super::{
-    RESOLV_BODY, RESOLV_CONF, RESOLVER_FILES, bound_by_any, database, files, hosts_body,
+    Lookup, RESOLV_BODY, RESOLV_CONF, RESOLVER_FILES, bound_by_any, database, files, hosts_body,
     nsswitch_body,
 };
 use std::fs;
-use std::net::IpAddr;
 use std::os::unix::fs as unix_fs;
 use std::path::Path;
 
@@ -11,29 +10,19 @@ use std::path::Path;
 const UNLISTED: [&str; 2] = ["www.google.com", "metadata.google.internal"];
 
 /// The addresses a name resolved to, for a body that is about the rendering alone.
-fn resolved(name: &str, addresses: &[&str]) -> (String, Vec<IpAddr>) {
-    (
-        name.to_string(),
-        addresses
+fn resolved(name: &'static str, addresses: &[&str]) -> Lookup<'static> {
+    Lookup {
+        name,
+        addresses: addresses
             .iter()
             .map(|address| address.parse().expect("a test address"))
             .collect(),
-    )
-}
-
-/// `hosts_body` over owned pairs, `resolved` having nowhere to borrow a name from.
-fn body(resolved: &[(String, Vec<IpAddr>)]) -> String {
-    let borrowed: Vec<_> = resolved
-        .iter()
-        .map(|(name, addresses)| (name.as_str(), addresses.clone()))
-        .collect();
-
-    hosts_body(&borrowed)
+    }
 }
 
 #[test]
 fn a_resolved_name_gets_a_line_for_every_address_it_has() {
-    let rendered = body(&[resolved(
+    let rendered = hosts_body(&[resolved(
         "example.com",
         &["93.184.216.34", "2606:2800:220::1"],
     )]);
@@ -51,7 +40,7 @@ fn a_resolved_name_gets_a_line_for_every_address_it_has() {
 
 #[test]
 fn a_name_that_did_not_resolve_contributes_no_line() {
-    let rendered = body(&[resolved("nowhere.invalid", &[])]);
+    let rendered = hosts_body(&[resolved("nowhere.invalid", &[])]);
 
     assert!(
         !rendered.contains("nowhere.invalid"),
@@ -62,7 +51,7 @@ fn a_name_that_did_not_resolve_contributes_no_line() {
 /// This file is the whole of resolution once `nsswitch.conf` has no `dns` source.
 #[test]
 fn nothing_the_allowlist_did_not_name_appears_in_the_hosts_file() {
-    let rendered = body(&[resolved("example.com", &["93.184.216.34"])]);
+    let rendered = hosts_body(&[resolved("example.com", &["93.184.216.34"])]);
 
     for name in UNLISTED {
         assert!(
@@ -74,7 +63,7 @@ fn nothing_the_allowlist_did_not_name_appears_in_the_hosts_file() {
 
 #[test]
 fn localhost_survives_replacing_the_hosts_file() {
-    let rendered = body(&[]);
+    let rendered = hosts_body(&[]);
 
     assert!(
         rendered.contains("127.0.0.1\tlocalhost\n") && rendered.contains("::1\tlocalhost"),

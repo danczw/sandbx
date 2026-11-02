@@ -407,7 +407,7 @@ fn a_grant_lands_only_on_its_own_axis() {
 /// silently withheld, and a pair invented is one silently added.
 #[test]
 fn granted_paths_yields_each_grant_in_axis_order() {
-    use sandbx_core::Axis;
+    use sandbx_core::{Axis, GrantedPath};
 
     let (_dir, root) = scratch();
     let at = |name: &str| {
@@ -425,7 +425,7 @@ fn granted_paths_yields_each_grant_in_axis_order() {
 
     let visited: Vec<_> = policy
         .granted_paths()
-        .map(|(axis, granted)| (axis, granted.path().to_path_buf()))
+        .map(|GrantedPath { axis, granted }| (axis, granted.path().to_path_buf()))
         .collect();
 
     assert_eq!(
@@ -513,21 +513,28 @@ fn an_unhinted_policy_permits_no_resolver_variable() {
 }
 
 /// Two directories that exist, since a start directory is one a `chdir` would reach.
-fn two_roots() -> (tempfile::TempDir, PathBuf, PathBuf) {
+fn two_roots() -> TwoRoots {
     let (dir, root) = scratch();
     let first = root.join("first");
     let second = root.join("second");
     fs::create_dir(&first).expect("the first root");
     fs::create_dir(&second).expect("the second root");
 
-    (dir, first, second)
+    TwoRoots { dir, first, second }
+}
+
+/// What [`two_roots`] made, under the directory that has to outlive them.
+struct TwoRoots {
+    dir: tempfile::TempDir,
+    first: PathBuf,
+    second: PathBuf,
 }
 
 /// Somewhere the command may act, which is why write comes first: a run granted write on a
 /// tree and read elsewhere would otherwise start read-only.
 #[test]
 fn a_command_starts_in_the_first_writable_root() {
-    let (dir, first, second) = two_roots();
+    let TwoRoots { dir, first, second } = two_roots();
     let policy = SandboxPolicy::default()
         .allow_read(vetted(dir.path()))
         .allow_write(vetted(&first))
@@ -538,7 +545,11 @@ fn a_command_starts_in_the_first_writable_root() {
 
 #[test]
 fn a_read_only_policy_starts_in_its_first_readable_root() {
-    let (_dir, first, second) = two_roots();
+    let TwoRoots {
+        dir: _dir,
+        first,
+        second,
+    } = two_roots();
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&first))
         .allow_read(vetted(second));
@@ -549,7 +560,11 @@ fn a_read_only_policy_starts_in_its_first_readable_root() {
 /// `--allow-write /dev/null` is an ordinary grant, and a `chdir` to a file fails the spawn.
 #[test]
 fn a_grant_naming_a_file_is_not_somewhere_to_start() {
-    let (_dir, first, second) = two_roots();
+    let TwoRoots {
+        dir: _dir,
+        first,
+        second,
+    } = two_roots();
     let file = first.join("drop.txt");
     fs::write(&file, b"x").expect("a file to grant");
 
@@ -564,7 +579,9 @@ fn a_grant_naming_a_file_is_not_somewhere_to_start() {
 /// in `/usr/bin` starts somewhere the operator offered as nobody's workspace.
 #[test]
 fn an_execute_only_policy_names_nowhere_to_start() {
-    let (_dir, first, _) = two_roots();
+    let TwoRoots {
+        dir: _dir, first, ..
+    } = two_roots();
     let policy = SandboxPolicy::default()
         .allow_read_execute(vetted(first))
         .allow_system_executables();

@@ -56,14 +56,20 @@ impl tracing::field::Visit for Collect {
 }
 
 /// The result *and* the trail, the record being a claim about the result.
-type Run = (Result<Output, SandboxError>, Vec<String>);
+struct Run {
+    result: Result<Output, SandboxError>,
+    lines: Vec<String>,
+}
 
 fn run(command: SandboxedCommand) -> Run {
     let sink = Captured::default();
     let subscriber = tracing_subscriber::registry().with(sink.clone());
     let result = with_default(subscriber, || command.output());
 
-    (result, sink.lines())
+    Run {
+        result,
+        lines: sink.lines(),
+    }
 }
 
 /// Run `script` under `sh` in a real sandbox, with the trail captured.
@@ -93,7 +99,7 @@ fn outcome(lines: &[String]) -> &str {
 
 #[test]
 fn a_clean_run_records_the_code_it_exited_with() {
-    let (result, lines) = sandboxed("true");
+    let Run { result, lines } = sandboxed("true");
 
     assert!(result.is_ok(), "the probe command did not run: {result:?}");
     let record = outcome(&lines);
@@ -103,14 +109,14 @@ fn a_clean_run_records_the_code_it_exited_with() {
 
 #[test]
 fn a_nonzero_exit_reaches_the_trail() {
-    let (_, lines) = sandboxed("exit 42");
+    let Run { lines, .. } = sandboxed("exit 42");
 
     assert!(outcome(&lines).contains("code=42 "), "got: {lines:?}");
 }
 
 #[test]
 fn a_timeout_records_a_failure_not_an_exit() {
-    let (result, lines) = run(SandboxedCommand::new(
+    let Run { result, lines } = run(SandboxedCommand::new(
         "/bin/sh",
         SandboxPolicy::default().allow_system_executables(),
     )
@@ -133,7 +139,7 @@ fn a_timeout_records_a_failure_not_an_exit() {
 /// whose `Ok(exit 1)` would read as the command's own.
 #[test]
 fn a_program_that_does_not_exist_never_exits() {
-    let (result, lines) = run(SandboxedCommand::new(
+    let Run { result, lines } = run(SandboxedCommand::new(
         "/nonexistent-binary",
         SandboxPolicy::default().allow_system_executables(),
     )
@@ -163,7 +169,7 @@ fn a_program_that_does_not_exist_never_exits() {
 /// Two records would double-count the run in any aggregate.
 #[test]
 fn a_run_records_exactly_one_outcome() {
-    let (_, lines) = sandboxed("true");
+    let Run { lines, .. } = sandboxed("true");
 
     outcome(&lines);
     assert_eq!(
@@ -180,7 +186,7 @@ fn a_run_records_exactly_one_outcome() {
 /// parent knows how the run ended, on every host.
 #[test]
 fn the_outcome_is_the_last_record_of_a_run() {
-    let (_, lines) = sandboxed("true");
+    let Run { lines, .. } = sandboxed("true");
 
     let last = lines.last().unwrap_or_else(|| panic!("no records at all"));
     assert_eq!(outcome(&lines), last, "got: {lines:?}");

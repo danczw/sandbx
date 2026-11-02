@@ -4,15 +4,18 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Two digests that differ, so a mismatch sample really mismatches. Parsed and not
-/// hashed, so which label a variant carries does not depend on file I/O.
-fn digests() -> (crate::Sha256Digest, crate::Sha256Digest) {
-    let parse = |hex: &str| crate::Sha256Digest::parse(hex).expect("64 lowercase hex");
+/// A digest pinned and one that differs, so a mismatch sample really mismatches. Parsed and
+/// not hashed, so which label a variant carries does not depend on file I/O.
+fn expected() -> crate::Sha256Digest {
+    digest("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+}
 
-    (
-        parse("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
-        parse("0000000000000000000000000000000000000000000000000000000000000001"),
-    )
+fn actual() -> crate::Sha256Digest {
+    digest("0000000000000000000000000000000000000000000000000000000000000001")
+}
+
+fn digest(hex: &str) -> crate::Sha256Digest {
+    crate::Sha256Digest::parse(hex).expect("64 lowercase hex")
 }
 
 /// A pin in its wire form, the only spelling of one a test can write — the fields are
@@ -84,8 +87,8 @@ fn every_variant() -> Vec<SandboxError> {
         SandboxError::ExecFailed { source: io() },
         SandboxError::PinMismatch {
             program: "/sample".to_string(),
-            expected: digests().0,
-            actual: digests().1,
+            expected: expected(),
+            actual: actual(),
         },
         SandboxError::PinUnreadable {
             program: "/sample".to_string(),

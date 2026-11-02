@@ -7,6 +7,8 @@ mod sandbox;
 mod vetted;
 
 pub(crate) use sandbox::is_resolvable_name;
-pub use sandbox::{Axis, DNS_NAME_LIMIT, Grants, NAMESERVER_PORT, NetworkPolicy, SandboxPolicy};
+pub use sandbox::{
+    Axis, DNS_NAME_LIMIT, GrantedPath, Grants, NAMESERVER_PORT, NetworkPolicy, SandboxPolicy,
+};
 pub(crate) use vetted::Confirmation;
 pub use vetted::{ObjectId, VettedPath};

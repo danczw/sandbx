@@ -3,7 +3,7 @@
 //! The half that spawns the real helper is `sandbx-helper`'s `tests/command.rs`, where
 //! `CARGO_BIN_EXE_sandbx-helper` resolves (#347).
 
-use sandbx_core::{HELPER_FLAG, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{CommandLine, HELPER_FLAG, SandboxPolicy, SandboxedCommand};
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::ExitCode;
@@ -28,7 +28,7 @@ fn scratch() -> tempfile::TempDir {
 /// What lets a shipped sandbx need no second binary installed.
 #[test]
 fn defaults_to_re_executing_this_image_by_inode() {
-    let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+    let CommandLine { helper, argv } = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
         .command_line()
         .unwrap();
 
@@ -47,7 +47,7 @@ fn defaults_to_re_executing_this_image_by_inode() {
 /// recognise, so `exec_sandboxed` splits this one off before decoding.
 #[test]
 fn asks_the_helper_to_report_on_the_channel() {
-    let (_, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+    let CommandLine { argv, .. } = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
         .helper("/nonexistent/helper")
         .command_line()
         .unwrap();
@@ -63,7 +63,7 @@ fn asks_the_helper_to_report_on_the_channel() {
 /// it should not have had.
 #[test]
 fn carries_the_policy_into_the_command_line() {
-    let (_, argv) = SandboxedCommand::new(
+    let CommandLine { argv, .. } = SandboxedCommand::new(
         "/bin/sh",
         SandboxPolicy::default().allow_read(vetted("/usr")),
     )
@@ -81,7 +81,7 @@ fn carries_the_policy_into_the_command_line() {
 /// told it.
 #[test]
 fn carries_the_env_allowlist_into_the_command_line() {
-    let (_, argv) = SandboxedCommand::new(
+    let CommandLine { argv, .. } = SandboxedCommand::new(
         "/bin/true",
         SandboxPolicy::default().allow_env("GIT_AUTHOR_NAME"),
     )
@@ -96,7 +96,7 @@ fn carries_the_env_allowlist_into_the_command_line() {
 /// wrong one and fail only at runtime.
 #[test]
 fn explicit_helper_still_takes_the_dispatch_flag() {
-    let (helper, argv) = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+    let CommandLine { helper, argv } = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
         .helper("/some/helper")
         .command_line()
         .unwrap();
@@ -113,7 +113,7 @@ fn the_start_directory_is_not_in_the_command_line() {
     let root = dir.path().to_str().unwrap().to_string();
 
     let policy = SandboxPolicy::default().allow_write(vetted(dir.path()));
-    let (_, argv) = SandboxedCommand::new("/bin/true", policy.clone())
+    let CommandLine { argv, .. } = SandboxedCommand::new("/bin/true", policy.clone())
         .helper("/nonexistent/helper")
         .command_line()
         .unwrap();

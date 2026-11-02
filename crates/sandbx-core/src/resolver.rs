@@ -100,12 +100,15 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
     let resolved: Vec<_> = policy
         .allowed_dns_names()
         .iter()
-        .map(|name| (name.as_str(), addresses(name)))
+        .map(|name| Lookup {
+            name,
+            addresses: addresses(name),
+        })
         .collect();
 
     let unresolved = resolved
         .iter()
-        .filter(|(_, addresses)| addresses.is_empty())
+        .filter(|lookup| lookup.addresses.is_empty())
         .count();
 
     let files = [
@@ -183,7 +186,8 @@ fn nsswitch_body(host: &str) -> String {
 /// The database an `nsswitch.conf` line configures: the name before its first colon, as glibc
 /// reads it. `None` for a comment, and for a line configuring nothing.
 fn database(line: &str) -> Option<&str> {
-    let name = line.split_once(':')?.0.trim();
+    let (name, _) = line.split_once(':')?;
+    let name = name.trim();
 
     (!name.is_empty() && !name.starts_with('#')).then_some(name)
 }
@@ -191,7 +195,7 @@ fn database(line: &str) -> Option<&str> {
 /// A hosts file holding `resolved` and the loopback lines, and nothing else. One line per
 /// address, both families, so a name with an A and a AAAA record resolves to both — a
 /// command that prefers IPv6 would otherwise lose the name rather than fall back.
-fn hosts_body(resolved: &[(&str, Vec<IpAddr>)]) -> String {
+fn hosts_body(resolved: &[Lookup<'_>]) -> String {
     use std::fmt::Write as _;
 
     let mut body = String::from(
@@ -199,13 +203,19 @@ fn hosts_body(resolved: &[(&str, Vec<IpAddr>)]) -> String {
     );
     body.push_str(LOOPBACK);
 
-    for (name, addresses) in resolved {
+    for Lookup { name, addresses } in resolved {
         for address in addresses {
             let _ = writeln!(body, "{address}\t{name}");
         }
     }
 
     body
+}
+
+/// One allowlisted name, and every address it resolved to.
+struct Lookup<'a> {
+    name: &'a str,
+    addresses: Vec<IpAddr>,
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sandbx_core::{Axis, SandboxPolicy, VettedPath};
+use sandbx_core::{Axis, GrantedPath, SandboxPolicy, VettedPath};
 use sandbx_tools::BuiltinTool;
 
 use super::gate;
@@ -78,7 +78,7 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
     let system = spellings(&SandboxPolicy::default().allow_system_executables());
     let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
-    for (axis, granted) in policy.granted_paths() {
+    for GrantedPath { axis, granted } in policy.granted_paths() {
         // Re-vetted only as a test, never named: the guard compares the grant whole, so a root
         // resolving elsewhere, holding another directory, or gone grants nothing.
         if !VettedPath::vet(granted.path()).is_ok_and(|now| &now == granted) {
@@ -134,7 +134,7 @@ fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<
 fn spellings(policy: &SandboxPolicy) -> Vec<PathBuf> {
     policy
         .granted_paths()
-        .map(|(_, path)| path.path().to_path_buf())
+        .map(|grant| grant.granted.path().to_path_buf())
         .collect()
 }
 
