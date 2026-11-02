@@ -1,4 +1,5 @@
-//! A pty pair for tests that drive a real terminal, and the window it opens with.
+//! A pty pair for tests that drive a real terminal, the window it opens with, and a wait
+//! for it to be readable.
 //!
 //! A dev-dependency only: nothing links this into a build that ships. It is a crate
 //! rather than a `#[cfg(test)]` module because several crates drive the same fixture and a
@@ -70,8 +71,8 @@ pub fn pty() -> Pty {
 
 /// Wait for `fd` to carry something, or fail the test.
 ///
-/// Not a sleep: a pty queues a written line from a workqueue, and a read that ran before
-/// it was queued would leave the test asserting nothing.
+/// Not a sleep: a pty queues a written line from a workqueue, and a drain or poll that ran
+/// before it was queued would leave the test asserting nothing.
 pub fn wait_readable(fd: &impl AsFd) {
     use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 

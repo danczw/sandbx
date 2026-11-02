@@ -56,8 +56,8 @@ fn scratch(names: &[&str]) -> Scratch {
     Scratch { _dir: dir, made }
 }
 
-/// What [`scratch`] made: each directory's spelling, and the root, which has to outlive
-/// every use of them.
+/// What [`scratch`] made: the root, which has to outlive every use of what is in it, and
+/// each directory's spelling.
 struct Scratch {
     _dir: tempfile::TempDir,
     made: Vec<String>,
