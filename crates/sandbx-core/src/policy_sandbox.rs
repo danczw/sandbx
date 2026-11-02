@@ -91,7 +91,7 @@ pub struct GrantedPath<'a> {
     /// The access granted.
     pub axis: Axis,
     /// The path it is granted on, as it was vetted.
-    pub granted: &'a VettedPath,
+    pub vetted: &'a VettedPath,
 }
 
 /// What a sandboxed process is allowed to do. Default-deny: construct with
@@ -142,7 +142,7 @@ impl SandboxPolicy {
         Axis::ALL.into_iter().flat_map(move |axis| {
             self.paths(axis)
                 .iter()
-                .map(move |granted| GrantedPath { axis, granted })
+                .map(move |vetted| GrantedPath { axis, vetted })
         })
     }
 
@@ -164,7 +164,7 @@ impl SandboxPolicy {
         }
 
         self.granted_paths()
-            .map(|grant| grant.granted.path())
+            .map(|grant| grant.vetted.path())
             .find(|path| crate::bound_by_resolver(path))
     }
 

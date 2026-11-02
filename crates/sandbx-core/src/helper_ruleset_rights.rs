@@ -143,7 +143,7 @@ pub(super) fn fs_rules(policy: &crate::SandboxPolicy, abi: landlock::ABI) -> Vec
         .granted_paths()
         // On the grants and not on `Installed`, which is a bind mount of sandbx's own file
         // that no grant names — the flag is documented as covering the paths it granted.
-        .map(|crate::GrantedPath { axis, granted }| (axis, RuleTarget::Granted(granted), unix))
+        .map(|crate::GrantedPath { axis, vetted }| (axis, RuleTarget::Granted(vetted), unix))
         .chain(resolver.into_iter().map(|path| {
             (
                 crate::Axis::Read,

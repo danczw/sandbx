@@ -438,7 +438,7 @@ fn granted_paths_yields_each_grant_in_axis_order() {
 
     let visited: Vec<_> = policy
         .granted_paths()
-        .map(|GrantedPath { axis, granted }| (axis, granted.path().to_path_buf()))
+        .map(|GrantedPath { axis, vetted }| (axis, vetted.path().to_path_buf()))
         .collect();
 
     assert_eq!(

@@ -326,7 +326,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::FsGuard
 impl core::panic::unwind_safe::UnwindSafe for sandbx_core::FsGuard
 pub struct sandbx_core::GrantedPath<'a>
 pub sandbx_core::GrantedPath::axis: sandbx_core::Axis
-pub sandbx_core::GrantedPath::granted: &'a sandbx_core::VettedPath
+pub sandbx_core::GrantedPath::vetted: &'a sandbx_core::VettedPath
 impl<'a> core::clone::Clone for sandbx_core::GrantedPath<'a>
 pub fn sandbx_core::GrantedPath<'a>::clone(&self) -> sandbx_core::GrantedPath<'a>
 impl<'a> core::cmp::Eq for sandbx_core::GrantedPath<'a>
