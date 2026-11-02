@@ -73,7 +73,16 @@ pub(crate) fn execute(input: BashInput, ctx: &ExecutionContext) -> Result<ToolOu
 ///
 /// The subject carries what the variant cannot — the model gets only `ToolError`'s `Display`,
 /// so ``sandbox `x` `` against ``run `x` `` is what separates a sandbox that never applied
-/// from a command that ran and exited non-zero. `context/guide-tools.md` (#185).
+/// from a command that ran and exited non-zero (#185). The pin and grant refusals are
+/// `Denied`, being the policy's own verdicts; the rest are `Failed`, since "refused by the
+/// sandbox policy" is false about a kernel that would not unshare.
+///
+/// `Landlock`'s detail can name a host path — the crate stringifies the root it could not
+/// open — including the system-executable roots, and a grant that no longer vets, both of
+/// which the system prompt withholds. That stays inside [`ToolError`]'s rule because no
+/// caller can provoke it: the open fails on an operator-supplied root, identically every
+/// call, so probes read back one constant rather than a map. The detail is capped at core's
+/// `STDERR_LIMIT`, narrower than the `max_bytes` a command's own output travels under.
 fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
     use sandbx_core::{HelperRefusal, SandboxError};
 

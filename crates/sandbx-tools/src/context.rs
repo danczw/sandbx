@@ -111,8 +111,8 @@ impl ExecutionContext {
     /// The only route to the policy, and one that spends it rather than lending it
     /// out: an accessor returning `&SandboxPolicy` would let an in-process tool read
     /// the path lists and open files itself, bypassing the TOCTOU-safe handles
-    /// [`FsGuard`] hands back. Timeout, helper and session are applied here so a second
-    /// spawning built-in cannot forget them.
+    /// [`FsGuard`] hands back, which it once did (#56). Timeout, helper and session are
+    /// applied here so a second spawning built-in cannot forget them.
     #[must_use]
     pub fn sandboxed_command(&self, program: String) -> SandboxedCommand {
         let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);

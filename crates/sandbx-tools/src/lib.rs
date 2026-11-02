@@ -3,7 +3,8 @@
 //! The built-ins split across the sandbox's two halves: `bash` spawns a process and
 //! the kernel confines it (Landlock, netns, seccomp); the rest touch the filesystem
 //! in-process, where `FsGuard` is the only confinement. Dispatch is a closed enum,
-//! not `dyn Tool`, resolved by one match over a per-tool `ToolSpec`.
+//! not `dyn Tool`, resolved by one match over a per-tool `ToolSpec`: nothing picks a tool
+//! at runtime that is not in the set, so the open set a trait object buys would go unused.
 
 mod builtin;
 mod context;

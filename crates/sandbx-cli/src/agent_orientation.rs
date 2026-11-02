@@ -3,6 +3,11 @@
 //! Its own module because it changes for a different reason than the rest of `agent-run`.
 //! A run that names its roots and its approved tools up front spends no rounds probing
 //! refused paths or reaching for refused tools (#178, #197).
+//!
+//! The roots are named here because nothing below can name them: no tool sees the policy,
+//! and a refusal has to keep a path outside every root indistinguishable, or a sequence of
+//! probes reads back as a map of the host. Above the tool boundary the policy is still the
+//! operator's own text, not something a `tool_result` carries back.
 
 use std::path::{Path, PathBuf};
 

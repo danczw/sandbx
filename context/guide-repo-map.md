@@ -829,28 +829,23 @@ below assumes. The order itself reads as reference rather than as a wall.
    path and one flag names bytes instead
 8. `decision-audit-records-access.md` — why a record names the access obtained
    and not the policy's decision
-9. `guide-tools.md`, `guide-turn-loop.md` — the layers above
-10. `decision-bounding-tool-work.md` — why a bound on a tool's input and a bound
-    on its output are different propositions
-11. `decision-provider-seam.md` — why there is no provider trait, and where the
-    vendor's vocabulary stops
-12. `decision-approval-gate.md` — what sits between the model and a tool, and
+9. `decision-provider-seam.md` — why there is no provider trait, and where the
+   vendor's vocabulary stops
+10. `decision-approval-gate.md` — what sits between the model and a tool, and
     how much it claims
-13. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
+11. `decision-credentials.md` — where a key comes from, why a sandboxed tool is
     handed none, and the one name that is refused
-14. `decision-on-disk-state.md` — what sandbx writes outside the working
+12. `decision-on-disk-state.md` — what sandbx writes outside the working
     directory, and who may read it
-15. `decision-round-limit-answer.md` — why a turn out of rounds is asked once
-    more, and what that costs
-16. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
+13. `decision-thinking-replay.md` — why a reasoning block is replayed inside a
     turn and nowhere else
-17. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
-18. `guide-testing.md` — what a test has to assert, where it lives, and how long
+14. `guide-tui.md` — what the screen draws, and what interrupting a turn loses
+15. `guide-testing.md` — what a test has to assert, where it lives, and how long
     its name may be
-19. `guide-ci.md` — what runs before a push, and what runs after
-20. `guide-release-notes.md` — which half of a release body is written by hand,
+16. `guide-ci.md` — what runs before a push, and what runs after
+17. `guide-release-notes.md` — which half of a release body is written by hand,
     and which GitHub generates
-21. `decision-google-style.md` — which style guide the code follows, and where
+18. `decision-google-style.md` — which style guide the code follows, and where
     it departs from it
 
 `guide-` describes a subsystem as it currently is; `decision-` records why a

@@ -342,20 +342,20 @@ architecture the filter gates on.
   an opt-in `--timeout`. The other six run in-process, untimed, bounded by *work*
   instead — a cap on files visited and bytes read for `grep` and `find`, the
   single file or directory for the rest
-  ([context/decision-bounding-tool-work.md](context/decision-bounding-tool-work.md))
-  — on a thread that cannot be cancelled, so one read on a stalled filesystem
-  hangs indefinitely. Nothing else is capped: no CPU bound, no memory bound, no
-  limit on processes spawned. A fork bomb is unbounded while the call lasts;
-  bounded is that it does not outlive it.
+  ([`ToolLimits`](crates/sandbx-tools/src/limits.rs)) — on a thread that cannot
+  be cancelled, so one read on a stalled filesystem hangs indefinitely. Nothing
+  else is capped: no CPU bound, no memory bound, no limit on processes spawned.
+  A fork bomb is unbounded while the call lasts; bounded is that it does not
+  outlive it.
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).
 - **A bound on the harness's own loop is not a containment claim.** A turn is
   bounded — `TurnLimits::max_rounds` caps the requests one turn may make of the
   model, `TurnLimits::stream_timeout` how long one of them may spend streaming
-  ([context/guide-turn-loop.md](context/guide-turn-loop.md)) — but what those
-  bound is sandbx's own work, not what a sandboxed command can reach, which is
-  what every claim here is about.
+  ([`TurnLimits`](crates/sandbx-turn/src/run.rs)) — but what those bound is
+  sandbx's own work, not what a sandboxed command can reach, which is what every
+  claim here is about.
 - **A command killed by a signal reports as exit `128 + n`, not as signalled.**
   The status passes through the namespace's init, which cannot die by a signal
   it raises at itself.

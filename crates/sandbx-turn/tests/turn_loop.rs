@@ -444,7 +444,7 @@ async fn a_tool_call_runs_without_a_stop_reason() {
 }
 
 /// A refusal is not a turn-ending failure: the model is told, and gets to ask for
-/// something in scope. See `context/guide-tools.md`.
+/// something in scope. `sandbx_tools::ToolError` has why each kind is split.
 #[tokio::test]
 async fn a_refused_tool_call_is_an_error_to_the_model() {
     let allowed = tempfile::tempdir().unwrap();
@@ -1290,7 +1290,7 @@ async fn a_turn_that_ran_no_round_reports_no_stop() {
 }
 
 /// Both bounds at once, which is why the reason sits beside `stop` rather than inside
-/// `TurnStop::Answered`; see `context/decision-round-limit-answer.md`.
+/// `TurnStop::Answered` (#204).
 #[tokio::test]
 async fn a_capped_turn_names_both_bounds_it_hit() {
     let root = tempfile::tempdir().unwrap();

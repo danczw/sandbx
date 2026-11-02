@@ -10,7 +10,7 @@ use crate::{ExecutionContext, ToolError, ToolOutput};
 /// Turn a guard verdict into the form the model sees, one shape for every tool.
 ///
 /// Absence is the one verdict that is not a refusal: no policy objected, so the agent's
-/// move is to fix the name rather than ask for a wider grant.
+/// move is to fix the name rather than ask for a wider grant (#180).
 pub(crate) fn guard_error(path: &Path, error: sandbx_core::SandboxError) -> ToolError {
     let subject = path.display().to_string();
 
@@ -48,7 +48,12 @@ pub(crate) fn failed(verb: &str, path: &Path, error: impl fmt::Display) -> ToolE
 ///
 /// The guard check lives here, not at the call sites, so no in-process tool can read
 /// a file by forgetting it. Reads the handle the guard returns, not the path again:
-/// re-resolving on open leaves a window to swap the leaf for a symlink.
+/// re-resolving on open leaves a window to swap the leaf for a symlink — which is why no
+/// tool calls the bare `check_read` or `check_write`.
+///
+/// Uncapped, a known gap: `max_bytes` trims what is returned once the whole file is
+/// allocated, so a 10 GiB file in a readable root is one allocation, and `edit` then holds
+/// it twice. `grep` guards exactly this with `MAX_FILE_BYTES`; `read` and `edit` do not.
 pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, ToolError> {
     let file = ctx
         .guard()
@@ -124,7 +129,9 @@ pub(crate) fn listing(lines: Vec<String>, ctx: &ExecutionContext, scan: Scan) ->
 /// gave up reads as one that found nothing, and the symbol looks absent.
 ///
 /// Names no cause. A budget, an oversized file, a binary and a refused open all leave
-/// part of the tree unsearched, and the caller's one move is the same for each.
+/// part of the tree unsearched, and the caller's one move is the same for each (#274).
+/// The cost: at a repo root it is close to always on, a checkout's pack files being both
+/// oversized and not text, and narrowing the path does not clear it.
 const PARTIAL_SEARCH: &str = "... stopped early: results are incomplete";
 
 /// Parse tool arguments, reporting a schema mismatch rather than a panic.
