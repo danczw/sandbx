@@ -98,23 +98,25 @@ fn written(contents: &[u8]) -> Written {
     let mut file = File::open(&path).expect("reopen");
     let digest = Sha256Digest::of_file(&mut file).expect("hash");
 
-    Written { dir, path, digest }
+    Written {
+        _dir: dir,
+        path,
+        digest,
+    }
 }
 
 /// What [`written`] made, and the directory that has to outlive it.
 struct Written {
-    dir: tempfile::TempDir,
+    _dir: tempfile::TempDir,
     path: PathBuf,
     digest: Sha256Digest,
 }
 
 #[test]
 fn a_matching_image_hands_back_a_descriptor() {
-    let Written {
-        dir: _dir,
-        path,
-        digest,
-    } = written(b"\x7fELF not really, but not a script");
+    let written = written(b"\x7fELF not really, but not a script");
+    let path = written.path;
+    let digest = written.digest;
 
     let file = open_verified(path.to_str().unwrap(), digest).expect("the pinned bytes");
 
@@ -127,11 +129,9 @@ fn a_matching_image_hands_back_a_descriptor() {
 
 #[test]
 fn a_shebang_image_is_refused_rather_than_exec_d() {
-    let Written {
-        dir: _dir,
-        path,
-        digest,
-    } = written(b"#!/bin/sh\nexit 0\n");
+    let written = written(b"#!/bin/sh\nexit 0\n");
+    let path = written.path;
+    let digest = written.digest;
 
     let error = open_verified(path.to_str().unwrap(), digest).expect_err("a script ran");
 
@@ -145,11 +145,9 @@ fn a_shebang_image_is_refused_rather_than_exec_d() {
 /// not the narrower complaint about what they happen to be.
 #[test]
 fn a_swapped_script_reports_the_mismatch() {
-    let Written {
-        dir: _dir,
-        path,
-        digest,
-    } = written(b"the pinned bytes");
+    let written = written(b"the pinned bytes");
+    let path = written.path;
+    let digest = written.digest;
     fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("swap");
 
     let error = open_verified(path.to_str().unwrap(), digest).expect_err("a swap ran");
@@ -166,11 +164,9 @@ fn a_swapped_script_reports_the_mismatch() {
 fn an_unreadable_program_says_the_pin_needs_read() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    let Written {
-        dir: _dir,
-        path,
-        digest,
-    } = written(b"\x7fELF");
+    let written = written(b"\x7fELF");
+    let path = written.path;
+    let digest = written.digest;
     fs::set_permissions(&path, Permissions::from_mode(0o111)).expect("chmod");
 
     // Both branches assert: root reads a mode-111 file, and skipping there would report
