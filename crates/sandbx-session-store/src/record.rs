@@ -114,7 +114,6 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
 #[derive(Debug)]
 pub(crate) struct Replayed {
     pub(crate) messages: Vec<Message>,
-    /// The accounting the next turn starts from.
     pub(crate) accounting: Accounting,
 }
 

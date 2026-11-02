@@ -127,7 +127,6 @@ pub(super) async fn run<W: Write, E: Write>(
 pub(super) struct WrapUp {
     /// The turn to store: `first` alone, or merged with the round that answered.
     pub(super) outcome: TurnOutcome,
-    /// Whether the wrap-up round answered.
     pub(super) summarised: bool,
 }
 
