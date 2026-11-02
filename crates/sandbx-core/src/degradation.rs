@@ -85,8 +85,8 @@ impl Degradation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Degraded {
     pub(crate) step: Degradation,
-    /// Owned at both ends: built from an errno, and copied off a channel of at most
-    /// [`RECORD_LIMIT`] lines, once per run.
+    /// Owned at both ends: built from an errno, and copied off the channel once per run,
+    /// for at most [`RECORD_LIMIT`] records.
     pub(crate) detail: String,
 }
 

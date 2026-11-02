@@ -22,7 +22,8 @@ fn scratch() -> Scratch {
     Scratch { dir, root }
 }
 
-/// What [`scratch`] made: the directory, which has to outlive the test, and its resolved path.
+/// What [`scratch`] made: its resolved path, and the directory, which has to outlive every
+/// use of it.
 struct Scratch {
     dir: tempfile::TempDir,
     root: PathBuf,
@@ -112,7 +113,8 @@ fn system_executables_grants_no_write_or_network() {
 /// separation has to be made here.
 #[test]
 fn read_and_write_grants_do_not_confer_execute() {
-    let Scratch { dir: _dir, root } = scratch();
+    let scratch = scratch();
+    let root = scratch.root;
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&root))
         .allow_write(vetted(&root));
@@ -125,7 +127,8 @@ fn read_and_write_grants_do_not_confer_execute() {
 
 #[test]
 fn read_execute_grants_both_axes_deliberately() {
-    let Scratch { dir: _dir, root } = scratch();
+    let scratch = scratch();
+    let root = scratch.root;
     let policy = SandboxPolicy::default().allow_read_execute(vetted(&root));
 
     assert_eq!(
@@ -155,7 +158,8 @@ fn system_executables_skips_paths_this_system_lacks() {
 
 #[test]
 fn system_executables_keeps_what_was_already_granted() {
-    let Scratch { dir: _dir, root } = scratch();
+    let scratch = scratch();
+    let root = scratch.root;
     let policy = SandboxPolicy::default()
         .allow_write(vetted(&root))
         .allow_system_executables();
@@ -274,7 +278,8 @@ fn granting_a_variable_widens_nothing_else() {
 
 #[test]
 fn granting_a_path_passes_no_variable() {
-    let Scratch { dir: _dir, root } = scratch();
+    let scratch = scratch();
+    let root = scratch.root;
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&root))
         .allow_system_executables();
@@ -389,10 +394,8 @@ fn axis_grants_are_the_documented_three_way_claim() {
 fn a_grant_lands_only_on_its_own_axis() {
     use sandbx_core::Axis;
 
-    let Scratch {
-        dir: _dir,
-        root: granted,
-    } = scratch();
+    let scratch = scratch();
+    let granted = scratch.root;
 
     for axis in Axis::ALL {
         let policy = SandboxPolicy::default().grant(axis, vetted(&granted));
@@ -418,7 +421,8 @@ fn a_grant_lands_only_on_its_own_axis() {
 fn granted_paths_yields_each_grant_in_axis_order() {
     use sandbx_core::{Axis, GrantedPath};
 
-    let Scratch { dir: _dir, root } = scratch();
+    let scratch = scratch();
+    let root = scratch.root;
     let at = |name: &str| {
         let path = root.join(name);
         fs::create_dir(&path).expect("a directory to grant");
@@ -554,11 +558,9 @@ fn a_command_starts_in_the_first_writable_root() {
 
 #[test]
 fn a_read_only_policy_starts_in_its_first_readable_root() {
-    let TwoRoots {
-        dir: _dir,
-        first,
-        second,
-    } = two_roots();
+    let roots = two_roots();
+    let first = roots.first;
+    let second = roots.second;
     let policy = SandboxPolicy::default()
         .allow_read(vetted(&first))
         .allow_read(vetted(second));
@@ -569,11 +571,9 @@ fn a_read_only_policy_starts_in_its_first_readable_root() {
 /// `--allow-write /dev/null` is an ordinary grant, and a `chdir` to a file fails the spawn.
 #[test]
 fn a_grant_naming_a_file_is_not_somewhere_to_start() {
-    let TwoRoots {
-        dir: _dir,
-        first,
-        second,
-    } = two_roots();
+    let roots = two_roots();
+    let first = roots.first;
+    let second = roots.second;
     let file = first.join("drop.txt");
     fs::write(&file, b"x").expect("a file to grant");
 
@@ -588,9 +588,8 @@ fn a_grant_naming_a_file_is_not_somewhere_to_start() {
 /// in `/usr/bin` starts somewhere the operator offered as nobody's workspace.
 #[test]
 fn an_execute_only_policy_names_nowhere_to_start() {
-    let TwoRoots {
-        dir: _dir, first, ..
-    } = two_roots();
+    let roots = two_roots();
+    let first = roots.first;
     let policy = SandboxPolicy::default()
         .allow_read_execute(vetted(first))
         .allow_system_executables();
