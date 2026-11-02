@@ -95,7 +95,7 @@ impl FsGuard {
         // would overcount on the ordinary shape.
         let mut told = Vec::new();
 
-        for crate::GrantedPath { axis, granted } in policy.granted_paths() {
+        for crate::GrantedPath { axis, vetted } in policy.granted_paths() {
             let crate::Grants {
                 read,
                 write,
@@ -105,7 +105,7 @@ impl FsGuard {
             // One open per grant entry, then shared: a path granted on two axes is two
             // entries here and so two descriptors — policy-level duplication, not this
             // loop's to collapse.
-            let dir = match (kernel == Openat2::Present).then(|| open_root(granted)) {
+            let dir = match (kernel == Openat2::Present).then(|| open_root(vetted)) {
                 Some(Rooting::Beneath(dir)) => Some(Arc::new(dir)),
                 Some(Rooting::Unpinned) => {
                     // At `INFO`, like every other degraded step: nothing the agent asked for
@@ -113,24 +113,24 @@ impl FsGuard {
                     // confirmation — it has only lost the descriptor that would have made a
                     // swap unreachable rather than merely refused. Naming the root discloses
                     // nothing: it is a path the operator granted.
-                    if !told.iter().any(|path| path == granted.path()) {
+                    if !told.iter().any(|path| path == vetted.path()) {
                         let detail = format!(
                             "{} no longer reaches the directory it was vetted on; its \
                              accesses resolve by path, bounded by the per-access \
                              confirmation alone",
-                            granted.path().display()
+                            vetted.path().display()
                         );
                         // No run to name: the guard is built before anything is spawned, and
                         // this weakens every access for the session rather than one spawn.
                         crate::AuditEvent::degraded("rooted_access", None, session, &detail).emit();
-                        told.push(granted.path().to_path_buf());
+                        told.push(vetted.path().to_path_buf());
                     }
                     None
                 }
                 Some(Rooting::ByPath) | None => None,
             };
             let root = Root {
-                vetted: granted.clone(),
+                vetted: vetted.clone(),
                 dir,
             };
 
@@ -704,7 +704,7 @@ struct Area<'a> {
     granted_area: Containment,
 }
 
-/// Open `granted` as a directory to resolve accesses beneath, or `None` if it is not one.
+/// Open `vetted` as a directory to resolve accesses beneath, or `None` if it is not one.
 ///
 /// `O_DIRECTORY` and `O_NOFOLLOW` together, and neither is optional. `O_NOFOLLOW` is what
 /// makes a granted name replaced by a symlink refuse here rather than root the resolution
@@ -715,14 +715,14 @@ struct Area<'a> {
 ///
 /// Through `OpenOptions` rather than `openat2`: a grant is absolute, so there is no
 /// descriptor to resolve it beneath, and `OpenOptions` sets `O_CLOEXEC` itself.
-fn open_root(granted: &VettedPath) -> Rooting {
+fn open_root(vetted: &VettedPath) -> Rooting {
     use std::os::unix::fs::OpenOptionsExt;
 
     let open = |flags| {
         OpenOptions::new()
             .read(true)
             .custom_flags(flags)
-            .open(granted.path())
+            .open(vetted.path())
             .ok()
             .map(OwnedFd::from)
     };
@@ -748,7 +748,7 @@ fn open_root(granted: &VettedPath) -> Rooting {
     // attacker's object while this runs, restored before the first access, would confirm
     // against the pin and still resolve every access beneath the substitute — the one way a
     // held descriptor could be worse than the path it replaced.
-    if object != granted.object() {
+    if object != vetted.object() {
         return Rooting::Unpinned;
     }
 

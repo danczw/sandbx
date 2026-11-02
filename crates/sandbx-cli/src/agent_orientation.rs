@@ -78,13 +78,13 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<(PathBuf, Vec<&'static str>)> {
     let system = spellings(&SandboxPolicy::default().allow_system_executables());
     let mut roots: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
 
-    for GrantedPath { axis, granted } in policy.granted_paths() {
+    for GrantedPath { axis, vetted } in policy.granted_paths() {
         // Re-vetted only as a test, never named: the guard compares the grant whole, so a root
         // resolving elsewhere, holding another directory, or gone grants nothing.
-        if !VettedPath::vet(granted.path()).is_ok_and(|now| &now == granted) {
+        if !VettedPath::vet(vetted.path()).is_ok_and(|now| &now == vetted) {
             continue;
         }
-        let path = granted.path().to_path_buf();
+        let path = vetted.path().to_path_buf();
 
         if system.contains(&path) {
             continue;
@@ -134,7 +134,7 @@ fn start_root(policy: &SandboxPolicy, roots: &[(PathBuf, Vec<&str>)]) -> Option<
 fn spellings(policy: &SandboxPolicy) -> Vec<PathBuf> {
     policy
         .granted_paths()
-        .map(|grant| grant.granted.path().to_path_buf())
+        .map(|grant| grant.vetted.path().to_path_buf())
         .collect()
 }
 

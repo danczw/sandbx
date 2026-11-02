@@ -87,10 +87,10 @@ impl HelperArgs {
     ) -> Vec<String> {
         let mut out = Vec::new();
 
-        for crate::GrantedPath { axis, granted } in policy.granted_paths() {
+        for crate::GrantedPath { axis, vetted } in policy.granted_paths() {
             out.push(path_flag(axis).to_string());
-            out.push(granted.path().display().to_string());
-            out.push(granted.object().to_string());
+            out.push(vetted.path().display().to_string());
+            out.push(vetted.object().to_string());
         }
         // Exhaustive, so a network state added to the policy is a compile error here rather
         // than a grant that fails to cross into the stage that enforces it.
