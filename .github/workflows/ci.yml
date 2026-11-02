@@ -52,7 +52,7 @@ jobs:
           toolchain: stable
           components: clippy
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Format
         run: |
@@ -103,7 +103,7 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # `ring` arrives via `sandbx-anthropic` and its build.rs compiles C; the
       # `musl-dev` pulled in here is the `<arch>-linux-musl-gcc` cc-rs looks for.
@@ -166,7 +166,7 @@ jobs:
         with:
           toolchain: ${{ steps.floor.outputs.floor }}
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # `--locked` is the point of the job: resolver 3 *prefers* MSRV-compatible
       # versions, so an unlocked run resolves around a broken lockfile and passes.
@@ -224,7 +224,7 @@ jobs:
           toolchain: nightly-2026-09-11
 
       # `cache-bin` keeps `cargo-public-api` itself, so only the first run builds it.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Install cargo-public-api
         run: cargo install cargo-public-api --locked --version 0.52.0
