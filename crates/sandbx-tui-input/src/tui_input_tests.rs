@@ -4,9 +4,9 @@ use std::task::{Context, Waker};
 use std::time::{Duration, Instant};
 use std::{io, pin};
 
-use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+use nix::poll::{PollFlags, PollTimeout};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use sandbx_pty_fixture::{Pty, pty};
+use sandbx_pty_fixture::{Pty, pty, wait_readable};
 use tokio::sync::watch;
 
 use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
@@ -23,17 +23,6 @@ fn ready(future: impl Future<Output = ()>) -> bool {
     let mut polling = Context::from_waker(Waker::noop());
 
     future.as_mut().poll(&mut polling).is_ready()
-}
-
-/// Wait for `fd` to carry something, or fail the test.
-///
-/// Not a sleep: a pty queues a written line from a workqueue, and a poll that ran before
-/// it was queued would leave the test asserting nothing.
-fn wait_readable(fd: &impl AsFd) {
-    let mut watched = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
-    let ready = poll(&mut watched, PollTimeout::from(5_000u16)).expect("poll");
-
-    assert_eq!(ready, 1, "the pty queued nothing within five seconds");
 }
 
 #[test]

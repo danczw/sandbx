@@ -11,7 +11,7 @@ publish.workspace = true
 # `term` alone: it is what gates both `pty::openpty` and `sys::termios`. A real
 # dependency, not a dev-dependency — this crate is the fixture, so a dev-dependency of
 # its own would not reach it.
-nix = { version = "0.31.3", default-features = false, features = ["term"] }
+nix = { version = "0.31.3", default-features = false, features = ["term", "poll"] }
 
 [lints]
 workspace = true

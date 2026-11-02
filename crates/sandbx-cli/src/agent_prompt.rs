@@ -310,4 +310,4 @@ impl<F: Write> Operator for Terminal<F> {
 
 #[cfg(test)]
 #[path = "agent_prompt_tests.rs"]
-pub(super) mod tests;
+mod tests;

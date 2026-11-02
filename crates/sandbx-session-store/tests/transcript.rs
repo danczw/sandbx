@@ -11,12 +11,12 @@ use sandbx_session_store::SessionStore;
 fn store() -> Store {
     let root = tempfile::tempdir().expect("a temp dir");
     let store = SessionStore::new(root.path().join("sessions"));
-    Store { root, store }
+    Store { _root: root, store }
 }
 
-/// What [`store`] made, under the directory that has to outlive it.
+/// A store, and the directory its root sits in, which has to outlive the store.
 struct Store {
-    root: tempfile::TempDir,
+    _root: tempfile::TempDir,
     store: SessionStore,
 }
 
@@ -77,7 +77,8 @@ fn out_of_rounds(ask: &str, id: &str) -> Vec<Message> {
 
 #[test]
 fn a_stored_turn_comes_back_as_it_went_in() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let messages = vec![
         said(Role::User, "what is in /srv?"),
         Message {
@@ -118,7 +119,8 @@ fn a_stored_turn_comes_back_as_it_went_in() {
 
 #[test]
 fn a_second_turn_appends_and_moves_nothing() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -146,7 +148,8 @@ fn a_second_turn_appends_and_moves_nothing() {
 
 #[test]
 fn the_reloaded_cut_is_the_last_turns_cut() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     for (ask, reply, withheld) in [("a", "1", 0), ("b", "2", 4), ("c", "3", 2)] {
         session
@@ -159,12 +162,14 @@ fn the_reloaded_cut_is_the_last_turns_cut() {
     }
     let id = session.id().clone();
 
+    assert_eq!(session.withheld(), 2, "the live session's cut");
     assert_eq!(store.resume(&id).unwrap().withheld(), 2);
 }
 
 #[test]
 fn a_turn_reporting_nothing_keeps_the_figure() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -188,7 +193,8 @@ fn a_turn_reporting_nothing_keeps_the_figure() {
 
 #[test]
 fn a_turn_with_no_reply_is_refused_not_written() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     let before = fs::read(session.path()).unwrap();
 
@@ -211,7 +217,8 @@ fn a_turn_with_no_reply_is_refused_not_written() {
 /// the session (#188).
 #[test]
 fn a_turn_out_of_rounds_is_stored_and_read_back() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
 
     session
@@ -233,7 +240,8 @@ fn a_turn_out_of_rounds_is_stored_and_read_back() {
 /// Two user turns in a row, legal only because the request merges them into one.
 #[test]
 fn a_prompt_may_follow_the_call_it_answers_beside() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -259,7 +267,8 @@ fn a_prompt_may_follow_the_call_it_answers_beside() {
 /// The exception is results then a prompt, not results then more results.
 #[test]
 fn a_second_turn_of_results_is_still_refused() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -313,7 +322,8 @@ fn a_second_turn_of_results_is_still_refused() {
 /// Refused before the write, the file being append-only: a later resume cannot undo it.
 #[test]
 fn a_turn_that_would_be_unreadable_is_refused() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -364,7 +374,8 @@ fn a_turn_that_would_be_unreadable_is_refused() {
 /// Alternating and settled both hold for this batch, so neither predicate catches it.
 #[test]
 fn a_first_turn_may_not_open_on_the_models_reply() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
 
     let err = session
@@ -387,7 +398,8 @@ fn a_first_turn_may_not_open_on_the_models_reply() {
 /// before the write.
 #[test]
 fn a_transcript_opening_on_a_reply_is_refused() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -418,7 +430,8 @@ fn a_transcript_opening_on_a_reply_is_refused() {
 
 #[test]
 fn two_sessions_never_take_the_same_id() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
 
     let first = store.create().unwrap();
     let second = store.create().unwrap();
@@ -429,7 +442,8 @@ fn two_sessions_never_take_the_same_id() {
 
 #[test]
 fn a_new_session_resumes_before_it_has_said_anything() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let id = store.create().unwrap().id().clone();
 
     let resumed = store.resume(&id).unwrap();
@@ -440,7 +454,8 @@ fn a_new_session_resumes_before_it_has_said_anything() {
 
 #[test]
 fn an_unknown_id_is_refused_not_started() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let absent = SessionId::from_str("zzzzzzzz").unwrap();
 
     let err = store.resume(&absent).unwrap_err();
@@ -459,7 +474,8 @@ fn an_unknown_id_is_refused_not_started() {
 /// changed with it. Nothing else pins this string — it exists only in the `Display` arm.
 #[test]
 fn an_unknown_id_is_named_in_the_refusal() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let absent = SessionId::from_str("zzzzzzzz").unwrap();
 
     let err = store.resume(&absent).unwrap_err();
@@ -473,7 +489,8 @@ fn an_unknown_id_is_named_in_the_refusal() {
 
 #[test]
 fn a_future_version_is_refused_not_guessed() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let id = store.create().unwrap().id().clone();
     let path = store.root().join(format!("{id}.jsonl"));
     fs::write(
@@ -492,7 +509,8 @@ fn a_future_version_is_refused_not_guessed() {
 
 #[test]
 fn a_transcript_without_a_header_is_refused() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let id = store.create().unwrap().id().clone();
     let path = store.root().join(format!("{id}.jsonl"));
     fs::write(
@@ -511,7 +529,8 @@ fn a_transcript_without_a_header_is_refused() {
 
 #[test]
 fn an_unparsable_line_names_the_line_it_is_on() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {
@@ -538,7 +557,8 @@ fn an_unparsable_line_names_the_line_it_is_on() {
 
 #[test]
 fn a_transcript_ending_on_a_user_turn_is_refused() {
-    let Store { root: _root, store } = store();
+    let fixture = store();
+    let store = fixture.store;
     let mut session = store.create().unwrap();
     session
         .append(CompletedTurn {

@@ -26,7 +26,7 @@ fn work() -> Work {
     Work { dir, named }
 }
 
-/// What [`work`] made: the directory, which has to outlive the test, and its name.
+/// What [`work`] made: its name, and the directory, which has to outlive every use of it.
 struct Work {
     dir: tempfile::TempDir,
     named: String,

@@ -32,3 +32,4 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_pty_fixture::Window
 impl core::panic::unwind_safe::UnwindSafe for sandbx_pty_fixture::Window
 pub const sandbx_pty_fixture::WINDOW: sandbx_pty_fixture::Window
 pub fn sandbx_pty_fixture::pty() -> sandbx_pty_fixture::Pty
+pub fn sandbx_pty_fixture::wait_readable(&impl std::os::fd::owned::AsFd)
