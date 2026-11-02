@@ -1,4 +1,3 @@
-use super::super::prompt::tests::{Pty, pty};
 use super::super::prompt::{APPROVE_CALL, Approve, Terminal};
 use super::super::render::tests::{stop, text};
 use super::super::{Device, orientation};
@@ -9,6 +8,7 @@ use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice};
 use sandbx_provider::{EventStream, ProviderError};
+use sandbx_pty_fixture::{Pty, pty};
 use sandbx_session_store::Session;
 use sandbx_tools::ExecutionContext;
 use std::path::Path;

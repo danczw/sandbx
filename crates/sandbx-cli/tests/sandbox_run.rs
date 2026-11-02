@@ -36,7 +36,7 @@ fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&Path> {
 /// A flag's path has to name something now that a grant carries the object at it, so a
 /// fixture cannot grant `/srv` and hope. Rooted at the resolved `$TMPDIR` because vetting
 /// resolves, and the spellings a test compares against are the ones the policy holds.
-fn scratch(names: &[&str]) -> (tempfile::TempDir, Vec<String>) {
+fn scratch(names: &[&str]) -> Scratch {
     let root = env::temp_dir()
         .canonicalize()
         .expect("a resolved temporary directory");
@@ -53,7 +53,14 @@ fn scratch(names: &[&str]) -> (tempfile::TempDir, Vec<String>) {
         })
         .collect();
 
-    (dir, made)
+    Scratch { dir, made }
+}
+
+/// What [`scratch`] made: the root, which has to outlive the test, and each directory's
+/// spelling.
+struct Scratch {
+    dir: tempfile::TempDir,
+    made: Vec<String>,
 }
 
 #[test]
@@ -164,7 +171,10 @@ fn a_path_flag_moves_where_the_command_starts() {
 /// working directory.
 #[test]
 fn a_path_flag_replaces_the_working_directory() {
-    let (_scratch, granted) = scratch(&["srv"]);
+    let Scratch {
+        dir: _scratch,
+        made: granted,
+    } = scratch(&["srv"]);
 
     for flag in ["--allow-read", "--allow-write", "--allow-exec"] {
         let policy = sandbox_run(&["sandbx", "sandbox-run", flag, &granted[0], "--", "true"])
@@ -213,7 +223,10 @@ fn the_default_root_is_not_executable() {
 
 #[test]
 fn each_allow_flag_widens_only_its_own_axis() {
-    let (_scratch, granted) = scratch(&["srv"]);
+    let Scratch {
+        dir: _scratch,
+        made: granted,
+    } = scratch(&["srv"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -235,7 +248,10 @@ fn each_allow_flag_widens_only_its_own_axis() {
 
 #[test]
 fn allow_flags_repeat_to_grant_several_paths() {
-    let (_scratch, dirs) = scratch(&["a", "b", "c"]);
+    let Scratch {
+        dir: _scratch,
+        made: dirs,
+    } = scratch(&["a", "b", "c"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -460,7 +476,10 @@ fn unix_sockets_are_opt_in() {
 /// onto the execute axis would silently widen it.
 #[test]
 fn exec_grants_are_repeatable_and_separate_from_read() {
-    let (_scratch, dirs) = scratch(&["one", "two", "data"]);
+    let Scratch {
+        dir: _scratch,
+        made: dirs,
+    } = scratch(&["one", "two", "data"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -488,7 +507,10 @@ fn exec_grants_are_repeatable_and_separate_from_read() {
 
 #[test]
 fn nothing_user_supplied_is_executable_by_default() {
-    let (_scratch, granted) = scratch(&["srv"]);
+    let Scratch {
+        dir: _scratch,
+        made: granted,
+    } = scratch(&["srv"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -517,7 +539,10 @@ fn nothing_user_supplied_is_executable_by_default() {
 /// let a tool write a tree it cannot `cat` back.
 #[test]
 fn allow_write_also_grants_read_at_the_command_line() {
-    let (_scratch, granted) = scratch(&["srv"]);
+    let Scratch {
+        dir: _scratch,
+        made: granted,
+    } = scratch(&["srv"]);
     let policy = sandbox_run(&[
         "sandbx",
         "sandbox-run",
@@ -545,7 +570,10 @@ fn allow_write_also_grants_read_at_the_command_line() {
 fn every_path_flag_grants_only_its_own_axis() {
     use sandbx_core::Axis;
 
-    let (_scratch, dirs) = scratch(&["subject"]);
+    let Scratch {
+        dir: _scratch,
+        made: dirs,
+    } = scratch(&["subject"]);
     let granted = Path::new(&dirs[0]);
 
     for (flag, axis) in [

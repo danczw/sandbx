@@ -1,6 +1,7 @@
 use super::super::Device;
 use super::{CLOSED, Consent, Operator, RESET, Terminal, UNCLEARED, account};
 use sandbx_approval::{ApprovalDecision, ToolCall};
+use sandbx_pty_fixture::{Pty, pty};
 use sandbx_tools::BuiltinTool;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
@@ -277,34 +278,6 @@ fn wait_readable(fd: &impl AsFd) {
     let ready = poll(&mut fds, PollTimeout::from(5_000u16)).expect("poll");
 
     assert_eq!(ready, 1, "the pty queued nothing within five seconds");
-}
-
-/// A pty pair with the echo off, so the master carries only what sandbx wrote.
-///
-/// `ONLCR` off with it: the line discipline translates a written `\n` into `\r\n` on the
-/// way out, which an exact assertion cannot allow for.
-pub(crate) fn pty() -> Pty {
-    use nix::sys::termios;
-
-    let pair = nix::pty::openpty(None, None).expect("a pty pair");
-
-    let mut attrs = termios::tcgetattr(&pair.slave).expect("the pty's termios");
-    attrs.local_flags.remove(termios::LocalFlags::ECHO);
-    attrs.output_flags.remove(termios::OutputFlags::ONLCR);
-    termios::tcsetattr(&pair.slave, termios::SetArg::TCSANOW, &attrs).expect("echo off");
-
-    Pty {
-        master: File::from(pair.master),
-        slave: File::from(pair.slave),
-    }
-}
-
-/// The two ends of a [`pty`].
-pub(crate) struct Pty {
-    /// The side a test types into and reads sandbx's output from.
-    pub(crate) master: File,
-    /// The side sandbx is handed as its terminal.
-    pub(crate) slave: File,
 }
 
 /// Over a real terminal because what the drain clears is the kernel's input queue: a `y`

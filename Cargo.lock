@@ -1686,6 +1686,7 @@ dependencies = [
  "sandbx-logging",
  "sandbx-prompt",
  "sandbx-provider",
+ "sandbx-pty-fixture",
  "sandbx-screen",
  "sandbx-session-bridge",
  "sandbx-session-error",

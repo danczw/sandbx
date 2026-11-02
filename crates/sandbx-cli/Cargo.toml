@@ -59,6 +59,7 @@ tempfile = "3.27.0"
 # and the pair has to be known readable before the drain runs or the test asserts nothing.
 nix = { version = "0.31.3", default-features = false, features = ["term", "poll"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+sandbx-pty-fixture = { path = "../sandbx-pty-fixture" }
 
 [lints]
 workspace = true

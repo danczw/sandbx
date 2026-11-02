@@ -10,10 +10,16 @@ use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 use sandbx_session_store::SessionStore;
 
-fn store() -> (tempfile::TempDir, SessionStore) {
+fn store() -> Store {
     let root = tempfile::tempdir().expect("a temp dir");
     let store = SessionStore::new(root.path().join("sessions"));
-    (root, store)
+    Store { root, store }
+}
+
+/// What [`store`] made, under the directory that has to outlive it.
+struct Store {
+    root: tempfile::TempDir,
+    store: SessionStore,
 }
 
 fn said(role: Role, text: &str) -> Message {
@@ -55,7 +61,7 @@ struct Spoken {
 /// ENOSPC part-way through an append, which refusing would let cost the conversation.
 #[test]
 fn a_torn_final_line_is_dropped() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let Spoken { id, path } = spoken_to(&store);
 
     let whole = fs::read_to_string(&path).unwrap();
@@ -69,7 +75,7 @@ fn a_torn_final_line_is_dropped() {
 /// Nothing is left to replay, so the header is as absent as it is for an empty file.
 #[test]
 fn a_transcript_of_nothing_but_a_torn_line_is_refused() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let Spoken { id, path } = spoken_to(&store);
 
     fs::write(&path, "{\"type\":\"hea").unwrap();
@@ -86,7 +92,7 @@ fn a_transcript_of_nothing_but_a_torn_line_is_refused() {
 /// 400.
 #[test]
 fn an_interior_pair_of_user_turns_is_refused() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let Spoken { id, path } = spoken_to(&store);
 
     // Appended so the history still ends on the model: only a check over the whole
@@ -111,7 +117,7 @@ fn an_interior_pair_of_user_turns_is_refused() {
 /// can live.
 #[test]
 fn a_turn_with_no_messages_still_records_what_it_cost() {
-    let (_root, store) = store();
+    let Store { root: _root, store } = store();
     let mut session = store.create().unwrap();
     let observed = Usage {
         input_tokens: Some(1204),
