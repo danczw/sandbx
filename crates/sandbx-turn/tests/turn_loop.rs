@@ -57,10 +57,18 @@ struct Gate<F> {
     decide: F,
 
     /// One entry per call that reached [`CallGate::approve`], which three outcomes do not.
-    asked: Vec<(BuiltinTool, String, serde_json::Value)>,
+    asked: Vec<Asked>,
 
     /// One `{name}:{outcome}` per `tool_use` block, in the order the round settled them.
     settled: Vec<String>,
+}
+
+/// One call as [`Gate`] was asked it.
+#[derive(Debug, PartialEq)]
+struct Asked {
+    tool: BuiltinTool,
+    id: String,
+    input: serde_json::Value,
 }
 
 impl<F: FnMut(ToolCall<'_>) -> ApprovalDecision> Gate<F> {
@@ -75,8 +83,11 @@ impl<F: FnMut(ToolCall<'_>) -> ApprovalDecision> Gate<F> {
 
 impl<F: FnMut(ToolCall<'_>) -> ApprovalDecision> CallGate for Gate<F> {
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        self.asked
-            .push((call.tool, call.id.to_string(), call.input.clone()));
+        self.asked.push(Asked {
+            tool: call.tool,
+            id: call.id.to_string(),
+            input: call.input.clone(),
+        });
         (self.decide)(call)
     }
 
@@ -688,7 +699,11 @@ async fn the_gate_sees_a_call_before_it_runs() {
 
     assert_eq!(
         gate.asked,
-        vec![(BuiltinTool::Write, "call_1".to_string(), input)]
+        vec![Asked {
+            tool: BuiltinTool::Write,
+            id: "call_1".to_string(),
+            input
+        }]
     );
     assert_eq!(gate.settled, ["write:ran"]);
     assert_eq!(fs::read_to_string(&file).unwrap(), "written");

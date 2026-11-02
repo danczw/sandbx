@@ -99,7 +99,7 @@ fn work_roots(policy: &SandboxPolicy) -> Vec<WorkRoot> {
         match roots.iter_mut().find(|known| known.path == path) {
             // `--allow-read X --allow-write X` grants read twice, `Grants::policy` adding
             // it to every write, and `(read, read, write)` reads as a second grant.
-            Some(held) if !held.access.contains(&access) => held.access.push(access),
+            Some(root) if !root.access.contains(&access) => root.access.push(access),
             Some(_) => {}
             None => roots.push(WorkRoot {
                 path,

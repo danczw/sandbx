@@ -1,3 +1,4 @@
+use super::super::prompt::tests::{Pty, pty};
 use super::super::prompt::{APPROVE_CALL, Approve, Terminal};
 use super::super::render::tests::{stop, text};
 use super::super::{Device, orientation};
@@ -101,13 +102,10 @@ fn runtime() -> tokio::runtime::Runtime {
         .expect("a current-thread runtime")
 }
 
-/// What a scripted run reports.
+/// What a scripted run reports: every request it sent, its stdout, and its exit code.
 struct Driven {
-    /// Every request it sent.
     sent: Vec<Prompt>,
-    /// Its stdout.
     written: String,
-    /// Its exit code.
     code: Result<i32, AgentError>,
 }
 
@@ -239,7 +237,7 @@ fn asked_on(
 /// A terminal whose master is already gone — the configuration `strace` measured on a
 /// `tmux kill-server`, driven through the real `/dev/tty` code path.
 fn hung_up() -> Terminal {
-    let super::super::prompt::tests::Pty { master, slave } = super::super::prompt::tests::pty();
+    let Pty { master, slave } = pty();
     drop(master);
     Terminal::on(slave).expect("the terminal")
 }

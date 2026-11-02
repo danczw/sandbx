@@ -21,12 +21,12 @@ pub const WINDOW: Window = Window {
     rows: 7,
 };
 
-/// A terminal window's size, in cells.
+/// A terminal window's size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Window {
-    /// Its width.
+    /// Width, in cells.
     pub columns: u16,
-    /// Its height.
+    /// Height, in cells.
     pub rows: u16,
 }
 
