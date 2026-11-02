@@ -65,7 +65,12 @@ there are:
   adapter cannot post a request shape without first naming every field of it. It is
   also `pub(super)`, which keeps the wrappers themselves inside `anthropic.rs`; that
   token is the narrower of the two guarantees now, and the one that would survive the
-  types moving back.
+  types moving back. The wire payloads are `pub(super)` too, bar the two error
+  envelopes at `pub(crate)`.
+- What these rules confine is the vendor's *vocabulary*, never its name: since
+  #368 the name is the crate's own, carried by the package, the directory, the
+  baseline, `deny.toml` and the `crate:anthropic` label, and no lint or grep
+  could contain it if one wanted to.
 - `StopReason` is a neutral enum with `Other(String)`; the string table is a
   free `stop_reason` in `anthropic::wire`. Since #365 the two are in different
   crates — the enum is `sandbx-event`'s, the table stayed — which states the seam

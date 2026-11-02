@@ -19,6 +19,16 @@ records which codebase asked for a rule, not whether it travels.
 [#328](https://github.com/danczw/sandbx/issues/328) tracks the migration, and its
 phase sub-issues hold the status — not this file.
 
+## The flat layout, and how a file is named under it
+
+Every crate's `src/` is flat (#333). A file is named for its module path joined
+with `_`, so `helper_ruleset_rights.rs` is `helper::ruleset::rights`: the
+nesting the directories used to show is in the name, and a `#[path]` on every
+`mod` line whose file moved keeps the module tree itself. A crate root's own
+`mod` lines carry none, a top-level module's name being its path-join name
+already. Where that meets the guide's rule on naming a file after its primary
+item is #449.
+
 ## `core` stays large to keep a constructor out of reach
 
 The guide allows a larger crate for trait coherence or "a large foundational

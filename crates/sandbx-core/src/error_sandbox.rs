@@ -13,7 +13,8 @@ use super::refusal::{self, HelperRefusal};
 
 /// Which grant a path was checked against; carried by a refusal so it names the grant
 /// that was missing. The guard keeps its root sets apart, so a path can be inside one
-/// and outside the other.
+/// and outside the other. Not [`Axis`](crate::Axis): `Axis::ReadExecute` has no in-process
+/// meaning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     /// Checked against the readable roots.

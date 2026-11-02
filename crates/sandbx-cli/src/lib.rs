@@ -16,6 +16,7 @@ pub use hash::Hash;
 pub use invocation::{Cli, Command};
 pub use sandbox::SandboxRun;
 
+// Moved out by #350 and re-exported so `sandbx_cli::Grants` and its error stay spellable.
 pub use sandbx_grants::{Grants, PolicyError};
 // `AgentRun::session` returns one and a caller matches on its *variants*, which is what
 // separates it from the other foreign types in this surface — the errors, the policy and

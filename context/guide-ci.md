@@ -293,13 +293,13 @@ parse error rather than an order, and `if` reads that as "not higher".
 
 ### Why the query is in the workflow and the comparison is not
 
-`guide-repo-map.md` requires everything in `.github/scripts/` to run without a
-workflow, and this decision needs the published set, which only an API call
-supplies. So `release-channel.sh --latest <tag>` reads candidate tags on
-**stdin**: the script makes no network call, stays runnable by hand, and the
-self-test feeds it synthetic sets. The `gh api` call lives in the `notes` job,
-which is the only one with a checkout — `publish` deliberately has none, so that
-`contents: write` is confined to a job holding no source.
+Everything in `.github/scripts/` has to run without a workflow, so that it can
+be run by hand and self-tested, and this decision needs the published set, which
+only an API call supplies. So `release-channel.sh --latest <tag>` reads
+candidate tags on **stdin**: the script makes no network call, stays runnable by
+hand, and the self-test feeds it synthetic sets. The `gh api` call lives in the
+`notes` job, which is the only one with a checkout — `publish` deliberately has
+none, so that `contents: write` is confined to a job holding no source.
 
 Two traps in that step, both of which have bitten:
 

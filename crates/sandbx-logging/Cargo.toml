@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# For `AUDIT_TARGET` alone, the target the filter admits: one constant, not a mechanism.
 sandbx-core = { path = "../sandbx-core" }
 # `tracing` discards every event when no subscriber is installed, and a library
 # cannot install one; this crate owns the workspace's only subscriber.
