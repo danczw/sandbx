@@ -1,24 +1,15 @@
 //! Public contract of [`SessionStore`]: what a transcript holds, and what it refuses.
 
+mod common;
+
 use std::fs;
 use std::str::FromStr;
 
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
-use sandbx_session_store::SessionStore;
 
-fn store() -> Store {
-    let root = tempfile::tempdir().expect("a temp dir");
-    let store = SessionStore::new(root.path().join("sessions"));
-    Store { _root: root, store }
-}
-
-/// A store, and the directory its root sits in, which has to outlive the store.
-struct Store {
-    _root: tempfile::TempDir,
-    store: SessionStore,
-}
+use common::store;
 
 fn said(role: Role, text: &str) -> Message {
     Message {
