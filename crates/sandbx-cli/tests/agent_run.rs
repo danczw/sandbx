@@ -37,8 +37,8 @@ fn scratch() -> Scratch {
     Scratch { _dir: dir, named }
 }
 
-/// What [`scratch`] made: its spelling, and the directory, which has to outlive every use
-/// of it.
+/// What [`scratch`] made: the directory, which has to outlive every use of its spelling,
+/// and that spelling.
 struct Scratch {
     _dir: tempfile::TempDir,
     named: String,

@@ -26,7 +26,8 @@ fn work() -> Work {
     Work { dir, named }
 }
 
-/// What [`work`] made: its name, and the directory, which has to outlive every use of it.
+/// What [`work`] made: the directory, which has to outlive every use of its name, and that
+/// name.
 struct Work {
     dir: tempfile::TempDir,
     named: String,
