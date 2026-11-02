@@ -9,16 +9,7 @@ use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 
-use common::store;
-
-fn said(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: vec![Content::Text {
-            text: text.to_owned(),
-        }],
-    }
-}
+use common::{exchange, said, store};
 
 fn usage(input: u32) -> Usage {
     Usage {
@@ -26,11 +17,6 @@ fn usage(input: u32) -> Usage {
         cache_read_input_tokens: None,
         cache_creation_input_tokens: None,
     }
-}
-
-/// A turn of `[user, assistant]` prose, which is the shape every append needs.
-fn exchange(ask: &str, reply: &str) -> Vec<Message> {
-    vec![said(Role::User, ask), said(Role::Assistant, reply)]
 }
 
 /// A call and its answer, the pair a turn that runs out of rounds breaks off on.

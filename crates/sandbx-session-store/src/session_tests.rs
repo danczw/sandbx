@@ -1,5 +1,7 @@
 use std::fs::File;
+use std::io::ErrorKind;
 
+use sandbx_session_error::SessionError;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
 
 use crate::SessionStore;
@@ -51,12 +53,31 @@ fn a_turn_the_file_refused_is_not_counted() {
         withheld: 5,
     });
 
-    assert!(refused.is_err(), "a write to /dev/full was accepted");
-    assert_eq!(session.observed(), Some(usage(100)));
-    assert_eq!(session.withheld(), 1);
+    // The write's refusal and no other: a turn refused before the write would leave the
+    // accounting alone too, and prove nothing about the order.
+    assert!(
+        matches!(
+            &refused,
+            Err(SessionError::Io { source, .. }) if source.kind() == ErrorKind::StorageFull
+        ),
+        "not the write's ENOSPC: {refused:?}"
+    );
+    assert_eq!(
+        session.observed(),
+        Some(usage(100)),
+        "the refused turn's count was taken"
+    );
+    assert_eq!(session.withheld(), 1, "the refused turn's cut was taken");
     assert_eq!(
         session.messages().len(),
         2,
         "the refused turn's messages were kept"
+    );
+
+    let resumed = store.resume(session.id()).expect("the stored turn resumes");
+    assert_eq!(
+        (resumed.observed(), resumed.withheld(), resumed.messages()),
+        (session.observed(), session.withheld(), session.messages()),
+        "the live session and the file disagree"
     );
 }

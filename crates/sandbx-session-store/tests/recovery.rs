@@ -9,23 +9,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use sandbx_session_error::SessionError;
-use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
+use sandbx_session_message::{CompletedTurn, Usage};
 use sandbx_session_store::SessionStore;
 
-use common::store;
-
-fn said(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: vec![Content::Text {
-            text: text.to_owned(),
-        }],
-    }
-}
-
-fn exchange(ask: &str, reply: &str) -> Vec<Message> {
-    vec![said(Role::User, ask), said(Role::Assistant, reply)]
-}
+use common::{exchange, store};
 
 /// One session with one turn in it, and the path it was written to.
 fn spoken_to(store: &SessionStore) -> Spoken {
