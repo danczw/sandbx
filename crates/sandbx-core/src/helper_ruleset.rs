@@ -18,6 +18,7 @@ mod rights;
 pub(super) use compat::{enforcement_verdict, landlock_failed};
 pub(super) use opened::open_grant;
 pub(super) use requested::{Requested, RequestedNet, requested};
+pub(super) use rights::FsRule;
 
 #[cfg(test)]
 #[path = "helper_ruleset_tests.rs"]

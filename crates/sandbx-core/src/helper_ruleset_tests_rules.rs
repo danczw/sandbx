@@ -41,8 +41,8 @@ fn rule(policy: &SandboxPolicy, axis: crate::Axis, path: &Path) -> landlock::Bit
     let matches: Vec<_> = requested_at(policy, LATEST_ABI)
         .rules
         .into_iter()
-        .filter(|(a, granted, _)| *a == axis && granted.path() == path)
-        .map(|(_, _, rights)| rights)
+        .filter(|rule| rule.axis == axis && rule.target.path() == path)
+        .map(|rule| rule.rights)
         .collect();
 
     assert_eq!(
@@ -64,10 +64,8 @@ fn union(policy: &SandboxPolicy, path: &Path, abi: landlock::ABI) -> landlock::B
     requested_at(policy, abi)
         .rules
         .into_iter()
-        .filter(|(_, candidate, _)| candidate.path() == path)
-        .fold(landlock::BitFlags::EMPTY, |union, (_, _, rights)| {
-            union | rights
-        })
+        .filter(|rule| rule.target.path() == path)
+        .fold(landlock::BitFlags::EMPTY, |union, rule| union | rule.rights)
 }
 
 /// Directory-only rights are invalid on a regular file, and the kernel rejects the whole

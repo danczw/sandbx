@@ -70,7 +70,7 @@ reads to EOF                     namespace_setup_failed\t  ◄─────┘
   └─ AuditEvent::exited(..) | ::failed(..)
 ```
 
-`helper_hardening.rs` returns `Vec<(Degradation, String)>` instead of emitting;
+`helper_hardening.rs` returns `Vec<Degraded>` instead of emitting;
 `degradation.rs` owns the format and both ends; `exec_sandboxed` writes its
 degradations or its one refusal and `exec_inner` writes its one refusal;
 `command_run.rs` reads, decodes and emits.

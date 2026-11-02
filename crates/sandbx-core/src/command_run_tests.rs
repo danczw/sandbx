@@ -7,7 +7,7 @@ use std::{fmt, io};
 fn reported(channel: &str) -> Option<crate::HelperRefusal> {
     // A mint of its own: these assert on the refusal `record_reports` returns rather
     // than on the records it emits.
-    read_channel(channel, &crate::SpawnId::next(), None).0
+    read_channel(channel, &crate::SpawnId::next(), None).refused
 }
 
 /// `record_reports` over a crafted channel, with whatever it emitted.
@@ -16,11 +16,7 @@ fn reported(channel: &str) -> Option<crate::HelperRefusal> {
 /// host's answer**: a kernel that drops the bounding set cleanly emits no `degraded` at
 /// all, so `audit_channel.rs`'s real-helper tests cannot reach this path on most
 /// machines and a regression in it would go unmeasured.
-fn read_channel(
-    channel: &str,
-    spawn: &crate::SpawnId,
-    session: Option<&str>,
-) -> (Option<crate::HelperRefusal>, Vec<String>) {
+fn read_channel(channel: &str, spawn: &crate::SpawnId, session: Option<&str>) -> Read {
     use std::io::Write;
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -33,7 +29,16 @@ fn read_channel(
     let refused =
         tracing::subscriber::with_default(subscriber, || record_reports(read, spawn, session));
 
-    (refused, sink.0.lock().unwrap().clone())
+    Read {
+        refused,
+        lines: sink.0.lock().unwrap().clone(),
+    }
+}
+
+/// What [`read_channel`] got back: the refusal reported, and the records emitted.
+struct Read {
+    refused: Option<crate::HelperRefusal>,
+    lines: Vec<String>,
 }
 
 /// Collects audit records as `field=value ` text, emitted on the calling thread so a
@@ -68,7 +73,7 @@ impl tracing::field::Visit for Collect {
 #[test]
 fn a_degradation_names_the_run_that_weakened() {
     let run = crate::SpawnId::next();
-    let (refused, lines) = read_channel(
+    let Read { refused, lines } = read_channel(
         "capability_bounding_set\tleft as inherited\n",
         &run,
         Some("abc123"),
@@ -92,7 +97,7 @@ fn a_degradation_names_the_run_that_weakened() {
 /// so the assertions there are about a record the channel produced.
 #[test]
 fn an_empty_channel_emits_no_degradation() {
-    let (refused, lines) = read_channel("", &crate::SpawnId::next(), None);
+    let Read { refused, lines } = read_channel("", &crate::SpawnId::next(), None);
 
     assert_eq!(refused, None, "an empty channel refused the run");
     assert!(lines.is_empty(), "got: {lines:?}");

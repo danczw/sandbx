@@ -13,15 +13,15 @@ use std::process::{Child, Command, Stdio};
 use std::{fs, io};
 
 /// A variable the probe carries, so a successful read is identifiable and not merely non-empty.
-const MARKER: (&str, &str) = (
-    "SANDBX_CONCEALMENT_PROBE",
-    "a-stand-in-for-the-provider-key",
-);
+const MARKER_NAME: &str = "SANDBX_CONCEALMENT_PROBE";
+
+/// What [`MARKER_NAME`] is set to.
+const MARKER_VALUE: &str = "a-stand-in-for-the-provider-key";
 
 /// The probe, started with the marker in its environment and held at its first stage.
 fn probe() -> Child {
     Command::new(env!("CARGO_BIN_EXE_sandbx-concealment-probe"))
-        .env(MARKER.0, MARKER.1)
+        .env(MARKER_NAME, MARKER_VALUE)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -71,7 +71,7 @@ fn a_concealed_process_hides_its_environment_from_its_parent() {
 
     let read = before.expect("read before concealment");
     assert!(
-        String::from_utf8_lossy(&read).contains(&format!("{}={}", MARKER.0, MARKER.1)),
+        String::from_utf8_lossy(&read).contains(&format!("{}={}", MARKER_NAME, MARKER_VALUE)),
         "the probe's environment did not carry the marker, so the read proves nothing"
     );
 

@@ -1,5 +1,5 @@
 use super::{drop_bounding_set, map_identity_into_userns_with, ppid_from_stat};
-use crate::degradation::Degradation;
+use crate::degradation::{Degradation, Degraded};
 use std::{fs, io};
 
 /// A `/proc/pid/stat` line with the executable name substituted in. Long enough to carry
@@ -129,8 +129,9 @@ fn the_parse_agrees_with_procfs_under_another_name() {
 
 #[test]
 fn a_refused_bounding_set_drop_reports_a_degradation() {
-    let (step, detail) = drop_bounding_set(|| Err("Operation not permitted (os error 1)"))
-        .expect("a refused PR_CAPBSET_DROP must name itself as degraded");
+    let Degraded { step, detail } =
+        drop_bounding_set(|| Err("Operation not permitted (os error 1)"))
+            .expect("a refused PR_CAPBSET_DROP must name itself as degraded");
 
     assert_eq!(
         step,
@@ -196,7 +197,7 @@ fn a_refused_map_reports_a_degradation_and_stops() {
             }
         });
 
-        let (step, detail) =
+        let Degraded { step, detail } =
             degraded.unwrap_or_else(|| panic!("{refused} was refused and nothing reported it"));
 
         assert_eq!(

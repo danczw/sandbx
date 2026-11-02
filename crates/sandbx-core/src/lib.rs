@@ -26,7 +26,9 @@ mod spawn;
 mod spawn_id;
 
 pub use audit::{AUDIT_TARGET, AuditEvent, Pinning};
-pub use command::{HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch};
+pub use command::{
+    CommandLine, HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch,
+};
 pub use concealment::conceal_process_state;
 pub use digest::{DigestParseError, Sha256Digest};
 pub use error::{Access, HelperRefusal, SandboxError};
@@ -34,8 +36,8 @@ pub use fs_guard::{FsGuard, Listed, Listing, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
 pub use helper_args::HelperArgs;
 pub use policy::{
-    Axis, DNS_NAME_LIMIT, Grants, NAMESERVER_PORT, NetworkPolicy, ObjectId, SandboxPolicy,
-    VettedPath,
+    Axis, DNS_NAME_LIMIT, GrantedPath, Grants, NAMESERVER_PORT, NetworkPolicy, ObjectId,
+    SandboxPolicy, VettedPath,
 };
 pub use resolver::{RESOLVER_FILES, bound_by_resolver};
 pub use spawn_id::SpawnId;

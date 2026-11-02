@@ -11,7 +11,7 @@ use super::hardening::{
     bind_lifetime_to_supervisor, confirm_supervisor, prepare_supervisor, set_no_new_privs,
 };
 use super::ruleset::{
-    Requested, RequestedNet, enforcement_verdict, landlock_failed, open_grant, requested,
+    FsRule, Requested, RequestedNet, enforcement_verdict, landlock_failed, open_grant, requested,
 };
 use super::seccomp::deny_dangerous_syscalls;
 use std::convert::Infallible;
@@ -443,7 +443,7 @@ pub(super) fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
 
     // `Requested` decides what to install; this loop only opens the paths. The axis is for
     // the tests that assert the mapping — the kernel is told the rights and nothing else.
-    for (_, target, rights) in rules {
+    for FsRule { target, rights, .. } in rules {
         let fd = open_grant(&target)?;
         ruleset = ruleset
             .add_rule(PathBeneath::new(fd, rights))

@@ -285,6 +285,24 @@ impl core::marker::Unpin for sandbx_core::SandboxError
 impl core::marker::UnsafeUnpin for sandbx_core::SandboxError
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SandboxError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_core::SandboxError
+pub struct sandbx_core::CommandLine
+pub sandbx_core::CommandLine::argv: alloc::vec::Vec<alloc::string::String>
+pub sandbx_core::CommandLine::helper: std::path::PathBuf
+impl core::clone::Clone for sandbx_core::CommandLine
+pub fn sandbx_core::CommandLine::clone(&self) -> sandbx_core::CommandLine
+impl core::cmp::Eq for sandbx_core::CommandLine
+impl core::cmp::PartialEq for sandbx_core::CommandLine
+pub fn sandbx_core::CommandLine::eq(&self, &sandbx_core::CommandLine) -> bool
+impl core::fmt::Debug for sandbx_core::CommandLine
+pub fn sandbx_core::CommandLine::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for sandbx_core::CommandLine
+impl core::marker::Freeze for sandbx_core::CommandLine
+impl core::marker::Send for sandbx_core::CommandLine
+impl core::marker::Sync for sandbx_core::CommandLine
+impl core::marker::Unpin for sandbx_core::CommandLine
+impl core::marker::UnsafeUnpin for sandbx_core::CommandLine
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::CommandLine
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::CommandLine
 pub struct sandbx_core::FsGuard
 impl sandbx_core::FsGuard
 pub fn sandbx_core::FsGuard::check_read(&self, &std::path::Path) -> core::result::Result<std::path::PathBuf, sandbx_core::SandboxError>
@@ -306,6 +324,25 @@ impl core::marker::Unpin for sandbx_core::FsGuard
 impl core::marker::UnsafeUnpin for sandbx_core::FsGuard
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::FsGuard
 impl core::panic::unwind_safe::UnwindSafe for sandbx_core::FsGuard
+pub struct sandbx_core::GrantedPath<'a>
+pub sandbx_core::GrantedPath::axis: sandbx_core::Axis
+pub sandbx_core::GrantedPath::granted: &'a sandbx_core::VettedPath
+impl<'a> core::clone::Clone for sandbx_core::GrantedPath<'a>
+pub fn sandbx_core::GrantedPath<'a>::clone(&self) -> sandbx_core::GrantedPath<'a>
+impl<'a> core::cmp::Eq for sandbx_core::GrantedPath<'a>
+impl<'a> core::cmp::PartialEq for sandbx_core::GrantedPath<'a>
+pub fn sandbx_core::GrantedPath<'a>::eq(&self, &sandbx_core::GrantedPath<'a>) -> bool
+impl<'a> core::fmt::Debug for sandbx_core::GrantedPath<'a>
+pub fn sandbx_core::GrantedPath<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for sandbx_core::GrantedPath<'a>
+impl<'a> core::marker::StructuralPartialEq for sandbx_core::GrantedPath<'a>
+impl<'a> core::marker::Freeze for sandbx_core::GrantedPath<'a>
+impl<'a> core::marker::Send for sandbx_core::GrantedPath<'a>
+impl<'a> core::marker::Sync for sandbx_core::GrantedPath<'a>
+impl<'a> core::marker::Unpin for sandbx_core::GrantedPath<'a>
+impl<'a> core::marker::UnsafeUnpin for sandbx_core::GrantedPath<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_core::GrantedPath<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_core::GrantedPath<'a>
 pub struct sandbx_core::Grants
 pub sandbx_core::Grants::execute: bool
 pub sandbx_core::Grants::read: bool
@@ -441,7 +478,7 @@ pub fn sandbx_core::SandboxPolicy::bounds_resolution(&self) -> bool
 pub fn sandbx_core::SandboxPolicy::executable_paths(&self) -> &[sandbx_core::VettedPath]
 pub fn sandbx_core::SandboxPolicy::grant(self, sandbx_core::Axis, sandbx_core::VettedPath) -> Self
 pub fn sandbx_core::SandboxPolicy::grant_bound_by_resolver(&self) -> core::option::Option<&std::path::Path>
-pub fn sandbx_core::SandboxPolicy::granted_paths(&self) -> impl core::iter::traits::iterator::Iterator<Item = (sandbx_core::Axis, &sandbx_core::VettedPath)>
+pub fn sandbx_core::SandboxPolicy::granted_paths(&self) -> impl core::iter::traits::iterator::Iterator<Item = sandbx_core::GrantedPath<'_>>
 pub fn sandbx_core::SandboxPolicy::hint_dns_over_tcp(self) -> Self
 pub fn sandbx_core::SandboxPolicy::hints_dns_over_tcp(&self) -> bool
 pub fn sandbx_core::SandboxPolicy::imposed_env(&self) -> &'static [(&'static str, &'static str)]
@@ -473,7 +510,7 @@ pub struct sandbx_core::SandboxedCommand
 impl sandbx_core::SandboxedCommand
 pub fn sandbx_core::SandboxedCommand::arg(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn sandbx_core::SandboxedCommand::args<I, S>(self, I) -> Self where I: core::iter::traits::collect::IntoIterator<Item = S>, S: core::convert::Into<alloc::string::String>
-pub fn sandbx_core::SandboxedCommand::command_line(&self) -> core::result::Result<(std::path::PathBuf, alloc::vec::Vec<alloc::string::String>), sandbx_core::SandboxError>
+pub fn sandbx_core::SandboxedCommand::command_line(&self) -> core::result::Result<sandbx_core::CommandLine, sandbx_core::SandboxError>
 pub fn sandbx_core::SandboxedCommand::helper(self, impl core::convert::AsRef<std::path::Path>) -> Self
 pub fn sandbx_core::SandboxedCommand::new(impl core::convert::Into<alloc::string::String>, sandbx_core::SandboxPolicy) -> Self
 pub fn sandbx_core::SandboxedCommand::output(&self) -> core::result::Result<std::process::Output, sandbx_core::SandboxError>

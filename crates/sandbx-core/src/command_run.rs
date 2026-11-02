@@ -34,6 +34,15 @@ pub struct SandboxedCommand {
     session: Option<String>,
 }
 
+/// What [`SandboxedCommand::command_line`] runs: the helper, and the argv it is given.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandLine {
+    /// The executable to spawn.
+    pub helper: PathBuf,
+    /// Its arguments, the dispatch flag first.
+    pub argv: Vec<String>,
+}
+
 /// How often the timed path polls for the child's exit, `std::process` having no timed wait.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -118,7 +127,7 @@ impl SandboxedCommand {
     /// [`working_root`](SandboxPolicy::working_root), so spawning from here inherits your own
     /// and may begin somewhere the policy refuses — spawn it from this process too, since the
     /// default helper path resolves against whichever process execs it.
-    pub fn command_line(&self) -> Result<(PathBuf, Vec<String>), SandboxError> {
+    pub fn command_line(&self) -> Result<CommandLine, SandboxError> {
         // Here and not in `output`: an embedder spawning this argv itself has to meet the
         // same refusal, `SECURITY.md`'s claim being made at this level.
         if let Some(detail) = self.policy.unbounded_resolution() {
@@ -144,7 +153,7 @@ impl SandboxedCommand {
             &self.args,
             self.pin,
         ));
-        Ok((helper, argv))
+        Ok(CommandLine { helper, argv })
     }
 
     /// Run the command to completion and collect its output. Blocks until the command exits,
@@ -153,7 +162,7 @@ impl SandboxedCommand {
     /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
     /// indistinguishable from the command's own.
     pub fn output(&self) -> Result<Output, SandboxError> {
-        let (helper, argv) = self.command_line()?;
+        let CommandLine { helper, argv } = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
 
         // Minted here and not in `new`: this takes `&self`, so one builder can be run more
@@ -288,7 +297,7 @@ fn record_reports(
     let mut refused = None;
     for report in crate::degradation::decode(&records) {
         match report {
-            crate::degradation::Report::Degraded(step, detail) => {
+            crate::degradation::Report::Degraded { step, detail } => {
                 crate::AuditEvent::degraded(step.label(), Some(spawn), session, detail).emit();
             }
             crate::degradation::Report::Failed(refusal) => {
@@ -361,19 +370,19 @@ fn run_with_deadline(
         // to reap and readers to let go.
         outcome => {
             let _ = child.wait();
-            settle(&out.0, &err.0);
+            settle(&out.reader, &err.reader);
             return Err(outcome
                 .err()
                 .unwrap_or(SandboxError::TimedOut { after: limit }));
         }
     };
 
-    settle(&out.0, &err.0);
+    settle(&out.reader, &err.reader);
 
     Ok(Output {
         status,
-        stdout: take(&out.1),
-        stderr: take(&err.1),
+        stdout: take(&out.buffer),
+        stderr: take(&err.buffer),
     })
 }
 
@@ -398,8 +407,7 @@ fn take(buffer: &Arc<Mutex<Vec<u8>>>) -> Vec<u8> {
 /// Read one pipe on its own thread, into a buffer the caller can take early. Chunked into
 /// a shared buffer rather than `read_to_end`, which holds the bytes inside the thread
 /// until it returns — exactly when an abandoned reader cannot.
-#[allow(clippy::type_complexity)]
-fn drain<R>(pipe: Option<R>) -> (JoinHandle<()>, Arc<Mutex<Vec<u8>>>)
+fn drain<R>(pipe: Option<R>) -> Drained
 where
     R: Read + Send + 'static,
 {
@@ -422,7 +430,16 @@ where
         }
     });
 
-    (handle, buffer)
+    Drained {
+        reader: handle,
+        buffer,
+    }
+}
+
+/// One pipe's reader thread, and the buffer it fills.
+struct Drained {
+    reader: JoinHandle<()>,
+    buffer: Arc<Mutex<Vec<u8>>>,
 }
 
 /// SIGKILL a process group, and with it the PID namespace inside it. The group alone is

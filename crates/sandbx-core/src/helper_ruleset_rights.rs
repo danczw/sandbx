@@ -130,40 +130,45 @@ impl RuleTarget<'_> {
 /// hold and, under `HardRequirement`, reports that as an error.
 ///
 /// The axis rides along even though `apply` has no use for it: Landlock *unions* the rules it
-/// is given for a path, so a tuple of just `(path, rights)` is not the effective right set for
-/// any path named on two axes — and `sandbx --allow-write` names one on two axes every time.
+/// is given for a path, so a rule of just a path and its rights is not the effective right set
+/// for any path named on two axes — and `sandbx --allow-write` names one on two axes every time.
 ///
 /// [`SandboxPolicy::granted_paths`]: crate::SandboxPolicy::granted_paths
-pub(super) fn fs_rules(
-    policy: &crate::SandboxPolicy,
-    abi: landlock::ABI,
-) -> Vec<(
-    crate::Axis,
-    RuleTarget<'_>,
-    landlock::BitFlags<landlock::AccessFs>,
-)> {
+pub(super) fn fs_rules(policy: &crate::SandboxPolicy, abi: landlock::ABI) -> Vec<FsRule<'_>> {
     // Annotated, the paths being `&'static`: chaining them onto a borrow of the policy would
     // otherwise have inference demand the policy live as long.
-    let resolver: Vec<(crate::Axis, &Path)> = resolver_paths(policy.bounds_resolution()).collect();
+    let resolver: Vec<&Path> = resolver_paths(policy.bounds_resolution()).collect();
     let unix = unix_socket_rights(policy.allows_unix_sockets(), abi);
 
     policy
         .granted_paths()
         // On the grants and not on `Installed`, which is a bind mount of sandbx's own file
         // that no grant names — the flag is documented as covering the paths it granted.
-        .map(|(axis, granted)| (axis, RuleTarget::Granted(granted), unix))
-        .chain(
-            resolver
-                .into_iter()
-                .map(|(axis, path)| (axis, RuleTarget::Installed(path), landlock::BitFlags::EMPTY)),
-        )
-        .map(|(axis, target, conferred)| {
+        .map(|crate::GrantedPath { axis, granted }| FsRule {
+            axis,
+            target: RuleTarget::Granted(granted),
+            rights: unix,
+        })
+        .chain(resolver.into_iter().map(|path| FsRule {
+            axis: crate::Axis::Read,
+            target: RuleTarget::Installed(path),
+            rights: landlock::BitFlags::EMPTY,
+        }))
+        .map(|rule| {
             // After the `from_file` narrowing, which does not re-widen it: `ResolveUnix` is in
             // landlock's `ACCESS_FILE`, so a rule naming a socket inode directly keeps the bit.
-            let rights = rights_for(axis, Inode::of(target.path()), abi) | conferred;
-            (axis, target, rights)
+            let rights = rights_for(rule.axis, Inode::of(rule.target.path()), abi) | rule.rights;
+            FsRule { rights, ..rule }
         })
         .collect()
+}
+
+/// One Landlock rule: the axis it was granted on, the path to open, and the rights the kernel
+/// is told for it.
+pub(in crate::helper) struct FsRule<'policy> {
+    pub(in crate::helper) axis: crate::Axis,
+    pub(in crate::helper) target: RuleTarget<'policy>,
+    pub(in crate::helper) rights: landlock::BitFlags<landlock::AccessFs>,
 }
 
 /// `ResolveUnix` where the policy granted unix sockets, nothing otherwise.
@@ -183,7 +188,8 @@ fn unix_socket_rights(granted: bool, abi: landlock::ABI) -> landlock::BitFlags<l
     }
 }
 
-/// Read on the three files a bounded resolver replaces, or nothing when it bounds nothing.
+/// The three files a bounded resolver replaces, which [`fs_rules`] grants read on, or nothing
+/// when it bounds nothing.
 ///
 /// Not a grant the caller made, so not on the policy. Landlock binds a rule to the inode, and
 /// `helper::resolver` has bind-mounted sandbx's own files over these before `apply` opens them
@@ -194,14 +200,13 @@ fn unix_socket_rights(granted: bool, abi: landlock::ABI) -> landlock::BitFlags<l
 /// [`SandboxPolicy::allow_system_executables`].
 ///
 /// [`SandboxPolicy::allow_system_executables`]: crate::SandboxPolicy::allow_system_executables
-fn resolver_paths(bounded: bool) -> impl Iterator<Item = (crate::Axis, &'static Path)> {
+fn resolver_paths(bounded: bool) -> impl Iterator<Item = &'static Path> {
     bounded
         .then_some(crate::RESOLVER_FILES)
         .into_iter()
         .flatten()
         .map(Path::new)
         .filter(|path| opens_as_itself(path))
-        .map(|path| (crate::Axis::Read, path))
 }
 
 /// Whether a rule naming `path` would reach the inode `path` spells — false if it is absent,
