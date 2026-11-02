@@ -467,7 +467,7 @@ fn a_failed_turn_leaves_the_transcript_alone() {
 }
 
 /// Fires if anyone ever persists the request headers. Proves nothing about a key the
-/// model itself typed into an answer — `guide-logging.md`'s register.
+/// model itself typed into an answer.
 #[test]
 fn a_transcript_holds_no_api_key_material() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);

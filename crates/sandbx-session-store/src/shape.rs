@@ -3,6 +3,13 @@
 //! Apart from the sequence that applies them: these answer to the Messages API's rules
 //! about a request, `session.rs` to the filesystem's about a file. Every one is a predicate
 //! over messages alone — no path, no mode, no descriptor.
+//!
+//! Shape, not provenance: no `tool_use_id` is matched against the call it claims to answer.
+//! The load path matches none anywhere, so an interior fabricated result already passes,
+//! and checking one junction would buy nothing. What shape alone costs is one diagnosis: an
+//! append torn after its `tool_result` line reads as a round limit, and resuming tells the
+//! model so. Taken over refusing the file, which costs the conversation; the reason is
+//! inferred because the `turn` record carries none (#190, #226).
 
 use sandbx_session_message::{Content, Message, Role};
 

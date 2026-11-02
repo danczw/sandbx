@@ -130,6 +130,15 @@ fn take_terminal() -> io::Result<Terminal<Measured<Stdout>>> {
 ///
 /// A window that cannot be read fails the size, which every draw, clear and redraw asks
 /// for before it writes: on a hung-up terminal nothing is drawn, and nothing forks (#269).
+///
+/// Rejected: a `poll` for `POLLHUP` ahead of each draw, a proxy that leaves the window
+/// between the check and crossterm's own call; clearing `PATH` and `TERM`, which makes the
+/// fork fail rather than not happen and changes what a subshell sees; and fixing crossterm,
+/// whose fallback is deliberate.
+///
+/// Left open: crossterm's event source calls the same `size` on a `SIGWINCH`, inside the key
+/// reader, so a hangup landing between `sandbx-tui-input`'s `poll` and crossterm reading the
+/// signal still forks. `clippy.toml` sees only sandbx's own calls.
 pub(crate) struct Measured<W: Write> {
     backend: CrosstermBackend<W>,
     /// A dup of the drawn descriptor: ratatui hides the writer, and a hangup reaches every dup.
@@ -237,6 +246,9 @@ impl Drop for Screen {
     /// `eprintln!` to the descriptor that just died, and that panic inside an unwinding
     /// `Drop` aborts (#264). `Terminal::drop`, which runs next, has the same `eprintln!` for
     /// a cursor it cannot show; quieting `Measured` first is what keeps it from reaching it.
+    /// Not `mem::forget` on the terminal to skip that `Drop`: `try_restore` never shows the
+    /// cursor, so `Terminal::drop` is what does, and forgetting it would leave the cursor
+    /// hidden on every normal exit (#335).
     fn drop(&mut self) {
         // Ignored: there is nothing left to report a terminal that stopped answering to.
         let _ = ratatui::try_restore();

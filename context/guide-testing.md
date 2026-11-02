@@ -82,6 +82,17 @@ total absence is indistinguishable from it working. `enforcement.rs` grants
 `/bin/touch` everything it needs for exactly that reason — without the grant the
 exec itself would be denied and the test would stay green for the wrong reason.
 
+A test over audit records has to capture them from the thread that emits. Tools
+run on `spawn_blocking`, so a tool's record is emitted on a thread that did not
+ask for it, and a subscriber installed with `set_default` is thread-local: it
+captures zero records and the test passes. Asserting over a tool's records takes
+`set_global_default`, and so a test binary of its own, a process installing one
+global subscriber — `sandbx-turn/tests/audit_trail.rs`,
+`sandbx-tools/tests/audit_concurrent.rs` and
+`sandbx-logging/tests/audit_log_held.rs` are those binaries. A record emitted on
+the calling thread, as in `sandbx-core/tests/audit.rs`, is correctly caught by
+`set_default`. The distinction is which thread emits, not which crate.
+
 ## Every assert carries a message
 
 Every `assert!`, `assert_eq!` and `assert_ne!` takes a message, and the message must

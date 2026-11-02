@@ -214,6 +214,11 @@ pub fn exit_code(status: &ExitStatus) -> i32 {
 /// is what makes it stick to the command; non-dumpable is this process's alone. Single-threaded,
 /// and must stay so — the parent death signal that ends this process is per thread.
 ///
+/// The command cannot be the init because it runs arbitrary code: `setsid` leaves the group
+/// the kill reaches, an `exec` from a second thread drops the death signal (#272), and the
+/// kernel clears it on a secure `exec`. Hence the shape of bubblewrap's `do_init`: never
+/// `setsid`, never `exec`, reap orphans until the command exits, then exit as it did.
+///
 /// On success this never returns: it exits as the command did. Any return is an error, and
 /// the caller must exit non-zero rather than fall through to running the command
 /// unrestricted.

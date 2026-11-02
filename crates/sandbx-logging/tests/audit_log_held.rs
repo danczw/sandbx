@@ -79,7 +79,7 @@ fn held_run() {
     // From a blocking task, not from here: a tool emits on whichever thread
     // `spawn_blocking` gave it, and a subscriber scoped to the asking thread would see
     // nothing at all — which is why `init` is global and this test spends a process on it
-    // (`guide-logging.md`).
+    // (`guide-testing.md`).
     tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("a runtime for one blocking task")

@@ -5,7 +5,7 @@
 //! `sandbx_compact`'s `PromptUsage`, declared here rather than imported because a transcript
 //! is a file format, and one that moved whenever a request type moved would not be.
 //! `sandbx-session-bridge` translates, and fails to compile on a new block kind.
-//! `context/decision-on-disk-state.md` has the line format these sit in.
+//! `sandbx-session-store`'s `record` has the line format these sit in.
 
 use serde::{Deserialize, Serialize};
 
