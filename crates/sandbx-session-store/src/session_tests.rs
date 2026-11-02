@@ -28,7 +28,8 @@ fn usage(input: u32) -> Usage {
 
 /// A turn the file refused leaves the session's accounting where the file has it, so a
 /// session that carries on and one resumed from disk agree. `/dev/full` refuses every
-/// write with `ENOSPC`, which is the failure a full disk gives an append.
+/// write with `ENOSPC` before a byte lands; a full disk that takes part of a batch first
+/// is a torn line, which this does not reach.
 #[test]
 fn a_turn_the_file_refused_is_not_counted() {
     let root = tempfile::tempdir().expect("a temp dir");

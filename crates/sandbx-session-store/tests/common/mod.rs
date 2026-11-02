@@ -22,7 +22,6 @@ pub(crate) struct Store {
 }
 
 /// One block of prose from `role`.
-#[allow(dead_code, reason = "permissions.rs builds its turns without it")]
 pub(crate) fn said(role: Role, text: &str) -> Message {
     Message {
         role,
