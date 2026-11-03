@@ -9,7 +9,6 @@ use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::Output;
 use std::thread::JoinHandle;
-use std::time::SystemTime;
 use std::{fs, thread};
 
 use sandbx_core::SandboxPolicy;
@@ -146,32 +145,31 @@ fn resolution_databases(body: &str) -> Vec<&str> {
         .collect()
 }
 
-/// The host's `/etc/hosts` and when it was last written. The mtime is what catches a rewrite
-/// to the same bytes, which still leaves the file empty between its truncate and its write —
-/// and a `files` lookup landing there misses, then fails over to a `dns` the sandbox denies.
-fn hosts_snapshot() -> (String, Option<SystemTime>) {
-    let body = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
-    let written = fs::metadata("/etc/hosts")
-        .and_then(|meta| meta.modified())
-        .ok();
+/// The host's `/etc/hosts` and which write produced it, `None` while it is missing. A rewrite
+/// to the same bytes still leaves the file empty between its truncate and its write, and a
+/// `files` lookup landing there misses, then fails over to a `dns` the sandbox denies. The
+/// ctime catches that rewrite, being the one timestamp user space cannot set back; the inode
+/// catches a rename over the file.
+fn hosts_snapshot() -> Option<(String, u64, i64, i64)> {
+    use std::os::unix::fs::MetadataExt as _;
 
-    (body, written)
+    let body = fs::read_to_string("/etc/hosts").ok()?;
+    let meta = fs::metadata("/etc/hosts").ok()?;
+
+    Some((body, meta.ino(), meta.ctime(), meta.ctime_nsec()))
 }
 
 /// Whatever decides whether the command's `files` lookup can match, so a failure names a
 /// cause rather than only the `EAI_AGAIN` every cause ends in.
-fn resolution_report(in_sandbox: &Output) -> String {
+fn host_resolution_facts() -> String {
     let hosts = Path::new("/etc/hosts");
     let file_type = fs::symlink_metadata(hosts).map(|meta| meta.file_type());
     let canonical = fs::canonicalize(hosts);
     let switch = fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
 
     format!(
-        "host /etc/hosts: {file_type:?}, canonical {canonical:?}\nhost nsswitch.conf: \
-         {:?}\n/etc/hosts read in the sandbox: {}{}",
+        "/etc/hosts {file_type:?}, canonical {canonical:?}; nsswitch.conf {:?}",
         resolution_databases(&switch),
-        String::from_utf8_lossy(&in_sandbox.stdout),
-        String::from_utf8_lossy(&in_sandbox.stderr),
     )
 }
 
@@ -499,7 +497,7 @@ fn the_host_etc_survives_a_bounded_run() {
 /// a command resolves exactly what it resolved before this existed.
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
-    let before = hosts_snapshot();
+    let before = hosts_snapshot().expect("the host's hosts file");
     let LocalListener {
         name,
         address,
@@ -512,9 +510,12 @@ fn a_run_without_the_flag_resolves_as_it_did_before() {
         .allow_network_port(address.port());
 
     let resolved = probe(policy.clone(), &["resolve", &name]);
+    let facts = host_resolution_facts();
     let hosts = probe(policy, &["read", "/etc/hosts"]);
 
-    if hosts_snapshot() != before {
+    // Only a run that would fail may skip: one that passed tested the claim, rewrite or not.
+    let passed = resolved.status.success() && hosts.stdout == before.0.as_bytes();
+    if !passed && hosts_snapshot().as_ref() != Some(&before) {
         eprintln!(
             "SKIPPED: the host rewrote /etc/hosts while this test ran, so a name the command \
              missed may have been missing from the file itself. The claim is untested on this \
@@ -526,9 +527,11 @@ fn a_run_without_the_flag_resolves_as_it_did_before() {
     assert!(
         resolved.status.success(),
         "a run with no --allow-dns could not resolve {name} out of an /etc/hosts that held \
-         still, so the flag narrowed a policy that never asked for it: {}\n{}",
+         still, so the flag narrowed a policy that never asked for it: {}\nhost as the \
+         resolve ended: {facts}\n/etc/hosts read in the sandbox just after: {}{}",
         String::from_utf8_lossy(&resolved.stderr),
-        resolution_report(&hosts)
+        String::from_utf8_lossy(&hosts.stdout),
+        String::from_utf8_lossy(&hosts.stderr)
     );
     assert_eq!(
         String::from_utf8_lossy(&hosts.stdout),
