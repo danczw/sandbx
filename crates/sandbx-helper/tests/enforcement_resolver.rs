@@ -9,6 +9,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::Output;
 use std::thread::JoinHandle;
+use std::time::SystemTime;
 use std::{fs, thread};
 
 use sandbx_core::SandboxPolicy;
@@ -143,6 +144,35 @@ fn resolution_databases(body: &str) -> Vec<&str> {
             database == "hosts" || database == "networks"
         })
         .collect()
+}
+
+/// The host's `/etc/hosts` and when it was last written. The mtime is what catches a rewrite
+/// to the same bytes, which still leaves the file empty between its truncate and its write —
+/// and a `files` lookup landing there misses, then fails over to a `dns` the sandbox denies.
+fn hosts_snapshot() -> (String, Option<SystemTime>) {
+    let body = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+    let written = fs::metadata("/etc/hosts")
+        .and_then(|meta| meta.modified())
+        .ok();
+
+    (body, written)
+}
+
+/// Whatever decides whether the command's `files` lookup can match, so a failure names a
+/// cause rather than only the `EAI_AGAIN` every cause ends in.
+fn resolution_report(in_sandbox: &Output) -> String {
+    let hosts = Path::new("/etc/hosts");
+    let file_type = fs::symlink_metadata(hosts).map(|meta| meta.file_type());
+    let canonical = fs::canonicalize(hosts);
+    let switch = fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
+
+    format!(
+        "host /etc/hosts: {file_type:?}, canonical {canonical:?}\nhost nsswitch.conf: \
+         {:?}\n/etc/hosts read in the sandbox: {}{}",
+        resolution_databases(&switch),
+        String::from_utf8_lossy(&in_sandbox.stdout),
+        String::from_utf8_lossy(&in_sandbox.stderr),
+    )
 }
 
 /// The names a hosts file maps, whichever addresses it maps them to.
@@ -469,6 +499,7 @@ fn the_host_etc_survives_a_bounded_run() {
 /// a command resolves exactly what it resolved before this existed.
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
+    let before = hosts_snapshot();
     let LocalListener {
         name,
         address,
@@ -483,15 +514,25 @@ fn a_run_without_the_flag_resolves_as_it_did_before() {
     let resolved = probe(policy.clone(), &["resolve", &name]);
     let hosts = probe(policy, &["read", "/etc/hosts"]);
 
+    if hosts_snapshot() != before {
+        eprintln!(
+            "SKIPPED: the host rewrote /etc/hosts while this test ran, so a name the command \
+             missed may have been missing from the file itself. The claim is untested on this \
+             run."
+        );
+        return;
+    }
+
     assert!(
         resolved.status.success(),
-        "a run with no --allow-dns could not resolve a name out of /etc/hosts, so the flag \
-         narrowed a policy that never asked for it: {}",
-        String::from_utf8_lossy(&resolved.stderr)
+        "a run with no --allow-dns could not resolve {name} out of an /etc/hosts that held \
+         still, so the flag narrowed a policy that never asked for it: {}\n{}",
+        String::from_utf8_lossy(&resolved.stderr),
+        resolution_report(&hosts)
     );
     assert_eq!(
         String::from_utf8_lossy(&hosts.stdout),
-        fs::read_to_string("/etc/hosts").expect("the host's hosts file"),
+        before.0,
         "a run with no --allow-dns reads a hosts file that is not the host's"
     );
 }
