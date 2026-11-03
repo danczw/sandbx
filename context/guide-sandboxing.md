@@ -14,7 +14,7 @@ this file is the bug.
 
 ## Two layers, one table
 
-Both enforcement layers derive from `Axis::grants()` in `policy_sandbox.rs` — **the
+Both enforcement layers derive from `Axis::grants()` in `sandbox_policy.rs` — **the
 table**. Adding an axis is adding a row; the compiler then names every site
 that cannot derive its answer from one.
 
@@ -30,7 +30,7 @@ write confers neither.
 
 `--pin-sha256` is deliberately not a row. It grants nothing and neither layer
 derives anything from it — it narrows which bytes one `execve` may run, checked in
-`digest.rs` against a descriptor rather than by the kernel. Why, in
+`sha256_digest.rs` against a descriptor rather than by the kernel. Why, in
 `context/decision-helper-audit-channel.md`.
 
 **Which layer sees which tool:**
@@ -282,7 +282,7 @@ either and the next one is tried. Not over `granted_paths()`, whose `Axis::ALL`
 order would start a writable run read-only and an exec-only run inside the system
 binaries.
 
-Applied in `helper_command` (`command_run.rs`), not in `spawn::command`: that builder is
+Applied in `helper_command` (`sandboxed_command.rs`), not in `spawn::command`: that builder is
 also what stage 2 uses to *start* the command, after the ruleset is installed, and
 a post-Landlock `chdir` is a risk this does not need. Set once on stage 1, inherited
 across both `exec`s. It is not in the argv, so a caller spawning `command_line()`

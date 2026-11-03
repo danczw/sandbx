@@ -39,7 +39,7 @@ pub sandbx_grants::PolicyError::UnnamedHome::cwd: std::path::PathBuf
 pub sandbx_grants::PolicyError::UnnamedHome::home: core::option::Option<std::path::PathBuf>
 pub sandbx_grants::PolicyError::UnpinnableGrant
 pub sandbx_grants::PolicyError::UnpinnableGrant::granted: std::path::PathBuf
-pub sandbx_grants::PolicyError::UnpinnableGrant::source: sandbx_core::error::sandbox::SandboxError
+pub sandbx_grants::PolicyError::UnpinnableGrant::source: sandbx_core::error::sandbox_error::SandboxError
 pub sandbx_grants::PolicyError::UnresolvableGrant
 pub sandbx_grants::PolicyError::UnresolvableGrant::granted: std::path::PathBuf
 pub sandbx_grants::PolicyError::UnresolvableGrant::source: core::io::error::Error
@@ -59,7 +59,7 @@ impl !core::panic::unwind_safe::UnwindSafe for sandbx_grants::PolicyError
 pub struct sandbx_grants::Grants
 impl sandbx_grants::Grants
 pub fn sandbx_grants::Grants::names_env(&self, &str) -> bool
-pub fn sandbx_grants::Grants::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox::SandboxPolicy, sandbx_grants::PolicyError>
+pub fn sandbx_grants::Grants::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox_policy::SandboxPolicy, sandbx_grants::PolicyError>
 impl clap_builder::derive::Args for sandbx_grants::Grants
 pub fn sandbx_grants::Grants::augment_args<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command
 pub fn sandbx_grants::Grants::augment_args_for_update<'b>(clap_builder::builder::command::Command) -> clap_builder::builder::command::Command

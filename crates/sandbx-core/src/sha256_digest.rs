@@ -184,5 +184,5 @@ fn nibble(byte: u8) -> Result<u8, DigestParseError> {
 }
 
 #[cfg(test)]
-#[path = "digest_tests.rs"]
+#[path = "sha256_digest_tests.rs"]
 mod tests;

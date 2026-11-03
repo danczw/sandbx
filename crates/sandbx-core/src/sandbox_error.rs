@@ -9,7 +9,7 @@ use std::{fmt, io};
 
 use crate::ObjectId;
 
-use super::refusal::{self, HelperRefusal};
+use super::helper_refusal::{self, HelperRefusal};
 
 /// Which grant a path was checked against; carried by a refusal so it names the grant
 /// that was missing. The guard keeps its root sets apart, so a path can be inside one
@@ -446,12 +446,12 @@ impl SandboxError {
     /// exhaustive match, so a new variant has to decide what a trail calls it.
     pub fn label(&self) -> &'static str {
         match self.decided_by() {
-            refusal::Decider::Helper(refusal) => refusal.label(),
-            refusal::Decider::Parent(label) => label,
+            helper_refusal::Decider::Helper(refusal) => refusal.label(),
+            helper_refusal::Decider::Parent(label) => label,
         }
     }
 }
 
 #[cfg(test)]
-#[path = "error_sandbox_tests.rs"]
+#[path = "sandbox_error_tests.rs"]
 mod tests;

@@ -189,5 +189,5 @@ impl SandboxError {
 }
 
 #[cfg(test)]
-#[path = "error_refusal_tests.rs"]
+#[path = "helper_refusal_tests.rs"]
 mod tests;

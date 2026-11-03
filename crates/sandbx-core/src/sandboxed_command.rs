@@ -481,5 +481,5 @@ pub(crate) fn self_exe() -> Result<PathBuf, SandboxError> {
 }
 
 #[cfg(test)]
-#[path = "command_run_tests.rs"]
+#[path = "sandboxed_command_tests.rs"]
 mod tests;
