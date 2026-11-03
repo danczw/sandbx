@@ -66,6 +66,6 @@ is the last edge before the file, and cheap to hold.
 
 `Prompt::thinking` is `Option<Thinking>` with one variant, `Visible`, for
 `ToolChoice`'s reason: an absent field already means the provider's default.
-What `Visible` maps to, and what it costs on an older model, is
-`body.rs`'s and the `--show-thinking` flag's to say. An unsigned block
-is dropped before it is emitted, since replaying one is a 400.
+What `Visible` maps to, and what it costs on an older model, is `body.rs`'s and
+the `--show-thinking` flag's to say. An unsigned block is dropped before it is
+emitted, since replaying one is a 400.

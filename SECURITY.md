@@ -342,11 +342,11 @@ architecture the filter gates on.
   an opt-in `--timeout`. The other six run in-process, untimed, bounded by *work*
   instead — a cap on files visited and bytes read for `grep` and `find`, the
   single file or directory for the rest
-  ([`ToolLimits`](crates/sandbx-tools/src/tool_limits.rs)) — on a thread that cannot
-  be cancelled, so one read on a stalled filesystem hangs indefinitely. Nothing
-  else is capped: no CPU bound, no memory bound, no limit on processes spawned.
-  A fork bomb is unbounded while the call lasts; bounded is that it does not
-  outlive it.
+  ([`ToolLimits`](crates/sandbx-tools/src/tool_limits.rs)) — on a thread that
+  cannot be cancelled, so one read on a stalled filesystem hangs indefinitely.
+  Nothing else is capped: no CPU bound, no memory bound, no limit on processes
+  spawned. A fork bomb is unbounded while the call lasts; bounded is that it does
+  not outlive it.
 - **A running tool call cannot be interrupted.** Only its own deadline stops it;
   no way to cancel one from outside
   ([#26](https://github.com/danczw/sandbx/issues/26)).

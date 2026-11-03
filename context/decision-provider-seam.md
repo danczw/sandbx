@@ -58,8 +58,8 @@ there are:
   half below: `serde` is not among that crate's dependencies, so the orphan rule
   leaves it the only place such an impl could be written at all. What was a
   discipline inside one crate is now a thing the compiler refuses.
-- `body.rs` owns the whole body: the key names, the omissions (`system`
-  absent rather than null, `tools` dropped when empty, `tool_choice` only alongside
+- `body.rs` owns the whole body: the key names, the omissions (`system` absent
+  rather than null, `tools` dropped when empty, `tool_choice` only alongside
   them), and `stream: true`. Every one of its seven `Serialize` impls is on a local
   wrapper, which the orphan rule now requires rather than merely permitting — so an
   adapter cannot post a request shape without first naming every field of it. It is

@@ -31,7 +31,8 @@ having no other way to hold one; a crate root's code modules carry none, and its
 test sibling does, being named after the crate (`guide-testing.md`).
 
 So a file's name does not always spell its module path: `helper_refusal.rs` is
-`error::helper_refusal`, not `helper::refusal`, and `requested.rs` is
+`error::helper_refusal`, not `helper::refusal`; `sandbx-cli`'s `agent_error.rs`
+is `error::agent_error`, not a child of `agent`; and `requested.rs` is
 `helper::ruleset::requested`, not a crate-root module. The `#[path]` naming the
 file is where its parent is found. A primary-item name can also take the
 spelling a later join would produce, so a new joined name is checked against
