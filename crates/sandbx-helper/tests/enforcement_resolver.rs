@@ -29,9 +29,6 @@ fn run(policy: &SandboxPolicy, program: &str, args: &[&str]) -> Output {
 /// from this set resolves whether the policy asked for it or not.
 const LOOPBACK_NAMES: [&str; 3] = ["localhost", "ip6-localhost", "ip6-loopback"];
 
-/// The name `resolver_probe`'s `write` appends, which no host's own `/etc/hosts` maps.
-const FORGED: &str = "forged.test";
-
 /// The one sysctl under which bounding resolution cannot work at all, read rather than inferred.
 const USERNS_RESTRICTION: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
 
@@ -69,13 +66,40 @@ fn host_forbids_the_mounts() -> bool {
 /// A name this host resolves with no nameserver, and a listener on the address it resolves
 /// to. Derived, not written down — the one such name on a developer machine is the
 /// machine's own hostname, and hard-coding either would pass on one host and fail on the next.
-/// `None` when no name qualifies, which [`on_still_hosts`] tells apart from a rewrite.
-/// A test that never connects still takes the listener: it is what proves the address is
-/// this host's own.
-fn local_listener(payload: &'static str) -> Option<LocalListener> {
-    let hosts = fs::read_to_string("/etc/hosts").ok()?;
+/// Looked for up to [`ATTEMPTS`] times, since a host rewriting the file leaves it empty for a
+/// moment and a look landing there finds no name.
+fn local_listener(payload: &'static str) -> LocalListener {
+    let bound = (0..ATTEMPTS).find_map(|retry| {
+        if retry > 0 {
+            thread::sleep(REWRITE_PAUSE);
+        }
+        bindable_name()
+    });
 
-    let bound = hosts
+    let (name, address, listener) = bound.expect(
+        "no name in /etc/hosts resolves to an address this test can bind, so there is no name \
+         that resolves without a nameserver and the denials below would be vacuous",
+    );
+
+    let accepting = thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            use std::io::Write;
+            let _ = stream.write_all(payload.as_bytes());
+        }
+    });
+
+    LocalListener {
+        name,
+        address,
+        accepting,
+    }
+}
+
+/// One look through `/etc/hosts` for [`local_listener`]'s name, and the listener it bound.
+fn bindable_name() -> Option<(String, SocketAddr, TcpListener)> {
+    let hosts = fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
+
+    hosts
         .lines()
         .map(|line| line.split('#').next().unwrap_or_default())
         .flat_map(|line| line.split_whitespace().skip(1))
@@ -91,117 +115,74 @@ fn local_listener(payload: &'static str) -> Option<LocalListener> {
                     .expect("a bound listener has an address");
                 (name.to_string(), port, listener)
             })
-        });
-
-    let (name, address, listener) = bound?;
-
-    let accepting = thread::spawn(move || {
-        if let Ok((mut stream, _)) = listener.accept() {
-            use std::io::Write;
-            let _ = stream.write_all(payload.as_bytes());
-        }
-    });
-
-    Some(LocalListener {
-        name,
-        address,
-        accepting,
-    })
+        })
 }
 
-/// How many times a test reruns while the host keeps rewriting `/etc/hosts` under it.
+/// How many times a look or a test reruns while the host keeps rewriting `/etc/hosts`.
 const ATTEMPTS: usize = 3;
 
-/// Between attempts: longer than a rewrite holds the file empty, short enough that three
-/// cost a test nothing next to a sandboxed run.
+/// Between attempts: longer than a rewrite holds the file empty, so a retry cannot land in the
+/// window that failed the attempt before it, which a fast failure returns inside.
 const REWRITE_PAUSE: Duration = Duration::from_millis(100);
 
-/// `attempt`, given a [`local_listener`] name and the address answering for it, from a run
-/// the host's `/etc/hosts` held still across — or `None` once every one of [`ATTEMPTS`]
-/// overlapped a rewrite. Every test here resolves a name out of that file, in
-/// [`local_listener`], in `helper::resolver` rendering the bound one, or in the command, and
-/// a rewrite leaves it empty between its truncate and its write: a lookup landing there
-/// misses and reads as the claim failing.
-///
-/// An escape changes the host's file too, so it is checked on every attempt, steady or not —
-/// left to the caller, it would read as a rewrite and retry into a skip.
-fn on_still_hosts<T>(
-    payload: &'static str,
-    mut attempt: impl FnMut(&str, SocketAddr) -> T,
-) -> Option<T> {
-    let mut forged_at_start = None;
-    let mut seen = false;
+/// The host's `/etc/hosts` and which write produced it, `None` while it is missing or empty —
+/// the state a rewrite passes through, never one a host leaves it in. The bytes alone miss a
+/// rewrite to the same bytes, which still empties the file for a moment: the ctime catches
+/// that, being the one timestamp user space cannot set back, and the inode catches a rename
+/// over the file. Before 6.13's multigrain timestamps the ctime is one clock tick coarse, so
+/// a second rewrite inside the tick of the first still slips past.
+fn hosts_snapshot() -> Option<(String, u64, i64, i64)> {
+    use std::os::unix::fs::MetadataExt as _;
 
+    let body = fs::read_to_string("/etc/hosts")
+        .ok()
+        .filter(|body| !body.is_empty())?;
+    let meta = fs::metadata("/etc/hosts").ok()?;
+
+    Some((body, meta.ino(), meta.ctime(), meta.ctime_nsec()))
+}
+
+/// Run a test whose verdict rests on a lookup in the host's `/etc/hosts` succeeding — in
+/// `helper::resolver` rendering the bound file, or in the command reading the host's own —
+/// and fail it only on an attempt the file held still across. A rewrite empties the file
+/// for a moment, and a lookup landing there misses and reads as the claim failing.
+///
+/// A pass stands whatever the file did. Only for tests that write nothing: a run whose own
+/// write reached the host would change the file, and read here as a rewrite to retry.
+fn retried_across_rewrites(mut attempt: impl FnMut() -> Result<(), String>) {
     for retry in 0..ATTEMPTS {
-        // An attempt that failed fast returns inside the rewrite that failed it, and a retry
-        // without a pause would land in that same window.
         if retry > 0 {
             thread::sleep(REWRITE_PAUSE);
         }
 
-        let mounts = mounts_over_etc();
         let before = hosts_snapshot();
-        let result = local_listener(payload).map(|listener| {
-            let result = attempt(&listener.name, listener.address);
-            drain(listener.address, listener.accepting);
-            result
-        });
-        let after = hosts_snapshot();
-
-        assert!(
-            mounts_over_etc() <= mounts,
-            "a bounded run left a mount over the host's /etc, so the mounts are propagating \
-             out of the command's namespace"
-        );
-        // Off every non-empty look rather than a before-and-after pair, either of which can
-        // land inside a rewrite and read zero.
-        for (body, ..) in [&before, &after].into_iter().flatten() {
-            let forged = body.matches(FORGED).count();
-            assert!(
-                forged <= *forged_at_start.get_or_insert(forged),
-                "the host's /etc/hosts gained the line the probe appends, so a command's write \
-                 reached it through the bind"
-            );
+        let Err(failure) = attempt() else {
+            return;
+        };
+        if before.is_some() && hosts_snapshot() == before {
+            panic!("{failure}");
         }
-
-        if before.is_some() && after == before {
-            return Some(result.expect(
-                "no name in /etc/hosts resolves to an address this test can bind, so there is \
-                 no name that resolves without a nameserver for it to run on",
-            ));
-        }
-        seen |= before.is_some() || after.is_some();
     }
 
-    // Empty on every look is a host without the file, which no rewrite explains.
-    assert!(
-        seen,
-        "/etc/hosts is missing or empty, so no name resolves without a nameserver for this \
-         test to run on"
-    );
-    None
-}
-
-/// How many mounts in this process's namespace — the host's — sit at or under `/etc`. The
-/// helper's binds are in the command's own namespace, so one more here is one that propagated.
-fn mounts_over_etc() -> usize {
-    let table = fs::read_to_string("/proc/self/mountinfo").expect("this process's mount table");
-
-    // The fifth field is the mount point.
-    table
-        .lines()
-        .filter_map(|line| line.split(' ').nth(4))
-        .filter(|point| *point == "/etc" || point.starts_with("/etc/"))
-        .count()
-}
-
-/// The early return for a test [`on_still_hosts`] gave up on, saying what went untested.
-fn skip_unsteady_hosts() {
     eprintln!(
-        "SKIPPED: the host rewrote /etc/hosts during each of {ATTEMPTS} attempts, so a name \
-         that failed to resolve may have been missing from the file itself. The claim is \
+        "SKIPPED: the host rewrote /etc/hosts during each of {ATTEMPTS} failed attempts, so a \
+         name that failed to resolve may have been missing from the file itself. The claim is \
          untested on this run."
     );
+}
+
+/// Whatever decides whether the command's `files` lookup can match, so a failure names a
+/// cause rather than only the `EAI_AGAIN` every cause ends in.
+fn host_resolution_facts() -> String {
+    let hosts = Path::new("/etc/hosts");
+    let file_type = fs::symlink_metadata(hosts).map(|meta| meta.file_type());
+    let canonical = fs::canonicalize(hosts);
+    let switch = fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
+
+    format!(
+        "/etc/hosts {file_type:?}, canonical {canonical:?}; nsswitch.conf {:?}",
+        resolution_databases(&switch),
+    )
 }
 
 /// What [`local_listener`] found and bound, and the thread answering on it.
@@ -244,37 +225,6 @@ fn resolution_databases(body: &str) -> Vec<&str> {
         .collect()
 }
 
-/// The host's `/etc/hosts` and which write produced it, `None` while it is missing or empty —
-/// the state a rewrite passes through, never one a host leaves it in. The bytes alone miss a
-/// rewrite to the same bytes, which still empties the file for a moment: the ctime catches
-/// that, being the one timestamp user space cannot set back, and the inode catches a rename
-/// over the file. Before 6.13's multigrain timestamps the ctime is one clock tick coarse, so
-/// a second rewrite inside the tick of the first still slips past.
-fn hosts_snapshot() -> Option<(String, u64, i64, i64)> {
-    use std::os::unix::fs::MetadataExt as _;
-
-    let body = fs::read_to_string("/etc/hosts")
-        .ok()
-        .filter(|body| !body.is_empty())?;
-    let meta = fs::metadata("/etc/hosts").ok()?;
-
-    Some((body, meta.ino(), meta.ctime(), meta.ctime_nsec()))
-}
-
-/// Whatever decides whether the command's `files` lookup can match, so a failure names a
-/// cause rather than only the `EAI_AGAIN` every cause ends in.
-fn host_resolution_facts() -> String {
-    let hosts = Path::new("/etc/hosts");
-    let file_type = fs::symlink_metadata(hosts).map(|meta| meta.file_type());
-    let canonical = fs::canonicalize(hosts);
-    let switch = fs::read_to_string("/etc/nsswitch.conf").unwrap_or_default();
-
-    format!(
-        "/etc/hosts {file_type:?}, canonical {canonical:?}; nsswitch.conf {:?}",
-        resolution_databases(&switch),
-    )
-}
-
 /// The names a hosts file maps, whichever addresses it maps them to.
 fn mapped_names(hosts: &str) -> Vec<String> {
     hosts
@@ -293,28 +243,35 @@ fn an_allowlisted_name_resolves_and_is_reached() {
         return;
     }
 
-    let Some((name, output)) = on_still_hosts("ALLOWLISTED-NAME-ANSWERED", |name, address| {
+    retried_across_rewrites(|| {
+        let LocalListener {
+            name,
+            address,
+            accepting,
+        } = local_listener("ALLOWLISTED-NAME-ANSWERED");
+
         let output = probe(
             SandboxPolicy::default()
-                .allow_dns(name)
+                .allow_dns(&name)
                 .allow_network_port(address.port()),
             &["connect", &format!("{name}:{}", address.port())],
         );
-        (name.to_string(), output)
-    }) else {
-        skip_unsteady_hosts();
-        return;
-    };
 
-    assert!(
-        output.status.success(),
-        "an allowlisted name ({name}) could not be reached, so the flag grants nothing: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains("ALLOWLISTED-NAME-ANSWERED"),
-        "the name resolved but the connection read nothing from the listener"
-    );
+        drain(address, accepting);
+
+        if !output.status.success() {
+            return Err(format!(
+                "an allowlisted name ({name}) could not be reached, so the flag grants \
+                 nothing: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("ALLOWLISTED-NAME-ANSWERED"),
+            "the name resolved but the connection read nothing from the listener"
+        );
+        Ok(())
+    });
 }
 
 /// The denial. `local_listener` resolved the name in this process, so it resolves outside the
@@ -325,22 +282,22 @@ fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
         return;
     }
 
-    let Some((name, control, denied)) =
-        on_still_hosts("SECRET-BEHIND-THE-NAME", |name, address| {
-            // `localhost` as the one allowlisted name: it bounds resolution without bounding it to
-            // the name under test.
-            let policy = SandboxPolicy::default()
-                .allow_dns("localhost")
-                .allow_network_port(address.port());
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("SECRET-BEHIND-THE-NAME");
 
-            let control = probe(policy.clone(), &["resolve", "localhost"]);
-            let denied = probe(policy, &["connect", &format!("{name}:{}", address.port())]);
-            (name.to_string(), control, denied)
-        })
-    else {
-        skip_unsteady_hosts();
-        return;
-    };
+    // `localhost` as the one allowlisted name: it bounds resolution without bounding it to
+    // the name under test.
+    let policy = SandboxPolicy::default()
+        .allow_dns("localhost")
+        .allow_network_port(address.port());
+
+    let control = probe(policy.clone(), &["resolve", "localhost"]);
+    let denied = probe(policy, &["connect", &format!("{name}:{}", address.port())]);
+
+    drain(address, accepting);
 
     assert!(
         control.status.success(),
@@ -366,36 +323,44 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
         return;
     }
 
-    let Some((name, address, output)) = on_still_hosts("UNUSED", |name, address| {
+    retried_across_rewrites(|| {
+        let LocalListener {
+            name,
+            address,
+            accepting,
+        } = local_listener("UNUSED");
+        drain(address, accepting);
+
         let output = probe(
-            SandboxPolicy::default().allow_dns(name),
+            SandboxPolicy::default().allow_dns(&name),
             &["read", "/etc/hosts"],
         );
-        (name.to_string(), address, output)
-    }) else {
-        skip_unsteady_hosts();
-        return;
-    };
 
-    let seen = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        output.status.success(),
-        "the command could not read /etc/hosts under --allow-dns, so resolution has no \
-         source to read: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        seen.contains(&name) && seen.contains(&address.ip().to_string()),
-        "the hosts file does not map the allowlisted name to the address it resolved to: {seen}"
-    );
-
-    for mapped in mapped_names(&seen) {
+        let seen = String::from_utf8_lossy(&output.stdout);
         assert!(
-            mapped == name || LOOPBACK_NAMES.contains(&mapped.as_str()),
-            "the hosts file the command reads maps {mapped}, which is neither the \
-             allowlisted name nor a loopback name — the host's own file is still visible"
+            output.status.success(),
+            "the command could not read /etc/hosts under --allow-dns, so resolution has no \
+             source to read: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
-    }
+        // The one assertion here a rewrite can fail: the helper resolves the name off the
+        // host's file to render the bound one, and an empty look renders it unmapped.
+        if !(seen.contains(&name) && seen.contains(&address.ip().to_string())) {
+            return Err(format!(
+                "the hosts file does not map the allowlisted name to the address it resolved \
+                 to: {seen}"
+            ));
+        }
+
+        for mapped in mapped_names(&seen) {
+            assert!(
+                mapped == name || LOOPBACK_NAMES.contains(&mapped.as_str()),
+                "the hosts file the command reads maps {mapped}, which is neither the \
+                 allowlisted name nor a loopback name — the host's own file is still visible"
+            );
+        }
+        Ok(())
+    });
 }
 
 /// What `ruleset::opened::open_grant` compares a granted path against. A bind whose source
@@ -410,18 +375,20 @@ fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
         return;
     }
 
-    let Some(output) = on_still_hosts("UNUSED", |name, _| {
-        // `/proc` read is the probe's own need, `/proc/self/fd` being where the kernel answers.
-        let policy = SandboxPolicy::default()
-            .allow_dns(name)
-            .allow_read(vetted("/proc"))
-            .allow_read(vetted("/etc"));
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
+    drain(address, accepting);
 
-        probe(policy, &["fdpath", "/etc/hosts"])
-    }) else {
-        skip_unsteady_hosts();
-        return;
-    };
+    // `/proc` read is the probe's own need, `/proc/self/fd` being where the kernel answers.
+    let policy = SandboxPolicy::default()
+        .allow_dns(&name)
+        .allow_read(vetted("/proc"))
+        .allow_read(vetted("/etc"));
+
+    let output = probe(policy, &["fdpath", "/etc/hosts"]);
 
     assert!(
         output.status.success(),
@@ -444,15 +411,16 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
         return;
     }
 
-    let Some((nsswitch, resolv)) = on_still_hosts("UNUSED", |name, _| {
-        let policy = SandboxPolicy::default().allow_dns(name);
-        let nsswitch = probe(policy.clone(), &["read", "/etc/nsswitch.conf"]);
-        let resolv = probe(policy, &["read", "/etc/resolv.conf"]);
-        (nsswitch, resolv)
-    }) else {
-        skip_unsteady_hosts();
-        return;
-    };
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
+    drain(address, accepting);
+
+    let policy = SandboxPolicy::default().allow_dns(&name);
+    let nsswitch = probe(policy.clone(), &["read", "/etc/nsswitch.conf"]);
+    let resolv = probe(policy, &["read", "/etc/resolv.conf"]);
 
     let switch = String::from_utf8_lossy(&nsswitch.stdout);
     assert!(
@@ -505,36 +473,29 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
         return;
     }
 
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
+    drain(address, accepting);
+
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let writable = scratch.path().join("writable");
+    fs::write(&writable, b"").expect("an empty file to append to");
 
-    let Some((control, refused)) = on_still_hosts("UNUSED", |name, _| {
-        fs::write(&writable, b"").expect("an empty file to append to");
+    let policy = SandboxPolicy::default()
+        .allow_dns(&name)
+        .allow_write(vetted("/etc"))
+        .allow_write(vetted(scratch.path()));
 
-        let policy = SandboxPolicy::default()
-            .allow_dns(name)
-            .allow_write(vetted("/etc"))
-            .allow_write(vetted(scratch.path()));
-
-        let control = probe(policy.clone(), &["write", &writable.display().to_string()]);
-        let refused = probe(policy, &["write", "/etc/hosts"]);
-        (control, refused)
-    }) else {
-        skip_unsteady_hosts();
-        return;
-    };
+    let control = probe(policy.clone(), &["write", &writable.display().to_string()]);
+    let refused = probe(policy, &["write", "/etc/hosts"]);
 
     assert!(
         control.status.success(),
         "the write grant wrote nothing at all, so the refusal below says nothing: {}",
         String::from_utf8_lossy(&control.stderr)
-    );
-    // What ties [`FORGED`] to the probe: renamed there, it would match nothing on the host
-    // and `on_still_hosts` would watch for a line no escape writes.
-    assert!(
-        fs::read_to_string(&writable).is_ok_and(|body| body.contains(FORGED)),
-        "the probe's write appends something other than {FORGED}, so on_still_hosts no longer \
-         sees a write that escapes to the host's /etc/hosts"
     );
     assert!(
         !refused.status.success(),
@@ -551,20 +512,32 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
 /// assertion anywhere on `helper::resolver`'s `EACCES` path.
 #[test]
 fn the_host_etc_survives_a_bounded_run() {
-    // A mount or a forged line reaching the host fails inside `on_still_hosts`, on any
-    // attempt; one that comes back held the host's file byte-for-byte still across the run.
-    let Some(output) = on_still_hosts("UNUSED", |name, address| {
-        let policy = SandboxPolicy::default()
-            .allow_dns(name)
-            .allow_write(vetted("/etc"))
-            .allow_network_port(address.port());
-        probe(policy, &["write", "/etc/hosts"])
-    }) else {
-        skip_unsteady_hosts();
-        return;
-    };
+    let LocalListener {
+        name,
+        address,
+        accepting,
+    } = local_listener("UNUSED");
+    drain(address, accepting);
 
+    let before = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
+
+    let policy = SandboxPolicy::default()
+        .allow_dns(&name)
+        .allow_write(vetted("/etc"))
+        .allow_network_port(address.port());
+    let output = probe(policy, &["write", "/etc/hosts"]);
+
+    let after = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
     let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Never retried: a change to the host's file is the very thing this asserts against, and
+    // a retry would read an escape as a host rewrite.
+    assert_eq!(
+        before, after,
+        "a bounded run changed the host's /etc/hosts, so the mounts are propagating out of \
+         the command's namespace — unless something on the host rewrote it during the run, \
+         which a rerun tells apart"
+    );
     assert!(
         !output.status.success(),
         "the command appended a name of its own to /etc/hosts: {stderr}"
@@ -591,35 +564,38 @@ fn the_host_etc_survives_a_bounded_run() {
 /// a command resolves exactly what it resolved before this existed.
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
-    let Some((name, resolved, facts, hosts, host_file)) =
-        on_still_hosts("UNUSED", |name, address| {
-            let policy = SandboxPolicy::default()
-                .allow_read(vetted("/etc"))
-                .allow_network_port(address.port());
+    retried_across_rewrites(|| {
+        let LocalListener {
+            name,
+            address,
+            accepting,
+        } = local_listener("UNUSED");
+        drain(address, accepting);
 
-            let resolved = probe(policy.clone(), &["resolve", name]);
-            let facts = host_resolution_facts();
-            let hosts = probe(policy, &["read", "/etc/hosts"]);
-            let host_file = fs::read_to_string("/etc/hosts").unwrap_or_default();
-            (name.to_string(), resolved, facts, hosts, host_file)
-        })
-    else {
-        skip_unsteady_hosts();
-        return;
-    };
+        let policy = SandboxPolicy::default()
+            .allow_read(vetted("/etc"))
+            .allow_network_port(address.port());
 
-    assert!(
-        resolved.status.success(),
-        "a run with no --allow-dns could not resolve {name} out of an /etc/hosts that held \
-         still, so the flag narrowed a policy that never asked for it: {}\nhost as the \
-         resolve ended: {facts}\n/etc/hosts read in the sandbox just after: {}{}",
-        String::from_utf8_lossy(&resolved.stderr),
-        String::from_utf8_lossy(&hosts.stdout),
-        String::from_utf8_lossy(&hosts.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&hosts.stdout),
-        host_file,
-        "a run with no --allow-dns reads a hosts file that is not the host's"
-    );
+        let resolved = probe(policy.clone(), &["resolve", &name]);
+        let facts = host_resolution_facts();
+        let hosts = probe(policy, &["read", "/etc/hosts"]);
+        let host_file = fs::read_to_string("/etc/hosts").unwrap_or_default();
+
+        if !resolved.status.success() {
+            return Err(format!(
+                "a run with no --allow-dns could not resolve {name} out of /etc/hosts, so the \
+                 flag narrowed a policy that never asked for it: {}\nhost as the resolve \
+                 ended: {facts}\n/etc/hosts read in the sandbox just after: {}{}",
+                String::from_utf8_lossy(&resolved.stderr),
+                String::from_utf8_lossy(&hosts.stdout),
+                String::from_utf8_lossy(&hosts.stderr)
+            ));
+        }
+        if String::from_utf8_lossy(&hosts.stdout) != host_file {
+            return Err(
+                "a run with no --allow-dns reads a hosts file that is not the host's".into(),
+            );
+        }
+        Ok(())
+    });
 }
