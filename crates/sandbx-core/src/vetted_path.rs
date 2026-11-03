@@ -166,5 +166,5 @@ impl AsRef<Path> for VettedPath {
 }
 
 #[cfg(test)]
-#[path = "policy_vetted_tests.rs"]
+#[path = "vetted_path_tests.rs"]
 mod tests;

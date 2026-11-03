@@ -23,8 +23,8 @@ impl core::marker::UnsafeUnpin for sandbx_turn_fixture::Script
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_turn_fixture::Script
 impl core::panic::unwind_safe::UnwindSafe for sandbx_turn_fixture::Script
 pub fn sandbx_turn_fixture::call(&str, serde_json::value::Value) -> sandbx_event::AgentEvent
-pub fn sandbx_turn_fixture::ctx(sandbx_core::policy::sandbox::SandboxPolicy) -> sandbx_tools::context::ExecutionContext
+pub fn sandbx_turn_fixture::ctx(sandbx_core::policy::sandbox_policy::SandboxPolicy) -> sandbx_tools::context::ExecutionContext
 pub fn sandbx_turn_fixture::stop(sandbx_event::StopReason) -> sandbx_event::AgentEvent
 pub fn sandbx_turn_fixture::text(&str) -> sandbx_event::AgentEvent
 pub fn sandbx_turn_fixture::turn<'a>(&'a [sandbx_prompt::RequestMessage], &'a [sandbx_tools::builtin::BuiltinTool]) -> sandbx_turn::run::Turn<'a>
-pub fn sandbx_turn_fixture::vetted(impl core::convert::AsRef<std::path::Path>) -> sandbx_core::policy::vetted::VettedPath
+pub fn sandbx_turn_fixture::vetted(impl core::convert::AsRef<std::path::Path>) -> sandbx_core::policy::vetted_path::VettedPath

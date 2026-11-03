@@ -306,13 +306,13 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::
     // there is what decides what the real command reads out of its own `environ`.
     let image = request
         .pin
-        .map(|expected| crate::digest::open_verified(&request.program, expected))
+        .map(|expected| crate::sha256_digest::open_verified(&request.program, expected))
         .transpose()?;
 
     use std::os::unix::process::CommandExt;
     // The descriptor that was hashed, named so the kernel opens that same inode; the handle
     // outlives the spawn below, whose child resolves the name before its `exec` closes it.
-    let program = image.as_ref().map(crate::digest::fd_path);
+    let program = image.as_ref().map(crate::sha256_digest::fd_path);
     let program = program.as_deref().unwrap_or(request.program.as_ref());
 
     let mut command = crate::spawn::command(program, &request.policy);

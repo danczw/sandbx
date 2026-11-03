@@ -10,7 +10,7 @@
 mod compat;
 #[path = "helper_ruleset_opened.rs"]
 mod opened;
-#[path = "helper_ruleset_requested.rs"]
+#[path = "requested.rs"]
 mod requested;
 #[path = "helper_ruleset_rights.rs"]
 mod rights;

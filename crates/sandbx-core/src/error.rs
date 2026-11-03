@@ -1,10 +1,10 @@
-//! What the sandbox refuses. [`sandbox`] holds the closed error set and the access each
-//! refusal names; [`refusal`] holds what the helper reports back across the audit channel.
+//! What the sandbox refuses. [`sandbox_error`] holds the closed error set and the access each
+//! refusal names; [`helper_refusal`] holds what the helper reports back across the audit channel.
 
-#[path = "error_refusal.rs"]
-mod refusal;
-#[path = "error_sandbox.rs"]
-mod sandbox;
+#[path = "helper_refusal.rs"]
+mod helper_refusal;
+#[path = "sandbox_error.rs"]
+mod sandbox_error;
 
-pub use refusal::HelperRefusal;
-pub use sandbox::{Access, SandboxError};
+pub use helper_refusal::HelperRefusal;
+pub use sandbox_error::{Access, SandboxError};

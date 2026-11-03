@@ -21,13 +21,20 @@ phase sub-issues hold the status — not this file.
 
 ## The flat layout, and how a file is named under it
 
-Every crate's `src/` is flat (#333). A file is named for its module path joined
-with `_`, so `helper_ruleset_rights.rs` is `helper::ruleset::rights`: the
-nesting the directories used to show is in the name, and a `#[path]` on every
-`mod` line whose file moved keeps the module tree itself. A crate root's code
-modules carry none, a top-level module's name being its path-join name already;
-its test sibling does, being named after the crate (`guide-testing.md`). Where
-that meets the guide's rule on naming a file after its primary item is #449.
+Every crate's `src/` is flat (#333). A leaf module with a primary item is named
+after it, module and file both, as the guide asks: `SandboxError` is
+`error::sandbox_error`, in `sandbox_error.rs`. A leaf with no one item it is
+about may be named as desired, and here its file takes its module path joined
+with `_`, so `helper_ruleset_rights.rs` is `helper::ruleset::rights`. A
+`#[path]` on every nested `mod` line keeps the module tree, a flat directory
+having no other way to hold one; a crate root's code modules carry none, and its
+test sibling does, being named after the crate (`guide-testing.md`).
+
+The tree is deep enough to need this only because `core` stays whole (below):
+the guide expects a crate small enough that its modules sit at the top. Naming
+every file after its last segment instead (`rights.rs`) is the reading that does
+not fit — `core` alone would hold two `resolver.rs`, `helper::resolver` and the
+crate's own (#449).
 
 ## `core` stays large to keep a constructor out of reach
 
@@ -68,7 +75,7 @@ crates and cannot be changed in lockstep with it, while a change inside
 `sandbx-tui-input` has one caller and it is in this repo.
 
 What this does *not* buy is `#[non_exhaustive]`. The guide scopes it to enums other
-teams consume; there are no other teams, and `policy_sandbox.rs` depends on its
+teams consume; there are no other teams, and `sandbox_policy.rs` depends on its
 matches being exhaustive. Adding an axis has to break every match over axes — that compile error is
 the check that a new axis cannot arrive without a row. `#[non_exhaustive]` would turn
 it into a silently-taken wildcard arm, which is the defect `decision-policy.md`

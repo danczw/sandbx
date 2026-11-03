@@ -22,13 +22,13 @@ mod audit;
 mod command;
 mod concealment;
 mod degradation;
-mod digest;
 mod error;
 mod fs_guard;
 mod helper;
 mod helper_args;
 mod policy;
 mod resolver;
+mod sha256_digest;
 mod spawn;
 mod spawn_id;
 
@@ -37,7 +37,6 @@ pub use command::{
     CommandLine, HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch,
 };
 pub use concealment::conceal_process_state;
-pub use digest::{DigestParseError, Sha256Digest};
 pub use error::{Access, HelperRefusal, SandboxError};
 pub use fs_guard::{FsGuard, Listed, Listing, ReadableWalk};
 pub use helper::{BLOCKED_SYSCALLS, exit_code};
@@ -47,4 +46,5 @@ pub use policy::{
     SandboxPolicy, VettedPath,
 };
 pub use resolver::{RESOLVER_FILES, bound_by_resolver};
+pub use sha256_digest::{DigestParseError, Sha256Digest};
 pub use spawn_id::SpawnId;
