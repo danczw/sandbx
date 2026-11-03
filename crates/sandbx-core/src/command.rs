@@ -1,6 +1,6 @@
-//! Running a command under a policy. [`sandboxed_command`] holds the builder, the audit channel and
-//! the deadline — one supervision sequence; [`dispatch`] is the host-side entry into the helper
-//! side that does the restricting.
+//! Running a command under a policy. [`sandboxed_command`] holds the builder, the audit
+//! channel and the deadline — one supervision sequence; [`dispatch`] is the host-side entry
+//! into the helper side that does the restricting.
 
 #[path = "command_dispatch.rs"]
 pub(crate) mod dispatch;
