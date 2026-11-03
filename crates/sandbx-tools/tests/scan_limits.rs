@@ -1,6 +1,6 @@
 //! The work a tool does must stay bounded, not just what it returns.
 //!
-//! `limits.rs` covers the output caps, which trim an answer already paid for. These
+//! `tool_limits.rs` covers the output caps, which trim an answer already paid for. These
 //! cover the input budget: `grep` and `find` walk a tree and `grep` reads every file
 //! in it, so on a large root the cost is paid before any output cap applies. The
 //! in-process tools have no timeout — `ExecutionContext`'s bounds the spawned

@@ -4,17 +4,17 @@
 //! [`run_turn`] is generic over a closure that opens a stream, so the whole loop runs against
 //! canned events with no network and no API key.
 //!
-//! `run` holds the round loop and the public types it is driven by, `accumulate` rebuilds a
+//! `turn` holds the round loop and the public types it is driven by, `accumulate` rebuilds a
 //! round's message from deltas, `tools` runs what it asked for. Spans and not links: a crate
 //! `//!` may not link a private item.
 
 mod accumulate;
-mod error;
-mod run;
 mod tools;
+mod turn;
+mod turn_error;
 
-pub use error::TurnError;
-pub use run::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+pub use turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+pub use turn_error::TurnError;
 // Not dead: `TurnLimits::compaction`, `Turn::observed` and `TurnOutcome::usage` are public
 // fields of these types, and this is how a consumer outside the workspace names them (#356).
 pub use sandbx_compact::{Compaction, PromptUsage};

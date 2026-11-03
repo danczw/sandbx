@@ -162,7 +162,7 @@ and not written, the alternate screen neither redirecting stderr nor giving it
 back (#224), so a latched screen loses it; and `--session` is off unless asked
 for, so the `tool_result` may not be stored at all. The stderr account and the
 exit code are what survive unconditionally, which is why neither may be taken by
-a failure of the screen. `agent_tui.rs`'s `reported` states the same where it
+a failure of the screen. `tui.rs`'s `reported` states the same where it
 decides the codes.
 
 All three survive the hangup *because* consent is a third device. With the

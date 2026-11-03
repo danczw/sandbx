@@ -172,5 +172,5 @@ impl SandboxRun {
 }
 
 #[cfg(test)]
-#[path = "sandbox_tests.rs"]
+#[path = "sandbox_run_tests.rs"]
 mod tests;

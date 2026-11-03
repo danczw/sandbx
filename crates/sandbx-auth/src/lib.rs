@@ -5,15 +5,15 @@
 //! `context/decision-credentials.md`. No workspace dependency, so nothing it reaches could
 //! widen what it writes.
 //!
-//! `key` is the resolution and the subcommand; `store` is the file itself; `error` is what
-//! stops either. Not links: all three are private, and `private_intra_doc_links` fails the
-//! `-D warnings` doc gate.
+//! `key` is the resolution and the subcommand; `store` is the file itself; `auth_error` is
+//! what stops either. Not links: all three are private, and `private_intra_doc_links` fails
+//! the `-D warnings` doc gate.
 
-mod error;
+mod auth_error;
 mod key;
 mod store;
 
-pub use error::AuthError;
+pub use auth_error::AuthError;
 pub use key::Auth;
 
 pub use key::{ENV_VAR, api_key, config_file};

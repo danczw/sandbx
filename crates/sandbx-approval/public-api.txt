@@ -23,7 +23,7 @@ impl core::panic::unwind_safe::UnwindSafe for sandbx_approval::ApprovalDecision
 pub enum sandbx_approval::Outcome<'a>
 pub sandbx_approval::Outcome::Denied
 pub sandbx_approval::Outcome::Denied::reason: &'a str
-pub sandbx_approval::Outcome::Errored(&'a sandbx_tools::error::ToolError)
+pub sandbx_approval::Outcome::Errored(&'a sandbx_tools::tool_error::ToolError)
 pub sandbx_approval::Outcome::NotOffered
 pub sandbx_approval::Outcome::Ran
 pub sandbx_approval::Outcome::Unknown
@@ -44,7 +44,7 @@ pub sandbx_approval::Settled::id: &'a str
 pub sandbx_approval::Settled::input: &'a serde_json::value::Value
 pub sandbx_approval::Settled::name: &'a str
 pub sandbx_approval::Settled::outcome: sandbx_approval::Outcome<'a>
-pub sandbx_approval::Settled::tool: core::option::Option<sandbx_tools::builtin::BuiltinTool>
+pub sandbx_approval::Settled::tool: core::option::Option<sandbx_tools::builtin_tool::BuiltinTool>
 impl<'a> core::clone::Clone for sandbx_approval::Settled<'a>
 pub fn sandbx_approval::Settled<'a>::clone(&self) -> sandbx_approval::Settled<'a>
 impl<'a> core::fmt::Debug for sandbx_approval::Settled<'a>
@@ -60,7 +60,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_approval::Settled<'a>
 pub struct sandbx_approval::ToolCall<'a>
 pub sandbx_approval::ToolCall::id: &'a str
 pub sandbx_approval::ToolCall::input: &'a serde_json::value::Value
-pub sandbx_approval::ToolCall::tool: sandbx_tools::builtin::BuiltinTool
+pub sandbx_approval::ToolCall::tool: sandbx_tools::builtin_tool::BuiltinTool
 impl<'a> core::clone::Clone for sandbx_approval::ToolCall<'a>
 pub fn sandbx_approval::ToolCall<'a>::clone(&self) -> sandbx_approval::ToolCall<'a>
 impl<'a> core::fmt::Debug for sandbx_approval::ToolCall<'a>

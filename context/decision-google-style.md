@@ -30,6 +30,13 @@ with `_`, so `helper_ruleset_rights.rs` is `helper::ruleset::rights`. A
 having no other way to hold one; a crate root's code modules carry none, and its
 test sibling does, being named after the crate (`guide-testing.md`).
 
+So a file's name does not always spell its module path: `helper_refusal.rs` is
+`error::helper_refusal`, not `helper::refusal`, and `requested.rs` is
+`helper::ruleset::requested`, not a crate-root module. The `#[path]` naming the
+file is where its parent is found. A primary-item name can also take the
+spelling a later join would produce, so a new joined name is checked against
+the files already there.
+
 The tree is deep enough to need this only because `core` stays whole (below):
 the guide expects a crate small enough that its modules sit at the top. Naming
 every file after its last segment instead (`rights.rs`) is the reading that does

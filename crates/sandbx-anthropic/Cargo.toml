@@ -19,7 +19,7 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 # per wire frame (#365).
 sandbx-event = { path = "../sandbx-event" }
 # What a request is made of. The `anthropic` module and the two client tests are the
-# whole edge, and `anthropic_body.rs` is the only writer of one (#364).
+# whole edge, and `body.rs` is the only writer of one (#364).
 sandbx-prompt = { path = "../sandbx-prompt" }
 # The seam every client returns through: `stream_chat` hands back an `EventStream` and
 # fails with a `ProviderError` (#366).

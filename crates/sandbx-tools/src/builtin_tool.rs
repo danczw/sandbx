@@ -43,7 +43,7 @@ const EMPTY_OUTPUT: &str = "(no output)";
 /// allocates and so cannot be a `const`.
 ///
 /// The fields are `pub(crate)` because the seven `SPEC` literals that set them live in
-/// `tools/`, no longer below this module — private here would reach only `builtin` and
+/// `tools/`, no longer below this module — private here would reach only `builtin_tool` and
 /// below, and every literal would stop compiling. That is the same set they had as private
 /// fields of the crate root, and it survives a later widening of the struct: a `pub(crate)`
 /// field is invisible outside the crate even on a `pub` struct, so `run` — a direct handle
