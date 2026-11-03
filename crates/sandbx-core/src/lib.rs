@@ -18,7 +18,7 @@ compile_error!(
      target, or depend on it only from a Linux-gated target in your manifest."
 );
 
-mod audit;
+mod audit_event;
 mod command;
 mod concealment;
 mod degradation;
@@ -32,7 +32,7 @@ mod sha256_digest;
 mod spawn;
 mod spawn_id;
 
-pub use audit::{AUDIT_TARGET, AuditEvent, Pinning};
+pub use audit_event::{AUDIT_TARGET, AuditEvent, Pinning};
 pub use command::{
     CommandLine, HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch,
 };

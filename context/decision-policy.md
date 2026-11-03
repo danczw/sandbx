@@ -333,7 +333,7 @@ Axis::ReadExecute => (true,  false, true )
 | `helper_ruleset_rights.rs` | three `if allow_* {}` arms | loop over `Axis::ALL`, rights from `grants()` |
 | `fs_guard.rs` | two hand-built path lists | destructure `grants()` into readable/writable |
 | `helper_args.rs` | three flag spellings, twice (encode + decode) | one `path_flag` match, `axis_for` as reverse lookup |
-| `audit.rs` | three counted fields, hand-maintained | loop + exhaustive `match` |
+| `audit_event.rs` | three counted fields, hand-maintained | loop + exhaustive `match` |
 | `sandbx-grants/src/grants.rs` | three flag blocks | loop + exhaustive `match` |
 
 Two sites cannot derive their answer and are **forced** instead — `tracing` needs
@@ -422,7 +422,7 @@ round 1:  flip Axis::Write to execute: true
               rights_for_narrows_a_regular_file, a_write_grant_does_not_make_files_executable
 
 round 2:  add a fourth axis
-          ──► audit.rs exhaustive match       ← forced to notice
+          ──► audit_event.rs exhaustive match ← forced to notice
               Grants::paths exhaustive match  ← forced to notice
               everything else derives it
 ```

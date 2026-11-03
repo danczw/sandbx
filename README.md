@@ -146,7 +146,7 @@ A `failed` record carries in `reason=` what refused the run or cut it short —
 otherwise look like a command that ran and exited 1. The set is exhaustive, from
 `SandboxError::label`; every record kind, the `degraded` of a best-effort
 hardening step included, is documented on `AuditEvent` in
-[crates/sandbx-core/src/audit.rs](crates/sandbx-core/src/audit.rs).
+[crates/sandbx-core/src/audit_event.rs](crates/sandbx-core/src/audit_event.rs).
 
 Metadata only, never a command's output, and never on stdout, which is forwarded
 untouched. For the record alone, `2>&1 >/dev/null | grep sandbx::audit`; a plain

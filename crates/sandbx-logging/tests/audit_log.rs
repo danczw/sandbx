@@ -273,8 +273,8 @@ fn the_output_carries_no_ansi_escapes() {
     assert!(!output.contains('\u{1b}'), "{output:?}");
 }
 
-/// The composition, where `audit_tests.rs` covers the rendering alone: a model writes the
-/// `bash` command, so a record carries bytes the model chose. One record stays one line
+/// The composition, where `audit_event_tests.rs` covers the rendering alone: a model writes
+/// the `bash` command, so a record carries bytes the model chose. One record stays one line
 /// because `args_field` escapes them and the `%` sigil keeps the layer from escaping its
 /// own escapes — nothing strips anything, and that is what is pinned here.
 #[test]
