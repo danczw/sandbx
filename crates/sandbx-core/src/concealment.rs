@@ -10,7 +10,7 @@ use crate::SandboxError;
 /// same-uid reader. The kernel reparents `/proc/<pid>/` to root, so `environ`, `mem`,
 /// `maps` and `fd/` fail `__ptrace_may_access` — which keeps an exported provider key out
 /// of a tool granted `/proc`. A same-thread-group read of `fd/` and `exe` stays exempt and
-/// one of `environ` does not, so `digest` and the helper re-exec are unaffected while
+/// one of `environ` does not, so `sha256_digest` and the helper re-exec are unaffected while
 /// sandbx's own `environ` closes to it too.
 pub fn conceal_process_state() -> Result<(), SandboxError> {
     nix::sys::prctl::set_dumpable(false).map_err(|errno| SandboxError::ProcessConcealment {

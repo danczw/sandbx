@@ -282,11 +282,12 @@ either and the next one is tried. Not over `granted_paths()`, whose `Axis::ALL`
 order would start a writable run read-only and an exec-only run inside the system
 binaries.
 
-Applied in `helper_command` (`sandboxed_command.rs`), not in `spawn::command`: that builder is
-also what stage 2 uses to *start* the command, after the ruleset is installed, and
-a post-Landlock `chdir` is a risk this does not need. Set once on stage 1, inherited
-across both `exec`s. It is not in the argv, so a caller spawning `command_line()`
-itself gets its own directory — which that method's doc carries.
+Applied in `helper_command` (`sandboxed_command.rs`), not in `spawn::command`:
+that builder is also what stage 2 uses to *start* the command, after the ruleset
+is installed, and a post-Landlock `chdir` is a risk this does not need. Set once
+on stage 1, inherited across both `exec`s. It is not in the argv, so a caller
+spawning `command_line()` itself gets its own directory — which that method's doc
+carries.
 
 ## Syscall denylist
 
