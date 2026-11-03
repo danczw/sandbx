@@ -129,8 +129,8 @@ fn bindable_name() -> Option<(String, SocketAddr, TcpListener)> {
 /// How many times a look or a test reruns while the host keeps rewriting `/etc/hosts`.
 const ATTEMPTS: usize = 3;
 
-/// Between attempts: longer than a rewrite holds the file empty, so a retry cannot land in the
-/// window that failed the attempt before it, which a fast failure returns inside.
+/// Between attempts, and longer than a rewrite holds the file empty: an attempt that failed
+/// fast returns inside the window that failed it, and an unpaused retry would land there too.
 const REWRITE_PAUSE: Duration = Duration::from_millis(100);
 
 /// The host's `/etc/hosts` and its inode and ctime, two reads rather than one instant, so a
@@ -358,9 +358,9 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
              source to read: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        // The one assertion here a truncating rewrite can fail — one that unlinks the file has
-        // the helper refuse the run as `absent`, unretried — since the helper resolves the name
+        // The one assertion here a truncating rewrite can fail: the helper resolves the name
         // off the host's file to render the bound one, and an empty look renders it unmapped.
+        // A rewrite that unlinks the file has the helper refuse the run as `absent`, unretried.
         if !(seen.contains(&name) && seen.contains(&address.ip().to_string())) {
             return Err(format!(
                 "the hosts file does not map the allowlisted name to the address it resolved \
