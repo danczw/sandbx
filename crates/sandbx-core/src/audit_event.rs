@@ -456,5 +456,5 @@ impl<'a> AuditEvent<'a> {
 }
 
 #[cfg(test)]
-#[path = "audit_tests.rs"]
+#[path = "audit_event_tests.rs"]
 mod tests;

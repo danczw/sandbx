@@ -178,7 +178,7 @@ impl SandboxedCommand {
         let session = self.session.as_deref();
         // Not `argv` above, which is the *helper's* — that one carries the encoded policy,
         // and a shadow here would put it on the trail.
-        let command_args = crate::audit::args_field(&self.args);
+        let command_args = crate::audit_event::args_field(&self.args);
 
         crate::AuditEvent::spawned(
             &self.program,
