@@ -3,8 +3,8 @@
 //! Shared by every subcommand that runs something, so the axis loop, the one widening it
 //! applies, and the working-directory default exist once rather than once per subcommand.
 //! Deriving that default, and vetting what a flag names, is `root`; the flags themselves and
-//! the loop over them are `flags`; `error` is what stops either. Not links: all three are
-//! private, and a crate `//!` may not link anything narrower than `pub`.
+//! the loop over them are `grants`; `policy_error` is what stops either. Not links: all three
+//! are private, and a crate `//!` may not link anything narrower than `pub`.
 //!
 //! A no-flag `sandbx sandbox-run` grants read and write on the directory it was run from
 //! (#109). Execute and environment were already unconditional, so what the default added was
@@ -80,9 +80,9 @@
 //! — the guard reads `getcwd` and `HOME` off the real process, and `set_current_dir` is
 //! process-global, so under parallel tests one case would decide another's verdict.
 
-mod error;
-mod flags;
+mod grants;
+mod policy_error;
 mod root;
 
-pub use error::PolicyError;
-pub use flags::Grants;
+pub use grants::Grants;
+pub use policy_error::PolicyError;

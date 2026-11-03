@@ -4,28 +4,28 @@ pub use sandbx_cli::PolicyError
 pub use sandbx_cli::SessionChoice
 pub enum sandbx_cli::AgentError
 pub sandbx_cli::AgentError::ApproveUnderTui
-pub sandbx_cli::AgentError::Credential(sandbx_auth::error::AuthError)
+pub sandbx_cli::AgentError::Credential(sandbx_auth::auth_error::AuthError)
 pub sandbx_cli::AgentError::EmptyPrompt
 pub sandbx_cli::AgentError::NoTerminal
 pub sandbx_cli::AgentError::NoTerminal::source: core::io::error::Error
 pub sandbx_cli::AgentError::NotATerminal
 pub sandbx_cli::AgentError::Output(core::io::error::Error)
-pub sandbx_cli::AgentError::Policy(sandbx_grants::error::PolicyError)
+pub sandbx_cli::AgentError::Policy(sandbx_grants::policy_error::PolicyError)
 pub sandbx_cli::AgentError::Provider(sandbx_provider::ProviderError)
 pub sandbx_cli::AgentError::Runtime(core::io::error::Error)
 pub sandbx_cli::AgentError::Screen(core::io::error::Error)
 pub sandbx_cli::AgentError::Session(sandbx_session_error::SessionError)
-pub sandbx_cli::AgentError::Turn(sandbx_turn::error::TurnError)
-impl core::convert::From<sandbx_auth::error::AuthError> for sandbx_cli::AgentError
-pub fn sandbx_cli::AgentError::from(sandbx_auth::error::AuthError) -> Self
-impl core::convert::From<sandbx_grants::error::PolicyError> for sandbx_cli::AgentError
-pub fn sandbx_cli::AgentError::from(sandbx_grants::error::PolicyError) -> Self
+pub sandbx_cli::AgentError::Turn(sandbx_turn::turn_error::TurnError)
+impl core::convert::From<sandbx_auth::auth_error::AuthError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_auth::auth_error::AuthError) -> Self
+impl core::convert::From<sandbx_grants::policy_error::PolicyError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_grants::policy_error::PolicyError) -> Self
 impl core::convert::From<sandbx_provider::ProviderError> for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::from(sandbx_provider::ProviderError) -> Self
 impl core::convert::From<sandbx_session_error::SessionError> for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::from(sandbx_session_error::SessionError) -> Self
-impl core::convert::From<sandbx_turn::error::TurnError> for sandbx_cli::AgentError
-pub fn sandbx_cli::AgentError::from(sandbx_turn::error::TurnError) -> Self
+impl core::convert::From<sandbx_turn::turn_error::TurnError> for sandbx_cli::AgentError
+pub fn sandbx_cli::AgentError::from(sandbx_turn::turn_error::TurnError) -> Self
 impl core::error::Error for sandbx_cli::AgentError
 pub fn sandbx_cli::AgentError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for sandbx_cli::AgentError
@@ -64,12 +64,12 @@ impl core::marker::UnsafeUnpin for sandbx_cli::Command
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Command
 impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Command
 pub enum sandbx_cli::SandboxRunError
-pub sandbx_cli::SandboxRunError::Policy(sandbx_grants::error::PolicyError)
+pub sandbx_cli::SandboxRunError::Policy(sandbx_grants::policy_error::PolicyError)
 pub sandbx_cli::SandboxRunError::Sandbox(sandbx_core::error::sandbox_error::SandboxError)
 impl core::convert::From<sandbx_core::error::sandbox_error::SandboxError> for sandbx_cli::SandboxRunError
 pub fn sandbx_cli::SandboxRunError::from(sandbx_core::error::sandbox_error::SandboxError) -> Self
-impl core::convert::From<sandbx_grants::error::PolicyError> for sandbx_cli::SandboxRunError
-pub fn sandbx_cli::SandboxRunError::from(sandbx_grants::error::PolicyError) -> Self
+impl core::convert::From<sandbx_grants::policy_error::PolicyError> for sandbx_cli::SandboxRunError
+pub fn sandbx_cli::SandboxRunError::from(sandbx_grants::policy_error::PolicyError) -> Self
 impl core::error::Error for sandbx_cli::SandboxRunError
 pub fn sandbx_cli::SandboxRunError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for sandbx_cli::SandboxRunError
@@ -89,7 +89,7 @@ pub async fn sandbx_cli::AgentRun::execute(&self) -> core::result::Result<i32, s
 pub fn sandbx_cli::AgentRun::max_rounds(&self) -> usize
 pub fn sandbx_cli::AgentRun::max_tokens(&self) -> u32
 pub fn sandbx_cli::AgentRun::model(&self) -> &str
-pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox_policy::SandboxPolicy, sandbx_grants::error::PolicyError>
+pub fn sandbx_cli::AgentRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox_policy::SandboxPolicy, sandbx_grants::policy_error::PolicyError>
 pub fn sandbx_cli::AgentRun::session(&self) -> sandbx_session_bridge::SessionChoice<'_>
 pub fn sandbx_cli::AgentRun::system(&self) -> core::option::Option<&str>
 pub fn sandbx_cli::AgentRun::to_prompt(&self) -> alloc::string::String
@@ -174,8 +174,8 @@ pub struct sandbx_cli::SandboxRun
 impl sandbx_cli::SandboxRun
 pub fn sandbx_cli::SandboxRun::arguments(&self) -> &[alloc::string::String]
 pub fn sandbx_cli::SandboxRun::execute(&self) -> core::result::Result<i32, sandbx_cli::SandboxRunError>
-pub fn sandbx_cli::SandboxRun::pin(&self) -> core::result::Result<core::option::Option<sandbx_core::sha256_digest::Sha256Digest>, sandbx_grants::error::PolicyError>
-pub fn sandbx_cli::SandboxRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox_policy::SandboxPolicy, sandbx_grants::error::PolicyError>
+pub fn sandbx_cli::SandboxRun::pin(&self) -> core::result::Result<core::option::Option<sandbx_core::sha256_digest::Sha256Digest>, sandbx_grants::policy_error::PolicyError>
+pub fn sandbx_cli::SandboxRun::policy(&self) -> core::result::Result<sandbx_core::policy::sandbox_policy::SandboxPolicy, sandbx_grants::policy_error::PolicyError>
 pub fn sandbx_cli::SandboxRun::program(&self) -> &str
 pub fn sandbx_cli::SandboxRun::timeout(&self) -> core::option::Option<core::time::Duration>
 impl clap_builder::derive::Args for sandbx_cli::SandboxRun

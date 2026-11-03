@@ -407,7 +407,7 @@ That is as legible as the `REFUSED` this note specified, and it arrives by the
 path every other resolution failure arrives by, which the `REFUSED` route could
 not claim: a stub resolver reads an RCODE, a shell script reads the exit code.
 **It is also indistinguishable from a typo**, which `REFUSED` was chosen to
-avoid, and that is the cost. It is paid where the operator is: `sandbox.rs`'s
+avoid, and that is the cost. It is paid where the operator is: `sandbox_run.rs`'s
 advice names `--allow-dns NAME` as the first of the two answers, and the
 refusals catch the shapes where the flag is the wrong one before the run
 starts. Four of them are decided on the policy itself

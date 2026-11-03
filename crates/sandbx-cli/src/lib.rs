@@ -5,16 +5,16 @@
 //! `sandbx-grants`, whose `Grants` every subcommand that confines something flattens.
 
 mod agent;
+mod cli;
 mod error;
 mod hash;
-mod invocation;
-mod sandbox;
+mod sandbox_run;
 
 pub use agent::{AgentRun, Tui};
+pub use cli::{Cli, Command};
 pub use error::{AgentError, HashError, SandboxRunError};
 pub use hash::Hash;
-pub use invocation::{Cli, Command};
-pub use sandbox::SandboxRun;
+pub use sandbox_run::SandboxRun;
 
 // Both are in this crate's surface — `Grants` flattened into `SandboxRun` and `AgentRun`,
 // `PolicyError` in their errors' `Policy` variant — and the integration tests match on them.

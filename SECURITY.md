@@ -342,7 +342,7 @@ architecture the filter gates on.
   an opt-in `--timeout`. The other six run in-process, untimed, bounded by *work*
   instead — a cap on files visited and bytes read for `grep` and `find`, the
   single file or directory for the rest
-  ([`ToolLimits`](crates/sandbx-tools/src/limits.rs)) — on a thread that cannot
+  ([`ToolLimits`](crates/sandbx-tools/src/tool_limits.rs)) — on a thread that cannot
   be cancelled, so one read on a stalled filesystem hangs indefinitely. Nothing
   else is capped: no CPU bound, no memory bound, no limit on processes spawned.
   A fork bomb is unbounded while the call lasts; bounded is that it does not
@@ -353,7 +353,7 @@ architecture the filter gates on.
 - **A bound on the harness's own loop is not a containment claim.** A turn is
   bounded — `TurnLimits::max_rounds` caps the requests one turn may make of the
   model, `TurnLimits::stream_timeout` how long one of them may spend streaming
-  ([`TurnLimits`](crates/sandbx-turn/src/run.rs)) — but what those bound is
+  ([`TurnLimits`](crates/sandbx-turn/src/turn.rs)) — but what those bound is
   sandbx's own work, not what a sandboxed command can reach, which is what every
   claim here is about.
 - **A command killed by a signal reports as exit `128 + n`, not as signalled.**

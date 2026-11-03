@@ -403,5 +403,5 @@ impl CallGate for Gate<'_> {
 }
 
 #[cfg(test)]
-#[path = "agent_tui_tests.rs"]
+#[path = "tui_tests.rs"]
 mod tests;

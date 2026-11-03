@@ -345,5 +345,5 @@ impl Grants {
 }
 
 #[cfg(test)]
-#[path = "flags_tests.rs"]
+#[path = "grants_tests.rs"]
 mod tests;

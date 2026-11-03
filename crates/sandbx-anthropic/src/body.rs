@@ -200,5 +200,5 @@ impl Serialize for ThinkingBody {
 }
 
 #[cfg(test)]
-#[path = "anthropic_body_tests.rs"]
+#[path = "body_tests.rs"]
 mod tests;
