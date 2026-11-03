@@ -67,19 +67,27 @@ fn host_forbids_the_mounts() -> bool {
 /// to. Derived, not written down — the one such name on a developer machine is the
 /// machine's own hostname, and hard-coding either would pass on one host and fail on the next.
 /// Looked for up to [`ATTEMPTS`] times, since a host rewriting the file leaves it empty for a
-/// moment and a look landing there finds no name.
+/// moment and a look landing there finds no name. A test under [`retried_across_rewrites`]
+/// takes [`one_look_listener`] instead, so the wrapper's one retry covers the look too.
 fn local_listener(payload: &'static str) -> LocalListener {
-    let bound = (0..ATTEMPTS).find_map(|retry| {
-        if retry > 0 {
-            thread::sleep(REWRITE_PAUSE);
-        }
-        bindable_name()
-    });
+    (0..ATTEMPTS)
+        .find_map(|retry| {
+            if retry > 0 {
+                thread::sleep(REWRITE_PAUSE);
+            }
+            one_look_listener(payload)
+        })
+        .expect(NO_NAME)
+}
 
-    let (name, address, listener) = bound.expect(
-        "no name in /etc/hosts resolves to an address this test can bind, so there is no name \
-         that resolves without a nameserver and the denials below would be vacuous",
-    );
+/// Why no test here can run without a [`local_listener`] name.
+const NO_NAME: &str = "no name in /etc/hosts resolves to an address this test can bind, so \
+                       there is no name that resolves without a nameserver and the denials \
+                       below would be vacuous";
+
+/// One look for [`local_listener`]'s name, `None` when it finds none.
+fn one_look_listener(payload: &'static str) -> Option<LocalListener> {
+    let (name, address, listener) = bindable_name()?;
 
     let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
@@ -88,16 +96,16 @@ fn local_listener(payload: &'static str) -> LocalListener {
         }
     });
 
-    LocalListener {
+    Some(LocalListener {
         name,
         address,
         accepting,
-    }
+    })
 }
 
 /// One look through `/etc/hosts` for [`local_listener`]'s name, and the listener it bound.
 fn bindable_name() -> Option<(String, SocketAddr, TcpListener)> {
-    let hosts = fs::read_to_string("/etc/hosts").expect("a readable /etc/hosts");
+    let hosts = fs::read_to_string("/etc/hosts").ok()?;
 
     hosts
         .lines()
@@ -125,7 +133,8 @@ const ATTEMPTS: usize = 3;
 /// window that failed the attempt before it, which a fast failure returns inside.
 const REWRITE_PAUSE: Duration = Duration::from_millis(100);
 
-/// The host's `/etc/hosts` and which write produced it, `None` while it is missing or empty —
+/// The host's `/etc/hosts` and its inode and ctime, two reads rather than one instant, so a
+/// rename between them only reads as a change, never hides one. `None` while missing or empty —
 /// the state a rewrite passes through, never one a host leaves it in. The bytes alone miss a
 /// rewrite to the same bytes, which still empties the file for a moment: the ctime catches
 /// that, being the one timestamp user space cannot set back, and the inode catches a rename
@@ -244,11 +253,14 @@ fn an_allowlisted_name_resolves_and_is_reached() {
     }
 
     retried_across_rewrites(|| {
-        let LocalListener {
+        let Some(LocalListener {
             name,
             address,
             accepting,
-        } = local_listener("ALLOWLISTED-NAME-ANSWERED");
+        }) = one_look_listener("ALLOWLISTED-NAME-ANSWERED")
+        else {
+            return Err(NO_NAME.into());
+        };
 
         let output = probe(
             SandboxPolicy::default()
@@ -324,11 +336,14 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
     }
 
     retried_across_rewrites(|| {
-        let LocalListener {
+        let Some(LocalListener {
             name,
             address,
             accepting,
-        } = local_listener("UNUSED");
+        }) = one_look_listener("UNUSED")
+        else {
+            return Err(NO_NAME.into());
+        };
         drain(address, accepting);
 
         let output = probe(
@@ -343,8 +358,9 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
              source to read: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        // The one assertion here a rewrite can fail: the helper resolves the name off the
-        // host's file to render the bound one, and an empty look renders it unmapped.
+        // The one assertion here a truncating rewrite can fail — one that unlinks the file has
+        // the helper refuse the run as `absent`, unretried — since the helper resolves the name
+        // off the host's file to render the bound one, and an empty look renders it unmapped.
         if !(seen.contains(&name) && seen.contains(&address.ip().to_string())) {
             return Err(format!(
                 "the hosts file does not map the allowlisted name to the address it resolved \
@@ -565,11 +581,14 @@ fn the_host_etc_survives_a_bounded_run() {
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
     retried_across_rewrites(|| {
-        let LocalListener {
+        let Some(LocalListener {
             name,
             address,
             accepting,
-        } = local_listener("UNUSED");
+        }) = one_look_listener("UNUSED")
+        else {
+            return Err(NO_NAME.into());
+        };
         drain(address, accepting);
 
         let policy = SandboxPolicy::default()
