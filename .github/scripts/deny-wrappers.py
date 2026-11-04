@@ -140,8 +140,8 @@ def read_graph(root: pathlib.Path) -> Graph:
     return Graph(packages, edges, shipped, strays)
 
 
-def read_deny(path: pathlib.Path) -> dict:
-    """`deny.toml` as tomllib gives it, so key order and comments cannot matter."""
+def read_toml(path: pathlib.Path) -> dict:
+    """A TOML file as tomllib gives it, so key order and comments cannot matter."""
     with path.open("rb") as handle:
         return tomllib.load(handle)
 
@@ -153,16 +153,19 @@ def read_deny(path: pathlib.Path) -> dict:
 # than being replaced by it; `sandbx-core`'s entry rests entirely on a dev edge.
 GRAPH_KEYS_THAT_HIDE_EDGES = ("exclude", "exclude-dev")
 
-# Keys that swap a crate into the build behind a dependency's back. `--no-deps` lists
-# the dependency as declared (a root `[patch.crates-io]` onto a local shim still reads
-# as a registry `serde`), so the shim's own edges reach no check here. Only the repo's
-# own files are read: cargo also merges config from the runner's home and the
-# checkout's ancestors, which a PR cannot write.
-ROOT_FILES_THAT_ADD_CRATES = (
-    ("Cargo.toml", ("patch", "replace")),
-    (".cargo/config.toml", ("patch", "paths")),
-    (".cargo/config", ("patch", "paths")),
-)
+# Both of these swap a crate into the build behind a dependency's back. `--no-deps`
+# lists the dependency as declared (a root `[patch.crates-io]` onto a local shim still
+# reads as a registry crate), so the shim's own edges reach no check here.
+#
+# The manifest's are a list because the manifest format has exactly these two override
+# sections. Config has no such bound: `[patch]`, `paths`, `[source]` replacement, and an
+# `include` of another file holding any of them all swap a crate in, and a key list was
+# two short on review. This repo needs no config, so the file is refused whole; one that
+# becomes necessary means editing this check, which is the point. Only the root's are
+# read, as CI runs cargo from the root, and config from the runner's home or the
+# checkout's ancestors is out of a PR's reach.
+MANIFEST_KEYS_THAT_SWAP_CRATES = ("patch", "replace")
+CARGO_CONFIG_FILES = (".cargo/config.toml", ".cargo/config")
 
 
 def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
@@ -173,7 +176,7 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
     many blocks exist.
     """
     packages, edges, shipped, strays = read_graph(root)
-    deny = read_deny(root / "deny.toml")
+    deny = read_toml(root / "deny.toml")
     blocks = deny.get("bans", {}).get("deny", [])
     failed = False
 
@@ -325,19 +328,21 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
             f"{parent} {what}, and that crate is not a workspace member.",
             "`--no-deps` lists members only, so that crate's own edges reach no check.",
         )
-    for relative, keys in ROOT_FILES_THAT_ADD_CRATES:
-        path = root / relative
-        if not path.is_file():
-            continue
-        with path.open("rb") as handle:
-            table = tomllib.load(handle)
-        for key in keys:
-            if key in table:
-                error(
-                    f"{relative} sets [{key}].",
-                    "That builds a crate `--no-deps` never lists, so its edges reach"
-                    " no check.",
-                )
+    manifest = read_toml(root / "Cargo.toml")
+    for key in MANIFEST_KEYS_THAT_SWAP_CRATES:
+        if key in manifest:
+            error(
+                f"Cargo.toml sets [{key}].",
+                "That builds a crate `--no-deps` never lists, so its edges reach no"
+                " check.",
+            )
+    for relative in CARGO_CONFIG_FILES:
+        if (root / relative).exists():
+            error(
+                f"{relative} exists.",
+                "Cargo config can swap a crate in through more keys than this check"
+                " reads, so it is refused whole; edit this check to admit one.",
+            )
 
     # A comparison of nothing is not a pass — `guide-ci.md`'s *A glob that matches
     # nothing must fail*, which asks it of any check that iterates.
@@ -676,6 +681,36 @@ DEV_ONLY_UNLISTED_CASES: list[tuple[str, bool, str, tuple[str, str]]] = [
 ]
 
 
+MEMBER_DEP = 'sandbx-q = { path = "../q" }\n'
+PATCH = '[patch.crates-io]\nsandbx-shim = { path = "shim" }\n'
+
+# shape -> (`sandbx-p`'s `[dependencies]`, text appended to the root manifest, and a
+# `(path, body)` per `.cargo/` file). Indexed, not `.get()`: a misspelled shape must
+# raise rather than build the control and report a verdict about it.
+STRAY_SHAPES: dict[str, tuple[str, str, tuple[tuple[str, str], ...]]] = {
+    "stray_control": (MEMBER_DEP, "", ()),
+    "excluded_path": (MEMBER_DEP + 'sandbx-shim = { path = "../shim" }\n', "", ()),
+    "outside_root_path": (
+        MEMBER_DEP + 'sandbx-out = { path = "../../outside_root_path-outside" }\n',
+        "", ()),
+    "shim_named_like_member": (
+        'shimq = { path = "../shim", package = "sandbx-q" }\n', "", ()),
+    "registry_named_like_member": ('sandbx-q = "0.0.0"\n', "", ()),
+    "git_named_like_member": (
+        'sandbx-q = { git = "https://example.invalid/q" }\n', "", ()),
+    "patch_in_manifest": (MEMBER_DEP, PATCH, ()),
+    "replace_in_manifest": (
+        MEMBER_DEP, '[replace]\n"sandbx-shim:0.0.0" = { path = "shim" }\n', ()),
+    # The two the review found past a key list: an `include` of a file holding the
+    # `[patch]`, and source replacement onto a directory in the checkout.
+    "include_in_cargo_config": (MEMBER_DEP, "", (
+        (".cargo/config.toml", 'include = ["patch.toml"]\n'),
+        (".cargo/patch.toml", PATCH))),
+    "source_in_legacy_config": (MEMBER_DEP, "", ((".cargo/config", (
+        '[source.crates-io]\nreplace-with = "v"\n[source.v]\ndirectory = "vend"\n')),)),
+}
+
+
 def write_stray_fixture(root: pathlib.Path, shape: str) -> None:
     """`sandbx-p` depends on `sandbx-q` and `deny.toml` is correct for it, plus `shape`.
 
@@ -684,63 +719,44 @@ def write_stray_fixture(root: pathlib.Path, shape: str) -> None:
     control included, because the key alone is harmless: what matters is an edge onto
     the excluded crate.
     """
+    deps, manifest_extra, config_files = STRAY_SHAPES[shape]
     root.mkdir(parents=True)
-    manifest = ('[workspace]\nresolver = "3"\nmembers = ["p", "q"]\n'
-                'exclude = ["shim"]\n')
     write_member(root, "p", "sandbx-p")
     write_member(root, "q", "sandbx-q")
     # The member's own name: cargo refuses two members of one name, not an excluded one.
     shim = "sandbx-q" if shape == "shim_named_like_member" else "sandbx-shim"
     write_member(root, "shim", shim)
-    outside = f"{root.name}-outside"
-    write_member(root.parent, outside, "sandbx-out")
-    deps = {
-        "excluded_path": 'sandbx-q = { path = "../q" }\n'
-                         'sandbx-shim = { path = "../shim" }\n',
-        "outside_root_path": 'sandbx-q = { path = "../q" }\n'
-                             f'sandbx-out = {{ path = "../../{outside}" }}\n',
-        "shim_named_like_member": 'shimq = { path = "../shim", package = "sandbx-q" }\n',
-        "registry_named_like_member": 'sandbx-q = "0.0.0"\n',
-    }.get(shape, 'sandbx-q = { path = "../q" }\n')
+    write_member(root.parent, f"{shape}-outside", "sandbx-out")
     with (root / "p" / "Cargo.toml").open("a") as handle:
         handle.write(f"\n[dependencies]\n{deps}")
-    patch = '[patch.crates-io]\nsandbx-shim = { path = "shim" }\n'
-    manifest += {
-        "patch_in_manifest": patch,
-        "replace_in_manifest": '[replace]\n"sandbx-shim:0.0.0" = { path = "shim" }\n',
-    }.get(shape, "")
-    (root / "Cargo.toml").write_text(manifest)
-    config = {
-        "patch_in_cargo_config": (".cargo/config.toml", patch),
-        "paths_in_cargo_config": (".cargo/config.toml", 'paths = ["shim"]\n'),
-        "patch_in_legacy_config": (".cargo/config", patch),
-    }.get(shape)
-    if config:
-        (root / ".cargo").mkdir()
-        (root / config[0]).write_text(config[1])
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nresolver = "3"\nmembers = ["p", "q"]\nexclude = ["shim"]\n'
+        + manifest_extra
+    )
+    for relative, body in config_files:
+        (root / relative).parent.mkdir(exist_ok=True)
+        (root / relative).write_text(body)
     (root / "deny.toml").write_text(
         '[[bans.deny]]\nname = "sandbx-q"\nwrappers = ["sandbx-p"]\n'
     )
 
 
-# name, expected ok/fail, a string the output must contain, the shape. Each arm of
-# check 5 gets a case of its own, one per file the key table names.
+# shape, expected ok/fail, a string the output must contain. One case per arm of
+# check 5; the shape is the case name, so the two cannot drift apart.
 STRAY_CASES: list[tuple[str, bool, str, str]] = [
-    ("stray_control", True, "", "control"),
-    ("excluded_path", False, "a path dependency on", "excluded_path"),
-    ("outside_root_path", False, "a path dependency on", "outside_root_path"),
-    # Read by name as `sandbx-q`, so checks 2 and 3 pass it; only check 5 can fail it.
-    ("shim_named_like_member", False, "a path dependency on", "shim_named_like_member"),
-    ("registry_named_like_member", False, "'sandbx-q' from registry",
-     "registry_named_like_member"),
-    ("patch_in_manifest", False, "Cargo.toml sets [patch]", "patch_in_manifest"),
-    ("replace_in_manifest", False, "Cargo.toml sets [replace]", "replace_in_manifest"),
-    ("patch_in_cargo_config", False, ".cargo/config.toml sets [patch]",
-     "patch_in_cargo_config"),
-    ("paths_in_cargo_config", False, ".cargo/config.toml sets [paths]",
-     "paths_in_cargo_config"),
-    ("patch_in_legacy_config", False, ".cargo/config sets [patch]",
-     "patch_in_legacy_config"),
+    (shape, want_ok, want_text, shape) for shape, want_ok, want_text in (
+        ("stray_control", True, ""),
+        ("excluded_path", False, "has a path dependency on"),
+        ("outside_root_path", False, "has a path dependency on"),
+        # Read by name as `sandbx-q`, so checks 2 and 3 pass it; only check 5 fails it.
+        ("shim_named_like_member", False, "has a path dependency on"),
+        ("registry_named_like_member", False, "'sandbx-q' from registry"),
+        ("git_named_like_member", False, "'sandbx-q' from git"),
+        ("patch_in_manifest", False, "Cargo.toml sets [patch]"),
+        ("replace_in_manifest", False, "Cargo.toml sets [replace]"),
+        ("include_in_cargo_config", False, ".cargo/config.toml exists"),
+        ("source_in_legacy_config", False, ".cargo/config exists"),
+    )
 ]
 
 
@@ -837,9 +853,11 @@ def main(argv: list[str]) -> int:
     compared = check(root, sys.stdout)
     if compared < 0:
         return 1
-    # Every listed name is a package and every edge into it was read, or check 4 failed.
+    # Every listed name is a package and every edge into it was read, or check 4 failed;
+    # every dependency was a member or an outside source, or check 5 failed.
     print(f"deny.toml: {compared} workspace-crate blocks match the graph;"
-          f" {len(DEV_ONLY)} dev-only crates have dev edges alone")
+          f" {len(DEV_ONLY)} dev-only crates have dev edges alone;"
+          " no crate is built from outside the members")
     return 0
 
 

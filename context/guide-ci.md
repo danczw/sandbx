@@ -153,21 +153,23 @@ A shim in an excluded directory, named `sandbx-screen` and depending normally on
 this script and cargo-deny both exited 0 — cargo-deny matches `wrappers` by name,
 and the shim took a listed one. A root `[patch.crates-io]` onto the same shim did
 the same. So the script also refuses any path dependency that is not onto a
-member, a registry or git dependency named like a member, and the keys that swap
-a crate in: `[patch]` and `[replace]` in the root manifest, `[patch]` and `paths`
-in `.cargo/config.toml` or `.cargo/config`. Config cargo merges from the runner's
-home or the checkout's ancestors is not read, a PR being unable to write it.
+member, a registry or git dependency named like a member, `[patch]` and
+`[replace]` in the root manifest, and any `.cargo/config.toml` or `.cargo/config`
+at all. Config is refused whole rather than by key because no key list is
+complete — an `include` and a `[source]` replacement each got past one on review
+— and this repo needs none. Config cargo merges from the runner's home or the
+checkout's ancestors is not read, a PR being unable to write it.
 
-The script runs before `cargo-deny-action` for
-the reason the release-channel check does, and its `--self-test` runs first,
-against scratch workspaces, so a checker that has stopped checking fails rather
-than passing the real file by default. Every check a `deny.toml` or a manifest
-can reach is mutation-tested: disable it and a named case fails, and the harness
-asserts the set of survivors, so a check that becomes untestable fails the run
-rather than passing quietly. Exactly two survive, both unreachable from any
-config and both saying so in their comments — the zero-comparison guard and the
-empty-package-set guard. They assert against a future edit to the keying or the
-graph read, not against a file.
+The script runs before `cargo-deny-action` for the reason the release-channel
+check does, and its `--self-test` runs first, against scratch workspaces, so a
+checker that has stopped checking fails rather than passing the real file by
+default. Each check is mutation-tested when it is written, not on every run:
+disable it and a named case must fail. The harness lives in the PR that adds the
+check (#416, #481), not in the repo. #416's left exactly two survivors, both
+unreachable from any config and both saying so in their comments — the
+zero-comparison guard and the empty-package-set guard. They assert against a
+future edit to the keying or the graph read, not against a file. #481's left
+none in checks 4 and 5.
 
 **It also refuses three keys that make cargo-deny's own enforcement vacuous**,
 each the same hole as a typo'd name wearing different clothes, and all three
