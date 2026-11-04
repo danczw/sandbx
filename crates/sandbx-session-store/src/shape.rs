@@ -8,9 +8,8 @@
 //! The load path matches none anywhere, so an interior fabricated result already passes,
 //! and checking one junction would buy nothing. Nor does shape say why a conversation breaks
 //! off on unanswered calls: the `turn` line does, and where none after the last message says
-//! — torn off its append, written before the field, or by a later build — resume hedges its
-//! line to the operator rather than refusing the file, which would cost the conversation
-//! (#226).
+//! (torn off its append, written before the field, or by a later build) resume hedges its
+//! line to the operator rather than refusing the file, which costs the conversation (#226).
 
 use sandbx_session_message::{Content, Message, Role};
 
