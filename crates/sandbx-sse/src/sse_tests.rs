@@ -19,17 +19,21 @@ async fn tokenize_all(chunks: Vec<&'static [u8]>) -> Vec<Result<String, Provider
 #[tokio::test]
 async fn a_read_error_is_transport_with_it_as_the_source() {
     let byte_stream = stream::iter(vec![
-        Ok(Bytes::from_static(b"data: {}\n\n")),
+        Ok(Bytes::from_static(b"data: before\n\n")),
         Err(io::Error::new(
             io::ErrorKind::ConnectionReset,
             "reset by peer",
         )),
-        Ok(Bytes::from_static(b"data: {}\n\n")),
+        Ok(Bytes::from_static(b"data: after\n\n")),
     ]);
     let events: Vec<_> = tokenize(byte_stream).collect().await;
 
-    assert_eq!(events.len(), 2, "a frame surfaced after the read error");
-    assert_eq!(events[0].as_ref().unwrap(), "{}");
+    assert_eq!(
+        events.len(),
+        2,
+        "not the frame, then the error, then nothing: {events:?}"
+    );
+    assert_eq!(events[0].as_ref().unwrap(), "before");
     let Err(ProviderError::Transport { source, .. }) = &events[1] else {
         panic!("{:?} is not a transport error", events[1]);
     };
