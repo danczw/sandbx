@@ -59,23 +59,14 @@ async fn a_refused_connection_is_reported_with_its_cause() {
 /// checked against the parent, wherever in the chain it is.
 #[test]
 fn a_cause_its_parent_already_prints_is_not_repeated() {
-    let chain = |texts: &[&'static str]| {
-        texts.iter().rev().fold(None, |source, &text| {
-            Some(Link {
-                text,
-                source: source.map(Box::new),
-            })
-        })
-    };
-
-    let embedded_first = chain(&["outer: middle", "middle", "leaf"]).expect("a chain");
+    let embedded_first = chain(&["outer: middle", "middle", "leaf"]);
     assert_eq!(
         error_line(&embedded_first),
         "outer: middle: leaf",
         "a link the top printed was repeated, or the one below it dropped"
     );
 
-    let embedded_last = chain(&["outer", "middle: leaf", "leaf"]).expect("a chain");
+    let embedded_last = chain(&["outer", "middle: leaf", "leaf"]);
     assert_eq!(
         error_line(&embedded_last),
         "outer: middle: leaf",
@@ -84,7 +75,7 @@ fn a_cause_its_parent_already_prints_is_not_repeated() {
 
     // The grandparent names the leaf and the parent does not: checked against the line
     // so far, the leaf would be dropped.
-    let named_above = chain(&["outer leaf", "middle", "leaf"]).expect("a chain");
+    let named_above = chain(&["outer leaf", "middle", "leaf"]);
     assert_eq!(
         error_line(&named_above),
         "outer leaf: middle: leaf",
@@ -92,23 +83,35 @@ fn a_cause_its_parent_already_prints_is_not_repeated() {
     );
 }
 
-/// A foreign link is not sandbx's text, so nothing in it may rewrite the terminal or break
-/// the report onto a second line — wherever in the chain it is.
+/// Nothing in any link may rewrite the terminal or break the report onto a second line:
+/// the top message can carry a model-chosen path, a cause text sandbx did not write.
 #[test]
 fn a_cause_cannot_carry_an_escape_to_the_terminal() {
-    let hostile = Link {
-        text: "outer",
-        source: Some(Box::new(Link {
-            text: "\u{1b}[2Jname\u{202e}\nforged\tline",
-            source: None,
-        })),
-    };
+    let hostile = chain(&[
+        "\u{1b}[1mouter",
+        "mid\u{202e}dle",
+        "\u{1b}[2Jname\nforged\tline",
+    ]);
 
     assert_eq!(
         error_line(&hostile),
-        "outer: \u{fffd}[2Jname\u{fffd}\\nforged\\tline",
+        "\u{fffd}[1mouter: mid\u{fffd}dle: \u{fffd}[2Jname\\nforged\\tline",
         "an escape, a bidi override or a line break reached the report as written"
     );
+}
+
+/// A chain of [`Link`]s, outermost first.
+fn chain(texts: &[&'static str]) -> Link {
+    texts
+        .iter()
+        .rev()
+        .fold(None, |source, &text| {
+            Some(Link {
+                text,
+                source: source.map(Box::new),
+            })
+        })
+        .expect("a chain has at least one link")
 }
 
 /// One link of a hand-built chain.

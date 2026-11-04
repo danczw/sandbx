@@ -296,10 +296,14 @@ fn reported(
     for line in account {
         let _ = writeln!(stderr, "{line}");
     }
-    // Through the variant's own `Display`, so the wording is the one `main` would have
+    // Through the variant and `error_line`, so the line is the one `main` would have
     // printed had this stayed the return value.
     if let Some(error) = failed {
-        let _ = writeln!(stderr, "sandbx: {}", AgentError::Screen(error));
+        let _ = writeln!(
+            stderr,
+            "sandbx: {}",
+            crate::error_line(&AgentError::Screen(error))
+        );
     }
 
     Ok(code)
