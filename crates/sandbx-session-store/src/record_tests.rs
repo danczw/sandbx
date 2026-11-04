@@ -50,6 +50,10 @@ fn a_turn_line_with_no_stop_reads_as_none_recorded() {
         turn_of(r#"{"type":"turn","observed":null,"withheld":0,"stop":"gate_aborted"}"#).stop,
         Some(TurnStop::GateAborted)
     );
+    assert_eq!(
+        turn_of(r#"{"type":"turn","observed":null,"withheld":0,"stop":"summarised"}"#).stop,
+        Some(TurnStop::Summarised)
+    );
 }
 
 /// A later build's stop is a diagnosis this one cannot give, not a line it cannot read.

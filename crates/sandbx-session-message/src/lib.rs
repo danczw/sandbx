@@ -2,8 +2,9 @@
 //! cost.
 //!
 //! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`, `sandbx_compact`'s
-//! `PromptUsage` and `sandbx_turn`'s `TurnStop`, declared here rather than imported because a
-//! transcript is a file format, and one that moved whenever a request type moved would not be.
+//! `PromptUsage`, and, with one stop more, `sandbx_turn`'s `TurnStop`, declared here rather than
+//! imported because a transcript is a file format, and one that moved whenever a request type
+//! moved would not be.
 //! `sandbx-session-bridge` translates, and fails to compile on a new block kind; `sandbx-cli`
 //! translates the stop, the bridge having no `sandbx-turn` edge to name it by.
 //! `sandbx-session-store`'s `record` has the line format these sit in.
@@ -76,7 +77,9 @@ pub struct Usage {
 /// How a stored turn came to an end, which its messages cannot always show: a turn out of
 /// rounds and one the gate aborted both end on tool calls the model never answered.
 ///
-/// No payload, unlike `sandbx_turn`'s: resume says which stop it was, never the cap.
+/// No payload, unlike `sandbx_turn`'s: resume says which stop it was, never the cap. One
+/// stop more, too: `sandbx_turn` reports [`Summarised`](Self::Summarised) as `Answered` once
+/// the wrap-up round is merged in, which would store a capped turn as a whole one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnStop {
@@ -84,6 +87,8 @@ pub enum TurnStop {
     Answered,
     /// The turn ran out of rounds.
     RoundLimit,
+    /// The turn ran out of rounds, and a tool-less round answered it.
+    Summarised,
     /// The gate ended the turn, having lost whatever it decides with.
     GateAborted,
 }

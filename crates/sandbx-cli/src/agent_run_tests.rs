@@ -833,8 +833,8 @@ fn a_turn_out_of_rounds_is_stored_and_resumable() {
     assert_eq!(stored.messages().len(), 4);
     let last = stored.messages().last().expect("a last message");
     assert_eq!(last.role, sandbx_session_message::Role::Assistant);
-    // The wrap-up round's stop, its prose being the answer.
-    assert_eq!(stored.last_stop(), Some(StoredStop::Answered));
+    // Capped, then answered: the wrap-up round's `Answered` alone would store a whole turn.
+    assert_eq!(stored.last_stop(), Some(StoredStop::Summarised));
 }
 
 /// A `?` here would report a provider failure and cost the turn its text.
