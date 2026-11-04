@@ -9,10 +9,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use sandbx_session_error::SessionError;
-use sandbx_session_message::{CompletedTurn, Content, Message, Role, TurnStop, Usage};
+use sandbx_session_message::{CompletedTurn, TurnStop, Usage};
 use sandbx_session_store::SessionStore;
 
-use common::{exchange, said, store};
+use common::{exchange, out_of_rounds, store};
 
 /// One session with one turn in it, and the path it was written to.
 fn spoken_to(store: &SessionStore) -> Spoken {
@@ -135,25 +135,7 @@ fn results_torn_from_their_turn_line_record_no_stop() {
     let mut session = store.resume(&id).unwrap();
     session
         .append(CompletedTurn {
-            messages: &[
-                said(Role::User, "what is in /srv?"),
-                Message {
-                    role: Role::Assistant,
-                    content: vec![Content::ToolUse {
-                        id: "toolu_01".to_owned(),
-                        name: "ls".to_owned(),
-                        input: serde_json::json!({ "path": "/srv" }),
-                    }],
-                },
-                Message {
-                    role: Role::User,
-                    content: vec![Content::ToolResult {
-                        tool_use_id: "toolu_01".to_owned(),
-                        content: "notes.txt".to_owned(),
-                        is_error: None,
-                    }],
-                },
-            ],
+            messages: &out_of_rounds("what is in /srv?", "toolu_01"),
             observed: None,
             withheld: 0,
             stop: TurnStop::RoundLimit,
@@ -174,4 +156,36 @@ fn results_torn_from_their_turn_line_record_no_stop() {
     assert!(resumed.pending_call());
     // Not the first turn's `Answered`, which is the last `turn` line left on disk.
     assert_eq!(resumed.last_stop(), None);
+}
+
+/// An empty turn describes no messages, so the stop of the turn the conversation still
+/// ends on survives it — in the live session and in the file alike.
+#[test]
+fn an_empty_turn_keeps_the_stop_before_it() {
+    let fixture = store();
+    let store = fixture.store;
+    let mut session = store.create().unwrap();
+    session
+        .append(CompletedTurn {
+            messages: &out_of_rounds("what is in /srv?", "toolu_01"),
+            observed: None,
+            withheld: 0,
+            stop: TurnStop::RoundLimit,
+        })
+        .unwrap();
+
+    session
+        .append(CompletedTurn {
+            messages: &[],
+            observed: None,
+            withheld: 0,
+            stop: TurnStop::Answered,
+        })
+        .unwrap();
+
+    assert_eq!(session.last_stop(), Some(TurnStop::RoundLimit));
+    assert_eq!(
+        store.resume(session.id()).unwrap().last_stop(),
+        Some(TurnStop::RoundLimit)
+    );
 }

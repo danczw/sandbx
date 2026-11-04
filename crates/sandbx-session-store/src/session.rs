@@ -250,8 +250,9 @@ impl Session {
         self.messages.last().is_some_and(answers_only)
     }
 
-    /// How the last turn ended, or `None` when no `turn` line follows the last message —
-    /// written before the field existed, or torn off its append.
+    /// How the last turn ended, or `None` when no `turn` line after the last message says:
+    /// none follows it, torn off its append, or the one that does was written before the
+    /// field existed or names a stop this build does not.
     #[must_use]
     pub fn last_stop(&self) -> Option<TurnStop> {
         self.accounting.stop
@@ -292,7 +293,9 @@ impl Session {
         let accounting = Accounting {
             observed: turn.observed,
             withheld: turn.withheld,
-            stop: Some(turn.stop),
+            // Not an empty turn's: it would replace the stop of the turn whose messages
+            // the conversation still ends on.
+            stop: (!turn.messages.is_empty()).then_some(turn.stop),
         };
         records.push(Record::Turn(accounting));
 

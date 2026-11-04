@@ -39,3 +39,49 @@ pub(crate) fn said(role: Role, text: &str) -> Message {
 pub(crate) fn exchange(ask: &str, reply: &str) -> Vec<Message> {
     vec![said(Role::User, ask), said(Role::Assistant, reply)]
 }
+
+/// A call and its answer, the pair a turn that runs out of rounds breaks off on.
+#[allow(
+    dead_code,
+    reason = "used by transcript.rs and recovery.rs; permissions.rs builds none"
+)]
+fn called(id: &str) -> Vec<Message> {
+    vec![
+        Message {
+            role: Role::Assistant,
+            content: vec![Content::ToolUse {
+                id: id.to_owned(),
+                name: "ls".to_owned(),
+                input: serde_json::json!({ "path": "/srv" }),
+            }],
+        },
+        answered(id),
+    ]
+}
+
+/// A result answering call `id`.
+#[allow(
+    dead_code,
+    reason = "used by transcript.rs and recovery.rs; permissions.rs builds none"
+)]
+pub(crate) fn answered(id: &str) -> Message {
+    Message {
+        role: Role::User,
+        content: vec![Content::ToolResult {
+            tool_use_id: id.to_owned(),
+            content: "notes.txt".to_owned(),
+            is_error: None,
+        }],
+    }
+}
+
+/// A turn out of rounds: a prompt, a call, and its result, with no reply after it.
+#[allow(
+    dead_code,
+    reason = "used by transcript.rs and recovery.rs; permissions.rs builds none"
+)]
+pub(crate) fn out_of_rounds(ask: &str, id: &str) -> Vec<Message> {
+    let mut messages = vec![said(Role::User, ask)];
+    messages.extend(called(id));
+    messages
+}

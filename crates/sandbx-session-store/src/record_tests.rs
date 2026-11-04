@@ -32,9 +32,9 @@ fn a_turn_line_carries_its_own_type() {
     );
 }
 
-fn stop_of(line: &str) -> Option<TurnStop> {
+fn turn_of(line: &str) -> Accounting {
     match serde_json::from_str::<Record>(line).expect("a turn line") {
-        Record::Turn(turn) => turn.stop,
+        Record::Turn(turn) => turn,
         other => panic!("not a turn line: {other:?}"),
     }
 }
@@ -43,11 +43,11 @@ fn stop_of(line: &str) -> Option<TurnStop> {
 #[test]
 fn a_turn_line_with_no_stop_reads_as_none_recorded() {
     assert_eq!(
-        stop_of(r#"{"type":"turn","observed":null,"withheld":0}"#),
+        turn_of(r#"{"type":"turn","observed":null,"withheld":0}"#).stop,
         None
     );
     assert_eq!(
-        stop_of(r#"{"type":"turn","observed":null,"withheld":0,"stop":"gate_aborted"}"#),
+        turn_of(r#"{"type":"turn","observed":null,"withheld":0,"stop":"gate_aborted"}"#).stop,
         Some(TurnStop::GateAborted)
     );
 }
@@ -62,9 +62,7 @@ fn a_stop_this_build_cannot_name_reads_as_none_recorded() {
         r#"{"round_limit":{"rounds":5}}"#,
     ] {
         let line = format!(r#"{{"type":"turn","observed":null,"withheld":3,"stop":{stop}}}"#);
-        let Record::Turn(turn) = serde_json::from_str::<Record>(&line).expect("a turn line") else {
-            panic!("not a turn line: {line}");
-        };
+        let turn = turn_of(&line);
         assert_eq!(turn.stop, None, "{line}");
         // The rest of the line is still read, so nothing was skipped wholesale.
         assert_eq!(turn.withheld, 3, "{line}");
