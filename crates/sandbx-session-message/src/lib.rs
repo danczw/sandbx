@@ -78,8 +78,8 @@ pub struct Usage {
 /// rounds and one the gate aborted both end on tool calls the model never answered.
 ///
 /// No payload, unlike `sandbx_turn`'s: resume says which stop it was, never the cap. One
-/// stop more, too: `sandbx_turn` reports [`Summarised`](Self::Summarised) as `Answered` once
-/// the wrap-up round is merged in, which would store a capped turn as a whole one.
+/// stop more, too: `sandbx-cli`'s wrap-up merge takes the tool-less round's `Answered` over the
+/// cap, which would store a capped turn as a whole one; [`Summarised`](Self::Summarised) keeps it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnStop {
