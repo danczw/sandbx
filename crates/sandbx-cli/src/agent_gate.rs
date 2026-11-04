@@ -226,22 +226,11 @@ pub(super) fn printable(text: &str) -> String {
 /// `text` as [`stripped`] would leave it, except that line breaks, tabs and `\` are spelled.
 ///
 /// Spelled, not replaced: a heredoc shown as a row of U+FFFD is a command consented to
-/// unread, which `SUBJECT_CAP` exists to avoid. `\` is spelled too, or a `bash` command
-/// holding a literal `\n` would read as one with a newline — two commands, not one (#478).
-/// The output holds nothing [`stripped`] changes, which is how the two layers compose.
+/// unread, which `SUBJECT_CAP` exists to avoid. The output holds nothing [`stripped`]
+/// changes, which is how the two layers compose.
 fn spelled(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-
-    for c in text.chars() {
-        match c {
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\\' => out.push_str("\\\\"),
-            c if line_separator(c) => out.extend(c.escape_unicode()),
-            c => out.push(replaced(c)),
-        }
-    }
-
+    crate::error::push_spelled(&mut out, text);
     out
 }
 

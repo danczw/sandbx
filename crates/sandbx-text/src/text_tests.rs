@@ -35,8 +35,8 @@ fn text_that_renders_is_left_alone() {
     }
 }
 
-/// Both separators, and neither neighbour: U+202A is in [`invisible`] too, so a range
-/// widened onto it changes no sink's output, and only this test would see it.
+/// Both separators, and neither neighbour: widened onto U+202A, every sink would spell
+/// or break on a bidi override it now replaces, and no sink test holds U+202A.
 #[test]
 fn only_the_two_separators_break_a_line() {
     assert!(line_separator('\u{2028}') && line_separator('\u{2029}'));

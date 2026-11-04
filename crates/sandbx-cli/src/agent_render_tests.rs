@@ -291,6 +291,20 @@ fn a_unicode_line_separator_becomes_a_newline() {
     assert_eq!(reasoned(&["a\u{2028}b\u{2029}c"]), "a\nb\nc");
 }
 
+/// Ended by what was written, not by what the model sent: read off the raw delta, a
+/// trailing separator would leave the line open and its close write a blank one.
+#[test]
+fn a_trailing_line_separator_ends_the_reasoning_line() {
+    let mut render = captured().showing_thinking(Reasoning::Shown);
+    render.event(&AgentEvent::Thinking {
+        delta: "done\u{2029}".to_string(),
+    });
+    assert!(!render.thinking_mid_line);
+
+    render.event(&stop(StopReason::EndTurn));
+    assert_eq!(String::from_utf8(render.err).expect("utf-8"), "done\n");
+}
+
 /// Not a blanket replacement: prose, its line breaks and its indentation pass whole.
 #[test]
 fn reasoning_that_renders_is_left_alone() {

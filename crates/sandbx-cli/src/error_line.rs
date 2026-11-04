@@ -16,19 +16,18 @@ use std::error::Error;
 /// Every link is escaped, the top one too: `SandboxError` writes a model-chosen path back,
 /// and a cause is text sandbx did not write — a certificate's names come through
 /// rustls-webpki raw. Each control or [`sandbx_text::invisible`] character becomes U+FFFD
-/// rather than dropped, and `\n`, `\t` and [`sandbx_text::line_separator`]s are spelled, so
-/// the report stays one line. `\` is spelled too, or a spelled `\n` could be a literal one.
+/// rather than dropped, and line breaks are spelled, so the report stays one line.
 #[must_use]
 pub fn error_line(error: &dyn Error) -> String {
     let mut parent = error.to_string();
     let mut line = String::with_capacity(parent.len());
-    push_inert(&mut line, &parent);
+    push_spelled(&mut line, &parent);
     let mut cause = error.source();
     while let Some(link) = cause {
         let text = link.to_string();
         if !parent.contains(&text) {
             line.push_str(": ");
-            push_inert(&mut line, &text);
+            push_spelled(&mut line, &text);
         }
         parent = text;
         cause = link.source();
@@ -36,8 +35,13 @@ pub fn error_line(error: &dyn Error) -> String {
     line
 }
 
-/// `text` onto `line`, with everything that could rewrite the terminal replaced.
-fn push_inert(line: &mut String, text: &str) {
+/// `text` onto `line`, with everything that could rewrite the terminal replaced, and line
+/// breaks, tabs and `\` spelled.
+///
+/// The gate's field spelling too, so the two one-line sinks cannot drift apart. `\` is
+/// spelled, or a spelled `\n` could be a literal one — for a `bash` command, two commands
+/// read as one (#478).
+pub(crate) fn push_spelled(line: &mut String, text: &str) {
     for c in text.chars() {
         match c {
             '\n' => line.push_str("\\n"),

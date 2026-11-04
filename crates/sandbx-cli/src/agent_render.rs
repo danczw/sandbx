@@ -185,8 +185,9 @@ impl<W: Write, E: Write> Render<W, E> {
                 // Stripped, being model-chosen: a delta could otherwise hide or erase the
                 // lines after it, the gate's verdicts among them (#239).
                 if self.reasoning == Reasoning::Shown && !delta.is_empty() {
-                    self.put(inert(delta).as_bytes());
-                    self.thinking_mid_line = !delta.ends_with('\n');
+                    let shown = inert(delta);
+                    self.put(shown.as_bytes());
+                    self.thinking_mid_line = !shown.ends_with('\n');
                 }
             }
             AgentEvent::Stop { .. } => {

@@ -22,5 +22,6 @@ mod sandbox_run_error;
 
 pub use agent_error::AgentError;
 pub use error_line::error_line;
+pub(crate) use error_line::push_spelled;
 pub use hash_error::HashError;
 pub use sandbox_run_error::SandboxRunError;
