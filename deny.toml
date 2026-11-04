@@ -32,6 +32,15 @@ multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
 
+# Only the client opens connections, so only it may name reqwest. Any other edge is a
+# second manifest that can drop `default-features = false`, and reqwest's `default`
+# puts aws-lc-rs on the `rustls` that `sandbx-anthropic` drives with `ring`:
+# `install_default` is first-wins, so its installer goes a silent no-op (#456).
+# `deny-wrappers.py` checks only `sandbx-*` blocks, so this one is cargo-deny's alone.
+[[bans.deny]]
+name = "reqwest"
+wrappers = ["sandbx-anthropic"]
+
 # Which workspace crate may depend on which (#329). `wrappers` reads the whole
 # dependency graph, so a path dependency counts: adding an edge that is not listed
 # here fails `bans` with the unmatched parent named. Dev-dependencies are edges too.

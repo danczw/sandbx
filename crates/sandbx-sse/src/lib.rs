@@ -10,16 +10,13 @@ use sandbx_provider::ProviderError;
 
 /// Turn a byte stream into a stream of framed SSE events.
 ///
-/// `bytes_stream()` chunks with no relation to line boundaries, and `data:` payloads
+/// Chunks arrive with no relation to line boundaries, and `data:` payloads
 /// can be multi-byte UTF-8, so bytes are buffered raw and decoded only once a range
 /// ends at a `\n`: splitting on `0x0A` is safe mid sequence, because no UTF-8
 /// continuation or lead byte takes that value.
 ///
 /// `Send` is stated rather than left to leak out of the opaque type, so a non-`Send`
 /// field added to the state below fails here, not at the coercion in a client's `stream_chat`.
-///
-/// Any error and not reqwest's: a reqwest edge here is a second manifest whose
-/// `default-features` can swap the TLS provider under `sandbx-anthropic` silently (#456).
 pub fn tokenize<E>(
     bytes: impl Stream<Item = Result<Bytes, E>> + Unpin + Send,
 ) -> impl futures_util::stream::FusedStream<Item = Result<String, ProviderError>> + Send
