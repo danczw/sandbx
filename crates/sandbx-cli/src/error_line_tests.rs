@@ -92,6 +92,25 @@ fn a_cause_its_parent_already_prints_is_not_repeated() {
     );
 }
 
+/// A foreign link is not sandbx's text, so nothing in it may rewrite the terminal or break
+/// the report onto a second line — wherever in the chain it is.
+#[test]
+fn a_cause_cannot_carry_an_escape_to_the_terminal() {
+    let hostile = Link {
+        text: "outer",
+        source: Some(Box::new(Link {
+            text: "\u{1b}[2Jname\u{202e}\nforged\tline",
+            source: None,
+        })),
+    };
+
+    assert_eq!(
+        error_line(&hostile),
+        "outer: \u{fffd}[2Jname\u{fffd}\\nforged\\tline",
+        "an escape, a bidi override or a line break reached the report as written"
+    );
+}
+
 /// One link of a hand-built chain.
 #[derive(Debug)]
 struct Link {
