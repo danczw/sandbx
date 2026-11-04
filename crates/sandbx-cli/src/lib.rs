@@ -12,7 +12,7 @@ mod sandbox_run;
 
 pub use agent::{AgentRun, Tui};
 pub use cli::{Cli, Command};
-pub use error::{AgentError, HashError, SandboxRunError};
+pub use error::{AgentError, HashError, SandboxRunError, error_line};
 pub use hash::Hash;
 pub use sandbox_run::SandboxRun;
 

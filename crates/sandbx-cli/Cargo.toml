@@ -57,6 +57,7 @@ serde_json = "1.0.151"
 tempfile = "3.27.0"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 sandbx-pty-fixture = { path = "../sandbx-pty-fixture" }
+# The test's `SecretString` is `AnthropicClient::new`'s, so this tracks `sandbx-anthropic`'s.
 secrecy = "0.10.3"
 
 [lints]

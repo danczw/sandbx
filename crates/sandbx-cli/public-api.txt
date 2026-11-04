@@ -217,3 +217,4 @@ impl core::marker::Unpin for sandbx_cli::Tui
 impl core::marker::UnsafeUnpin for sandbx_cli::Tui
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_cli::Tui
 impl core::panic::unwind_safe::UnwindSafe for sandbx_cli::Tui
+pub fn sandbx_cli::error_line(&dyn core::error::Error) -> alloc::string::String

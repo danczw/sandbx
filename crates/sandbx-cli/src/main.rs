@@ -10,7 +10,7 @@ use std::{env, io};
 
 use clap::Parser;
 use clap::error::ErrorKind;
-use sandbx_cli::{Cli, Command};
+use sandbx_cli::{Cli, Command, error_line};
 
 /// The exit code for a command line sandbx would not accept.
 ///
@@ -108,36 +108,10 @@ fn report(result: Result<i32, impl Error>, failure: u8) -> ExitCode {
             // `eprintln!`s above keep theirs — they run before any screen exists, so
             // stderr there is the one the operator started the process with, not one
             // sandbx took and lost.
-            let _ = writeln!(io::stderr(), "sandbx: {}", rendered(&error));
+            let _ = writeln!(io::stderr(), "sandbx: {}", error_line(&error));
             ExitCode::from(failure)
         }
     }
-}
-
-/// `error` and every cause below it, on one line.
-///
-/// Every sandbx error already writes its source into its own message, so a link is
-/// printed only when its parent's did not include it. That check is against the parent
-/// and not the line so far, so a short cause is not hidden by unrelated text above it.
-/// What this adds is the foreign links: reqwest's message names only the URL, and the
-/// DNS failure, the refused connection or the rejected certificate sits below it (#457).
-///
-/// The walk follows `source()` and nothing else, so an error that withholds a cause
-/// keeps it withheld — `AuthError::Malformed` has none because toml's quotes the key.
-fn rendered(error: &dyn Error) -> String {
-    let mut line = error.to_string();
-    let mut parent = line.clone();
-    let mut cause = error.source();
-    while let Some(link) = cause {
-        let text = link.to_string();
-        if !parent.contains(&text) {
-            line.push_str(": ");
-            line.push_str(&text);
-        }
-        parent = text;
-        cause = link.source();
-    }
-    line
 }
 
 /// Drive a turn to completion on a runtime built for it.
