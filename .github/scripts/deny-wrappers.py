@@ -337,7 +337,10 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
                 " check.",
             )
     for relative in CARGO_CONFIG_FILES:
-        if (root / relative).exists():
+        # `is_symlink` too: `exists` follows a link, so one dangling here, onto a file
+        # a later step writes, would read as absent.
+        config = root / relative
+        if config.is_symlink() or config.exists():
             error(
                 f"{relative} exists.",
                 "Cargo config can swap a crate in through more keys than this check"
@@ -685,9 +688,10 @@ MEMBER_DEP = 'sandbx-q = { path = "../q" }\n'
 PATCH = '[patch.crates-io]\nsandbx-shim = { path = "shim" }\n'
 
 # shape -> (`sandbx-p`'s `[dependencies]`, text appended to the root manifest, and a
-# `(path, body)` per `.cargo/` file). Indexed, not `.get()`: a misspelled shape must
-# raise rather than build the control and report a verdict about it.
-STRAY_SHAPES: dict[str, tuple[str, str, tuple[tuple[str, str], ...]]] = {
+# `(path, body)` per `.cargo/` file, a `None` body being a dangling symlink). Indexed,
+# not `.get()`: a misspelled shape must raise rather than build the control and report
+# a verdict about it.
+STRAY_SHAPES: dict[str, tuple[str, str, tuple[tuple[str, str | None], ...]]] = {
     "stray_control": (MEMBER_DEP, "", ()),
     "excluded_path": (MEMBER_DEP + 'sandbx-shim = { path = "../shim" }\n', "", ()),
     "outside_root_path": (
@@ -708,6 +712,8 @@ STRAY_SHAPES: dict[str, tuple[str, str, tuple[tuple[str, str], ...]]] = {
         (".cargo/patch.toml", PATCH))),
     "source_in_legacy_config": (MEMBER_DEP, "", ((".cargo/config", (
         '[source.crates-io]\nreplace-with = "v"\n[source.v]\ndirectory = "vend"\n')),)),
+    # Absent to `exists()`, and live once a build step writes the target.
+    "dangling_config_symlink": (MEMBER_DEP, "", ((".cargo/config.toml", None),)),
 }
 
 
@@ -735,7 +741,10 @@ def write_stray_fixture(root: pathlib.Path, shape: str) -> None:
     )
     for relative, body in config_files:
         (root / relative).parent.mkdir(exist_ok=True)
-        (root / relative).write_text(body)
+        if body is None:
+            (root / relative).symlink_to("../target/gen.toml")
+        else:
+            (root / relative).write_text(body)
     (root / "deny.toml").write_text(
         '[[bans.deny]]\nname = "sandbx-q"\nwrappers = ["sandbx-p"]\n'
     )
@@ -756,6 +765,7 @@ STRAY_CASES: list[tuple[str, bool, str, str]] = [
         ("replace_in_manifest", False, "Cargo.toml sets [replace]"),
         ("include_in_cargo_config", False, ".cargo/config.toml exists"),
         ("source_in_legacy_config", False, ".cargo/config exists"),
+        ("dangling_config_symlink", False, ".cargo/config.toml exists"),
     )
 ]
 
