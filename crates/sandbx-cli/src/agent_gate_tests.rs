@@ -548,7 +548,7 @@ fn a_literal_backslash_n_is_not_a_newline() {
 }
 
 /// `Zl` and `Zp`, not `Cc`: a viewer that breaks on them would show a second line, so they
-/// are spelled as the newline they stand for is.
+/// are spelled, as a newline is.
 #[test]
 fn a_unicode_line_separator_is_spelled() {
     assert_eq!(printable("a\u{2028}b\u{2029}c"), "a\\u{2028}b\\u{2029}c");
