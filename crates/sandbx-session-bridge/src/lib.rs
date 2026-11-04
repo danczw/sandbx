@@ -83,8 +83,7 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
 /// What resuming tells the operator about a conversation that breaks off on unanswered
 /// calls, or `None` when it does not.
 ///
-/// Beside, not after: the model sees its own unanswered work (#188). The reason is read
-/// from the last `turn` line and hedged where there is none to read (#226).
+/// Beside, not after: the model sees its own unanswered work (#188).
 fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
     if !pending {
         return None;
@@ -98,8 +97,8 @@ fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
             "its last turn ended with no one left to approve a call; this prompt goes to \
              the model beside a tool call it never answered"
         }
-        // `Answered` beside an unanswered call is a hand edit; neither it nor no record
-        // says why the conversation stops where it does.
+        // `Answered` beside an unanswered call is a hand edit, so it says no more than no
+        // record does.
         Some(TurnStop::Answered) | None => {
             "its last turn ends on a tool call the model never answered, and the transcript \
              does not say why; this prompt goes to the model beside it"
