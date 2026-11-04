@@ -86,7 +86,7 @@ fn a_cause_its_parent_already_prints_is_not_repeated() {
 /// Nothing in any link may rewrite the terminal or break the report onto a second line:
 /// the top message can carry a model-chosen path, a cause text sandbx did not write.
 #[test]
-fn a_cause_cannot_carry_an_escape_to_the_terminal() {
+fn no_link_can_carry_an_escape_to_the_terminal() {
     let hostile = chain(&[
         "\u{1b}[1mouter",
         "mid\u{202e}dle",
