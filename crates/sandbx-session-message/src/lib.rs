@@ -1,10 +1,11 @@
 //! What a transcript line holds: one turn of the conversation, and what the request for it
 //! cost.
 //!
-//! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`,
-//! `sandbx_compact`'s `PromptUsage` and `sandbx_turn`'s `TurnStop`, declared here rather than imported because a transcript
-//! is a file format, and one that moved whenever a request type moved would not be.
-//! `sandbx-session-bridge` translates, and fails to compile on a new block kind.
+//! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`, `sandbx_compact`'s
+//! `PromptUsage` and `sandbx_turn`'s `TurnStop`, declared here rather than imported because a
+//! transcript is a file format, and one that moved whenever a request type moved would not be.
+//! `sandbx-session-bridge` translates, and fails to compile on a new block kind; `sandbx-cli`
+//! translates the stop, the bridge having no `sandbx-turn` edge to name it by.
 //! `sandbx-session-store`'s `record` has the line format these sit in.
 
 use serde::{Deserialize, Serialize};

@@ -47,6 +47,7 @@ pub(crate) struct Accounting {
     pub(crate) withheld: usize,
     /// `None` on a line written before the field existed, which is why it tolerates a
     /// missing key rather than bumping [`VERSION`]: a bump refuses every transcript to date.
+    /// `None` too on a turn with no messages, which has none of its own to describe.
     #[serde(default, deserialize_with = "tolerant")]
     pub(crate) stop: Option<TurnStop>,
 }
@@ -61,8 +62,9 @@ fn tolerant<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<TurnSto
 
 impl Accounting {
     /// Fold one turn's figures in: `observed` keeps the last figure reported, `withheld`
-    /// whatever the last turn cut, `stop` how the last turn ended. The one copy of the rule, which [`fold`] replays and
-    /// `Session::append` applies, so a resumed session and a continued one agree.
+    /// whatever the last turn cut, `stop` the last one recorded. The one copy of the rule,
+    /// which [`fold`] replays and `Session::append` applies, so a resumed session and a
+    /// continued one agree.
     ///
     /// Nothing reads these figures while compaction is off, which it is by default. Do not
     /// delete them as dead weight: they are recoverable only when the turn produces them, and
@@ -70,7 +72,7 @@ impl Accounting {
     pub(crate) fn absorb(&mut self, turn: Self) {
         self.observed = turn.observed.or(self.observed);
         self.withheld = turn.withheld;
-        self.stop = turn.stop;
+        self.stop = turn.stop.or(self.stop);
     }
 }
 

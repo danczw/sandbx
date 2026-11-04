@@ -9,7 +9,7 @@ use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
 use sandbx_session_message::{CompletedTurn, Content, Message, Role, TurnStop, Usage};
 
-use common::{exchange, said, store};
+use common::{answered, exchange, out_of_rounds, said, store};
 
 fn usage(input: u32) -> Usage {
     Usage {
@@ -17,39 +17,6 @@ fn usage(input: u32) -> Usage {
         cache_read_input_tokens: None,
         cache_creation_input_tokens: None,
     }
-}
-
-/// A call and its answer, the pair a turn that runs out of rounds breaks off on.
-fn called(id: &str) -> Vec<Message> {
-    vec![
-        Message {
-            role: Role::Assistant,
-            content: vec![Content::ToolUse {
-                id: id.to_owned(),
-                name: "ls".to_owned(),
-                input: serde_json::json!({ "path": "/srv" }),
-            }],
-        },
-        answered(id),
-    ]
-}
-
-fn answered(id: &str) -> Message {
-    Message {
-        role: Role::User,
-        content: vec![Content::ToolResult {
-            tool_use_id: id.to_owned(),
-            content: "notes.txt".to_owned(),
-            is_error: None,
-        }],
-    }
-}
-
-/// A turn out of rounds: a prompt, a call, and its result, with no reply after it.
-fn out_of_rounds(ask: &str, id: &str) -> Vec<Message> {
-    let mut messages = vec![said(Role::User, ask)];
-    messages.extend(called(id));
-    messages
 }
 
 #[test]
