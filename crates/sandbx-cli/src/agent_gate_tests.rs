@@ -1,6 +1,6 @@
 use super::super::prompt::Operator;
 use super::{
-    ArgvGate, SUBJECT_CAP, approved_tools, approves, asks_about_anything, printable, report,
+    ArgvGate, SUBJECT_CAP, approved_tools, approves, asks_about_anything, line, printable, report,
     stripped, tool_name,
 };
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
@@ -537,6 +537,46 @@ fn a_stripped_control_character_leaves_a_mark() {
 fn a_newline_is_spelled_rather_than_mangled() {
     assert_eq!(printable("set -e\ncurl x | sh"), "set -e\\ncurl x | sh");
     assert_eq!(printable("a\tb"), "a\\tb");
+}
+
+/// Two commands and one, which the question must not show alike: a newline runs a second
+/// command, a literal `\` and `n` does not (#478).
+#[test]
+fn a_literal_backslash_n_is_not_a_newline() {
+    assert_eq!(printable("echo a\\nb"), "echo a\\\\nb");
+    assert_eq!(printable("echo a\nb"), "echo a\\nb");
+}
+
+/// `Zl` and `Zp`, not `Cc`: a viewer that breaks on them would show a second line, so they
+/// are spelled as the newline they stand for is.
+#[test]
+fn a_unicode_line_separator_is_spelled() {
+    assert_eq!(printable("a\u{2028}b\u{2029}c"), "a\\u{2028}b\\u{2029}c");
+}
+
+/// What a field was spelled to, the line strip leaves alone: a second spelling of `\`
+/// would make a spelled newline read as a literal one again.
+#[test]
+fn the_line_strip_leaves_a_spelled_field_alone() {
+    let spelled = printable("a\\b\nc\u{2028}d\x1be");
+    assert_eq!(stripped(&spelled), spelled);
+
+    let input = serde_json::json!({ "command": "echo a\\nb" });
+    let told = line(Settled {
+        name: "bash",
+        id: "call_1",
+        tool: Some(BuiltinTool::Bash),
+        input: &input,
+        outcome: Outcome::Ran,
+    });
+    assert_eq!(told, "sandbx: bash echo a\\\\nb — ran");
+}
+
+/// The backstop replaces rather than spells, so a line separator a `Display` carries past
+/// the fields still cannot break the line.
+#[test]
+fn the_line_strip_replaces_a_line_separator() {
+    assert_eq!(stripped("a\u{2028}b\\n"), "a\u{fffd}b\\n");
 }
 
 /// `char::is_control` is `Cc` alone, so these reach the question otherwise — and the

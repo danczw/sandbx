@@ -4,7 +4,7 @@
 //! here renders a *requested* call: only a settled one has an outcome.
 
 use sandbx_event::AgentEvent;
-use sandbx_text::invisible;
+use sandbx_text::{invisible, line_separator};
 
 use crate::view::GUTTER_MARK;
 
@@ -140,15 +140,17 @@ impl Transcript {
 /// Model-chosen text as it may be written to a cell. ratatui writes a cell's content
 /// verbatim, so an escape sequence in an answer would rewrite the screen; replaced with
 /// U+FFFD rather than dropped, since a dropped string reads as plausible prose. `\n`
-/// survives as the view's split point; a tab becomes spaces, nothing else rendering a cell
-/// that holds one. [`GUTTER_MARK`] gets the same replacement: the view draws it to mark a
-/// row as sandbx's, so text carrying it could forge that claim.
+/// survives as the view's split point, and U+2028 and U+2029 become one; a tab becomes
+/// spaces, nothing else rendering a cell that holds one. [`GUTTER_MARK`] gets the same
+/// replacement: the view draws it to mark a row as sandbx's, so text carrying it could
+/// forge that claim.
 fn printable(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
 
     for c in text.chars() {
         match c {
             '\n' => out.push('\n'),
+            c if line_separator(c) => out.push('\n'),
             '\t' => out.push_str("    "),
             c if c.is_control() || invisible(c) || forgeable(c) => out.push('\u{fffd}'),
             c => out.push(c),

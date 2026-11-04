@@ -179,6 +179,18 @@ fn a_newline_survives_and_a_tab_becomes_spaces() {
     assert_eq!(printable("one\ntwo\tthree"), "one\ntwo    three");
 }
 
+/// The view splits on `\n` alone, so `Zl` and `Zp` become it: kept, a viewer that breaks
+/// on them would split a row the view drew as one.
+#[test]
+fn a_unicode_line_separator_becomes_a_newline() {
+    let entries = folded(&[text("one\u{2028}two\u{2029}three")], Reasoning::Hidden);
+
+    assert_eq!(
+        entries.last(),
+        Some(&entry(Kind::Answer, "one\ntwo\nthree"))
+    );
+}
+
 #[test]
 fn a_character_that_draws_as_the_gutter_mark_does_not_survive_either() {
     let entries = folded(&[text("\u{ffe8} and \u{2503} and |")], Reasoning::Hidden);
