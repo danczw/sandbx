@@ -30,7 +30,7 @@ use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use super::render::Answer;
 use super::{AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
-use crate::{AgentError, error_line};
+use crate::AgentError;
 
 /// `sandbx tui [--allow-…] -- <prompt>`
 #[derive(Debug, clap::Args)]
@@ -225,7 +225,7 @@ impl Tui {
             Ok(Err(error)) => {
                 // Drawn before it is returned: the operator reads the reason on the screen
                 // rather than in what scrolls past after it is torn down.
-                let line = format!("sandbx: {}", error_line(&error));
+                let line = format!("sandbx: {}", crate::error_line(&error));
                 (Err(AgentError::from(error)), None, vec![line])
             }
         };

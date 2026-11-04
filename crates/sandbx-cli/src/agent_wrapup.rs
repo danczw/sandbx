@@ -26,7 +26,6 @@ use sandbx_tools::ExecutionContext;
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use super::{Render, gate};
-use crate::error_line;
 
 /// What the model is told in place of the tools it may no longer call.
 ///
@@ -107,7 +106,10 @@ pub(super) async fn run<W: Write, E: Write>(
         // Reported, not propagated: a `?` here would turn a turn that did real work
         // into exit 1 with its text already written.
         Err(error) => {
-            eprintln!("sandbx: the wrap-up request failed: {}", error_line(&error));
+            eprintln!(
+                "sandbx: the wrap-up request failed: {}",
+                crate::error_line(&error)
+            );
             WrapUp {
                 outcome: first,
                 summarised: false,

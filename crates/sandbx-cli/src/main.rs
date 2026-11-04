@@ -10,7 +10,7 @@ use std::{env, io};
 
 use clap::Parser;
 use clap::error::ErrorKind;
-use sandbx_cli::{Cli, Command, error_line};
+use sandbx_cli::{Cli, Command};
 
 /// The exit code for a command line sandbx would not accept.
 ///
@@ -108,7 +108,7 @@ fn report(result: Result<i32, impl Error>, failure: u8) -> ExitCode {
             // `eprintln!`s above keep theirs — they run before any screen exists, so
             // stderr there is the one the operator started the process with, not one
             // sandbx took and lost.
-            let _ = writeln!(io::stderr(), "sandbx: {}", error_line(&error));
+            let _ = writeln!(io::stderr(), "sandbx: {}", sandbx_cli::error_line(&error));
             ExitCode::from(failure)
         }
     }
