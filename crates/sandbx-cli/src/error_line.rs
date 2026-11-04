@@ -13,10 +13,10 @@ use std::error::Error;
 /// The walk follows `source()` and nothing else, so an error that withholds a cause
 /// keeps it withheld — `AuthError::Malformed` has none because toml's quotes the key.
 ///
-/// A foreign link is text sandbx did not write — a certificate's names come through
-/// rustls-webpki raw — so an escape in one would rewrite the operator's terminal. Each
-/// control or [`sandbx_text::invisible`] character is replaced with U+FFFD rather than
-/// dropped, and `\n` and `\t` are spelled, so the report stays the one line it reads as.
+/// Every link is escaped, the top one too: `SandboxError` writes a model-chosen path back,
+/// and a cause is text sandbx did not write — a certificate's names come through
+/// rustls-webpki raw. Each control or [`sandbx_text::invisible`] character becomes U+FFFD
+/// rather than dropped, and `\n` and `\t` are spelled, so the report stays one line.
 #[must_use]
 pub fn error_line(error: &dyn Error) -> String {
     let mut parent = error.to_string();
