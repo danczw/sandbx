@@ -1697,6 +1697,7 @@ dependencies = [
  "sandbx-tools",
  "sandbx-tui-input",
  "sandbx-turn",
+ "secrecy",
  "serde_json",
  "tempfile",
  "tokio",
