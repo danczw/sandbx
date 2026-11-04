@@ -13,7 +13,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use sandbx_session_error::SessionError;
-use sandbx_session_message::{CompletedTurn, Content, Message, Role};
+use sandbx_session_message::{CompletedTurn, Content, Message, Role, TurnStop};
 use sandbx_session_store::SessionStore;
 
 use common::{Store, store};
@@ -50,6 +50,7 @@ fn spoken_to(store: &SessionStore) -> sandbx_session_id::SessionId {
             messages: &exchange(),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .expect("the turn is appended");
     session.id().clone()

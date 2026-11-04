@@ -1,8 +1,10 @@
 use sandbx_compact::PromptUsage;
 use sandbx_prompt::{ContentBlock, RequestMessage, Role};
-use sandbx_session_message::Content;
+use sandbx_session_message::{Content, TurnStop};
 
-use super::{merge_user_runs, request_history, request_usage, stored_messages, stored_usage};
+use super::{
+    merge_user_runs, request_history, request_usage, resume_note, stored_messages, stored_usage,
+};
 
 fn blocks() -> Vec<ContentBlock> {
     vec![
@@ -147,4 +149,35 @@ fn a_figure_nobody_reported_stays_unreported() {
     assert_eq!(back.input_tokens, Some(1204));
     assert_eq!(back.cache_read_tokens, None);
     assert_eq!(back.cache_write_tokens, None);
+}
+
+/// Every stop, and none recorded.
+const STOPS: [Option<TurnStop>; 4] = [
+    None,
+    Some(TurnStop::Answered),
+    Some(TurnStop::RoundLimit),
+    Some(TurnStop::GateAborted),
+];
+
+#[test]
+fn a_settled_conversation_resumes_without_a_note() {
+    for stop in STOPS {
+        assert_eq!(resume_note(false, stop), None, "{stop:?}");
+    }
+}
+
+/// A gate abort ends on the same unanswered call a round limit does, and was once
+/// reported as one (#226).
+#[test]
+fn an_unanswered_call_is_explained_by_the_stop_recorded() {
+    let note = |stop| resume_note(true, stop).expect("a note");
+
+    assert!(note(Some(TurnStop::RoundLimit)).contains("ran out of rounds"));
+    assert!(note(Some(TurnStop::GateAborted)).contains("approve"));
+    for unknown in [None, Some(TurnStop::Answered)] {
+        assert!(note(unknown).contains("does not say why"), "{unknown:?}");
+    }
+    // Each names one cause, so no reason is reported for another's.
+    assert!(!note(Some(TurnStop::GateAborted)).contains("rounds"));
+    assert!(!note(None).contains("rounds"));
 }

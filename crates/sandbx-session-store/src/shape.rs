@@ -6,10 +6,10 @@
 //!
 //! Shape, not provenance: no `tool_use_id` is matched against the call it claims to answer.
 //! The load path matches none anywhere, so an interior fabricated result already passes,
-//! and checking one junction would buy nothing. What shape alone costs is one diagnosis: an
-//! append torn after its `tool_result` line reads as a round limit, and resuming tells the
-//! model so. Taken over refusing the file, which costs the conversation; the reason is
-//! inferred because the `turn` record carries none (#190, #226).
+//! and checking one junction would buy nothing. Nor does shape say why a conversation breaks
+//! off on unanswered calls: the `turn` line does, and where none follows the last message —
+//! written before it recorded one, or torn off its append — resume hedges its line to the
+//! operator rather than refusing the file, which would cost the conversation (#226).
 
 use sandbx_session_message::{Content, Message, Role};
 

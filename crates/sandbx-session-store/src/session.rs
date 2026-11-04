@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use nix::fcntl::OFlag;
 use sandbx_session_error::SessionError;
 use sandbx_session_id::{SessionId, clock_millis};
-use sandbx_session_message::{CompletedTurn, Message, Usage};
+use sandbx_session_message::{CompletedTurn, Message, TurnStop, Usage};
 
 use crate::record::{Accounting, Header, Record, Replayed, VERSION, fold};
 use crate::shape::{alternating, answers_only, follows, opens, resumable};
@@ -242,11 +242,19 @@ impl Session {
         self.accounting.withheld
     }
 
-    /// True when the conversation breaks off on tool calls the model never answered,
-    /// which is a turn that ran out of rounds (#188).
+    /// True when the conversation breaks off on tool calls the model never answered (#188).
+    ///
+    /// Shape alone, so it does not say why: [`Session::last_stop`] does, when recorded.
     #[must_use]
     pub fn pending_call(&self) -> bool {
         self.messages.last().is_some_and(answers_only)
+    }
+
+    /// How the last turn ended, or `None` when no `turn` line follows the last message —
+    /// written before the field existed, or torn off its append.
+    #[must_use]
+    pub fn last_stop(&self) -> Option<TurnStop> {
+        self.accounting.stop
     }
 
     /// True when somebody else can read the transcript, which resumed anyway: by the
@@ -284,6 +292,7 @@ impl Session {
         let accounting = Accounting {
             observed: turn.observed,
             withheld: turn.withheld,
+            stop: Some(turn.stop),
         };
         records.push(Record::Turn(accounting));
 
