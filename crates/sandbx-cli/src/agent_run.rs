@@ -458,8 +458,7 @@ impl AgentRun {
         let outcome = outcome?;
 
         if let Some(session) = session {
-            let stop = stored_stop(outcome.stop, ending);
-            self.save(session, &asked, outcome, stop, &merged)?;
+            self.save(session, &asked, outcome, ending, &merged)?;
         }
 
         // Last: an append still happens for a closed stdout — the transcript is the
@@ -477,7 +476,7 @@ impl AgentRun {
         mut session: Session,
         asked: &RequestMessage,
         outcome: TurnOutcome,
-        stop: StoredStop,
+        ending: Option<Unfinished>,
         merged: &Merged,
     ) -> Result<(), AgentError> {
         let mut messages = session::stored_messages(slice::from_ref(asked));
@@ -487,7 +486,7 @@ impl AgentRun {
             observed: outcome.usage.map(session::stored_usage),
             // Back out of the request's index space, which the merge moved.
             withheld: merged.unmerged(outcome.withheld),
-            stop,
+            stop: stored_stop(outcome.stop, ending),
         };
 
         match session.append(turn) {
@@ -509,15 +508,17 @@ impl AgentRun {
 /// How the transcript records a turn's end: `stop`, unless `ending` says the answer is the
 /// wrap-up round's, which `stop` cannot.
 ///
-/// No `_` arm, so a fourth way to end cannot be stored as one of these.
-pub(super) fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredStop {
-    match stop {
-        TurnStop::Answered if matches!(ending, Some(Unfinished::Summarised(_))) => {
-            StoredStop::Summarised
-        }
-        TurnStop::Answered => StoredStop::Answered,
-        TurnStop::RoundLimit { .. } => StoredStop::RoundLimit,
-        TurnStop::GateAborted => StoredStop::GateAborted,
+/// Exhaustive on both, with no `_` arm, so a new way to end, or a new kind of answer after
+/// the cap, has to be given a stop here rather than falling through to a whole turn.
+fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredStop {
+    match (stop, ending) {
+        (TurnStop::Answered, Some(Unfinished::Summarised(_))) => StoredStop::Summarised,
+        (
+            TurnStop::Answered,
+            None | Some(Unfinished::CutShort(_) | Unfinished::Discarded(_) | Unfinished::Aborted),
+        ) => StoredStop::Answered,
+        (TurnStop::RoundLimit { .. }, _) => StoredStop::RoundLimit,
+        (TurnStop::GateAborted, _) => StoredStop::GateAborted,
     }
 }
 

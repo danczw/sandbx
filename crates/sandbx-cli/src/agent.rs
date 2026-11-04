@@ -27,7 +27,7 @@ pub(crate) use prompt::APPROVE_CALL;
 
 // Reached as `super::…` from the sibling modules rather than used here: `tui` takes the
 // two prompt types and the two exit codes, `render` the exit codes, `wrapup` the renderer.
-use agent_run::{INCOMPLETE, NO_CONSENT, stored_stop};
+use agent_run::{INCOMPLETE, NO_CONSENT};
 use prompt::{Approve, Terminal};
 use render::Render;
 

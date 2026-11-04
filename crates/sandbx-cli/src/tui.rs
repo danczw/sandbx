@@ -29,9 +29,7 @@ use sandbx_tui_input::{Keys, Stopped};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use super::render::Answer;
-use super::{
-    AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation, stored_stop,
-};
+use super::{AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
 
 /// `sandbx tui [--allow-…] -- <prompt>`
@@ -237,9 +235,8 @@ impl Tui {
         if let Some(outcome) = outcome
             && let Some(session) = session
         {
-            // No wrap-up round here, so no answer that is one.
-            let stop = stored_stop(outcome.stop, None);
-            self.run.save(session, &asked, outcome, stop, &merged)?;
+            // `None`: no wrap-up round is sent here.
+            self.run.save(session, &asked, outcome, None, &merged)?;
         }
 
         // Held until a key: the alternate screen takes the transcript with it, and a turn
