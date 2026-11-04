@@ -137,19 +137,22 @@ passing run already prints. Measured on #415 and reproduced against a second
 block, which is why it is not a suspicion about the tool.
 
 `deny-wrappers.py` reads the allowlist back against `cargo metadata` and fails on
-three things cargo-deny only warns about or ignores: a `sandbx-*` name that
-resolves to no package, a crate something depends on having no block at all, and
-an array that is not exactly the real parent set — an extra parent being
+four things cargo-deny only warns about or ignores: a `sandbx-*` name that
+resolves to no package, a crate something depends on having no block at all, an
+array that is not exactly the real parent set — an extra parent being
 `warning[unused-wrapper]` again, which passes while overstating who may depend on
-the crate. It runs before `cargo-deny-action` for the reason the release-channel
-check does, and its `--self-test` runs first, against scratch workspaces, so a
-checker that has stopped checking fails rather than passing the real file by
-default. Every check a `deny.toml` can reach is mutation-tested: disable it and a
-named case fails, and the harness asserts the set of survivors, so a check that
-becomes untestable fails the run rather than passing quietly. Exactly two
-survive, both unreachable from any config and both saying so in their comments —
-the zero-comparison guard and the empty-package-set guard. They assert against a
-future edit to the keying or the graph read, not against a file.
+the crate — and a normal or build edge into a fixture crate `DEV_ONLY` names.
+`wrappers` has no way to say "only as a dev-dependency", so cargo-deny passes a
+listed parent's dev edge turned normal at exit 0 (#465). It runs before
+`cargo-deny-action` for the reason the release-channel check does, and its
+`--self-test` runs first, against scratch workspaces, so a checker that has
+stopped checking fails rather than passing the real file by default. Every check
+a `deny.toml` can reach is mutation-tested: disable it and a named case fails,
+and the harness asserts the set of survivors, so a check that becomes untestable
+fails the run rather than passing quietly. Exactly two survive, both unreachable
+from any config and both saying so in their comments — the zero-comparison guard
+and the empty-package-set guard. They assert against a future edit to the keying
+or the graph read, not against a file.
 
 **It also refuses three keys that make cargo-deny's own enforcement vacuous**,
 each the same hole as a typo'd name wearing different clothes, and all three
