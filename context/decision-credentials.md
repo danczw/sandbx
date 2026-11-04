@@ -172,10 +172,11 @@ a wider sandbox:
 network it did not previously have" refutes itself.
 
 A built-in whose body performs the operation in-harness needs no channel, the
-tool-call protocol being one already. It is not ruled out here — it is #186, where
-it joins the question #165 and #169 are already asking about who sees a call and
-when, because an authenticated call is the case where per-call consent matters
-most and approve-once-per-run is least defensible.
+tool-call protocol being one already. It is not ruled out here — it is #186. An
+authenticated call is the case where per-call consent matters most, and
+`--approve call` (#219) is that consent, except that it never asks about a
+`RiskLevel::ReadOnly` call and no current `RiskLevel` fits a credentialed
+request.
 
 ### What is left is a refusal, and it is one
 
