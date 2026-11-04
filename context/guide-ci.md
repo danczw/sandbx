@@ -144,7 +144,21 @@ array that is not exactly the real parent set — an extra parent being
 the crate — and a normal or build edge into a fixture crate `DEV_ONLY` names,
 which every `*-fixture` package must appear in. `wrappers` has no way to say
 "only as a dev-dependency", so cargo-deny passes a listed parent's dev edge
-turned normal at exit 0 (#465). The script runs before `cargo-deny-action` for
+turned normal at exit 0 (#465).
+
+Under all four sits the graph read itself: `--no-deps` lists workspace members
+only, so a crate built from outside them carries edges none of the four can see.
+A shim in an excluded directory, named `sandbx-screen` and depending normally on
+`sandbx-pty-fixture`, put the fixture in `sandbx-cli`'s production build while
+this script and cargo-deny both exited 0 — cargo-deny matches `wrappers` by name,
+and the shim took a listed one. A root `[patch.crates-io]` onto the same shim did
+the same. So the script also refuses any path dependency that is not onto a
+member, a registry or git dependency named like a member, and the keys that swap
+a crate in: `[patch]` and `[replace]` in the root manifest, `[patch]` and `paths`
+in `.cargo/config.toml` or `.cargo/config`. Config cargo merges from the runner's
+home or the checkout's ancestors is not read, a PR being unable to write it.
+
+The script runs before `cargo-deny-action` for
 the reason the release-channel check does, and its `--self-test` runs first,
 against scratch workspaces, so a checker that has stopped checking fails rather
 than passing the real file by default. Every check a `deny.toml` or a manifest
