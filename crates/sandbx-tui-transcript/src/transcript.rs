@@ -101,8 +101,9 @@ impl Transcript {
     /// refused, or what an interrupt lost.
     ///
     /// Its breaks are spelled rather than kept: the view marks every row of a note, so a
-    /// real break would mint a second marked row. `gate::line` escapes already; a
-    /// provider-error note does not, being the vendor's string verbatim.
+    /// real break would mint a second marked row. `gate::line` and `error_line` spell
+    /// already, `\` included, so this is a backstop and leaves `\` alone: spelling it
+    /// again would double theirs.
     pub fn note(&mut self, line: &str) {
         self.entries.push(Entry {
             kind: Kind::Note,
