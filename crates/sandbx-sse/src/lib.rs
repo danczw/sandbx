@@ -10,10 +10,10 @@ use sandbx_provider::ProviderError;
 
 /// Turn a byte stream into a stream of framed SSE events.
 ///
-/// Chunks arrive with no relation to line boundaries, and `data:` payloads
-/// can be multi-byte UTF-8, so bytes are buffered raw and decoded only once a range
-/// ends at a `\n`: splitting on `0x0A` is safe mid sequence, because no UTF-8
-/// continuation or lead byte takes that value.
+/// Chunks arrive with no relation to line boundaries, and `data:` payloads can be
+/// multi-byte UTF-8, so bytes are buffered raw and decoded only once a range ends at a
+/// `\n`: splitting on `0x0A` is safe mid sequence, because no UTF-8 continuation or lead
+/// byte takes that value.
 ///
 /// `Send` is stated rather than left to leak out of the opaque type, so a non-`Send`
 /// field added to the state below fails here, not at the coercion in a client's `stream_chat`.
