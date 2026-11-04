@@ -16,8 +16,8 @@ no edge, which is `warning[unused-wrapper]` and passes while overstating who may
 on the crate.
 
 A third is one `cargo deny` cannot see at all: `wrappers` has no "only as a
-dev-dependency", so a listed parent turning its dev edge into a fixture crate into a
-normal one passes it (#465). `DEV_ONLY` names those crates and check 4 refuses the edge.
+dev-dependency", so a listed parent's dev edge into a fixture crate, turned normal,
+passes it (#465). `DEV_ONLY` names those crates and check 4 refuses the edge.
 
 Python rather than `/bin/sh` like its three neighbours, for one reason: this has to read
 TOML, and `/bin/sh` has no parser for it. An awk approximation was written first and a
@@ -57,7 +57,8 @@ PREFIX = "sandbx-"
 
 # Check 4's input: crates no parent may reach except as a dev-dependency. A list because
 # nothing in a manifest marks a crate as a fixture, and cargo-deny has no key for it.
-# Every package named `*-fixture` must appear in it, so the list cannot fall behind.
+# Every package named `*-fixture` must appear in it, so a fixture named that way cannot
+# be left off.
 DEV_ONLY = ("sandbx-helper-fixture", "sandbx-pty-fixture", "sandbx-turn-fixture")
 FIXTURE_SUFFIX = "-fixture"
 
@@ -73,8 +74,8 @@ def read_graph(
     build edges count: `wrappers` reads the whole graph, so a dev-dependency is a parent
     too — which `sandbx-core`'s own entry relies on.
 
-    Kind is read from `kind` alone. A `[target.'cfg(..)'.dependencies]` edge is `null`
-    there with `target` set, and it is as much a production edge as an unconditional one.
+    Only `kind` is read: a `[target.'cfg(..)'.dependencies]` edge has it null with
+    `target` set, and ships as surely as an unconditional one.
     """
     done = subprocess.run(
         ["cargo", "metadata", "--format-version", "1", "--no-deps"],
@@ -298,7 +299,7 @@ FIXTURE_CRATES = ("a", "b", "c")
 
 
 def write_member(root: pathlib.Path, directory: str, package: str) -> None:
-    """An empty library crate at `root/directory`, for every scratch workspace below."""
+    """An empty library crate at `root/directory`."""
     (root / directory / "src").mkdir(parents=True)
     (root / directory / "src" / "lib.rs").write_text("")
     (root / directory / "Cargo.toml").write_text(
@@ -591,8 +592,7 @@ DEV_ONLY_CASES: list[tuple[str, bool, str, tuple[str, str]]] = [
     ("dev_edge", True, "", (DEV, DEV)),
     ("normal_edge", False, "sandbx-p has a normal edge", ("dependencies", DEV)),
     ("build_edge", False, "sandbx-p has a build edge", ("build-dependencies", DEV)),
-    # `kind` is null here as for a plain normal edge, with `target` set beside it, so a
-    # check that skipped targeted edges would ship this one.
+    # `kind` is null as for a plain normal edge, and only `target` differs.
     ("target_normal_edge", False, "sandbx-p has a normal edge",
      ("target.'cfg(unix)'.dependencies", DEV)),
     # `sandbx-q` sorts second, so a check that stopped at the first offending parent
