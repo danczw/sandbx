@@ -19,6 +19,12 @@ A third is one `cargo deny` cannot see at all: `wrappers` has no "only as a
 dev-dependency", so a listed parent's dev edge into a fixture crate, turned normal,
 passes it (#465). `DEV_ONLY` names those crates and check 4 refuses the edge.
 
+Under all of them: `--no-deps` lists members only, so a crate built from outside them
+(an excluded directory, a path past the root, a `[patch]`) carries edges no check
+reads. Measured with a shim named `sandbx-screen` putting `sandbx-pty-fixture` in
+`sandbx-cli`'s normal build: both this script and `cargo deny` passed it. Check 5
+refuses every way this file knows of building one.
+
 Python rather than `/bin/sh` like its three neighbours, for one reason: this has to read
 TOML, and `/bin/sh` has no parser for it. An awk approximation was written first and a
 review found five ways to break it — a comment inside a multi-line array injecting a
@@ -43,6 +49,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from typing import NamedTuple
 
 # Check 1's only input, and only because the name alone cannot settle its question: a
 # block naming no package is either a typo in a workspace crate or a deliberate
@@ -63,11 +70,19 @@ DEV_ONLY = ("sandbx-helper-fixture", "sandbx-pty-fixture", "sandbx-turn-fixture"
 FIXTURE_SUFFIX = "-fixture"
 
 
-def read_graph(
-    root: pathlib.Path,
-) -> tuple[set[str], dict[str, set[str]], dict[str, set[tuple[str, str]]]]:
-    """The workspace's package names, `child -> {parents}` over internal edges, and
-    `child -> {(parent, kind)}` over the internal edges that are not dev.
+class Graph(NamedTuple):
+    packages: set[str]
+    # `child -> {parents}` over internal edges.
+    edges: dict[str, set[str]]
+    # `child -> {(parent, kind)}` over the internal edges that are not dev.
+    shipped: dict[str, set[tuple[str, str]]]
+    # `(parent, what)` for each dependency that is local or named like a member but is
+    # not a path onto a member. Check 5 refuses them.
+    strays: list[tuple[str, str]]
+
+
+def read_graph(root: pathlib.Path) -> Graph:
+    """The workspace's internal edges, as `cargo metadata` lists them.
 
     `--no-deps` needs no registry and no lockfile resolution, so the runner image's
     cargo is enough and no toolchain step precedes this in CI (`guide-ci.md`). Dev and
@@ -93,17 +108,36 @@ def read_graph(
     packages = {p["name"] for p in meta["packages"]}
     if not packages:
         raise RuntimeError("cargo metadata reported no workspace packages")
+    # As cargo spells them, with no name compared and no `realpath`: cargo refuses both
+    # mismatches itself, a wrong name at build ("no matching package found") and a
+    # symlinked second spelling of a member here ("two packages named").
+    member_dirs = {
+        str(pathlib.Path(p["manifest_path"]).parent) for p in meta["packages"]
+    }
 
     edges: dict[str, set[str]] = {}
     shipped: dict[str, set[tuple[str, str]]] = {}
+    strays: list[tuple[str, str]] = []
     for package in meta["packages"]:
         for dep in package.get("dependencies", []):
+            # `name` is matched to a member by spelling alone, so a crate outside the
+            # workspace that shares it would be read as the member, and its own edges,
+            # which `--no-deps` never lists, read by nothing.
+            path = dep.get("path")
+            if path is not None:
+                if path not in member_dirs:
+                    strays.append((package["name"], f"has a path dependency on {path}"))
+            elif dep["name"] in packages:
+                strays.append(
+                    (package["name"],
+                     f"depends on '{dep['name']}' from {dep.get('source')}")
+                )
             if dep["name"] in packages:
                 edges.setdefault(dep["name"], set()).add(package["name"])
                 kind = dep.get("kind") or "normal"
                 if kind != "dev":
                     shipped.setdefault(dep["name"], set()).add((package["name"], kind))
-    return packages, edges, shipped
+    return Graph(packages, edges, shipped, strays)
 
 
 def read_deny(path: pathlib.Path) -> dict:
@@ -119,6 +153,17 @@ def read_deny(path: pathlib.Path) -> dict:
 # than being replaced by it; `sandbx-core`'s entry rests entirely on a dev edge.
 GRAPH_KEYS_THAT_HIDE_EDGES = ("exclude", "exclude-dev")
 
+# Keys that swap a crate into the build behind a dependency's back. `--no-deps` lists
+# the dependency as declared (a root `[patch.crates-io]` onto a local shim still reads
+# as a registry `serde`), so the shim's own edges reach no check here. Only the repo's
+# own files are read: cargo also merges config from the runner's home and the
+# checkout's ancestors, which a PR cannot write.
+ROOT_FILES_THAT_ADD_CRATES = (
+    ("Cargo.toml", ("patch", "replace")),
+    (".cargo/config.toml", ("patch", "paths")),
+    (".cargo/config", ("patch", "paths")),
+)
+
 
 def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
     """Checks the workspace at `root`. Writes `::error::` lines to `out`.
@@ -127,7 +172,7 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
     on any failure, so the summary reports what was actually compared rather than how
     many blocks exist.
     """
-    packages, edges, shipped = read_graph(root)
+    packages, edges, shipped, strays = read_graph(root)
     deny = read_deny(root / "deny.toml")
     blocks = deny.get("bans", {}).get("deny", [])
     failed = False
@@ -272,6 +317,27 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
                 f"'{crate}' is named as a fixture but DEV_ONLY does not list it.",
                 "Check 4 then never reads its edges, so a production edge passes.",
             )
+
+    # 5. Every local crate the build reads is a member. Checks 2 to 4 read only the
+    #    edges cargo metadata lists, and a stray's own edges are not among them.
+    for parent, what in strays:
+        error(
+            f"{parent} {what}, and that crate is not a workspace member.",
+            "`--no-deps` lists members only, so that crate's own edges reach no check.",
+        )
+    for relative, keys in ROOT_FILES_THAT_ADD_CRATES:
+        path = root / relative
+        if not path.is_file():
+            continue
+        with path.open("rb") as handle:
+            table = tomllib.load(handle)
+        for key in keys:
+            if key in table:
+                error(
+                    f"{relative} sets [{key}].",
+                    "That builds a crate `--no-deps` never lists, so its edges reach"
+                    " no check.",
+                )
 
     # A comparison of nothing is not a pass — `guide-ci.md`'s *A glob that matches
     # nothing must fail*, which asks it of any check that iterates.
@@ -610,6 +676,74 @@ DEV_ONLY_UNLISTED_CASES: list[tuple[str, bool, str, tuple[str, str]]] = [
 ]
 
 
+def write_stray_fixture(root: pathlib.Path, shape: str) -> None:
+    """`sandbx-p` depends on `sandbx-q` and `deny.toml` is correct for it, plus `shape`.
+
+    Each shape builds a crate `--no-deps` does not list, from an excluded `shim/`
+    directory or from outside the workspace. `exclude` is set in every shape, the
+    control included, because the key alone is harmless: what matters is an edge onto
+    the excluded crate.
+    """
+    root.mkdir(parents=True)
+    manifest = ('[workspace]\nresolver = "3"\nmembers = ["p", "q"]\n'
+                'exclude = ["shim"]\n')
+    write_member(root, "p", "sandbx-p")
+    write_member(root, "q", "sandbx-q")
+    # The member's own name: cargo refuses two members of one name, not an excluded one.
+    shim = "sandbx-q" if shape == "shim_named_like_member" else "sandbx-shim"
+    write_member(root, "shim", shim)
+    outside = f"{root.name}-outside"
+    write_member(root.parent, outside, "sandbx-out")
+    deps = {
+        "excluded_path": 'sandbx-q = { path = "../q" }\n'
+                         'sandbx-shim = { path = "../shim" }\n',
+        "outside_root_path": 'sandbx-q = { path = "../q" }\n'
+                             f'sandbx-out = {{ path = "../../{outside}" }}\n',
+        "shim_named_like_member": 'shimq = { path = "../shim", package = "sandbx-q" }\n',
+        "registry_named_like_member": 'sandbx-q = "0.0.0"\n',
+    }.get(shape, 'sandbx-q = { path = "../q" }\n')
+    with (root / "p" / "Cargo.toml").open("a") as handle:
+        handle.write(f"\n[dependencies]\n{deps}")
+    patch = '[patch.crates-io]\nsandbx-shim = { path = "shim" }\n'
+    manifest += {
+        "patch_in_manifest": patch,
+        "replace_in_manifest": '[replace]\n"sandbx-shim:0.0.0" = { path = "shim" }\n',
+    }.get(shape, "")
+    (root / "Cargo.toml").write_text(manifest)
+    config = {
+        "patch_in_cargo_config": (".cargo/config.toml", patch),
+        "paths_in_cargo_config": (".cargo/config.toml", 'paths = ["shim"]\n'),
+        "patch_in_legacy_config": (".cargo/config", patch),
+    }.get(shape)
+    if config:
+        (root / ".cargo").mkdir()
+        (root / config[0]).write_text(config[1])
+    (root / "deny.toml").write_text(
+        '[[bans.deny]]\nname = "sandbx-q"\nwrappers = ["sandbx-p"]\n'
+    )
+
+
+# name, expected ok/fail, a string the output must contain, the shape. Each arm of
+# check 5 gets a case of its own, one per file the key table names.
+STRAY_CASES: list[tuple[str, bool, str, str]] = [
+    ("stray_control", True, "", "control"),
+    ("excluded_path", False, "a path dependency on", "excluded_path"),
+    ("outside_root_path", False, "a path dependency on", "outside_root_path"),
+    # Read by name as `sandbx-q`, so checks 2 and 3 pass it; only check 5 can fail it.
+    ("shim_named_like_member", False, "a path dependency on", "shim_named_like_member"),
+    ("registry_named_like_member", False, "'sandbx-q' from registry",
+     "registry_named_like_member"),
+    ("patch_in_manifest", False, "Cargo.toml sets [patch]", "patch_in_manifest"),
+    ("replace_in_manifest", False, "Cargo.toml sets [replace]", "replace_in_manifest"),
+    ("patch_in_cargo_config", False, ".cargo/config.toml sets [patch]",
+     "patch_in_cargo_config"),
+    ("paths_in_cargo_config", False, ".cargo/config.toml sets [paths]",
+     "paths_in_cargo_config"),
+    ("patch_in_legacy_config", False, ".cargo/config sets [patch]",
+     "patch_in_legacy_config"),
+]
+
+
 def self_test() -> int:
     root = pathlib.Path(tempfile.mkdtemp())
     failures = 0
@@ -623,6 +757,7 @@ def self_test() -> int:
         (write_dev_only_fixture, DEV_ONLY_TYPO_CASES,
          ("sandbx-f-fixture", "sandbx-nope-fixture")),
         (write_dev_only_fixture, DEV_ONLY_UNLISTED_CASES, ()),
+        (write_stray_fixture, STRAY_CASES, ()),
     )
     try:
         for build, cases, dev_only in families:
@@ -679,7 +814,8 @@ def self_test() -> int:
     # Asserted, not just printed: a loop that silently iterated zero cases would
     # otherwise report success, which is the defect this whole script is about.
     expected = (len(CASES) + len(OFF_PREFIX_CASES) + len(DEV_ONLY_CASES)
-                + len(DEV_ONLY_TYPO_CASES) + len(DEV_ONLY_UNLISTED_CASES) + 4)
+                + len(DEV_ONLY_TYPO_CASES) + len(DEV_ONLY_UNLISTED_CASES)
+                + len(STRAY_CASES) + 4)
     if total != expected:
         print(f"::error::self-test ran {total} cases, expected {expected}")
         return 1
